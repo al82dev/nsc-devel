@@ -1,0 +1,542 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Lexer;
+using NativeSharp.Compiler.Syntax;
+using NativeSharp.Compiler.Symbols;
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.Compiler.Sema
+{
+    public class SemanticAnalyzer
+    {
+        private SyntaxTree tree;
+        private owned SemanticModel model;
+        private int currentScope;
+        private int currentFunction;
+        private int currentType;
+        private bool inExternC;
+        private bool inEnumInitializer;
+
+        public SemanticAnalyzer(SyntaxTree syntax)
+        {
+            tree = syntax; model = new SemanticModel(syntax.Count()); currentScope = 0;
+            currentFunction = -1; currentType = -1; inExternC = false; inEnumInitializer = false;
+        }
+
+        private int Lookup(string name)
+        {
+            int scope = currentScope;
+            while (scope >= 0)
+            {
+                int result = model.GetScope(scope).LookupLocal(name); if (result >= 0) { return result; }
+                scope = model.GetScope(scope).Parent();
+            }
+            return -1;
+        }
+        private int LookupGlobal(string name) { return model.GetScope(0).LookupLocal(name); }
+        private int Declare(SymbolKind kind, string name, int type, int node, bool global)
+        {
+            raii Symbol symbol = new Symbol(kind, name, type, node); int id = model.AddSymbol(move(symbol));
+            model.GetScope(currentScope).Declare(name, id); model.BindNode(node, id); if (global) { model.AddGlobal(id); }
+            return id;
+        }
+        private void AttachToParent(int symbol, int parent)
+        {
+            model.GetSymbol(symbol).SetParent(parent); model.GetSymbol(parent).AddMember(symbol);
+            raii string prefix = String.Concat(model.GetSymbol(parent).QualifiedName(), ".");
+            raii string qualified = String.Concat(prefix, model.GetSymbol(symbol).Name()); model.GetSymbol(symbol).SetQualifiedName(qualified);
+        }
+        private int Align(int value, int alignment)
+        {
+            if (alignment <= 1) { return value; } int remainder = value % alignment;
+            return remainder == 0 ? value : value + alignment - remainder;
+        }
+        private int AuxiliaryValue(string auxiliary, string key)
+        {
+            int begin = String.IndexOf(auxiliary, key); if (begin < 0) { return -1; } begin = begin + key.Length;
+            int end = begin; while (end < auxiliary.Length && auxiliary[end] >= '0' && auxiliary[end] <= '9') { end = end + 1; }
+            raii string digits = String.Substring(auxiliary, begin, end - begin); int value = -1; Number.TryParseInt32(digits, out value); return value;
+        }
+        private int TypeSymbol(int typeId)
+        {
+            string display = model.Types().Get(typeId).Display(); int index = 0;
+            while (index < model.SymbolCount())
+            {
+                Symbol symbol = model.GetSymbol(index);
+                if ((symbol.Kind() == SymbolKind.Struct || symbol.Kind() == SymbolKind.Class ||
+                    symbol.Kind() == SymbolKind.Interface || symbol.Kind() == SymbolKind.Enum || symbol.Kind() == SymbolKind.Union) &&
+                    (symbol.Name() == display || symbol.QualifiedName() == display)) { return index; }
+                index = index + 1;
+            }
+            return -1;
+        }
+        private int LookupMember(int typeId, string name)
+        {
+            int owner = TypeSymbol(typeId); if (owner < 0) { return -1; } Symbol type = model.GetSymbol(owner); int index = 0;
+            while (index < type.MemberCount())
+            {
+                int member = type.MemberAt(index); if (model.GetSymbol(member).Name() == name) { return member; }
+                index = index + 1;
+            }
+            return -1;
+        }
+
+        private void DeclareAggregate(int nodeId, int parent)
+        {
+            SyntaxNode node = tree.Node(nodeId); SymbolKind kind = SymbolKind.Type;
+            if (node.Kind() == "StructDeclaration") { kind = String.Contains(node.Auxiliary(), "union") ? SymbolKind.Union : SymbolKind.Struct; }
+            else if (node.Kind() == "ClassDeclaration") { kind = SymbolKind.Class; }
+            else if (node.Kind() == "InterfaceDeclaration") { kind = SymbolKind.Interface; }
+            else if (node.Kind() == "UnionDeclaration") { kind = SymbolKind.Union; }
+            int type = model.Types().Intern(node.Text()); int symbol = Declare(kind, node.Text(), type, nodeId, parent < 0);
+            model.GetSymbol(symbol).SetGenericText(node.GenericText()); model.GetSymbol(symbol).SetConstraintsText(node.ConstraintsText());
+            if (parent >= 0) { AttachToParent(symbol, parent); }
+            int savedType = currentType; currentType = symbol; int offset = 0; int maxAlignment = 1; int index = 0;
+            int pack = AuxiliaryValue(node.Auxiliary(), "pack="); int explicitAlignment = AuxiliaryValue(node.Auxiliary(), "align=");
+            int explicitSize = AuxiliaryValue(node.Auxiliary(), "size=");
+            int bitUsed = 0; int bitStorageOffset = 0; int bitStorageSize = 0;
+            while (index < node.ChildCount())
+            {
+                int childId = node.ChildAt(index); SyntaxNode child = tree.Node(childId);
+                if (child.Kind() == "FieldDeclaration")
+                {
+                    int fieldType = model.Types().Intern(child.SemanticTypeText()); int field = Declare(SymbolKind.Field, child.Text(), fieldType, childId, false);
+                    bool constantField = String.Contains(child.ModifiersText(), "const"); bool staticField = String.Contains(child.ModifiersText(), "static");
+                    model.GetSymbol(field).SetConst(constantField); model.GetSymbol(field).SetStatic(staticField);
+                    int alignment = model.Types().Get(fieldType).Alignment(); int size = model.Types().Get(fieldType).Size();
+                    if (pack > 0 && alignment > pack) { alignment = pack; }
+                    int explicitOffset = AuxiliaryValue(child.Auxiliary(), "at:");
+                    int bitWidth = AuxiliaryValue(child.Auxiliary(), "bits:");
+                    if (constantField || staticField) { }
+                    else if (bitWidth >= 0)
+                    {
+                        if (kind == SymbolKind.Union) { bitStorageOffset = 0; bitUsed = 0; bitStorageSize = size; if (size > offset) { offset = size; } }
+                        else if (bitWidth == 0) { offset = Align(offset, alignment); bitUsed = 0; bitStorageSize = 0; bitStorageOffset = offset; }
+                        else if (bitUsed == 0 || bitStorageSize != size || bitUsed + bitWidth > size * 8)
+                        {
+                            offset = Align(offset, alignment); bitStorageOffset = offset; bitStorageSize = size; bitUsed = 0; offset = offset + size;
+                        }
+                        model.GetSymbol(field).SetLayout(bitStorageOffset, size, alignment); model.GetSymbol(field).SetBitField(bitWidth, bitUsed); bitUsed = bitUsed + bitWidth;
+                    }
+                    else if (kind == SymbolKind.Union) { model.GetSymbol(field).SetLayout(0, size, alignment); if (size > offset) { offset = size; } }
+                    else if (explicitOffset >= 0)
+                    {
+                        model.GetSymbol(field).SetLayout(explicitOffset, size, alignment); if (explicitOffset + size > offset) { offset = explicitOffset + size; }
+                    }
+                    else { bitUsed = 0; bitStorageSize = 0; offset = Align(offset, alignment); model.GetSymbol(field).SetLayout(offset, size, alignment); offset = offset + size; }
+                    if (alignment > maxAlignment) { maxAlignment = alignment; } AttachToParent(field, symbol);
+                }
+                else if (child.Kind() == "MethodDeclaration" || child.Kind() == "ConstructorDeclaration") { DeclareFunction(childId, symbol, false); }
+                else if (child.Kind() == "PropertyDeclaration" || child.Kind() == "IndexerDeclaration")
+                {
+                    SymbolKind memberKind = child.Kind() == "PropertyDeclaration" ? SymbolKind.Property : SymbolKind.Indexer;
+                    int memberType = model.Types().Intern(child.SemanticTypeText()); int member = Declare(memberKind, child.Text(), memberType, childId, false);
+                    AttachToParent(member, symbol);
+                    int nested = 0; while (nested < child.ChildCount()) { DeclareFunction(child.ChildAt(nested), symbol, false); nested = nested + 1; }
+                }
+                else if (child.Kind() == "EventDeclaration")
+                {
+                    int eventType = model.Types().Intern(child.SemanticTypeText()); int eventSymbol = Declare(SymbolKind.Event, child.Text(), eventType, childId, false);
+                    AttachToParent(eventSymbol, symbol);
+                }
+                else if (child.Kind() == "StructDeclaration" || child.Kind() == "ClassDeclaration" || child.Kind() == "InterfaceDeclaration" || child.Kind() == "UnionDeclaration")
+                { DeclareAggregate(childId, symbol); }
+                index = index + 1;
+            }
+            if (explicitAlignment > maxAlignment) { maxAlignment = explicitAlignment; }
+            int finalSize = Align(offset, maxAlignment); if (explicitSize >= 0) { finalSize = explicitSize; }
+            model.GetSymbol(symbol).SetLayout(0, finalSize, maxAlignment);
+            model.Types().Get(type).SetLayout(finalSize, maxAlignment); currentType = savedType;
+        }
+
+        private void DeclareEnum(int nodeId, int parent)
+        {
+            SyntaxNode node = tree.Node(nodeId); int type = model.Types().Intern(node.Text()); int symbol = Declare(SymbolKind.Enum, node.Text(), type, nodeId, parent < 0);
+            if (parent >= 0) { AttachToParent(symbol, parent); }
+            int underlying = node.SemanticTypeText().Length == 0 ? model.Types().Find("int") : model.Types().Intern(node.SemanticTypeText());
+            int enumSize = model.Types().Get(underlying).Size(); int enumAlignment = model.Types().Get(underlying).Alignment();
+            model.GetSymbol(symbol).SetLayout(0, enumSize, enumAlignment); model.Types().Get(type).SetLayout(enumSize, enumAlignment);
+            long nextValue = 0; int index = 0;
+            while (index < node.ChildCount())
+            {
+                int childId = node.ChildAt(index); SyntaxNode memberNode = tree.Node(childId);
+                int member = Declare(SymbolKind.EnumMember, memberNode.Text(), type, childId, false);
+                if (memberNode.First() >= 0) { bool savedEnum = inEnumInitializer; inEnumInitializer = true; SemanticFact value = AnalyzeExpression(memberNode.First()); inEnumInitializer = savedEnum; if (value.IsConstant()) { long parsed = 0; if (Number.TryParseInt64(value.ConstantText(), out parsed)) { nextValue = parsed; } } }
+                model.GetSymbol(member).SetConstantValue(nextValue); AttachToParent(member, symbol); nextValue = nextValue + 1;
+                index = index + 1;
+            }
+        }
+
+        private void DeclareFunction(int nodeId, int parent, bool external)
+        {
+            SyntaxNode node = tree.Node(nodeId); raii List<int> parameters = new List<int>(); int index = 0;
+            while (index < node.ChildCount())
+            {
+                SyntaxNode child = tree.Node(node.ChildAt(index)); if (child.Kind() == "ParameterDeclaration") { parameters.Add(model.Types().Intern(child.SemanticTypeText())); }
+                index = index + 1;
+            }
+            int returnType = node.Kind() == "ConstructorDeclaration" ? model.Types().Find("void") : model.Types().Intern(node.SemanticTypeText());
+            bool namespaceParent = parent >= 0 && model.GetSymbol(parent).Kind() == SymbolKind.Namespace;
+            int functionType = model.Types().Function(returnType, parameters); SymbolKind kind = parent >= 0 && !namespaceParent ? SymbolKind.Method : SymbolKind.Function;
+            if (node.Kind() == "ConstructorDeclaration") { kind = SymbolKind.Constructor; }
+            int symbol = Declare(kind, node.Text(), functionType, nodeId, parent < 0); model.GetSymbol(symbol).SetDefined(node.First() >= 0);
+            model.GetSymbol(symbol).SetExternC(external); model.GetSymbol(symbol).SetGenericText(node.GenericText()); model.GetSymbol(symbol).SetConstraintsText(node.ConstraintsText());
+            model.GetSymbol(symbol).SetStatic(String.Contains(node.ModifiersText(), "static"));
+            model.GetSymbol(symbol).SetVirtual(String.Contains(node.ModifiersText(), "virtual") || String.Contains(node.ModifiersText(), "abstract"));
+            model.GetSymbol(symbol).SetOverride(String.Contains(node.ModifiersText(), "override"));
+            if (parent >= 0) { AttachToParent(symbol, parent); }
+        }
+
+        private void DeclareGlobalNode(int nodeId, int parent)
+        {
+            SyntaxNode node = tree.Node(nodeId);
+            if (node.Kind() == "ExternCDeclaration")
+            {
+                bool saved = inExternC; inExternC = true; int index = 0;
+                while (index < node.ChildCount()) { DeclareGlobalNode(node.ChildAt(index), parent); index = index + 1; }
+                inExternC = saved; return;
+            }
+            if (node.Kind() == "NamespaceDeclaration")
+            {
+                int symbol = Declare(SymbolKind.Namespace, node.Text(), -1, nodeId, parent < 0);
+                if (parent >= 0) { AttachToParent(symbol, parent); }
+                int index = 0; while (index < node.ChildCount()) { DeclareGlobalNode(node.ChildAt(index), symbol); index = index + 1; } return;
+            }
+            if (node.Kind() == "StructDeclaration" || node.Kind() == "ClassDeclaration" || node.Kind() == "InterfaceDeclaration" || node.Kind() == "UnionDeclaration") { DeclareAggregate(nodeId, parent); return; }
+            if (node.Kind() == "EnumDeclaration") { DeclareEnum(nodeId, parent); return; }
+            if (node.Kind() == "FunctionDeclaration" || node.Kind() == "MethodDeclaration" || node.Kind() == "DelegateDeclaration") { DeclareFunction(nodeId, parent, inExternC); return; }
+            if (node.Kind() == "GlobalVariableDeclaration")
+            {
+                int type = model.Types().Intern(node.SemanticTypeText()); int symbol = Declare(SymbolKind.GlobalVariable, node.Text(), type, nodeId, parent < 0);
+                model.GetSymbol(symbol).SetConst(node.Flag()); if (parent >= 0) { AttachToParent(symbol, parent); }
+            }
+        }
+
+        private int CommonNumeric(int left, int right)
+        {
+            SemanticTypeKind a = model.Types().Get(left).Kind(); SemanticTypeKind b = model.Types().Get(right).Kind();
+            if (a == SemanticTypeKind.Double || b == SemanticTypeKind.Double) { return model.Types().Find("double"); }
+            if (a == SemanticTypeKind.Float || b == SemanticTypeKind.Float) { return model.Types().Find("float"); }
+            if (a == SemanticTypeKind.ULong || b == SemanticTypeKind.ULong) { return model.Types().Find("ulong"); }
+            if (a == SemanticTypeKind.Long || b == SemanticTypeKind.Long) { return model.Types().Find("long"); }
+            if (a == SemanticTypeKind.NUInt || b == SemanticTypeKind.NUInt) { return model.Types().Find("nuint"); }
+            if (a == SemanticTypeKind.NInt || b == SemanticTypeKind.NInt) { return model.Types().Find("nint"); }
+            if (a == SemanticTypeKind.UInt || b == SemanticTypeKind.UInt) { return model.Types().Find("uint"); }
+            return model.Types().Find("int");
+        }
+        private bool Comparison(TokenKind kind)
+        {
+            return kind == TokenKind.EqualEqual || kind == TokenKind.BangEqual || kind == TokenKind.Less ||
+                kind == TokenKind.LessEqual || kind == TokenKind.Greater || kind == TokenKind.GreaterEqual ||
+                kind == TokenKind.AmpAmp || kind == TokenKind.PipePipe;
+        }
+        private void AddConversion(SemanticFact owner, string kind, int source, int destination, string role, int operand)
+        {
+            if (source == destination) { return; } raii SemanticConversion conversion = new SemanticConversion(kind, source, destination, role, operand);
+            owner.AddConversion(move(conversion));
+        }
+        private string NumericConversion(int source, int destination)
+        {
+            if (model.Types().Get(source).Kind() == SemanticTypeKind.NullLiteral && model.Types().Get(destination).Kind() == SemanticTypeKind.Pointer) { return "implicit-null-pointer"; }
+            if (model.Types().Get(source).Kind() == SemanticTypeKind.StringLiteral && model.Types().Get(destination).Kind() == SemanticTypeKind.Pointer) { return "implicit-string-literal-to-char-pointer"; }
+            if (model.Types().Get(source).Kind() == SemanticTypeKind.Pointer && model.Types().Get(destination).Kind() == SemanticTypeKind.Pointer &&
+                model.Types().Get(model.Types().Get(destination).ElementType()).Kind() == SemanticTypeKind.Void) { return "implicit-pointer-to-void"; }
+            return "implicit-numeric";
+        }
+
+        private SemanticFact AnalyzeLiteral(int nodeId)
+        {
+            SyntaxNode node = tree.Node(nodeId); SemanticFact fact = model.Fact(nodeId); int type = model.Types().Find("int"); raii string constant = String.Copy(node.Text());
+            if (node.Kind() == "BooleanLiteralExpression") { type = model.Types().Find("bool"); }
+            else if (node.Kind() == "NullLiteralExpression") { type = model.Types().Find("null"); raii string nullText = String.Copy("null"); constant = move(nullText); }
+            else if (node.Kind() == "StringLiteralExpression") { type = model.Types().StringLiteral(node.Text().Length + 1); raii string a = String.Concat("\"", node.Text()); raii string b = String.Concat(a, "\""); constant = move(b); }
+            else if (node.Kind() == "CharacterLiteralExpression") { type = model.Types().Find("char"); }
+            else if (node.Kind() == "FloatingLiteralExpression")
+            {
+                int length = node.Text().Length; bool single = length > 0 && (node.Text()[length - 1] == 'f' || node.Text()[length - 1] == 'F');
+                type = model.Types().Find(single ? "float" : "double"); double parsed = 0.0;
+                raii string numeric = single ? String.Substring(node.Text(), 0, length - 1) : String.Copy(node.Text());
+                if (Number.TryParseDouble(numeric, out parsed)) { raii string parsedText = String.ToString(parsed); constant = move(parsedText); }
+            }
+            else
+            {
+                int length = node.Text().Length; bool unsignedValue = false; bool longValue = false; int cursor = 0; ulong magnitude = 0;
+                if (Number.TryParseIntegerLiteral(node.Text(), ref cursor, out magnitude, out unsignedValue, out longValue))
+                {
+                    if (unsignedValue && longValue) { type = model.Types().Find("ulong"); }
+                    else if (unsignedValue) { type = model.Types().Find("uint"); }
+                    else if (longValue) { type = model.Types().Find("long"); }
+                    raii string magnitudeText = String.ToString(magnitude); constant = move(magnitudeText);
+                }
+            }
+            fact.SetType(type, ValueCategory.RValue); fact.SetConstant(constant); return fact;
+        }
+
+        private SemanticFact AnalyzeExpression(int nodeId)
+        {
+            if (nodeId < 0) { return model.Fact(0); } SyntaxNode node = tree.Node(nodeId); SemanticFact fact = model.Fact(nodeId);
+            if (node.Kind() == "IntegerLiteralExpression" || node.Kind() == "FloatingLiteralExpression" || node.Kind() == "BooleanLiteralExpression" ||
+                node.Kind() == "CharacterLiteralExpression" || node.Kind() == "StringLiteralExpression" || node.Kind() == "NullLiteralExpression") { return AnalyzeLiteral(nodeId); }
+            if (node.Kind() == "IdentifierExpression")
+            {
+                int symbol = Lookup(node.Text()); if (symbol < 0) { symbol = LookupGlobal(node.Text()); }
+                int type = symbol >= 0 ? model.GetSymbol(symbol).TypeId() : model.Types().Find("error"); SymbolKind kind = symbol >= 0 ? model.GetSymbol(symbol).Kind() : SymbolKind.Variable;
+                if (type < 0) { type = model.Types().Find("error"); }
+                if (kind == SymbolKind.EnumMember && inEnumInitializer) { type = model.Types().Find("int"); }
+                ValueCategory category = (kind == SymbolKind.Function || kind == SymbolKind.Method || kind == SymbolKind.EnumMember) ? ValueCategory.RValue : ValueCategory.LValue;
+                bool arrayValue = model.Types().Get(type).Kind() == SemanticTypeKind.Array;
+                fact.SetType(type, category); fact.SetStorage(category == ValueCategory.LValue && !arrayValue && (symbol < 0 || !model.GetSymbol(symbol).IsConst()), category == ValueCategory.LValue); fact.SetSymbol(symbol);
+                if (kind == SymbolKind.Struct || kind == SymbolKind.Class || kind == SymbolKind.Interface || kind == SymbolKind.Enum || kind == SymbolKind.Union || kind == SymbolKind.Namespace) { fact.Hide(); }
+                if (symbol >= 0 && model.GetSymbol(symbol).HasConstantValue()) { raii string value = String.ToString(model.GetSymbol(symbol).ConstantValue()); fact.SetConstant(value); }
+                return fact;
+            }
+            if (node.Kind() == "MemberExpression")
+            {
+                SemanticFact receiver = AnalyzeExpression(node.First()); int type = receiver.TypeId();
+                if (model.Types().Get(type).Kind() == SemanticTypeKind.Pointer) { type = model.Types().Get(type).ElementType(); }
+                int member = LookupMember(type, node.Text());
+                if (member < 0)
+                {
+                    int enumType = TypeSymbol(type); if (enumType >= 0) { Symbol owner = model.GetSymbol(enumType); int i = 0; while (i < owner.MemberCount()) { int candidate = owner.MemberAt(i); if (model.GetSymbol(candidate).Name() == node.Text()) { member = candidate; break; } i = i + 1; } }
+                }
+                int result = member >= 0 ? model.GetSymbol(member).TypeId() : model.Types().Find("error");
+                ValueCategory category = member >= 0 && model.GetSymbol(member).Kind() == SymbolKind.EnumMember ? ValueCategory.RValue : receiver.Category();
+                fact.SetType(result, category); fact.SetStorage(category == ValueCategory.LValue && receiver.Modifiable(), category == ValueCategory.LValue && receiver.Addressable()); fact.SetSymbol(member);
+                if (member >= 0 && model.GetSymbol(member).HasConstantValue()) { raii string value = String.ToString(model.GetSymbol(member).ConstantValue()); fact.SetConstant(value); }
+                return fact;
+            }
+            if (node.Kind() == "UnaryExpression" || node.Kind() == "PostfixExpression")
+            {
+                SemanticFact operand = AnalyzeExpression(node.First()); int result = operand.TypeId(); TokenKind op = node.OperatorKind(); ValueCategory category = ValueCategory.RValue;
+                if (op == TokenKind.Amp) { raii string display = String.Concat(model.Types().Get(result).Display(), "*"); result = model.Types().Intern(display); }
+                else if (op == TokenKind.Star && model.Types().Get(result).Kind() == SemanticTypeKind.Pointer) { result = model.Types().Get(result).ElementType(); category = ValueCategory.LValue; }
+                else if (op == TokenKind.Bang) { result = model.Types().Find("bool"); }
+                fact.SetType(result, category); if (category == ValueCategory.LValue) { fact.SetStorage(true, true); }
+                fact.SetOperator(op, op == TokenKind.Star ? operand.TypeId() : (op == TokenKind.Amp ? operand.TypeId() : result), result); return fact;
+            }
+            if (node.Kind() == "BinaryExpression" || node.Kind() == "AssignmentExpression")
+            {
+                SemanticFact left = AnalyzeExpression(node.First()); SemanticFact right = AnalyzeExpression(node.Second()); TokenKind op = node.OperatorKind();
+                int operation = left.TypeId(); int result = operation;
+                bool leftPointer = model.Types().Get(left.TypeId()).Kind() == SemanticTypeKind.Pointer;
+                bool rightPointer = model.Types().Get(right.TypeId()).Kind() == SemanticTypeKind.Pointer;
+                if (leftPointer && rightPointer && op == TokenKind.Minus) { result = model.Types().Find("nint"); }
+                else if (leftPointer && model.Types().IsInteger(right.TypeId()) && (op == TokenKind.Plus || op == TokenKind.Minus)) { result = left.TypeId(); }
+                else if (rightPointer && model.Types().IsInteger(left.TypeId()) && op == TokenKind.Plus) { operation = right.TypeId(); result = right.TypeId(); }
+                else if (Comparison(op))
+                {
+                    operation = (op == TokenKind.AmpAmp || op == TokenKind.PipePipe) ? model.Types().Find("bool") :
+                        ((leftPointer || rightPointer) ? (leftPointer ? left.TypeId() : right.TypeId()) : CommonNumeric(left.TypeId(), right.TypeId()));
+                    result = model.Types().Find("bool");
+                }
+                else if (node.Kind() == "AssignmentExpression")
+                {
+                    result = left.TypeId(); operation = op == TokenKind.Equal ? left.TypeId() : CommonNumeric(left.TypeId(), right.TypeId());
+                    if (leftPointer && (op == TokenKind.PlusEqual || op == TokenKind.MinusEqual)) { operation = left.TypeId(); }
+                }
+                else { operation = CommonNumeric(left.TypeId(), right.TypeId()); result = operation; }
+                TokenKind displayOp = op;
+                if (op == TokenKind.PlusEqual) { displayOp = TokenKind.Plus; } else if (op == TokenKind.MinusEqual) { displayOp = TokenKind.Minus; }
+                else if (op == TokenKind.StarEqual) { displayOp = TokenKind.Star; } else if (op == TokenKind.SlashEqual) { displayOp = TokenKind.Slash; }
+                fact.SetType(result, ValueCategory.RValue); fact.SetOperator(displayOp, operation, result);
+                if (left.TypeId() != operation && !(model.Types().Get(operation).Kind() == SemanticTypeKind.Pointer && model.Types().IsInteger(left.TypeId())))
+                { AddConversion(fact, "integral-promotion", left.TypeId(), operation, "operand", 0); }
+                if (right.TypeId() != operation && !(model.Types().Get(operation).Kind() == SemanticTypeKind.Pointer && model.Types().IsInteger(right.TypeId())))
+                { AddConversion(fact, NumericConversion(right.TypeId(), operation), right.TypeId(), operation, "operand", 1); }
+                if (node.Kind() == "AssignmentExpression" && operation != result) { AddConversion(fact, "explicit-numeric", operation, result, "result", -1); }
+                if (left.IsConstant() && right.IsConstant() && (op == TokenKind.Plus || op == TokenKind.Minus))
+                {
+                    long a = 0; long b = 0; if (Number.TryParseInt64(left.ConstantText(), out a) && Number.TryParseInt64(right.ConstantText(), out b)) { raii string value = String.ToString(op == TokenKind.Plus ? a + b : a - b); fact.SetConstant(value); }
+                }
+                return fact;
+            }
+            if (node.Kind() == "CallExpression")
+            {
+                SemanticFact callee = AnalyzeExpression(node.First()); int result = model.Types().Find("error"); SemanticType callable = model.Types().Get(callee.TypeId());
+                if (callable.Kind() == SemanticTypeKind.Function) { result = callable.ReturnType(); }
+                fact.SetType(result, ValueCategory.RValue); int index = 0;
+                while (index < node.ChildCount())
+                {
+                    SemanticFact argument = AnalyzeExpression(node.ChildAt(index));
+                    if (callable.Kind() == SemanticTypeKind.Function && index < callable.ParameterCount())
+                    {
+                        int destination = callable.ParameterType(index); if (argument.TypeId() != destination) { AddConversion(fact, NumericConversion(argument.TypeId(), destination), argument.TypeId(), destination, "operand", index); }
+                    }
+                    index = index + 1;
+                }
+                return fact;
+            }
+            if (node.Kind() == "IndexExpression")
+            {
+                SemanticFact receiver = AnalyzeExpression(node.First()); AnalyzeExpression(node.Second()); int type = receiver.TypeId(); bool bounds = false;
+                if (model.Types().Get(type).Kind() == SemanticTypeKind.Pointer || model.Types().Get(type).Kind() == SemanticTypeKind.Array)
+                { bounds = model.Types().Get(type).Kind() == SemanticTypeKind.Array; type = model.Types().Get(type).ElementType(); }
+                fact.SetType(type, ValueCategory.LValue); fact.SetStorage(true, true); fact.SetBoundsCheck(bounds);
+                int index = 0; while (index < node.ChildCount()) { AnalyzeExpression(node.ChildAt(index)); index = index + 1; } return fact;
+            }
+            if (node.Kind() == "CastExpression")
+            {
+                SemanticFact operand = AnalyzeExpression(node.First()); int result = model.Types().Intern(node.SemanticTypeText()); fact.SetType(result, ValueCategory.RValue);
+                string kind = "explicit-numeric"; SemanticTypeKind sourceKind = model.Types().Get(operand.TypeId()).Kind(); SemanticTypeKind resultKind = model.Types().Get(result).Kind();
+                if (sourceKind == SemanticTypeKind.Pointer || resultKind == SemanticTypeKind.Pointer) { kind = (sourceKind == SemanticTypeKind.Pointer && resultKind == SemanticTypeKind.Pointer) ? "explicit-pointer" : "explicit-pointer-integer"; }
+                int sourceSymbol = sourceKind == SemanticTypeKind.Named ? TypeSymbol(operand.TypeId()) : -1;
+                if (sourceSymbol >= 0 && model.GetSymbol(sourceSymbol).Kind() == SymbolKind.Enum) { kind = "explicit-enum"; }
+                AddConversion(fact, kind, operand.TypeId(), result, "contextual", -1); if (operand.IsConstant()) { fact.SetConstant(operand.ConstantText()); } return fact;
+            }
+            if (node.Kind() == "NewExpression" || node.Kind() == "StackallocExpression")
+            {
+                int baseType = model.Types().Intern(node.SemanticTypeText()); raii string pointerName = String.Concat(model.Types().Get(baseType).Display(), "*"); int pointer = model.Types().Intern(pointerName);
+                fact.SetType(pointer, ValueCategory.RValue); if (node.First() >= 0) { AnalyzeExpression(node.First()); } return fact;
+            }
+            if (node.Kind() == "DeleteExpression") { AnalyzeExpression(node.First()); fact.SetType(model.Types().Find("void"), ValueCategory.RValue); return fact; }
+            if (node.Kind() == "SizeofTypeExpression" || node.Kind() == "AlignofTypeExpression")
+            {
+                int type = model.Types().Intern(node.SemanticTypeText()); int value = node.Kind() == "SizeofTypeExpression" ? model.Types().Get(type).Size() : model.Types().Get(type).Alignment();
+                fact.SetType(model.Types().Find("nuint"), ValueCategory.RValue); raii string text = String.ToString(value); fact.SetConstant(text); return fact;
+            }
+            if (node.Kind() == "SizeofExpression" || node.Kind() == "AlignofExpression")
+            {
+                SemanticFact operand = AnalyzeExpression(node.First()); int value = node.Kind() == "SizeofExpression" ? model.Types().Get(operand.TypeId()).Size() : model.Types().Get(operand.TypeId()).Alignment();
+                fact.SetType(model.Types().Find("nuint"), ValueCategory.RValue); raii string text = String.ToString(value); fact.SetConstant(text); return fact;
+            }
+            if (node.Kind() == "ConditionalExpression")
+            {
+                AnalyzeExpression(node.First()); SemanticFact yes = AnalyzeExpression(node.Second()); SemanticFact no = AnalyzeExpression(node.Third());
+                int result = yes.TypeId() == no.TypeId() ? yes.TypeId() : CommonNumeric(yes.TypeId(), no.TypeId()); fact.SetType(result, ValueCategory.RValue); return fact;
+            }
+            if (node.Kind() == "MoveExpression" || node.Kind() == "PassExpression")
+            {
+                SemanticFact inner = AnalyzeExpression(node.First()); fact.SetType(inner.TypeId(), ValueCategory.RValue); return fact;
+            }
+            if (node.Kind() == "LambdaExpression")
+            {
+                int savedScope = currentScope; currentScope = model.AddScope(savedScope); int parameter = 0;
+                while (parameter < node.ChildCount())
+                {
+                    SyntaxNode syntaxParameter = tree.Node(node.ChildAt(parameter)); int type = model.Types().Intern("lambda-parameter");
+                    Declare(SymbolKind.Parameter, syntaxParameter.Text(), type, node.ChildAt(parameter), false); parameter = parameter + 1;
+                }
+                if (node.First() >= 0)
+                {
+                    if (tree.Node(node.First()).Kind() == "BlockStatement") { AnalyzeStatement(node.First()); }
+                    else { AnalyzeExpression(node.First()); }
+                }
+                currentScope = savedScope; fact.SetType(model.Types().Intern("lambda"), ValueCategory.RValue); return fact;
+            }
+            int index = 0; while (index < node.ChildCount()) { AnalyzeExpression(node.ChildAt(index)); index = index + 1; }
+            if (node.First() >= 0) { AnalyzeExpression(node.First()); } if (node.Second() >= 0) { AnalyzeExpression(node.Second()); } if (node.Third() >= 0) { AnalyzeExpression(node.Third()); }
+            fact.SetType(model.Types().Find("error"), ValueCategory.RValue); return fact;
+        }
+
+        private void AnalyzeStatement(int nodeId)
+        {
+            if (nodeId < 0) { return; } SyntaxNode node = tree.Node(nodeId);
+            if (node.Kind() == "BlockStatement")
+            {
+                int saved = currentScope; currentScope = model.AddScope(saved); int index = 0;
+                while (index < node.ChildCount()) { AnalyzeStatement(node.ChildAt(index)); index = index + 1; } currentScope = saved; return;
+            }
+            if (node.Kind() == "VariableDeclarationStatement")
+            {
+                int type = model.Types().Intern(node.SemanticTypeText()); int symbol = Declare(SymbolKind.Variable, node.Text(), type, nodeId, false);
+                if (node.Auxiliary() == "const") { model.GetSymbol(symbol).SetConst(true); }
+                if (node.First() >= 0)
+                {
+                    SemanticFact initializer = AnalyzeExpression(node.First());
+                    if (initializer.TypeId() != type)
+                    {
+                        string conversionKind = NumericConversion(initializer.TypeId(), type);
+                        SemanticTypeKind destinationKind = model.Types().Get(type).Kind();
+                        if (initializer.IsConstant() && model.Types().Get(initializer.TypeId()).Kind() == SemanticTypeKind.Int &&
+                            (destinationKind == SemanticTypeKind.Byte || destinationKind == SemanticTypeKind.Char || destinationKind == SemanticTypeKind.Short || destinationKind == SemanticTypeKind.UShort))
+                        { conversionKind = "implicit-constant-integer"; }
+                        AddConversion(model.Fact(nodeId), conversionKind, initializer.TypeId(), type, "contextual", -1);
+                    }
+                }
+                return;
+            }
+            if (node.Kind() == "ExpressionStatement") { AnalyzeExpression(node.First()); return; }
+            if (node.Kind() == "ReturnStatement")
+            {
+                if (node.First() >= 0)
+                {
+                    SemanticFact value = AnalyzeExpression(node.First());
+                    if (currentFunction >= 0)
+                    {
+                        int functionType = model.GetSymbol(currentFunction).TypeId(); int target = model.Types().Get(functionType).ReturnType();
+                        if (value.TypeId() != target) { AddConversion(model.Fact(nodeId), NumericConversion(value.TypeId(), target), value.TypeId(), target, "contextual", -1); }
+                    }
+                }
+                return;
+            }
+            if (node.Kind() == "IfStatement")
+            {
+                AnalyzeExpression(node.First()); AnalyzeStatement(node.Second()); if (node.Third() >= 0) { AnalyzeStatement(node.Third()); } return;
+            }
+            if (node.Kind() == "WhileStatement" || node.Kind() == "DoWhileStatement")
+            {
+                AnalyzeExpression(node.First()); AnalyzeStatement(node.Second()); return;
+            }
+            if (node.Kind() == "ForStatement")
+            {
+                if (node.First() >= 0) { if (tree.Node(node.First()).Kind() == "VariableDeclarationStatement") { AnalyzeStatement(node.First()); } else { AnalyzeExpression(node.First()); } }
+                if (node.Second() >= 0) { AnalyzeExpression(node.Second()); } if (node.Third() >= 0) { AnalyzeExpression(node.Third()); }
+                int index = 0; while (index < node.ChildCount()) { AnalyzeStatement(node.ChildAt(index)); index = index + 1; } return;
+            }
+            if (node.Kind() == "ThrowStatement") { if (node.First() >= 0) { AnalyzeExpression(node.First()); } return; }
+            if (node.Kind() == "UsingStatement")
+            {
+                int type = model.Types().Intern(node.SemanticTypeText()); Declare(SymbolKind.Variable, node.Text(), type, nodeId, false); AnalyzeExpression(node.First()); AnalyzeStatement(node.Second()); return;
+            }
+            if (node.Kind() == "StaticAssertStatement") { AnalyzeExpression(node.First()); return; }
+            if (node.Kind() == "SwitchStatement" || node.Kind() == "TryStatement" || node.Kind() == "CatchClause" || node.Kind() == "SwitchSection")
+            {
+                if (node.First() >= 0) { if (tree.Node(node.First()).Kind() == "BlockStatement") { AnalyzeStatement(node.First()); } else { AnalyzeExpression(node.First()); } }
+                if (node.Second() >= 0) { AnalyzeStatement(node.Second()); } int index = 0;
+                while (index < node.ChildCount()) { AnalyzeStatement(node.ChildAt(index)); index = index + 1; } return;
+            }
+            int child = 0; while (child < node.ChildCount()) { AnalyzeStatement(node.ChildAt(child)); child = child + 1; }
+        }
+
+        private void AnalyzeFunction(int symbolId)
+        {
+            Symbol function = model.GetSymbol(symbolId); SyntaxNode node = tree.Node(function.Declaration()); if (node.First() < 0) { return; }
+            int savedScope = currentScope; int savedFunction = currentFunction; currentScope = model.AddScope(0); currentFunction = symbolId;
+            int index = 0; while (index < node.ChildCount())
+            {
+                int parameterNode = node.ChildAt(index); SyntaxNode parameter = tree.Node(parameterNode);
+                if (parameter.Kind() == "ParameterDeclaration") { int type = model.Types().Intern(parameter.SemanticTypeText()); int id = Declare(SymbolKind.Parameter, parameter.Text(), type, parameterNode, false); model.GetSymbol(id).SetConst(parameter.Auxiliary() == "pass:in"); }
+                index = index + 1;
+            }
+            AnalyzeStatement(node.First()); currentScope = savedScope; currentFunction = savedFunction;
+        }
+
+        public owned SemanticModel Analyze()
+        {
+            SyntaxNode root = tree.Node(tree.Root()); int index = 0;
+            while (index < root.ChildCount()) { DeclareGlobalNode(root.ChildAt(index), -1); index = index + 1; }
+            index = 0; while (index < model.SymbolCount())
+            {
+                SymbolKind kind = model.GetSymbol(index).Kind();
+                if (kind == SymbolKind.Function || kind == SymbolKind.Method || kind == SymbolKind.Constructor) { AnalyzeFunction(index); }
+                else if (kind == SymbolKind.GlobalVariable)
+                {
+                    SyntaxNode declaration = tree.Node(model.GetSymbol(index).Declaration()); if (declaration.First() >= 0)
+                    {
+                        SemanticFact initializer = AnalyzeExpression(declaration.First()); if (model.GetSymbol(index).IsConst() && initializer.IsConstant()) { long value = 0; if (Number.TryParseInt64(initializer.ConstantText(), out value)) { model.GetSymbol(index).SetConstantValue(value); } }
+                    }
+                }
+                else if (kind == SymbolKind.Field && model.GetSymbol(index).IsConst())
+                {
+                    SyntaxNode declaration = tree.Node(model.GetSymbol(index).Declaration()); if (declaration.First() >= 0)
+                    {
+                        SemanticFact initializer = AnalyzeExpression(declaration.First()); if (initializer.IsConstant())
+                        { long value = 0; if (Number.TryParseInt64(initializer.ConstantText(), out value)) { model.GetSymbol(index).SetConstantValue(value); } }
+                    }
+                }
+                index = index + 1;
+            }
+            return move(model);
+        }
+    }
+}

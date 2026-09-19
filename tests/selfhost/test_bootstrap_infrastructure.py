@@ -20,6 +20,7 @@ from selfhost.bootstrap import (
     verify_llvm_c_contract,
     verify_nsc_next_skeleton,
     verify_frontend,
+    verify_semantics,
 )
 
 
@@ -257,6 +258,20 @@ class BootstrapInfrastructureTests(unittest.TestCase):
     def test_sh05_line_canonicalization_is_host_independent(self) -> None:
         self.assertEqual(
             verify_frontend.canonical_lines(b"one\r\ntwo\rthree\n"),
+            b"one\ntwo\nthree\n",
+        )
+
+    def test_sh06_semantic_contract_freezes_differential_and_invariants(self) -> None:
+        contract = verify_semantics.load_contract(
+            ROOT / "selfhost/contracts/semantic.contract.json"
+        )
+        self.assertEqual(len(contract["differential_cases"]), 12)
+        self.assertEqual(contract["actions"], ["--dump-symbols", "--dump-sema"])
+        self.assertGreaterEqual(len(contract["invariants"]), 6)
+
+    def test_sh06_line_canonicalization_is_host_independent(self) -> None:
+        self.assertEqual(
+            verify_semantics.canonical_lines(b"one\r\ntwo\rthree\n"),
             b"one\ntwo\nthree\n",
         )
 

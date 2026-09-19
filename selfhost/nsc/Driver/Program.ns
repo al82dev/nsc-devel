@@ -6,6 +6,7 @@ using NativeSharp.Compiler.Diagnostics;
 using NativeSharp.Compiler.Lexer;
 using NativeSharp.Compiler.Syntax;
 using NativeSharp.Compiler.Parser;
+using NativeSharp.Compiler.Sema;
 
 namespace NativeSharp.Compiler.Driver
 {
@@ -13,12 +14,12 @@ namespace NativeSharp.Compiler.Driver
     {
         private static void PrintVersion()
         {
-            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh05 (NativeSharp 2.0.0, self-host stage 1)");
+            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh06 (NativeSharp 2.0.0, self-host stage 1)");
         }
 
         private static void PrintHelp()
         {
-            Console.WriteLine("NativeSharp self-hosted compiler bootstrap (SH05)");
+            Console.WriteLine("NativeSharp self-hosted compiler bootstrap (SH06)");
             Console.WriteLine("");
             Console.WriteLine("Usage:");
             Console.WriteLine("  nsc-next --version");
@@ -27,6 +28,9 @@ namespace NativeSharp.Compiler.Driver
             Console.WriteLine("  nsc-next --dump-source-info <file.ns>");
             Console.WriteLine("  nsc-next --dump-tokens <file.ns>");
             Console.WriteLine("  nsc-next --dump-ast <file.ns>");
+            Console.WriteLine("  nsc-next --dump-symbols <file.ns>");
+            Console.WriteLine("  nsc-next --dump-sema <file.ns>");
+            Console.WriteLine("  nsc-next --dump-semantic-metadata <file.ns>");
             Console.WriteLine("  nsc-next [--diagnostic-format=json] <file.ns>");
         }
 
@@ -105,6 +109,27 @@ namespace NativeSharp.Compiler.Driver
             return 0;
         }
 
+        private static int DumpSemantic(string path, int mode)
+        {
+            if (!File.Exists(path))
+            {
+                raii Diagnostic missing = DiagnosticCatalog.MissingSource(path);
+                return EmitDiagnostic(missing, false);
+            }
+            raii SourceBuffer source = SourceBuffer.Load(new FileId(1), path);
+            raii Lexer lexer = new Lexer(source);
+            raii TokenStream tokens = lexer.LexAll();
+            raii Parser parser = new Parser(source, tokens);
+            raii SyntaxTree tree = parser.ParseCompilationUnit();
+            raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree);
+            raii SemanticModel semantic = analyzer.Analyze();
+            raii string output = mode == 1 ? SemanticDumper.DumpSymbols(semantic) :
+                (mode == 2 ? SemanticDumper.DumpMetadata(semantic) : SemanticDumper.Dump(tree, semantic));
+            Console.Write(output);
+            if (tokens.ErrorCount() != 0 || parser.ErrorCount() != 0 || semantic.ErrorCount() != 0) { return 1; }
+            return 0;
+        }
+
         private static int SelfTest()
         {
             FileId file = new FileId(7);
@@ -161,6 +186,16 @@ namespace NativeSharp.Compiler.Driver
             {
                 if (count != 3) { return 2; }
                 return DumpAst(arguments[2]);
+            }
+            if (command == "--dump-symbols" || command == "--dump-sema")
+            {
+                if (count != 3) { return 2; }
+                return DumpSemantic(arguments[2], command == "--dump-symbols" ? 1 : 0);
+            }
+            if (command == "--dump-semantic-metadata")
+            {
+                if (count != 3) { return 2; }
+                return DumpSemantic(arguments[2], 2);
             }
             if (command == "--read-source" || command == "--dump-source-info")
             {

@@ -1,0 +1,124 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Lexer;
+using NativeSharp.Compiler.Syntax;
+using NativeSharp.Compiler.Symbols;
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.Compiler.Sema
+{
+    public class SemanticDumper
+    {
+        private static void Indent(StringBuilder output, int depth)
+        {
+            int index = 0; while (index < depth) { output.Append("  "); index = index + 1; }
+        }
+        private static void DumpSymbol(SemanticModel model, int id, int depth, List<bool> visited, StringBuilder output)
+        {
+            if (id < 0 || id >= model.SymbolCount() || visited[id]) { return; }
+            visited.SetAt(id, true);
+            Symbol symbol = model.GetSymbol(id); Indent(output, depth); output.Append(SymbolFacts.Name(symbol.Kind()));
+            output.Append(' '); output.Append(symbol.Name());
+            if (symbol.TypeId() >= 0) { output.Append(" : "); output.Append(model.Types().Get(symbol.TypeId()).Display()); }
+            if (symbol.IsConst()) { output.Append(" const"); }
+            if (symbol.IsExternC()) { output.Append(" extern-C"); }
+            if (symbol.IsDefined()) { output.Append(" defined"); }
+            if (symbol.Kind() == SymbolKind.EnumMember && symbol.HasConstantValue())
+            {
+                output.Append(" = "); output.Append(symbol.ConstantValue());
+            }
+            if (symbol.Kind() == SymbolKind.Field && symbol.Offset() >= 0)
+            {
+                output.Append(" offset="); output.Append(symbol.Offset());
+                if (symbol.BitWidth() >= 0) { output.Append(" bits="); output.Append(symbol.BitWidth()); output.Append(" bit-offset="); output.Append(symbol.BitOffset()); }
+            }
+            if (symbol.GenericText().Length != 0) { output.Append(" generic=<"); output.Append(symbol.GenericText()); output.Append('>'); }
+            if (symbol.ConstraintsText().Length != 0) { output.Append(symbol.ConstraintsText()); }
+            output.Append('\n'); int index = 0;
+            while (index < symbol.MemberCount()) { DumpSymbol(model, symbol.MemberAt(index), depth + 1, visited, output); index = index + 1; }
+        }
+        public static owned string DumpSymbols(SemanticModel model)
+        {
+            raii StringBuilder output = new StringBuilder(); raii List<bool> visited = new List<bool>(); int index = 0;
+            while (index < model.SymbolCount()) { visited.Add(false); index = index + 1; }
+            index = 0; while (index < model.GlobalCount()) { DumpSymbol(model, model.GlobalAt(index), 0, visited, output); index = index + 1; }
+            return output.ToOwnedString();
+        }
+        private static void DumpNode(SyntaxTree tree, SemanticModel model, int id, int depth, string edge, StringBuilder output)
+        {
+            if (id < 0) { return; } SyntaxNode node = tree.Node(id); SemanticFact fact = model.Fact(id);
+            if (fact.Present() || fact.ConversionCount() != 0 || fact.HasOperator())
+            {
+                Indent(output, depth); output.Append(edge); output.Append(node.Kind());
+                if (node.Text().Length != 0) { output.Append(" \""); output.Append(node.Text()); output.Append('"'); }
+                if (fact.Present())
+                {
+                    output.Append(" : "); output.Append(model.Types().Get(fact.TypeId()).Display());
+                    output.Append(fact.Category() == ValueCategory.LValue ? " lvalue" : " rvalue");
+                    if (fact.Modifiable()) { output.Append(" modifiable"); }
+                    if (fact.Addressable()) { output.Append(" addressable"); }
+                    if (fact.BoundsCheck()) { output.Append(" bounds-check"); }
+                    if (fact.SymbolId() >= 0) { output.Append(" symbol="); output.Append(model.GetSymbol(fact.SymbolId()).Name()); }
+                    if (fact.IsConstant()) { output.Append(" constant="); output.Append(fact.ConstantText()); }
+                }
+                output.Append('\n');
+                if (fact.HasOperator())
+                {
+                    Indent(output, depth + 1); output.Append("operator "); output.Append(TokenFacts.Name(fact.OperatorKind()));
+                    output.Append(" operation="); output.Append(model.Types().Get(fact.OperationType()).Display());
+                    output.Append(" result="); output.Append(model.Types().Get(fact.ResultType()).Display()); output.Append('\n');
+                }
+                int conversionIndex = 0;
+                while (conversionIndex < fact.ConversionCount())
+                {
+                    SemanticConversion conversion = fact.ConversionAt(conversionIndex); Indent(output, depth + 1);
+                    output.Append("conversion "); output.Append(conversion.Kind()); output.Append(' ');
+                    output.Append(model.Types().Get(conversion.SourceType()).Display()); output.Append(" -> ");
+                    output.Append(model.Types().Get(conversion.DestinationType()).Display()); output.Append(' ');
+                    if (conversion.Role() == "operand") { output.Append("operand="); output.Append(conversion.OperandIndex()); }
+                    else { output.Append(conversion.Role()); }
+                    output.Append('\n'); conversionIndex = conversionIndex + 1;
+                }
+            }
+            DumpNode(tree, model, node.First(), depth + 1, "first: ", output);
+            DumpNode(tree, model, node.Second(), depth + 1, "second: ", output);
+            DumpNode(tree, model, node.Third(), depth + 1, "third: ", output);
+            int index = 0; while (index < node.ChildCount())
+            {
+                DumpNode(tree, model, node.ChildAt(index), depth + 1, "child: ", output); index = index + 1;
+            }
+        }
+        public static owned string Dump(SyntaxTree tree, SemanticModel model)
+        {
+            raii StringBuilder output = new StringBuilder(); DumpNode(tree, model, tree.Root(), 0, "", output);
+            return output.ToOwnedString();
+        }
+
+        public static owned string DumpMetadata(SemanticModel model)
+        {
+            raii StringBuilder output = new StringBuilder();
+            output.Append("semantic-metadata schema=1 target=windows-x64\n");
+            output.Append("types="); output.Append(model.Types().Count()); output.Append('\n'); int index = 0;
+            while (index < model.Types().Count())
+            {
+                SemanticType type = model.Types().Get(index); output.Append("type "); output.Append(index); output.Append(" name=\"");
+                output.Append(type.Display()); output.Append("\" kind="); output.Append((int)type.Kind()); output.Append(" size=");
+                output.Append(type.Size()); output.Append(" align="); output.Append(type.Alignment()); output.Append(" ownership=");
+                output.Append((int)type.Ownership()); output.Append('\n'); index = index + 1;
+            }
+            output.Append("symbols="); output.Append(model.SymbolCount()); output.Append('\n'); index = 0;
+            while (index < model.SymbolCount())
+            {
+                Symbol symbol = model.GetSymbol(index); output.Append("symbol "); output.Append(index); output.Append(" kind=");
+                output.Append(SymbolFacts.Name(symbol.Kind())); output.Append(" name=\""); output.Append(symbol.QualifiedName()); output.Append('"');
+                output.Append(" type="); output.Append(symbol.TypeId()); output.Append(" parent="); output.Append(symbol.Parent());
+                output.Append(" offset="); output.Append(symbol.Offset()); output.Append(" size="); output.Append(symbol.Size());
+                output.Append(" align="); output.Append(symbol.Alignment()); output.Append(" const="); output.Append(symbol.IsConst());
+                output.Append(" static="); output.Append(symbol.IsStatic()); output.Append(" virtual="); output.Append(symbol.IsVirtual());
+                output.Append(" override="); output.Append(symbol.IsOverride()); output.Append(" generic=\""); output.Append(symbol.GenericText());
+                output.Append("\" constraints=\""); output.Append(symbol.ConstraintsText()); output.Append("\"\n"); index = index + 1;
+            }
+            return output.ToOwnedString();
+        }
+    }
+}

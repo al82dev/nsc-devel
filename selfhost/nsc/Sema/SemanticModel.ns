@@ -1,0 +1,120 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Lexer;
+using NativeSharp.Compiler.Symbols;
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.Compiler.Sema
+{
+    public enum ValueCategory { RValue, LValue }
+
+    public class SemanticConversion
+    {
+        private owned string kind;
+        private int sourceType;
+        private int destinationType;
+        private int operandIndex;
+        private owned string role;
+        public SemanticConversion(string conversionKind, int source, int destination, string conversionRole, int operand)
+        {
+            kind = String.Copy(conversionKind); sourceType = source; destinationType = destination;
+            role = String.Copy(conversionRole); operandIndex = operand;
+        }
+        public string Kind() { return kind; }
+        public int SourceType() { return sourceType; }
+        public int DestinationType() { return destinationType; }
+        public int OperandIndex() { return operandIndex; }
+        public string Role() { return role; }
+    }
+
+    public class SemanticFact
+    {
+        private bool present;
+        private int typeId;
+        private ValueCategory category;
+        private bool modifiable;
+        private bool addressable;
+        private bool boundsCheck;
+        private int symbolId;
+        private bool constant;
+        private owned string constantText;
+        private bool hasOperator;
+        private TokenKind operatorKind;
+        private int operationType;
+        private int resultType;
+        private owned List<SemanticConversion> conversions;
+
+        public SemanticFact()
+        {
+            present = false; typeId = 0; category = ValueCategory.RValue; modifiable = false;
+            addressable = false; boundsCheck = false; symbolId = -1; constant = false;
+            constantText = String.Copy(""); hasOperator = false; operatorKind = TokenKind.Invalid;
+            operationType = 0; resultType = 0; conversions = new List<SemanticConversion>();
+        }
+        public bool Present() { return present; }
+        public int TypeId() { return typeId; }
+        public ValueCategory Category() { return category; }
+        public bool Modifiable() { return modifiable; }
+        public bool Addressable() { return addressable; }
+        public bool BoundsCheck() { return boundsCheck; }
+        public int SymbolId() { return symbolId; }
+        public bool IsConstant() { return constant; }
+        public string ConstantText() { return constantText; }
+        public bool HasOperator() { return hasOperator; }
+        public TokenKind OperatorKind() { return operatorKind; }
+        public int OperationType() { return operationType; }
+        public int ResultType() { return resultType; }
+        public int ConversionCount() { return conversions.Count(); }
+        public SemanticConversion ConversionAt(int index) { return conversions[index]; }
+        public void SetType(int value, ValueCategory valueCategory)
+        {
+            present = true; typeId = value; category = valueCategory;
+        }
+        public void Hide() { present = false; }
+        public void SetStorage(bool canModify, bool canAddress) { modifiable = canModify; addressable = canAddress; }
+        public void SetBoundsCheck(bool value) { boundsCheck = value; }
+        public void SetSymbol(int value) { symbolId = value; }
+        public void SetConstant(string value) { constant = true; constantText = String.Copy(value); }
+        public void SetOperator(TokenKind token, int operation, int result)
+        {
+            hasOperator = true; operatorKind = token; operationType = operation; resultType = result;
+        }
+        public void AddConversion(owned SemanticConversion conversion) { conversions.Add(move(conversion)); }
+    }
+
+    public class SemanticModel
+    {
+        private owned TypeTable types;
+        private owned List<Symbol> symbols;
+        private owned List<Scope> scopes;
+        private owned List<SemanticFact> facts;
+        private owned List<int> nodeSymbols;
+        private owned List<int> globals;
+        private int errorCount;
+
+        public SemanticModel(int nodeCount)
+        {
+            types = new TypeTable(); symbols = new List<Symbol>(); scopes = new List<Scope>();
+            facts = new List<SemanticFact>(); nodeSymbols = new List<int>(); globals = new List<int>(); errorCount = 0;
+            int index = 0; while (index < nodeCount)
+            {
+                raii SemanticFact fact = new SemanticFact(); facts.Add(move(fact)); nodeSymbols.Add(-1); index = index + 1;
+            }
+            raii Scope global = new Scope(-1); scopes.Add(move(global));
+        }
+        public TypeTable Types() { return types; }
+        public int AddSymbol(owned Symbol symbol) { symbols.Add(move(symbol)); return symbols.Count() - 1; }
+        public Symbol GetSymbol(int id) { return symbols[id]; }
+        public int SymbolCount() { return symbols.Count(); }
+        public void AddGlobal(int id) { globals.Add(id); }
+        public int GlobalCount() { return globals.Count(); }
+        public int GlobalAt(int index) { return globals[index]; }
+        public int AddScope(int parent) { raii Scope scope = new Scope(parent); scopes.Add(move(scope)); return scopes.Count() - 1; }
+        public Scope GetScope(int id) { return scopes[id]; }
+        public SemanticFact Fact(int node) { return facts[node]; }
+        public void BindNode(int node, int symbol) { if (node >= 0) { nodeSymbols.SetAt(node, symbol); } }
+        public int NodeSymbol(int node) { return node >= 0 ? nodeSymbols[node] : -1; }
+        public void AddError() { errorCount = errorCount + 1; }
+        public int ErrorCount() { return errorCount; }
+    }
+}

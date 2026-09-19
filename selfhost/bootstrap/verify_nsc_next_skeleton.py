@@ -80,7 +80,7 @@ def verify(
         version = run(executable, "--version")
         require(version.returncode == 0, f"{optimization} --version failed")
         require(version.stdout ==
-                "nsc-next 2.0.0-bootstrap.sh05 (NativeSharp 2.0.0, self-host stage 1)\n",
+                "nsc-next 2.0.0-bootstrap.sh06 (NativeSharp 2.0.0, self-host stage 1)\n",
                 f"{optimization} identity changed")
         help_result = run(executable, "--help")
         require(help_result.returncode == 0 and "Usage:" in help_result.stdout,
@@ -144,7 +144,7 @@ def verify(
         "schema": REPORT_SCHEMA,
         "version": VERSION,
         "status": "passed",
-        "identity": "nsc-next 2.0.0-bootstrap.sh05",
+        "identity": "nsc-next 2.0.0-bootstrap.sh06",
         "optimizations": ["O0", "O2"],
         "nsc0_differential_cases": 2,
         "source_cases": 2,

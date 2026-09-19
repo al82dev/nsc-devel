@@ -407,6 +407,11 @@ Gate versionado: `selfhost/evidence/gates/SH05/gate.json`.
 **Gate SH06:** todos los casos de lenguaje alcanzan el mismo resultado semántico observable; las
 tablas públicas, layouts y especializaciones son estables y deterministas.
 
+Expediente de cierre:
+`docs/2.0/self-hosting/tandas/TANDA-07-SH06-SIMBOLOS-TIPOS-SEMANTICA.md`.
+Contrato observable: `selfhost/contracts/semantic.contract.json`.
+Gate versionado al cierre: `selfhost/evidence/gates/SH06/gate.json`.
+
 ### Fase 7 — HIR, MIR, CFG, dominancia y SSA
 
 **Objetivo:** independizar el backend del frontend y verificar cada frontera.

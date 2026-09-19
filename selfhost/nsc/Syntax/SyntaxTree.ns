@@ -10,8 +10,10 @@ namespace NativeSharp.Compiler.Syntax
         private owned string text;
         private owned string auxiliary;
         private owned string typeText;
+        private owned string semanticTypeText;
         private owned string genericText;
         private owned string constraintsText;
+        private owned string modifiersText;
         private TokenKind operatorKind;
         private int first;
         private int second;
@@ -28,8 +30,10 @@ namespace NativeSharp.Compiler.Syntax
             text = String.Copy("");
             auxiliary = String.Copy("");
             typeText = String.Copy("");
+            semanticTypeText = String.Copy("");
             genericText = String.Copy("");
             constraintsText = String.Copy("");
+            modifiersText = String.Copy("");
             operatorKind = TokenKind.Invalid;
             first = -1; second = -1; third = -1;
             children = new List<int>();
@@ -41,8 +45,10 @@ namespace NativeSharp.Compiler.Syntax
         public string Text() { return text; }
         public string Auxiliary() { return auxiliary; }
         public string TypeText() { return typeText; }
+        public string SemanticTypeText() { return semanticTypeText.Length == 0 ? typeText : semanticTypeText; }
         public string GenericText() { return genericText; }
         public string ConstraintsText() { return constraintsText; }
+        public string ModifiersText() { return modifiersText; }
         public TokenKind OperatorKind() { return operatorKind; }
         public int First() { return first; }
         public int Second() { return second; }
@@ -55,9 +61,11 @@ namespace NativeSharp.Compiler.Syntax
 
         public void SetText(string value) { if (mutable) { text = String.Copy(value); } }
         public void SetAuxiliary(string value) { if (mutable) { auxiliary = String.Copy(value); } }
-        public void SetType(string value) { if (mutable) { typeText = String.Copy(value); } }
+        public void SetType(string value) { if (mutable) { typeText = String.Copy(value); semanticTypeText = String.Copy(value); } }
+        public void SetSemanticType(string value) { if (mutable) { semanticTypeText = String.Copy(value); } }
         public void SetGenericText(string value) { if (mutable) { genericText = String.Copy(value); } }
         public void SetConstraintsText(string value) { if (mutable) { constraintsText = String.Copy(value); } }
+        public void SetModifiersText(string value) { if (mutable) { modifiersText = String.Copy(value); } }
         public void SetOperator(TokenKind value) { if (mutable) { operatorKind = value; } }
         public void SetFirst(int value) { if (mutable) { first = value; } }
         public void SetSecond(int value) { if (mutable) { second = value; } }

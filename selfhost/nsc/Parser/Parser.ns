@@ -15,6 +15,7 @@ namespace NativeSharp.Compiler.Parser
         private int errors;
         private owned List<string> knownTypes;
         private int pendingGenericGreater;
+        private owned string lastSemanticType;
 
         public Parser(SourceBuffer sourceBuffer, TokenStream tokenStream)
         {
@@ -25,6 +26,7 @@ namespace NativeSharp.Compiler.Parser
             errors = 0;
             knownTypes = new List<string>();
             pendingGenericGreater = 0;
+            lastSemanticType = String.Copy("");
         }
 
         private TokenKind Current() { return tokens.KindAt(index); }
@@ -76,6 +78,10 @@ namespace NativeSharp.Compiler.Parser
         private void AddKnownType(string value) { knownTypes.Add(String.Copy(value)); }
         private int NewNode(string kind) { return tree.Create(kind); }
         private SyntaxNode Node(int id) { return tree.Node(id); }
+        private void ApplyType(int node, string display)
+        {
+            Node(node).SetType(display); Node(node).SetSemanticType(lastSemanticType);
+        }
 
         private static bool Builtin(TokenKind kind)
         {
@@ -96,6 +102,34 @@ namespace NativeSharp.Compiler.Parser
         {
             return kind == TokenKind.KwOwned || kind == TokenKind.KwBorrowed;
         }
+        private owned string ParseLayoutModifiers()
+        {
+            int pack = -1; int alignment = -1; int size = -1; int offset = -1;
+            bool scanning = true;
+            while (scanning && At(TokenKind.Identifier) && Peek(1) == TokenKind.LeftParen)
+            {
+                raii string name = CurrentText();
+                if (name != "pack" && name != "align" && name != "size" && name != "at") { break; }
+                Consume(); Expect(TokenKind.LeftParen); raii string number = CurrentText(); int value = 0;
+                if (!Number.TryParseInt32(number, out value)) { errors = errors + 1; }
+                Expect(TokenKind.IntegerLiteral); Expect(TokenKind.RightParen);
+                if (name == "pack") { pack = value; } else if (name == "align") { alignment = value; }
+                else if (name == "size") { size = value; } else { offset = value; }
+            }
+            raii StringBuilder text = new StringBuilder();
+            if (pack >= 0) { text.Append("pack="); text.Append(pack); }
+            if (alignment >= 0) { if (text.Length() != 0) { text.Append(','); } text.Append("align="); text.Append(alignment); }
+            if (size >= 0) { if (text.Length() != 0) { text.Append(','); } text.Append("size="); text.Append(size); }
+            if (offset >= 0) { if (text.Length() != 0) { text.Append(','); } text.Append("at:"); text.Append(offset); }
+            return text.ToOwnedString();
+        }
+
+        private static owned string JoinAuxiliary(string first, string second)
+        {
+            if (first.Length == 0) { return String.Copy(second); }
+            if (second.Length == 0) { return String.Copy(first); }
+            raii string prefix = String.Concat(first, ","); return String.Concat(prefix, second);
+        }
         private bool AtGenericGreater()
         {
             return pendingGenericGreater > 0 || At(TokenKind.Greater) || At(TokenKind.GreaterGreater);
@@ -111,59 +145,63 @@ namespace NativeSharp.Compiler.Parser
         private owned string ParseType()
         {
             raii StringBuilder output = new StringBuilder();
+            raii StringBuilder semantic = new StringBuilder();
             if (Ownership(Current()))
             {
                 raii string qualifier = CurrentText();
-                output.Append(qualifier); output.Append(' '); Consume();
+                output.Append(qualifier); output.Append(' '); semantic.Append(qualifier); semantic.Append(' '); Consume();
             }
             if (!Builtin(Current()) && !At(TokenKind.Identifier))
             {
                 errors = errors + 1;
                 return output.ToOwnedString();
             }
-            raii string first = CurrentText(); output.Append(first); Consume();
+            raii string first = CurrentText(); output.Append(first); semantic.Append(first); Consume();
             while (At(TokenKind.Dot) && Peek(1) == TokenKind.Identifier)
             {
-                output.Append('.'); Consume();
-                raii string part = CurrentText(); output.Append(part); Consume();
+                output.Append('.'); semantic.Append('.'); Consume();
+                raii string part = CurrentText(); output.Append(part); semantic.Append(part); Consume();
             }
             if (ConsumeIf(TokenKind.Less))
             {
-                output.Append('<');
+                output.Append('<'); semantic.Append('<');
                 bool firstArgument = true;
                 while (!AtGenericGreater() && !At(TokenKind.EndOfFile))
                 {
-                    if (!firstArgument) { Expect(TokenKind.Comma); output.Append(','); }
-                    raii string argument = ParseType(); output.Append(argument);
+                    if (!firstArgument) { Expect(TokenKind.Comma); output.Append(','); semantic.Append(','); }
+                    raii string argument = ParseType(); output.Append(argument); semantic.Append(lastSemanticType);
                     firstArgument = false;
                     if (!At(TokenKind.Comma)) { break; }
                 }
-                ConsumeGenericGreater(); output.Append('>');
+                ConsumeGenericGreater(); output.Append('>'); semantic.Append('>');
             }
             while (true)
             {
-                if (ConsumeIf(TokenKind.Star)) { output.Append('*'); }
+                if (ConsumeIf(TokenKind.Star)) { output.Append('*'); semantic.Append('*'); }
                 else if (ConsumeIf(TokenKind.LeftBracket))
                 {
-                    if (ConsumeIf(TokenKind.RightBracket)) { output.Append("[]"); }
+                    semantic.Append('[');
+                    if (ConsumeIf(TokenKind.RightBracket)) { output.Append("[]"); semantic.Append(']'); }
                     else if (ConsumeIf(TokenKind.Star))
                     {
-                        Expect(TokenKind.RightBracket); output.Append("[*]");
+                        semantic.Append('*'); Expect(TokenKind.RightBracket); output.Append("[*]"); semantic.Append(']');
                     }
                     else
                     {
                         int depth = 1;
                         while (depth > 0 && !At(TokenKind.EndOfFile))
                         {
-                            if (At(TokenKind.LeftBracket)) { depth = depth + 1; }
-                            else if (At(TokenKind.RightBracket)) { depth = depth - 1; }
+                            if (At(TokenKind.LeftBracket)) { depth = depth + 1; semantic.Append('['); }
+                            else if (At(TokenKind.RightBracket)) { depth = depth - 1; if (depth > 0) { semantic.Append(']'); } }
+                            else { raii string piece = CurrentText(); semantic.Append(piece); }
                             Consume();
                         }
-                        output.Append("[expr]");
+                        output.Append("[expr]"); semantic.Append(']');
                     }
                 }
                 else { break; }
             }
+            raii string semanticText = semantic.ToOwnedString(); lastSemanticType = move(semanticText);
             return output.ToOwnedString();
         }
 
@@ -297,8 +335,45 @@ namespace NativeSharp.Compiler.Parser
             index = saved; return result;
         }
 
+        private bool LooksLikeParenthesizedLambda()
+        {
+            if (!At(TokenKind.LeftParen)) { return false; } int cursor = index + 1;
+            if (tokens.KindAt(cursor) == TokenKind.RightParen) { return tokens.KindAt(cursor + 1) == TokenKind.FatArrow; }
+            while (cursor < tokens.Count() && tokens.KindAt(cursor) == TokenKind.Identifier)
+            {
+                cursor = cursor + 1; if (tokens.KindAt(cursor) == TokenKind.RightParen) { return tokens.KindAt(cursor + 1) == TokenKind.FatArrow; }
+                if (tokens.KindAt(cursor) != TokenKind.Comma) { return false; } cursor = cursor + 1;
+            }
+            return false;
+        }
+
+        private int ParseLambda()
+        {
+            int lambda = NewNode("LambdaExpression");
+            if (ConsumeIf(TokenKind.LeftParen))
+            {
+                if (!At(TokenKind.RightParen))
+                {
+                    while (true)
+                    {
+                        raii string name = CurrentText(); Expect(TokenKind.Identifier); int parameter = NewNode("ParameterDeclaration");
+                        Node(parameter).SetText(name); Node(lambda).AddChild(parameter); if (!ConsumeIf(TokenKind.Comma)) { break; }
+                    }
+                }
+                Expect(TokenKind.RightParen);
+            }
+            else
+            {
+                raii string name = CurrentText(); Expect(TokenKind.Identifier); int parameter = NewNode("ParameterDeclaration");
+                Node(parameter).SetText(name); Node(lambda).AddChild(parameter);
+            }
+            Expect(TokenKind.FatArrow); bool blockBody = At(TokenKind.LeftBrace);
+            Node(lambda).SetFirst(blockBody ? ParseBlock() : ParseExpression()); Node(lambda).SetFlag(blockBody); return lambda;
+        }
+
         private int ParsePrimary()
         {
+            if ((At(TokenKind.Identifier) && Peek(1) == TokenKind.FatArrow) || LooksLikeParenthesizedLambda()) { return ParseLambda(); }
             if (At(TokenKind.Identifier)) { return IdentifierExpression(); }
             if (At(TokenKind.IntegerLiteral)) { return LiteralExpression("IntegerLiteralExpression", TokenKind.IntegerLiteral); }
             if (At(TokenKind.FloatingLiteral)) { return LiteralExpression("FloatingLiteralExpression", TokenKind.FloatingLiteral); }
@@ -420,7 +495,7 @@ namespace NativeSharp.Compiler.Parser
             if (LooksLikeCast())
             {
                 Consume(); raii string type = ParseType(); Expect(TokenKind.RightParen);
-                int node = NewNode("CastExpression"); Node(node).SetType(type); Node(node).SetFirst(ParseUnary()); return node;
+                int node = NewNode("CastExpression"); ApplyType(node, type); Node(node).SetFirst(ParseUnary()); return node;
             }
             if (At(TokenKind.Plus) || At(TokenKind.Minus) || At(TokenKind.Bang) ||
                 At(TokenKind.Tilde) || At(TokenKind.Star) || At(TokenKind.Amp) ||
@@ -449,7 +524,7 @@ namespace NativeSharp.Compiler.Parser
                 if (TypeStartsHere())
                 {
                     raii string type = ParseType(); Expect(TokenKind.RightParen);
-                    int node = NewNode(size ? "SizeofTypeExpression" : "AlignofTypeExpression"); Node(node).SetType(type); return node;
+                    int node = NewNode(size ? "SizeofTypeExpression" : "AlignofTypeExpression"); ApplyType(node, type); return node;
                 }
                 int expression = ParseExpression(); Expect(TokenKind.RightParen);
                 int node = NewNode(size ? "SizeofExpression" : "AlignofExpression"); Node(node).SetFirst(expression); return node;
@@ -615,7 +690,7 @@ namespace NativeSharp.Compiler.Parser
             bool isConst = ConsumeIf(TokenKind.KwConst);
             raii string type = ParseType();
             raii string name = CurrentText(); Expect(TokenKind.Identifier);
-            int node = NewNode("VariableDeclarationStatement"); Node(node).SetText(name); Node(node).SetType(type);
+            int node = NewNode("VariableDeclarationStatement"); Node(node).SetText(name); ApplyType(node, type);
             if (isConst) { Node(node).SetAuxiliary("const"); }
             if (ConsumeIf(TokenKind.Equal)) { Node(node).SetFirst(ParseExpression()); }
             if (semicolon) { Expect(TokenKind.Semicolon); }
@@ -686,7 +761,7 @@ namespace NativeSharp.Compiler.Parser
             Consume(); Expect(TokenKind.LeftParen); raii string type = ParseType();
             raii string name = CurrentText(); Expect(TokenKind.Identifier); Expect(TokenKind.KwIn);
             int expression = ParseExpression(); Expect(TokenKind.RightParen);
-            int node = NewNode("ForeachStatement"); Node(node).SetText(name); Node(node).SetType(type);
+            int node = NewNode("ForeachStatement"); Node(node).SetText(name); ApplyType(node, type);
             Node(node).SetFirst(expression); Node(node).SetSecond(ParseStatement()); return node;
         }
 
@@ -726,7 +801,7 @@ namespace NativeSharp.Compiler.Parser
             if (ConsumeIf(TokenKind.LeftParen))
             {
                 raii string type = ParseType(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
-                Node(clause).SetType(type); Node(clause).SetText(name); Expect(TokenKind.RightParen);
+                ApplyType(clause, type); Node(clause).SetText(name); Expect(TokenKind.RightParen);
             }
             else { Node(clause).SetFlag(true); }
             Node(clause).SetFirst(ParseBlock()); return clause;
@@ -743,7 +818,7 @@ namespace NativeSharp.Compiler.Parser
             Consume(); Expect(TokenKind.LeftParen); raii string type = ParseType();
             raii string name = CurrentText(); Expect(TokenKind.Identifier); Expect(TokenKind.Equal);
             int initializer = ParseExpression(); Expect(TokenKind.RightParen);
-            int node = NewNode("UsingStatement"); Node(node).SetType(type); Node(node).SetText(name);
+            int node = NewNode("UsingStatement"); ApplyType(node, type); Node(node).SetText(name);
             Node(node).SetFirst(initializer); Node(node).SetSecond(ParseBlock()); return node;
         }
         private int ParseStaticAssert()
@@ -877,7 +952,8 @@ namespace NativeSharp.Compiler.Parser
                 raii string pointerType = String.Concat(type, "*"); type = move(pointerType);
             }
             raii string name = CurrentText(); Expect(TokenKind.Identifier);
-            int node = NewNode("ParameterDeclaration"); Node(node).SetText(name); Node(node).SetType(type);
+            int node = NewNode("ParameterDeclaration"); Node(node).SetText(name); ApplyType(node, type);
+            if (passKind.Length != 0) { Node(node).SetSemanticType(type); }
             if (passKind.Length != 0)
             {
                 raii string auxiliary = String.Concat("pass:", passKind); Node(node).SetAuxiliary(auxiliary);
@@ -902,7 +978,7 @@ namespace NativeSharp.Compiler.Parser
 
         private int ParseFunction(owned string type, owned string name, bool externalOnly, string nodeKind)
         {
-            int function = NewNode(nodeKind); Node(function).SetText(name); Node(function).SetType(type);
+            int function = NewNode(nodeKind); Node(function).SetText(name); ApplyType(function, type);
             ParseGenericParameters(function);
             ParseParameters(function);
             ParseGenericConstraints(function);
@@ -916,6 +992,7 @@ namespace NativeSharp.Compiler.Parser
             Consume(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
             int declaration = NewNode("EnumDeclaration"); Node(declaration).SetText(name);
             AddKnownType(name);
+            if (ConsumeIf(TokenKind.Colon)) { raii string underlying = ParseType(); ApplyType(declaration, underlying); }
             Expect(TokenKind.LeftBrace);
             while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
             {
@@ -936,7 +1013,7 @@ namespace NativeSharp.Compiler.Parser
             ParseGenericParameters(declaration);
             if (ConsumeIf(TokenKind.Colon))
             {
-                raii string baseType = ParseType(); Node(declaration).SetType(baseType);
+                raii string baseType = ParseType(); Node(declaration).SetType(baseType); Node(declaration).SetSemanticType(lastSemanticType);
                 while (ConsumeIf(TokenKind.Comma)) { raii string ignoredBase = ParseType(); }
             }
             ParseGenericConstraints(declaration);
@@ -945,23 +1022,43 @@ namespace NativeSharp.Compiler.Parser
             {
                 int memberBegin = index;
                 TokenKind accessibility = TokenKind.Invalid;
+                raii StringBuilder modifierBuilder = new StringBuilder();
                 while (Modifier(Current()))
                 {
+                    if (modifierBuilder.Length() != 0) { modifierBuilder.Append(','); }
+                    raii string modifierName = CurrentText(); modifierBuilder.Append(modifierName);
                     if (Current() == TokenKind.KwPublic || Current() == TokenKind.KwInternal ||
                         Current() == TokenKind.KwProtected || Current() == TokenKind.KwPrivate) { accessibility = Current(); }
                     bool wasExtern = Current() == TokenKind.KwExtern;
                     Consume();
                     if (wasExtern && AtText("C")) { Consume(); }
                 }
+                raii string memberModifiers = modifierBuilder.ToOwnedString();
+                raii string layout = ParseLayoutModifiers();
                 if (At(TokenKind.KwStruct))
                 {
                     int nested = ParseAggregate("StructDeclaration"); Node(nested).SetOperator(accessibility);
+                    Node(nested).SetAuxiliary(layout); Node(nested).SetModifiersText(memberModifiers);
+                    Node(declaration).AddChild(nested); continue;
+                }
+                if (AtText("union"))
+                {
+                    int nested = ParseAggregate("StructDeclaration"); Node(nested).SetOperator(accessibility);
+                    raii string auxiliary = JoinAuxiliary("union", layout); Node(nested).SetAuxiliary(auxiliary);
+                    Node(nested).SetModifiersText(memberModifiers);
                     Node(declaration).AddChild(nested); continue;
                 }
                 if (At(TokenKind.KwClass))
                 {
                     int nested = ParseAggregate("ClassDeclaration"); Node(nested).SetOperator(accessibility);
+                    Node(nested).SetModifiersText(memberModifiers);
                     Node(declaration).AddChild(nested); continue;
+                }
+                if (At(TokenKind.KwEvent))
+                {
+                    Consume(); raii string eventType = ParseType(); raii string eventName = CurrentText(); Expect(TokenKind.Identifier); Expect(TokenKind.Semicolon);
+                    int eventNode = NewNode("EventDeclaration"); Node(eventNode).SetText(eventName); ApplyType(eventNode, eventType);
+                    Node(eventNode).SetOperator(accessibility); Node(eventNode).SetModifiersText(memberModifiers); Node(declaration).AddChild(eventNode); continue;
                 }
                 if (At(TokenKind.Identifier))
                 {
@@ -970,6 +1067,7 @@ namespace NativeSharp.Compiler.Parser
                     {
                         Consume(); int constructor = NewNode("ConstructorDeclaration");
                         Node(constructor).SetText(name); Node(constructor).SetOperator(accessibility);
+                        Node(constructor).SetModifiersText(memberModifiers);
                         ParseParameters(constructor); Node(constructor).SetFirst(ParseBlock());
                         Node(declaration).AddChild(constructor); continue;
                     }
@@ -978,16 +1076,18 @@ namespace NativeSharp.Compiler.Parser
                 if (At(TokenKind.KwOperator))
                 {
                     int operatorMethod = ParseOperator(move(type), accessibility);
+                    Node(operatorMethod).SetModifiersText(memberModifiers);
                     Node(declaration).AddChild(operatorMethod); continue;
                 }
                 if (At(TokenKind.KwThis))
                 {
-                    int indexer = ParseIndexer(move(type), accessibility); Node(declaration).AddChild(indexer); continue;
+                    int indexer = ParseIndexer(move(type), accessibility); Node(indexer).SetModifiersText(memberModifiers); Node(declaration).AddChild(indexer); continue;
                 }
                 raii string memberName = CurrentText(); Expect(TokenKind.Identifier);
                 if (At(TokenKind.LeftBrace))
                 {
                     int property = ParseProperty(move(type), move(memberName), accessibility);
+                    Node(property).SetModifiersText(memberModifiers);
                     Node(declaration).AddChild(property);
                 }
                 else if (At(TokenKind.LeftParen) || At(TokenKind.Less))
@@ -999,11 +1099,18 @@ namespace NativeSharp.Compiler.Parser
                         if (accessibility == TokenKind.Invalid) { accessibility = TokenKind.KwPublic; }
                     }
                     Node(method).SetOperator(accessibility); Node(declaration).AddChild(method);
+                    Node(method).SetModifiersText(memberModifiers);
                 }
                 else
                 {
-                    int field = NewNode("FieldDeclaration"); Node(field).SetText(memberName); Node(field).SetType(type);
+                    int field = NewNode("FieldDeclaration"); Node(field).SetText(memberName); ApplyType(field, type);
                     Node(field).SetOperator(accessibility);
+                    Node(field).SetAuxiliary(layout); Node(field).SetModifiersText(memberModifiers);
+                    if (ConsumeIf(TokenKind.Colon))
+                    {
+                        raii string width = CurrentText(); Expect(TokenKind.IntegerLiteral); raii string prefix = String.Concat(layout.Length == 0 ? "" : layout, layout.Length == 0 ? "" : ",");
+                        raii string bits = String.Concat("bits:", width); raii string fieldAuxiliary = String.Concat(prefix, bits); Node(field).SetAuxiliary(fieldAuxiliary);
+                    }
                     if (ConsumeIf(TokenKind.Equal)) { Node(field).SetFirst(ParseExpression()); }
                     Expect(TokenKind.Semicolon); Node(declaration).AddChild(field);
                 }
@@ -1059,7 +1166,7 @@ namespace NativeSharp.Compiler.Parser
         private int ParseDelegate()
         {
             Consume(); raii string type = ParseType(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
-            int declaration = NewNode("DelegateDeclaration"); Node(declaration).SetText(name); Node(declaration).SetType(type);
+            int declaration = NewNode("DelegateDeclaration"); Node(declaration).SetText(name); ApplyType(declaration, type);
             Node(declaration).SetAuxiliary("delegate");
             AddKnownType(name); ParseGenericParameters(declaration); ParseParameters(declaration);
             ParseGenericConstraints(declaration); Expect(TokenKind.Semicolon); return declaration;
@@ -1093,7 +1200,7 @@ namespace NativeSharp.Compiler.Parser
         private int ParseOperator(owned string type, TokenKind accessibility)
         {
             Consume(); TokenKind operation = Current(); Consume(); int method = NewNode("MethodDeclaration");
-            Node(method).SetType(type); Node(method).SetOperator(accessibility); ParseParameters(method);
+            ApplyType(method, type); Node(method).SetOperator(accessibility); ParseParameters(method);
             raii string name = OperatorMethodName(operation, Node(method).ChildCount()); Node(method).SetText(name);
             raii string auxiliary = String.Concat("operator:", TokenFacts.Name(operation)); Node(method).SetAuxiliary(auxiliary);
             Node(method).SetFirst(ParseBlock()); return method;
@@ -1102,14 +1209,15 @@ namespace NativeSharp.Compiler.Parser
         private int MakeAccessor(string name, string auxiliary, string returnType, TokenKind accessibility)
         {
             int method = NewNode("MethodDeclaration"); Node(method).SetText(name);
-            Node(method).SetAuxiliary(auxiliary); Node(method).SetType(returnType); Node(method).SetOperator(accessibility);
+            Node(method).SetAuxiliary(auxiliary); ApplyType(method, returnType); Node(method).SetOperator(accessibility);
+            Node(method).SetSemanticType(returnType);
             if (ConsumeIf(TokenKind.Semicolon)) { return method; }
             Node(method).SetFirst(ParseBlock()); return method;
         }
         private int ParseProperty(owned string type, owned string name, TokenKind accessibility)
         {
             int property = NewNode("PropertyDeclaration"); Node(property).SetText(name);
-            Node(property).SetAuxiliary("property"); Node(property).SetType(type); Node(property).SetOperator(accessibility);
+            Node(property).SetAuxiliary("property"); ApplyType(property, type); Node(property).SetOperator(accessibility);
             Expect(TokenKind.LeftBrace);
             while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
             {
@@ -1134,7 +1242,7 @@ namespace NativeSharp.Compiler.Parser
         private int ParseIndexer(owned string type, TokenKind accessibility)
         {
             Consume(); int indexer = NewNode("IndexerDeclaration"); Node(indexer).SetText("Item");
-            Node(indexer).SetAuxiliary("indexer"); Node(indexer).SetType(type); Node(indexer).SetOperator(accessibility);
+            Node(indexer).SetAuxiliary("indexer"); ApplyType(indexer, type); Node(indexer).SetOperator(accessibility);
             raii List<int> parameters = new List<int>(); Expect(TokenKind.LeftBracket);
             if (!At(TokenKind.RightBracket))
             {
@@ -1170,27 +1278,34 @@ namespace NativeSharp.Compiler.Parser
             if (At(TokenKind.KwExtern)) { return ParseExternC(); }
             bool constant = ConsumeIf(TokenKind.KwConst);
             TokenKind accessibility = TokenKind.Invalid;
+            raii StringBuilder modifierBuilder = new StringBuilder(); if (constant) { modifierBuilder.Append("const"); }
             while (Modifier(Current()))
             {
+                if (modifierBuilder.Length() != 0) { modifierBuilder.Append(','); }
+                raii string modifierName = CurrentText(); modifierBuilder.Append(modifierName);
                 if (Current() == TokenKind.KwPublic || Current() == TokenKind.KwInternal ||
                     Current() == TokenKind.KwProtected || Current() == TokenKind.KwPrivate) { accessibility = Current(); }
                 bool wasExtern = Current() == TokenKind.KwExtern;
                 Consume();
                 if (wasExtern && AtText("C")) { Consume(); }
             }
-            if (At(TokenKind.KwStruct)) { int node = ParseAggregate("StructDeclaration"); Node(node).SetOperator(accessibility); return node; }
-            if (At(TokenKind.KwClass)) { int node = ParseAggregate("ClassDeclaration"); Node(node).SetOperator(accessibility); return node; }
-            if (At(TokenKind.KwInterface)) { int node = ParseAggregate("InterfaceDeclaration"); Node(node).SetOperator(accessibility); return node; }
-            if (At(TokenKind.KwEnum)) { int node = ParseEnum(); Node(node).SetOperator(accessibility); return node; }
-            if (At(TokenKind.KwDelegate)) { int node = ParseDelegate(); Node(node).SetOperator(accessibility); return node; }
+            raii string modifiers = modifierBuilder.ToOwnedString();
+            raii string layout = ParseLayoutModifiers();
+            if (At(TokenKind.KwStruct)) { int node = ParseAggregate("StructDeclaration"); Node(node).SetOperator(accessibility); Node(node).SetAuxiliary(layout); Node(node).SetModifiersText(modifiers); return node; }
+            if (AtText("union")) { int node = ParseAggregate("StructDeclaration"); Node(node).SetOperator(accessibility); raii string auxiliary = JoinAuxiliary("union", layout); Node(node).SetAuxiliary(auxiliary); Node(node).SetModifiersText(modifiers); return node; }
+            if (At(TokenKind.KwClass)) { int node = ParseAggregate("ClassDeclaration"); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
+            if (At(TokenKind.KwInterface)) { int node = ParseAggregate("InterfaceDeclaration"); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
+            if (At(TokenKind.KwEnum)) { int node = ParseEnum(); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
+            if (At(TokenKind.KwDelegate)) { int node = ParseDelegate(); Node(node).SetOperator(accessibility); Node(node).SetModifiersText(modifiers); return node; }
             raii string type = ParseType(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
             if (At(TokenKind.LeftParen) || At(TokenKind.Less))
             {
                 int function = ParseFunction(move(type), move(name), false, "FunctionDeclaration");
-                Node(function).SetOperator(accessibility); return function;
+                Node(function).SetOperator(accessibility); Node(function).SetModifiersText(modifiers); return function;
             }
-            int global = NewNode("GlobalVariableDeclaration"); Node(global).SetText(name); Node(global).SetType(type);
+            int global = NewNode("GlobalVariableDeclaration"); Node(global).SetText(name); ApplyType(global, type);
             Node(global).SetFlag(constant); Node(global).SetOperator(accessibility);
+            Node(global).SetModifiersText(modifiers);
             if (ConsumeIf(TokenKind.Equal)) { Node(global).SetFirst(ParseExpression()); }
             Expect(TokenKind.Semicolon); return global;
         }

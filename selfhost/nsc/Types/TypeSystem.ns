@@ -1,0 +1,177 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+namespace NativeSharp.Compiler.Types
+{
+    public enum SemanticTypeKind
+    {
+        Error, Void, Bool, Byte, Char, Short, UShort, Int, UInt, Long, ULong,
+        NInt, NUInt, Float, Double, Pointer, Array, Function, Named, NullLiteral,
+        StringLiteral, TypeParameter
+    }
+
+    public enum OwnershipKind { None, Owned, Borrowed }
+
+    public class SemanticType
+    {
+        private SemanticTypeKind kind;
+        private owned string display;
+        private int elementType;
+        private int returnType;
+        private owned List<int> parameterTypes;
+        private long elementCount;
+        private int size;
+        private int alignment;
+        private OwnershipKind ownership;
+
+        public SemanticType(SemanticTypeKind typeKind, string name)
+        {
+            kind = typeKind; display = String.Copy(name); elementType = -1; returnType = -1;
+            parameterTypes = new List<int>(); elementCount = 0; size = 0; alignment = 1;
+            ownership = OwnershipKind.None;
+        }
+
+        public SemanticTypeKind Kind() { return kind; }
+        public string Display() { return display; }
+        public int ElementType() { return elementType; }
+        public int ReturnType() { return returnType; }
+        public int ParameterCount() { return parameterTypes.Count(); }
+        public int ParameterType(int index) { return parameterTypes[index]; }
+        public long ElementCount() { return elementCount; }
+        public int Size() { return size; }
+        public int Alignment() { return alignment; }
+        public OwnershipKind Ownership() { return ownership; }
+        public void SetElementType(int value) { elementType = value; }
+        public void SetReturnType(int value) { returnType = value; }
+        public void AddParameterType(int value) { parameterTypes.Add(value); }
+        public void SetElementCount(long value) { elementCount = value; }
+        public void SetLayout(int byteSize, int byteAlignment) { size = byteSize; alignment = byteAlignment; }
+        public void SetOwnership(OwnershipKind value) { ownership = value; }
+    }
+
+    public class TypeTable
+    {
+        private owned List<SemanticType> types;
+
+        public TypeTable()
+        {
+            types = new List<SemanticType>();
+            AddBuiltin(SemanticTypeKind.Error, "error", 0, 1);
+            AddBuiltin(SemanticTypeKind.Void, "void", 0, 1);
+            AddBuiltin(SemanticTypeKind.Bool, "bool", 1, 1);
+            AddBuiltin(SemanticTypeKind.Byte, "byte", 1, 1);
+            AddBuiltin(SemanticTypeKind.Char, "char", 1, 1);
+            AddBuiltin(SemanticTypeKind.Short, "short", 2, 2);
+            AddBuiltin(SemanticTypeKind.UShort, "ushort", 2, 2);
+            AddBuiltin(SemanticTypeKind.Int, "int", 4, 4);
+            AddBuiltin(SemanticTypeKind.UInt, "uint", 4, 4);
+            AddBuiltin(SemanticTypeKind.Long, "long", 8, 8);
+            AddBuiltin(SemanticTypeKind.ULong, "ulong", 8, 8);
+            AddBuiltin(SemanticTypeKind.NInt, "nint", 8, 8);
+            AddBuiltin(SemanticTypeKind.NUInt, "nuint", 8, 8);
+            AddBuiltin(SemanticTypeKind.Float, "float", 4, 4);
+            AddBuiltin(SemanticTypeKind.Double, "double", 8, 8);
+            AddBuiltin(SemanticTypeKind.NullLiteral, "null", 8, 8);
+        }
+
+        private int AddBuiltin(SemanticTypeKind kind, string name, int size, int alignment)
+        {
+            raii SemanticType type = new SemanticType(kind, name); type.SetLayout(size, alignment);
+            types.Add(move(type)); return types.Count() - 1;
+        }
+
+        private static bool EndsWith(string value, string suffix)
+        {
+            if (suffix.Length > value.Length) { return false; }
+            int start = value.Length - suffix.Length; int index = 0;
+            while (index < suffix.Length)
+            {
+                if (value[start + index] != suffix[index]) { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
+
+        public int Count() { return types.Count(); }
+        public SemanticType Get(int id) { return types[id]; }
+        public int Find(string display)
+        {
+            int index = 0;
+            while (index < types.Count())
+            {
+                if (types[index].Display() == display) { return index; }
+                index = index + 1;
+            }
+            return -1;
+        }
+
+        public int Intern(string display)
+        {
+            int existing = Find(display); if (existing >= 0) { return existing; }
+            if (EndsWith(display, "*"))
+            {
+                raii string elementName = String.Substring(display, 0, display.Length - 1);
+                int element = Intern(elementName); raii SemanticType pointer = new SemanticType(SemanticTypeKind.Pointer, display);
+                pointer.SetElementType(element); pointer.SetLayout(8, 8); types.Add(move(pointer)); return types.Count() - 1;
+            }
+            if (display.Length >= 2 && display[display.Length - 1] == ']')
+            {
+                int bracket = display.Length - 2; while (bracket >= 0 && display[bracket] != '[') { bracket = bracket - 1; }
+                if (bracket < 0) { bracket = display.Length; }
+                raii string elementName = String.Substring(display, 0, bracket);
+                int element = Intern(elementName); raii SemanticType array = new SemanticType(SemanticTypeKind.Array, display);
+                long count = 0; if (bracket + 1 < display.Length - 1)
+                {
+                    raii string countText = String.Substring(display, bracket + 1, display.Length - bracket - 2); Number.TryParseInt64(countText, out count);
+                }
+                array.SetElementType(element); array.SetElementCount(count); array.SetLayout((int)(count * Get(element).Size()), Get(element).Alignment());
+                types.Add(move(array)); return types.Count() - 1;
+            }
+            OwnershipKind ownership = OwnershipKind.None; int prefix = 0;
+            if (display.Length > 6 && String.Substring(display, 0, 6) == "owned ") { ownership = OwnershipKind.Owned; prefix = 6; }
+            else if (display.Length > 9 && String.Substring(display, 0, 9) == "borrowed ") { ownership = OwnershipKind.Borrowed; prefix = 9; }
+            if (prefix != 0)
+            {
+                raii string baseName = String.Substring(display, prefix, display.Length - prefix);
+                int baseType = Intern(baseName); raii SemanticType qualified = new SemanticType(Get(baseType).Kind(), display);
+                qualified.SetElementType(Get(baseType).ElementType()); qualified.SetLayout(Get(baseType).Size(), Get(baseType).Alignment());
+                qualified.SetOwnership(ownership); types.Add(move(qualified)); return types.Count() - 1;
+            }
+            raii SemanticType named = new SemanticType(SemanticTypeKind.Named, display);
+            named.SetLayout(0, 1); types.Add(move(named)); return types.Count() - 1;
+        }
+
+        public int StringLiteral(int count)
+        {
+            raii string digits = String.ToString(count); raii string first = String.Concat("StringLiteralType<", digits);
+            raii string display = String.Concat(first, ">"); int existing = Find(display); if (existing >= 0) { return existing; }
+            raii SemanticType type = new SemanticType(SemanticTypeKind.StringLiteral, display);
+            type.SetElementType(Find("char")); type.SetElementCount(count); type.SetLayout(count, 1);
+            types.Add(move(type)); return types.Count() - 1;
+        }
+
+        public int Function(int returnType, List<int> parameters)
+        {
+            raii StringBuilder output = new StringBuilder(); output.Append('('); int index = 0;
+            while (index < parameters.Count())
+            {
+                if (index != 0) { output.Append(", "); } output.Append(Get(parameters[index]).Display()); index = index + 1;
+            }
+            output.Append(") -> "); output.Append(Get(returnType).Display()); raii string display = output.ToOwnedString();
+            int existing = Find(display); if (existing >= 0) { return existing; }
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Function, display); type.SetReturnType(returnType);
+            index = 0; while (index < parameters.Count()) { type.AddParameterType(parameters[index]); index = index + 1; }
+            type.SetLayout(8, 8); types.Add(move(type)); return types.Count() - 1;
+        }
+
+        public bool IsInteger(int id)
+        {
+            SemanticTypeKind kind = Get(id).Kind();
+            return kind == SemanticTypeKind.Byte || kind == SemanticTypeKind.Char || kind == SemanticTypeKind.Short ||
+                kind == SemanticTypeKind.UShort || kind == SemanticTypeKind.Int || kind == SemanticTypeKind.UInt ||
+                kind == SemanticTypeKind.Long || kind == SemanticTypeKind.ULong || kind == SemanticTypeKind.NInt ||
+                kind == SemanticTypeKind.NUInt;
+        }
+        public bool IsNumeric(int id) { return IsInteger(id) || Get(id).Kind() == SemanticTypeKind.Float || Get(id).Kind() == SemanticTypeKind.Double; }
+    }
+}

@@ -1,0 +1,52 @@
+{
+  "schema": "nativesharp-selfhost-semantic-contract",
+  "version": 1,
+  "actions": ["--dump-symbols", "--dump-sema"],
+  "differential_cases": [
+    "tests/integration/valid/cfg_features.ns",
+    "tests/integration/valid/control_flow.ns",
+    "tests/integration/valid/dominance_features.ns",
+    "tests/integration/valid/full_frontend.ns",
+    "tests/integration/valid/hir_features.ns",
+    "tests/integration/valid/library_unit.ns",
+    "tests/integration/valid/llvm_features.ns",
+    "tests/integration/valid/llvm_optimization_features.ns",
+    "tests/integration/valid/memory_types.ns",
+    "tests/integration/valid/mir_features.ns",
+    "tests/integration/valid/pass_features.ns",
+    "tests/integration/valid/ssa_features.ns"
+  ],
+  "stability_minimum_sources": 480,
+  "invariants": [
+    {
+      "source": "tests/cc1/c44_constraints_genericos/Main.ns",
+      "action": "--dump-symbols",
+      "contains": ["Class Caja : Caja generic=<T> where T:class,IComponente", "Method Elegir : (T, T) -> int defined generic=<T> where T:IPesado"]
+    },
+    {
+      "source": "tests/interop_contract/c6_struct_math/Main.ns",
+      "action": "--dump-symbols",
+      "contains": ["Field z : float offset=8", "Method op_Addition : (Vector3, Vector3) -> Vector3 defined", "Field m : float[16] offset=0"]
+    },
+    {
+      "source": "tests/integration/asm_abi/AssemblyAbi.ns",
+      "action": "--dump-symbols",
+      "contains": ["Method NSAsmAdd : (int, int) -> int defined", "Method NSAsmAddMemory : (int*, int) -> int defined"]
+    },
+    {
+      "source": "examples/tutorial_17_delegates_y_lambdas/Main.ns",
+      "action": "--dump-sema",
+      "contains": ["LambdaExpression : lambda rvalue", "IdentifierExpression \"x\" : lambda-parameter lvalue modifiable addressable symbol=x"]
+    },
+    {
+      "source": "tests/interop_contract/c2_12_union/Main.ns",
+      "action": "--dump-symbols",
+      "contains": ["Union Payload : Payload", "Field length : int offset=1", "Field tail : long offset=8"]
+    },
+    {
+      "source": "tests/interop_contract/c2_12_union/Main.ns",
+      "action": "--dump-semantic-metadata",
+      "contains": ["type 18 name=\"WireRecord\" kind=18 size=5 align=1 ownership=0", "type 19 name=\"Vector4Aligned\" kind=18 size=16 align=16 ownership=0"]
+    }
+  ]
+}

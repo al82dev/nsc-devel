@@ -15,6 +15,8 @@ Este directorio contiene la documentación ejecutable del programa de self-hosti
   escrito completamente en NativeSharp, con identidad, fuentes y diagnósticos diferenciales.
 - `tandas/TANDA-06-SH05-LEXER-SINTAXIS-PARSER.md` porta el frontend sintáctico autocontenido y
   certifica dumps de tokens y árboles contra `nsc0` en O0/O2.
+- `tandas/TANDA-07-SH06-SIMBOLOS-TIPOS-SEMANTICA.md` entrega tipos, símbolos, binding, layout y
+  semántica autocontenidos con diferencial `nsc0` y estabilidad O0/O2 de todo el corpus.
 - Los reportes grandes, manifiestos, logs y resultados JSON se conservan en el directorio de
   evidencia generado por la orquestación y se enlazan desde el expediente con su hash.
 

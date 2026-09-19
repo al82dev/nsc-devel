@@ -25,3 +25,9 @@ mediante contratos versionados.
 SH05 incorpora en `nsc/` el lexer, el árbol sintáctico congelable y el parser escritos en
 NativeSharp. `nsc-next --dump-tokens` y `nsc-next --dump-ast` son superficies diferenciales
 versionadas por `contracts/frontend.contract.json`; no invocan ni cargan el frontend C++.
+
+SH06 añade tablas nominales de tipos y símbolos, scopes, layout Windows x64, binding de
+expresiones, constantes, conversiones, operadores, lambdas y metadatos semánticos deterministas.
+`--dump-symbols`, `--dump-sema` y `--dump-semantic-metadata` son superficies autocontenidas. El
+contrato `contracts/semantic.contract.json` exige igualdad con `nsc0` y estabilidad O0/O2 sobre
+todo el corpus fuente.

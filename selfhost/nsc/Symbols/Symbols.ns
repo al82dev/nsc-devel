@@ -1,0 +1,129 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+namespace NativeSharp.Compiler.Symbols
+{
+    public enum SymbolKind
+    {
+        Namespace, Type, Struct, Class, Interface, Enum, Union, Delegate,
+        Function, Method, Constructor, Property, Indexer, Event,
+        GlobalVariable, Variable, Parameter, Field, EnumMember, TypeParameter
+    }
+
+    public class SymbolFacts
+    {
+        public static string Name(SymbolKind kind)
+        {
+            if (kind == SymbolKind.Namespace) { return "Namespace"; }
+            if (kind == SymbolKind.Struct) { return "Struct"; }
+            if (kind == SymbolKind.Class) { return "Class"; }
+            if (kind == SymbolKind.Interface) { return "Interface"; }
+            if (kind == SymbolKind.Enum) { return "Enum"; }
+            if (kind == SymbolKind.Union) { return "Union"; }
+            if (kind == SymbolKind.Delegate) { return "Delegate"; }
+            if (kind == SymbolKind.Function) { return "Function"; }
+            if (kind == SymbolKind.Method) { return "Method"; }
+            if (kind == SymbolKind.Constructor) { return "Constructor"; }
+            if (kind == SymbolKind.Property) { return "Property"; }
+            if (kind == SymbolKind.Indexer) { return "Indexer"; }
+            if (kind == SymbolKind.Event) { return "Event"; }
+            if (kind == SymbolKind.GlobalVariable) { return "GlobalVariable"; }
+            if (kind == SymbolKind.Variable) { return "Variable"; }
+            if (kind == SymbolKind.Parameter) { return "Parameter"; }
+            if (kind == SymbolKind.Field) { return "Field"; }
+            if (kind == SymbolKind.EnumMember) { return "EnumMember"; }
+            if (kind == SymbolKind.TypeParameter) { return "TypeParameter"; }
+            return "Type";
+        }
+    }
+
+    public class Symbol
+    {
+        private SymbolKind kind;
+        private owned string name;
+        private owned string qualifiedName;
+        private int typeId;
+        private int declaration;
+        private int parent;
+        private owned List<int> members;
+        private bool constant;
+        private bool defined;
+        private bool externC;
+        private bool virtualMember;
+        private bool overrideMember;
+        private bool staticMember;
+        private long constantValue;
+        private bool hasConstantValue;
+        private int offset;
+        private int size;
+        private int alignment;
+        private int bitWidth;
+        private int bitOffset;
+        private owned string genericText;
+        private owned string constraintsText;
+
+        public Symbol(SymbolKind symbolKind, string symbolName, int symbolType, int node)
+        {
+            kind = symbolKind; name = String.Copy(symbolName); qualifiedName = String.Copy(symbolName);
+            typeId = symbolType; declaration = node; parent = -1; members = new List<int>();
+            constant = false; defined = false; externC = false; virtualMember = false; overrideMember = false; staticMember = false;
+            constantValue = 0; hasConstantValue = false; offset = -1; size = 0; alignment = 1; bitWidth = -1; bitOffset = -1;
+            genericText = String.Copy(""); constraintsText = String.Copy("");
+        }
+        public SymbolKind Kind() { return kind; }
+        public string Name() { return name; }
+        public string QualifiedName() { return qualifiedName; }
+        public int TypeId() { return typeId; }
+        public int Declaration() { return declaration; }
+        public int Parent() { return parent; }
+        public int MemberCount() { return members.Count(); }
+        public int MemberAt(int index) { return members[index]; }
+        public bool IsConst() { return constant; }
+        public bool IsDefined() { return defined; }
+        public bool IsExternC() { return externC; }
+        public bool IsVirtual() { return virtualMember; }
+        public bool IsOverride() { return overrideMember; }
+        public bool IsStatic() { return staticMember; }
+        public bool HasConstantValue() { return hasConstantValue; }
+        public long ConstantValue() { return constantValue; }
+        public int Offset() { return offset; }
+        public int Size() { return size; }
+        public int Alignment() { return alignment; }
+        public int BitWidth() { return bitWidth; }
+        public int BitOffset() { return bitOffset; }
+        public string GenericText() { return genericText; }
+        public string ConstraintsText() { return constraintsText; }
+        public void SetQualifiedName(string value) { qualifiedName = String.Copy(value); }
+        public void SetParent(int value) { parent = value; }
+        public void AddMember(int value) { members.Add(value); }
+        public void SetConst(bool value) { constant = value; }
+        public void SetDefined(bool value) { defined = value; }
+        public void SetExternC(bool value) { externC = value; }
+        public void SetVirtual(bool value) { virtualMember = value; }
+        public void SetOverride(bool value) { overrideMember = value; }
+        public void SetStatic(bool value) { staticMember = value; }
+        public void SetConstantValue(long value) { constantValue = value; hasConstantValue = true; }
+        public void SetLayout(int byteOffset, int byteSize, int byteAlignment) { offset = byteOffset; size = byteSize; alignment = byteAlignment; }
+        public void SetBitField(int width, int offsetInBits) { bitWidth = width; bitOffset = offsetInBits; }
+        public void SetGenericText(string value) { genericText = String.Copy(value); }
+        public void SetConstraintsText(string value) { constraintsText = String.Copy(value); }
+    }
+
+    public class Scope
+    {
+        private int parent;
+        private owned List<string> names;
+        private owned List<int> symbols;
+        public Scope(int parentScope) { parent = parentScope; names = new List<string>(); symbols = new List<int>(); }
+        public int Parent() { return parent; }
+        public void Declare(string name, int symbol) { names.Add(String.Copy(name)); symbols.Add(symbol); }
+        public int LookupLocal(string name)
+        {
+            int index = names.Count() - 1;
+            while (index >= 0) { if (names[index] == name) { return symbols[index]; } index = index - 1; }
+            return -1;
+        }
+        public int Count() { return symbols.Count(); }
+        public int SymbolAt(int index) { return symbols[index]; }
+    }
+}
