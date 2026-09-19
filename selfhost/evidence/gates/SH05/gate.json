@@ -1,0 +1,36 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH05",
+  "state": "LANDED",
+  "revision": "selfhost(tanda-06)",
+  "run_id": "tanda-06-sh05-final-20260919",
+  "previous_gate": "selfhost/evidence/gates/SH04/gate.json",
+  "artifacts": {
+    "baseline_report": "selfhost/evidence/runs/tanda-06-sh05-final-20260919/report.md",
+    "baseline_report_json": "selfhost/evidence/runs/tanda-06-sh05-final-20260919/report.json",
+    "baseline_report_sha256": "e96bebc569021d4b66c8b3670135be2174f430ae268634e67932558f7cbe7cf1",
+    "baseline_report_json_sha256": "a3f71f73af8e5545f9baf61ea7598fd9af10cfce9556d7f2fd1c0fda2a28cf2a",
+    "baseline_source_sha256": "4011079e6b3319a76d035f65e9804d13c3740abe2b3843f10769d2b743a317ef",
+    "gate0": "_abi/gates/G00/gate.json",
+    "gate0_sha256": "82baebed04b5901e6c47f2211165b0e2c5e06f4f72b1a7cb5510406b19c55774",
+    "sh05_report": "selfhost/evidence/gates/SH05/sh05-report.json",
+    "sh05_report_sha256": "739744a66577e7200c228d2e45863f28c942039e0e08f73aa2f1c794dfae37a9",
+    "nsc0_sha256": "d2eeb7abcadb802a1bf2802a0fef148d62f666bfa6e53ee70ec02b5c288f6561",
+    "nsc_next_o0_sha256": "b5d655885bf8d4322bfdfb2c72153b78947cffc862b199523016f2d64a3414d5",
+    "nsc_next_o2_sha256": "2758c12b4a61fc9e3b6167b02ceaec1f41d6fdd7a0613bfcbfea6a4125cdf659"
+  },
+  "metrics": {
+    "source_files": 477,
+    "token_comparisons": 954,
+    "ast_case_files": 16,
+    "ast_comparisons": 32,
+    "recovery_cases": 5,
+    "recovery_comparisons": 10,
+    "optimizations": 2,
+    "ctest_per_linker": 442,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18
+  },
+  "problems": []
+}

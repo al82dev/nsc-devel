@@ -4,6 +4,9 @@
     <Compile Include="Basic/**/*.ns" />
     <Compile Include="Source/**/*.ns" />
     <Compile Include="Diagnostics/**/*.ns" />
+    <Compile Include="Lexer/**/*.ns" />
+    <Compile Include="Syntax/**/*.ns" />
+    <Compile Include="Parser/**/*.ns" />
     <Compile Include="Driver/**/*.ns" />
     <ProjectReference Include="../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
     <ProjectReference Include="../../lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj" />

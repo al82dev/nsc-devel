@@ -1,0 +1,37 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+namespace NativeSharp.Compiler.Lexer
+{
+    // Structure-of-arrays keeps tokens compact and avoids one heap allocation per token.
+    public class TokenStream
+    {
+        private owned List<TokenKind> kinds;
+        private owned List<int> begins;
+        private owned List<int> ends;
+        private int errors;
+
+        public TokenStream()
+        {
+            kinds = new List<TokenKind>();
+            begins = new List<int>();
+            ends = new List<int>();
+            errors = 0;
+        }
+
+        public void Add(TokenKind kind, int begin, int end)
+        {
+            kinds.Add(kind);
+            begins.Add(begin);
+            ends.Add(end);
+            if (kind == TokenKind.Invalid) { errors = errors + 1; }
+        }
+
+        public int Count() { return kinds.Count(); }
+        public TokenKind KindAt(int index) { return kinds[index]; }
+        public int BeginAt(int index) { return begins[index]; }
+        public int EndAt(int index) { return ends[index]; }
+        public int ErrorCount() { return errors; }
+        public void AddError() { errors = errors + 1; }
+    }
+}

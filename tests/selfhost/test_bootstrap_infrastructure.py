@@ -19,6 +19,7 @@ from selfhost.bootstrap import (
     verify_environment,
     verify_llvm_c_contract,
     verify_nsc_next_skeleton,
+    verify_frontend,
 )
 
 
@@ -240,6 +241,23 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(
             verify_nsc_next_skeleton.fnv1a64("first\nsecond\nthird\n"),
             10519248498540176672,
+        )
+
+    def test_sh05_frontend_contract_freezes_differential_matrix(self) -> None:
+        contract = verify_frontend.load_contract(
+            ROOT / "selfhost/contracts/frontend.contract.json"
+        )
+        self.assertEqual(len(contract["ast_cases"]), 16)
+        self.assertEqual(len(contract["recovery"]["cases"]), 5)
+        self.assertIn(
+            "selfhost/tests/profile/negative/comptime.ns",
+            contract["token_exclusions"],
+        )
+
+    def test_sh05_line_canonicalization_is_host_independent(self) -> None:
+        self.assertEqual(
+            verify_frontend.canonical_lines(b"one\r\ntwo\rthree\n"),
+            b"one\ntwo\nthree\n",
         )
 
 

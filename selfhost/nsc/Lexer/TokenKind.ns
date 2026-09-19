@@ -1,0 +1,179 @@
+namespace NativeSharp.Compiler.Lexer
+{
+    // The order is part of the bootstrap contract and mirrors nsc0 TokenKind exactly.
+    public enum TokenKind
+    {
+        EndOfFile, Invalid, Identifier, IntegerLiteral, FloatingLiteral,
+        CharacterLiteral, StringLiteral, AssemblyText, AssemblyNewLine,
+        KwVoid, KwBool, KwSByte, KwByte, KwChar, KwShort, KwUShort, KwInt,
+        KwUInt, KwLong, KwULong, KwNInt, KwNUInt, KwFloat, KwDouble, KwString,
+        KwConst, KwStatic, KwReadonly, KwVolatile, KwInline, KwForceInline,
+        KwNoInline, KwNoHeap, KwPublic, KwInternal, KwProtected, KwPrivate,
+        KwIf, KwElse, KwWhile, KwDo, KwFor, KwSwitch, KwCase, KwBreak,
+        KwContinue, KwReturn, KwTry, KwCatch, KwFinally, KwThrow, KwStruct,
+        KwClass, KwInterface, KwEnum, KwNamespace, KwUsing, KwNew, KwDelete,
+        KwDestroy, KwStackalloc, KwSizeof, KwAlignof, KwOffsetof, KwStaticAssert,
+        KwDefault, KwExtern, KwExport, KwC, KwVectorCall, KwTrue, KwFalse,
+        KwNull, KwThis, KwBase, KwVirtual, KwOverride, KwAbstract, KwSealed,
+        KwGet, KwSet, KwOperator, KwImplicit, KwExplicit, KwIs, KwAs,
+        KwDelegate, KwEvent, KwRaii, KwMove, KwOwned, KwBorrowed, KwVar,
+        KwForeach, KwIn,
+        LeftParen, RightParen, LeftBrace, RightBrace, LeftBracket, RightBracket,
+        Semicolon, Comma, Colon, Question, Dot, Ellipsis, Arrow, FatArrow,
+        Plus, Minus, Star, Slash, Percent, PlusPlus, MinusMinus, EqualEqual,
+        BangEqual, Less, LessEqual, Greater, GreaterEqual, Bang, AmpAmp,
+        PipePipe, Amp, Pipe, Caret, Tilde, LessLess, GreaterGreater, Equal,
+        PlusEqual, MinusEqual, StarEqual, SlashEqual, PercentEqual, AmpEqual,
+        PipeEqual, CaretEqual, LessLessEqual, GreaterGreaterEqual
+    }
+
+    public class TokenFacts
+    {
+        public static string Name(TokenKind kind)
+        {
+            if (kind == TokenKind.EndOfFile) { return "EndOfFile"; }
+            if (kind == TokenKind.Invalid) { return "Invalid"; }
+            if (kind == TokenKind.Identifier) { return "Identifier"; }
+            if (kind == TokenKind.IntegerLiteral) { return "IntegerLiteral"; }
+            if (kind == TokenKind.FloatingLiteral) { return "FloatingLiteral"; }
+            if (kind == TokenKind.CharacterLiteral) { return "CharacterLiteral"; }
+            if (kind == TokenKind.StringLiteral) { return "StringLiteral"; }
+            if (kind == TokenKind.AssemblyText) { return "AssemblyText"; }
+            if (kind == TokenKind.AssemblyNewLine) { return "AssemblyNewLine"; }
+            if (kind == TokenKind.KwVoid) { return "KwVoid"; }
+            if (kind == TokenKind.KwBool) { return "KwBool"; }
+            if (kind == TokenKind.KwSByte) { return "KwSByte"; }
+            if (kind == TokenKind.KwByte) { return "KwByte"; }
+            if (kind == TokenKind.KwChar) { return "KwChar"; }
+            if (kind == TokenKind.KwShort) { return "KwShort"; }
+            if (kind == TokenKind.KwUShort) { return "KwUShort"; }
+            if (kind == TokenKind.KwInt) { return "KwInt"; }
+            if (kind == TokenKind.KwUInt) { return "KwUInt"; }
+            if (kind == TokenKind.KwLong) { return "KwLong"; }
+            if (kind == TokenKind.KwULong) { return "KwULong"; }
+            if (kind == TokenKind.KwNInt) { return "KwNInt"; }
+            if (kind == TokenKind.KwNUInt) { return "KwNUInt"; }
+            if (kind == TokenKind.KwFloat) { return "KwFloat"; }
+            if (kind == TokenKind.KwDouble) { return "KwDouble"; }
+            if (kind == TokenKind.KwString) { return "KwString"; }
+            if (kind == TokenKind.KwConst) { return "KwConst"; }
+            if (kind == TokenKind.KwStatic) { return "KwStatic"; }
+            if (kind == TokenKind.KwReadonly) { return "KwReadonly"; }
+            if (kind == TokenKind.KwVolatile) { return "KwVolatile"; }
+            if (kind == TokenKind.KwInline) { return "KwInline"; }
+            if (kind == TokenKind.KwForceInline) { return "KwForceInline"; }
+            if (kind == TokenKind.KwNoInline) { return "KwNoInline"; }
+            if (kind == TokenKind.KwNoHeap) { return "KwNoHeap"; }
+            if (kind == TokenKind.KwPublic) { return "KwPublic"; }
+            if (kind == TokenKind.KwInternal) { return "KwInternal"; }
+            if (kind == TokenKind.KwProtected) { return "KwProtected"; }
+            if (kind == TokenKind.KwPrivate) { return "KwPrivate"; }
+            if (kind == TokenKind.KwIf) { return "KwIf"; }
+            if (kind == TokenKind.KwElse) { return "KwElse"; }
+            if (kind == TokenKind.KwWhile) { return "KwWhile"; }
+            if (kind == TokenKind.KwDo) { return "KwDo"; }
+            if (kind == TokenKind.KwFor) { return "KwFor"; }
+            if (kind == TokenKind.KwSwitch) { return "KwSwitch"; }
+            if (kind == TokenKind.KwCase) { return "KwCase"; }
+            if (kind == TokenKind.KwBreak) { return "KwBreak"; }
+            if (kind == TokenKind.KwContinue) { return "KwContinue"; }
+            if (kind == TokenKind.KwReturn) { return "KwReturn"; }
+            if (kind == TokenKind.KwTry) { return "KwTry"; }
+            if (kind == TokenKind.KwCatch) { return "KwCatch"; }
+            if (kind == TokenKind.KwFinally) { return "KwFinally"; }
+            if (kind == TokenKind.KwThrow) { return "KwThrow"; }
+            if (kind == TokenKind.KwStruct) { return "KwStruct"; }
+            if (kind == TokenKind.KwClass) { return "KwClass"; }
+            if (kind == TokenKind.KwInterface) { return "KwInterface"; }
+            if (kind == TokenKind.KwEnum) { return "KwEnum"; }
+            if (kind == TokenKind.KwNamespace) { return "KwNamespace"; }
+            if (kind == TokenKind.KwUsing) { return "KwUsing"; }
+            if (kind == TokenKind.KwNew) { return "KwNew"; }
+            if (kind == TokenKind.KwDelete) { return "KwDelete"; }
+            if (kind == TokenKind.KwDestroy) { return "KwDestroy"; }
+            if (kind == TokenKind.KwStackalloc) { return "KwStackalloc"; }
+            if (kind == TokenKind.KwSizeof) { return "KwSizeof"; }
+            if (kind == TokenKind.KwAlignof) { return "KwAlignof"; }
+            if (kind == TokenKind.KwOffsetof) { return "KwOffsetof"; }
+            if (kind == TokenKind.KwStaticAssert) { return "KwStaticAssert"; }
+            if (kind == TokenKind.KwDefault) { return "KwDefault"; }
+            if (kind == TokenKind.KwExtern) { return "KwExtern"; }
+            if (kind == TokenKind.KwExport) { return "KwExport"; }
+            if (kind == TokenKind.KwC) { return "KwC"; }
+            if (kind == TokenKind.KwVectorCall) { return "KwVectorCall"; }
+            if (kind == TokenKind.KwTrue) { return "KwTrue"; }
+            if (kind == TokenKind.KwFalse) { return "KwFalse"; }
+            if (kind == TokenKind.KwNull) { return "KwNull"; }
+            if (kind == TokenKind.KwThis) { return "KwThis"; }
+            if (kind == TokenKind.KwBase) { return "KwBase"; }
+            if (kind == TokenKind.KwVirtual) { return "KwVirtual"; }
+            if (kind == TokenKind.KwOverride) { return "KwOverride"; }
+            if (kind == TokenKind.KwAbstract) { return "KwAbstract"; }
+            if (kind == TokenKind.KwSealed) { return "KwSealed"; }
+            if (kind == TokenKind.KwGet) { return "KwGet"; }
+            if (kind == TokenKind.KwSet) { return "KwSet"; }
+            if (kind == TokenKind.KwOperator) { return "KwOperator"; }
+            if (kind == TokenKind.KwImplicit) { return "KwImplicit"; }
+            if (kind == TokenKind.KwExplicit) { return "KwExplicit"; }
+            if (kind == TokenKind.KwIs) { return "KwIs"; }
+            if (kind == TokenKind.KwAs) { return "KwAs"; }
+            if (kind == TokenKind.KwDelegate) { return "KwDelegate"; }
+            if (kind == TokenKind.KwEvent) { return "KwEvent"; }
+            if (kind == TokenKind.KwRaii) { return "KwRaii"; }
+            if (kind == TokenKind.KwMove) { return "KwMove"; }
+            if (kind == TokenKind.KwOwned) { return "KwOwned"; }
+            if (kind == TokenKind.KwBorrowed) { return "KwBorrowed"; }
+            if (kind == TokenKind.KwVar) { return "KwVar"; }
+            if (kind == TokenKind.KwForeach) { return "KwForeach"; }
+            if (kind == TokenKind.KwIn) { return "KwIn"; }
+            if (kind == TokenKind.LeftParen) { return "LeftParen"; }
+            if (kind == TokenKind.RightParen) { return "RightParen"; }
+            if (kind == TokenKind.LeftBrace) { return "LeftBrace"; }
+            if (kind == TokenKind.RightBrace) { return "RightBrace"; }
+            if (kind == TokenKind.LeftBracket) { return "LeftBracket"; }
+            if (kind == TokenKind.RightBracket) { return "RightBracket"; }
+            if (kind == TokenKind.Semicolon) { return "Semicolon"; }
+            if (kind == TokenKind.Comma) { return "Comma"; }
+            if (kind == TokenKind.Colon) { return "Colon"; }
+            if (kind == TokenKind.Question) { return "Question"; }
+            if (kind == TokenKind.Dot) { return "Dot"; }
+            if (kind == TokenKind.Ellipsis) { return "Ellipsis"; }
+            if (kind == TokenKind.Arrow) { return "Arrow"; }
+            if (kind == TokenKind.FatArrow) { return "FatArrow"; }
+            if (kind == TokenKind.Plus) { return "Plus"; }
+            if (kind == TokenKind.Minus) { return "Minus"; }
+            if (kind == TokenKind.Star) { return "Star"; }
+            if (kind == TokenKind.Slash) { return "Slash"; }
+            if (kind == TokenKind.Percent) { return "Percent"; }
+            if (kind == TokenKind.PlusPlus) { return "PlusPlus"; }
+            if (kind == TokenKind.MinusMinus) { return "MinusMinus"; }
+            if (kind == TokenKind.EqualEqual) { return "EqualEqual"; }
+            if (kind == TokenKind.BangEqual) { return "BangEqual"; }
+            if (kind == TokenKind.Less) { return "Less"; }
+            if (kind == TokenKind.LessEqual) { return "LessEqual"; }
+            if (kind == TokenKind.Greater) { return "Greater"; }
+            if (kind == TokenKind.GreaterEqual) { return "GreaterEqual"; }
+            if (kind == TokenKind.Bang) { return "Bang"; }
+            if (kind == TokenKind.AmpAmp) { return "AmpAmp"; }
+            if (kind == TokenKind.PipePipe) { return "PipePipe"; }
+            if (kind == TokenKind.Amp) { return "Amp"; }
+            if (kind == TokenKind.Pipe) { return "Pipe"; }
+            if (kind == TokenKind.Caret) { return "Caret"; }
+            if (kind == TokenKind.Tilde) { return "Tilde"; }
+            if (kind == TokenKind.LessLess) { return "LessLess"; }
+            if (kind == TokenKind.GreaterGreater) { return "GreaterGreater"; }
+            if (kind == TokenKind.Equal) { return "Equal"; }
+            if (kind == TokenKind.PlusEqual) { return "PlusEqual"; }
+            if (kind == TokenKind.MinusEqual) { return "MinusEqual"; }
+            if (kind == TokenKind.StarEqual) { return "StarEqual"; }
+            if (kind == TokenKind.SlashEqual) { return "SlashEqual"; }
+            if (kind == TokenKind.PercentEqual) { return "PercentEqual"; }
+            if (kind == TokenKind.AmpEqual) { return "AmpEqual"; }
+            if (kind == TokenKind.PipeEqual) { return "PipeEqual"; }
+            if (kind == TokenKind.CaretEqual) { return "CaretEqual"; }
+            if (kind == TokenKind.LessLessEqual) { return "LessLessEqual"; }
+            if (kind == TokenKind.GreaterGreaterEqual) { return "GreaterGreaterEqual"; }
+            return "Invalid";
+        }
+    }
+}

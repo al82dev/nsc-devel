@@ -1,0 +1,1212 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Source;
+using NativeSharp.Compiler.Lexer;
+using NativeSharp.Compiler.Syntax;
+
+namespace NativeSharp.Compiler.Parser
+{
+    public class Parser
+    {
+        private SourceBuffer source;
+        private TokenStream tokens;
+        private owned SyntaxTree tree;
+        private int index;
+        private int errors;
+        private owned List<string> knownTypes;
+        private int pendingGenericGreater;
+
+        public Parser(SourceBuffer sourceBuffer, TokenStream tokenStream)
+        {
+            source = sourceBuffer;
+            tokens = tokenStream;
+            tree = new SyntaxTree();
+            index = 0;
+            errors = 0;
+            knownTypes = new List<string>();
+            pendingGenericGreater = 0;
+        }
+
+        private TokenKind Current() { return tokens.KindAt(index); }
+        private TokenKind Peek(int distance)
+        {
+            int target = index + distance;
+            if (target >= tokens.Count()) { return TokenKind.EndOfFile; }
+            return tokens.KindAt(target);
+        }
+        private bool At(TokenKind kind) { return Current() == kind; }
+        private bool ConsumeIf(TokenKind kind)
+        {
+            if (!At(kind)) { return false; }
+            index = index + 1;
+            return true;
+        }
+        private void Consume()
+        {
+            if (!At(TokenKind.EndOfFile)) { index = index + 1; }
+        }
+        private bool Expect(TokenKind kind)
+        {
+            if (ConsumeIf(kind)) { return true; }
+            errors = errors + 1;
+            return false;
+        }
+        private owned string LexemeAt(int tokenIndex)
+        {
+            return String.Substring(source.RawText(), tokens.BeginAt(tokenIndex),
+                tokens.EndAt(tokenIndex) - tokens.BeginAt(tokenIndex));
+        }
+        private owned string CurrentText() { return LexemeAt(index); }
+        private bool AtText(string value)
+        {
+            if (!At(TokenKind.Identifier)) { return false; }
+            raii string text = CurrentText();
+            return text == value;
+        }
+        private bool IsKnownType(string value)
+        {
+            int cursor = 0;
+            while (cursor < knownTypes.Count())
+            {
+                if (knownTypes[cursor] == value) { return true; }
+                cursor = cursor + 1;
+            }
+            return false;
+        }
+        private void AddKnownType(string value) { knownTypes.Add(String.Copy(value)); }
+        private int NewNode(string kind) { return tree.Create(kind); }
+        private SyntaxNode Node(int id) { return tree.Node(id); }
+
+        private static bool Builtin(TokenKind kind)
+        {
+            return kind >= TokenKind.KwVoid && kind <= TokenKind.KwString;
+        }
+        private static bool Modifier(TokenKind kind)
+        {
+            return kind == TokenKind.KwPublic || kind == TokenKind.KwInternal ||
+                kind == TokenKind.KwProtected || kind == TokenKind.KwPrivate ||
+                kind == TokenKind.KwStatic || kind == TokenKind.KwConst || kind == TokenKind.KwReadonly ||
+                kind == TokenKind.KwVolatile || kind == TokenKind.KwInline ||
+                kind == TokenKind.KwForceInline || kind == TokenKind.KwNoInline ||
+                kind == TokenKind.KwNoHeap || kind == TokenKind.KwVirtual ||
+                kind == TokenKind.KwOverride || kind == TokenKind.KwAbstract ||
+                kind == TokenKind.KwSealed || kind == TokenKind.KwExport || kind == TokenKind.KwExtern;
+        }
+        private static bool Ownership(TokenKind kind)
+        {
+            return kind == TokenKind.KwOwned || kind == TokenKind.KwBorrowed;
+        }
+        private bool AtGenericGreater()
+        {
+            return pendingGenericGreater > 0 || At(TokenKind.Greater) || At(TokenKind.GreaterGreater);
+        }
+        private bool ConsumeGenericGreater()
+        {
+            if (pendingGenericGreater > 0) { pendingGenericGreater = pendingGenericGreater - 1; return true; }
+            if (ConsumeIf(TokenKind.Greater)) { return true; }
+            if (At(TokenKind.GreaterGreater)) { Consume(); pendingGenericGreater = 1; return true; }
+            errors = errors + 1; return false;
+        }
+
+        private owned string ParseType()
+        {
+            raii StringBuilder output = new StringBuilder();
+            if (Ownership(Current()))
+            {
+                raii string qualifier = CurrentText();
+                output.Append(qualifier); output.Append(' '); Consume();
+            }
+            if (!Builtin(Current()) && !At(TokenKind.Identifier))
+            {
+                errors = errors + 1;
+                return output.ToOwnedString();
+            }
+            raii string first = CurrentText(); output.Append(first); Consume();
+            while (At(TokenKind.Dot) && Peek(1) == TokenKind.Identifier)
+            {
+                output.Append('.'); Consume();
+                raii string part = CurrentText(); output.Append(part); Consume();
+            }
+            if (ConsumeIf(TokenKind.Less))
+            {
+                output.Append('<');
+                bool firstArgument = true;
+                while (!AtGenericGreater() && !At(TokenKind.EndOfFile))
+                {
+                    if (!firstArgument) { Expect(TokenKind.Comma); output.Append(','); }
+                    raii string argument = ParseType(); output.Append(argument);
+                    firstArgument = false;
+                    if (!At(TokenKind.Comma)) { break; }
+                }
+                ConsumeGenericGreater(); output.Append('>');
+            }
+            while (true)
+            {
+                if (ConsumeIf(TokenKind.Star)) { output.Append('*'); }
+                else if (ConsumeIf(TokenKind.LeftBracket))
+                {
+                    if (ConsumeIf(TokenKind.RightBracket)) { output.Append("[]"); }
+                    else if (ConsumeIf(TokenKind.Star))
+                    {
+                        Expect(TokenKind.RightBracket); output.Append("[*]");
+                    }
+                    else
+                    {
+                        int depth = 1;
+                        while (depth > 0 && !At(TokenKind.EndOfFile))
+                        {
+                            if (At(TokenKind.LeftBracket)) { depth = depth + 1; }
+                            else if (At(TokenKind.RightBracket)) { depth = depth - 1; }
+                            Consume();
+                        }
+                        output.Append("[expr]");
+                    }
+                }
+                else { break; }
+            }
+            return output.ToOwnedString();
+        }
+
+        private owned string ParseAllocationType()
+        {
+            raii StringBuilder output = new StringBuilder();
+            if (Ownership(Current()))
+            {
+                raii string qualifier = CurrentText(); output.Append(qualifier); output.Append(' '); Consume();
+            }
+            raii string first = CurrentText(); output.Append(first); Consume();
+            while (At(TokenKind.Dot) && Peek(1) == TokenKind.Identifier)
+            {
+                output.Append('.'); Consume(); raii string part = CurrentText(); output.Append(part); Consume();
+            }
+            if (ConsumeIf(TokenKind.Less))
+            {
+                output.Append('<'); bool firstArgument = true;
+                while (!AtGenericGreater() && !At(TokenKind.EndOfFile))
+                {
+                    if (!firstArgument) { Expect(TokenKind.Comma); output.Append(','); }
+                    raii string argument = ParseType(); output.Append(argument); firstArgument = false;
+                    if (!At(TokenKind.Comma)) { break; }
+                }
+                ConsumeGenericGreater(); output.Append('>');
+            }
+            while (ConsumeIf(TokenKind.Star)) { output.Append('*'); }
+            return output.ToOwnedString();
+        }
+
+        private void ParseGenericParameters(int declaration)
+        {
+            if (!ConsumeIf(TokenKind.Less)) { return; }
+            raii StringBuilder parameters = new StringBuilder(); bool first = true;
+            while (!AtGenericGreater() && !At(TokenKind.EndOfFile))
+            {
+                if (!first) { Expect(TokenKind.Comma); parameters.Append(','); }
+                raii string name = CurrentText(); parameters.Append(name); Expect(TokenKind.Identifier);
+                first = false; if (!At(TokenKind.Comma)) { break; }
+            }
+            ConsumeGenericGreater(); raii string text = parameters.ToOwnedString(); Node(declaration).SetGenericText(text);
+        }
+        private void ParseGenericConstraints(int declaration)
+        {
+            raii StringBuilder clauses = new StringBuilder();
+            while (AtText("where"))
+            {
+                Consume(); clauses.Append(" where "); raii string parameter = CurrentText();
+                clauses.Append(parameter); Expect(TokenKind.Identifier); Expect(TokenKind.Colon); clauses.Append(':');
+                bool first = true;
+                while (!At(TokenKind.LeftBrace) && !At(TokenKind.Semicolon) && !At(TokenKind.EndOfFile) && !AtText("where"))
+                {
+                    if (!first) { Expect(TokenKind.Comma); clauses.Append(','); }
+                    if (At(TokenKind.KwClass)) { clauses.Append("class"); Consume(); }
+                    else { raii string type = ParseType(); clauses.Append(type); }
+                    first = false; if (!At(TokenKind.Comma)) { break; }
+                }
+            }
+            raii string text = clauses.ToOwnedString(); Node(declaration).SetConstraintsText(text);
+        }
+
+        private int IdentifierExpression()
+        {
+            raii string name = CurrentText(); Consume();
+            int node = NewNode("IdentifierExpression");
+            Node(node).SetText(name); Node(node).SetOperator(TokenKind.Identifier);
+            return node;
+        }
+
+        private int LiteralExpression(string kind, TokenKind tokenKind)
+        {
+            raii string spelling = CurrentText(); Consume();
+            int node = NewNode(kind);
+            if (tokenKind == TokenKind.StringLiteral && spelling.Length >= 2)
+            {
+                raii string contents = DecodeString(spelling);
+                Node(node).SetText(contents);
+            }
+            else { Node(node).SetText(spelling); }
+            Node(node).SetOperator(tokenKind);
+            return node;
+        }
+
+        private static int HexValue(char value)
+        {
+            if (value >= '0' && value <= '9') { return value - '0'; }
+            if (value >= 'A' && value <= 'F') { return value - 'A' + 10; }
+            return value - 'a' + 10;
+        }
+        private static owned string DecodeString(string spelling)
+        {
+            raii StringBuilder output = new StringBuilder(spelling.Length);
+            int cursor = 1;
+            while (cursor + 1 < spelling.Length)
+            {
+                char value = spelling[cursor]; cursor = cursor + 1;
+                if (value != '\\') { output.Append(value); continue; }
+                char escape = spelling[cursor]; cursor = cursor + 1;
+                if (escape == '0') { output.Append('\0'); }
+                else if (escape == 'a') { output.Append((char)7); }
+                else if (escape == 'b') { output.Append((char)8); }
+                else if (escape == 'f') { output.Append((char)12); }
+                else if (escape == 'n') { output.Append('\n'); }
+                else if (escape == 'r') { output.Append('\r'); }
+                else if (escape == 't') { output.Append('\t'); }
+                else if (escape == 'v') { output.Append((char)11); }
+                else if (escape == 'x' && cursor + 1 < spelling.Length)
+                {
+                    int decoded = HexValue(spelling[cursor]) * 16 + HexValue(spelling[cursor + 1]);
+                    cursor = cursor + 2; output.Append((char)decoded);
+                }
+                else { output.Append(escape); }
+            }
+            return output.ToOwnedString();
+        }
+
+        private bool TypeStartsHere()
+        {
+            if (Builtin(Current()) || Ownership(Current())) { return true; }
+            if (!At(TokenKind.Identifier)) { return false; }
+            raii string name = CurrentText(); return IsKnownType(name);
+        }
+
+        private bool LooksLikeCast()
+        {
+            if (!At(TokenKind.LeftParen)) { return false; }
+            int saved = index; index = index + 1;
+            if (!TypeStartsHere()) { index = saved; return false; }
+            raii string type = ParseType();
+            bool result = At(TokenKind.RightParen);
+            index = saved; return result;
+        }
+
+        private int ParsePrimary()
+        {
+            if (At(TokenKind.Identifier)) { return IdentifierExpression(); }
+            if (At(TokenKind.IntegerLiteral)) { return LiteralExpression("IntegerLiteralExpression", TokenKind.IntegerLiteral); }
+            if (At(TokenKind.FloatingLiteral)) { return LiteralExpression("FloatingLiteralExpression", TokenKind.FloatingLiteral); }
+            if (At(TokenKind.CharacterLiteral)) { return LiteralExpression("CharacterLiteralExpression", TokenKind.CharacterLiteral); }
+            if (At(TokenKind.StringLiteral)) { return LiteralExpression("StringLiteralExpression", TokenKind.StringLiteral); }
+            if (At(TokenKind.KwTrue) || At(TokenKind.KwFalse))
+            {
+                TokenKind kind = Current();
+                return LiteralExpression("BooleanLiteralExpression", kind);
+            }
+            if (At(TokenKind.KwNull)) { return LiteralExpression("NullLiteralExpression", TokenKind.KwNull); }
+            if (At(TokenKind.KwThis)) { return LiteralExpression("ThisExpression", TokenKind.KwThis); }
+            if (At(TokenKind.KwBase)) { return LiteralExpression("BaseExpression", TokenKind.KwBase); }
+            if (ConsumeIf(TokenKind.LeftParen))
+            {
+                int expression = ParseExpression(); Expect(TokenKind.RightParen); return expression;
+            }
+            errors = errors + 1;
+            Consume();
+            return NewNode("IdentifierExpression");
+        }
+
+        private int ParsePostfix()
+        {
+            int expression = ParsePrimary();
+            bool scanning = true;
+            while (scanning)
+            {
+                if (At(TokenKind.Less) && ConsumeGenericCallArguments()) { }
+                else if (ConsumeIf(TokenKind.LeftParen))
+                {
+                    int call = NewNode("CallExpression"); Node(call).SetFirst(expression);
+                    if (!At(TokenKind.RightParen))
+                    {
+                        while (true)
+                        {
+                            Node(call).AddChild(ParseArgument());
+                            if (!ConsumeIf(TokenKind.Comma)) { break; }
+                        }
+                    }
+                    Expect(TokenKind.RightParen); expression = call;
+                }
+                else if (ConsumeIf(TokenKind.LeftBracket))
+                {
+                    int indexed = NewNode("IndexExpression"); Node(indexed).SetFirst(expression);
+                    int firstIndex = ParseExpression(); Node(indexed).SetSecond(firstIndex); Node(indexed).AddChild(firstIndex);
+                    while (ConsumeIf(TokenKind.Comma)) { Node(indexed).AddChild(ParseExpression()); }
+                    Expect(TokenKind.RightBracket); expression = indexed;
+                }
+                else if (ConsumeIf(TokenKind.Dot))
+                {
+                    raii string member = CurrentText(); Expect(TokenKind.Identifier);
+                    int access = NewNode("MemberExpression"); Node(access).SetText(member); Node(access).SetFirst(expression);
+                    expression = access;
+                }
+                else if (ConsumeIf(TokenKind.Arrow))
+                {
+                    int dereference = NewNode("UnaryExpression"); Node(dereference).SetOperator(TokenKind.Star);
+                    Node(dereference).SetAuxiliary("arrow"); Node(dereference).SetFirst(expression);
+                    raii string member = CurrentText(); Expect(TokenKind.Identifier);
+                    int access = NewNode("MemberExpression"); Node(access).SetText(member); Node(access).SetFirst(dereference);
+                    expression = access;
+                }
+                else if (At(TokenKind.PlusPlus) || At(TokenKind.MinusMinus))
+                {
+                    TokenKind operation = Current(); Consume();
+                    int postfix = NewNode("PostfixExpression"); Node(postfix).SetOperator(operation); Node(postfix).SetFirst(expression);
+                    expression = postfix;
+                }
+                else { scanning = false; }
+            }
+            return expression;
+        }
+
+        private bool ConsumeGenericCallArguments()
+        {
+            if (!At(TokenKind.Less)) { return false; }
+            int savedIndex = index; int savedPending = pendingGenericGreater; int savedErrors = errors;
+            Consume();
+            while (!AtGenericGreater() && !At(TokenKind.EndOfFile))
+            {
+                raii string argument = ParseType();
+                if (!ConsumeIf(TokenKind.Comma)) { break; }
+            }
+            bool closed = AtGenericGreater();
+            if (closed) { ConsumeGenericGreater(); }
+            bool valid = closed && At(TokenKind.LeftParen);
+            if (!valid)
+            {
+                index = savedIndex; pendingGenericGreater = savedPending; errors = savedErrors;
+            }
+            return valid;
+        }
+
+        private int ParseArgument()
+        {
+            raii string passKind = String.Copy("");
+            if (AtText("ref") || AtText("out") || At(TokenKind.KwIn))
+            {
+                if (At(TokenKind.KwIn))
+                {
+                    raii string assigned = String.Copy("in"); passKind = move(assigned);
+                }
+                else
+                {
+                    raii string assigned = CurrentText(); passKind = move(assigned);
+                }
+                Consume();
+            }
+            int expression = ParseExpression();
+            if (passKind.Length == 0) { return expression; }
+            int wrapper = NewNode("UnaryExpression"); Node(wrapper).SetOperator(TokenKind.Amp);
+            raii string auxiliary = String.Concat("pass:", passKind); Node(wrapper).SetAuxiliary(auxiliary);
+            Node(wrapper).SetFirst(expression); return wrapper;
+        }
+
+        private int ParseUnary()
+        {
+            if (LooksLikeCast())
+            {
+                Consume(); raii string type = ParseType(); Expect(TokenKind.RightParen);
+                int node = NewNode("CastExpression"); Node(node).SetType(type); Node(node).SetFirst(ParseUnary()); return node;
+            }
+            if (At(TokenKind.Plus) || At(TokenKind.Minus) || At(TokenKind.Bang) ||
+                At(TokenKind.Tilde) || At(TokenKind.Star) || At(TokenKind.Amp) ||
+                At(TokenKind.PlusPlus) || At(TokenKind.MinusMinus))
+            {
+                TokenKind operation = Current(); Consume();
+                int node = NewNode("UnaryExpression"); Node(node).SetOperator(operation); Node(node).SetFirst(ParseUnary());
+                return node;
+            }
+            if (At(TokenKind.KwDelete) || At(TokenKind.KwDestroy))
+            {
+                bool isDestroy = At(TokenKind.KwDestroy); Consume();
+                bool arrayForm = false;
+                if (ConsumeIf(TokenKind.LeftBracket)) { Expect(TokenKind.RightBracket); arrayForm = true; }
+                int node = NewNode(isDestroy ? "DestroyExpression" : "DeleteExpression");
+                Node(node).SetFlag(arrayForm); Node(node).SetFirst(ParseUnary()); return node;
+            }
+            if (At(TokenKind.KwMove))
+            {
+                Consume(); Expect(TokenKind.LeftParen); int value = ParseExpression(); Expect(TokenKind.RightParen);
+                int node = NewNode("MoveExpression"); Node(node).SetFirst(value); return node;
+            }
+            if (At(TokenKind.KwSizeof) || At(TokenKind.KwAlignof))
+            {
+                bool size = At(TokenKind.KwSizeof); Consume(); Expect(TokenKind.LeftParen);
+                if (TypeStartsHere())
+                {
+                    raii string type = ParseType(); Expect(TokenKind.RightParen);
+                    int node = NewNode(size ? "SizeofTypeExpression" : "AlignofTypeExpression"); Node(node).SetType(type); return node;
+                }
+                int expression = ParseExpression(); Expect(TokenKind.RightParen);
+                int node = NewNode(size ? "SizeofExpression" : "AlignofExpression"); Node(node).SetFirst(expression); return node;
+            }
+            if (At(TokenKind.KwStackalloc) || At(TokenKind.KwNew))
+            {
+                bool stack = At(TokenKind.KwStackalloc); Consume();
+                raii string type = ParseAllocationType();
+                int node = -1;
+                if (!stack && At(TokenKind.LeftParen)) { node = NewNode("ObjectCreationExpression"); }
+                else { node = NewNode(stack ? "StackallocExpression" : "NewExpression"); }
+                Node(node).SetType(type);
+                if (ConsumeIf(TokenKind.LeftBracket))
+                {
+                    Node(node).SetFirst(ParseExpression()); Expect(TokenKind.RightBracket); Node(node).SetFlag(!stack);
+                }
+                else if (ConsumeIf(TokenKind.LeftParen))
+                {
+                    while (!At(TokenKind.RightParen) && !At(TokenKind.EndOfFile))
+                    {
+                        Node(node).AddChild(ParseExpression());
+                        if (!ConsumeIf(TokenKind.Comma)) { break; }
+                    }
+                    Expect(TokenKind.RightParen);
+                }
+                return node;
+            }
+            return ParsePostfix();
+        }
+
+        private int BinaryNode(TokenKind operation, int left, int right)
+        {
+            int node = NewNode("BinaryExpression"); Node(node).SetOperator(operation);
+            Node(node).SetFirst(left); Node(node).SetSecond(right); return node;
+        }
+
+        private int ParseMultiplicative()
+        {
+            int left = ParseUnary();
+            while (At(TokenKind.Star) || At(TokenKind.Slash) || At(TokenKind.Percent))
+            { TokenKind operation = Current(); Consume(); left = BinaryNode(operation, left, ParseUnary()); }
+            return left;
+        }
+        private int ParseAdditive()
+        {
+            int left = ParseMultiplicative();
+            while (At(TokenKind.Plus) || At(TokenKind.Minus))
+            { TokenKind operation = Current(); Consume(); left = BinaryNode(operation, left, ParseMultiplicative()); }
+            return left;
+        }
+        private int ParseShift()
+        {
+            int left = ParseAdditive();
+            while (At(TokenKind.LessLess) || At(TokenKind.GreaterGreater))
+            { TokenKind operation = Current(); Consume(); left = BinaryNode(operation, left, ParseAdditive()); }
+            return left;
+        }
+        private int ParseRelational()
+        {
+            int left = ParseShift();
+            while (At(TokenKind.Less) || At(TokenKind.LessEqual) || At(TokenKind.Greater) || At(TokenKind.GreaterEqual))
+            { TokenKind operation = Current(); Consume(); left = BinaryNode(operation, left, ParseShift()); }
+            return left;
+        }
+        private int ParseEquality()
+        {
+            int left = ParseRelational();
+            while (At(TokenKind.EqualEqual) || At(TokenKind.BangEqual))
+            { TokenKind operation = Current(); Consume(); left = BinaryNode(operation, left, ParseRelational()); }
+            return left;
+        }
+        private int ParseBitwiseAnd()
+        {
+            int left = ParseEquality();
+            while (ConsumeIf(TokenKind.Amp)) { left = BinaryNode(TokenKind.Amp, left, ParseEquality()); }
+            return left;
+        }
+        private int ParseBitwiseXor()
+        {
+            int left = ParseBitwiseAnd();
+            while (ConsumeIf(TokenKind.Caret)) { left = BinaryNode(TokenKind.Caret, left, ParseBitwiseAnd()); }
+            return left;
+        }
+        private int ParseBitwiseOr()
+        {
+            int left = ParseBitwiseXor();
+            while (ConsumeIf(TokenKind.Pipe)) { left = BinaryNode(TokenKind.Pipe, left, ParseBitwiseXor()); }
+            return left;
+        }
+        private int ParseLogicalAnd()
+        {
+            int left = ParseBitwiseOr();
+            while (ConsumeIf(TokenKind.AmpAmp)) { left = BinaryNode(TokenKind.AmpAmp, left, ParseBitwiseOr()); }
+            return left;
+        }
+        private int ParseLogicalOr()
+        {
+            int left = ParseLogicalAnd();
+            while (ConsumeIf(TokenKind.PipePipe)) { left = BinaryNode(TokenKind.PipePipe, left, ParseLogicalAnd()); }
+            return left;
+        }
+        private static bool Assignment(TokenKind kind)
+        {
+            return kind == TokenKind.Equal || (kind >= TokenKind.PlusEqual && kind <= TokenKind.GreaterGreaterEqual);
+        }
+        private int ParseExpression()
+        {
+            int left = ParseLogicalOr();
+            if (ConsumeIf(TokenKind.Question))
+            {
+                int node = NewNode("ConditionalExpression"); Node(node).SetFirst(left);
+                Node(node).SetSecond(ParseExpression()); Expect(TokenKind.Colon); Node(node).SetThird(ParseExpression());
+                return node;
+            }
+            if (Assignment(Current()))
+            {
+                TokenKind operation = Current(); Consume();
+                int node = NewNode("AssignmentExpression"); Node(node).SetOperator(operation);
+                Node(node).SetFirst(left); Node(node).SetSecond(ParseExpression()); return node;
+            }
+            return left;
+        }
+
+        private bool LooksLikeVariable()
+        {
+            int cursor = index;
+            if (tokens.KindAt(cursor) == TokenKind.KwRaii || tokens.KindAt(cursor) == TokenKind.KwConst) { cursor = cursor + 1; }
+            if (Ownership(tokens.KindAt(cursor))) { cursor = cursor + 1; }
+            TokenKind first = tokens.KindAt(cursor);
+            if (!Builtin(first) && first != TokenKind.Identifier) { return false; }
+            cursor = cursor + 1;
+            while (tokens.KindAt(cursor) == TokenKind.Dot && tokens.KindAt(cursor + 1) == TokenKind.Identifier)
+            { cursor = cursor + 2; }
+            if (tokens.KindAt(cursor) == TokenKind.Less)
+            {
+                int depth = 0;
+                while (cursor < tokens.Count())
+                {
+                    if (tokens.KindAt(cursor) == TokenKind.Less) { depth = depth + 1; }
+                    else if (tokens.KindAt(cursor) == TokenKind.Greater) { depth = depth - 1; }
+                    else if (tokens.KindAt(cursor) == TokenKind.GreaterGreater) { depth = depth - 2; }
+                    cursor = cursor + 1;
+                    if (depth <= 0) { break; }
+                }
+            }
+            while (tokens.KindAt(cursor) == TokenKind.Star) { cursor = cursor + 1; }
+            while (tokens.KindAt(cursor) == TokenKind.LeftBracket)
+            {
+                int depth = 1; cursor = cursor + 1;
+                while (cursor < tokens.Count() && depth > 0)
+                {
+                    if (tokens.KindAt(cursor) == TokenKind.LeftBracket) { depth = depth + 1; }
+                    else if (tokens.KindAt(cursor) == TokenKind.RightBracket) { depth = depth - 1; }
+                    cursor = cursor + 1;
+                }
+            }
+            return tokens.KindAt(cursor) == TokenKind.Identifier;
+        }
+
+        private int ParseVariable(bool semicolon)
+        {
+            bool isRaii = ConsumeIf(TokenKind.KwRaii);
+            bool isConst = ConsumeIf(TokenKind.KwConst);
+            raii string type = ParseType();
+            raii string name = CurrentText(); Expect(TokenKind.Identifier);
+            int node = NewNode("VariableDeclarationStatement"); Node(node).SetText(name); Node(node).SetType(type);
+            if (isConst) { Node(node).SetAuxiliary("const"); }
+            if (ConsumeIf(TokenKind.Equal)) { Node(node).SetFirst(ParseExpression()); }
+            if (semicolon) { Expect(TokenKind.Semicolon); }
+            return node;
+        }
+
+        private int ParseBlock()
+        {
+            Expect(TokenKind.LeftBrace);
+            int block = NewNode("BlockStatement");
+            while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+            {
+                int before = index;
+                int statement = ParseStatement();
+                if (statement >= 0) { Node(block).AddChild(statement); }
+                if (index == before) { errors = errors + 1; Consume(); }
+            }
+            Expect(TokenKind.RightBrace);
+            return block;
+        }
+
+        private int ParseIf()
+        {
+            Consume(); Expect(TokenKind.LeftParen); int condition = ParseExpression(); Expect(TokenKind.RightParen);
+            int node = NewNode("IfStatement"); Node(node).SetFirst(condition); Node(node).SetSecond(ParseStatement());
+            if (ConsumeIf(TokenKind.KwElse)) { Node(node).SetThird(ParseStatement()); }
+            return node;
+        }
+        private int ParseWhile()
+        {
+            Consume(); Expect(TokenKind.LeftParen); int condition = ParseExpression(); Expect(TokenKind.RightParen);
+            int node = NewNode("WhileStatement"); Node(node).SetFirst(condition); Node(node).SetSecond(ParseStatement()); return node;
+        }
+        private int ParseDoWhile()
+        {
+            Consume(); int body = ParseStatement(); Expect(TokenKind.KwWhile); Expect(TokenKind.LeftParen);
+            int condition = ParseExpression(); Expect(TokenKind.RightParen); Expect(TokenKind.Semicolon);
+            int node = NewNode("DoWhileStatement"); Node(node).SetFirst(condition); Node(node).SetSecond(body); return node;
+        }
+        private int ParseReturn()
+        {
+            Consume(); int node = NewNode("ReturnStatement");
+            if (!At(TokenKind.Semicolon)) { Node(node).SetFirst(ParseExpression()); }
+            Expect(TokenKind.Semicolon); return node;
+        }
+        private int ParseThrow()
+        {
+            Consume(); int node = NewNode("ThrowStatement");
+            if (!At(TokenKind.Semicolon)) { Node(node).SetFirst(ParseExpression()); }
+            Expect(TokenKind.Semicolon); return node;
+        }
+        private int ParseFor()
+        {
+            Consume(); Expect(TokenKind.LeftParen); int node = NewNode("ForStatement");
+            if (!At(TokenKind.Semicolon))
+            {
+                if (LooksLikeVariable()) { Node(node).SetFirst(ParseVariable(false)); }
+                else { Node(node).SetFirst(ParseExpression()); }
+            }
+            Expect(TokenKind.Semicolon);
+            if (!At(TokenKind.Semicolon)) { Node(node).SetSecond(ParseExpression()); }
+            Expect(TokenKind.Semicolon);
+            if (!At(TokenKind.RightParen)) { Node(node).SetThird(ParseExpression()); }
+            Expect(TokenKind.RightParen); Node(node).AddChild(ParseStatement()); return node;
+        }
+        private int ParseForeach()
+        {
+            Consume(); Expect(TokenKind.LeftParen); raii string type = ParseType();
+            raii string name = CurrentText(); Expect(TokenKind.Identifier); Expect(TokenKind.KwIn);
+            int expression = ParseExpression(); Expect(TokenKind.RightParen);
+            int node = NewNode("ForeachStatement"); Node(node).SetText(name); Node(node).SetType(type);
+            Node(node).SetFirst(expression); Node(node).SetSecond(ParseStatement()); return node;
+        }
+
+        private bool AtSwitchLabel()
+        {
+            return At(TokenKind.KwCase) || (At(TokenKind.KwDefault) && Peek(1) == TokenKind.Colon);
+        }
+        private int ParseSwitch()
+        {
+            Consume(); Expect(TokenKind.LeftParen); int governing = ParseExpression();
+            Expect(TokenKind.RightParen); Expect(TokenKind.LeftBrace);
+            int node = NewNode("SwitchStatement"); Node(node).SetFirst(governing);
+            while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+            {
+                if (!AtSwitchLabel()) { errors = errors + 1; Consume(); continue; }
+                int section = NewNode("SwitchSection");
+                while (AtSwitchLabel())
+                {
+                    bool isDefault = At(TokenKind.KwDefault); Consume();
+                    int label = NewNode("SwitchLabel"); Node(label).SetFlag(isDefault);
+                    if (!isDefault) { Node(label).SetFirst(ParseExpression()); }
+                    Expect(TokenKind.Colon); Node(section).AddChild(label);
+                }
+                while (!AtSwitchLabel() && !At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+                {
+                    int before = index; Node(section).AddChild(ParseStatement());
+                    if (before == index) { Consume(); errors = errors + 1; }
+                }
+                Node(node).AddChild(section);
+            }
+            Expect(TokenKind.RightBrace); return node;
+        }
+
+        private int ParseCatch()
+        {
+            Consume(); int clause = NewNode("CatchClause");
+            if (ConsumeIf(TokenKind.LeftParen))
+            {
+                raii string type = ParseType(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
+                Node(clause).SetType(type); Node(clause).SetText(name); Expect(TokenKind.RightParen);
+            }
+            else { Node(clause).SetFlag(true); }
+            Node(clause).SetFirst(ParseBlock()); return clause;
+        }
+        private int ParseTry()
+        {
+            Consume(); int node = NewNode("TryStatement"); Node(node).SetFirst(ParseBlock());
+            while (At(TokenKind.KwCatch)) { Node(node).AddChild(ParseCatch()); }
+            if (ConsumeIf(TokenKind.KwFinally)) { Node(node).SetSecond(ParseBlock()); }
+            return node;
+        }
+        private int ParseUsingStatement()
+        {
+            Consume(); Expect(TokenKind.LeftParen); raii string type = ParseType();
+            raii string name = CurrentText(); Expect(TokenKind.Identifier); Expect(TokenKind.Equal);
+            int initializer = ParseExpression(); Expect(TokenKind.RightParen);
+            int node = NewNode("UsingStatement"); Node(node).SetType(type); Node(node).SetText(name);
+            Node(node).SetFirst(initializer); Node(node).SetSecond(ParseBlock()); return node;
+        }
+        private int ParseStaticAssert()
+        {
+            Consume(); Expect(TokenKind.LeftParen); int condition = ParseExpression();
+            raii string message = String.Copy("");
+            if (ConsumeIf(TokenKind.Comma))
+            {
+                if (At(TokenKind.StringLiteral))
+                {
+                    raii string spelling = CurrentText(); raii string decoded = DecodeString(spelling);
+                    message = move(decoded); Consume();
+                }
+                else { errors = errors + 1; }
+            }
+            Expect(TokenKind.RightParen); Expect(TokenKind.Semicolon);
+            int node = NewNode("StaticAssertStatement"); Node(node).SetFirst(condition); Node(node).SetText(message); return node;
+        }
+
+        private owned string ParseAssemblyConstraint(bool output, out bool explicitConstraint)
+        {
+            explicitConstraint = ConsumeIf(TokenKind.Colon);
+            if (!explicitConstraint) { return String.Copy(output ? "=r" : "r"); }
+            if (!At(TokenKind.StringLiteral)) { errors = errors + 1; return String.Copy(output ? "=r" : "r"); }
+            raii string spelling = CurrentText(); raii string decoded = DecodeString(spelling); Consume(); return move(decoded);
+        }
+        private void ParseAssemblyOperands(int statement, bool output)
+        {
+            Consume(); Expect(TokenKind.LeftParen);
+            while (!At(TokenKind.RightParen) && !At(TokenKind.EndOfFile))
+            {
+                int expression = ParseUnary(); bool explicitConstraint = false;
+                raii string constraint = ParseAssemblyConstraint(output, out explicitConstraint);
+                int operand = NewNode(output ? "InlineAssemblyOutputOperand" : "InlineAssemblyInputOperand");
+                Node(operand).SetFirst(expression); Node(operand).SetAuxiliary(constraint);
+                Node(operand).SetFlag(explicitConstraint); Node(statement).AddChild(operand);
+                if (!ConsumeIf(TokenKind.Comma)) { break; }
+            }
+            Expect(TokenKind.RightParen);
+        }
+        private static bool NonvolatileAssemblyRegister(string name)
+        {
+            return name == "rbx" || name == "rbp" || name == "rdi" || name == "rsi" ||
+                name == "r12" || name == "r13" || name == "r14" || name == "r15" ||
+                name == "xmm6" || name == "xmm7" || name == "xmm8" || name == "xmm9" ||
+                name == "xmm10" || name == "xmm11" || name == "xmm12" || name == "xmm13" ||
+                name == "xmm14" || name == "xmm15";
+        }
+        private void ParseAssemblyClobbers(int statement)
+        {
+            Consume(); Expect(TokenKind.LeftParen);
+            while (!At(TokenKind.RightParen) && !At(TokenKind.EndOfFile))
+            {
+                raii string spelling = CurrentText(); raii string decoded = DecodeString(spelling);
+                raii string name = String.ToLower(decoded); Expect(TokenKind.StringLiteral);
+                int clobber = NewNode("InlineAssemblyClobber"); Node(clobber).SetText(name);
+                if (name == "cc") { Node(clobber).SetAuxiliary("flags"); }
+                else if (name == "memory") { Node(clobber).SetAuxiliary("memory"); }
+                else { Node(clobber).SetAuxiliary("register"); Node(clobber).SetFlag(NonvolatileAssemblyRegister(name)); }
+                Node(statement).AddChild(clobber);
+                if (!ConsumeIf(TokenKind.Comma)) { break; }
+            }
+            Expect(TokenKind.RightParen);
+        }
+        private int ParseInlineAssembly()
+        {
+            Consume(); Expect(TokenKind.LeftBrace); int statement = NewNode("InlineAssemblyStatement");
+            raii StringBuilder exact = new StringBuilder();
+            while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+            {
+                raii string raw = CurrentText(); exact.Append(raw);
+                if (At(TokenKind.AssemblyText))
+                {
+                    raii string trimmed = String.Trim(raw);
+                    if (trimmed.Length != 0)
+                    {
+                        int line = NewNode("InlineAssemblyLine"); Node(line).SetText(trimmed); Node(statement).AddChild(line);
+                    }
+                }
+                Consume();
+            }
+            Expect(TokenKind.RightBrace); raii string body = exact.ToOwnedString(); Node(statement).SetText(body);
+            bool clauses = false;
+            if (AtText("out")) { ParseAssemblyOperands(statement, true); clauses = true; }
+            if (At(TokenKind.KwIn)) { ParseAssemblyOperands(statement, false); clauses = true; }
+            if (AtText("clobber")) { ParseAssemblyClobbers(statement); clauses = true; }
+            if (clauses) { Expect(TokenKind.Semicolon); }
+            return statement;
+        }
+
+        private int ParseStatement()
+        {
+            if (At(TokenKind.LeftBrace)) { return ParseBlock(); }
+            if (AtText("asm") && Peek(1) == TokenKind.LeftBrace) { return ParseInlineAssembly(); }
+            if (At(TokenKind.KwIf)) { return ParseIf(); }
+            if (At(TokenKind.KwWhile)) { return ParseWhile(); }
+            if (At(TokenKind.KwDo)) { return ParseDoWhile(); }
+            if (At(TokenKind.KwFor)) { return ParseFor(); }
+            if (At(TokenKind.KwForeach)) { return ParseForeach(); }
+            if (At(TokenKind.KwSwitch)) { return ParseSwitch(); }
+            if (At(TokenKind.KwReturn)) { return ParseReturn(); }
+            if (At(TokenKind.KwTry)) { return ParseTry(); }
+            if (At(TokenKind.KwThrow)) { return ParseThrow(); }
+            if (At(TokenKind.KwUsing)) { return ParseUsingStatement(); }
+            if (At(TokenKind.KwStaticAssert)) { return ParseStaticAssert(); }
+            if (At(TokenKind.KwBreak)) { Consume(); Expect(TokenKind.Semicolon); return NewNode("BreakStatement"); }
+            if (At(TokenKind.KwContinue)) { Consume(); Expect(TokenKind.Semicolon); return NewNode("ContinueStatement"); }
+            if (LooksLikeVariable()) { return ParseVariable(true); }
+            int expression = ParseExpression(); Expect(TokenKind.Semicolon);
+            int statement = NewNode("ExpressionStatement"); Node(statement).SetFirst(expression); return statement;
+        }
+
+        private int ParseParameter()
+        {
+            raii string passKind = String.Copy("");
+            if (AtText("ref") || AtText("out") || At(TokenKind.KwIn))
+            {
+                if (At(TokenKind.KwIn))
+                {
+                    raii string assigned = String.Copy("in"); passKind = move(assigned);
+                }
+                else
+                {
+                    raii string assigned = CurrentText(); passKind = move(assigned);
+                }
+                Consume();
+            }
+            raii string type = ParseType();
+            if (passKind.Length != 0)
+            {
+                raii string pointerType = String.Concat(type, "*"); type = move(pointerType);
+            }
+            raii string name = CurrentText(); Expect(TokenKind.Identifier);
+            int node = NewNode("ParameterDeclaration"); Node(node).SetText(name); Node(node).SetType(type);
+            if (passKind.Length != 0)
+            {
+                raii string auxiliary = String.Concat("pass:", passKind); Node(node).SetAuxiliary(auxiliary);
+            }
+            if (ConsumeIf(TokenKind.Equal)) { Node(node).SetFirst(ParseExpression()); }
+            return node;
+        }
+
+        private void ParseParameters(int declaration)
+        {
+            Expect(TokenKind.LeftParen);
+            if (!At(TokenKind.RightParen))
+            {
+                while (true)
+                {
+                    Node(declaration).AddChild(ParseParameter());
+                    if (!ConsumeIf(TokenKind.Comma)) { break; }
+                }
+            }
+            Expect(TokenKind.RightParen);
+        }
+
+        private int ParseFunction(owned string type, owned string name, bool externalOnly, string nodeKind)
+        {
+            int function = NewNode(nodeKind); Node(function).SetText(name); Node(function).SetType(type);
+            ParseGenericParameters(function);
+            ParseParameters(function);
+            ParseGenericConstraints(function);
+            if (ConsumeIf(TokenKind.Semicolon)) { Node(function).SetFlag(true); }
+            else { Node(function).SetFirst(ParseBlock()); }
+            return function;
+        }
+
+        private int ParseEnum()
+        {
+            Consume(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
+            int declaration = NewNode("EnumDeclaration"); Node(declaration).SetText(name);
+            AddKnownType(name);
+            Expect(TokenKind.LeftBrace);
+            while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+            {
+                raii string memberName = CurrentText(); Expect(TokenKind.Identifier);
+                int member = NewNode("EnumMemberDeclaration"); Node(member).SetText(memberName);
+                if (ConsumeIf(TokenKind.Equal)) { Node(member).SetFirst(ParseExpression()); }
+                Node(declaration).AddChild(member);
+                if (!ConsumeIf(TokenKind.Comma)) { break; }
+            }
+            Expect(TokenKind.RightBrace); ConsumeIf(TokenKind.Semicolon); return declaration;
+        }
+
+        private int ParseAggregate(string kind)
+        {
+            Consume(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
+            int declaration = NewNode(kind); Node(declaration).SetText(name);
+            AddKnownType(name);
+            ParseGenericParameters(declaration);
+            if (ConsumeIf(TokenKind.Colon))
+            {
+                raii string baseType = ParseType(); Node(declaration).SetType(baseType);
+                while (ConsumeIf(TokenKind.Comma)) { raii string ignoredBase = ParseType(); }
+            }
+            ParseGenericConstraints(declaration);
+            Expect(TokenKind.LeftBrace);
+            while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+            {
+                int memberBegin = index;
+                TokenKind accessibility = TokenKind.Invalid;
+                while (Modifier(Current()))
+                {
+                    if (Current() == TokenKind.KwPublic || Current() == TokenKind.KwInternal ||
+                        Current() == TokenKind.KwProtected || Current() == TokenKind.KwPrivate) { accessibility = Current(); }
+                    bool wasExtern = Current() == TokenKind.KwExtern;
+                    Consume();
+                    if (wasExtern && AtText("C")) { Consume(); }
+                }
+                if (At(TokenKind.KwStruct))
+                {
+                    int nested = ParseAggregate("StructDeclaration"); Node(nested).SetOperator(accessibility);
+                    Node(declaration).AddChild(nested); continue;
+                }
+                if (At(TokenKind.KwClass))
+                {
+                    int nested = ParseAggregate("ClassDeclaration"); Node(nested).SetOperator(accessibility);
+                    Node(declaration).AddChild(nested); continue;
+                }
+                if (At(TokenKind.Identifier))
+                {
+                    raii string possibleConstructor = CurrentText();
+                    if (possibleConstructor == name && Peek(1) == TokenKind.LeftParen)
+                    {
+                        Consume(); int constructor = NewNode("ConstructorDeclaration");
+                        Node(constructor).SetText(name); Node(constructor).SetOperator(accessibility);
+                        ParseParameters(constructor); Node(constructor).SetFirst(ParseBlock());
+                        Node(declaration).AddChild(constructor); continue;
+                    }
+                }
+                raii string type = ParseType();
+                if (At(TokenKind.KwOperator))
+                {
+                    int operatorMethod = ParseOperator(move(type), accessibility);
+                    Node(declaration).AddChild(operatorMethod); continue;
+                }
+                if (At(TokenKind.KwThis))
+                {
+                    int indexer = ParseIndexer(move(type), accessibility); Node(declaration).AddChild(indexer); continue;
+                }
+                raii string memberName = CurrentText(); Expect(TokenKind.Identifier);
+                if (At(TokenKind.LeftBrace))
+                {
+                    int property = ParseProperty(move(type), move(memberName), accessibility);
+                    Node(declaration).AddChild(property);
+                }
+                else if (At(TokenKind.LeftParen) || At(TokenKind.Less))
+                {
+                    int method = ParseFunction(move(type), move(memberName), false, "MethodDeclaration");
+                    if (kind == "InterfaceDeclaration")
+                    {
+                        Node(method).SetFlag(false);
+                        if (accessibility == TokenKind.Invalid) { accessibility = TokenKind.KwPublic; }
+                    }
+                    Node(method).SetOperator(accessibility); Node(declaration).AddChild(method);
+                }
+                else
+                {
+                    int field = NewNode("FieldDeclaration"); Node(field).SetText(memberName); Node(field).SetType(type);
+                    Node(field).SetOperator(accessibility);
+                    if (ConsumeIf(TokenKind.Equal)) { Node(field).SetFirst(ParseExpression()); }
+                    Expect(TokenKind.Semicolon); Node(declaration).AddChild(field);
+                }
+                if (index == memberBegin) { Consume(); errors = errors + 1; }
+            }
+            Expect(TokenKind.RightBrace); ConsumeIf(TokenKind.Semicolon); return declaration;
+        }
+
+        private int ParseUsing()
+        {
+            Consume(); raii StringBuilder name = new StringBuilder();
+            while (!At(TokenKind.Semicolon) && !At(TokenKind.EndOfFile))
+            {
+                raii string part = CurrentText(); name.Append(part); Consume();
+            }
+            Expect(TokenKind.Semicolon); int node = NewNode("UsingNamespaceDirective");
+            raii string text = name.ToOwnedString(); Node(node).SetText(text); return node;
+        }
+
+        private int ParseNamespace()
+        {
+            Consume(); raii StringBuilder name = new StringBuilder();
+            while (!At(TokenKind.LeftBrace) && !At(TokenKind.EndOfFile))
+            {
+                raii string part = CurrentText(); name.Append(part); Consume();
+            }
+            int node = NewNode("NamespaceDeclaration"); raii string text = name.ToOwnedString(); Node(node).SetText(text);
+            Expect(TokenKind.LeftBrace);
+            while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+            {
+                int before = index; int member = ParseGlobal();
+                if (member >= 0) { Node(node).AddChild(member); }
+                if (before == index) { Consume(); errors = errors + 1; }
+            }
+            Expect(TokenKind.RightBrace); return node;
+        }
+
+        private int ParseExternC()
+        {
+            Consume();
+            if (AtText("C")) { Consume(); }
+            if (ConsumeIf(TokenKind.LeftBrace))
+            {
+                int wrapper = NewNode("ExternCDeclaration");
+                while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile)) { Node(wrapper).AddChild(ParseGlobal()); }
+                Expect(TokenKind.RightBrace); return wrapper;
+            }
+            raii string type = ParseType(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
+            int wrapper = NewNode("ExternCDeclaration");
+            Node(wrapper).AddChild(ParseFunction(move(type), move(name), true, "FunctionDeclaration")); return wrapper;
+        }
+
+        private int ParseDelegate()
+        {
+            Consume(); raii string type = ParseType(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
+            int declaration = NewNode("DelegateDeclaration"); Node(declaration).SetText(name); Node(declaration).SetType(type);
+            Node(declaration).SetAuxiliary("delegate");
+            AddKnownType(name); ParseGenericParameters(declaration); ParseParameters(declaration);
+            ParseGenericConstraints(declaration); Expect(TokenKind.Semicolon); return declaration;
+        }
+
+        private owned string OperatorMethodName(TokenKind operation, int parameterCount)
+        {
+            if (operation == TokenKind.Plus && parameterCount == 1) { return String.Copy("op_UnaryPlus"); }
+            if (operation == TokenKind.Minus && parameterCount == 1) { return String.Copy("op_UnaryNegation"); }
+            if (operation == TokenKind.Bang) { return String.Copy("op_LogicalNot"); }
+            if (operation == TokenKind.Tilde) { return String.Copy("op_OnesComplement"); }
+            if (operation == TokenKind.Plus) { return String.Copy("op_Addition"); }
+            if (operation == TokenKind.Minus) { return String.Copy("op_Subtraction"); }
+            if (operation == TokenKind.Star) { return String.Copy("op_Multiply"); }
+            if (operation == TokenKind.Slash) { return String.Copy("op_Division"); }
+            if (operation == TokenKind.Percent) { return String.Copy("op_Modulus"); }
+            if (operation == TokenKind.EqualEqual) { return String.Copy("op_Equality"); }
+            if (operation == TokenKind.BangEqual) { return String.Copy("op_Inequality"); }
+            if (operation == TokenKind.Less) { return String.Copy("op_LessThan"); }
+            if (operation == TokenKind.LessEqual) { return String.Copy("op_LessThanOrEqual"); }
+            if (operation == TokenKind.Greater) { return String.Copy("op_GreaterThan"); }
+            if (operation == TokenKind.GreaterEqual) { return String.Copy("op_GreaterThanOrEqual"); }
+            if (operation == TokenKind.Amp) { return String.Copy("op_BitwiseAnd"); }
+            if (operation == TokenKind.Pipe) { return String.Copy("op_BitwiseOr"); }
+            if (operation == TokenKind.Caret) { return String.Copy("op_ExclusiveOr"); }
+            if (operation == TokenKind.LessLess) { return String.Copy("op_LeftShift"); }
+            if (operation == TokenKind.GreaterGreater) { return String.Copy("op_RightShift"); }
+            return String.Copy("op_Unknown");
+        }
+
+        private int ParseOperator(owned string type, TokenKind accessibility)
+        {
+            Consume(); TokenKind operation = Current(); Consume(); int method = NewNode("MethodDeclaration");
+            Node(method).SetType(type); Node(method).SetOperator(accessibility); ParseParameters(method);
+            raii string name = OperatorMethodName(operation, Node(method).ChildCount()); Node(method).SetText(name);
+            raii string auxiliary = String.Concat("operator:", TokenFacts.Name(operation)); Node(method).SetAuxiliary(auxiliary);
+            Node(method).SetFirst(ParseBlock()); return method;
+        }
+
+        private int MakeAccessor(string name, string auxiliary, string returnType, TokenKind accessibility)
+        {
+            int method = NewNode("MethodDeclaration"); Node(method).SetText(name);
+            Node(method).SetAuxiliary(auxiliary); Node(method).SetType(returnType); Node(method).SetOperator(accessibility);
+            if (ConsumeIf(TokenKind.Semicolon)) { return method; }
+            Node(method).SetFirst(ParseBlock()); return method;
+        }
+        private int ParseProperty(owned string type, owned string name, TokenKind accessibility)
+        {
+            int property = NewNode("PropertyDeclaration"); Node(property).SetText(name);
+            Node(property).SetAuxiliary("property"); Node(property).SetType(type); Node(property).SetOperator(accessibility);
+            Expect(TokenKind.LeftBrace);
+            while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+            {
+                if (ConsumeIf(TokenKind.KwGet))
+                {
+                    raii string methodName = String.Concat("get_", name);
+                    raii string auxiliary = String.Concat("property:get:", name);
+                    Node(property).AddChild(MakeAccessor(methodName, auxiliary, type, accessibility));
+                }
+                else if (ConsumeIf(TokenKind.KwSet))
+                {
+                    raii string methodName = String.Concat("set_", name);
+                    raii string auxiliary = String.Concat("property:set:", name);
+                    int setter = MakeAccessor(methodName, auxiliary, "void", accessibility);
+                    int value = NewNode("ParameterDeclaration"); Node(value).SetText("value"); Node(value).SetType(type);
+                    Node(setter).AddChild(value); Node(property).AddChild(setter);
+                }
+                else { Consume(); errors = errors + 1; }
+            }
+            Expect(TokenKind.RightBrace); return property;
+        }
+        private int ParseIndexer(owned string type, TokenKind accessibility)
+        {
+            Consume(); int indexer = NewNode("IndexerDeclaration"); Node(indexer).SetText("Item");
+            Node(indexer).SetAuxiliary("indexer"); Node(indexer).SetType(type); Node(indexer).SetOperator(accessibility);
+            raii List<int> parameters = new List<int>(); Expect(TokenKind.LeftBracket);
+            if (!At(TokenKind.RightBracket))
+            {
+                while (true)
+                {
+                    int parameter = ParseParameter(); parameters.Add(parameter);
+                    if (!ConsumeIf(TokenKind.Comma)) { break; }
+                }
+            }
+            Expect(TokenKind.RightBracket); Expect(TokenKind.LeftBrace);
+            while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
+            {
+                bool getter = At(TokenKind.KwGet); bool setter = At(TokenKind.KwSet); Consume();
+                raii string methodName = String.Copy(getter ? "get_Item" : "set_Item");
+                raii string auxiliary = String.Copy(getter ? "indexer:get:Item" : "indexer:set:Item");
+                int method = MakeAccessor(methodName, auxiliary, getter ? type : "void", accessibility);
+                int cursor = 0;
+                while (cursor < parameters.Count()) { Node(method).AddChild(parameters[cursor]); cursor = cursor + 1; }
+                if (setter)
+                {
+                    int value = NewNode("ParameterDeclaration"); Node(value).SetText("value"); Node(value).SetType(type);
+                    Node(method).AddChild(value);
+                }
+                Node(indexer).AddChild(method);
+            }
+            Expect(TokenKind.RightBrace); return indexer;
+        }
+
+        private int ParseGlobal()
+        {
+            if (At(TokenKind.KwNamespace)) { return ParseNamespace(); }
+            if (At(TokenKind.KwUsing)) { return ParseUsing(); }
+            if (At(TokenKind.KwExtern)) { return ParseExternC(); }
+            bool constant = ConsumeIf(TokenKind.KwConst);
+            TokenKind accessibility = TokenKind.Invalid;
+            while (Modifier(Current()))
+            {
+                if (Current() == TokenKind.KwPublic || Current() == TokenKind.KwInternal ||
+                    Current() == TokenKind.KwProtected || Current() == TokenKind.KwPrivate) { accessibility = Current(); }
+                bool wasExtern = Current() == TokenKind.KwExtern;
+                Consume();
+                if (wasExtern && AtText("C")) { Consume(); }
+            }
+            if (At(TokenKind.KwStruct)) { int node = ParseAggregate("StructDeclaration"); Node(node).SetOperator(accessibility); return node; }
+            if (At(TokenKind.KwClass)) { int node = ParseAggregate("ClassDeclaration"); Node(node).SetOperator(accessibility); return node; }
+            if (At(TokenKind.KwInterface)) { int node = ParseAggregate("InterfaceDeclaration"); Node(node).SetOperator(accessibility); return node; }
+            if (At(TokenKind.KwEnum)) { int node = ParseEnum(); Node(node).SetOperator(accessibility); return node; }
+            if (At(TokenKind.KwDelegate)) { int node = ParseDelegate(); Node(node).SetOperator(accessibility); return node; }
+            raii string type = ParseType(); raii string name = CurrentText(); Expect(TokenKind.Identifier);
+            if (At(TokenKind.LeftParen) || At(TokenKind.Less))
+            {
+                int function = ParseFunction(move(type), move(name), false, "FunctionDeclaration");
+                Node(function).SetOperator(accessibility); return function;
+            }
+            int global = NewNode("GlobalVariableDeclaration"); Node(global).SetText(name); Node(global).SetType(type);
+            Node(global).SetFlag(constant); Node(global).SetOperator(accessibility);
+            if (ConsumeIf(TokenKind.Equal)) { Node(global).SetFirst(ParseExpression()); }
+            Expect(TokenKind.Semicolon); return global;
+        }
+
+        public owned SyntaxTree ParseCompilationUnit()
+        {
+            int root = NewNode("CompilationUnit"); tree.SetRoot(root);
+            while (!At(TokenKind.EndOfFile))
+            {
+                int before = index; int member = ParseGlobal();
+                if (member >= 0) { Node(root).AddChild(member); }
+                if (before == index) { Consume(); errors = errors + 1; }
+            }
+            tree.Freeze(); return move(tree);
+        }
+
+        public int ErrorCount() { return errors; }
+    }
+}

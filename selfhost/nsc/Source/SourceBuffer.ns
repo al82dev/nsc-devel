@@ -19,6 +19,7 @@ namespace NativeSharp.Compiler.Source
     {
         private FileId id;
         private owned string path;
+        private owned string rawText;
         private owned string text;
         private owned int[] lineStarts;
 
@@ -66,6 +67,7 @@ namespace NativeSharp.Compiler.Source
         {
             id = file;
             path = DiagnosticPath.Normalize(sourcePath);
+            rawText = String.Copy(sourceText);
             text = NormalizeLineEndings(sourceText);
             lineStarts = BuildLineStarts(text);
         }
@@ -79,6 +81,8 @@ namespace NativeSharp.Compiler.Source
         public FileId Id() { return id; }
         public string Path() { return path; }
         public string Text() { return text; }
+        public string RawText() { return rawText; }
+        public int RawLength() { return rawText.Length; }
         public int Length() { return text.Length; }
         public int LineCount() { return lineStarts.Length; }
         public ulong ContentHash() { return StableHash.Text(text); }

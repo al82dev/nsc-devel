@@ -13,6 +13,8 @@ Este directorio contiene la documentación ejecutable del programa de self-hosti
   C++.
 - `tandas/TANDA-05-SH04-ESQUELETO-BASIC-SOURCE-DIAGNOSTICS.md` entrega el primer `nsc-next.exe`
   escrito completamente en NativeSharp, con identidad, fuentes y diagnósticos diferenciales.
+- `tandas/TANDA-06-SH05-LEXER-SINTAXIS-PARSER.md` porta el frontend sintáctico autocontenido y
+  certifica dumps de tokens y árboles contra `nsc0` en O0/O2.
 - Los reportes grandes, manifiestos, logs y resultados JSON se conservan en el directorio de
   evidencia generado por la orquestación y se enlazan desde el expediente con su hash.
 

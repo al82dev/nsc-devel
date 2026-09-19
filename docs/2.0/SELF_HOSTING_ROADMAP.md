@@ -377,6 +377,11 @@ Gate versionado: `selfhost/evidence/gates/SH04/gate.json`.
 **Gate SH05:** tokens y árboles coinciden con el contrato canónico; las diferencias aceptadas están
 versionadas y no reducen diagnósticos ni recuperación.
 
+Expediente de cierre:
+`docs/2.0/self-hosting/tandas/TANDA-06-SH05-LEXER-SINTAXIS-PARSER.md`.
+Contrato observable: `selfhost/contracts/frontend.contract.json`.
+Gate versionado: `selfhost/evidence/gates/SH05/gate.json`.
+
 ### Fase 6 — símbolos, tipos, binding y semántica
 
 **Objetivo:** producir un programa semánticamente ligado equivalente al compilador actual.

@@ -1,0 +1,152 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Lexer;
+
+namespace NativeSharp.Compiler.Syntax
+{
+    public class SyntaxNode
+    {
+        private owned string kind;
+        private owned string text;
+        private owned string auxiliary;
+        private owned string typeText;
+        private owned string genericText;
+        private owned string constraintsText;
+        private TokenKind operatorKind;
+        private int first;
+        private int second;
+        private int third;
+        private owned List<int> children;
+        private bool flag;
+        private bool reference;
+        private bool variadic;
+        private bool mutable;
+
+        public SyntaxNode(string nodeKind)
+        {
+            kind = String.Copy(nodeKind);
+            text = String.Copy("");
+            auxiliary = String.Copy("");
+            typeText = String.Copy("");
+            genericText = String.Copy("");
+            constraintsText = String.Copy("");
+            operatorKind = TokenKind.Invalid;
+            first = -1; second = -1; third = -1;
+            children = new List<int>();
+            flag = false; reference = false; variadic = false;
+            mutable = true;
+        }
+
+        public string Kind() { return kind; }
+        public string Text() { return text; }
+        public string Auxiliary() { return auxiliary; }
+        public string TypeText() { return typeText; }
+        public string GenericText() { return genericText; }
+        public string ConstraintsText() { return constraintsText; }
+        public TokenKind OperatorKind() { return operatorKind; }
+        public int First() { return first; }
+        public int Second() { return second; }
+        public int Third() { return third; }
+        public int ChildCount() { return children.Count(); }
+        public int ChildAt(int index) { return children[index]; }
+        public bool Flag() { return flag; }
+        public bool IsReference() { return reference; }
+        public bool IsVariadic() { return variadic; }
+
+        public void SetText(string value) { if (mutable) { text = String.Copy(value); } }
+        public void SetAuxiliary(string value) { if (mutable) { auxiliary = String.Copy(value); } }
+        public void SetType(string value) { if (mutable) { typeText = String.Copy(value); } }
+        public void SetGenericText(string value) { if (mutable) { genericText = String.Copy(value); } }
+        public void SetConstraintsText(string value) { if (mutable) { constraintsText = String.Copy(value); } }
+        public void SetOperator(TokenKind value) { if (mutable) { operatorKind = value; } }
+        public void SetFirst(int value) { if (mutable) { first = value; } }
+        public void SetSecond(int value) { if (mutable) { second = value; } }
+        public void SetThird(int value) { if (mutable) { third = value; } }
+        public void AddChild(int value) { if (mutable) { children.Add(value); } }
+        public void SetFlag(bool value) { if (mutable) { flag = value; } }
+        public void SetReference(bool value) { if (mutable) { reference = value; } }
+        public void SetVariadic(bool value) { if (mutable) { variadic = value; } }
+        public void Freeze() { mutable = false; }
+    }
+
+    public class SyntaxTree
+    {
+        private owned List<SyntaxNode> nodes;
+        private int root;
+        private bool frozen;
+
+        public SyntaxTree()
+        {
+            nodes = new List<SyntaxNode>();
+            root = -1;
+            frozen = false;
+        }
+
+        public int Create(string kind)
+        {
+            if (frozen) { return -1; }
+            raii SyntaxNode node = new SyntaxNode(kind);
+            nodes.Add(move(node));
+            return nodes.Count() - 1;
+        }
+
+        public SyntaxNode Node(int id) { return nodes[id]; }
+        public int Count() { return nodes.Count(); }
+        public int Root() { return root; }
+        public void SetRoot(int id) { if (!frozen) { root = id; } }
+        public void Freeze()
+        {
+            int index = 0;
+            while (index < nodes.Count()) { nodes[index].Freeze(); index = index + 1; }
+            frozen = true;
+        }
+        public bool IsFrozen() { return frozen; }
+    }
+
+    public class SyntaxDumper
+    {
+        private static void Indent(StringBuilder output, int depth)
+        {
+            int index = 0;
+            while (index < depth) { output.Append("  "); index = index + 1; }
+        }
+
+        private static void DumpNode(SyntaxTree tree, int id, int depth, string edge, StringBuilder output)
+        {
+            if (id < 0) { return; }
+            SyntaxNode node = tree.Node(id);
+            Indent(output, depth);
+            output.Append(edge);
+            output.Append(node.Kind());
+            if (node.Text().Length != 0) { output.Append(" \""); output.Append(node.Text()); output.Append('"'); }
+            if (node.Auxiliary().Length != 0) { output.Append(" aux=\""); output.Append(node.Auxiliary()); output.Append('"'); }
+            if (node.GenericText().Length != 0)
+            {
+                output.Append(" generic=<"); output.Append(node.GenericText()); output.Append('>');
+            }
+            if (node.ConstraintsText().Length != 0) { output.Append(node.ConstraintsText()); }
+            if (node.OperatorKind() != TokenKind.Invalid) { output.Append(" op="); output.Append(TokenFacts.Name(node.OperatorKind())); }
+            if (node.TypeText().Length != 0) { output.Append(" type="); output.Append(node.TypeText()); }
+            if (node.Flag()) { output.Append(" flag=true"); }
+            if (node.IsReference()) { output.Append(" ref=true"); }
+            if (node.IsVariadic()) { output.Append(" variadic=true"); }
+            output.Append('\n');
+            DumpNode(tree, node.First(), depth + 1, "first: ", output);
+            DumpNode(tree, node.Second(), depth + 1, "second: ", output);
+            DumpNode(tree, node.Third(), depth + 1, "third: ", output);
+            int index = 0;
+            while (index < node.ChildCount())
+            {
+                DumpNode(tree, node.ChildAt(index), depth + 1, "child: ", output);
+                index = index + 1;
+            }
+        }
+
+        public static owned string Dump(SyntaxTree tree)
+        {
+            raii StringBuilder output = new StringBuilder(tree.Count() * 32);
+            DumpNode(tree, tree.Root(), 0, "", output);
+            return output.ToOwnedString();
+        }
+    }
+}

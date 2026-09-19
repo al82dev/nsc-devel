@@ -1,0 +1,38 @@
+{
+  "schema": "nativesharp-selfhost-frontend-contract",
+  "version": 1,
+  "token_dump": "TokenKind \"escaped-lexeme\" @begin:end",
+  "tree_dump": "preorder-two-space-indent-v1",
+  "token_exclusions": {
+    "selfhost/tests/profile/negative/comptime.ns": "nsc0 applies bootstrap-profile source filtering before --dump-tokens"
+  },
+  "ast_cases": [
+    "tests/integration/valid/cfg_features.ns",
+    "tests/integration/valid/control_flow.ns",
+    "tests/integration/valid/dominance_features.ns",
+    "tests/integration/valid/full_frontend.ns",
+    "tests/integration/valid/hir_features.ns",
+    "tests/integration/valid/library_unit.ns",
+    "tests/integration/valid/llvm_features.ns",
+    "tests/integration/valid/llvm_optimization_features.ns",
+    "tests/integration/valid/memory_types.ns",
+    "tests/integration/valid/mir_features.ns",
+    "tests/integration/valid/pass_features.ns",
+    "tests/integration/valid/ssa_features.ns",
+    "tests/cc1/c1_constants/Main.ns",
+    "tests/cc1/c44_constraints_genericos/Main.ns",
+    "tests/interop_contract/c6_struct_math/Main.ns",
+    "tests/integration/asm_abi/AssemblyAbi.ns"
+  ],
+  "recovery": {
+    "timeout_seconds": 5,
+    "maximum_dump_lines": 256,
+    "cases": [
+      "int Main( { return 0",
+      "int Main() { @; return 0; }",
+      "class Broken<T where T : class {",
+      "int Main() { switch (1) { case 1 return 0; }",
+      "int Main() { /* unterminated"
+    ]
+  }
+}

@@ -3,6 +3,9 @@ using NativeSharp.Core.IO;
 using NativeSharp.Compiler.Basic;
 using NativeSharp.Compiler.Source;
 using NativeSharp.Compiler.Diagnostics;
+using NativeSharp.Compiler.Lexer;
+using NativeSharp.Compiler.Syntax;
+using NativeSharp.Compiler.Parser;
 
 namespace NativeSharp.Compiler.Driver
 {
@@ -10,18 +13,20 @@ namespace NativeSharp.Compiler.Driver
     {
         private static void PrintVersion()
         {
-            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh04 (NativeSharp 2.0.0, self-host stage 1)");
+            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh05 (NativeSharp 2.0.0, self-host stage 1)");
         }
 
         private static void PrintHelp()
         {
-            Console.WriteLine("NativeSharp self-hosted compiler bootstrap (SH04)");
+            Console.WriteLine("NativeSharp self-hosted compiler bootstrap (SH05)");
             Console.WriteLine("");
             Console.WriteLine("Usage:");
             Console.WriteLine("  nsc-next --version");
             Console.WriteLine("  nsc-next --help");
             Console.WriteLine("  nsc-next --read-source <file.ns>");
             Console.WriteLine("  nsc-next --dump-source-info <file.ns>");
+            Console.WriteLine("  nsc-next --dump-tokens <file.ns>");
+            Console.WriteLine("  nsc-next --dump-ast <file.ns>");
             Console.WriteLine("  nsc-next [--diagnostic-format=json] <file.ns>");
         }
 
@@ -63,6 +68,40 @@ namespace NativeSharp.Compiler.Driver
                 raii string output = String.Concat(seventh, "\"}");
                 Console.WriteLine(output);
             }
+            return 0;
+        }
+
+        private static int DumpTokens(string path)
+        {
+            if (!File.Exists(path))
+            {
+                raii Diagnostic missing = DiagnosticCatalog.MissingSource(path);
+                return EmitDiagnostic(missing, false);
+            }
+            raii SourceBuffer source = SourceBuffer.Load(new FileId(1), path);
+            raii Lexer lexer = new Lexer(source);
+            raii TokenStream tokens = lexer.LexAll();
+            raii string output = TokenDumper.Dump(source, tokens);
+            Console.Write(output);
+            if (tokens.ErrorCount() != 0) { return 1; }
+            return 0;
+        }
+
+        private static int DumpAst(string path)
+        {
+            if (!File.Exists(path))
+            {
+                raii Diagnostic missing = DiagnosticCatalog.MissingSource(path);
+                return EmitDiagnostic(missing, false);
+            }
+            raii SourceBuffer source = SourceBuffer.Load(new FileId(1), path);
+            raii Lexer lexer = new Lexer(source);
+            raii TokenStream tokens = lexer.LexAll();
+            raii Parser parser = new Parser(source, tokens);
+            raii SyntaxTree tree = parser.ParseCompilationUnit();
+            raii string output = SyntaxDumper.Dump(tree);
+            Console.Write(output);
+            if (tokens.ErrorCount() != 0 || parser.ErrorCount() != 0) { return 1; }
             return 0;
         }
 
@@ -113,6 +152,16 @@ namespace NativeSharp.Compiler.Driver
             if (command == "--version") { PrintVersion(); return 0; }
             if (command == "--help") { PrintHelp(); return 0; }
             if (command == "--self-test-basic") { return SelfTest(); }
+            if (command == "--dump-tokens")
+            {
+                if (count != 3) { return 2; }
+                return DumpTokens(arguments[2]);
+            }
+            if (command == "--dump-ast")
+            {
+                if (count != 3) { return 2; }
+                return DumpAst(arguments[2]);
+            }
             if (command == "--read-source" || command == "--dump-source-info")
             {
                 if (count != 3)

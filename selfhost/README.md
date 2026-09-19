@@ -19,3 +19,9 @@ salida puede compartirse entre generaciones.
 NSLink y NSAsm no se reescriben dentro de este repositorio. Una reimplementación escrita en
 NativeSharp debe vivir en un repositorio nuevo; este proyecto sólo consume herramientas externas
 mediante contratos versionados.
+
+## Frontera alcanzada
+
+SH05 incorpora en `nsc/` el lexer, el árbol sintáctico congelable y el parser escritos en
+NativeSharp. `nsc-next --dump-tokens` y `nsc-next --dump-ast` son superficies diferenciales
+versionadas por `contracts/frontend.contract.json`; no invocan ni cargan el frontend C++.

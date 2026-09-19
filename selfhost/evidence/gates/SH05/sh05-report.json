@@ -1,0 +1,38 @@
+{
+  "ast_case_files": [
+    "tests/integration/valid/cfg_features.ns",
+    "tests/integration/valid/control_flow.ns",
+    "tests/integration/valid/dominance_features.ns",
+    "tests/integration/valid/full_frontend.ns",
+    "tests/integration/valid/hir_features.ns",
+    "tests/integration/valid/library_unit.ns",
+    "tests/integration/valid/llvm_features.ns",
+    "tests/integration/valid/llvm_optimization_features.ns",
+    "tests/integration/valid/memory_types.ns",
+    "tests/integration/valid/mir_features.ns",
+    "tests/integration/valid/pass_features.ns",
+    "tests/integration/valid/ssa_features.ns",
+    "tests/cc1/c1_constants/Main.ns",
+    "tests/cc1/c44_constraints_genericos/Main.ns",
+    "tests/interop_contract/c6_struct_math/Main.ns",
+    "tests/integration/asm_abi/AssemblyAbi.ns"
+  ],
+  "ast_comparisons": 32,
+  "binary_sha256": {
+    "O0": "b5d655885bf8d4322bfdfb2c72153b78947cffc862b199523016f2d64a3414d5",
+    "O2": "2758c12b4a61fc9e3b6167b02ceaec1f41d6fdd7a0613bfcbfea6a4125cdf659"
+  },
+  "excluded_token_files": {
+    "selfhost/tests/profile/negative/comptime.ns": "nsc0 applies bootstrap-profile source filtering before --dump-tokens"
+  },
+  "optimizations": [
+    "O0",
+    "O2"
+  ],
+  "recovery_comparisons": 10,
+  "schema": "nativesharp-selfhost-sh05-report",
+  "source_files": 477,
+  "status": "passed",
+  "token_comparisons": 954,
+  "version": 1
+}

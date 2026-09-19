@@ -1,0 +1,417 @@
+using NativeSharp.Core;
+using NativeSharp.Compiler.Source;
+
+namespace NativeSharp.Compiler.Lexer
+{
+    public class Lexer
+    {
+        private SourceBuffer source;
+        private string text;
+        private int offset;
+        private bool awaitingAssemblyBrace;
+        private bool insideAssemblyBody;
+        private int assemblyBraceDepth;
+        private owned TokenStream tokens;
+
+        public Lexer(SourceBuffer buffer)
+        {
+            source = buffer;
+            text = buffer.RawText();
+            offset = 0;
+            awaitingAssemblyBrace = false;
+            insideAssemblyBody = false;
+            assemblyBraceDepth = 0;
+            tokens = new TokenStream();
+            if (text.Length >= 3 && (byte)text[0] == 239 &&
+                (byte)text[1] == 187 && (byte)text[2] == 191) { offset = 3; }
+        }
+
+        private bool AtEnd() { return offset >= text.Length; }
+        private char Current() { if (AtEnd()) { return '\0'; } return text[offset]; }
+        private char Peek(int distance)
+        {
+            int index = offset + distance;
+            if (index >= text.Length) { return '\0'; }
+            return text[index];
+        }
+        private char Advance()
+        {
+            char value = Current();
+            if (!AtEnd()) { offset = offset + 1; }
+            return value;
+        }
+        private bool Match(char expected)
+        {
+            if (Current() != expected) { return false; }
+            offset = offset + 1;
+            return true;
+        }
+        private static bool IdentifierStart(char value)
+        {
+            return (value >= 'A' && value <= 'Z') ||
+                (value >= 'a' && value <= 'z') || value == '_';
+        }
+        private static bool IdentifierPart(char value)
+        {
+            return IdentifierStart(value) || (value >= '0' && value <= '9');
+        }
+        private static bool DecimalDigit(char value) { return value >= '0' && value <= '9'; }
+        private static bool HexDigit(char value)
+        {
+            return DecimalDigit(value) || (value >= 'A' && value <= 'F') ||
+                (value >= 'a' && value <= 'f');
+        }
+
+        private void Add(TokenKind kind, int begin) { tokens.Add(kind, begin, offset); }
+
+        private void SkipLineComment()
+        {
+            Advance(); Advance();
+            while (!AtEnd() && Current() != '\n' && Current() != '\r') { Advance(); }
+        }
+
+        private bool SkipBlockComment()
+        {
+            Advance(); Advance();
+            while (!AtEnd())
+            {
+                if (Current() == '*' && Peek(1) == '/')
+                {
+                    Advance(); Advance(); return true;
+                }
+                Advance();
+            }
+            tokens.AddError();
+            return false;
+        }
+
+        private void SkipTrivia()
+        {
+            bool scanning = true;
+            while (scanning && !AtEnd())
+            {
+                char value = Current();
+                if (value == ' ' || value == '\t' || value == '\v' || value == '\f' ||
+                    value == '\n' || value == '\r') { Advance(); }
+                else if (value == '/' && Peek(1) == '/') { SkipLineComment(); }
+                else if (value == '/' && Peek(1) == '*') { scanning = SkipBlockComment(); }
+                else { scanning = false; }
+            }
+        }
+
+        private static TokenKind Keyword(string word)
+        {
+            if (word == "void") { return TokenKind.KwVoid; }
+            if (word == "bool") { return TokenKind.KwBool; }
+            if (word == "sbyte") { return TokenKind.KwSByte; }
+            if (word == "byte") { return TokenKind.KwByte; }
+            if (word == "char") { return TokenKind.KwChar; }
+            if (word == "short") { return TokenKind.KwShort; }
+            if (word == "ushort") { return TokenKind.KwUShort; }
+            if (word == "int") { return TokenKind.KwInt; }
+            if (word == "uint") { return TokenKind.KwUInt; }
+            if (word == "long") { return TokenKind.KwLong; }
+            if (word == "ulong") { return TokenKind.KwULong; }
+            if (word == "nint") { return TokenKind.KwNInt; }
+            if (word == "nuint") { return TokenKind.KwNUInt; }
+            if (word == "float") { return TokenKind.KwFloat; }
+            if (word == "double") { return TokenKind.KwDouble; }
+            if (word == "string") { return TokenKind.KwString; }
+            if (word == "const") { return TokenKind.KwConst; }
+            if (word == "static") { return TokenKind.KwStatic; }
+            if (word == "readonly") { return TokenKind.KwReadonly; }
+            if (word == "volatile") { return TokenKind.KwVolatile; }
+            if (word == "inline") { return TokenKind.KwInline; }
+            if (word == "forceinline") { return TokenKind.KwForceInline; }
+            if (word == "noinline") { return TokenKind.KwNoInline; }
+            if (word == "noheap") { return TokenKind.KwNoHeap; }
+            if (word == "public") { return TokenKind.KwPublic; }
+            if (word == "internal") { return TokenKind.KwInternal; }
+            if (word == "protected") { return TokenKind.KwProtected; }
+            if (word == "private") { return TokenKind.KwPrivate; }
+            if (word == "if") { return TokenKind.KwIf; }
+            if (word == "else") { return TokenKind.KwElse; }
+            if (word == "while") { return TokenKind.KwWhile; }
+            if (word == "do") { return TokenKind.KwDo; }
+            if (word == "for") { return TokenKind.KwFor; }
+            if (word == "switch") { return TokenKind.KwSwitch; }
+            if (word == "case") { return TokenKind.KwCase; }
+            if (word == "break") { return TokenKind.KwBreak; }
+            if (word == "continue") { return TokenKind.KwContinue; }
+            if (word == "return") { return TokenKind.KwReturn; }
+            if (word == "try") { return TokenKind.KwTry; }
+            if (word == "catch") { return TokenKind.KwCatch; }
+            if (word == "finally") { return TokenKind.KwFinally; }
+            if (word == "throw") { return TokenKind.KwThrow; }
+            if (word == "struct") { return TokenKind.KwStruct; }
+            if (word == "class") { return TokenKind.KwClass; }
+            if (word == "interface") { return TokenKind.KwInterface; }
+            if (word == "enum") { return TokenKind.KwEnum; }
+            if (word == "namespace") { return TokenKind.KwNamespace; }
+            if (word == "using") { return TokenKind.KwUsing; }
+            if (word == "new") { return TokenKind.KwNew; }
+            if (word == "delete") { return TokenKind.KwDelete; }
+            if (word == "destroy") { return TokenKind.KwDestroy; }
+            if (word == "stackalloc") { return TokenKind.KwStackalloc; }
+            if (word == "sizeof") { return TokenKind.KwSizeof; }
+            if (word == "alignof") { return TokenKind.KwAlignof; }
+            if (word == "offsetof") { return TokenKind.KwOffsetof; }
+            if (word == "static_assert") { return TokenKind.KwStaticAssert; }
+            if (word == "default") { return TokenKind.KwDefault; }
+            if (word == "extern") { return TokenKind.KwExtern; }
+            if (word == "export") { return TokenKind.KwExport; }
+            if (word == "vectorcall") { return TokenKind.KwVectorCall; }
+            if (word == "true") { return TokenKind.KwTrue; }
+            if (word == "false") { return TokenKind.KwFalse; }
+            if (word == "null") { return TokenKind.KwNull; }
+            if (word == "this") { return TokenKind.KwThis; }
+            if (word == "base") { return TokenKind.KwBase; }
+            if (word == "virtual") { return TokenKind.KwVirtual; }
+            if (word == "override") { return TokenKind.KwOverride; }
+            if (word == "abstract") { return TokenKind.KwAbstract; }
+            if (word == "sealed") { return TokenKind.KwSealed; }
+            if (word == "get") { return TokenKind.KwGet; }
+            if (word == "set") { return TokenKind.KwSet; }
+            if (word == "operator") { return TokenKind.KwOperator; }
+            if (word == "implicit") { return TokenKind.KwImplicit; }
+            if (word == "explicit") { return TokenKind.KwExplicit; }
+            if (word == "is") { return TokenKind.KwIs; }
+            if (word == "as") { return TokenKind.KwAs; }
+            if (word == "delegate") { return TokenKind.KwDelegate; }
+            if (word == "event") { return TokenKind.KwEvent; }
+            if (word == "raii") { return TokenKind.KwRaii; }
+            if (word == "move") { return TokenKind.KwMove; }
+            if (word == "owned") { return TokenKind.KwOwned; }
+            if (word == "borrowed") { return TokenKind.KwBorrowed; }
+            if (word == "var") { return TokenKind.KwVar; }
+            if (word == "foreach") { return TokenKind.KwForeach; }
+            if (word == "in") { return TokenKind.KwIn; }
+            return TokenKind.Identifier;
+        }
+
+        private void LexIdentifier(int begin)
+        {
+            Advance();
+            while (IdentifierPart(Current())) { Advance(); }
+            raii string word = String.Substring(text, begin, offset - begin);
+            Add(Keyword(word), begin);
+        }
+
+        private void LexNumber(int begin)
+        {
+            int radix = 10;
+            int digitsBegin = begin;
+            bool invalid = false;
+            if (Current() == '0' && (Peek(1) == 'x' || Peek(1) == 'X'))
+            {
+                radix = 16; Advance(); Advance(); digitsBegin = offset;
+                while (HexDigit(Current())) { Advance(); }
+                if (digitsBegin == offset) { invalid = true; }
+            }
+            else if (Current() == '0' && (Peek(1) == 'b' || Peek(1) == 'B'))
+            {
+                radix = 2; Advance(); Advance(); digitsBegin = offset;
+                while (Current() == '0' || Current() == '1') { Advance(); }
+                if (digitsBegin == offset) { invalid = true; }
+            }
+            else
+            {
+                while (DecimalDigit(Current())) { Advance(); }
+                bool floating = false;
+                if (Current() == '.' && DecimalDigit(Peek(1)))
+                {
+                    floating = true; Advance();
+                    while (DecimalDigit(Current())) { Advance(); }
+                }
+                if (Current() == 'e' || Current() == 'E')
+                {
+                    floating = true; Advance();
+                    if (Current() == '+' || Current() == '-') { Advance(); }
+                    int exponentBegin = offset;
+                    while (DecimalDigit(Current())) { Advance(); }
+                    if (exponentBegin == offset) { invalid = true; }
+                }
+                if (Current() == 'f' || Current() == 'F') { floating = true; Advance(); }
+                if (floating)
+                {
+                    Add(invalid ? TokenKind.Invalid : TokenKind.FloatingLiteral, begin);
+                    return;
+                }
+            }
+
+            int digitsEnd = offset;
+            int suffixBegin = offset;
+            while ((Current() == 'u' || Current() == 'U' || Current() == 'l' || Current() == 'L') &&
+                offset - suffixBegin < 2) { Advance(); }
+            raii string suffix = String.Substring(text, suffixBegin, offset - suffixBegin);
+            bool suffixValid = suffix.Length == 0 || suffix == "u" || suffix == "U" ||
+                suffix == "l" || suffix == "L" || suffix == "ul" || suffix == "uL" ||
+                suffix == "Ul" || suffix == "UL" || suffix == "lu" || suffix == "lU" ||
+                suffix == "Lu" || suffix == "LU";
+            if (Current() == 'u' || Current() == 'U' || Current() == 'l' || Current() == 'L')
+            {
+                suffixValid = false;
+                while (Current() == 'u' || Current() == 'U' || Current() == 'l' || Current() == 'L') { Advance(); }
+            }
+            raii string digits = String.Substring(text, digitsBegin, digitsEnd - digitsBegin);
+            ulong parsed = 0;
+            if (!Number.TryParseUInt64Radix(digits, radix, out parsed)) { invalid = true; }
+            Add(invalid || !suffixValid ? TokenKind.Invalid : TokenKind.IntegerLiteral, begin);
+        }
+
+        private bool DecodeEscape()
+        {
+            if (AtEnd()) { return false; }
+            char escape = Advance();
+            if (escape == '0' || escape == 'a' || escape == 'b' || escape == 'f' ||
+                escape == 'n' || escape == 'r' || escape == 't' || escape == 'v' ||
+                escape == '\\' || escape == '\'' || escape == '"') { return true; }
+            if (escape == 'x')
+            {
+                if (!HexDigit(Current()) || !HexDigit(Peek(1))) { return false; }
+                Advance(); Advance(); return true;
+            }
+            return false;
+        }
+
+        private void LexCharacter(int begin)
+        {
+            Advance();
+            bool valid = true;
+            if (AtEnd() || Current() == '\n' || Current() == '\r' || Current() == '\'') { valid = false; }
+            else if (Current() == '\\') { Advance(); valid = DecodeEscape(); }
+            else
+            {
+                byte raw = (byte)Advance();
+                valid = raw >= 32 && raw <= 126 && raw != 92 && raw != 39;
+            }
+            if (!Match('\''))
+            {
+                valid = false;
+                while (!AtEnd() && Current() != '\'' && Current() != '\n' && Current() != '\r') { Advance(); }
+                Match('\'');
+            }
+            Add(valid ? TokenKind.CharacterLiteral : TokenKind.Invalid, begin);
+        }
+
+        private void LexString(int begin)
+        {
+            Advance();
+            bool valid = true;
+            while (!AtEnd() && Current() != '"' && Current() != '\n' && Current() != '\r')
+            {
+                if (Current() == '\\') { Advance(); if (!DecodeEscape()) { valid = false; } }
+                else { if ((byte)Current() < 32) { valid = false; } Advance(); }
+            }
+            if (!Match('"')) { valid = false; }
+            Add(valid ? TokenKind.StringLiteral : TokenKind.Invalid, begin);
+        }
+
+        private void LexPunctuation(int begin)
+        {
+            char first = Advance();
+            if (first == '(') { Add(TokenKind.LeftParen, begin); return; }
+            if (first == ')') { Add(TokenKind.RightParen, begin); return; }
+            if (first == '{') { Add(TokenKind.LeftBrace, begin); return; }
+            if (first == '}') { Add(TokenKind.RightBrace, begin); return; }
+            if (first == '[') { Add(TokenKind.LeftBracket, begin); return; }
+            if (first == ']') { Add(TokenKind.RightBracket, begin); return; }
+            if (first == ';') { Add(TokenKind.Semicolon, begin); return; }
+            if (first == ',') { Add(TokenKind.Comma, begin); return; }
+            if (first == ':') { Add(TokenKind.Colon, begin); return; }
+            if (first == '?') { Add(TokenKind.Question, begin); return; }
+            if (first == '~') { Add(TokenKind.Tilde, begin); return; }
+            if (first == '.')
+            {
+                if (Current() == '.' && Peek(1) == '.') { Advance(); Advance(); Add(TokenKind.Ellipsis, begin); }
+                else { Add(TokenKind.Dot, begin); } return;
+            }
+            if (first == '+') { if (Match('+')) { Add(TokenKind.PlusPlus, begin); } else if (Match('=')) { Add(TokenKind.PlusEqual, begin); } else { Add(TokenKind.Plus, begin); } return; }
+            if (first == '-') { if (Match('-')) { Add(TokenKind.MinusMinus, begin); } else if (Match('>')) { Add(TokenKind.Arrow, begin); } else if (Match('=')) { Add(TokenKind.MinusEqual, begin); } else { Add(TokenKind.Minus, begin); } return; }
+            if (first == '*') { if (Match('=')) { Add(TokenKind.StarEqual, begin); } else { Add(TokenKind.Star, begin); } return; }
+            if (first == '/') { if (Match('=')) { Add(TokenKind.SlashEqual, begin); } else { Add(TokenKind.Slash, begin); } return; }
+            if (first == '%') { if (Match('=')) { Add(TokenKind.PercentEqual, begin); } else { Add(TokenKind.Percent, begin); } return; }
+            if (first == '=') { if (Match('=')) { Add(TokenKind.EqualEqual, begin); } else if (Match('>')) { Add(TokenKind.FatArrow, begin); } else { Add(TokenKind.Equal, begin); } return; }
+            if (first == '!') { if (Match('=')) { Add(TokenKind.BangEqual, begin); } else { Add(TokenKind.Bang, begin); } return; }
+            if (first == '&') { if (Match('&')) { Add(TokenKind.AmpAmp, begin); } else if (Match('=')) { Add(TokenKind.AmpEqual, begin); } else { Add(TokenKind.Amp, begin); } return; }
+            if (first == '|') { if (Match('|')) { Add(TokenKind.PipePipe, begin); } else if (Match('=')) { Add(TokenKind.PipeEqual, begin); } else { Add(TokenKind.Pipe, begin); } return; }
+            if (first == '^') { if (Match('=')) { Add(TokenKind.CaretEqual, begin); } else { Add(TokenKind.Caret, begin); } return; }
+            if (first == '<')
+            {
+                if (Match('<')) { if (Match('=')) { Add(TokenKind.LessLessEqual, begin); } else { Add(TokenKind.LessLess, begin); } }
+                else if (Match('=')) { Add(TokenKind.LessEqual, begin); } else { Add(TokenKind.Less, begin); } return;
+            }
+            if (first == '>')
+            {
+                if (Match('>')) { if (Match('=')) { Add(TokenKind.GreaterGreaterEqual, begin); } else { Add(TokenKind.GreaterGreater, begin); } }
+                else if (Match('=')) { Add(TokenKind.GreaterEqual, begin); } else { Add(TokenKind.Greater, begin); } return;
+            }
+            Add(TokenKind.Invalid, begin);
+        }
+
+        private void LexAssemblyBody()
+        {
+            int begin = offset;
+            if (AtEnd()) { tokens.Add(TokenKind.EndOfFile, begin, begin); return; }
+            if (Current() == '\r' || Current() == '\n')
+            {
+                char first = Advance();
+                if (first == '\r' && Current() == '\n') { Advance(); }
+                Add(TokenKind.AssemblyNewLine, begin); return;
+            }
+            while (!AtEnd() && Current() != '\r' && Current() != '\n')
+            {
+                if (Current() == '{') { assemblyBraceDepth = assemblyBraceDepth + 1; Advance(); }
+                else if (Current() == '}')
+                {
+                    if (assemblyBraceDepth == 1)
+                    {
+                        if (offset != begin) { Add(TokenKind.AssemblyText, begin); return; }
+                        Advance(); insideAssemblyBody = false; assemblyBraceDepth = 0;
+                        Add(TokenKind.RightBrace, begin); return;
+                    }
+                    assemblyBraceDepth = assemblyBraceDepth - 1; Advance();
+                }
+                else { Advance(); }
+            }
+            Add(TokenKind.AssemblyText, begin);
+        }
+
+        private void Next()
+        {
+            if (insideAssemblyBody) { LexAssemblyBody(); return; }
+            SkipTrivia();
+            int begin = offset;
+            if (AtEnd()) { awaitingAssemblyBrace = false; tokens.Add(TokenKind.EndOfFile, begin, begin); return; }
+            int before = tokens.Count();
+            if (IdentifierStart(Current())) { LexIdentifier(begin); }
+            else if (DecimalDigit(Current())) { LexNumber(begin); }
+            else if (Current() == '\'') { LexCharacter(begin); }
+            else if (Current() == '"') { LexString(begin); }
+            else { LexPunctuation(begin); }
+
+            TokenKind kind = tokens.KindAt(before);
+            if (awaitingAssemblyBrace)
+            {
+                if (kind == TokenKind.LeftBrace) { insideAssemblyBody = true; assemblyBraceDepth = 1; }
+                awaitingAssemblyBrace = false;
+            }
+            else if (kind == TokenKind.Identifier)
+            {
+                raii string lexeme = String.Substring(text, begin, offset - begin);
+                if (lexeme == "asm") { awaitingAssemblyBrace = true; }
+            }
+        }
+
+        public owned TokenStream LexAll()
+        {
+            bool done = false;
+            while (!done)
+            {
+                Next();
+                done = tokens.KindAt(tokens.Count() - 1) == TokenKind.EndOfFile;
+            }
+            return move(tokens);
+        }
+    }
+}

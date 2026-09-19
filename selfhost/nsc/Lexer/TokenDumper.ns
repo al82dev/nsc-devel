@@ -1,0 +1,58 @@
+using NativeSharp.Core;
+using NativeSharp.Compiler.Source;
+
+namespace NativeSharp.Compiler.Lexer
+{
+    public class TokenDumper
+    {
+        private static char HexDigit(int value)
+        {
+            if (value < 10) { return (char)('0' + value); }
+            return (char)('a' + value - 10);
+        }
+
+        private static void AppendEscaped(StringBuilder output, string text, int begin, int end)
+        {
+            output.Append('"');
+            int index = begin;
+            while (index < end)
+            {
+                byte value = (byte)text[index];
+                if (value == 10) { output.Append("\\n"); }
+                else if (value == 13) { output.Append("\\r"); }
+                else if (value == 9) { output.Append("\\t"); }
+                else if (value == 92) { output.Append("\\\\"); }
+                else if (value == 34) { output.Append("\\\""); }
+                else if (value >= 32 && value <= 126) { output.Append((char)value); }
+                else
+                {
+                    output.Append("\\x");
+                    output.Append(HexDigit(value / 16));
+                    output.Append(HexDigit(value % 16));
+                }
+                index = index + 1;
+            }
+            output.Append('"');
+        }
+
+        public static owned string Dump(SourceBuffer source, TokenStream tokens)
+        {
+            raii StringBuilder output = new StringBuilder(source.RawLength() * 2);
+            string text = source.RawText();
+            int index = 0;
+            while (index < tokens.Count())
+            {
+                output.Append(TokenFacts.Name(tokens.KindAt(index)));
+                output.Append(' ');
+                AppendEscaped(output, text, tokens.BeginAt(index), tokens.EndAt(index));
+                output.Append(" @");
+                output.Append(tokens.BeginAt(index));
+                output.Append(':');
+                output.Append(tokens.EndAt(index));
+                output.Append('\n');
+                index = index + 1;
+            }
+            return output.ToOwnedString();
+        }
+    }
+}
