@@ -1,0 +1,6 @@
+using NativeSharp.Core.Threading;
+
+namespace NativeSharp.SelfHost.Negative
+{
+    public class ThreadedCompiler { }
+}

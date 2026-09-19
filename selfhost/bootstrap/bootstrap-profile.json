@@ -1,0 +1,66 @@
+{
+  "schema": "nativesharp-bootstrap-profile",
+  "version": 1,
+  "profile": "NativeSharp.BootstrapProfile/2.0",
+  "language": "NativeSharp 2.0",
+  "target": "windows-x64-msvc",
+  "known_reserved_keywords": [
+    "void", "bool", "sbyte", "byte", "char", "short", "ushort", "int", "uint",
+    "long", "ulong", "nint", "nuint", "float", "double", "string", "const", "static",
+    "readonly", "volatile", "inline", "forceinline", "noinline", "noheap", "public",
+    "internal", "protected", "private", "if", "else", "while", "do", "for", "switch",
+    "case", "break", "continue", "return", "try", "catch", "finally", "throw", "struct",
+    "class", "interface", "enum", "namespace", "using", "new", "delete", "destroy",
+    "stackalloc", "sizeof", "alignof", "offsetof", "static_assert", "default", "extern",
+    "export", "vectorcall", "true", "false", "null", "this", "base", "virtual", "override",
+    "abstract", "sealed", "get", "set", "operator", "implicit", "explicit", "is", "as",
+    "delegate", "event", "raii", "move", "owned", "borrowed", "var", "foreach", "in"
+  ],
+  "allowed_reserved_keywords": [
+    "void", "bool", "sbyte", "byte", "char", "short", "ushort", "int", "uint",
+    "long", "ulong", "nint", "nuint", "float", "double", "string", "const", "static",
+    "readonly", "inline", "noheap", "public", "internal", "protected", "private", "if",
+    "else", "while", "do", "for", "switch", "case", "break", "continue", "return", "try",
+    "catch", "finally", "throw", "struct", "class", "interface", "enum", "namespace",
+    "using", "new", "delete", "sizeof", "alignof", "offsetof", "static_assert", "default",
+    "extern", "true", "false", "null", "this", "base", "virtual", "override", "abstract",
+    "sealed", "get", "set", "operator", "implicit", "explicit", "is", "as", "delegate",
+    "raii", "move", "owned", "borrowed", "var", "foreach", "in"
+  ],
+  "forbidden_tokens": [
+    {"token": "volatile", "code": "NSBP2001", "message": "volatile state is excluded from the single-thread bootstrap profile"},
+    {"token": "forceinline", "code": "NSBP2002", "message": "forceinline is excluded; bootstrap correctness cannot depend on optimizer policy"},
+    {"token": "noinline", "code": "NSBP2003", "message": "noinline is excluded; bootstrap correctness cannot depend on optimizer policy"},
+    {"token": "destroy", "code": "NSBP2004", "message": "explicit lifetime termination is excluded from the bootstrap profile"},
+    {"token": "stackalloc", "code": "NSBP2005", "message": "stackalloc is excluded; bootstrap storage must use audited owners or arenas"},
+    {"token": "export", "code": "NSBP2006", "message": "native exports are not required by nsc-next"},
+    {"token": "vectorcall", "code": "NSBP2007", "message": "vectorcall is outside the LLVM C bootstrap boundary"},
+    {"token": "event", "code": "NSBP2008", "message": "events are excluded from the bootstrap profile"},
+    {"token": "comptime", "code": "NSBP2009", "message": "comptime execution is excluded to avoid a circular bootstrap dependency"},
+    {"token": "union", "code": "NSBP2102", "message": "unions are excluded from compiler sources"},
+    {"token": "HardwareIntrinsics", "code": "NSBP2203", "message": "hardware intrinsic entry points are outside the portable bootstrap profile"}
+  ],
+  "forbidden_sequences": [
+    {"tokens": ["asm", "{"], "code": "NSBP2101", "message": "integrated assembly is excluded from compiler sources"},
+    {"tokens": ["extern", "vectorcall"], "code": "NSBP2103", "message": "vectorcall declarations are outside the LLVM C bootstrap boundary"},
+    {"tokens": ["pack", "("], "code": "NSBP2104", "message": "explicit packed layout is excluded from compiler sources"},
+    {"tokens": ["at", "("], "code": "NSBP2105", "message": "explicit field offsets are excluded from compiler sources"},
+    {"tokens": ["size", "("], "code": "NSBP2106", "message": "explicit aggregate size is excluded from compiler sources"},
+    {"tokens": ["align", "("], "code": "NSBP2107", "message": "explicit aggregate alignment is excluded from compiler sources"},
+    {"tokens": ["new", "("], "code": "NSBP2108", "message": "placement construction is excluded from compiler sources"}
+  ],
+  "forbidden_namespace_prefixes": [
+    {"prefix": "NativeSharp.Core.Threading", "code": "NSBP2201", "message": "bootstrap compiler code is single-threaded until deterministic parallelism is certified"},
+    {"prefix": "NativeSharp.Core.HardwareIntrinsics", "code": "NSBP2202", "message": "hardware intrinsics are outside the portable bootstrap profile"}
+  ],
+  "allowed_project_references": [
+    "NativeSharp.Core.nsproj",
+    "NativeSharp.Core.Collections.Generic.nsproj",
+    "NativeSharp.Core.IO.nsproj",
+    "NativeSharp.Core.Diagnostics.nsproj"
+  ],
+  "allowed_external_boundaries": [
+    "NativeSharp.LLVM.C",
+    "NativeSharp.Win32.Compiler"
+  ]
+}

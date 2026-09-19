@@ -1,0 +1,13 @@
+namespace NativeSharp.SelfHost.Negative
+{
+    public class InlineAssembly
+    {
+        public static int Run()
+        {
+            asm {
+                mov eax, 42
+            }
+            return 42;
+        }
+    }
+}

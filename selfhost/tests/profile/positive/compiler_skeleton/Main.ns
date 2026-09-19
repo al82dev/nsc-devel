@@ -1,0 +1,73 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+namespace NativeSharp.SelfHost.ProfileFixture
+{
+    public enum TokenKind
+    {
+        End = 0,
+        Identifier = 1,
+        Number = 2
+    }
+
+    public readonly struct SourceRange
+    {
+        public readonly int Begin;
+        public readonly int End;
+    }
+
+    public interface ITokenView
+    {
+        int Width();
+    }
+
+    public sealed class Token : ITokenView
+    {
+        private TokenKind kind_;
+        private int width_;
+
+        public Token(TokenKind kind, int width)
+        {
+            kind_ = kind;
+            width_ = width;
+        }
+
+        public int Width()
+        {
+            return width_;
+        }
+
+        public TokenKind Kind()
+        {
+            return kind_;
+        }
+    }
+
+    public class Program
+    {
+        private static int Sum(int[] values)
+        {
+            int total = 0;
+            foreach (int value in values)
+            {
+                total = total + value;
+            }
+            return total;
+        }
+
+        public static int Main()
+        {
+            int[] widths = new int[3];
+            widths[0] = 10;
+            widths[1] = 12;
+            widths[2] = 20;
+
+            raii Token token = new Token(TokenKind.Identifier, Sum(widths));
+            if (token.Kind() != TokenKind.Identifier)
+            {
+                return 1;
+            }
+            return token.Width();
+        }
+    }
+}

@@ -1,0 +1,7 @@
+namespace NativeSharp.SelfHost.Negative
+{
+    public class CompileTimeExecution
+    {
+        public static comptime int Value() { return #run(42); }
+    }
+}

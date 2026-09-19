@@ -1,0 +1,8 @@
+namespace NativeSharp.SelfHost.Negative
+{
+    public union OverlappingValue
+    {
+        public int Integer;
+        public float Floating;
+    }
+}

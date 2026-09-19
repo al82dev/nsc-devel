@@ -1,0 +1,4 @@
+namespace NativeSharp.SelfHost.Negative
+{
+    public extern vectorcall delegate int VectorCallback(int value);
+}

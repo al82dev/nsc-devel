@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nativesharp.dev/schemas/selfhost/bootstrap-profile-v1.schema.json",
+  "title": "NativeSharp Bootstrap Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "version", "profile", "language", "target", "known_reserved_keywords",
+    "allowed_reserved_keywords", "forbidden_tokens", "forbidden_sequences",
+    "forbidden_namespace_prefixes", "allowed_project_references", "allowed_external_boundaries"
+  ],
+  "properties": {
+    "schema": {"const": "nativesharp-bootstrap-profile"},
+    "version": {"const": 1},
+    "profile": {"const": "NativeSharp.BootstrapProfile/2.0"},
+    "language": {"type": "string", "minLength": 1},
+    "target": {"type": "string", "minLength": 1},
+    "known_reserved_keywords": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "allowed_reserved_keywords": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "forbidden_tokens": {"$ref": "#/$defs/tokenRules"},
+    "forbidden_sequences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tokens", "code", "message"],
+        "properties": {
+          "tokens": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "code": {"type": "string", "pattern": "^NSBP[0-9]{4}$"},
+          "message": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "forbidden_namespace_prefixes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["prefix", "code", "message"],
+        "properties": {
+          "prefix": {"type": "string", "minLength": 1},
+          "code": {"type": "string", "pattern": "^NSBP[0-9]{4}$"},
+          "message": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "allowed_project_references": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "allowed_external_boundaries": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  },
+  "$defs": {
+    "tokenRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["token", "code", "message"],
+        "properties": {
+          "token": {"type": "string", "minLength": 1},
+          "code": {"type": "string", "pattern": "^NSBP[0-9]{4}$"},
+          "message": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

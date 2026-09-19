@@ -276,6 +276,11 @@ Gate versionado: `selfhost/evidence/gates/SH00/gate.json`.
 **Gate SH01:** el perfil tiene cobertura ejecutable; una construcción fuera del perfil falla antes
 de iniciar el bootstrap; ninguna característica depende de `nsc-next` para ser compilada.
 
+Expediente de cierre: `docs/2.0/self-hosting/tandas/TANDA-02-SH01-PERFIL-BOOTSTRAP.md`.
+Contrato normativo: `docs/2.0/self-hosting/BootstrapProfile-2.0.md` y
+`selfhost/bootstrap/bootstrap-profile.json`.
+Gate versionado: `selfhost/evidence/gates/SH01/gate.json`.
+
 ### Fase 2 — biblioteca anfitriona y determinismo básico
 
 **Objetivo:** demostrar que la stdlib actual cubre cargas reales de un compilador.

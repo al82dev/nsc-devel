@@ -1,0 +1,7 @@
+namespace NativeSharp.SelfHost.Negative
+{
+    public pack(1) struct PackedValue
+    {
+        public at(0) int Value;
+    }
+}

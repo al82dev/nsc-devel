@@ -1,0 +1,8 @@
+namespace NativeSharp.SelfHost.Negative
+{
+    public delegate void Changed();
+    public class EventSource
+    {
+        public event Changed OnChanged;
+    }
+}

@@ -158,6 +158,27 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(clean_selfhost.cleanup_targets(state), [generated.resolve()])
         self.assertTrue(preserved.is_dir())
 
+    def test_structured_report_matches_public_v1_contract(self) -> None:
+        report = nscbuilder.structured_run_report(
+            {
+                "id": "fixture-run",
+                "started_at": "2026-09-19T00:00:00Z",
+                "finished_at": "2026-09-19T00:00:01Z",
+                "status": "passed",
+                "plan": {"operation": "baseline"},
+                "stages": [{"name": "fixture", "status": "passed"}],
+                "cases": [],
+                "failed": 0,
+                "total_seconds": 1.0,
+                "failures": [],
+            }
+        )
+        self.assertEqual(report["schema"], "nativesharp-selfhost-report")
+        self.assertEqual(report["version"], 1)
+        self.assertEqual(report["run_id"], "fixture-run")
+        self.assertEqual(report["inputs"]["operation"], "baseline")
+        self.assertEqual(report["problems"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

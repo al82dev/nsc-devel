@@ -649,6 +649,29 @@ def write_json(path: Path, value: object) -> None:
     temporary.replace(path)
 
 
+def structured_run_report(metadata: dict) -> dict:
+    """Projecta metadata interna al contrato publico de reporte self-hosting v1."""
+    failures = metadata.get("failures", [])
+    problems = [
+        str(row.get("detail") or row.get("kind") or "unspecified failure")
+        for row in failures
+    ]
+    return {
+        "schema": "nativesharp-selfhost-report",
+        "version": 1,
+        "run_id": str(metadata.get("id", "")),
+        "started_at": str(metadata.get("started_at", "")),
+        "finished_at": metadata.get("finished_at"),
+        "status": str(metadata.get("status", "running")),
+        "inputs": metadata.get("plan", {}),
+        "stages": metadata.get("stages", []),
+        "cases": metadata.get("cases", []),
+        "failed": int(metadata.get("failed", len(failures))),
+        "total_seconds": float(metadata.get("total_seconds", 0.0)),
+        "problems": problems,
+    }
+
+
 def project_inputs(project: Path) -> list[Path]:
     """Devuelve fuentes y ProjectReference transitivos para el cache incremental."""
     pending = [project.resolve()]
@@ -2538,6 +2561,7 @@ class PipelineWorker(QObject):
         assert self.run_dir is not None
         status = self.metadata.get("status", "unknown")
         error_reports = self._write_error_reports()
+        write_json(self.run_dir / "report.json", structured_run_report(self.metadata))
         lines = [
             "# NSC Builder — reporte de ejecución",
             "",

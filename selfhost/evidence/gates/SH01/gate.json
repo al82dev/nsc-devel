@@ -1,0 +1,22 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH01",
+  "state": "LANDED",
+  "revision": "selfhost(tanda-02)",
+  "run_id": "tanda-02-sh01-final2-20260919",
+  "previous_gate": "selfhost/evidence/gates/SH00/gate.json",
+  "artifacts": {
+    "baseline_report": "selfhost/evidence/runs/tanda-02-sh01-final2-20260919/report.md",
+    "baseline_report_json": "selfhost/evidence/runs/tanda-02-sh01-final2-20260919/report.json",
+    "baseline_report_sha256": "dbcfc854ef500e320f1a4792d330857fcd4f0bd7772f24135a57638116ef47dd",
+    "baseline_report_json_sha256": "6c9c7c721c4b2eb7ace4b41e9db1000b6cdeee0a6a41f19cdaffa4df83b0873f",
+    "baseline_source_sha256": "7b7174c909b6e7a3f2ebff6ff8f7f98183617e174acf13a03a06cbf576bb0add",
+    "profile_contract": "selfhost/bootstrap/bootstrap-profile.json",
+    "profile_sha256": "f3c1d23bb39568c54eed57f1af60faacdc8a268bf47897c63968f034e8e4befb",
+    "profile_report": "selfhost/evidence/gates/SH01/profile-report.json",
+    "profile_report_sha256": "c792b49585b7de6bd6dc7b3ffe2b65f243393c510f80b79fd69d2de0fbb10ada",
+    "positive_fixture_result": 42
+  },
+  "problems": []
+}

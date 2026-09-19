@@ -1,0 +1,11 @@
+namespace NativeSharp.SelfHost.Negative
+{
+    public class StackStorage
+    {
+        public static int Run()
+        {
+            byte* bytes = stackalloc byte[16];
+            return bytes == null ? 0 : 42;
+        }
+    }
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "nativesharp-bootstrap-profile-fixtures",
+  "version": 1,
+  "cases": [
+    {"file": "inline_assembly.ns", "expected": ["NSBP2101"]},
+    {"file": "threading_import.ns", "expected": ["NSBP2201"]},
+    {"file": "vectorcall_delegate.ns", "expected": ["NSBP2007", "NSBP2103"]},
+    {"file": "stackalloc.ns", "expected": ["NSBP2005"]},
+    {"file": "event.ns", "expected": ["NSBP2008"]},
+    {"file": "comptime.ns", "expected": ["NSBP2009"]},
+    {"file": "explicit_layout.ns", "expected": ["NSBP2104", "NSBP2105"]},
+    {"file": "union.ns", "expected": ["NSBP2102"]}
+  ]
+}
