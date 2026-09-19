@@ -1,0 +1,60 @@
+{
+  "anatomy_checks": 20,
+  "artifacts": {
+    "backend-o0.asm": "3a9c7ee0fe48791e6b22e873bfe94f1635697111cf4a284d5bf44f2883a3e166",
+    "backend-o0.obj": "ac1834028eb265d06263f9957a6d255806f626e6791e373d3c2ff0eaf902a4ca",
+    "backend-o0.readobj.txt": "9bb0b934bd6beb466a075a417aa907e31c6b1d373ef14394a8638e869c639ad7",
+    "backend-o1.asm": "b13eb8c1adacbf842fb96ea6ef74774be884752e69df2c803e77ccb1211eb2d7",
+    "backend-o1.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "backend-o1.readobj.txt": "74baebf8f7dfbf4c38354e74ef27e7261a4d4b0e0bf75e27c5c23e0c547d685a",
+    "backend-o2.asm": "b13eb8c1adacbf842fb96ea6ef74774be884752e69df2c803e77ccb1211eb2d7",
+    "backend-o2.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "backend-o2.readobj.txt": "1834731eac31b63c6837fff740891a6d3747f714e76818e9a1013665e5c73d41",
+    "backend-o3.asm": "b13eb8c1adacbf842fb96ea6ef74774be884752e69df2c803e77ccb1211eb2d7",
+    "backend-o3.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "backend-o3.readobj.txt": "979cd9ec5958f5c3ae78d735154fcd935dfa63cfcfe33056c9ecc414f6538dc8",
+    "lld-o0.exe": "52ffdd4bf8ae40f2e8d8a1e7b61c51788cefc49680dac5e125b95ce215f2381b",
+    "lld-o1.exe": "4583203335186acd7f17e2c347f53c7bd66e8e24629cbfd0827b04dc5b455d7c",
+    "lld-o2.exe": "02a910aac6bfeaa5698b73ceff3d413a9f92ed57ac62ec3406ceb2319d377bb3",
+    "lld-o3.exe": "2c0772cf7856f6ac7053f008a1272e3ec1fd6fb8a603a87cc1bd4c5b6b8cdcf7",
+    "nslink-o0.exe": "c8be4c3bf8bd684d28c84126470ff5d463c5313a0289a5b5e54ac894b16ece96",
+    "nslink-o1.exe": "77efd4e8ca9c28df7d6d2b7f8bfb0a3f94ecbca5e40f0f6ec841500f736f8aa1",
+    "nslink-o2.exe": "77efd4e8ca9c28df7d6d2b7f8bfb0a3f94ecbca5e40f0f6ec841500f736f8aa1",
+    "nslink-o3.exe": "77efd4e8ca9c28df7d6d2b7f8bfb0a3f94ecbca5e40f0f6ec841500f736f8aa1"
+  },
+  "assembly_checks": 8,
+  "backend_source_sha256": "d873459b6fd4d3d8f55498d3b37711c51953533a64c88c0e3761659400a539d4",
+  "executable_checks": 8,
+  "expected_exit_code": 42,
+  "linkers": [
+    "lld-link",
+    "NSLink"
+  ],
+  "llvm_major": 23,
+  "optimizations": [
+    "O0",
+    "O1",
+    "O2",
+    "O3"
+  ],
+  "schema": "nativesharp-selfhost-sh08-report",
+  "status": "passed",
+  "target": "x86_64-pc-windows-msvc",
+  "version": 1,
+  "work_items": [
+    "NS2-SH-099",
+    "NS2-SH-100",
+    "NS2-SH-101",
+    "NS2-SH-102",
+    "NS2-SH-103",
+    "NS2-SH-104",
+    "NS2-SH-105",
+    "NS2-SH-106",
+    "NS2-SH-107",
+    "NS2-SH-108",
+    "NS2-SH-109",
+    "NS2-SH-110",
+    "NS2-SH-111",
+    "NS2-SH-112"
+  ]
+}

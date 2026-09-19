@@ -200,10 +200,10 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(len(contract["bootstrap_symbols"]), 42)
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
-        self.assertEqual(
-            verify_llvm_c_contract.declared_binding_symbols(signature_source),
-            contract["bootstrap_symbols"],
-        )
+        declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
+        self.assertEqual(len(declared), 75)
+        self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
+        self.assertTrue(set(declared).issubset(contract["nsc0_import_symbols"]))
         self.assertEqual(
             verify_llvm_c_contract.digest(signature_source),
             contract["signature_source_sha256"],
@@ -293,6 +293,21 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         reduced = verify_ir.reduce_lines(source, lambda value: "divergence" in value)
         self.assertIn("divergence", reduced)
         self.assertLess(len(reduced), len(source))
+
+    def test_sh08_backend_contract_freezes_profiles_artifacts_and_linkers(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/llvm-backend.contract.json").read_text())
+        self.assertEqual(contract["schema"], "nativesharp-selfhost-llvm-backend-contract")
+        self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
+        self.assertEqual(contract["artifacts"], ["object", "assembly"])
+        self.assertEqual(contract["linkers"], ["lld-link", "NSLink"])
+        self.assertEqual(contract["expected_exit_code"], 42)
+        self.assertEqual(len(contract["covered_work_items"]), 14)
+
+    def test_sh08_verifier_is_source_tree_read_only(self) -> None:
+        source = (ROOT / "selfhost/bootstrap/verify_llvm_backend.py").read_text()
+        self.assertIn("backend_source_sha256", source)
+        self.assertIn("args.report.write_text", source)
+        self.assertNotIn("source_root.write_text", source)
 
 
 if __name__ == "__main__":

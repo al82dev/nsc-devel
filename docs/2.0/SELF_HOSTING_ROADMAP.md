@@ -462,6 +462,11 @@ Gate versionado al cierre: `selfhost/evidence/gates/SH07/gate.json`.
 **Gate SH08:** el mismo programa produce comportamiento, ABI, metadata y depuración compatibles en
 todos los perfiles; no se exige todavía hash idéntico al objeto de `nsc0`.
 
+Expediente de cierre:
+`docs/2.0/self-hosting/tandas/TANDA-09-SH08-BACKEND-LLVM-OBJETOS-DEPURACION.md`.
+Contrato observable: `selfhost/contracts/llvm-backend.contract.json`.
+Gate versionado al cierre: `selfhost/evidence/gates/SH08/gate.json`.
+
 ### Fase 9 — proyectos, driver, metadata, caché y toolchain
 
 **Objetivo:** convertir el compilador por archivo en un reemplazo operativo de `nsc`.

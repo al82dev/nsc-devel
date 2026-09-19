@@ -1,6 +1,6 @@
 namespace NativeSharp.LLVM.C
 {
-    // Frontera C mínima ejecutable de SH03. Los handles de LLVM son punteros opacos; NativeSharp
+    // Frontera C ejecutable promovida por SH08. Los handles de LLVM son punteros opacos; NativeSharp
     // no conoce ni reproduce su layout. Las firmas y enums quedan congelados por
     // llvm-c-api.contract.json y se amplían sólo junto con contrato y prueba.
     public class LLVM
@@ -16,11 +16,29 @@ namespace NativeSharp.LLVM.C
             public void LLVMSetTarget(void* module, byte* triple);
 
             public void* LLVMVoidTypeInContext(void* context);
+            public void* LLVMInt1TypeInContext(void* context);
+            public void* LLVMInt8TypeInContext(void* context);
+            public void* LLVMInt16TypeInContext(void* context);
             public void* LLVMInt32TypeInContext(void* context);
+            public void* LLVMInt64TypeInContext(void* context);
+            public void* LLVMHalfTypeInContext(void* context);
+            public void* LLVMFloatTypeInContext(void* context);
+            public void* LLVMDoubleTypeInContext(void* context);
+            public void* LLVMPointerTypeInContext(void* context, uint addressSpace);
+            public void* LLVMArrayType2(void* elementType, ulong elementCount);
+            public void* LLVMVectorType(void* elementType, uint elementCount);
+            public void* LLVMStructTypeInContext(
+                void* context, void** elementTypes, uint elementCount, int packed);
             public void* LLVMFunctionType(
                 void* returnType, void** parameterTypes, uint parameterCount, int variadic);
             public void* LLVMConstInt(void* integerType, ulong value, int signExtend);
+            public void* LLVMConstReal(void* realType, double value);
+            public void* LLVMConstNull(void* type);
             public void* LLVMAddFunction(void* module, byte* name, void* functionType);
+            public void* LLVMAddGlobal(void* module, void* type, byte* name);
+            public void LLVMSetInitializer(void* global, void* constantValue);
+            public void LLVMSetGlobalConstant(void* global, int isConstant);
+            public void* LLVMGetParam(void* function, uint index);
             public void* LLVMAppendBasicBlockInContext(
                 void* context, void* function, byte* name);
             public void* LLVMCreateBuilderInContext(void* context);
@@ -33,8 +51,27 @@ namespace NativeSharp.LLVM.C
                 void** arguments,
                 uint argumentCount,
                 byte* name);
+            public void* LLVMBuildAdd(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildSub(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildMul(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildSDiv(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildICmp(
+                void* builder, LLVMIntPredicate predicate, void* left, void* right, byte* name);
+            public void* LLVMBuildBr(void* builder, void* destination);
+            public void* LLVMBuildCondBr(
+                void* builder, void* condition, void* thenBlock, void* elseBlock);
+            public void* LLVMBuildPhi(void* builder, void* type, byte* name);
+            public void LLVMAddIncoming(
+                void* phi, void** incomingValues, void** incomingBlocks, uint count);
+            public void* LLVMBuildAlloca(void* builder, void* type, byte* name);
+            public void* LLVMBuildLoad2(void* builder, void* type, void* pointer, byte* name);
+            public void* LLVMBuildStore(void* builder, void* value, void* pointer);
+            public void LLVMSetAlignment(void* value, uint bytes);
+            public void LLVMSetVolatile(void* memoryAccessInstruction, int isVolatile);
             public void* LLVMBuildRet(void* builder, void* value);
+            public void* LLVMBuildRetVoid(void* builder);
             public void* LLVMBuildUnreachable(void* builder);
+            public byte* LLVMPrintModuleToString(void* module);
             public int LLVMVerifyModule(
                 void* module, LLVMVerifierFailureAction action, byte** outMessage);
             public void LLVMDisposeMessage(byte* message);

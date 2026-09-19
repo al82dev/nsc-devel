@@ -1,0 +1,139 @@
+using NativeSharp.Core;
+using NativeSharp.LLVM.C;
+
+namespace NativeSharp.Compiler.CodeGen
+{
+    public enum BackendArtifactKind
+    {
+        Assembly = 0,
+        Object = 1
+    }
+
+    public enum BackendOptimization
+    {
+        O0 = 0,
+        O1 = 1,
+        O2 = 2,
+        O3 = 3
+    }
+
+    // Backend bootstrap SH08. Toda dependencia de LLVM cruza exclusivamente LLVM-C.dll;
+    // ningún layout de C++ ni header de LLVM forma parte del compilador autocontenido.
+    public class LlvmBackend
+    {
+        private static void Dispose(
+            void* context, void* module, void* builder, void* machine, void* layout)
+        {
+            if (layout != null) { LLVM.LLVMDisposeTargetData(layout); }
+            if (machine != null) { LLVM.LLVMDisposeTargetMachine(machine); }
+            if (builder != null) { LLVM.LLVMDisposeBuilder(builder); }
+            if (module != null) { LLVM.LLVMDisposeModule(module); }
+            if (context != null) { LLVM.LLVMContextDispose(context); }
+        }
+
+        private static LLVMCodeGenOptLevel CodeGenLevel(BackendOptimization optimization)
+        {
+            if (optimization == BackendOptimization.O0) { return LLVMCodeGenOptLevel.None; }
+            if (optimization == BackendOptimization.O1) { return LLVMCodeGenOptLevel.Less; }
+            if (optimization == BackendOptimization.O3) { return LLVMCodeGenOptLevel.Aggressive; }
+            return LLVMCodeGenOptLevel.Default;
+        }
+
+        private static owned string PassPipeline(BackendOptimization optimization)
+        {
+            if (optimization == BackendOptimization.O0) { return String.Copy("verify"); }
+            if (optimization == BackendOptimization.O1) { return String.Copy("default<O1>"); }
+            if (optimization == BackendOptimization.O2) { return String.Copy("default<O2>"); }
+            return String.Copy("default<O3>");
+        }
+
+        public static int EmitExecutableObject(
+            string outputPath, BackendOptimization optimization, BackendArtifactKind artifact)
+        {
+            uint major = 0u; uint minor = 0u; uint patch = 0u;
+            LLVM.LLVMGetVersion(&major, &minor, &patch);
+            if (major != 23u) { return 90; }
+
+            LLVM.LLVMInitializeX86TargetInfo(); LLVM.LLVMInitializeX86Target();
+            LLVM.LLVMInitializeX86TargetMC(); LLVM.LLVMInitializeX86AsmParser();
+            LLVM.LLVMInitializeX86AsmPrinter();
+
+            raii CString moduleName = new CString("nativesharp.sh08.backend");
+            raii CString triple = new CString("x86_64-pc-windows-msvc");
+            raii CString empty = new CString(""); raii CString entryName = new CString("mainCRTStartup");
+            raii CString exitName = new CString("ExitProcess"); raii CString computeName = new CString("NativeSharpCompute");
+            raii CString blockName = new CString("entry"); raii CString temporaryName = new CString("answer");
+            raii CString globalName = new CString("__nativesharp_backend_contract");
+            raii CString output = new CString(outputPath); raii string pipelineText = PassPipeline(optimization);
+            raii CString pipeline = new CString(pipelineText);
+
+            void* context = LLVM.LLVMContextCreate(); if (context == null) { return 1; }
+            void* module = LLVM.LLVMModuleCreateWithNameInContext(moduleName.Pointer(), context);
+            void* builder = null; void* machine = null; void* layout = null;
+            if (module == null) { Dispose(context, module, builder, machine, layout); return 2; }
+            LLVM.LLVMSetTarget(module, triple.Pointer());
+
+            void* voidType = LLVM.LLVMVoidTypeInContext(context);
+            void* i32 = LLVM.LLVMInt32TypeInContext(context);
+            void* contractGlobal = LLVM.LLVMAddGlobal(module, i32, globalName.Pointer());
+            LLVM.LLVMSetInitializer(contractGlobal, LLVM.LLVMConstInt(i32, 8UL, 0));
+            LLVM.LLVMSetGlobalConstant(contractGlobal, 1);
+
+            void* computeType = LLVM.LLVMFunctionType(i32, null, 0u, 0);
+            void* compute = LLVM.LLVMAddFunction(module, computeName.Pointer(), computeType);
+            void* computeBlock = LLVM.LLVMAppendBasicBlockInContext(context, compute, blockName.Pointer());
+            builder = LLVM.LLVMCreateBuilderInContext(context);
+            if (builder == null || computeBlock == null) { Dispose(context, module, builder, machine, layout); return 3; }
+            LLVM.LLVMPositionBuilderAtEnd(builder, computeBlock);
+            void* six = LLVM.LLVMConstInt(i32, 6UL, 0); void* seven = LLVM.LLVMConstInt(i32, 7UL, 0);
+            void* answer = LLVM.LLVMBuildMul(builder, six, seven, temporaryName.Pointer());
+            if (answer == null || LLVM.LLVMBuildRet(builder, answer) == null)
+            { Dispose(context, module, builder, machine, layout); return 4; }
+
+            void* startupType = LLVM.LLVMFunctionType(voidType, null, 0u, 0);
+            void* startup = LLVM.LLVMAddFunction(module, entryName.Pointer(), startupType);
+            void* exitParameter = i32; void* exitType = LLVM.LLVMFunctionType(voidType, &exitParameter, 1u, 0);
+            void* exitFunction = LLVM.LLVMAddFunction(module, exitName.Pointer(), exitType);
+            void* startupBlock = LLVM.LLVMAppendBasicBlockInContext(context, startup, blockName.Pointer());
+            LLVM.LLVMPositionBuilderAtEnd(builder, startupBlock);
+            void* result = LLVM.LLVMBuildCall2(builder, computeType, compute, null, 0u, temporaryName.Pointer());
+            void* exitArgument = result;
+            if (result == null || LLVM.LLVMBuildCall2(builder, exitType, exitFunction, &exitArgument, 1u, empty.Pointer()) == null ||
+                LLVM.LLVMBuildUnreachable(builder) == null)
+            { Dispose(context, module, builder, machine, layout); return 5; }
+
+            byte* verifyMessage = null;
+            if (LLVM.LLVMVerifyModule(module, LLVMVerifierFailureAction.ReturnStatus, &verifyMessage) != 0)
+            { if (verifyMessage != null) { LLVM.LLVMDisposeMessage(verifyMessage); } Dispose(context, module, builder, machine, layout); return 6; }
+            if (verifyMessage != null) { LLVM.LLVMDisposeMessage(verifyMessage); }
+
+            void* target = null; byte* targetError = null;
+            if (LLVM.LLVMGetTargetFromTriple(triple.Pointer(), &target, &targetError) != 0 || target == null)
+            { if (targetError != null) { LLVM.LLVMDisposeMessage(targetError); } Dispose(context, module, builder, machine, layout); return 7; }
+            machine = LLVM.LLVMCreateTargetMachine(target, triple.Pointer(), empty.Pointer(), empty.Pointer(),
+                CodeGenLevel(optimization), LLVMRelocMode.Static, LLVMCodeModel.Default);
+            layout = LLVM.LLVMCreateTargetDataLayout(machine);
+            if (machine == null || layout == null) { Dispose(context, module, builder, machine, layout); return 8; }
+            LLVM.LLVMSetModuleDataLayout(module, layout);
+
+            void* options = LLVM.LLVMCreatePassBuilderOptions(); LLVM.LLVMPassBuilderOptionsSetVerifyEach(options, 1);
+            void* passError = LLVM.LLVMRunPasses(module, pipeline.Pointer(), machine, options);
+            LLVM.LLVMDisposePassBuilderOptions(options);
+            if (passError != null)
+            { byte* message = LLVM.LLVMGetErrorMessage(passError); if (message != null) { LLVM.LLVMDisposeErrorMessage(message); }
+              Dispose(context, module, builder, machine, layout); return 9; }
+
+            void* debugBuilder = LLVM.LLVMCreateDIBuilder(module);
+            if (debugBuilder == null) { Dispose(context, module, builder, machine, layout); return 10; }
+            LLVM.LLVMDIBuilderFinalize(debugBuilder); LLVM.LLVMDisposeDIBuilder(debugBuilder);
+
+            byte* emitError = null;
+            LLVMCodeGenFileType fileType = artifact == BackendArtifactKind.Assembly ?
+                LLVMCodeGenFileType.Assembly : LLVMCodeGenFileType.Object;
+            int failed = LLVM.LLVMTargetMachineEmitToFile(machine, module, output.Pointer(), fileType, &emitError);
+            if (emitError != null) { LLVM.LLVMDisposeMessage(emitError); }
+            Dispose(context, module, builder, machine, layout);
+            return failed == 0 ? 0 : 11;
+        }
+    }
+}

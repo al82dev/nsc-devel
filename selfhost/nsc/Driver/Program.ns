@@ -8,6 +8,7 @@ using NativeSharp.Compiler.Syntax;
 using NativeSharp.Compiler.Parser;
 using NativeSharp.Compiler.Sema;
 using NativeSharp.Compiler.IR;
+using NativeSharp.Compiler.CodeGen;
 
 namespace NativeSharp.Compiler.Driver
 {
@@ -15,12 +16,12 @@ namespace NativeSharp.Compiler.Driver
     {
         private static void PrintVersion()
         {
-            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh07 (NativeSharp 2.0.0, self-host stage 1)");
+            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh08 (NativeSharp 2.0.0, self-host stage 1)");
         }
 
         private static void PrintHelp()
         {
-            Console.WriteLine("NativeSharp self-hosted compiler bootstrap (SH07)");
+            Console.WriteLine("NativeSharp self-hosted compiler bootstrap (SH08)");
             Console.WriteLine("");
             Console.WriteLine("Usage:");
             Console.WriteLine("  nsc-next --version");
@@ -36,6 +37,7 @@ namespace NativeSharp.Compiler.Driver
             Console.WriteLine("  nsc-next --dump-dominance|--dump-ssa|--dump-pass-pipeline <file.ns>");
             Console.WriteLine("  nsc-next --verify-hir|--verify-mir|--verify-cfg <file.ns>");
             Console.WriteLine("  nsc-next --verify-dominance|--verify-ssa <file.ns>");
+            Console.WriteLine("  nsc-next --emit-object|--emit-assembly <file.ns> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next [--diagnostic-format=json] <file.ns>");
         }
 
@@ -184,6 +186,30 @@ namespace NativeSharp.Compiler.Driver
             return 42;
         }
 
+        private static int EmitBackend(string command, string sourcePath, string profile, string outputPath)
+        {
+            int frontend = RunIr(sourcePath, 5, true);
+            if (frontend != 0) { return frontend; }
+            BackendOptimization optimization = BackendOptimization.O0;
+            if (profile == "-O1") { optimization = BackendOptimization.O1; }
+            else if (profile == "-O2") { optimization = BackendOptimization.O2; }
+            else if (profile == "-O3") { optimization = BackendOptimization.O3; }
+            else if (profile != "-O0") { return 2; }
+            BackendArtifactKind kind = command == "--emit-assembly" ?
+                BackendArtifactKind.Assembly : BackendArtifactKind.Object;
+            int result = LlvmBackend.EmitExecutableObject(outputPath, optimization, kind);
+            if (result != 0)
+            {
+                raii string code = String.ToString(result);
+                raii string message = String.Concat("nsc-next: error: LLVM backend failed with code ", code);
+                Console.ErrorWriteLine(message);
+                return 1;
+            }
+            Console.WriteLine(kind == BackendArtifactKind.Assembly ?
+                "SH08 LLVM assembly emission: ok" : "SH08 LLVM object emission: ok");
+            return 0;
+        }
+
         public static int Main()
         {
             int count = Environment.GetCommandLineArgCount();
@@ -199,6 +225,11 @@ namespace NativeSharp.Compiler.Driver
             if (command == "--version") { PrintVersion(); return 0; }
             if (command == "--help") { PrintHelp(); return 0; }
             if (command == "--self-test-basic") { return SelfTest(); }
+            if (command == "--emit-object" || command == "--emit-assembly")
+            {
+                if (count != 6 || arguments[4] != "-o") { return 2; }
+                return EmitBackend(command, arguments[2], arguments[3], arguments[5]);
+            }
             if (command == "--dump-tokens")
             {
                 if (count != 3) { return 2; }

@@ -692,6 +692,17 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.llvm-c-bridge PROPERTIES RUN_SERIAL TRUE)
 
     add_test(
+        NAME nsc.selfhost.llvm-backend
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-llvm-backend"
+            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpLlvmBackend.cmake")
+    set_tests_properties(nsc.selfhost.llvm-backend PROPERTIES RUN_SERIAL TRUE)
+
+    add_test(
         NAME nsc.selfhost.nsc-next-skeleton
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"

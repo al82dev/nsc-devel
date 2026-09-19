@@ -1,0 +1,23 @@
+{
+  "schema": "nativesharp-selfhost-llvm-backend-contract",
+  "version": 1,
+  "target": "x86_64-pc-windows-msvc",
+  "llvm_major": 23,
+  "optimizations": ["O0", "O1", "O2", "O3"],
+  "artifacts": ["object", "assembly"],
+  "linkers": ["lld-link", "NSLink"],
+  "entry": "mainCRTStartup",
+  "expected_exit_code": 42,
+  "required_symbols": ["mainCRTStartup", "NativeSharpCompute", "ExitProcess"],
+  "required_sections": [".text"],
+  "required_relocation": "ExitProcess",
+  "required_backend_api": [
+    "CodeGenLevel", "PassPipeline", "EmitExecutableObject"
+  ],
+  "covered_work_items": [
+    "NS2-SH-099", "NS2-SH-100", "NS2-SH-101", "NS2-SH-102",
+    "NS2-SH-103", "NS2-SH-104", "NS2-SH-105", "NS2-SH-106",
+    "NS2-SH-107", "NS2-SH-108", "NS2-SH-109", "NS2-SH-110",
+    "NS2-SH-111", "NS2-SH-112"
+  ]
+}

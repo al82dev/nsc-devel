@@ -78,8 +78,8 @@ def main() -> int:
     signature_source = args.source_root / contract["signature_source"]
     enum_source = args.source_root / contract["enum_source"]
     declared = declared_binding_symbols(signature_source)
-    if declared != contract["bootstrap_symbols"]:
-        failures.append("NativeSharp LLVM binding symbol set differs from contract")
+    if not set(contract["bootstrap_symbols"]).issubset(declared):
+        failures.append("NativeSharp LLVM binding lost an SH03 bootstrap symbol")
     if not set(declared).issubset(inventory):
         failures.append("NativeSharp LLVM binding declares symbols outside the audited nsc0 inventory")
     if digest(signature_source) != contract["signature_source_sha256"]:
@@ -93,7 +93,8 @@ def main() -> int:
         "status": "failed" if failures else "passed",
         "llvm_major": contract["supported_llvm_major"],
         "nsc0_import_count": len(inventory),
-        "bootstrap_symbol_count": len(declared),
+        "bootstrap_symbol_count": len(contract["bootstrap_symbols"]),
+        "binding_symbol_count": len(declared),
         "failures": failures,
     }
     if args.report:
@@ -103,7 +104,10 @@ def main() -> int:
         for failure in failures:
             print("NSH0302: " + failure, file=sys.stderr)
         return 1
-    print(f"SH03 LLVM-C contract verified: {len(inventory)} nsc0 imports, {len(declared)} bootstrap symbols")
+    print(
+        f"SH03 LLVM-C contract verified: {len(inventory)} nsc0 imports, "
+        f"{len(contract['bootstrap_symbols'])} bootstrap and {len(declared)} bound symbols"
+    )
     return 0
 
 

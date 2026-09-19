@@ -30,3 +30,6 @@ permite continuar al bootstrap.
 SH07 añade `verify_ir.py`: construye la matriz diferencial de HIR/MIR/CFG/dominancia/SSA, exige
 estabilidad entre O0/O1/O2/O3 y materializa bajo `selfhost/out` un caso reducido cuando aparece la
 primera divergencia estructural.
+
+SH08 añade `verify_llvm_backend.py`: valida objetos, assembly, anatomía `llvm-readobj` y
+ejecutables ya probados por CMake en cuatro perfiles y ambos linkers; publica hashes canónicos.

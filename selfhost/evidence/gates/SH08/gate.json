@@ -1,0 +1,39 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH08",
+  "state": "LANDED",
+  "revision": "selfhost(tanda-09)",
+  "run_id": "tanda-09-sh08-final-20260919",
+  "previous_gate": "selfhost/evidence/gates/SH07/gate.json",
+  "artifacts": {
+    "baseline_report": "selfhost/evidence/runs/tanda-09-sh08-final-20260919/report.md",
+    "baseline_report_json": "selfhost/evidence/runs/tanda-09-sh08-final-20260919/report.json",
+    "baseline_report_sha256": "2588baa65f68f16adec000888015855a58c29186771f6e91fb41245840ea1f1a",
+    "baseline_report_json_sha256": "362b935fff624107f1da03075105be73c50acef33dafbf39f5b7c59cd9bd9cea",
+    "baseline_source_sha256": "936acdbd6bc08ff9a2800a304d18d590441447d3f3e4ad49c65f8982e2b22cc4",
+    "gate0": "_abi/gates/G00/gate.json",
+    "gate0_sha256": "d97a9356a278c2007a89bc21320f9d5269aaaa943adb9150e211b7c89532c6e7",
+    "sh08_report": "selfhost/evidence/gates/SH08/sh08-report.json",
+    "sh08_report_sha256": "f4745a7f8d18374057131cfbe65fc17036a2541818c78bbd08a1e41bafe0b477",
+    "nsc0_sha256": "d2eeb7abcadb802a1bf2802a0fef148d62f666bfa6e53ee70ec02b5c288f6561",
+    "nsc_next_o0_sha256": "9a5428516ea9804a72a4d5a7886d119f2e15f3d66a3e1bdf13c3aed507dc8f5e",
+    "nsc_next_o1_sha256": "8f0a3223651a20f6328565dfcbc6909a019d06e334d316f2806f220528791587",
+    "nsc_next_o2_sha256": "d78dcd54c406ca56806f734cd31974def9be70e52c84dc21757d45ec060c9c26",
+    "nsc_next_o3_sha256": "1c58dfaddcc09f1273747e5a02a4f308b8c19fde40dabe3042eb0c0f058f6adc"
+  },
+  "metrics": {
+    "llvm_imports": 219,
+    "llvm_bound_symbols": 75,
+    "optimizations": 4,
+    "artifact_kinds": 2,
+    "linkers": 2,
+    "anatomy_checks": 20,
+    "assembly_checks": 8,
+    "executable_checks": 8,
+    "ctest_per_linker": 445,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18
+  },
+  "problems": []
+}

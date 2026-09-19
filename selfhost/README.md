@@ -36,3 +36,7 @@ SH07 incorpora HIR versionado, lowering a MIR, CFG, dominancia y SSA escritos en
 Cada frontera tiene verificador propio y dump determinista; `contracts/ir.contract.json` compara
 funciones e invariantes contra `nsc0` y exige estabilidad exacta de O0, O1, O2 y O3. El perfil de
 pases hace explícito qué análisis y transformaciones pertenecen a cada nivel.
+
+SH08 incorpora el primer backend LLVM escrito en NativeSharp. Construye módulo, tipos, globales,
+funciones, bloques, aritmética y llamadas Win64 mediante LLVM-C 23, aplica O0–O3, emite objeto y
+assembly y certifica ejecución con `lld-link` y NSLink.
