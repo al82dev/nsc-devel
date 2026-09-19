@@ -49,11 +49,12 @@ execute_process(
     RESULT_VARIABLE lines_result
     OUTPUT_VARIABLE lines_dump
     ERROR_VARIABLE lines_error)
+string(FIND "${lines_dump}" "${source}" physical_source_index)
 if(NOT lines_result EQUAL 0 OR
    NOT lines_dump MATCHES "/_/nativesharp/assembly-debug/Main\\.ns \\(SHA-256:[ \n\r]+${source_sha256}\\)" OR
    NOT lines_dump MATCHES "[ \n]10 ([0-9A-F]+)" OR
    NOT lines_dump MATCHES "[ \n]11 ([0-9A-F]+)" OR
-   lines_dump MATCHES "nsc-devel")
+   NOT physical_source_index EQUAL -1)
     message(FATAL_ERROR
         "O0 PDB is missing remapped source identity or physical asm instruction lines\n"
         "${lines_dump}\n${lines_error}")

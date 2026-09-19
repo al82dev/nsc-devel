@@ -69,6 +69,7 @@ execute_process(
     RESULT_VARIABLE lines_result
     OUTPUT_VARIABLE lines_dump
     ERROR_VARIABLE lines_error)
+string(FIND "${lines_dump}" "${inline_source}" physical_source_index)
 if(NOT lines_result EQUAL 0 OR
    NOT lines_dump MATCHES "/_/nativesharp/inline-debug/Main\\.ns \\(SHA-256:[ \n\r]+${source_sha256}\\)" OR
    NOT lines_dump MATCHES "[ \n]7 [0-9A-F]+" OR
@@ -76,7 +77,7 @@ if(NOT lines_result EQUAL 0 OR
    NOT lines_dump MATCHES "[ \n]25 [0-9A-F]+" OR
    NOT lines_dump MATCHES "[ \n]26 [0-9A-F]+" OR
    NOT lines_dump MATCHES "[ \n]27 [0-9A-F]+" OR
-   lines_dump MATCHES "nsc-devel")
+   NOT physical_source_index EQUAL -1)
     message(FATAL_ERROR
         "O0 PDB does not retain remapped source identity, inline-body lines, and call-site lines\n"
         "${lines_dump}\n${lines_error}")

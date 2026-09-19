@@ -12,6 +12,8 @@
 /_pdb_local/
 /1/
 /tmp/
+/selfhost/out/
+/selfhost/evidence/runs/
 /nsc-devel.zip
 /examples/**/bin/
 /examples/**/obj/

@@ -255,6 +255,9 @@ independiente. Una fase no termina por porcentaje: termina cuando su gate es rep
 **Gate SH00:** baseline normal verde; verificador del entorno verde; ningún archivo de usuario o
 instalación no administrada entra en el conjunto de limpieza.
 
+Expediente de cierre: `docs/2.0/self-hosting/tandas/TANDA-01-SH00-INFRAESTRUCTURA.md`.
+Gate versionado: `selfhost/evidence/gates/SH00/gate.json`.
+
 ### Fase 1 — Bootstrap Profile 2.0
 
 **Objetivo:** congelar exactamente el lenguaje con el que se escribirá `nsc-next`.
@@ -765,23 +768,34 @@ tiempo:
 Un primer `nsc1.exe` que compila ejemplos no satisface esta definición. Tampoco la satisface un
 `nsc2` funcional si `nsc2` y `nsc3` divergen sin explicación.
 
-## 20. Primera tanda ejecutable
+## 20. Primeras tandas ejecutables
 
-El trabajo inmediato debe limitarse a cerrar SH00 y SH01 antes de portar código:
+El trabajo inmediato se divide en dos commits verificables antes de portar código:
+
+### Tanda 01 — SH00
 
 1. crear el layout `selfhost/`;
-2. escribir `BootstrapProfile-2.0.md`;
-3. generar el inventario de construcciones usadas por el esqueleto previsto;
-4. fijar el subconjunto inicial de stdlib;
-5. definir `bootstrap.lock`;
-6. crear el verificador de entorno;
-7. crear el verificador de perfil;
-8. crear fixtures positivas y negativas del perfil;
+2. fijar nombres y aislamiento de `nsc0`, `nsc1`, `nsc2` y `nsc3`;
+3. inventariar dependencias externas permitidas;
+4. definir `bootstrap.lock` y su schema;
+5. crear el verificador de entorno;
+6. hacer configurables prefijo, builds, LLVM, linkers, trabajo, temporales y evidencia;
+7. validar raíces de escritura antes de ejecutar;
+8. crear limpieza dirigida y recuperación mediante `nsc0`;
 9. definir formatos de reporte y gate;
-10. ejecutar nuevamente el baseline normal y registrar Gate SH00.
+10. ejecutar el baseline normal y registrar Gate SH00.
 
-No debe comenzar el port del lexer hasta que esta tanda esté certificada. Esto evita descubrir a
-mitad del compilador que una construcción fundamental no pertenece al subconjunto bootstrap.
+### Tanda 02 — SH01
+
+1. escribir `BootstrapProfile-2.0.md`;
+2. generar el inventario de construcciones usadas por el esqueleto previsto;
+3. fijar el subconjunto inicial de stdlib;
+4. crear el verificador de perfil;
+5. crear fixtures positivas y negativas del perfil;
+6. ejecutar el baseline normal y registrar Gate SH01.
+
+No debe comenzar el port del lexer hasta que ambas tandas estén certificadas. Esto evita descubrir
+a mitad del compilador que una construcción fundamental no pertenece al subconjunto bootstrap.
 
 ## 21. Mantenimiento de este roadmap
 
@@ -793,7 +807,70 @@ mitad del compilador que una construcción fundamental no pertenece al subconjun
 - Una eventual edición NativeSharp 3.0 copiará y revisará el plan; no modificará retroactivamente el
   contrato de 2.0.
 
-## 22. Resumen ejecutivo
+## 22. Expediente obligatorio por tanda y commit
+
+El trabajo se divide en tandas numeradas. Cada tanda se cierra con un commit identificable y el
+mismo commit debe incluir un expediente Markdown bajo `docs/2.0/self-hosting/tandas/`. No se acepta
+un commit de cierre que cambie código, contratos, pruebas u orquestación sin actualizar su
+expediente. Una corrección posterior de una tanda cerrada debe actualizar el mismo expediente en el
+commit correctivo y enlazar la evidencia nueva sin borrar la anterior.
+
+El expediente de cada tanda debe contener como mínimo:
+
+1. número, nombre, estado, tareas `NS2-SH-xxx`, gate y alcance;
+2. commit de entrada, rama de trabajo, commit de cierre y relación con el milestone;
+3. objetivo, no objetivos, contratos, invariantes y decisiones de diseño;
+4. arquitectura y flujo de datos de la rebanada implementada;
+5. inventario de cada archivo creado, modificado o eliminado y la razón del cambio;
+6. inventario de tipos, clases, structs, interfaces, enums y aliases introducidos o modificados;
+7. inventario de métodos y funciones con firma, responsabilidad, entradas, salidas, errores,
+   ownership, efectos laterales y requisitos de concurrencia aplicables;
+8. formatos, opciones de CLI, variables de entorno, códigos de diagnóstico y versiones de contrato;
+9. pruebas añadidas o modificadas, propósito de cada una y cobertura positiva, negativa y de
+   regresión;
+10. comandos exactos de validación y sus resultados;
+11. baseline completo de la tanda, con identificador de corrida, revisión, hashes, conteos,
+    linkers, perfiles de optimización, problemas y rutas de los reportes;
+12. diferencias contra `nsc0` o contra la generación anterior y su resolución;
+13. riesgos, deuda aceptada, limitaciones y trabajo que queda explícitamente fuera;
+14. lista final de archivos del commit y comprobación de que no contiene objetos, ejecutables,
+    temporales ni artefactos ajenos.
+
+La plantilla normativa es `docs/2.0/self-hosting/TANDA_TEMPLATE.md`. Puede ampliarse, pero ninguna
+sección obligatoria puede eliminarse o marcarse como no aplicable sin justificarlo. Los reportes
+voluminosos y datos estructurados viven en el directorio de evidencia de la corrida; el Markdown
+los enlaza mediante rutas estables y registra sus hashes.
+
+### 22.1 Protocolo de baseline por tanda
+
+Cada tanda tiene exactamente un baseline de cierre obligatorio, ejecutado después del último cambio
+funcional y antes del commit de cierre. Se usa el comando canónico:
+
+```text
+python nscbuilder.py --baseline --jobs N
+```
+
+Las rutas no forman parte del código del script. Pueden resolverse por CLI, entorno o un archivo
+`nscbuilder-paths` v1; una corrida aislada puede añadir `--write-root` para impedir físicamente que
+el runner escriba fuera de las unidades o directorios autorizados.
+
+Las generaciones disponibles en esa tanda añaden sus matrices acumulativas al baseline normal. Un
+baseline fallido no se resume como aprobado: se conserva el primer fallo, se corrige, se repite la
+corrida completa y se documentan ambas ejecuciones. El expediente identifica únicamente como
+baseline de cierre una corrida completamente verde y conserva las fallidas como antecedentes.
+
+El commit de cierre sigue el formato:
+
+```text
+selfhost(tanda-XX): descripcion breve
+```
+
+Antes de cerrarlo se verifica el diff por rutas y se actualiza el expediente con el hash de la
+evidencia. El expediente identifica el cierre como `este commit`; el SHA exacto se obtiene del
+propio historial Git, porque un commit no puede contener su identificador sin modificarlo. Así se
+mantiene un solo commit de cierre por tanda.
+
+## 23. Resumen ejecutivo
 
 NativeSharp 2.0 ya tiene suficiente lenguaje y biblioteca para comenzar `nsc-next`. Lo que falta no
 es otra ronda general de features: falta congelar el subconjunto bootstrap, crear la frontera LLVM y

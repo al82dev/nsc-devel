@@ -120,6 +120,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+DEFAULT_NATIVE_SHARP_ROOT = Path(os.environ.get("NS_ROOT", r"C:\native-sharp"))
 
 # Artefactos crudos, en ESTE repo. No es el directorio de la corrida oficial a proposito:
 # report.py construye el veredicto desde ahi y el checklist lo borra entero al arrancar.
@@ -388,7 +389,7 @@ def load_reference() -> tuple[dict[tuple[str, str], bool], str]:
     # Si el compilador es MAS NUEVO que la referencia, la comparacion puede estar mintiendo: esa
     # referencia se saco con otro nsc.exe. Se dice, no se calla.
     nsc_env = os.environ.get("NSC_EXE")
-    nsc_path = Path(nsc_env) if nsc_env else Path(r"C:\native-sharp\bin\nsc.exe")
+    nsc_path = Path(nsc_env) if nsc_env else DEFAULT_NATIVE_SHARP_ROOT / "bin" / "nsc.exe"
     try:
         if nsc_path.is_file() and nsc_path.stat().st_mtime > REFERENCE.stat().st_mtime:
             note += ("\n  AVISO: nsc.exe es MAS NUEVO que esa referencia, o sea que se saco con\n"
@@ -1159,8 +1160,8 @@ def main() -> int:
                              "llena el buzon y copia los logs al arbol de NSLink")
     arguments = parser.parse_args()
 
-    nsc = locate("nsc.exe", "NSC_EXE", Path(r"C:\native-sharp\bin\nsc.exe"))
-    nslink = locate("nslink.exe", "NSLINK_EXE", Path(r"C:\native-sharp\bin\nslink.exe"))
+    nsc = locate("nsc.exe", "NSC_EXE", DEFAULT_NATIVE_SHARP_ROOT / "bin" / "nsc.exe")
+    nslink = locate("nslink.exe", "NSLINK_EXE", DEFAULT_NATIVE_SHARP_ROOT / "bin" / "nslink.exe")
     if nsc is None or nslink is None:
         return 2
 

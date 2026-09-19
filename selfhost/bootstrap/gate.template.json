@@ -1,0 +1,11 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH00",
+  "state": "OPEN",
+  "revision": "pending",
+  "run_id": "pending",
+  "previous_gate": null,
+  "artifacts": {},
+  "problems": []
+}

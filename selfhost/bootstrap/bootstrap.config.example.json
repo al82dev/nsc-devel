@@ -1,0 +1,19 @@
+{
+  "schema": "nscbuilder-paths",
+  "version": 1,
+  "build_id_override": "2000000000000000",
+  "paths": {
+    "prefix": "A:\\native-sharp",
+    "build_dir": "A:\\nsc-devel\\selfhost\\out\\nsc0-build",
+    "test_build_lld": "A:\\nsc-devel\\selfhost\\out\\tests-lld",
+    "test_build_nslink": "A:\\nsc-devel\\selfhost\\out\\tests-nslink",
+    "llvm_root": "C:\\clang-llvm",
+    "nslink": "A:\\native-sharp\\bin\\nslink.exe",
+    "history_root": "A:\\nsc-devel\\selfhost\\evidence\\runs",
+    "work_root": "A:\\nsc-devel\\selfhost\\out\\work",
+    "temp_root": "A:\\nsc-devel\\selfhost\\out\\temp"
+  },
+  "write_roots": [
+    "A:\\"
+  ]
+}

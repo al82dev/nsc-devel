@@ -36,6 +36,8 @@ set "BINDIR=%LOGDIR%\bin_triage"
 set "REPORT=%LOGDIR%\TRIAGE.txt"
 set "TLOG=%LOGDIR%\10_triage.log"
 set "BT=%ROOT%\tests\bug_triage"
+if not defined NS_ROOT set "NS_ROOT=C:\native-sharp"
+if not defined NSC_EXE set "NSC_EXE=%NS_ROOT%\bin\nsc.exe"
 
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"
 if not exist "%BINDIR%" mkdir "%BINDIR%"
@@ -45,7 +47,7 @@ set /a FIXED=0
 
 > "%REPORT%" echo NativeSharp -- bug triage
 >> "%REPORT%" echo Started: %DATE% %TIME%
->> "%REPORT%" echo Compiler: C:\native-sharp\bin\nsc.exe
+>> "%REPORT%" echo Compiler: %NSC_EXE%
 >> "%REPORT%" echo.
 >> "%REPORT%" echo Cada caso devuelve 42 cuando el compilador esta sano.
 >> "%REPORT%" echo Ver tests\bug_triage\README.md para que mide cada uno.

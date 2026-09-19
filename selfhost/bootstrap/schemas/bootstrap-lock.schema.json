@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nativesharp.dev/schemas/bootstrap-lock-v1.json",
+  "title": "NativeSharp bootstrap lock",
+  "type": "object",
+  "required": ["schema", "version", "target", "artifacts"],
+  "properties": {
+    "schema": {"const": "nativesharp-bootstrap-lock"},
+    "version": {"const": 1},
+    "target": {
+      "type": "object",
+      "required": ["host", "language", "runtime_abi"]
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "path", "state", "sha256"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "path": {"type": "string", "minLength": 1},
+          "state": {"type": "string"},
+          "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+          "version_args": {"type": "array", "items": {"type": "string"}},
+          "version_contains": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

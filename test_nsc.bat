@@ -44,8 +44,10 @@ set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 cd /d "%ROOT%"
 set "BUILDDIR=%ROOT%\build-clang"
-set "PREFIX=C:\native-sharp"
-set "LLVMROOT=C:\clang-llvm"
+if not defined NS_ROOT set "NS_ROOT=C:\native-sharp"
+if not defined NSC_LLVM_ROOT set "NSC_LLVM_ROOT=C:\clang-llvm"
+set "PREFIX=%NS_ROOT%"
+set "LLVMROOT=%NSC_LLVM_ROOT%"
 set "LLVM=%LLVMROOT:\=/%"
 
 echo.

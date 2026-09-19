@@ -46,7 +46,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
->"%PACKAGE_LIB%\.source.txt" echo Synced from %NS_LIB_ROOT%
+>"%PACKAGE_LIB%\.source.txt" echo Synced from configured NativeSharp installation
 echo [LIB] Library synchronization complete.
 endlocal & set "NS_LIB_READY=1"
 exit /b 0

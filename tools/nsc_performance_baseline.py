@@ -29,9 +29,10 @@ from typing import Iterable
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_COMPILER = Path(r"C:\native-sharp\bin\nsc.exe")
-DEFAULT_LLVM = Path(r"C:\clang-llvm")
-DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
+DEFAULT_NATIVE_SHARP_ROOT = Path(os.environ.get("NS_ROOT", r"C:\native-sharp"))
+DEFAULT_COMPILER = Path(os.environ.get("NSC_EXE", DEFAULT_NATIVE_SHARP_ROOT / "bin" / "nsc.exe"))
+DEFAULT_LLVM = Path(os.environ.get("NSC_LLVM_ROOT", r"C:\clang-llvm"))
+DEFAULT_NSLINK = Path(os.environ.get("NSLINK_EXE", DEFAULT_NATIVE_SHARP_ROOT / "bin" / "nslink.exe"))
 DEFAULT_CORPUS = ROOT / "tests" / "performance" / "p00" / "corpus.json"
 DEFAULT_OUTPUT = ROOT / "_nscbuilder" / "performance" / "p00"
 TIME_RE = re.compile(r"^timing phase=(\S+) us=(\d+)$", re.MULTILINE)
@@ -171,8 +172,9 @@ def load_corpora(path: Path) -> list[Corpus]:
 
 def make_environment(linker: str, llvm_root: Path, nslink: Path) -> dict[str, str]:
     env = dict(os.environ)
-    env["NS_ROOT"] = r"C:\native-sharp"
-    env["NS_LIB_ROOT"] = r"C:\native-sharp\lib"
+    native_sharp_root = compiler.resolve().parent.parent
+    env["NS_ROOT"] = str(native_sharp_root)
+    env["NS_LIB_ROOT"] = str(native_sharp_root / "lib")
     env["NS_LIB_READY"] = "1"
     env["NSC_TEST_NONINTERACTIVE"] = "1"
     env["CTEST_INTERACTIVE_DEBUG_MODE"] = "0"

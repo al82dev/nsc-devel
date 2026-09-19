@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nativesharp.dev/schemas/selfhost-gate-v1.json",
+  "title": "NativeSharp self-hosting gate",
+  "type": "object",
+  "required": ["schema", "version", "gate", "state", "revision", "run_id", "problems"],
+  "properties": {
+    "schema": {"const": "nativesharp-selfhost-gate"},
+    "version": {"const": 1},
+    "gate": {"pattern": "^SH(0[0-9]|1[0-4])$"},
+    "state": {"enum": ["OPEN", "LANDED", "REJECTED", "SUPERSEDED"]},
+    "revision": {"type": "string", "minLength": 7},
+    "run_id": {"type": "string", "minLength": 1},
+    "previous_gate": {"type": ["string", "null"]},
+    "artifacts": {"type": "object"},
+    "problems": {"type": "array", "items": {"type": "string"}}
+  }
+}

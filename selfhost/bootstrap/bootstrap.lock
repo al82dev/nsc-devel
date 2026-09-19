@@ -1,0 +1,73 @@
+{
+  "schema": "nativesharp-bootstrap-lock",
+  "version": 1,
+  "target": {
+    "host": "windows-x64",
+    "language": "NativeSharp 2.0",
+    "runtime_abi": "2.0"
+  },
+  "artifacts": [
+    {
+      "id": "nsc0",
+      "path": "${NSC0_EXE}",
+      "state": "locked",
+      "sha256": "556850a81de30e4a440e4c4ccead6cc27c8b5310e2abb595507e6bf500bc7859",
+      "version_args": ["--version"],
+      "version_contains": "NativeSharp 2.0.0"
+    },
+    {
+      "id": "clang-cl",
+      "path": "${NSC_LLVM_ROOT}\\bin\\clang-cl.exe",
+      "state": "locked",
+      "sha256": "a66a5ddf0a242bd67d1f2580d18021831352e8d32ca852f221c406b0ab216d59",
+      "version_args": ["--version"],
+      "version_contains": "clang version 23.1.0"
+    },
+    {
+      "id": "lld-link",
+      "path": "${NSC_LLVM_ROOT}\\bin\\lld-link.exe",
+      "state": "locked",
+      "sha256": "7efdab066cab3124fdf1173301701fd2e629602fdcb85f9ec3481a0c198f9a64",
+      "version_args": ["--version"],
+      "version_contains": "LLD 23.1.0"
+    },
+    {
+      "id": "llvm-c-library",
+      "path": "${NSC_LLVM_ROOT}\\lib\\LLVM-C.lib",
+      "state": "locked",
+      "sha256": "f8b52031f1e5b547bb94c7ef7d6a0b00893bcde5ea72cc7bc124ab934d2acad6"
+    },
+    {
+      "id": "nslink",
+      "path": "${NSLINK_EXE}",
+      "state": "locked",
+      "sha256": "acc4d5042cf9ad334346b957bcba32c452a3abb3cb2809ea0a5e3a8670b05c1a",
+      "version_args": ["--version"],
+      "version_contains": "NSLink 0.1.0"
+    },
+    {
+      "id": "python",
+      "path": "${PYTHON_EXE}",
+      "state": "locked",
+      "sha256": "4942b86a6597e5aee0128daa00050ed79bc21f6e709a78eb19cbfeb0c2f39ac9",
+      "version_args": ["--version"],
+      "version_contains": "Python 3.14.7"
+    },
+    {
+      "id": "cmake",
+      "path": "${CMAKE_EXE}",
+      "state": "locked",
+      "sha256": "414ad2a5dcabbb2a49ba1514e6651523865ae306b73a0e769f18e14cab1570e8",
+      "version_args": ["--version"],
+      "version_contains": "cmake version 4.4.2"
+    },
+    {
+      "id": "ninja",
+      "path": "${NINJA_EXE}",
+      "state": "locked",
+      "sha256": "e52a7ad9538d9618c67a0bd777964e2eec8a30f68b810a2f6adce1f2daf847b8",
+      "version_args": ["--version"],
+      "version_contains": "1.13.2"
+    }
+  ]
+}

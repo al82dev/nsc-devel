@@ -1,0 +1,16 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH00",
+  "state": "LANDED",
+  "revision": "selfhost(tanda-01)",
+  "run_id": "tanda-01-sh00-final4-20260919",
+  "previous_gate": null,
+  "artifacts": {
+    "baseline_report": "selfhost/evidence/runs/tanda-01-sh00-final4-20260919/report.md",
+    "environment_report": "selfhost/evidence/gates/SH00/bootstrap-environment.json",
+    "nsc0_sha256": "556850a81de30e4a440e4c4ccead6cc27c8b5310e2abb595507e6bf500bc7859",
+    "nslink_sha256": "acc4d5042cf9ad334346b957bcba32c452a3abb3cb2809ea0a5e3a8670b05c1a"
+  },
+  "problems": []
+}

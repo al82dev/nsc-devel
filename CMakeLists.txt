@@ -640,6 +640,16 @@ endif()
 
 if(NSC_BUILD_TESTS)
     enable_testing()
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+    add_test(
+        NAME nsc.selfhost.bootstrap-infrastructure
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/selfhost/test_bootstrap_infrastructure.py")
+    set_tests_properties(
+        nsc.selfhost.bootstrap-infrastructure
+        PROPERTIES ENVIRONMENT
+            "PYTHONDONTWRITEBYTECODE=1;PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}")
 
     # A partir de aqui, todo add_executable() (via la funcion nsc_add_unit_test o directo) cae
     # en build/tests/ en vez de build/bin/ -- ver comentario arriba.
@@ -2810,6 +2820,10 @@ if(NSC_BUILD_TESTS)
             "-DASSEMBLY_ABI_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/asm_abi"
             "-DASSEMBLY_ABI_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/assembly-abi-o0-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpAssemblyAbiO0.cmake")
+    # Windows occasionally reports an incorrect child exit status for this freestanding host
+    # while many process-heavy CTests run concurrently. The product itself remains correct and
+    # repeated isolated runs are stable, so keep the strict 42 check and isolate only this test.
+    set_tests_properties(nsc.assembly.abi-c-cpp-o0 PROPERTIES RUN_SERIAL TRUE)
 
     add_test(
         NAME nsc.item333.win64-vararg-abi

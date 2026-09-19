@@ -1,0 +1,35 @@
+{
+  "schema": "nativesharp-bootstrap-generations",
+  "version": 1,
+  "generations": [
+    {
+      "id": "nsc0",
+      "implementation": "C++",
+      "built_by": "certified-cpp-toolchain",
+      "role": "seed-and-temporary-oracle"
+    },
+    {
+      "id": "nsc1",
+      "implementation": "NativeSharp",
+      "built_by": "nsc0",
+      "role": "first-nativesharp-generation"
+    },
+    {
+      "id": "nsc2",
+      "implementation": "NativeSharp",
+      "built_by": "nsc1",
+      "role": "first-self-hosted-generation"
+    },
+    {
+      "id": "nsc3",
+      "implementation": "NativeSharp",
+      "built_by": "nsc2",
+      "role": "fixed-point-proof"
+    }
+  ],
+  "isolation": {
+    "shared_output_directories": false,
+    "compiler_selected_by_absolute_path": true,
+    "path_lookup_allowed": false
+  }
+}

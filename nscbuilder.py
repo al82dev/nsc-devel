@@ -5,7 +5,10 @@ Requisitos:
     python -m pip install PySide6
 
 Uso automatizado:
-    python nscbuilder.py --baseline [--jobs N]
+    python nscbuilder.py --baseline [--jobs N] [opciones de rutas]
+
+Las rutas aceptan la precedencia CLI, entorno, archivo JSON y valor predeterminado. Consulte
+``python nscbuilder.py --help`` para ver las opciones y variables disponibles.
 
 Los resultados se guardan como archivos ordinarios bajo:
     <repo>\\_nscbuilder\\history\\<fecha-id>\\
@@ -98,6 +101,69 @@ DEFAULT_PREFIX = Path(r"C:\native-sharp")
 DEFAULT_LLVM = Path(r"C:\clang-llvm")
 DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
 HISTORY_ROOT = ROOT / "_nscbuilder" / "history"
+DEFAULT_TEST_WORK_ROOT = ROOT / "_nscbuilder" / "work" / "tests"
+DEFAULT_TEMP_ROOT = ROOT / "_nscbuilder" / "temp"
+LIBRARY_SOURCE_MARKER = b"Synced from configured NativeSharp installation\r\n"
+
+PATH_ENVIRONMENT: dict[str, tuple[str, ...]] = {
+    "prefix": ("NSC_INSTALL_ROOT", "NS_ROOT"),
+    "build_dir": ("NSC_BUILD_ROOT",),
+    "test_build_lld": ("NSC_TEST_BUILD_LLD",),
+    "test_build_nslink": ("NSC_TEST_BUILD_NSLINK",),
+    "llvm_root": ("NSC_LLVM_ROOT",),
+    "nslink": ("NSLINK_EXE",),
+    "history_root": ("NSC_HISTORY_ROOT",),
+    "work_root": ("NSC_WORK_ROOT",),
+    "temp_root": ("NSC_TEMP_ROOT",),
+}
+
+
+def load_builder_config(path: str | Path | None) -> dict:
+    """Carga un archivo de rutas versionado sin aplicar todavía precedencias."""
+    if path is None or not str(path).strip():
+        return {}
+    config_path = Path(path)
+    value = json.loads(config_path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError("la configuración debe ser un objeto JSON")
+    if value.get("schema") != "nscbuilder-paths" or value.get("version") != 1:
+        raise ValueError("se esperaba schema 'nscbuilder-paths', version 1")
+    paths = value.get("paths", {})
+    roots = value.get("write_roots", [])
+    if not isinstance(paths, dict) or not all(isinstance(key, str) for key in paths):
+        raise ValueError("'paths' debe ser un objeto")
+    if not isinstance(roots, list) or not all(isinstance(root, str) for root in roots):
+        raise ValueError("'write_roots' debe ser una lista de rutas")
+    return value
+
+
+def configured_path(config: dict, key: str, fallback: str | Path) -> str:
+    """Resuelve entorno → archivo → predeterminado; la CLI se aplica después por argparse."""
+    for name in PATH_ENVIRONMENT[key]:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    value = config.get("paths", {}).get(key)
+    return str(value) if isinstance(value, str) and value.strip() else str(fallback)
+
+
+def configured_write_roots(config: dict) -> list[str]:
+    """Obtiene las raíces autorizadas desde el entorno o el archivo de configuración."""
+    environment = os.environ.get("NSC_WRITE_ROOTS", "").strip()
+    if environment:
+        return [part for part in environment.split(os.pathsep) if part.strip()]
+    return list(config.get("write_roots", []))
+
+
+def configured_build_id(config: dict) -> str:
+    """Resuelve la identidad reproducible reservada para baselines y bootstrap."""
+    value = os.environ.get("NSC_BUILD_ID_OVERRIDE", "").strip()
+    if not value:
+        configured = config.get("build_id_override", "")
+        value = configured.strip() if isinstance(configured, str) else ""
+    if value and not re.fullmatch(r"[0-9a-f]{16}", value):
+        raise ValueError("build_id_override debe tener 16 dígitos hexadecimales minúsculos")
+    return value
 
 
 def configure_windows_error_mode() -> None:
@@ -151,13 +217,18 @@ ABI_SOURCE_DIRECTORIES: tuple[str, ...] = (
     "examples",
     "spec",
     "docs",
+    "selfhost",
 )
 ABI_SOURCE_FILES: tuple[str, ...] = ("CMakeLists.txt", "nscbuilder.py")
 ABI_SOURCE_EXCLUDED_NAMES: frozenset[str] = frozenset(
     {".git", "_abi", "_nscbuilder", "__pycache__", ".vs", ".vscode", ".cache"}
 )
 ABI_SOURCE_EXCLUDED_SUFFIXES: tuple[str, ...] = (".obj", ".pdb", ".ilk", ".exp", ".tmp", ".log")
-TEST_WORK_ROOT = ROOT / "_nscbuilder" / "work" / "tests"
+ABI_SOURCE_EXCLUDED_PREFIXES: tuple[tuple[str, ...], ...] = (
+    ("selfhost", "out"),
+    ("selfhost", "evidence", "runs"),
+)
+TEST_WORK_ROOT = DEFAULT_TEST_WORK_ROOT
 CLEANUP_BUILD_NAMES: tuple[str, ...] = (
     "build-clang",
     "build-clang-lldlink",
@@ -279,6 +350,12 @@ class RunPlan:
     prefix: str
     llvm_root: str
     nslink_exe: str
+    history_root: str
+    test_work_root: str
+    temp_root: str
+    allowed_write_roots: list[str]
+    run_id: str
+    build_id_override: str
     build_mode: str
     build_target: str
     build_runner: str
@@ -314,6 +391,12 @@ def make_baseline_plan(
     nslink_exe: str | Path = DEFAULT_NSLINK,
     test_build_lld: str | Path = DEFAULT_TEST_BUILD_LLD,
     test_build_nslink: str | Path = DEFAULT_TEST_BUILD_NSLINK,
+    history_root: str | Path = HISTORY_ROOT,
+    test_work_root: str | Path = DEFAULT_TEST_WORK_ROOT,
+    temp_root: str | Path = DEFAULT_TEMP_ROOT,
+    allowed_write_roots: Iterable[str | Path] = (),
+    run_id: str = "",
+    build_id_override: str = "",
     build_runner: str = "ninja",
 ) -> RunPlan:
     """Construye el plan inmutable de G0.2 compartido por GUI y consola."""
@@ -324,6 +407,12 @@ def make_baseline_plan(
         prefix=str(prefix),
         llvm_root=str(llvm_root),
         nslink_exe=str(nslink_exe),
+        history_root=str(history_root),
+        test_work_root=str(test_work_root),
+        temp_root=str(temp_root),
+        allowed_write_roots=[str(path) for path in allowed_write_roots],
+        run_id=run_id,
+        build_id_override=build_id_override,
         build_mode="incremental",
         build_target="nsc",
         build_runner=build_runner,
@@ -345,6 +434,79 @@ def make_baseline_plan(
         keep_link_temps=False,
         selected_ctests=[],
         selected_cases=[],
+    )
+
+
+def path_is_within(path: Path, root: Path) -> bool:
+    """Indica si ``path`` queda dentro de ``root`` después de resolver ambas rutas."""
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def validate_plan_write_paths(plan: RunPlan) -> list[str]:
+    """Rechaza destinos de escritura que escapen de las raíces autorizadas de la corrida."""
+    if not plan.allowed_write_roots:
+        return []
+    roots = [Path(path).resolve() for path in plan.allowed_write_roots]
+    candidates = [
+        Path(plan.compiler_build_dir),
+        Path(plan.prefix),
+        *(Path(path) for path in plan.test_build_dirs.values()),
+        Path(plan.history_root),
+        Path(plan.test_work_root),
+        Path(plan.temp_root),
+        ABI_ROOT,
+    ]
+    rejected: list[str] = []
+    for candidate in candidates:
+        if not str(candidate):
+            continue
+        resolved = candidate.resolve()
+        if not any(path_is_within(resolved, root) for root in roots):
+            rejected.append(str(resolved))
+    return rejected
+
+
+MANAGED_BUILD_MARKER = ".nscbuilder-managed-build"
+
+
+def build_directory_allowed(
+    path: Path,
+    repository_root: Path,
+    legacy_prefix: str,
+    allowed_write_roots: Iterable[str | Path],
+) -> bool:
+    """Valida uso; borrar exige además el marcador cuando no es un build histórico."""
+    resolved = path.resolve()
+    repository = repository_root.resolve()
+    if resolved.parent == repository and resolved.name.casefold().startswith(legacy_prefix):
+        return True
+    for root_value in allowed_write_roots:
+        root = Path(root_value).resolve()
+        if resolved != root and path_is_within(resolved, root):
+            return True
+    return False
+
+
+def build_directory_can_be_deleted(
+    path: Path,
+    repository_root: Path,
+    legacy_prefix: str,
+) -> bool:
+    resolved = path.resolve()
+    repository = repository_root.resolve()
+    legacy = resolved.parent == repository and resolved.name.casefold().startswith(legacy_prefix)
+    return legacy or (resolved / MANAGED_BUILD_MARKER).is_file()
+
+
+def mark_managed_build(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    (path / MANAGED_BUILD_MARKER).write_text(
+        "NativeSharp nscbuilder managed build v1\n",
+        encoding="utf-8",
     )
 
 
@@ -459,7 +621,13 @@ def collect_source_files(root: Path) -> list[Path]:
         for path in directory.rglob("*"):
             if not path.is_file():
                 continue
-            parts = set(path.relative_to(root).parts)
+            relative_parts = path.relative_to(root).parts
+            if any(
+                tuple(part.casefold() for part in relative_parts[: len(prefix)]) == prefix
+                for prefix in ABI_SOURCE_EXCLUDED_PREFIXES
+            ):
+                continue
+            parts = set(relative_parts)
             if parts & ABI_SOURCE_EXCLUDED_NAMES:
                 continue
             if any(part.casefold().startswith("build-") for part in parts):
@@ -1074,6 +1242,11 @@ class PipelineWorker(QObject):
         env.pop("NSC_LLD_LINK", None)
         env.pop("NSC_LLVM_LIB", None)
         prefix = Path(self.plan.prefix)
+        temp_root = Path(self.plan.temp_root).resolve()
+        temp_root.mkdir(parents=True, exist_ok=True)
+        env["TEMP"] = str(temp_root)
+        env["TMP"] = str(temp_root)
+        env["TMPDIR"] = str(temp_root)
         env["NS_ROOT"] = str(prefix)
         env["NSC_EXE"] = str(prefix / "bin" / "nsc.exe")
         env["NS_LIB_ROOT"] = str(prefix / "lib")
@@ -1231,7 +1404,7 @@ class PipelineWorker(QObject):
         selected_build = str(
             build_dir if build_dir is not None else self.plan.compiler_build_dir
         )
-        return [
+        command = [
             "cmake",
             "-S",
             self.plan.root,
@@ -1251,6 +1424,9 @@ class PipelineWorker(QObject):
             f"-DNSC_BUILD_TESTS={'ON' if build_tests else 'OFF'}",
             "-DNSC_WARNINGS_AS_ERRORS=ON",
         ]
+        if self.plan.build_id_override:
+            command.append(f"-DNSC_BUILD_ID_OVERRIDE={self.plan.build_id_override}")
+        return command
 
     def _configure_tests_command(self, linker: str) -> list[str]:
         command = self._configure_command(
@@ -1267,7 +1443,7 @@ class PipelineWorker(QObject):
         root = Path(self.plan.root).resolve()
         build = Path(self.plan.compiler_build_dir).resolve()
         if self.plan.build_mode == "clean":
-            if build.parent != root or not build.name.lower().startswith("build-"):
+            if not build_directory_can_be_deleted(build, root, "build-"):
                 detail = f"Se rechazó borrar un build fuera del destino permitido: {build}"
                 self._emit(detail, "error")
                 self.failed += 1
@@ -1300,13 +1476,16 @@ class PipelineWorker(QObject):
                 return False
 
         cache = build / "CMakeCache.txt"
-        if self.plan.build_mode == "clean" or not cache.is_file():
+        # Un build-id fijado es parte del lock del bootstrap. Se reconfigura incluso si ya existe
+        # cache para impedir que sobreviva silenciosamente una identidad aleatoria anterior.
+        if self.plan.build_mode == "clean" or not cache.is_file() or self.plan.build_id_override:
             if not self._command_stage(
-                "Configurar",
+                "Configurar compilador",
                 self._configure_command(build_tests=False),
                 self._base_environment(),
             ):
                 return False
+            mark_managed_build(build)
 
         targets = [] if self.plan.build_target == "all" else [
             target for target in dict.fromkeys(self.plan.build_target.split(";")) if target
@@ -1351,10 +1530,15 @@ class PipelineWorker(QObject):
             if self.cancel_event.is_set():
                 return False
             build = self._test_build_dir(linker).resolve()
-            if build.parent != root or not build.name.casefold().startswith("build-test-"):
+            if not build_directory_allowed(
+                build,
+                root,
+                "build-test-",
+                self.plan.allowed_write_roots,
+            ):
                 detail = (
-                    "Se rechazó usar o limpiar el árbol de CTest porque no es un "
-                    f"build-test-* directo de {root}: {build}"
+                    "Se rechazó usar el árbol de CTest porque no es un build-test-* directo "
+                    f"de {root} ni está dentro de una raíz autorizada: {build}"
                 )
                 self._emit(detail, "error", linker)
                 self.failed += 1
@@ -1420,6 +1604,11 @@ class PipelineWorker(QObject):
                 code = 0
                 detail = f"Árbol CTest limpio para {linker}: {build}"
                 try:
+                    if not build_directory_can_be_deleted(build, root, "build-test-"):
+                        raise ValueError(
+                            "se rechazó borrar un build configurable sin marcador administrado: "
+                            f"{build}"
+                        )
                     if build.exists():
                         shutil.rmtree(build)
                 except OSError as exc:
@@ -1450,6 +1639,7 @@ class PipelineWorker(QObject):
                     channel=linker,
                 ):
                     continue
+                mark_managed_build(build)
 
             targets = [
                 target for target in dict.fromkeys(self.plan.test_build_target.split(";")) if target
@@ -1524,9 +1714,9 @@ class PipelineWorker(QObject):
                 shutil.copytree(source, destination)
                 lines.append(f"copiada={library}")
                 self._emit(f"[LIB] Copiada {library} desde {source}")
-            (destination_root / ".source.txt").write_text(
-                f"Synced from {source_root}\n", encoding="utf-8"
-            )
+            # Este marcador forma parte del manifiesto S0/S1. Sus bytes deben ser identicos sin
+            # importar si la sincronizacion se lanza desde Python o desde el .cmd de Windows.
+            (destination_root / ".source.txt").write_bytes(LIBRARY_SOURCE_MARKER)
         except (OSError, ValueError) as exc:
             status = "failed"
             code = 1
@@ -1552,7 +1742,7 @@ class PipelineWorker(QObject):
         ):
             return True
         assert self.run_dir is not None
-        root = TEST_WORK_ROOT.resolve()
+        root = Path(self.plan.test_work_root).resolve()
         for linker in self.plan.linkers:
             name = f"Limpiar pruebas [{linker}]"
             self.stage_started.emit(name)
@@ -1716,7 +1906,7 @@ class PipelineWorker(QObject):
         pass_dir = self.run_dir / safe_name(linker)
         log = pass_dir / "cases" / f"{safe_name(key)}.log"
         artifact_dir = (
-            TEST_WORK_ROOT
+            Path(self.plan.test_work_root)
             / safe_name(linker)
             / optimization.lstrip("-").upper()
             / safe_name(case.label)
@@ -2405,8 +2595,12 @@ class PipelineWorker(QObject):
     @Slot()
     def run(self) -> None:
         started = time.monotonic()
-        run_name = datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
-        self.run_dir = HISTORY_ROOT / run_name
+        run_name = self.plan.run_id or (
+            datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
+        )
+        if safe_name(run_name) != run_name:
+            raise ValueError(f"Identificador de corrida inseguro: {run_name!r}")
+        self.run_dir = Path(self.plan.history_root) / run_name
         self.run_dir.mkdir(parents=True, exist_ok=False)
         self.console_path = self.run_dir / "console.log"
         self.console_path.touch()
@@ -4010,6 +4204,12 @@ class MainWindow(QMainWindow):
                 prefix=self.prefix_path.text().strip(),
                 llvm_root=self.llvm_path.text().strip(),
                 nslink_exe=self.nslink_path.text().strip(),
+                history_root=str(HISTORY_ROOT),
+                test_work_root=str(DEFAULT_TEST_WORK_ROOT),
+                temp_root=str(DEFAULT_TEMP_ROOT),
+                allowed_write_roots=[],
+                run_id="",
+                build_id_override="",
                 test_build_lld=test_build_dirs["lld-link"],
                 test_build_nslink=test_build_dirs["NSLink"],
                 build_runner=str(self.build_runner.currentData()),
@@ -4021,6 +4221,12 @@ class MainWindow(QMainWindow):
             prefix=self.test_prefix_path.text().strip(),
             llvm_root=self.test_llvm_path.text().strip(),
             nslink_exe=self.nslink_path.text().strip(),
+            history_root=str(HISTORY_ROOT),
+            test_work_root=str(DEFAULT_TEST_WORK_ROOT),
+            temp_root=str(DEFAULT_TEMP_ROOT),
+            allowed_write_roots=[],
+            run_id="",
+            build_id_override="",
             build_mode="skip",
             build_target="",
             build_runner=str(self.test_build_runner.currentData()),
@@ -4488,11 +4694,23 @@ def dark_stylesheet() -> str:
     """
 
 
-def run_baseline_cli(jobs: int) -> int:
+def run_baseline_cli(plan: RunPlan) -> int:
     """Ejecuta G0.2 sin crear una ventana y devuelve un código apto para automatización."""
     result: dict = {}
     last_line: list[str] = []
-    worker = PipelineWorker(make_baseline_plan(jobs), import_case_table(ROOT))
+    if plan.run_id and safe_name(plan.run_id) != plan.run_id:
+        print(f"--run-id contiene caracteres inseguros: {plan.run_id!r}", file=sys.stderr)
+        return 2
+    if plan.run_id and (Path(plan.history_root) / plan.run_id).exists():
+        print(f"--run-id ya existe y no puede reutilizarse: {plan.run_id}", file=sys.stderr)
+        return 2
+    rejected = validate_plan_write_paths(plan)
+    if rejected:
+        print("El baseline fue rechazado antes de escribir: destinos fuera de --write-root:", file=sys.stderr)
+        for path in rejected:
+            print(f"  {path}", file=sys.stderr)
+        return 2
+    worker = PipelineWorker(plan, import_case_table(ROOT))
 
     def print_output(line: str, _level: str, _channel: str, _optimization: str) -> None:
         # Los mensajes generales se publican en los dos canales de la GUI. En consola se imprime
@@ -4517,13 +4735,78 @@ def run_baseline_cli(jobs: int) -> int:
 
 
 def main() -> int:
+    config_parser = argparse.ArgumentParser(add_help=False)
+    config_parser.add_argument("--config")
+    config_args, _ = config_parser.parse_known_args()
+    try:
+        config = load_builder_config(config_args.config)
+        build_id_default = configured_build_id(config)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        print(f"No se pudo cargar --config: {exc}", file=sys.stderr)
+        return 2
+
+    prefix_default = configured_path(config, "prefix", DEFAULT_PREFIX)
+    build_default = configured_path(config, "build_dir", DEFAULT_BUILD)
+    llvm_default = configured_path(config, "llvm_root", DEFAULT_LLVM)
+    nslink_default = configured_path(
+        config,
+        "nslink",
+        Path(prefix_default) / "bin" / "nslink.exe",
+    )
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--help", action="store_true")
     parser.add_argument("--baseline", action="store_true")
     parser.add_argument("--jobs", type=int, default=min(os.cpu_count() or 4, 16))
+    parser.add_argument("--config")
+    parser.add_argument("--prefix", default=prefix_default)
+    parser.add_argument("--build-dir", default=build_default)
+    parser.add_argument(
+        "--test-build-lld",
+        default=configured_path(config, "test_build_lld", DEFAULT_TEST_BUILD_LLD),
+    )
+    parser.add_argument(
+        "--test-build-nslink",
+        default=configured_path(config, "test_build_nslink", DEFAULT_TEST_BUILD_NSLINK),
+    )
+    parser.add_argument("--llvm-root", default=llvm_default)
+    parser.add_argument("--nslink", default=nslink_default)
+    parser.add_argument(
+        "--history-root",
+        default=configured_path(config, "history_root", HISTORY_ROOT),
+    )
+    parser.add_argument(
+        "--work-root",
+        default=configured_path(config, "work_root", DEFAULT_TEST_WORK_ROOT),
+    )
+    parser.add_argument(
+        "--temp-root",
+        default=configured_path(config, "temp_root", DEFAULT_TEMP_ROOT),
+    )
+    parser.add_argument("--write-root", action="append")
+    parser.add_argument("--run-id", default="")
+    parser.add_argument("--build-id", default=build_id_default)
     args, qt_args = parser.parse_known_args()
     if args.help:
         print(__doc__)
+        print(
+            "Opciones de rutas para --baseline:\n"
+            "  --config FILE             JSON nscbuilder-paths v1\n"
+            "  --prefix DIR              instalación de NativeSharp\n"
+            "  --build-dir DIR           build del compilador\n"
+            "  --test-build-lld DIR      build CTest con lld-link\n"
+            "  --test-build-nslink DIR   build CTest con NSLink\n"
+            "  --llvm-root DIR           instalación de LLVM\n"
+            "  --nslink FILE             ejecutable NSLink\n"
+            "  --history-root DIR        logs y reportes\n"
+            "  --work-root DIR           artefactos de fixtures\n"
+            "  --temp-root DIR           TEMP/TMP de procesos hijos\n"
+            "  --write-root DIR          raíz autorizada; repetible\n\n"
+            "  --run-id ID               identidad estable para evidencia automatizada\n\n"
+            "  --build-id HEX16          identidad reproducible para nsc0\n\n"
+            "Entorno equivalente: NSC_INSTALL_ROOT, NSC_BUILD_ROOT, NSC_TEST_BUILD_LLD,\n"
+            "NSC_TEST_BUILD_NSLINK, NSC_LLVM_ROOT, NSLINK_EXE, NSC_HISTORY_ROOT,\n"
+            "NSC_WORK_ROOT, NSC_TEMP_ROOT y NSC_WRITE_ROOTS."
+        )
         return 0
     if args.baseline:
         if qt_args:
@@ -4532,7 +4815,23 @@ def main() -> int:
         if not 1 <= args.jobs <= 128:
             print("--jobs debe estar entre 1 y 128", file=sys.stderr)
             return 2
-        return run_baseline_cli(args.jobs)
+        write_roots = args.write_root if args.write_root is not None else configured_write_roots(config)
+        plan = make_baseline_plan(
+            args.jobs,
+            compiler_build_dir=args.build_dir,
+            prefix=args.prefix,
+            llvm_root=args.llvm_root,
+            nslink_exe=args.nslink,
+            test_build_lld=args.test_build_lld,
+            test_build_nslink=args.test_build_nslink,
+            history_root=args.history_root,
+            test_work_root=args.work_root,
+            temp_root=args.temp_root,
+            allowed_write_roots=write_roots,
+            run_id=args.run_id,
+            build_id_override=args.build_id,
+        )
+        return run_baseline_cli(plan)
     app = QApplication([sys.argv[0], *qt_args])
     app.setApplicationName(APP_NAME)
     app.setStyle("Fusion")

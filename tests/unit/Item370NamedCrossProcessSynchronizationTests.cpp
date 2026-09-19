@@ -16,6 +16,9 @@
 #include <string_view>
 #include <thread>
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
 namespace
 {
 using nativesharp::ExitCode;
@@ -114,7 +117,7 @@ int main()
     writeFile(waiterDirectory / "Main.ns",
         "using NativeSharp.Core.Threading; public class Program { public static int Main() { "
         "raii Event ready = new Event(false, false, \"" + uniqueName +
-        "\"); return ready.Wait(5000) ? 42 : 1; } }");
+        "\"); return ready.Wait(15000) ? 42 : 1; } }");
     writeFile(signalerDirectory / "Main.ns",
         "using NativeSharp.Core.Threading; public class Program { public static int Main() { "
         "raii Event ready = new Event(false, false, \"" + uniqueName +
@@ -136,8 +139,23 @@ int main()
         auto waiter = std::async(std::launch::async, [&waiterExecutable]() {
             return std::system(("\"" + waiterExecutable.string() + "\"").c_str());
         });
-        std::this_thread::sleep_for(std::chrono::milliseconds(350));
-        const int signalerExit = std::system(("\"" + signalerExecutable.string() + "\"").c_str());
+        bool waiterReady = false;
+        const auto readinessDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (std::chrono::steady_clock::now() < readinessDeadline)
+        {
+            if (HANDLE event = OpenEventA(SYNCHRONIZE, FALSE, uniqueName.c_str()))
+            {
+                CloseHandle(event);
+                waiterReady = true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        tests.expect(waiterReady,
+            "the waiter creates the named event before the signaler starts");
+        const int signalerExit = waiterReady
+            ? std::system(("\"" + signalerExecutable.string() + "\"").c_str())
+            : 1;
         const int waiterExit = waiter.get();
         tests.expect(signalerExit == 42,
             "the second process opens and signals the named event");

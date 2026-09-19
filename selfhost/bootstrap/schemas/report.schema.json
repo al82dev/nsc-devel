@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nativesharp.dev/schemas/selfhost-report-v1.json",
+  "title": "NativeSharp self-hosting report",
+  "type": "object",
+  "required": ["schema", "version", "run_id", "started_at", "status", "inputs", "stages"],
+  "properties": {
+    "schema": {"const": "nativesharp-selfhost-report"},
+    "version": {"const": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "started_at": {"type": "string"},
+    "finished_at": {"type": ["string", "null"]},
+    "status": {"enum": ["running", "passed", "failed", "cancelled"]},
+    "inputs": {"type": "object"},
+    "stages": {"type": "array"},
+    "problems": {"type": "array", "items": {"type": "string"}}
+  }
+}

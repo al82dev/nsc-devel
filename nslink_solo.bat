@@ -48,8 +48,9 @@ pushd "%~dp0"
 set "MODO=%~1"
 if "%MODO%"=="" set "MODO=todo"
 
+if not defined NS_ROOT set "NS_ROOT=C:\native-sharp"
 set "NSLINK=%NSLINK_EXE%"
-if not defined NSLINK set "NSLINK=C:\native-sharp\bin\nslink.exe"
+if not defined NSLINK set "NSLINK=%NS_ROOT%\bin\nslink.exe"
 
 rem NOMBRES CON PREFIJO, Y NO ES ESTILO.
 rem
