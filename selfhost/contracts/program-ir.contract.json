@@ -1,0 +1,16 @@
+{
+  "schema": "nativesharp-selfhost-program-ir-contract",
+  "version": 1,
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "stages": ["hir", "mir", "cfg", "dominance", "ssa"],
+  "project": "selfhost/tests/backend-general/BackendGeneral.nsproj",
+  "expected_functions": ["Sum6", "Twice", "Main"],
+  "required_ir_symbols": [
+    "class ValidatedIrProgram",
+    "public static owned ValidatedIrProgram Prepare(",
+    "CollectFunctions(module, tree, semantic, tree.Root(), visited)"
+  ],
+  "required_backend_signature": "EmitExecutableObject(ValidatedIrProgram program,",
+  "forbidden_backend_signature": "EmitExecutableObject(SyntaxTree tree, SemanticModel semantic,",
+  "work_items": ["NS2-SH-123", "NS2-SH-124"]
+}

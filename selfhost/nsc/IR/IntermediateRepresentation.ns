@@ -395,34 +395,50 @@ namespace NativeSharp.Compiler.IR
             }
         }
 
-        public static owned FlowModule Build(HirModule hir, SyntaxTree tree, SemanticModel semantic)
+        private static void CollectFunctions(FlowModule module, SyntaxTree tree,
+            SemanticModel semantic, int id, bool[] visited)
         {
-            raii FlowModule module = new FlowModule(); SyntaxNode root = tree.Node(tree.Root()); int index = 0;
-            if (!HirVerifier.Verify(hir)) { module.AddError(); return move(module); }
-            while (index < root.ChildCount())
+            if (id < 0 || id >= tree.Count() || visited[id]) { return; }
+            visited[id] = true;
+            SyntaxNode declaration = tree.Node(id);
+            if (declaration.Kind() == "FunctionDeclaration" || declaration.Kind() == "MethodDeclaration")
             {
-                int id = root.ChildAt(index); SyntaxNode declaration = tree.Node(id);
-                if (declaration.Kind() == "FunctionDeclaration")
+                raii FlowFunction function = new FlowFunction(declaration.Text(), semantic.NodeSymbol(id));
+                function.AddBlock("entry", true); int parameter = 0;
+                while (parameter < declaration.ChildCount())
                 {
-                    raii FlowFunction function = new FlowFunction(declaration.Text(), semantic.NodeSymbol(id));
-                    function.AddBlock("entry", true); int parameter = 0;
-                    while (parameter < declaration.ChildCount())
+                    SyntaxNode value = tree.Node(declaration.ChildAt(parameter));
+                    if (value.Kind() == "ParameterDeclaration")
                     {
-                        SyntaxNode value = tree.Node(declaration.ChildAt(parameter));
-                        if (value.Kind() == "ParameterDeclaration")
-                        {
-                            int parameterSymbol = semantic.NodeSymbol(declaration.ChildAt(parameter));
-                            function.AddLocal(value.Text(), parameterSymbol >= 0 ? semantic.GetSymbol(parameterSymbol).TypeId() : -1);
-                            function.AddOperation("param");
-                        }
-                        parameter = parameter + 1;
+                        int parameterSymbol = semantic.NodeSymbol(declaration.ChildAt(parameter));
+                        function.AddLocal(value.Text(), parameterSymbol >= 0 ? semantic.GetSymbol(parameterSymbol).TypeId() : -1);
+                        function.AddOperation("param");
                     }
-                    if (declaration.First() >= 0) { LowerBlock(tree, semantic, declaration.First(), function, -1, -1); }
-                    if (!function.BlockAt(function.Current()).Terminated()) { function.AddOperation("return.void"); function.Terminate(); }
-                    module.Add(move(function));
+                    parameter = parameter + 1;
                 }
+                if (declaration.First() >= 0) { LowerBlock(tree, semantic, declaration.First(), function, -1, -1); }
+                if (!function.BlockAt(function.Current()).Terminated()) { function.AddOperation("return.void"); function.Terminate(); }
+                module.Add(move(function));
+                return;
+            }
+            CollectFunctions(module, tree, semantic, declaration.First(), visited);
+            CollectFunctions(module, tree, semantic, declaration.Second(), visited);
+            CollectFunctions(module, tree, semantic, declaration.Third(), visited);
+            int index = 0;
+            while (index < declaration.ChildCount())
+            {
+                CollectFunctions(module, tree, semantic, declaration.ChildAt(index), visited);
                 index = index + 1;
             }
+        }
+
+        public static owned FlowModule Build(HirModule hir, SyntaxTree tree, SemanticModel semantic)
+        {
+            raii FlowModule module = new FlowModule();
+            if (!HirVerifier.Verify(hir)) { module.AddError(); return move(module); }
+            bool[] visited = new bool[tree.Count()];
+            CollectFunctions(module, tree, semantic, tree.Root(), visited);
+            delete[] visited;
             return move(module);
         }
     }
@@ -716,6 +732,29 @@ namespace NativeSharp.Compiler.IR
 
     public class IrPipeline
     {
+        // SH28 is the single admission ticket to code generation. A backend never receives a raw
+        // syntax/semantic pair: it receives this object only after HIR, MIR/CFG, ownership cleanup,
+        // dominance and SSA preconditions have all been checked for the same program.
+        public static owned ValidatedIrProgram Prepare(SyntaxTree tree, SemanticModel semantic)
+        {
+            raii HirModule hir = HirBuilder.Build(tree, semantic);
+            if (!HirVerifier.Verify(hir))
+            {
+                raii FlowModule empty = new FlowModule();
+                return new ValidatedIrProgram(tree, semantic, move(hir), move(empty), false);
+            }
+            raii FlowModule flow = MirBuilder.Build(hir, tree, semantic);
+            bool valid = FlowVerifier.Verify(flow) && OwnershipCleanupVerifier.Verify(flow);
+            int index = 0;
+            while (valid && index < flow.FunctionCount())
+            {
+                raii DominanceInfo dominance = DominanceBuilder.Build(flow.FunctionAt(index));
+                valid = dominance.Count() == flow.FunctionAt(index).BlockCount();
+                index = index + 1;
+            }
+            return new ValidatedIrProgram(tree, semantic, move(hir), move(flow), valid);
+        }
+
         public static owned string Dump(SyntaxTree tree, SemanticModel semantic, int stage)
         {
             raii HirModule hir = HirBuilder.Build(tree, semantic);
@@ -748,5 +787,26 @@ namespace NativeSharp.Compiler.IR
             }
             return true;
         }
+    }
+
+    public class ValidatedIrProgram
+    {
+        private SyntaxTree syntax;
+        private SemanticModel semantic;
+        private owned HirModule hir;
+        private owned FlowModule flow;
+        private bool valid;
+
+        public ValidatedIrProgram(SyntaxTree sourceSyntax, SemanticModel sourceSemantic,
+            owned HirModule sourceHir, owned FlowModule sourceFlow, bool isValid)
+        {
+            syntax = sourceSyntax; semantic = sourceSemantic; hir = move(sourceHir);
+            flow = move(sourceFlow); valid = isValid;
+        }
+        public bool Valid() { return valid; }
+        public SyntaxTree Syntax() { return syntax; }
+        public SemanticModel Semantic() { return semantic; }
+        public HirModule Hir() { return hir; }
+        public FlowModule Flow() { return flow; }
     }
 }

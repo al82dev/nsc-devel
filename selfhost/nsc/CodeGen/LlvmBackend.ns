@@ -6,6 +6,7 @@ using NativeSharp.Compiler.Syntax;
 using NativeSharp.Compiler.Sema;
 using NativeSharp.Compiler.Basic;
 using NativeSharp.Compiler.Symbols;
+using NativeSharp.Compiler.IR;
 
 namespace NativeSharp.Compiler.CodeGen
 {
@@ -1163,9 +1164,12 @@ namespace NativeSharp.Compiler.CodeGen
             return String.Copy("default<O3>");
         }
 
-        public static int EmitExecutableObject(SyntaxTree tree, SemanticModel semantic,
+        public static int EmitExecutableObject(ValidatedIrProgram program,
             string outputPath, BackendOptimization optimization, BackendArtifactKind artifact)
         {
+            if (program == null || !program.Valid()) { return 15; }
+            SyntaxTree tree = program.Syntax();
+            SemanticModel semantic = program.Semantic();
             uint major = 0u; uint minor = 0u; uint patch = 0u;
             LLVM.LLVMGetVersion(&major, &minor, &patch);
             if (major != 23u) { return 90; }

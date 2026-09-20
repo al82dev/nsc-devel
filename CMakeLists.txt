@@ -866,6 +866,16 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.backend-general PROPERTIES RUN_SERIAL TRUE)
 
     add_test(
+        NAME nsc.selfhost.program-ir
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-program-ir"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpProgramIr.cmake")
+    set_tests_properties(nsc.selfhost.program-ir PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.backend-general)
+
+    add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"

@@ -714,7 +714,16 @@ ejecuta con código 42 en la matriz O0–O3 × LLD/NSLink, sin símbolos histór
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-29-SH27-BACKEND-LLVM-GENERAL.md`.
 
-### 8.30 Plan cerrado restante — Tandas 30–56
+### 8.30 Tanda 30 — SH28
+
+La tanda 30 introduce `ValidatedIrProgram` como única admisión al backend. HIR, MIR, CFG,
+dominancia y SSA se construyen para funciones anidadas en namespaces, se validan como una unidad y
+producen superficies idénticas entre O0–O3. La entrada pública `SyntaxTree + SemanticModel` fue
+retirada y el gate SH27 dependiente conserva ejecución real con ambos linkers.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-30-SH28-IR-PROGRAMA-COMPLETO.md`.
+
+### 8.31 Plan cerrado restante — Tandas 31–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a
@@ -725,7 +734,6 @@ restantes cierran esas brechas sin introducir una segunda lista futura.
 
 | Tanda | Gate | Resultado obligatorio de cierre |
 |---:|---:|---|
-| 30 | SH28 | HIR/MIR/CFG/SSA de programa completo; el backend consume exclusivamente IR validado y O0–O3 comparten el mismo modelo semántico. |
 | 31 | SH29 | Datos y layout: enums, structs, clases, globals, constantes, inicialización estática y verificación ABI de tamaños y alineación. |
 | 32 | SH30 | Modelo de objetos: `this`, `base`, campos, métodos, constructores, propiedades, indexers y operadores. |
 | 33 | SH31 | Texto nativo: `char`, UTF-8, literales globales, `string`/`CString`, concatenación, comparación e indexación. |
@@ -1139,13 +1147,13 @@ mantiene un solo commit de cierre por tanda.
 
 ## 23. Resumen ejecutivo
 
-Las tandas 01–29 y los gates SH00–SH27 ya establecieron contratos, retiraron image replay, lograron
+Las tandas 01–30 y los gates SH00–SH28 ya establecieron contratos, retiraron image replay, lograron
 un backend derivado de fuente para la rebanada escalar actual, construyeron el grafo fuente
 determinista y dieron identidad semántica al conjunto multimódulo. Eso es una base real, no
-self-hosting completo: todavía faltan IR como única entrada del backend, superficie 2.0, bibliotecas,
+self-hosting completo: todavía faltan datos/objetos y el resto de la superficie 2.0, bibliotecas,
 generaciones autónomas, punto fijo y certificación operativa.
 
-El plan cerrado restante comprende las tandas 30–56 y los gates SH28–SH54. SH41, en la tanda 43,
+El plan cerrado restante comprende las tandas 31–56 y los gates SH29–SH54. SH41, en la tanda 43,
 produce la primera autocompilación real; SH54, en la tanda 56, es el único cierre de promoción. El
 roadmap contiene así 56 tandas y 55 gates acumulativos (`SH00`–`SH54`), con baseline, expediente y
 commit por tanda. Después de SH54 no queda una fase de self-hosting 2.0 por descubrir: el siguiente
