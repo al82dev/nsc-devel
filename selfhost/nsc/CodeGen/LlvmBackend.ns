@@ -625,6 +625,71 @@ namespace NativeSharp.Compiler.CodeGen
                     builder, elementType, count, allocationName.Pointer());
                 valid = allocation != null; return allocation;
             }
+            if (node.Kind() == "NewExpression")
+            {
+                void* context = LLVM.LLVMGetModuleContext(module);
+                int baseType = semantic.Types().Intern(node.SemanticTypeText());
+                int elementSize = semantic.Types().Get(baseType).Size();
+                if (elementSize <= 0) { return null; }
+                void* count = LLVM.LLVMConstInt(i32, 1UL, 0);
+                if (node.First() >= 0)
+                {
+                    bool countValid = false;
+                    count = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
+                        declarationId, function, state, node.First(), out countValid);
+                    if (!countValid || count == null) { return null; }
+                }
+                void* i64 = LLVM.LLVMInt64TypeInContext(context);
+                raii CString extendName = new CString("heap.count");
+                raii CString bytesName = new CString("heap.bytes");
+                void* wide = LLVM.LLVMBuildZExt(builder, count, i64, extendName.Pointer());
+                void* size = LLVM.LLVMConstInt(i64, (ulong)elementSize, 0);
+                void* bytes = LLVM.LLVMBuildMul(builder, wide, size, bytesName.Pointer());
+                raii CString processHeapName = new CString("GetProcessHeap");
+                void* processHeap = LLVM.LLVMGetNamedFunction(module, processHeapName.Pointer());
+                void* processHeapType = null;
+                if (processHeap != null) { processHeapType = LLVM.LLVMGlobalGetValueType(processHeap); }
+                raii CString emptyName = new CString("");
+                void* heap = null;
+                if (processHeap != null && processHeapType != null)
+                { heap = LLVM.LLVMBuildCall2(builder, processHeapType, processHeap, null, 0u, emptyName.Pointer()); }
+                raii CString mallocName = new CString("HeapAlloc");
+                void* allocator = LLVM.LLVMGetNamedFunction(module, mallocName.Pointer());
+                void* allocatorType = null;
+                if (allocator != null) { allocatorType = LLVM.LLVMGlobalGetValueType(allocator); }
+                void*[3] arguments;
+                arguments[0] = heap; arguments[1] = LLVM.LLVMConstInt(i32, 0UL, 0); arguments[2] = bytes;
+                raii CString resultName = new CString("heap.buffer");
+                if (heap == null || allocator == null || allocatorType == null || wide == null || bytes == null) { return null; }
+                void* result = LLVM.LLVMBuildCall2(builder, allocatorType, allocator, &arguments[0], 3u,
+                    resultName.Pointer());
+                valid = result != null; return result;
+            }
+            if (node.Kind() == "DeleteExpression")
+            {
+                bool pointerValid = false;
+                void* pointer = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.First(), out pointerValid);
+                raii CString processHeapName = new CString("GetProcessHeap");
+                void* processHeap = LLVM.LLVMGetNamedFunction(module, processHeapName.Pointer());
+                void* processHeapType = null;
+                if (processHeap != null) { processHeapType = LLVM.LLVMGlobalGetValueType(processHeap); }
+                raii CString emptyName = new CString("");
+                void* heap = null;
+                if (processHeap != null && processHeapType != null)
+                { heap = LLVM.LLVMBuildCall2(builder, processHeapType, processHeap, null, 0u, emptyName.Pointer()); }
+                raii CString freeName = new CString("HeapFree");
+                void* release = LLVM.LLVMGetNamedFunction(module, freeName.Pointer());
+                void* releaseType = null;
+                if (release != null) { releaseType = LLVM.LLVMGlobalGetValueType(release); }
+                raii CString callName = new CString("");
+                void*[3] arguments;
+                arguments[0] = heap; arguments[1] = LLVM.LLVMConstInt(i32, 0UL, 0); arguments[2] = pointer;
+                if (!pointerValid || pointer == null || heap == null || release == null || releaseType == null) { return null; }
+                void* result = LLVM.LLVMBuildCall2(builder, releaseType, release, &arguments[0], 3u,
+                    callName.Pointer());
+                valid = result != null; return result;
+            }
             if (node.Kind() == "UnaryExpression" && node.OperatorKind() == TokenKind.Amp)
             {
                 void* valueType = null;
@@ -1359,6 +1424,20 @@ namespace NativeSharp.Compiler.CodeGen
             builder = LLVM.LLVMCreateBuilderInContext(context);
             if (builder == null)
             { Dispose(context, module, builder, machine, layout); return 3; }
+            void* pointerType = LLVM.LLVMPointerTypeInContext(context, 0u);
+            void* i64Type = LLVM.LLVMInt64TypeInContext(context);
+            raii CString processHeapName = new CString("GetProcessHeap");
+            raii CString mallocName = new CString("HeapAlloc");
+            raii CString freeName = new CString("HeapFree");
+            void* processHeapType = LLVM.LLVMFunctionType(pointerType, null, 0u, 0);
+            void*[3] heapParameters;
+            heapParameters[0] = pointerType; heapParameters[1] = i32; heapParameters[2] = i64Type;
+            void* mallocType = LLVM.LLVMFunctionType(pointerType, &heapParameters[0], 3u, 0);
+            heapParameters[2] = pointerType;
+            void* freeType = LLVM.LLVMFunctionType(i32, &heapParameters[0], 3u, 0);
+            LLVM.LLVMAddFunction(module, processHeapName.Pointer(), processHeapType);
+            LLVM.LLVMAddFunction(module, mallocName.Pointer(), mallocType);
+            LLVM.LLVMAddFunction(module, freeName.Pointer(), freeType);
             if (!DeclareFunctions(module, tree, semantic, tree.Root()))
             { Dispose(context, module, builder, machine, layout); return 13; }
             if (!DeclareData(module, tree, semantic))

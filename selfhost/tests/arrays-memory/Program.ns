@@ -1,0 +1,15 @@
+namespace ArraysMemoryFixture
+{
+    public int Main()
+    {
+        int* heap = new int[4];
+        int* local = stackalloc int[4];
+        heap[0] = 10;
+        heap[1] = 11;
+        local[0] = heap[0];
+        local[1] = heap[1];
+        int answer = local[0] + local[1] + 21;
+        delete[] heap;
+        return answer;
+    }
+}

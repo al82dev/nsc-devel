@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>ArraysMemoryFixture</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Program.ns" /></ItemGroup>
+</Project>
