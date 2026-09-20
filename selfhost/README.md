@@ -77,3 +77,9 @@ SH16 inicia ese reemplazo: el backend recibe el `SyntaxTree` y el `SemanticModel
 retorno de `Main` y emite mediante LLVM-C literales y aritmética entera. Dos fuentes con resultados
 17 y 42 producen objetos diferentes y ejecutables correctos en O0/O3 con ambos linkers. El alcance
 es todavía `integer-entry-expression`, no el compilador completo.
+
+SH17 añade declaraciones y cuerpos de funciones `int`, hasta cuatro parámetros enteros y llamadas
+directas. Los usos de parámetros se resuelven desde el símbolo del hecho semántico y se materializan
+con `LLVMGetParam`; las llamadas usan prototipos predeclarados y `LLVMBuildCall2`. La matriz ejecuta
+O0–O3 con ambos linkers. El alcance sigue siendo `i32-functions-parameters-calls` y no implica que
+`nsc-next` pueda compilar todavía sus propias fuentes.

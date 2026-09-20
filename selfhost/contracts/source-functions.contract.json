@@ -1,0 +1,13 @@
+{
+  "schema": "nativesharp-selfhost-source-functions",
+  "version": 1,
+  "gate": "SH17",
+  "source": "selfhost/tests/codegen/source-functions.ns",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "expected_exit_code": 42,
+  "maximum_parameters": 4,
+  "required_symbols": ["__nativesharp_source_Add", "__nativesharp_source_Main", "NativeSharpCompute"],
+  "required_llvm_api": ["LLVMGetParam", "LLVMGetNamedFunction", "LLVMBuildCall2"],
+  "source_derived_codegen": true
+}

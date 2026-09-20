@@ -60,3 +60,8 @@ ejecutable de salida. Su aprobación certifica el retiro del atajo, no codegen d
 SH16 añade `verify_source_derived_backend.py`: ejecuta ocho combinaciones de fuente, optimización y
 linker, compara los hashes de objetos y rechaza el antiguo cálculo fijo. Su reporte delimita el
 alcance probado para impedir que una rebanada aritmética se confunda con compilador completo.
+
+SH17 añade `verify_source_functions.py`: inspecciona los símbolos de funciones fuente en los cuatro
+perfiles, ejecuta los ocho PEs producidos por `lld-link` y NSLink y exige que parámetros y llamada
+directa produzcan 42. El reporte declara literalmente `i32-functions-parameters-calls` para no
+confundir la ampliación con una generación autoalojada completa.

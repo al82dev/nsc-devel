@@ -1,7 +1,7 @@
 # Contratos de fronteras del compilador autoalojado
 
 - `llvm-c-api.contract.json` congela la DLL, versión, ABI, tipos opacos, hashes de enums y firmas,
-  los 219 imports LLVM-C exactos de `nsc0` y los 42 símbolos ya expuestos al bootstrap NativeSharp.
+  los 219 imports LLVM-C exactos de `nsc0` y los 44 símbolos ya expuestos al bootstrap NativeSharp.
 - `runtime-bootstrap.contract.json` identifica los artefactos externos del runtime, Runtime ABI 1.0,
   symbol set 2 y los trece símbolos mínimos que debe conservar el bootstrap.
 
@@ -35,3 +35,7 @@ existe codegen del compilador derivado de fuentes.
 
 `source-derived-backend.contract.json` congela desde SH16 la primera rebanada real: dos fuentes,
 resultados 17/42, O0/O3, `lld-link`/NSLink y desigualdad obligatoria entre hashes de objetos.
+
+`source-functions.contract.json` congela desde SH17 funciones `int`, un máximo bootstrap de cuatro
+parámetros, llamadas directas, O0–O3, los símbolos fuente obligatorios y ejecución con ambos
+linkers. El límite de cuatro parámetros es de la rebanada, no de NativeSharp ni de LLVM.

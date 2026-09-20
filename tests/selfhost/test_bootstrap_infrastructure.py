@@ -197,11 +197,11 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["schema"], "nativesharp-llvm-c-api-contract")
         self.assertEqual(contract["supported_llvm_major"], 23)
         self.assertEqual(len(contract["nsc0_import_symbols"]), 219)
-        self.assertEqual(len(contract["bootstrap_symbols"]), 42)
+        self.assertEqual(len(contract["bootstrap_symbols"]), 44)
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
         declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
-        self.assertEqual(len(declared), 75)
+        self.assertEqual(len(declared), 76)
         self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
         self.assertTrue(set(declared).issubset(contract["nsc0_import_symbols"]))
         self.assertEqual(
@@ -416,6 +416,15 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn("SyntaxTree tree, SemanticModel semantic", backend)
         self.assertIn("EmitI32Expression", backend)
         self.assertNotIn("void* six =", backend)
+
+    def test_tanda19_source_functions_use_llvm_parameters_and_calls(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/source-functions.contract.json").read_text())
+        self.assertEqual(contract["gate"], "SH17")
+        self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
+        backend = (ROOT / "selfhost/nsc/CodeGen/LlvmBackend.ns").read_text()
+        for api in ("LLVMGetParam", "LLVMGetNamedFunction", "LLVMBuildCall2"):
+            self.assertIn(api, backend)
+        self.assertIn("semantic.Fact(syntaxId).SymbolId()", backend)
 
 
 if __name__ == "__main__":

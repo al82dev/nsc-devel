@@ -35,6 +35,7 @@ namespace NativeSharp.LLVM.C
             public void* LLVMConstReal(void* realType, double value);
             public void* LLVMConstNull(void* type);
             public void* LLVMAddFunction(void* module, byte* name, void* functionType);
+            public void* LLVMGetNamedFunction(void* module, byte* name);
             public void* LLVMAddGlobal(void* module, void* type, byte* name);
             public void LLVMSetInitializer(void* global, void* constantValue);
             public void LLVMSetGlobalConstant(void* global, int isConstant);

@@ -1,0 +1,80 @@
+{
+  "artifacts": {
+    "functions-o0.obj": "083c43d2455d18115ae0c831c9503710cd6012a4b86960da283b8c10644d757b",
+    "functions-o0.readobj.txt": "5424776322e8f5f88330fb726518665d6444878f61f0021f1f56018573c2c8da",
+    "functions-o1.obj": "cc2cb279dc28650ae0da71f5bcfe410afe4300846e4625e198eaa2ef9a77348d",
+    "functions-o1.readobj.txt": "1617f5355de072a355c4e066819d764663ea6a2f6c127941d14bf82c6325c4e5",
+    "functions-o2.obj": "cc2cb279dc28650ae0da71f5bcfe410afe4300846e4625e198eaa2ef9a77348d",
+    "functions-o2.readobj.txt": "0937a567d7c9fdbfe831646c08bc096e42c8d5a15e1ee6c6656e095ff56c0a9e",
+    "functions-o3.obj": "cc2cb279dc28650ae0da71f5bcfe410afe4300846e4625e198eaa2ef9a77348d",
+    "functions-o3.readobj.txt": "13088e850a2b1def9d14ab36fb38e339fda169ef60917ffa6d0531c1400664ce",
+    "lld-o0.exe": "44b6d6b9af79f53c10245401d2bc446c7d37df76226f636710c43ad386c1ce5b",
+    "lld-o1.exe": "d461bf1a6ba23a3f7d1caa4b9fd7135219c5b4999050c12268b7b642670d0df0",
+    "lld-o2.exe": "972cdd08b1d3bd4568d84e8c2e8f115db472e3184171a113636cb7a6c4d359d4",
+    "lld-o3.exe": "b2ca1b1b4ad3d7163bc6da84caaa7c60ead6e7aa651a92e92fabb0dad1fb2e3a",
+    "nslink-o0.exe": "3e80fee2a87fd1bd6279c9034138bdee52730f734d2cedad8e808fe1f992b070",
+    "nslink-o1.exe": "6d0702cdd22ec0c5ed97a605cd3f685dac96fbe8b8846de70982f3b42578f107",
+    "nslink-o2.exe": "6d0702cdd22ec0c5ed97a605cd3f685dac96fbe8b8846de70982f3b42578f107",
+    "nslink-o3.exe": "6d0702cdd22ec0c5ed97a605cd3f685dac96fbe8b8846de70982f3b42578f107"
+  },
+  "backend_source_sha256": "be0299511200edd169cdc26e28cdda5ceef4802ca8b5af5dec7cd6de02e87995",
+  "executions": [
+    {
+      "actual": 42,
+      "linker": "lld",
+      "profile": "O0"
+    },
+    {
+      "actual": 42,
+      "linker": "nslink",
+      "profile": "O0"
+    },
+    {
+      "actual": 42,
+      "linker": "lld",
+      "profile": "O1"
+    },
+    {
+      "actual": 42,
+      "linker": "nslink",
+      "profile": "O1"
+    },
+    {
+      "actual": 42,
+      "linker": "lld",
+      "profile": "O2"
+    },
+    {
+      "actual": 42,
+      "linker": "nslink",
+      "profile": "O2"
+    },
+    {
+      "actual": 42,
+      "linker": "lld",
+      "profile": "O3"
+    },
+    {
+      "actual": 42,
+      "linker": "nslink",
+      "profile": "O3"
+    }
+  ],
+  "gate": "SH17",
+  "linkers": [
+    "lld",
+    "nslink"
+  ],
+  "problems": [],
+  "profiles": [
+    "O0",
+    "O1",
+    "O2",
+    "O3"
+  ],
+  "schema": "nativesharp-selfhost-sh17-report",
+  "scope": "i32-functions-parameters-calls",
+  "source_derived_codegen": true,
+  "status": "passed",
+  "version": 1
+}

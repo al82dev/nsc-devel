@@ -628,6 +628,14 @@ para compilar las 21 fuentes del compilador.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-18-SH16-BACKEND-DERIVADO-DE-FUENTE.md`.
 
+La tanda 19 abre SH17 y extiende esa rebanada a funciones `int` libres: declaraciones previas de
+prototipos LLVM, hasta cuatro parámetros enteros, resolución semántica de identificadores y
+llamadas directas. El fixture `Add(19, 23)` debe conservar el resultado 42 en O0–O3 y al enlazar
+con `lld-link` o NSLink. SH17 sigue sin cubrir locales, control de flujo, memoria, métodos ni las
+fuentes completas de `nsc-next`; por tanto no reabre todavía la generación nsc1 → nsc2.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-19-SH17-FUNCIONES-PARAMETROS-LLAMADAS.md`.
+
 ## 9. Orden de dependencias
 
 ```text
@@ -647,6 +655,8 @@ SH00 punto de partida
                                               └─ SH13 robustez
                                                   └─ SH14 promoción condicionada
                                                       └─ SH15 retiro de image replay
+                                                          └─ SH16 backend derivado de fuente
+                                                              └─ SH17 funciones/parámetros/llamadas
 ```
 
 SH02 y SH03 pueden avanzar en paralelo después de SH01. Las demás dependencias son secuenciales por
