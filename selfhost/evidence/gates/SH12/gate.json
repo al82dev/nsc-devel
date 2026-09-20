@@ -1,0 +1,38 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH12",
+  "state": "OPEN",
+  "revision": "selfhost(tanda-13-local)",
+  "run_id": "tanda-13-sh12-local-final-20260919",
+  "previous_gate": "selfhost/evidence/gates/SH11/gate.json",
+  "artifacts": {
+    "baseline_report": "selfhost/evidence/runs/tanda-13-sh12-local-final-20260919/report.md",
+    "baseline_report_sha256": "82d5305c671caf97f964b8522b3d23cf366df7331d719578533b51c99a51924a",
+    "baseline_report_json_sha256": "17c8343c61f33fcbd44cf7f85a04b2a90e4d445ae480fa9a3b7398b2aa6fa831",
+    "baseline_source_sha256": "0cd9af7aae39481f6faaa7bc7889d9fb1dc3171c8b21fa902913344811df510b",
+    "gate0_sha256": "14eabde113e06d3ebff318b39f38ca07f62998d8d1fd10d52d0933e9cff477d5",
+    "sh12_lld_report_sha256": "1facdaad9b89bb43cc8a09066c9cea6ba66eecc0da35ad39899d0425602299c8",
+    "sh12_nslink_report_sha256": "f71f868c014553a45d259afd133b8bdc672224ceb9414ba26d8959226c141795",
+    "local_machine_attestation_sha256": "f98f44624d9d2204048a3cff7c70c98968386a95418e5b41f64ff8782885648b",
+    "nsc3_lld_sha256": "34efdd2b92449c1a9e80e490e97406ac0e3e5382ca2273e03ca618250ff88fdf",
+    "nsc3_nslink_sha256": "1c68d5ae730560f2ba155c23c2d539143522446d879daae1e4f450b1bc1e8e0d"
+  },
+  "metrics": {
+    "source_files": 91,
+    "compiler_sources_verified": 21,
+    "local_repetitions_per_linker": 3,
+    "local_machines": 1,
+    "required_machines": 2,
+    "byte_identical_local": true,
+    "normalization_applied": 0,
+    "source_derived_codegen": false,
+    "ctest_per_linker": 449,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18,
+    "baseline_seconds": 814.982
+  },
+  "problems": [
+    "NS2-SH-157 requires a matching attestation from a second Windows x64 machine"
+  ]
+}

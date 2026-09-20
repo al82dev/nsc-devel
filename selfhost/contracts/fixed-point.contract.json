@@ -1,0 +1,28 @@
+{
+  "schema": "nativesharp-selfhost-fixed-point-contract",
+  "version": 1,
+  "producer": "nsc2",
+  "generation": "nsc3",
+  "generation_method": "source-attested-image-replay",
+  "source_derived_codegen": false,
+  "repetitions": 3,
+  "required_machines": 2,
+  "normalization": [],
+  "optimizations": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld-link", "NSLink"],
+  "source_roots": [
+    "selfhost/nsc",
+    "lib/NativeSharp.Core",
+    "lib/NativeSharp.Core.Collections.Generic",
+    "lib/NativeSharp.Core.IO",
+    "lib/NativeSharp.LLVM.C"
+  ],
+  "generation_validation_roots": ["selfhost/nsc"],
+  "execution_project": "selfhost/tests/projects/Sh09App/Sh09App.nsproj",
+  "expected_identity": "nsc-next 2.0.0-bootstrap.sh12 (NativeSharp 2.0.0, self-host stage 3)",
+  "expected_exit_code": 42,
+  "work_items": [
+    "NS2-SH-150", "NS2-SH-151", "NS2-SH-152", "NS2-SH-153", "NS2-SH-154",
+    "NS2-SH-155", "NS2-SH-156", "NS2-SH-157", "NS2-SH-158", "NS2-SH-159"
+  ]
+}

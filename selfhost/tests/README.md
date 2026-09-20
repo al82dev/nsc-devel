@@ -35,3 +35,6 @@ para verificar los 20 archivos fuente del compilador y producir la matriz ejecut
 
 SH11 ejecuta `nsc1 → nsc2` bajo observación de procesos, en dos raíces y dos entornos regionales;
 después compara frontend, diagnósticos, metadata y objetos y ejecuta O0–O3 por `lld-link` y NSLink.
+
+SH12 repite la transición a `nsc3` en clean-a/clean-b/clean-c, conserva tres ambientes regionales,
+compara imágenes/objetos y genera la atestación que debe trasladarse a una segunda máquina.

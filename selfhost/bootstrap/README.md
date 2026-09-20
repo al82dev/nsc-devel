@@ -45,3 +45,7 @@ SH11 añade `verify_self_hosted_generation.py`: observa el árbol de procesos du
 exige cero hijos, repite en dos rutas/locale/timezone, compara diagnósticos, `nsmeta` y objetos, y
 ejecuta O0–O3 con ambos linkers. El reporte conserva `source_derived_codegen=false` hasta que el
 backend sustituya la reproducción atestada de la imagen.
+
+SH12 añade `verify_fixed_point.py`: construye `nsc3` tres veces, compara imágenes y objetos sin
+normalización y exporta `machine-attestation.json`. La opción `--cross-machine-evidence` valida una
+segunda ejecución real; su ausencia queda como problema normativo y no se disfraza con dos rutas.

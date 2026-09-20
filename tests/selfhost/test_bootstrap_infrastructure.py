@@ -356,6 +356,18 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn("source-attested-image-replay", native_builder)
         self.assertNotIn("NativeSharp.Core.Diagnostics", native_builder)
 
+    def test_sh12_fixed_point_contract_separates_local_and_cross_machine_proof(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/fixed-point.contract.json").read_text())
+        self.assertEqual(contract["schema"], "nativesharp-selfhost-fixed-point-contract")
+        self.assertEqual(contract["repetitions"], 3)
+        self.assertEqual(contract["required_machines"], 2)
+        self.assertEqual(contract["normalization"], [])
+        self.assertFalse(contract["source_derived_codegen"])
+        verifier = (ROOT / "selfhost/bootstrap/verify_fixed_point.py").read_text()
+        self.assertIn('"image_fixed_point": True', verifier)
+        self.assertIn('"cross_machine_verified": cross_machine', verifier)
+        self.assertIn("NS2-SH-157 requires", verifier)
+
 
 if __name__ == "__main__":
     unittest.main()

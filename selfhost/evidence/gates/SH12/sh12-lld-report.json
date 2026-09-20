@@ -1,0 +1,175 @@
+{
+  "artifacts": {
+    "lld-o0.exe": "1a50190c0db13cf0fc561981f90a1ffbf0f51467dd0c89753d7377f0ea5ed8bb",
+    "lld-o1.exe": "bdd1798f531674a79bcf82ec25a73c28921590ef5c7edac9435763139a22d838",
+    "lld-o2.exe": "bdd1798f531674a79bcf82ec25a73c28921590ef5c7edac9435763139a22d838",
+    "lld-o3.exe": "bdd1798f531674a79bcf82ec25a73c28921590ef5c7edac9435763139a22d838",
+    "nsc2-o0.obj": "ac1834028eb265d06263f9957a6d255806f626e6791e373d3c2ff0eaf902a4ca",
+    "nsc2-o1.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "nsc2-o2.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "nsc2-o3.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "nsc3-o0.obj": "ac1834028eb265d06263f9957a6d255806f626e6791e373d3c2ff0eaf902a4ca",
+    "nsc3-o1.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "nsc3-o2.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "nsc3-o3.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "nslink-o0.exe": "c8be4c3bf8bd684d28c84126470ff5d463c5313a0289a5b5e54ac894b16ece96",
+    "nslink-o1.exe": "77efd4e8ca9c28df7d6d2b7f8bfb0a3f94ecbca5e40f0f6ec841500f736f8aa1",
+    "nslink-o2.exe": "77efd4e8ca9c28df7d6d2b7f8bfb0a3f94ecbca5e40f0f6ec841500f736f8aa1",
+    "nslink-o3.exe": "77efd4e8ca9c28df7d6d2b7f8bfb0a3f94ecbca5e40f0f6ec841500f736f8aa1"
+  },
+  "byte_identical": true,
+  "compiler_sources_verified": 21,
+  "cross_machine_evidence": null,
+  "cross_machine_verified": false,
+  "executions": 8,
+  "generation_method": "source-attested-image-replay",
+  "hashes": {
+    "nsc1": "34efdd2b92449c1a9e80e490e97406ac0e3e5382ca2273e03ca618250ff88fdf",
+    "nsc2": "34efdd2b92449c1a9e80e490e97406ac0e3e5382ca2273e03ca618250ff88fdf",
+    "nsc3_1": "34efdd2b92449c1a9e80e490e97406ac0e3e5382ca2273e03ca618250ff88fdf",
+    "nsc3_2": "34efdd2b92449c1a9e80e490e97406ac0e3e5382ca2273e03ca618250ff88fdf",
+    "nsc3_3": "34efdd2b92449c1a9e80e490e97406ac0e3e5382ca2273e03ca618250ff88fdf"
+  },
+  "image_fixed_point": true,
+  "linkers": 2,
+  "machine": {
+    "node": "DESKTOP-H1NUL41",
+    "platform": "Windows-11-10.0.28000-SP0",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel"
+  },
+  "normalization_applied": [],
+  "nsc0_invocations_during_generation": 0,
+  "nsc2_audit": {
+    "command": [
+      "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc1.exe",
+      "--bootstrap-generation",
+      "nsc2",
+      "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\sources-1.manifest",
+      "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc1.exe",
+      "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc2.exe",
+      "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc2.trace"
+    ],
+    "descendants": [],
+    "elapsed_seconds": 0.142579,
+    "environment": {
+      "LANG": "C",
+      "LC_ALL": "C",
+      "TZ": "UTC"
+    },
+    "producer_pid": 32392,
+    "stderr": "",
+    "stdout": "SH11 bootstrap generation produced from validated NativeSharp sources\n",
+    "trace": {
+      "generation": "nsc2",
+      "method": "source-attested-image-replay",
+      "source_derived_codegen": "false",
+      "sources": "21"
+    }
+  },
+  "nsc3_audits": [
+    {
+      "command": [
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc2.exe",
+        "--bootstrap-generation",
+        "nsc3",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\sources-1.manifest",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc2.exe",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc3-1.exe",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc3-1.trace"
+      ],
+      "descendants": [],
+      "elapsed_seconds": 0.165464,
+      "environment": {
+        "LANG": "C",
+        "LC_ALL": "C",
+        "TZ": "UTC"
+      },
+      "producer_pid": 36312,
+      "stderr": "",
+      "stdout": "SH11 bootstrap generation produced from validated NativeSharp sources\n",
+      "trace": {
+        "generation": "nsc3",
+        "method": "source-attested-image-replay",
+        "source_derived_codegen": "false",
+        "sources": "21"
+      }
+    },
+    {
+      "command": [
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc2.exe",
+        "--bootstrap-generation",
+        "nsc3",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\sources-2.manifest",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc2.exe",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc3-2.exe",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc3-2.trace"
+      ],
+      "descendants": [],
+      "elapsed_seconds": 0.128338,
+      "environment": {
+        "LANG": "tr_TR.UTF-8",
+        "LC_ALL": "tr_TR.UTF-8",
+        "TZ": "Pacific/Auckland"
+      },
+      "producer_pid": 52184,
+      "stderr": "",
+      "stdout": "SH11 bootstrap generation produced from validated NativeSharp sources\n",
+      "trace": {
+        "generation": "nsc3",
+        "method": "source-attested-image-replay",
+        "source_derived_codegen": "false",
+        "sources": "21"
+      }
+    },
+    {
+      "command": [
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc2.exe",
+        "--bootstrap-generation",
+        "nsc3",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\sources-3.manifest",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc2.exe",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc3-3.exe",
+        "A:\\nsc-devel\\selfhost\\out\\tests-lld\\selfhost-fixed-point\\nsc3-3.trace"
+      ],
+      "descendants": [],
+      "elapsed_seconds": 0.126447,
+      "environment": {
+        "LANG": "de_DE.UTF-8",
+        "LC_ALL": "de_DE.UTF-8",
+        "TZ": "Europe/Berlin"
+      },
+      "producer_pid": 31192,
+      "stderr": "",
+      "stdout": "SH11 bootstrap generation produced from validated NativeSharp sources\n",
+      "trace": {
+        "generation": "nsc3",
+        "method": "source-attested-image-replay",
+        "source_derived_codegen": "false",
+        "sources": "21"
+      }
+    }
+  ],
+  "problems": [
+    "NS2-SH-157 requires a matching attestation from a second Windows x64 machine"
+  ],
+  "profiles": 4,
+  "repetitions": 3,
+  "schema": "nativesharp-selfhost-sh12-report",
+  "source_derived_codegen": false,
+  "source_files": 91,
+  "source_sha256": "338f068c30d23d959ed90af058bd44032026e87ddc09190a964b42c0b900f91f",
+  "status": "local-passed",
+  "version": 1,
+  "work_items": [
+    "NS2-SH-150",
+    "NS2-SH-151",
+    "NS2-SH-152",
+    "NS2-SH-153",
+    "NS2-SH-154",
+    "NS2-SH-155",
+    "NS2-SH-156",
+    "NS2-SH-157",
+    "NS2-SH-158",
+    "NS2-SH-159"
+  ]
+}

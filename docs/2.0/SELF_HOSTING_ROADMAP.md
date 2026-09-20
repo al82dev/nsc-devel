@@ -559,6 +559,10 @@ imagen atestada; sólo la primera permite la promoción final de SH14.
 **Gate SH12:** `nsc2` y `nsc3` alcanzan el punto fijo definido y lo repiten en dos máquinas sin
 diferencias no explicadas.
 
+Expediente de implementación local:
+`docs/2.0/self-hosting/tandas/TANDA-13-SH12-NSC3-PUNTO-FIJO.md`. Un resultado de una sola máquina
+mantiene SH12 `OPEN`; la segunda atestación no puede sustituirse por otra ruta o linker local.
+
 ### Fase 13 — paridad completa, robustez y rendimiento
 
 **Objetivo:** convertir el éxito de bootstrap en un producto sustituible.

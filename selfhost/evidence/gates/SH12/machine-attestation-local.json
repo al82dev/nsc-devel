@@ -1,0 +1,12 @@
+{
+  "image_sha256": "34efdd2b92449c1a9e80e490e97406ac0e3e5382ca2273e03ca618250ff88fdf",
+  "machine": {
+    "node": "DESKTOP-H1NUL41",
+    "platform": "Windows-11-10.0.28000-SP0",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel"
+  },
+  "report_sha256": "1facdaad9b89bb43cc8a09066c9cea6ba66eecc0da35ad39899d0425602299c8",
+  "schema": "nativesharp-fixed-point-machine-attestation",
+  "source_sha256": "338f068c30d23d959ed90af058bd44032026e87ddc09190a964b42c0b900f91f",
+  "version": 1
+}

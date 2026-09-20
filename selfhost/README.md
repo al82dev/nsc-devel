@@ -53,3 +53,7 @@ propio frontend e IR las fuentes congeladas, no crea procesos hijos y reproduce 
 certificada en dos raíces y entornos distintos. Esta frontera se denomina explícitamente
 `source-attested-image-replay`; todavía no es codegen derivado de las fuentes y no autoriza por sí
 sola retirar la semilla C++.
+
+SH12 repite `nsc2 → nsc3` tres veces sin normalizar artefactos y exige identidad byte a byte. La
+prueba local exporta una atestación portable; el gate permanece abierto hasta importar una
+atestación coincidente de otra máquina Windows x64.

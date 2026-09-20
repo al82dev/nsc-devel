@@ -20,7 +20,7 @@
   ],
   "compiler_project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
   "execution_project": "selfhost/tests/projects/Sh09App/Sh09App.nsproj",
-  "expected_identity": "nsc-next 2.0.0-bootstrap.sh11 (NativeSharp 2.0.0, self-host stage 2)",
+  "expected_identity": "nsc-next 2.0.0-bootstrap.sh12 (NativeSharp 2.0.0, self-host stage 3)",
   "required_imports": ["KERNEL32.dll", "KERNELBASE.dll", "SHELL32.dll", "ucrtbase.dll", "LLVM-C.dll"],
   "expected_exit_code": 42,
   "work_items": [
