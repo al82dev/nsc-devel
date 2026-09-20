@@ -40,11 +40,15 @@ namespace NativeSharp.LLVM.C
             public void LLVMSetInitializer(void* global, void* constantValue);
             public void LLVMSetGlobalConstant(void* global, int isConstant);
             public void* LLVMGetParam(void* function, uint index);
+            public void* LLVMGetEntryBasicBlock(void* function);
+            public void* LLVMGetFirstInstruction(void* block);
+            public void* LLVMGetInsertBlock(void* builder);
             public void* LLVMAppendBasicBlockInContext(
                 void* context, void* function, byte* name);
             public void* LLVMCreateBuilderInContext(void* context);
             public void LLVMDisposeBuilder(void* builder);
             public void LLVMPositionBuilderAtEnd(void* builder, void* block);
+            public void LLVMPositionBuilderBefore(void* builder, void* instruction);
             public void* LLVMBuildCall2(
                 void* builder,
                 void* functionType,

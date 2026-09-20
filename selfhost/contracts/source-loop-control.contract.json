@@ -1,0 +1,13 @@
+{
+  "schema": "nativesharp-selfhost-source-loop-control",
+  "version": 1,
+  "gate": "SH19",
+  "source": "selfhost/tests/codegen/source-loop-control.ns",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "expected_exit_code": 42,
+  "required_symbols": ["__nativesharp_source_Main", "NativeSharpCompute"],
+  "required_llvm_api": ["LLVMBuildBr", "LLVMBuildCondBr", "LLVMGetEntryBasicBlock", "LLVMGetFirstInstruction", "LLVMGetInsertBlock", "LLVMPositionBuilderBefore"],
+  "source_derived_codegen": true,
+  "scope": "for-do-break-continue"
+}

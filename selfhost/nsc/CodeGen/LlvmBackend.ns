@@ -32,10 +32,24 @@ namespace NativeSharp.Compiler.CodeGen
         public void* Storage() { return storage; }
     }
 
+    public class LoopBinding
+    {
+        private void* breakTarget;
+        private void* continueTarget;
+        public LoopBinding(void* breakBlock, void* continueBlock)
+        { breakTarget = breakBlock; continueTarget = continueBlock; }
+        public void* BreakTarget() { return breakTarget; }
+        public void* ContinueTarget() { return continueTarget; }
+    }
+
     public class FunctionLoweringState
     {
         private owned List<LocalBinding> locals;
-        public FunctionLoweringState() { locals = new List<LocalBinding>(); }
+        private owned List<LoopBinding> loops;
+        public FunctionLoweringState()
+        {
+            locals = new List<LocalBinding>(); loops = new List<LoopBinding>();
+        }
         public void AddLocal(int symbol, void* storage)
         {
             raii LocalBinding binding = new LocalBinding(symbol, storage); locals.Add(move(binding));
@@ -49,6 +63,22 @@ namespace NativeSharp.Compiler.CodeGen
                 index = index - 1;
             }
             return null;
+        }
+        public void PushLoop(void* breakTarget, void* continueTarget)
+        {
+            raii LoopBinding binding = new LoopBinding(breakTarget, continueTarget);
+            loops.Add(move(binding));
+        }
+        public void PopLoop() { if (loops.Count() > 0) { loops.RemoveAt(loops.Count() - 1); } }
+        public void* BreakTarget()
+        {
+            if (loops.Count() == 0) { return null; }
+            return loops[loops.Count() - 1].BreakTarget();
+        }
+        public void* ContinueTarget()
+        {
+            if (loops.Count() == 0) { return null; }
+            return loops[loops.Count() - 1].ContinueTarget();
         }
     }
 
@@ -325,6 +355,19 @@ namespace NativeSharp.Compiler.CodeGen
             valid = comparison != null; return comparison;
         }
 
+        private static void* EmitEntryAlloca(void* builder, void* function, void* type, byte* name)
+        {
+            void* current = LLVM.LLVMGetInsertBlock(builder);
+            void* entry = LLVM.LLVMGetEntryBasicBlock(function);
+            if (current == null || entry == null) { return null; }
+            void* first = LLVM.LLVMGetFirstInstruction(entry);
+            if (first == null) { LLVM.LLVMPositionBuilderAtEnd(builder, entry); }
+            else { LLVM.LLVMPositionBuilderBefore(builder, first); }
+            void* storage = LLVM.LLVMBuildAlloca(builder, type, name);
+            LLVM.LLVMPositionBuilderAtEnd(builder, current);
+            return storage;
+        }
+
         private static bool EmitStatement(void* context, void* module, void* builder, void* i32,
             SyntaxTree tree, SemanticModel semantic, int declarationId, void* function,
             FunctionLoweringState state, int syntaxId, out bool terminated)
@@ -347,7 +390,7 @@ namespace NativeSharp.Compiler.CodeGen
             if (node.Kind() == "VariableDeclarationStatement" && node.TypeText() == "int")
             {
                 raii CString localName = new CString(node.Text());
-                void* storage = LLVM.LLVMBuildAlloca(builder, i32, localName.Pointer());
+                void* storage = EmitEntryAlloca(builder, function, i32, localName.Pointer());
                 if (storage == null) { return false; }
                 state.AddLocal(semantic.NodeSymbol(syntaxId), storage);
                 void* value = LLVM.LLVMConstInt(i32, 0UL, 0);
@@ -373,6 +416,12 @@ namespace NativeSharp.Compiler.CodeGen
                 void* value = EmitI32Expression(module, builder, i32, tree, semantic,
                     declarationId, function, state, node.First(), out valueValid);
                 if (!valueValid || value == null || LLVM.LLVMBuildRet(builder, value) == null) { return false; }
+                terminated = true; return true;
+            }
+            if (node.Kind() == "BreakStatement" || node.Kind() == "ContinueStatement")
+            {
+                void* target = node.Kind() == "BreakStatement" ? state.BreakTarget() : state.ContinueTarget();
+                if (target == null || LLVM.LLVMBuildBr(builder, target) == null) { return false; }
                 terminated = true; return true;
             }
             if (node.Kind() == "IfStatement")
@@ -420,10 +469,87 @@ namespace NativeSharp.Compiler.CodeGen
                     function, state, node.First(), out conditionValid);
                 if (!conditionValid || condition == null ||
                     LLVM.LLVMBuildCondBr(builder, condition, bodyBlock, endBlock) == null) { return false; }
+                state.PushLoop(endBlock, conditionBlock);
                 LLVM.LLVMPositionBuilderAtEnd(builder, bodyBlock); bool bodyTerminated = false;
                 if (!EmitStatement(context, module, builder, i32, tree, semantic, declarationId,
-                    function, state, node.Second(), out bodyTerminated)) { return false; }
+                    function, state, node.Second(), out bodyTerminated)) { state.PopLoop(); return false; }
                 if (!bodyTerminated && LLVM.LLVMBuildBr(builder, conditionBlock) == null) { return false; }
+                state.PopLoop();
+                LLVM.LLVMPositionBuilderAtEnd(builder, endBlock); return true;
+            }
+            if (node.Kind() == "DoWhileStatement")
+            {
+                raii CString bodyName = new CString("do.body"); raii CString conditionName = new CString("do.condition");
+                raii CString endName = new CString("do.end");
+                void* bodyBlock = LLVM.LLVMAppendBasicBlockInContext(context, function, bodyName.Pointer());
+                void* conditionBlock = LLVM.LLVMAppendBasicBlockInContext(context, function, conditionName.Pointer());
+                void* endBlock = LLVM.LLVMAppendBasicBlockInContext(context, function, endName.Pointer());
+                if (bodyBlock == null || conditionBlock == null || endBlock == null ||
+                    LLVM.LLVMBuildBr(builder, bodyBlock) == null) { return false; }
+                state.PushLoop(endBlock, conditionBlock);
+                LLVM.LLVMPositionBuilderAtEnd(builder, bodyBlock); bool bodyTerminated = false;
+                if (!EmitStatement(context, module, builder, i32, tree, semantic, declarationId,
+                    function, state, node.Second(), out bodyTerminated)) { state.PopLoop(); return false; }
+                if (!bodyTerminated && LLVM.LLVMBuildBr(builder, conditionBlock) == null)
+                { state.PopLoop(); return false; }
+                state.PopLoop(); LLVM.LLVMPositionBuilderAtEnd(builder, conditionBlock); bool conditionValid = false;
+                void* condition = EmitCondition(module, builder, i32, tree, semantic, declarationId,
+                    function, state, node.First(), out conditionValid);
+                if (!conditionValid || condition == null ||
+                    LLVM.LLVMBuildCondBr(builder, condition, bodyBlock, endBlock) == null) { return false; }
+                LLVM.LLVMPositionBuilderAtEnd(builder, endBlock); return true;
+            }
+            if (node.Kind() == "ForStatement")
+            {
+                if (node.First() >= 0)
+                {
+                    if (tree.Node(node.First()).Kind() == "VariableDeclarationStatement")
+                    {
+                        bool initializerTerminated = false;
+                        if (!EmitStatement(context, module, builder, i32, tree, semantic, declarationId,
+                            function, state, node.First(), out initializerTerminated) || initializerTerminated)
+                        { return false; }
+                    }
+                    else
+                    {
+                        bool initializerValid = false;
+                        void* initializer = EmitI32Expression(module, builder, i32, tree, semantic,
+                            declarationId, function, state, node.First(), out initializerValid);
+                        if (!initializerValid || initializer == null) { return false; }
+                    }
+                }
+                raii CString conditionName = new CString("for.condition"); raii CString bodyName = new CString("for.body");
+                raii CString incrementName = new CString("for.increment"); raii CString endName = new CString("for.end");
+                void* conditionBlock = LLVM.LLVMAppendBasicBlockInContext(context, function, conditionName.Pointer());
+                void* bodyBlock = LLVM.LLVMAppendBasicBlockInContext(context, function, bodyName.Pointer());
+                void* incrementBlock = LLVM.LLVMAppendBasicBlockInContext(context, function, incrementName.Pointer());
+                void* endBlock = LLVM.LLVMAppendBasicBlockInContext(context, function, endName.Pointer());
+                if (conditionBlock == null || bodyBlock == null || incrementBlock == null || endBlock == null ||
+                    LLVM.LLVMBuildBr(builder, conditionBlock) == null) { return false; }
+                LLVM.LLVMPositionBuilderAtEnd(builder, conditionBlock); void* condition = null; bool conditionValid = true;
+                if (node.Second() >= 0)
+                {
+                    condition = EmitCondition(module, builder, i32, tree, semantic, declarationId,
+                        function, state, node.Second(), out conditionValid);
+                }
+                else { condition = LLVM.LLVMConstInt(LLVM.LLVMInt1TypeInContext(context), 1UL, 0); }
+                if (!conditionValid || condition == null ||
+                    LLVM.LLVMBuildCondBr(builder, condition, bodyBlock, endBlock) == null) { return false; }
+                state.PushLoop(endBlock, incrementBlock);
+                LLVM.LLVMPositionBuilderAtEnd(builder, bodyBlock); bool bodyTerminated = false;
+                if (!EmitStatement(context, module, builder, i32, tree, semantic, declarationId,
+                    function, state, node.ChildAt(0), out bodyTerminated)) { state.PopLoop(); return false; }
+                if (!bodyTerminated && LLVM.LLVMBuildBr(builder, incrementBlock) == null)
+                { state.PopLoop(); return false; }
+                state.PopLoop(); LLVM.LLVMPositionBuilderAtEnd(builder, incrementBlock);
+                if (node.Third() >= 0)
+                {
+                    bool incrementValid = false;
+                    void* increment = EmitI32Expression(module, builder, i32, tree, semantic,
+                        declarationId, function, state, node.Third(), out incrementValid);
+                    if (!incrementValid || increment == null) { return false; }
+                }
+                if (LLVM.LLVMBuildBr(builder, conditionBlock) == null) { return false; }
                 LLVM.LLVMPositionBuilderAtEnd(builder, endBlock); return true;
             }
             return false;

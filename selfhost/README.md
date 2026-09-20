@@ -87,3 +87,6 @@ O0–O3 con ambos linkers. El alcance sigue siendo `i32-functions-parameters-cal
 SH18 añade slots locales `int`, carga/almacenamiento, asignación, comparaciones, `if` y `while`.
 La identidad de cada local proviene del modelo semántico; el backend produce bloques y terminadores
 LLVM explícitos. El alcance `i32-locals-assignment-if-while` aún excluye objetos y runtime.
+
+SH19 añade `for`, `do`/`while`, `break` y `continue`. Una pila de destinos distingue salida y
+continuación incluso con anidamiento; el alcance sigue limitado a valores `int`.

@@ -42,3 +42,6 @@ linkers. El límite de cuatro parámetros es de la rebanada, no de NativeSharp n
 
 `source-control-flow.contract.json` congela desde SH18 locales `int`, asignación simple,
 comparaciones con signo, `if` y `while`, con la matriz O0–O3 y enlace dual.
+
+`source-loop-control.contract.json` congela desde SH19 `for`, `do`/`while`, `break` y `continue`,
+con pila de destinos, matriz O0–O3 y enlace dual.

@@ -201,7 +201,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
         declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
-        self.assertEqual(len(declared), 76)
+        self.assertEqual(len(declared), 80)
         self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
         self.assertTrue(set(declared).issubset(contract["nsc0_import_symbols"]))
         self.assertEqual(
@@ -434,6 +434,17 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         for api in ("LLVMBuildAlloca", "LLVMBuildLoad2", "LLVMBuildStore", "LLVMBuildCondBr"):
             self.assertIn(api, backend)
         self.assertIn("semantic.NodeSymbol(syntaxId)", backend)
+
+    def test_tanda21_source_loop_control_uses_explicit_loop_targets(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/source-loop-control.contract.json").read_text())
+        self.assertEqual(contract["gate"], "SH19")
+        self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
+        backend = (ROOT / "selfhost/nsc/CodeGen/LlvmBackend.ns").read_text()
+        for marker in ("ForStatement", "DoWhileStatement", "BreakStatement", "ContinueStatement"):
+            self.assertIn(marker, backend)
+        self.assertIn("PushLoop", backend)
+        self.assertIn("PopLoop", backend)
+        self.assertIn("EmitEntryAlloca", backend)
 
 
 if __name__ == "__main__":

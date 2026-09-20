@@ -1,0 +1,18 @@
+int Main()
+{
+    int total = 0;
+    for (int value = 0; value < 10; value = value + 1)
+    {
+        if (value == 2) { continue; }
+        if (value == 8) { break; }
+        total = total + value;
+    }
+    int rounds = 0;
+    do
+    {
+        total = total + 4;
+        rounds = rounds + 1;
+    }
+    while (rounds < 4);
+    return total;
+}

@@ -642,6 +642,13 @@ válido. El acumulador 1..6 certifica resultado 42 en O0–O3 y ambos linkers.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-20-SH18-LOCALES-CONTROL-DE-FLUJO.md`.
 
+La tanda 21 abre SH19 y completa la familia elemental de bucles con `for`, `do`/`while`, `break` y
+`continue`. Una pila de destinos LLVM preserva el bucle activo, incluidos bucles anidados, y separa
+el destino de continuación del destino de salida. El fixture combina las cuatro construcciones y
+debe devolver 42 en O0–O3 con ambos linkers.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-21-SH19-CONTROL-DE-BUCLES.md`.
+
 ## 9. Orden de dependencias
 
 ```text
@@ -664,6 +671,7 @@ SH00 punto de partida
                                                           └─ SH16 backend derivado de fuente
                                                               └─ SH17 funciones/parámetros/llamadas
                                                                   └─ SH18 locales/control de flujo
+                                                                      └─ SH19 control de bucles
 ```
 
 SH02 y SH03 pueden avanzar en paralelo después de SH01. Las demás dependencias son secuenciales por

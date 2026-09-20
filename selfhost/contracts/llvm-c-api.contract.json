@@ -15,7 +15,7 @@
   "enum_source": "lib/NativeSharp.LLVM.C/LLVMEnums.ns",
   "signature_source": "lib/NativeSharp.LLVM.C/LLVMApi.ns",
   "enum_source_sha256": "219d1f64de0fd924548b86afe092be060ce6ebe2c815eb6ebedbcba556017604",
-  "signature_source_sha256": "e15395b2bdab14bb043c7841734f53e72d83200e02c35c1b04f47620aa1f1e9b",
+  "signature_source_sha256": "14637174827eba7a271a1ca8b0f0e6f4078d56cf3622295306140f677b04643f",
   "bootstrap_symbols": [
     "LLVMAddFunction",
     "LLVMAppendBasicBlockInContext",
