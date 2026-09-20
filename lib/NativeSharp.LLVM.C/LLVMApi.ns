@@ -72,11 +72,25 @@ namespace NativeSharp.LLVM.C
             public void* LLVMBuildAShr(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildLShr(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildNot(void* builder, void* value, byte* name);
+            public void* LLVMBuildFNeg(void* builder, void* value, byte* name);
+            public void* LLVMBuildFAdd(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildFSub(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildFMul(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildFDiv(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildFRem(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildTrunc(void* builder, void* value, void* type, byte* name);
             public void* LLVMBuildSExt(void* builder, void* value, void* type, byte* name);
             public void* LLVMBuildZExt(void* builder, void* value, void* type, byte* name);
+            public void* LLVMBuildFPTrunc(void* builder, void* value, void* type, byte* name);
+            public void* LLVMBuildFPExt(void* builder, void* value, void* type, byte* name);
+            public void* LLVMBuildFPToSI(void* builder, void* value, void* type, byte* name);
+            public void* LLVMBuildFPToUI(void* builder, void* value, void* type, byte* name);
+            public void* LLVMBuildSIToFP(void* builder, void* value, void* type, byte* name);
+            public void* LLVMBuildUIToFP(void* builder, void* value, void* type, byte* name);
             public void* LLVMBuildICmp(
                 void* builder, LLVMIntPredicate predicate, void* left, void* right, byte* name);
+            public void* LLVMBuildFCmp(
+                void* builder, LLVMRealPredicate predicate, void* left, void* right, byte* name);
             public void* LLVMBuildBr(void* builder, void* destination);
             public void* LLVMBuildCondBr(
                 void* builder, void* condition, void* thenBlock, void* elseBlock);

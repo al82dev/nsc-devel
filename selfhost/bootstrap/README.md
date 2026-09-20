@@ -83,3 +83,6 @@ ejecuta una matriz con los diez tipos enteros/bool, operaciones signed/unsigned 
 
 SH23 añade `verify_source_pointers.py`: comprueba símbolos y anatomía COFF, y ejecuta el mismo
 programa de punteros y memoria local en O0–O3 con LLD y NSLink.
+
+SH24 añade `verify_source_floating_scalars.py`: exige operaciones y conversiones LLVM reales,
+comprueba `_fltused` y ejecuta el fixture `float`/`double` en O0–O3 con LLD y NSLink.

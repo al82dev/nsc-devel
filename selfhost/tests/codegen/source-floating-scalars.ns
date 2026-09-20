@@ -1,0 +1,24 @@
+static double Average(double left, double right)
+{
+    return (left + right) / 2.0;
+}
+
+static float Offset(float value)
+{
+    value += 2.0f;
+    return value;
+}
+
+static int Main()
+{
+    double average = Average(40.0, 44.0);
+    float shifted = Offset(40.0f);
+    shifted++;
+    --shifted;
+    double remainder = 85.0 % 43.0;
+    double widened = shifted;
+    bool ok = average == 42.0 && shifted == 42.0f &&
+        remainder == 42.0 && widened == 42.0;
+    if (!ok) { return 1; }
+    return (int)average;
+}

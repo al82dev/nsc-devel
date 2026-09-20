@@ -1,0 +1,40 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH24",
+  "state": "LANDED",
+  "revision": "selfhost(tanda-26-floating-scalars)",
+  "run_id": "tanda-26-sh24-floating-scalars-20260920",
+  "previous_gate": "selfhost/evidence/gates/SH23/gate.json",
+  "artifacts": {
+    "baseline_report_sha256": "d37f6bdafe43b367fd3f6e637694e76ca49a70db3b0c664914aecd26e4e83c49",
+    "baseline_report_json_sha256": "4d9f0048c46924816e9f97dad144347991f01aed45470157931411774d6ea349",
+    "baseline_source_sha256": "0ae8c5eef78e29483d150ff0eac2677df722222049ec17f81170530c9ef20131",
+    "gate0_sha256": "2233151cee59f6b635cdf32063c3981e16e10c91ec75859c33fc8eb14c181c4e",
+    "sh24_lld_report_sha256": "69646f1c7e5c0f855e0f6d3be0bec10d0d296fff95e0c2f570a65b8f15c852a1",
+    "sh24_nslink_report_sha256": "8995c5281f5578ced6b276714d22e0f0911317b91fcaf7d7ef10cc2e6560c7a0",
+    "sh24_lld_generated_report_sha256": "8377c9b3e1f47af8089811b38189acfa47df0e0f884c2aa78872dcfa7138b5a0",
+    "sh24_nslink_generated_report_sha256": "a586ec8c52d8616f03ea5eee8f9ce54b9c72ebb052e55b9b57b127630b128d2a"
+  },
+  "metrics": {
+    "source_derived_codegen": true,
+    "promotion_ready": false,
+    "scope": "floating-scalars-arithmetic-comparison-conversion",
+    "remaining_full_source_scope": [
+      "strings",
+      "objects",
+      "managed-arrays",
+      "ownership",
+      "exceptions"
+    ],
+    "binding_symbol_count": 110,
+    "execution_combinations": 8,
+    "profiles": ["O0", "O1", "O2", "O3"],
+    "linkers": ["lld-link", "NSLink"],
+    "ctest_per_linker": 459,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18,
+    "baseline_seconds": 999.96
+  },
+  "problems": []
+}

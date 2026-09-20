@@ -60,6 +60,26 @@ namespace NativeSharp.LLVM.C
         SignedLessOrEqual = 41
     }
 
+    public enum LLVMRealPredicate
+    {
+        False = 0,
+        OrderedEqual = 1,
+        OrderedGreaterThan = 2,
+        OrderedGreaterOrEqual = 3,
+        OrderedLessThan = 4,
+        OrderedLessOrEqual = 5,
+        OrderedNotEqual = 6,
+        Ordered = 7,
+        Unordered = 8,
+        UnorderedEqual = 9,
+        UnorderedGreaterThan = 10,
+        UnorderedGreaterOrEqual = 11,
+        UnorderedLessThan = 12,
+        UnorderedLessOrEqual = 13,
+        UnorderedNotEqual = 14,
+        True = 15
+    }
+
     public enum LLVMAtomicOrdering
     {
         NotAtomic = 0,

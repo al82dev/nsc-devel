@@ -105,3 +105,7 @@ resto, comparación y shift derecho LLVM correctos.
 SH23 incorpora punteros opacos como escalares, `null`, dirección y desreferencia, indexación y
 `stackalloc`. Un único camino de lvalue entrega dirección y tipo tanto a cargas como a asignaciones;
 la matriz vuelve a ejecutar O0–O3 con LLD y NSLink.
+
+SH24 completa los escalares primitivos del perfil con `float` y `double`: constantes, operaciones,
+comparaciones IEEE ordenadas, conversiones integer/floating, casts y parámetros mutables. El objeto
+COFF define `_fltused` para que sea autónomo frente a ambos linkers de Windows.

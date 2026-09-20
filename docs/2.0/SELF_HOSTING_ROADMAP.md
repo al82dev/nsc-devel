@@ -679,6 +679,13 @@ ejecuta el fixture en O0–O3 con LLD y NSLink.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-25-SH23-PUNTEROS-MEMORIA-LOCAL.md`.
 
+La tanda 26 abre SH24 y completa los escalares primitivos con `float` y `double`: constantes,
+aritmética, comparación IEEE, conversiones con enteros, casts e incremento/decremento. Los
+parámetros se materializan en slots de entrada para conservar su semántica mutable. El objeto COFF
+publica `_fltused`, requerido por el ABI MSVC, y se ejecuta en O0–O3 con LLD y NSLink.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-26-SH24-ESCALARES-FLOTANTES.md`.
+
 ## 9. Orden de dependencias
 
 ```text
@@ -706,6 +713,7 @@ SH00 punto de partida
                                                                               └─ SH21 expresiones escalares
                                                                                   └─ SH22 anchos enteros
                                                                                       └─ SH23 punteros/memoria local
+                                                                                          └─ SH24 escalares flotantes
 ```
 
 SH02 y SH03 pueden avanzar en paralelo después de SH01. Las demás dependencias son secuenciales por

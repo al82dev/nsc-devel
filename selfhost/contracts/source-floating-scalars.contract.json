@@ -1,0 +1,13 @@
+{
+  "schema": "nativesharp-selfhost-source-floating-scalars",
+  "version": 1,
+  "gate": "SH24",
+  "source": "selfhost/tests/codegen/source-floating-scalars.ns",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "expected_exit_code": 42,
+  "required_symbols": ["__nativesharp_source_Average", "__nativesharp_source_Offset", "__nativesharp_source_Main", "_fltused"],
+  "required_llvm_api": ["LLVMConstReal", "LLVMBuildFAdd", "LLVMBuildFDiv", "LLVMBuildFRem", "LLVMBuildFCmp", "LLVMBuildFPExt", "LLVMBuildFPToSI"],
+  "source_derived_codegen": true,
+  "scope": "floating-scalars-arithmetic-comparison-conversion"
+}

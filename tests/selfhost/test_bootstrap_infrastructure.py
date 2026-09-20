@@ -201,7 +201,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
         declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
-        self.assertEqual(len(declared), 97)
+        self.assertEqual(len(declared), 110)
         self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
         self.assertTrue(set(declared).issubset(contract["nsc0_import_symbols"]))
         self.assertEqual(
@@ -481,6 +481,16 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         for marker in ("EmitLValue", "NullLiteralExpression", "StackallocExpression", "IndexExpression"):
             self.assertIn(marker, backend)
         for api in ("LLVMBuildArrayAlloca", "LLVMBuildGEP2", "LLVMBuildLoad2", "LLVMBuildStore"):
+            self.assertIn(api, backend)
+
+    def test_tanda26_floating_scalars_use_real_operations_and_conversions(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/source-floating-scalars.contract.json").read_text())
+        self.assertEqual(contract["gate"], "SH24")
+        self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
+        backend = (ROOT / "selfhost/nsc/CodeGen/LlvmBackend.ns").read_text()
+        for marker in ("FloatingScalar", "EmitFloatingOperation", "FloatingComparisonPredicate", "_fltused"):
+            self.assertIn(marker, backend)
+        for api in ("LLVMBuildFAdd", "LLVMBuildFRem", "LLVMBuildFCmp", "LLVMBuildFPExt", "LLVMBuildFPToSI"):
             self.assertIn(api, backend)
 
 

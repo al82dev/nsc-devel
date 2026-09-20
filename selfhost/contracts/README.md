@@ -60,3 +60,7 @@ dual O0–O3.
 `source-pointers.contract.json` congela desde SH23 punteros opacos, `null`, toma de dirección,
 desreferencia, indexación, asignación mediante lvalue y memoria local de `stackalloc`, en O0–O3 y
 con LLD/NSLink.
+
+`source-floating-scalars.contract.json` congela desde SH24 `float`/`double`, aritmética, comparación,
+casts y conversiones con enteros, parámetros mutables y el símbolo COFF `_fltused`, en O0–O3 y con
+ambos linkers.
