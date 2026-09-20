@@ -201,7 +201,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
         declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
-        self.assertEqual(len(declared), 82)
+        self.assertEqual(len(declared), 89)
         self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
         self.assertTrue(set(declared).issubset(contract["nsc0_import_symbols"]))
         self.assertEqual(
@@ -453,6 +453,16 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         for marker in ("BooleanLiteralExpression", "LLVMBuildNot", "LLVMBuildRetVoid", "LLVMGlobalGetValueType"):
             self.assertIn(marker, backend)
         self.assertIn("FindLocalType", backend)
+
+    def test_tanda23_source_expressions_use_short_circuit_phi_and_lvalue_updates(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/source-expressions.contract.json").read_text())
+        self.assertEqual(contract["gate"], "SH21")
+        self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
+        backend = (ROOT / "selfhost/nsc/CodeGen/LlvmBackend.ns").read_text()
+        for marker in ("EmitIntegerOperation", "PostfixExpression", "LLVMBuildPhi", "LLVMAddIncoming"):
+            self.assertIn(marker, backend)
+        self.assertIn("TokenKind.AmpAmp", backend)
+        self.assertIn("TokenKind.PipePipe", backend)
 
 
 if __name__ == "__main__":

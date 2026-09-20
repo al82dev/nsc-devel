@@ -74,3 +74,6 @@ SH19 añade `verify_source_loop_control.py`: exige lowering explícito de `for`,
 
 SH20 añade `verify_source_bool_void.py`: inspecciona funciones `bool`/`void` y ejecuta su matriz
 tipada O0–O3 con LLD y NSLink.
+
+SH21 añade `verify_source_expressions.py`: exige anatomía fuente, APIs LLVM de resto/bit/shift y
+`phi`, y ejecuta O0–O3 con ambos linkers un fixture que detecta violaciones de cortocircuito.

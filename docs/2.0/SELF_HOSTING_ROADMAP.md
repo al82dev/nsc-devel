@@ -656,6 +656,14 @@ cuatro perfiles y ambos linkers.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-22-SH20-BOOL-VOID.md`.
 
+La tanda 23 abre SH21 y completa la rebanada de expresiones escalares: resto, operaciones bit a bit,
+desplazamientos, asignaciones compuestas, incremento/decremento prefijo y postfijo, cortocircuito
+real de `&&`/`||` y operador condicional. Los operadores de control crean bloques y nodos `phi`, de
+modo que el operando omitido no produce efectos laterales. El fixture debe devolver 42 en O0–O3
+con ambos linkers y fallaría si cualquiera de los lados cortocircuitados se evaluara.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-23-SH21-EXPRESIONES-ESCALARES.md`.
+
 ## 9. Orden de dependencias
 
 ```text
@@ -680,6 +688,7 @@ SH00 punto de partida
                                                                   └─ SH18 locales/control de flujo
                                                                       └─ SH19 control de bucles
                                                                           └─ SH20 escalares bool/void
+                                                                              └─ SH21 expresiones escalares
 ```
 
 SH02 y SH03 pueden avanzar en paralelo después de SH01. Las demás dependencias son secuenciales por

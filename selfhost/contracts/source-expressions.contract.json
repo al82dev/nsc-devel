@@ -1,0 +1,13 @@
+{
+  "schema": "nativesharp-selfhost-source-expressions",
+  "version": 1,
+  "gate": "SH21",
+  "source": "selfhost/tests/codegen/source-expressions.ns",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "expected_exit_code": 42,
+  "required_symbols": ["__nativesharp_source_Main"],
+  "required_llvm_api": ["LLVMBuildSRem", "LLVMBuildAnd", "LLVMBuildOr", "LLVMBuildXor", "LLVMBuildShl", "LLVMBuildAShr", "LLVMBuildPhi", "LLVMAddIncoming"],
+  "source_derived_codegen": true,
+  "scope": "compound-increment-bitwise-short-circuit-conditional"
+}

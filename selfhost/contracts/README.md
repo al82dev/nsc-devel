@@ -48,3 +48,7 @@ con pila de destinos, matriz O0–O3 y enlace dual.
 
 `source-bool-void.contract.json` congela desde SH20 funciones, parámetros y locales `bool`, retornos
 `void`, negación, comparaciones como valores y enlace dual O0–O3.
+
+`source-expressions.contract.json` congela desde SH21 asignaciones compuestas, incremento y
+decremento, resto, bitwise, shifts, `&&`/`||` con cortocircuito y selección condicional en O0–O3 y
+ambos linkers.

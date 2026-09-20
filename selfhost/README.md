@@ -93,3 +93,7 @@ continuación incluso con anidamiento; el alcance sigue limitado a valores `int`
 
 SH20 añade firmas, parámetros y locales `bool`, funciones `void`, negación, comparaciones como
 valores y llamadas con el tipo LLVM real. Todavía no cubre strings, objetos ni ownership.
+
+SH21 completa operadores escalares enteros y booleanos, actualizaciones de lvalue y selección
+condicional. `&&` y `||` bajan a CFG con `phi`, preservando cortocircuito y efectos laterales; no se
+simulan como operaciones bit a bit.

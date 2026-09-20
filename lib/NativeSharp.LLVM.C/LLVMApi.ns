@@ -14,6 +14,7 @@ namespace NativeSharp.LLVM.C
             public void* LLVMModuleCreateWithNameInContext(byte* moduleId, void* context);
             public void LLVMDisposeModule(void* module);
             public void LLVMSetTarget(void* module, byte* triple);
+            public void* LLVMGetModuleContext(void* module);
 
             public void* LLVMVoidTypeInContext(void* context);
             public void* LLVMInt1TypeInContext(void* context);
@@ -61,6 +62,12 @@ namespace NativeSharp.LLVM.C
             public void* LLVMBuildSub(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildMul(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildSDiv(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildSRem(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildAnd(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildOr(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildXor(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildShl(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildAShr(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildNot(void* builder, void* value, byte* name);
             public void* LLVMBuildICmp(
                 void* builder, LLVMIntPredicate predicate, void* left, void* right, byte* name);

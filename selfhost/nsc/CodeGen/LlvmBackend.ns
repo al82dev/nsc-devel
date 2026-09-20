@@ -244,6 +244,32 @@ namespace NativeSharp.Compiler.CodeGen
             return true;
         }
 
+        private static void* EmitIntegerOperation(void* builder, TokenKind operation,
+            void* left, void* right, byte* name)
+        {
+            if (operation == TokenKind.Plus || operation == TokenKind.PlusEqual)
+            { return LLVM.LLVMBuildAdd(builder, left, right, name); }
+            if (operation == TokenKind.Minus || operation == TokenKind.MinusEqual)
+            { return LLVM.LLVMBuildSub(builder, left, right, name); }
+            if (operation == TokenKind.Star || operation == TokenKind.StarEqual)
+            { return LLVM.LLVMBuildMul(builder, left, right, name); }
+            if (operation == TokenKind.Slash || operation == TokenKind.SlashEqual)
+            { return LLVM.LLVMBuildSDiv(builder, left, right, name); }
+            if (operation == TokenKind.Percent || operation == TokenKind.PercentEqual)
+            { return LLVM.LLVMBuildSRem(builder, left, right, name); }
+            if (operation == TokenKind.Amp || operation == TokenKind.AmpEqual)
+            { return LLVM.LLVMBuildAnd(builder, left, right, name); }
+            if (operation == TokenKind.Pipe || operation == TokenKind.PipeEqual)
+            { return LLVM.LLVMBuildOr(builder, left, right, name); }
+            if (operation == TokenKind.Caret || operation == TokenKind.CaretEqual)
+            { return LLVM.LLVMBuildXor(builder, left, right, name); }
+            if (operation == TokenKind.LessLess || operation == TokenKind.LessLessEqual)
+            { return LLVM.LLVMBuildShl(builder, left, right, name); }
+            if (operation == TokenKind.GreaterGreater || operation == TokenKind.GreaterGreaterEqual)
+            { return LLVM.LLVMBuildAShr(builder, left, right, name); }
+            return null;
+        }
+
         private static void* EmitScalarExpression(void* module, void* builder, void* i32, void* i1, SyntaxTree tree,
             SemanticModel semantic, int declarationId, void* function, FunctionLoweringState state,
             int syntaxId, out bool valid)
@@ -284,6 +310,24 @@ namespace NativeSharp.Compiler.CodeGen
                 raii CString unaryName = new CString("unary.minus");
                 return LLVM.LLVMBuildSub(builder, LLVM.LLVMConstInt(i32, 0UL, 0), operand, unaryName.Pointer());
             }
+            if ((node.Kind() == "UnaryExpression" || node.Kind() == "PostfixExpression") &&
+                (node.OperatorKind() == TokenKind.PlusPlus || node.OperatorKind() == TokenKind.MinusMinus) &&
+                node.First() >= 0 && tree.Node(node.First()).Kind() == "IdentifierExpression")
+            {
+                int symbol = semantic.Fact(node.First()).SymbolId(); void* storage = state.FindLocal(symbol);
+                void* valueType = state.FindLocalType(symbol);
+                if (storage == null || valueType != i32) { return null; }
+                raii CString loadName = new CString("increment.load");
+                raii CString resultName = new CString("increment.value");
+                void* previous = LLVM.LLVMBuildLoad2(builder, i32, storage, loadName.Pointer());
+                void* one = LLVM.LLVMConstInt(i32, 1UL, 0); void* result = null;
+                if (node.OperatorKind() == TokenKind.PlusPlus)
+                { result = LLVM.LLVMBuildAdd(builder, previous, one, resultName.Pointer()); }
+                else { result = LLVM.LLVMBuildSub(builder, previous, one, resultName.Pointer()); }
+                if (previous == null || result == null || LLVM.LLVMBuildStore(builder, result, storage) == null)
+                { return null; }
+                valid = true; return node.Kind() == "PostfixExpression" ? previous : result;
+            }
             if (node.Kind() == "IdentifierExpression")
             {
                 int symbol = semantic.Fact(syntaxId).SymbolId();
@@ -310,16 +354,25 @@ namespace NativeSharp.Compiler.CodeGen
                 }
                 return null;
             }
-            if (node.Kind() == "AssignmentExpression" && node.OperatorKind() == TokenKind.Equal &&
+            if (node.Kind() == "AssignmentExpression" &&
                 node.First() >= 0 && tree.Node(node.First()).Kind() == "IdentifierExpression")
             {
                 bool assignedValid = false;
                 void* assigned = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
                     declarationId, function, state, node.Second(), out assignedValid);
                 int symbol = semantic.Fact(node.First()).SymbolId(); void* storage = state.FindLocal(symbol);
-                if (!assignedValid || assigned == null || storage == null ||
-                    LLVM.LLVMBuildStore(builder, assigned, storage) == null) { return null; }
-                valid = true; return assigned;
+                void* valueType = state.FindLocalType(symbol); void* result = assigned;
+                if (!assignedValid || assigned == null || storage == null || valueType == null) { return null; }
+                if (node.OperatorKind() != TokenKind.Equal)
+                {
+                    raii CString loadName = new CString("compound.load");
+                    raii CString resultName = new CString("compound.value");
+                    void* previous = LLVM.LLVMBuildLoad2(builder, valueType, storage, loadName.Pointer());
+                    result = EmitIntegerOperation(builder, node.OperatorKind(), previous, assigned, resultName.Pointer());
+                    if (previous == null || result == null) { return null; }
+                }
+                if (LLVM.LLVMBuildStore(builder, result, storage) == null) { return null; }
+                valid = true; return result;
             }
             if (node.Kind() == "CallExpression" && node.First() >= 0)
             {
@@ -349,6 +402,74 @@ namespace NativeSharp.Compiler.CodeGen
                     callArguments, (uint)node.ChildCount(), callName.Pointer());
                 valid = call != null; return call;
             }
+            if (node.Kind() == "BinaryExpression" &&
+                (node.OperatorKind() == TokenKind.AmpAmp || node.OperatorKind() == TokenKind.PipePipe))
+            {
+                bool leftValid = false;
+                void* left = EmitCondition(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.First(), out leftValid);
+                void* leftBlock = LLVM.LLVMGetInsertBlock(builder);
+                raii CString rhsName = new CString("logic.rhs"); raii CString endName = new CString("logic.end");
+                void* rhsBlock = LLVM.LLVMAppendBasicBlockInContext(
+                    LLVM.LLVMGetModuleContext(module), function, rhsName.Pointer());
+                void* endBlock = LLVM.LLVMAppendBasicBlockInContext(
+                    LLVM.LLVMGetModuleContext(module), function, endName.Pointer());
+                if (!leftValid || left == null || leftBlock == null || rhsBlock == null || endBlock == null)
+                { return null; }
+                bool isAnd = node.OperatorKind() == TokenKind.AmpAmp;
+                if (LLVM.LLVMBuildCondBr(builder, left, isAnd ? rhsBlock : endBlock,
+                    isAnd ? endBlock : rhsBlock) == null) { return null; }
+                LLVM.LLVMPositionBuilderAtEnd(builder, rhsBlock); bool rightValid = false;
+                void* right = EmitCondition(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.Second(), out rightValid);
+                void* rightBlock = LLVM.LLVMGetInsertBlock(builder);
+                if (!rightValid || right == null || rightBlock == null ||
+                    LLVM.LLVMBuildBr(builder, endBlock) == null) { return null; }
+                LLVM.LLVMPositionBuilderAtEnd(builder, endBlock); raii CString phiName = new CString("logic.value");
+                void* phi = LLVM.LLVMBuildPhi(builder, i1, phiName.Pointer());
+                void*[2] incomingValues; void*[2] incomingBlocks;
+                incomingValues[0] = LLVM.LLVMConstInt(i1, isAnd ? 0UL : 1UL, 0);
+                incomingBlocks[0] = leftBlock; incomingValues[1] = right; incomingBlocks[1] = rightBlock;
+                if (phi == null) { return null; }
+                LLVM.LLVMAddIncoming(phi, &incomingValues[0], &incomingBlocks[0], 2u);
+                valid = true; return phi;
+            }
+            if (node.Kind() == "ConditionalExpression")
+            {
+                bool conditionValid = false;
+                void* condition = EmitCondition(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.First(), out conditionValid);
+                raii CString thenName = new CString("select.then"); raii CString elseName = new CString("select.else");
+                raii CString endName = new CString("select.end");
+                void* context = LLVM.LLVMGetModuleContext(module);
+                void* thenBlock = LLVM.LLVMAppendBasicBlockInContext(context, function, thenName.Pointer());
+                void* elseBlock = LLVM.LLVMAppendBasicBlockInContext(context, function, elseName.Pointer());
+                void* endBlock = LLVM.LLVMAppendBasicBlockInContext(context, function, endName.Pointer());
+                if (!conditionValid || condition == null || thenBlock == null || elseBlock == null || endBlock == null ||
+                    LLVM.LLVMBuildCondBr(builder, condition, thenBlock, elseBlock) == null) { return null; }
+                LLVM.LLVMPositionBuilderAtEnd(builder, thenBlock); bool thenValid = false;
+                void* thenValue = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.Second(), out thenValid);
+                void* thenEnd = LLVM.LLVMGetInsertBlock(builder);
+                if (!thenValid || thenValue == null || thenEnd == null || LLVM.LLVMBuildBr(builder, endBlock) == null)
+                { return null; }
+                LLVM.LLVMPositionBuilderAtEnd(builder, elseBlock); bool elseValid = false;
+                void* elseValue = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.Third(), out elseValid);
+                void* elseEnd = LLVM.LLVMGetInsertBlock(builder);
+                if (!elseValid || elseValue == null || elseEnd == null || LLVM.LLVMBuildBr(builder, endBlock) == null)
+                { return null; }
+                int resultType = semantic.Fact(syntaxId).TypeId();
+                void* llvmType = resultType >= 0 && semantic.Types().Get(resultType).Display() == "bool" ? i1 : i32;
+                LLVM.LLVMPositionBuilderAtEnd(builder, endBlock); raii CString phiName = new CString("select.value");
+                void* phi = LLVM.LLVMBuildPhi(builder, llvmType, phiName.Pointer());
+                void*[2] incomingValues; void*[2] incomingBlocks;
+                incomingValues[0] = thenValue; incomingBlocks[0] = thenEnd;
+                incomingValues[1] = elseValue; incomingBlocks[1] = elseEnd;
+                if (phi == null) { return null; }
+                LLVM.LLVMAddIncoming(phi, &incomingValues[0], &incomingBlocks[0], 2u);
+                valid = true; return phi;
+            }
             if (node.Kind() != "BinaryExpression") { return null; }
             bool leftValid = false; bool rightValid = false;
             void* left = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
@@ -360,14 +481,7 @@ namespace NativeSharp.Compiler.CodeGen
             void* result = null;
             if (Comparison(node.OperatorKind()))
             { result = LLVM.LLVMBuildICmp(builder, ComparisonPredicate(node.OperatorKind()), left, right, temporaryName.Pointer()); }
-            else if (node.OperatorKind() == TokenKind.Plus)
-            { result = LLVM.LLVMBuildAdd(builder, left, right, temporaryName.Pointer()); }
-            else if (node.OperatorKind() == TokenKind.Minus)
-            { result = LLVM.LLVMBuildSub(builder, left, right, temporaryName.Pointer()); }
-            else if (node.OperatorKind() == TokenKind.Star)
-            { result = LLVM.LLVMBuildMul(builder, left, right, temporaryName.Pointer()); }
-            else if (node.OperatorKind() == TokenKind.Slash)
-            { result = LLVM.LLVMBuildSDiv(builder, left, right, temporaryName.Pointer()); }
+            else { result = EmitIntegerOperation(builder, node.OperatorKind(), left, right, temporaryName.Pointer()); }
             valid = result != null;
             return result;
         }

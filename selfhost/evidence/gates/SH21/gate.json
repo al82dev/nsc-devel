@@ -1,0 +1,32 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH21",
+  "state": "LANDED",
+  "revision": "selfhost(tanda-23-source-expressions)",
+  "run_id": "tanda-23-sh21-source-expressions-20260920",
+  "previous_gate": "selfhost/evidence/gates/SH20/gate.json",
+  "artifacts": {
+    "baseline_report_sha256": "0faadb1fdf67d42f8453a80c3a40c5ad79bf64ade844c1c92de177db8fa0c145",
+    "baseline_report_json_sha256": "926b80773d5b885aebeb099a818705cd3b45b8c5c343a0fe6c3ce0d5bc272686",
+    "baseline_source_sha256": "6fccb703fa8db406a1e68bd242e09e4823b26980cf0003f4dd12eabac3c04019",
+    "gate0_sha256": "2aed07a703d709b1e83672776abb404b7176b20d07558629b1f2bb460cf8bef2",
+    "sh21_lld_report_sha256": "59aac3e5ebb2539df85a5da41fbb696ffc6769d9f46d62f4f7e1ec622a4f510d",
+    "sh21_nslink_report_sha256": "233d647db398f2a182d691040399b7d2b18de40220809391242f12801fe10b8f",
+    "sh21_lld_generated_report_sha256": "ace4987566eaa615d4884c502721959c761089efbf4ad92b93e62cfe81ce7910",
+    "sh21_nslink_generated_report_sha256": "754f2422ad031f55aec37aa1f55f1c6d31eb22ddfed98c1175befd407335390a"
+  },
+  "metrics": {
+    "source_derived_codegen": true,
+    "scope": "compound-increment-bitwise-short-circuit-conditional",
+    "binding_symbol_count": 89,
+    "execution_combinations": 8,
+    "profiles": ["O0", "O1", "O2", "O3"],
+    "linkers": ["lld-link", "NSLink"],
+    "ctest_per_linker": 456,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18,
+    "baseline_seconds": 927.20
+  },
+  "problems": []
+}

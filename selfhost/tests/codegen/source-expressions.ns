@@ -1,0 +1,24 @@
+static int Main()
+{
+    int value = 5;
+    value += 3;
+    value *= 6;
+    value -= 3;
+    value /= 3;
+    value %= 7;
+    value |= 8;
+    value &= 11;
+    value ^= 3;
+    value <<= 2;
+    value >>= 1;
+
+    int old = value++;
+    int fresh = ++value;
+    value--;
+    --value;
+
+    bool skippedAnd = false && ((value = 90) > 0);
+    bool skippedOr = true || ((value = 91) > 0);
+    int chosen = (skippedAnd || !skippedOr) ? 0 : value;
+    return chosen + fresh;
+}
