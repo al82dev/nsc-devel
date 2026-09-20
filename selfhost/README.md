@@ -72,3 +72,8 @@ SH15 retira de la ruta activa `source-attested-image-replay`. `nsc1` ya no puede
 copiándose: `--bootstrap-generation` valida el conjunto fuente, escribe una traza bloqueada y sale
 con código 78 sin producir un PE. La generación volverá a habilitarse únicamente cuando el objeto
 del compilador sea derivado de sus fuentes por el backend NativeSharp.
+
+SH16 inicia ese reemplazo: el backend recibe el `SyntaxTree` y el `SemanticModel`, localiza el
+retorno de `Main` y emite mediante LLVM-C literales y aritmética entera. Dos fuentes con resultados
+17 y 42 producen objetos diferentes y ejecutables correctos en O0/O3 con ambos linkers. El alcance
+es todavía `integer-entry-expression`, no el compilador completo.

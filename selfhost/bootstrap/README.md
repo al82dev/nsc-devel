@@ -56,3 +56,7 @@ inyecta entradas hostiles y fallos, prueba interrupción y exige limpieza poster
 SH15 añade `verify_image_replay_retired.py`: inspecciona la implementación, invoca una solicitud
 real de generación, exige código 78 y demuestra que ni el productor cambia ni se materializa un
 ejecutable de salida. Su aprobación certifica el retiro del atajo, no codegen derivado de fuentes.
+
+SH16 añade `verify_source_derived_backend.py`: ejecuta ocho combinaciones de fuente, optimización y
+linker, compara los hashes de objetos y rechaza el antiguo cálculo fijo. Su reporte delimita el
+alcance probado para impedir que una rebanada aritmética se confunda con compilador completo.

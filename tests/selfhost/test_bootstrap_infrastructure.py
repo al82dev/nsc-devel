@@ -408,6 +408,15 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn("source-derived-codegen-required", builder)
         self.assertIn("return 78;", builder)
 
+    def test_tanda18_backend_is_parameterized_by_the_parsed_source(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/source-derived-backend.contract.json").read_text())
+        self.assertEqual(contract["gate"], "SH16")
+        self.assertEqual(contract["expected_exit_codes"], [17, 42])
+        backend = (ROOT / "selfhost/nsc/CodeGen/LlvmBackend.ns").read_text()
+        self.assertIn("SyntaxTree tree, SemanticModel semantic", backend)
+        self.assertIn("EmitI32Expression", backend)
+        self.assertNotIn("void* six =", backend)
+
 
 if __name__ == "__main__":
     unittest.main()

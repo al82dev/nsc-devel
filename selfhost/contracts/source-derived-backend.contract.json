@@ -1,0 +1,15 @@
+{
+  "schema": "nativesharp-selfhost-source-derived-backend",
+  "version": 1,
+  "gate": "SH16",
+  "profiles": ["O0", "O3"],
+  "linkers": ["lld", "nslink"],
+  "sources": {
+    "17": "selfhost/tests/codegen/source-derived-17.ns",
+    "42": "selfhost/tests/codegen/source-derived-42.ns"
+  },
+  "expected_exit_codes": [17, 42],
+  "required_operations": ["literal", "unary-plus", "unary-minus", "add", "subtract", "multiply", "signed-divide"],
+  "object_hashes_must_differ": true,
+  "source_derived_codegen": true
+}

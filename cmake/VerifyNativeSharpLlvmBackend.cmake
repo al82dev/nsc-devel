@@ -33,7 +33,7 @@ if(NOT implib_result EQUAL 0)
 endif()
 
 set(project "${SOURCE_ROOT}/selfhost/nsc/NativeSharp.Compiler.nsproj")
-set(source "${SOURCE_ROOT}/tests/integration/valid/full_frontend.ns")
+set(source "${SOURCE_ROOT}/selfhost/tests/codegen/source-derived-42.ns")
 foreach(profile IN ITEMS O0 O1 O2 O3)
     string(TOLOWER "${profile}" lower)
     set(candidate "${OUTPUT_DIR}/nsc-next-${lower}.exe")

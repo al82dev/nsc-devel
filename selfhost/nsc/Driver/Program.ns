@@ -194,8 +194,13 @@ namespace NativeSharp.Compiler.Driver
 
         private static int EmitBackend(string command, string sourcePath, string profile, string outputPath)
         {
-            int frontend = RunIr(sourcePath, 5, true);
-            if (frontend != 0) { return frontend; }
+            if (!File.Exists(sourcePath)) { return 1; }
+            raii SourceBuffer source = SourceBuffer.Load(new FileId(1), sourcePath);
+            raii Lexer lexer = new Lexer(source); raii TokenStream tokens = lexer.LexAll();
+            raii Parser parser = new Parser(source, tokens); raii SyntaxTree tree = parser.ParseCompilationUnit();
+            raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree); raii SemanticModel semantic = analyzer.Analyze();
+            if (tokens.ErrorCount() != 0 || parser.ErrorCount() != 0 || semantic.ErrorCount() != 0 ||
+                !IrPipeline.Verify(tree, semantic, 5)) { return 1; }
             BackendOptimization optimization = BackendOptimization.O0;
             if (profile == "-O1") { optimization = BackendOptimization.O1; }
             else if (profile == "-O2") { optimization = BackendOptimization.O2; }
@@ -203,7 +208,7 @@ namespace NativeSharp.Compiler.Driver
             else if (profile != "-O0") { return 2; }
             BackendArtifactKind kind = command == "--emit-assembly" ?
                 BackendArtifactKind.Assembly : BackendArtifactKind.Object;
-            int result = LlvmBackend.EmitExecutableObject(outputPath, optimization, kind);
+            int result = LlvmBackend.EmitExecutableObject(tree, semantic, outputPath, optimization, kind);
             if (result != 0)
             {
                 raii string code = String.ToString(result);

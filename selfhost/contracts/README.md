@@ -32,3 +32,6 @@ y linkers que definen el primer `nsc1` construido exclusivamente por `nsc0`.
 `image-replay-retirement.contract.json` congela desde SH15 la prohibición de copiar la imagen
 productora, el código 78 de bloqueo y los campos mínimos de la traza emitida mientras todavía no
 existe codegen del compilador derivado de fuentes.
+
+`source-derived-backend.contract.json` congela desde SH16 la primera rebanada real: dos fuentes,
+resultados 17/42, O0/O3, `lld-link`/NSLink y desigualdad obligatoria entre hashes de objetos.

@@ -621,6 +621,13 @@ crea ejecutable. Esto reduce capacidad aparente, pero restablece la semántica e
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-17-SH15-RETIRO-IMAGE-REPLAY.md`.
 
+La tanda 18 abre SH16 con el primer codegen inequívocamente derivado del AST: expresiones enteras
+de retorno en `Main` se bajan a LLVM-C, producen objetos distintos para fuentes distintas y se
+ejecutan con `lld-link` y NSLink en O0 y O3. Es una rebanada real pero limitada; todavía no basta
+para compilar las 21 fuentes del compilador.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-18-SH16-BACKEND-DERIVADO-DE-FUENTE.md`.
+
 ## 9. Orden de dependencias
 
 ```text

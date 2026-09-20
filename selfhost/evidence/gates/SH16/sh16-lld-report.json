@@ -1,0 +1,36 @@
+{
+  "artifacts": {
+    "lld-17-o0.exe": "a320003b3663a3e4411d952a48faab19b1f80730b13c4a92f7fdd162f0e02567",
+    "lld-17-o3.exe": "f01a4a0d3161aea4895a3177f07887cebca7de63dd59347688fe85fbae1df681",
+    "lld-42-o0.exe": "d3b91dbcbfb1729a5e2c3de37f2164c30985d2205f68cb14dec479b4a3987911",
+    "lld-42-o3.exe": "1cfce5f72367c5db366dbfa1c20a78021f6ef904fea2103c7750631bf0a43923",
+    "nslink-17-o0.exe": "1ff9f5583a836267e206cee318df962821710845ba160600373884993cb7677d",
+    "nslink-17-o3.exe": "08c064474c0cd87ea5766a4dc2fbe6badfa96eb1495c4c50b3a7d28842b9a17e",
+    "nslink-42-o0.exe": "c8be4c3bf8bd684d28c84126470ff5d463c5313a0289a5b5e54ac894b16ece96",
+    "nslink-42-o3.exe": "77efd4e8ca9c28df7d6d2b7f8bfb0a3f94ecbca5e40f0f6ec841500f736f8aa1",
+    "source-17-o0.obj": "323ada955abbc7c7a23360eee21d799e2dc501397ebb3f564c338ff2baa4f4cc",
+    "source-17-o3.obj": "e6443913d9a25677e6d2ccd3d7948f8e3b1cd83e5d2873fdb85ce61c5098f2cb",
+    "source-42-o0.obj": "251de5444f1920b2f02c933dbd6d1a6a5877ce8716ae9a85c2c45808ce7e7cca",
+    "source-42-o3.obj": "c5dbbac63154daa54ecb0b207acf1463c89e576be1e58c9dcd4739c02fcf68f7"
+  },
+  "backend_source_sha256": "8b2faeb6586088abb262388a38410bdab4b844d8fc0d1ac07deee4179c30f6d8",
+  "executions": [
+    {"actual": 17, "expected": 17, "linker": "lld", "profile": "O0"},
+    {"actual": 17, "expected": 17, "linker": "nslink", "profile": "O0"},
+    {"actual": 42, "expected": 42, "linker": "lld", "profile": "O0"},
+    {"actual": 42, "expected": 42, "linker": "nslink", "profile": "O0"},
+    {"actual": 17, "expected": 17, "linker": "lld", "profile": "O3"},
+    {"actual": 17, "expected": 17, "linker": "nslink", "profile": "O3"},
+    {"actual": 42, "expected": 42, "linker": "lld", "profile": "O3"},
+    {"actual": 42, "expected": 42, "linker": "nslink", "profile": "O3"}
+  ],
+  "gate": "SH16",
+  "linkers": ["lld", "nslink"],
+  "problems": [],
+  "profiles": ["O0", "O3"],
+  "schema": "nativesharp-selfhost-sh16-report",
+  "scope": "integer-entry-expression",
+  "source_derived_codegen": true,
+  "status": "passed",
+  "version": 1
+}

@@ -1,5 +1,8 @@
 using NativeSharp.Core;
 using NativeSharp.LLVM.C;
+using NativeSharp.Compiler.Lexer;
+using NativeSharp.Compiler.Syntax;
+using NativeSharp.Compiler.Sema;
 
 namespace NativeSharp.Compiler.CodeGen
 {
@@ -21,6 +24,82 @@ namespace NativeSharp.Compiler.CodeGen
     // ningún layout de C++ ni header de LLVM forma parte del compilador autocontenido.
     public class LlvmBackend
     {
+        private static int FindEntryExpression(SyntaxTree tree, int syntaxId)
+        {
+            if (syntaxId < 0) { return -1; }
+            SyntaxNode declaration = tree.Node(syntaxId);
+            if ((declaration.Kind() == "FunctionDeclaration" || declaration.Kind() == "MethodDeclaration") &&
+                declaration.Text() == "Main" && declaration.First() >= 0)
+            {
+                SyntaxNode body = tree.Node(declaration.First());
+                int statementIndex = 0;
+                while (statementIndex < body.ChildCount())
+                {
+                    SyntaxNode statement = tree.Node(body.ChildAt(statementIndex));
+                    if (statement.Kind() == "ReturnStatement" && statement.First() >= 0)
+                    { return statement.First(); }
+                    statementIndex = statementIndex + 1;
+                }
+            }
+            int found = FindEntryExpression(tree, declaration.First()); if (found >= 0) { return found; }
+            found = FindEntryExpression(tree, declaration.Second()); if (found >= 0) { return found; }
+            found = FindEntryExpression(tree, declaration.Third()); if (found >= 0) { return found; }
+            int child = 0;
+            while (child < declaration.ChildCount())
+            {
+                found = FindEntryExpression(tree, declaration.ChildAt(child));
+                if (found >= 0) { return found; }
+                child = child + 1;
+            }
+            return -1;
+        }
+
+        private static int EntryExpression(SyntaxTree tree)
+        { return FindEntryExpression(tree, tree.Root()); }
+
+        private static void* EmitI32Expression(void* builder, void* i32, SyntaxTree tree,
+            SemanticModel semantic, int syntaxId, out bool valid)
+        {
+            valid = false;
+            if (syntaxId < 0) { return null; }
+            SyntaxNode node = tree.Node(syntaxId);
+            if (node.Kind() == "IntegerLiteralExpression")
+            {
+                long value = 0;
+                if (!Number.TryParseInt64(semantic.Fact(syntaxId).ConstantText(), out value)) { return null; }
+                valid = true;
+                return LLVM.LLVMConstInt(i32, (ulong)value, 1);
+            }
+            if (node.Kind() == "UnaryExpression" &&
+                (node.OperatorKind() == TokenKind.Plus || node.OperatorKind() == TokenKind.Minus))
+            {
+                bool operandValid = false;
+                void* operand = EmitI32Expression(builder, i32, tree, semantic, node.First(), out operandValid);
+                if (!operandValid || operand == null) { return null; }
+                valid = true;
+                if (node.OperatorKind() == TokenKind.Plus) { return operand; }
+                raii CString unaryName = new CString("unary.minus");
+                return LLVM.LLVMBuildSub(builder, LLVM.LLVMConstInt(i32, 0UL, 0), operand, unaryName.Pointer());
+            }
+            if (node.Kind() != "BinaryExpression") { return null; }
+            bool leftValid = false; bool rightValid = false;
+            void* left = EmitI32Expression(builder, i32, tree, semantic, node.First(), out leftValid);
+            void* right = EmitI32Expression(builder, i32, tree, semantic, node.Second(), out rightValid);
+            if (!leftValid || !rightValid || left == null || right == null) { return null; }
+            raii CString temporaryName = new CString("source.value");
+            void* result = null;
+            if (node.OperatorKind() == TokenKind.Plus)
+            { result = LLVM.LLVMBuildAdd(builder, left, right, temporaryName.Pointer()); }
+            else if (node.OperatorKind() == TokenKind.Minus)
+            { result = LLVM.LLVMBuildSub(builder, left, right, temporaryName.Pointer()); }
+            else if (node.OperatorKind() == TokenKind.Star)
+            { result = LLVM.LLVMBuildMul(builder, left, right, temporaryName.Pointer()); }
+            else if (node.OperatorKind() == TokenKind.Slash)
+            { result = LLVM.LLVMBuildSDiv(builder, left, right, temporaryName.Pointer()); }
+            valid = result != null;
+            return result;
+        }
+
         private static void Dispose(
             void* context, void* module, void* builder, void* machine, void* layout)
         {
@@ -47,7 +126,7 @@ namespace NativeSharp.Compiler.CodeGen
             return String.Copy("default<O3>");
         }
 
-        public static int EmitExecutableObject(
+        public static int EmitExecutableObject(SyntaxTree tree, SemanticModel semantic,
             string outputPath, BackendOptimization optimization, BackendArtifactKind artifact)
         {
             uint major = 0u; uint minor = 0u; uint patch = 0u;
@@ -58,7 +137,9 @@ namespace NativeSharp.Compiler.CodeGen
             LLVM.LLVMInitializeX86TargetMC(); LLVM.LLVMInitializeX86AsmParser();
             LLVM.LLVMInitializeX86AsmPrinter();
 
-            raii CString moduleName = new CString("nativesharp.sh08.backend");
+            int entryExpression = EntryExpression(tree);
+            if (entryExpression < 0) { return 12; }
+            raii CString moduleName = new CString("nativesharp.source.derived.backend");
             raii CString triple = new CString("x86_64-pc-windows-msvc");
             raii CString empty = new CString(""); raii CString entryName = new CString("mainCRTStartup");
             raii CString exitName = new CString("ExitProcess"); raii CString computeName = new CString("NativeSharpCompute");
@@ -85,9 +166,9 @@ namespace NativeSharp.Compiler.CodeGen
             builder = LLVM.LLVMCreateBuilderInContext(context);
             if (builder == null || computeBlock == null) { Dispose(context, module, builder, machine, layout); return 3; }
             LLVM.LLVMPositionBuilderAtEnd(builder, computeBlock);
-            void* six = LLVM.LLVMConstInt(i32, 6UL, 0); void* seven = LLVM.LLVMConstInt(i32, 7UL, 0);
-            void* answer = LLVM.LLVMBuildMul(builder, six, seven, temporaryName.Pointer());
-            if (answer == null || LLVM.LLVMBuildRet(builder, answer) == null)
+            bool expressionValid = false;
+            void* answer = EmitI32Expression(builder, i32, tree, semantic, entryExpression, out expressionValid);
+            if (!expressionValid || answer == null || LLVM.LLVMBuildRet(builder, answer) == null)
             { Dispose(context, module, builder, machine, layout); return 4; }
 
             void* startupType = LLVM.LLVMFunctionType(voidType, null, 0u, 0);
