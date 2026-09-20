@@ -108,6 +108,18 @@ namespace NativeSharp.Compiler.Types
         public int Intern(string display)
         {
             int existing = Find(display); if (existing >= 0) { return existing; }
+            OwnershipKind ownership = OwnershipKind.None; int prefix = 0;
+            if (display.Length > 6 && String.Substring(display, 0, 6) == "owned ") { ownership = OwnershipKind.Owned; prefix = 6; }
+            else if (display.Length > 9 && String.Substring(display, 0, 9) == "borrowed ") { ownership = OwnershipKind.Borrowed; prefix = 9; }
+            if (prefix != 0)
+            {
+                raii string baseName = String.Substring(display, prefix, display.Length - prefix);
+                int baseType = Intern(baseName); raii SemanticType qualified = new SemanticType(Get(baseType).Kind(), display);
+                qualified.SetElementType(Get(baseType).ElementType()); qualified.SetReturnType(Get(baseType).ReturnType());
+                qualified.SetElementCount(Get(baseType).ElementCount());
+                qualified.SetLayout(Get(baseType).Size(), Get(baseType).Alignment());
+                qualified.SetOwnership(ownership); types.Add(move(qualified)); return types.Count() - 1;
+            }
             if (EndsWith(display, "*"))
             {
                 raii string elementName = String.Substring(display, 0, display.Length - 1);
@@ -126,16 +138,6 @@ namespace NativeSharp.Compiler.Types
                 }
                 array.SetElementType(element); array.SetElementCount(count); array.SetLayout((int)(count * Get(element).Size()), Get(element).Alignment());
                 types.Add(move(array)); return types.Count() - 1;
-            }
-            OwnershipKind ownership = OwnershipKind.None; int prefix = 0;
-            if (display.Length > 6 && String.Substring(display, 0, 6) == "owned ") { ownership = OwnershipKind.Owned; prefix = 6; }
-            else if (display.Length > 9 && String.Substring(display, 0, 9) == "borrowed ") { ownership = OwnershipKind.Borrowed; prefix = 9; }
-            if (prefix != 0)
-            {
-                raii string baseName = String.Substring(display, prefix, display.Length - prefix);
-                int baseType = Intern(baseName); raii SemanticType qualified = new SemanticType(Get(baseType).Kind(), display);
-                qualified.SetElementType(Get(baseType).ElementType()); qualified.SetLayout(Get(baseType).Size(), Get(baseType).Alignment());
-                qualified.SetOwnership(ownership); types.Add(move(qualified)); return types.Count() - 1;
             }
             raii SemanticType named = new SemanticType(SemanticTypeKind.Named, display);
             named.SetLayout(0, 1); types.Add(move(named)); return types.Count() - 1;

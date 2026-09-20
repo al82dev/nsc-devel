@@ -482,6 +482,8 @@ namespace NativeSharp.Compiler.Sema
             if (node.Kind() == "VariableDeclarationStatement")
             {
                 int type = model.Types().Intern(node.SemanticTypeText()); int symbol = Declare(SymbolKind.Variable, node.Text(), type, nodeId, false);
+                model.Fact(nodeId).SetType(type, ValueCategory.LValue);
+                model.Fact(nodeId).SetStorage(true, true);
                 if (node.Auxiliary() == "const") { model.GetSymbol(symbol).SetConst(true); }
                 if (node.First() >= 0)
                 {

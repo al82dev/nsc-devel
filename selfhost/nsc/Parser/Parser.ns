@@ -698,6 +698,7 @@ namespace NativeSharp.Compiler.Parser
             raii string type = ParseType();
             raii string name = CurrentText(); Expect(TokenKind.Identifier);
             int node = NewNode("VariableDeclarationStatement"); Node(node).SetText(name); ApplyType(node, type);
+            Node(node).SetFlag(isRaii);
             if (isConst) { Node(node).SetAuxiliary("const"); }
             if (ConsumeIf(TokenKind.Equal)) { Node(node).SetFirst(ParseExpression()); }
             if (semicolon) { Expect(TokenKind.Semicolon); }

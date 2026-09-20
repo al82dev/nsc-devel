@@ -1,0 +1,12 @@
+namespace OwnershipCleanupFixture
+{
+    public int Main()
+    {
+        owned int* first = new int[1];
+        owned int* second = move(first);
+        second[0] = 42;
+        int answer = second[0];
+        delete[] second;
+        return answer;
+    }
+}

@@ -637,6 +637,11 @@ namespace NativeSharp.Compiler.CodeGen
                 return LLVM.LLVMConstNull(LLVM.LLVMPointerTypeInContext(
                     LLVM.LLVMGetModuleContext(module), 0u));
             }
+            if (node.Kind() == "MoveExpression")
+            {
+                return EmitScalarExpression(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.First(), out valid);
+            }
             if (node.Kind() == "StackallocExpression")
             {
                 bool countValid = false;

@@ -288,6 +288,7 @@ namespace NativeSharp.Compiler.IR
             else if (kind == "NewExpression" || kind == "ObjectCreationExpression") { output.Append(node.Flag() ? "alloc.array" : "alloc"); }
             else if (kind == "DeleteExpression" || kind == "DestroyExpression") { output.Append(node.Flag() ? "free.array" : "free"); }
             else if (kind == "StackallocExpression") { output.Append("stack.alloc"); }
+            else if (kind == "MoveExpression") { output.Append("ownership.move"); }
             else if (kind == "ReturnStatement") { output.Append("return"); }
             else { output.Append("lower "); output.Append(kind); }
             output.Append(" ; syntax="); output.Append(syntaxId);
@@ -324,6 +325,21 @@ namespace NativeSharp.Compiler.IR
         private static void Jump(FlowFunction function, int target, string kind)
         {
             int source = function.Current(); function.AddEdge(source, target, kind); function.AddOperation("jump"); function.Terminate();
+        }
+
+        private static void AddOwnershipCleanup(FlowFunction function, SemanticModel semantic)
+        {
+            int local = function.LocalCount() - 1;
+            while (local >= 0)
+            {
+                int type = function.LocalTypeAt(local);
+                if (type >= 0 && semantic.Types().Get(type).Ownership() == OwnershipKind.Owned)
+                {
+                    raii string prefix = String.Concat("cleanup.if-live @", function.LocalAt(local));
+                    function.AddOperation(prefix);
+                }
+                local = local - 1;
+            }
         }
 
         private static void LowerBlock(SyntaxTree tree, SemanticModel semantic, int id, FlowFunction function, int breakTarget, int continueTarget)
@@ -384,7 +400,11 @@ namespace NativeSharp.Compiler.IR
                 }
                 else if (kind == "BreakStatement" && breakTarget >= 0) { Jump(function, breakTarget, "break"); }
                 else if (kind == "ContinueStatement" && continueTarget >= 0) { Jump(function, continueTarget, "continue"); }
-                else if (kind == "ReturnStatement") { EmitExpression(tree, semantic, statement.First(), function); function.AddOperation("return"); function.Terminate(); }
+                else if (kind == "ReturnStatement")
+                {
+                    EmitExpression(tree, semantic, statement.First(), function);
+                    AddOwnershipCleanup(function, semantic); function.AddOperation("return"); function.Terminate();
+                }
                 else
                 {
                     if (kind == "VariableDeclarationStatement")
@@ -488,6 +508,24 @@ namespace NativeSharp.Compiler.IR
                         string text = value.OperationAt(operation);
                         if (String.Contains(text, "DeleteExpression") || String.Contains(text, "DestroyExpression") ||
                             String.Contains(text, "StackallocExpression")) { return false; }
+                        if (text == "return")
+                        {
+                            bool owns = false; int scanBlock = 0;
+                            while (scanBlock < function.BlockCount())
+                            {
+                                int scanOperation = 0;
+                                while (scanOperation < function.BlockAt(scanBlock).OperationCount())
+                                {
+                                    if (String.Contains(function.BlockAt(scanBlock).OperationAt(scanOperation),
+                                        "cleanup.if-live @")) { owns = true; }
+                                    scanOperation = scanOperation + 1;
+                                }
+                                scanBlock = scanBlock + 1;
+                            }
+                            if (owns && (operation == 0 ||
+                                !String.Contains(value.OperationAt(operation - 1), "cleanup.if-live @")))
+                            { return false; }
+                        }
                         operation = operation + 1;
                     }
                     block = block + 1;
