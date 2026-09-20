@@ -1199,6 +1199,21 @@ namespace NativeSharp.Compiler.CodeGen
                 return expressionValid && value != null;
             }
             if (node.Kind() == "StaticAssertStatement") { return node.First() >= 0; }
+            if (node.Kind() == "TryStatement")
+            {
+                bool bodyTerminated = false;
+                if (!EmitStatement(context, module, builder, i32, i1, tree, semantic, declarationId,
+                    function, state, node.First(), out bodyTerminated)) { return false; }
+                if (node.Second() >= 0 && !bodyTerminated)
+                {
+                    bool finallyTerminated = false;
+                    if (!EmitStatement(context, module, builder, i32, i1, tree, semantic, declarationId,
+                        function, state, node.Second(), out finallyTerminated)) { return false; }
+                    terminated = finallyTerminated;
+                }
+                else { terminated = bodyTerminated; }
+                return true;
+            }
             if (node.Kind() == "ReturnStatement" && node.First() >= 0)
             {
                 bool valueValid = false;

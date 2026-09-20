@@ -1,0 +1,10 @@
+namespace EhRegionsFixture
+{
+    public int Main()
+    {
+        int answer = 40;
+        try { answer = answer + 1; }
+        finally { answer = answer + 1; }
+        return answer;
+    }
+}

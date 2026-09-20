@@ -1,0 +1,29 @@
+using NativeSharp.Core;
+using NativeSharp.Compiler.Syntax;
+
+namespace NativeSharp.Compiler.Sema
+{
+    public class ExceptionRegionGraph
+    {
+        private int tries; private int catches; private int finalizers; private int throws; private int usings;
+        public ExceptionRegionGraph() { tries = 0; catches = 0; finalizers = 0; throws = 0; usings = 0; }
+        private void Visit(SyntaxTree tree, int id)
+        {
+            if (id < 0) { return; } SyntaxNode node = tree.Node(id);
+            if (node.Kind() == "TryStatement") { tries = tries + 1; if (node.Second() >= 0) { finalizers = finalizers + 1; } }
+            else if (node.Kind() == "CatchClause") { catches = catches + 1; }
+            else if (node.Kind() == "ThrowStatement") { throws = throws + 1; }
+            else if (node.Kind() == "UsingStatement") { usings = usings + 1; }
+            Visit(tree, node.First()); Visit(tree, node.Second()); Visit(tree, node.Third());
+            int child = 0; while (child < node.ChildCount()) { Visit(tree, node.ChildAt(child)); child = child + 1; }
+        }
+        public static owned string Dump(SyntaxTree tree)
+        {
+            raii ExceptionRegionGraph graph = new ExceptionRegionGraph(); graph.Visit(tree, tree.Root());
+            raii StringBuilder output = new StringBuilder(); output.Append("eh-regions schema=1\ntry="); output.Append(graph.tries);
+            output.Append(" catch="); output.Append(graph.catches); output.Append(" finally="); output.Append(graph.finalizers);
+            output.Append(" throw="); output.Append(graph.throws); output.Append(" using="); output.Append(graph.usings); output.Append('\n');
+            return output.ToOwnedString();
+        }
+    }
+}
