@@ -225,6 +225,49 @@ namespace NativeSharp.Compiler.Driver
             return 0;
         }
 
+        // SH27 project backend. SourceGraph supplies canonical unit order; the root units become
+        // one LLVM program module instead of the historical FirstSourcePath surrogate.
+        private static int EmitProjectBackend(string projectPath, string profile, string outputPath)
+        {
+            raii SourceGraph graph = SourceGraphBuilder.Build(projectPath);
+            raii ProjectModel project = ProjectLoader.Load(projectPath);
+            if (graph.Failed() || !ProjectLoader.Verify(project)) { return 1; }
+            raii StringBuilder sourceText = new StringBuilder();
+            int unit = 0;
+            while (unit < graph.UnitCount())
+            {
+                SourceUnit value = graph.UnitAt(unit);
+                if (value.Owner() == project.Name())
+                {
+                    string text = File.ReadAllText(value.PathValue());
+                    sourceText.Append(text); sourceText.Append('\n');
+                }
+                unit = unit + 1;
+            }
+            raii string merged = sourceText.ToOwnedString();
+            raii SourceBuffer source = new SourceBuffer(new FileId(1), projectPath, merged);
+            raii Lexer lexer = new Lexer(source); raii TokenStream tokens = lexer.LexAll();
+            raii Parser parser = new Parser(source, tokens); raii SyntaxTree tree = parser.ParseCompilationUnit();
+            raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree); raii SemanticModel semantic = analyzer.Analyze();
+            if (tokens.ErrorCount() != 0 || parser.ErrorCount() != 0 || semantic.ErrorCount() != 0 ||
+                !IrPipeline.Verify(tree, semantic, 5)) { return 1; }
+            BackendOptimization optimization = BackendOptimization.O0;
+            if (profile == "-O1") { optimization = BackendOptimization.O1; }
+            else if (profile == "-O2") { optimization = BackendOptimization.O2; }
+            else if (profile == "-O3") { optimization = BackendOptimization.O3; }
+            else if (profile != "-O0") { return 2; }
+            int result = LlvmBackend.EmitExecutableObject(tree, semantic, outputPath, optimization,
+                BackendArtifactKind.Object);
+            if (result != 0)
+            {
+                raii string code = String.ToString(result);
+                raii string message = String.Concat("nsc-next: error: project LLVM backend failed with code ", code);
+                Console.ErrorWriteLine(message); return 1;
+            }
+            Console.WriteLine("SH27 project LLVM object emission: ok");
+            return 0;
+        }
+
         // SH25. The whole source graph, dumped. Deterministic by construction: the order comes
         // from SourceGraph, never from the filesystem enumeration.
         private static int DumpSourceGraph(string projectPath)
@@ -389,10 +432,7 @@ namespace NativeSharp.Compiler.Driver
             if (command == "--emit-project-object")
             {
                 if (count != 6 || arguments[4] != "-o") { return 2; }
-                raii ProjectModel project = ProjectLoader.Load(arguments[2]);
-                if (!ProjectLoader.Verify(project) || project.SourceCount() == 0) { return 1; }
-                raii string sourcePath = ProjectLoader.FirstSourcePath(project);
-                return EmitBackend("--emit-object", sourcePath, arguments[3], arguments[5]);
+                return EmitProjectBackend(arguments[2], arguments[3], arguments[5]);
             }
             if (command == "--emit-object" || command == "--emit-assembly")
             {

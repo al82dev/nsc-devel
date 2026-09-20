@@ -705,17 +705,26 @@ metadata externa, overloads válidos y firmas duplicadas; las superficies son id
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-28-SH26-SEMANTICA-MULTIMODULO.md`.
 
-### 8.29 Plan cerrado restante — Tandas 29–56
+### 8.29 Tanda 29 — SH27
 
-La auditoría posterior a SH26 confirma que `nsc-next` ya posee grafo fuente e identidad semántica
-entre sus unidades. Eso no equivale aún a self-hosting: el backend continúa limitado a una rebanada
-escalar, la emisión todavía no consume el programa multimódulo completo, la generación conserva
+La tanda 29 reemplaza la emisión del primer archivo por un módulo LLVM del programa raíz completo.
+Elimina el límite fijo de cuatro argumentos y deriva el nombre COFF de la identidad semántica
+cualificada más la firma nominal. Un proyecto de tres unidades con una llamada de seis argumentos
+ejecuta con código 42 en la matriz O0–O3 × LLD/NSLink, sin símbolos históricos especiales.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-29-SH27-BACKEND-LLVM-GENERAL.md`.
+
+### 8.30 Plan cerrado restante — Tandas 30–56
+
+La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
+entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a
+self-hosting: el backend todavía no consume exclusivamente IR validado y continúa limitado a una
+rebanada escalar; la generación conserva
 contratos históricos pendientes y faltan superficies obligatorias de NativeSharp 2.0. Las tandas
 restantes cierran esas brechas sin introducir una segunda lista futura.
 
 | Tanda | Gate | Resultado obligatorio de cierre |
 |---:|---:|---|
-| 29 | SH27 | Backend LLVM general: módulos reales, mangling estable, firmas arbitrarias, ABI Win64 y eliminación de wrappers o nombres especiales de fixtures. |
 | 30 | SH28 | HIR/MIR/CFG/SSA de programa completo; el backend consume exclusivamente IR validado y O0–O3 comparten el mismo modelo semántico. |
 | 31 | SH29 | Datos y layout: enums, structs, clases, globals, constantes, inicialización estática y verificación ABI de tamaños y alineación. |
 | 32 | SH30 | Modelo de objetos: `this`, `base`, campos, métodos, constructores, propiedades, indexers y operadores. |
@@ -1130,13 +1139,13 @@ mantiene un solo commit de cierre por tanda.
 
 ## 23. Resumen ejecutivo
 
-Las tandas 01–28 y los gates SH00–SH26 ya establecieron contratos, retiraron image replay, lograron
+Las tandas 01–29 y los gates SH00–SH27 ya establecieron contratos, retiraron image replay, lograron
 un backend derivado de fuente para la rebanada escalar actual, construyeron el grafo fuente
 determinista y dieron identidad semántica al conjunto multimódulo. Eso es una base real, no
-self-hosting completo: todavía faltan emisión multimódulo, superficie 2.0, backend general, bibliotecas,
+self-hosting completo: todavía faltan IR como única entrada del backend, superficie 2.0, bibliotecas,
 generaciones autónomas, punto fijo y certificación operativa.
 
-El plan cerrado restante comprende las tandas 29–56 y los gates SH27–SH54. SH41, en la tanda 43,
+El plan cerrado restante comprende las tandas 30–56 y los gates SH28–SH54. SH41, en la tanda 43,
 produce la primera autocompilación real; SH54, en la tanda 56, es el único cierre de promoción. El
 roadmap contiene así 56 tandas y 55 gates acumulativos (`SH00`–`SH54`), con baseline, expediente y
 commit por tanda. Después de SH54 no queda una fase de self-hosting 2.0 por descubrir: el siguiente

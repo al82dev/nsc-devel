@@ -854,6 +854,18 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.module-set PROPERTIES RUN_SERIAL TRUE)
 
     add_test(
+        NAME nsc.selfhost.backend-general
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-backend-general"
+            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
+            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpBackendGeneral.cmake")
+    set_tests_properties(nsc.selfhost.backend-general PROPERTIES RUN_SERIAL TRUE)
+
+    add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"

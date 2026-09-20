@@ -4,6 +4,8 @@ using NativeSharp.LLVM.C;
 using NativeSharp.Compiler.Lexer;
 using NativeSharp.Compiler.Syntax;
 using NativeSharp.Compiler.Sema;
+using NativeSharp.Compiler.Basic;
+using NativeSharp.Compiler.Symbols;
 
 namespace NativeSharp.Compiler.CodeGen
 {
@@ -175,8 +177,9 @@ namespace NativeSharp.Compiler.CodeGen
             void* returnType = ScalarType(context, declaration.TypeText());
             if (returnType == null) { return null; }
             int parameterCount = ParameterCount(tree, declarationId);
-            if (parameterCount < 0 || parameterCount > 4) { return null; }
-            void*[4] parameterTypes;
+            if (parameterCount < 0) { return null; }
+            void** parameterTypes = null;
+            if (parameterCount > 0) { parameterTypes = stackalloc void*[parameterCount]; }
             int index = 0; int parameter = 0;
             while (index < declaration.ChildCount())
             {
@@ -189,13 +192,36 @@ namespace NativeSharp.Compiler.CodeGen
                 }
                 index = index + 1;
             }
-            void** parameters = null;
-            if (parameterCount > 0) { parameters = &parameterTypes[0]; }
-            return LLVM.LLVMFunctionType(returnType, parameters, (uint)parameterCount, 0);
+            return LLVM.LLVMFunctionType(returnType, parameterTypes, (uint)parameterCount, 0);
         }
 
-        private static owned string LlvmFunctionName(string sourceName)
-        { return String.Concat("__nativesharp_source_", sourceName); }
+        // SH27 stable native identity. Source spelling alone aliases overloads and equal names in
+        // different namespaces. The qualified semantic name plus its nominal function type is the
+        // ABI identity; StableHash gives it a path-, locale- and process-independent COFF spelling.
+        private static owned string LlvmFunctionName(SyntaxTree tree, SemanticModel semantic,
+            int declarationId)
+        {
+            SyntaxNode declaration = tree.Node(declarationId);
+            raii string qualified = String.Copy(declaration.Text());
+            raii string signature = String.Copy(declaration.TypeText());
+            int symbolId = semantic.NodeSymbol(declarationId);
+            if (symbolId >= 0)
+            {
+                Symbol symbol = semantic.GetSymbol(symbolId);
+                raii string symbolName = String.Copy(symbol.QualifiedName()); qualified = move(symbolName);
+                if (symbol.TypeId() >= 0)
+                {
+                    raii string symbolType = String.Copy(semantic.Types().Get(symbol.TypeId()).Display());
+                    signature = move(symbolType);
+                }
+            }
+            raii string left = String.Concat(qualified, "|");
+            raii string identity = String.Concat(left, signature);
+            raii string hash = String.ToString(StableHash.Text(identity));
+            raii string prefix = String.Concat("__nativesharp_", hash);
+            raii string separator = String.Concat(prefix, "_");
+            return String.Concat(separator, declaration.Text());
+        }
 
         private static int FindFunctionDeclaration(SyntaxTree tree, int syntaxId, string name)
         {
@@ -231,7 +257,8 @@ namespace NativeSharp.Compiler.CodeGen
             return -1;
         }
 
-        private static bool DeclareFunctions(void* module, SyntaxTree tree, int syntaxId)
+        private static bool DeclareFunctions(void* module, SyntaxTree tree, SemanticModel semantic,
+            int syntaxId)
         {
             if (syntaxId < 0) { return true; }
             SyntaxNode node = tree.Node(syntaxId);
@@ -240,17 +267,17 @@ namespace NativeSharp.Compiler.CodeGen
             {
                 void* functionType = ScalarFunctionType(LLVM.LLVMGetModuleContext(module), tree, syntaxId);
                 if (functionType == null) { return false; }
-                raii string llvmNameText = LlvmFunctionName(node.Text());
+                raii string llvmNameText = LlvmFunctionName(tree, semantic, syntaxId);
                 raii CString llvmName = new CString(llvmNameText);
                 if (LLVM.LLVMAddFunction(module, llvmName.Pointer(), functionType) == null) { return false; }
             }
-            if (!DeclareFunctions(module, tree, node.First())) { return false; }
-            if (!DeclareFunctions(module, tree, node.Second())) { return false; }
-            if (!DeclareFunctions(module, tree, node.Third())) { return false; }
+            if (!DeclareFunctions(module, tree, semantic, node.First())) { return false; }
+            if (!DeclareFunctions(module, tree, semantic, node.Second())) { return false; }
+            if (!DeclareFunctions(module, tree, semantic, node.Third())) { return false; }
             int child = 0;
             while (child < node.ChildCount())
             {
-                if (!DeclareFunctions(module, tree, node.ChildAt(child))) { return false; }
+                if (!DeclareFunctions(module, tree, semantic, node.ChildAt(child))) { return false; }
                 child = child + 1;
             }
             return true;
@@ -629,16 +656,23 @@ namespace NativeSharp.Compiler.CodeGen
             if (node.Kind() == "CallExpression" && node.First() >= 0)
             {
                 SyntaxNode callee = tree.Node(node.First());
-                if (callee.Kind() != "IdentifierExpression" || node.ChildCount() > 4) { return null; }
-                int calleeDeclaration = FindFunctionDeclaration(tree, tree.Root(), callee.Text());
+                if (callee.Kind() != "IdentifierExpression") { return null; }
+                int calleeDeclaration = -1;
+                int calleeSymbol = semantic.Fact(node.First()).SymbolId();
+                if (calleeSymbol >= 0) { calleeDeclaration = semantic.GetSymbol(calleeSymbol).Declaration(); }
+                if (calleeDeclaration < 0)
+                { calleeDeclaration = FindFunctionDeclaration(tree, tree.Root(), callee.Text()); }
                 if (calleeDeclaration < 0 || ParameterCount(tree, calleeDeclaration) != node.ChildCount())
                 { return null; }
-                raii string llvmNameText = LlvmFunctionName(callee.Text()); raii CString llvmName = new CString(llvmNameText);
+                raii string llvmNameText = LlvmFunctionName(tree, semantic, calleeDeclaration);
+                raii CString llvmName = new CString(llvmNameText);
                 void* calleeFunction = LLVM.LLVMGetNamedFunction(module, llvmName.Pointer());
                 if (calleeFunction == null) { return null; }
                 void* calleeType = LLVM.LLVMGlobalGetValueType(calleeFunction);
                 if (calleeFunction == null || calleeType == null) { return null; }
-                void*[4] arguments; int argument = 0;
+                void** arguments = null;
+                if (node.ChildCount() > 0) { arguments = stackalloc void*[node.ChildCount()]; }
+                int argument = 0;
                 while (argument < node.ChildCount())
                 {
                     bool argumentValid = false;
@@ -651,10 +685,8 @@ namespace NativeSharp.Compiler.CodeGen
                     argument = argument + 1;
                 }
                 raii CString callName = new CString("");
-                void** callArguments = null;
-                if (node.ChildCount() > 0) { callArguments = &arguments[0]; }
                 void* call = LLVM.LLVMBuildCall2(builder, calleeType, calleeFunction,
-                    callArguments, (uint)node.ChildCount(), callName.Pointer());
+                    arguments, (uint)node.ChildCount(), callName.Pointer());
                 valid = call != null; return call;
             }
             if (node.Kind() == "BinaryExpression" &&
@@ -1064,7 +1096,8 @@ namespace NativeSharp.Compiler.CodeGen
             if ((node.Kind() == "FunctionDeclaration" || node.Kind() == "MethodDeclaration") &&
                 node.First() >= 0 && SupportedScalar(node.TypeText()))
             {
-                raii string llvmNameText = LlvmFunctionName(node.Text()); raii CString llvmName = new CString(llvmNameText);
+                raii string llvmNameText = LlvmFunctionName(tree, semantic, syntaxId);
+                raii CString llvmName = new CString(llvmNameText);
                 void* function = LLVM.LLVMGetNamedFunction(module, llvmName.Pointer());
                 raii CString entryName = new CString("source.entry");
                 void* block = LLVM.LLVMAppendBasicBlockInContext(context, function, entryName.Pointer());
@@ -1173,14 +1206,17 @@ namespace NativeSharp.Compiler.CodeGen
             builder = LLVM.LLVMCreateBuilderInContext(context);
             if (builder == null)
             { Dispose(context, module, builder, machine, layout); return 3; }
-            if (!DeclareFunctions(module, tree, tree.Root()))
+            if (!DeclareFunctions(module, tree, semantic, tree.Root()))
             { Dispose(context, module, builder, machine, layout); return 13; }
             if (!EmitFunctions(context, module, builder, i32, i1, tree, semantic, tree.Root()))
             { Dispose(context, module, builder, machine, layout); return 14; }
             void* computeBlock = LLVM.LLVMAppendBasicBlockInContext(context, compute, blockName.Pointer());
             if (computeBlock == null) { Dispose(context, module, builder, machine, layout); return 3; }
             LLVM.LLVMPositionBuilderAtEnd(builder, computeBlock);
-            raii string mainNameText = LlvmFunctionName("Main"); raii CString mainName = new CString(mainNameText);
+            int mainDeclaration = FindFunctionDeclaration(tree, tree.Root(), "Main");
+            if (mainDeclaration < 0) { Dispose(context, module, builder, machine, layout); return 4; }
+            raii string mainNameText = LlvmFunctionName(tree, semantic, mainDeclaration);
+            raii CString mainName = new CString(mainNameText);
             void* mainFunction = LLVM.LLVMGetNamedFunction(module, mainName.Pointer());
             if (mainFunction == null) { Dispose(context, module, builder, machine, layout); return 4; }
             void* answer = LLVM.LLVMBuildCall2(builder, computeType, mainFunction, null, 0u, temporaryName.Pointer());
