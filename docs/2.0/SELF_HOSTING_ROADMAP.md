@@ -686,6 +686,70 @@ publica `_fltused`, requerido por el ABI MSVC, y se ejecuta en O0–O3 con LLD y
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-26-SH24-ESCALARES-FLOTANTES.md`.
 
+### 8.27 Plan cerrado restante — Tandas 27–56
+
+La auditoría posterior a SH24 confirma que `nsc-next` ya puede analizar individualmente los 21
+archivos NativeSharp del compilador y verificar su semántica y SSA por archivo. Eso no equivale aún
+a self-hosting: el backend continúa limitado a una rebanada escalar, la compilación de proyecto no
+construye todavía un programa multimódulo, la generación completa conserva contratos históricos de
+image replay y faltan superficies obligatorias de NativeSharp 2.0. Las tandas restantes cierran esas
+brechas sin introducir una segunda lista futura.
+
+| Tanda | Gate | Resultado obligatorio de cierre |
+|---:|---:|---|
+| 27 | SH25 | Grafo fuente completo y determinista: expansión de fuentes y proyectos, orden canónico, los 21 archivos de `nsc-next` en una sola compilación y diagnósticos por unidad. |
+| 28 | SH26 | Semántica multimódulo: namespaces, símbolos, overloads, referencias, metadata externa e identidad de tipos y callables entre archivos y proyectos. |
+| 29 | SH27 | Backend LLVM general: módulos reales, mangling estable, firmas arbitrarias, ABI Win64 y eliminación de wrappers o nombres especiales de fixtures. |
+| 30 | SH28 | HIR/MIR/CFG/SSA de programa completo; el backend consume exclusivamente IR validado y O0–O3 comparten el mismo modelo semántico. |
+| 31 | SH29 | Datos y layout: enums, structs, clases, globals, constantes, inicialización estática y verificación ABI de tamaños y alineación. |
+| 32 | SH30 | Modelo de objetos: `this`, `base`, campos, métodos, constructores, propiedades, indexers y operadores. |
+| 33 | SH31 | Texto nativo: `char`, UTF-8, literales globales, `string`/`CString`, concatenación, comparación e indexación. |
+| 34 | SH32 | Arrays y memoria: arrays administrados y nativos, `new`/`delete`, límites, spans, heap y `stackalloc` general. |
+| 35 | SH33 | Firmas e interoperabilidad base: `ref`/`out`/`in`, retornos complejos, `extern C`, convenciones de llamada, imports y varargs básico. |
+| 36 | SH34 | Genéricos AOT: constraints, inferencia, monomorfización determinista e identidad de instancias entre proyectos. |
+| 37 | SH35 | Ownership completo: `owned`, `borrowed`, RAII, move/copy, destructores y cleanup correcto en todas las salidas. |
+| 38 | SH36 | Despacho y callables: interfaces, virtuales, vtables, delegates, function pointers, callbacks, eventos, lambdas y closures. |
+| 39 | SH37 | Cierre del Bootstrap Profile: `switch`, `foreach`, `default`, `is`/`as`, `sizeof`, `alignof`, `offsetof`, static assertions y conversiones de usuario. |
+| 40 | SH38 | EH Win64: `try`/`catch`/`finally`, `throw`, `using`, funclets, unwind, RTTI y cleanup de ownership durante excepciones. |
+| 41 | SH39 | Driver completo: todos los archivos de proyecto a EXE/DLL/LIB/fachada, response files, metadata y enlace equivalente con LLD y NSLink. |
+| 42 | SH40 | Cierre de dependencias bootstrap: Core, Collections, IO y LLVM.C se reconstruyen desde fuente de forma reproducible, sin objetos ocultos de `nsc0`. |
+| 43 | SH41 | Primera autocompilación real `nsc1 -> nsc2`; reemplazo de `GenerationBuilder`, sin ejecutar `nsc0`, sin image replay y con auditoría del árbol de procesos. |
+| 44 | SH42 | Equivalencia funcional `nsc0`/`nsc2`: diagnósticos, AST, semántica, IR, objetos, metadata, productos y proyectos. |
+| 45 | SH43 | Punto fijo `nsc2 -> nsc3`, repetido tres veces desde limpio, con identidad conforme a la política y sin normalización oculta. |
+| 46 | SH44 | Determinismo entre dos máquinas: rutas, espacios, Unicode, locales, zona horaria, workers y orden del sistema de archivos. |
+| 47 | SH45 | Paridad low-level 2.0: volatile, atomics, unions, bitfields, layout, placement/destrucción, noheap y escape analysis contractual. |
+| 48 | SH46 | ABI e interop completos: C, C++, COM, callbacks, aggregates, varargs, vectorcall y DLL; cualquier cambio de NSLink vive y se certifica en su repositorio. |
+| 49 | SH47 | SIMD y código especializado: vectores, matrices, half, packed, intrinsics, inline asm y modos floating point con NSAsm y ambos linkers. |
+| 50 | SH48 | Biblioteca y runtime completos reconstruidos: threading, atomics, sincronización, jobs, IO, filesystem, procesos, diagnósticos y runtime Win32. |
+| 51 | SH49 | Toolchain avanzado: comptime sandboxed, caché reproducible, sanitizer, SDK, metadata N/N-1, paquetes y bindings precompilados. |
+| 52 | SH50 | Rendimiento: O0 con presupuesto estricto de latencia, O1–O3 efectivos, incremental, caché, scheduling, paralelismo, LTO y ThinLTO medidos. |
+| 53 | SH51 | Experiencia de desarrollo: progreso, verbosidad, logs persistentes, errores accionables, PDB O0/optimizado/inline, Visual Studio y contrato del NativeSharp Debugger. |
+| 54 | SH52 | Robustez: fuzzing, metadata hostil, cancelación, fallo atómico, interrupción, limpieza de temporales, cero messageboxes y reproducibilidad. |
+| 55 | SH53 | Distribución: instalación, actualización, convivencia, rollback, migración, congelamiento de `nsc0` y receta de recuperación comprobada. |
+| 56 | SH54 | Certificación final: matriz completa desde limpio, cero omitidos y cero incidencias de release, acta, hashes, milestone/tag 2.0 y retorno a `development`. |
+
+#### Regla terminal
+
+La tanda 43 produce el primer compilador que se compila realmente a sí mismo, pero no constituye la
+promoción final. La tanda 56 es el cierre terminal de NativeSharp 2.0 self-hosted: cualquier defecto
+descubierto por SH54 se corrige y vuelve a validar dentro de la tanda 56; no se difiere a una tanda 57
+ni se presenta después como requisito imprevisto. Terminado SH54, el siguiente trabajo planificado
+pertenece a NativeSharp 3.0 y debe tener su propio roadmap.
+
+El C++ de `nsc0` continúa permitido únicamente como semilla y recuperación hasta SH53; no se
+reescribe LLVM. Si NSLink o NSAsm requieren implementación nueva en NativeSharp, esa implementación
+se crea desde cero en repositorios independientes y nunca se mezcla con el código de `nsc-next`.
+
+#### Método obligatorio para T27–T56
+
+Cada tanda conserva el método de la sección 22: baseline de entrada, cambio acotado, pruebas
+dirigidas O0–O3 con LLD y NSLink, baseline completo de cierre, evidencia y hashes, expediente técnico
+con métodos/funciones/archivos/diseño y un único commit `selfhost(tanda-XX): ...`. Durante estas
+tandas la instalación de trabajo se limita a `A:\native-sharp`; las rutas de scripts deben ser
+configurables y ningún commit puede contener objetos, ejecutables, temporales ni archivos ajenos. No
+se cierra un gate con una prueba obligatoria omitida o con una incidencia abierta de severidad de
+release.
+
 ## 9. Orden de dependencias
 
 ```text
@@ -715,6 +779,20 @@ SH00 punto de partida
                                                                                       └─ SH23 punteros/memoria local
                                                                                           └─ SH24 escalares flotantes
 ```
+
+La continuación normativa es secuencial a nivel de gate:
+
+```text
+SH24 → SH25 → SH26 → SH27 → SH28 → SH29 → SH30 → SH31 → SH32 → SH33 → SH34
+     → SH35 → SH36 → SH37 → SH38 → SH39 → SH40
+     → SH41 → SH42 → SH43 → SH44
+     → SH45 → SH46 → SH47 → SH48 → SH49
+     → SH50 → SH51 → SH52 → SH53 → SH54
+```
+
+SH25–SH40 completan compilador y cierre bootstrap; SH41–SH44 prueban generaciones reales y
+determinismo; SH45–SH49 cierran la superficie 2.0 y su runtime; SH50–SH54 cierran rendimiento,
+diagnósticos, robustez, distribución y promoción.
 
 SH02 y SH03 pueden avanzar en paralelo después de SH01. Las demás dependencias son secuenciales por
 corrección, aunque las tareas internas de una fase pueden paralelizarse si no comparten contratos.
@@ -902,15 +980,24 @@ repite desde una salida limpia. Nunca se maquilla un fallo copiando binarios de 
 NativeSharp 2.0 puede declararse self-hosted cuando todos estos puntos sean verdaderos al mismo
 tiempo:
 
-- [ ] Gates SH00–SH14 están `LANDED` y enlazados.
+- [ ] Gates SH00–SH54 están `LANDED` y enlazados; ningún gate histórico dependiente de image replay
+      conserva valor de promoción sin su revalidación en SH41–SH54.
 - [ ] El Bootstrap Profile está congelado, versionado y verificado.
 - [ ] `nsc1`, `nsc2` y `nsc3` se producen desde árboles limpios.
 - [ ] `nsc2` se construyó sin ejecutar `nsc0`.
 - [ ] `nsc2` y `nsc3` alcanzan el punto fijo definido.
 - [ ] La repetición en dos máquinas no introduce diferencias no autorizadas.
-- [ ] CTest completo pasa con ambos linkers.
+- [ ] Core, Collections, IO y LLVM.C fueron reconstruidas desde fuente sin objeto oculto de `nsc0`.
+- [ ] CTest completo y toda prueba acumulada pasan con ambos linkers.
 - [ ] Fixtures y triage pasan en O0/O1/O2/O3.
-- [ ] ABI, DLL, COM, PDB, LTO, metadata y runtime están certificados.
+- [ ] La superficie completa del lenguaje 2.0, biblioteca estándar y runtime está certificada.
+- [ ] ABI, DLL, COM, PDB, LTO, metadata, paquetes y bindings están certificados.
+- [ ] O0 cumple su presupuesto de compilación y O1/O2/O3 producen optimización real sin divergencia
+      semántica.
+- [ ] Progreso, verbosidad, logs, diagnósticos, Visual Studio y NativeSharp Debugger cumplen sus
+      contratos publicados.
+- [ ] NSLink y NSAsm son compatibles; cualquier cambio o reescritura está trazado en su repositorio
+      independiente y enlazado desde la evidencia.
 - [ ] Cero pruebas obligatorias omitidas.
 - [ ] Cero problemas abiertos de severidad de release.
 - [ ] Instalación, actualización, convivencia y rollback están probados.
@@ -919,7 +1006,9 @@ tiempo:
 - [ ] El acta de promoción identifica revisión, hashes y reportes exactos.
 
 Un primer `nsc1.exe` que compila ejemplos no satisface esta definición. Tampoco la satisface un
-`nsc2` funcional si `nsc2` y `nsc3` divergen sin explicación.
+`nsc2` funcional si `nsc2` y `nsc3` divergen sin explicación. Si la matriz final descubre una brecha,
+SH54 permanece abierto hasta corregirla: no se crea una tanda posterior para declarar un cierre
+incompleto.
 
 ## 20. Primeras tandas ejecutables
 
@@ -1025,8 +1114,13 @@ mantiene un solo commit de cierre por tanda.
 
 ## 23. Resumen ejecutivo
 
-NativeSharp 2.0 ya tiene suficiente lenguaje y biblioteca para comenzar `nsc-next`. Lo que falta no
-es otra ronda general de features: falta congelar el subconjunto bootstrap, crear la frontera LLVM y
-runtime, portar el compilador por capas verificables, construir `nsc1/nsc2/nsc3`, demostrar el punto
-fijo y promoverlo con una transición recuperable. Este roadmap convierte esas condiciones en 182
-unidades de trabajo y quince gates acumulativos.
+Las tandas 01–26 y los gates SH00–SH24 ya establecieron contratos, retiraron image replay y lograron
+un backend derivado de fuente para la rebanada escalar actual. Eso es una base real, no self-hosting
+completo: todavía faltan compilación multimódulo, superficie 2.0, backend general, bibliotecas,
+generaciones autónomas, punto fijo y certificación operativa.
+
+El plan cerrado restante comprende las tandas 27–56 y los gates SH25–SH54. SH41, en la tanda 43,
+produce la primera autocompilación real; SH54, en la tanda 56, es el único cierre de promoción. El
+roadmap contiene así 56 tandas y 55 gates acumulativos (`SH00`–`SH54`), con baseline, expediente y
+commit por tanda. Después de SH54 no queda una fase de self-hosting 2.0 por descubrir: el siguiente
+roadmap es NativeSharp 3.0.
