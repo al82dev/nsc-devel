@@ -437,6 +437,11 @@ namespace NativeSharp.Compiler.Sema
                 int type = model.Types().Intern(node.SemanticTypeText()); int value = node.Kind() == "SizeofTypeExpression" ? model.Types().Get(type).Size() : model.Types().Get(type).Alignment();
                 fact.SetType(model.Types().Find("nuint"), ValueCategory.RValue); raii string text = String.ToString(value); fact.SetConstant(text); return fact;
             }
+            if (node.Kind() == "DefaultExpression")
+            {
+                int type = model.Types().Intern(node.SemanticTypeText()); fact.SetType(type, ValueCategory.RValue);
+                fact.SetConstant("0"); return fact;
+            }
             if (node.Kind() == "SizeofExpression" || node.Kind() == "AlignofExpression")
             {
                 SemanticFact operand = AnalyzeExpression(node.First()); int value = node.Kind() == "SizeofExpression" ? model.Types().Get(operand.TypeId()).Size() : model.Types().Get(operand.TypeId()).Alignment();

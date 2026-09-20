@@ -637,6 +637,16 @@ namespace NativeSharp.Compiler.CodeGen
                 return LLVM.LLVMConstNull(LLVM.LLVMPointerTypeInContext(
                     LLVM.LLVMGetModuleContext(module), 0u));
             }
+            if (node.Kind() == "SizeofTypeExpression" || node.Kind() == "AlignofTypeExpression" ||
+                node.Kind() == "SizeofExpression" || node.Kind() == "AlignofExpression" ||
+                node.Kind() == "DefaultExpression")
+            {
+                SemanticFact fact = semantic.Fact(syntaxId); ulong value = 0UL;
+                if (!fact.IsConstant() || !Number.TryParseUInt64(fact.ConstantText(), out value)) { return null; }
+                void* type = ScalarType(LLVM.LLVMGetModuleContext(module),
+                    semantic.Types().Get(fact.TypeId()).Display());
+                if (type == null) { return null; } valid = true; return LLVM.LLVMConstInt(type, value, 0);
+            }
             if (node.Kind() == "MoveExpression")
             {
                 return EmitScalarExpression(module, builder, i32, i1, tree, semantic,
@@ -1188,6 +1198,7 @@ namespace NativeSharp.Compiler.CodeGen
                     declarationId, function, state, node.First(), out expressionValid);
                 return expressionValid && value != null;
             }
+            if (node.Kind() == "StaticAssertStatement") { return node.First() >= 0; }
             if (node.Kind() == "ReturnStatement" && node.First() >= 0)
             {
                 bool valueValid = false;

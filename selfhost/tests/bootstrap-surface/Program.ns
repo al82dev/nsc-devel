@@ -1,0 +1,9 @@
+namespace BootstrapSurfaceFixture
+{
+    public int Main()
+    {
+        static_assert(sizeof(int) == 4, "int layout");
+        int zero = default(int);
+        return 30 + (int)sizeof(int) + (int)alignof(long) + zero;
+    }
+}

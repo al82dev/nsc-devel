@@ -536,6 +536,11 @@ namespace NativeSharp.Compiler.Parser
                 int expression = ParseExpression(); Expect(TokenKind.RightParen);
                 int node = NewNode(size ? "SizeofExpression" : "AlignofExpression"); Node(node).SetFirst(expression); return node;
             }
+            if (At(TokenKind.KwDefault))
+            {
+                Consume(); Expect(TokenKind.LeftParen); raii string type = ParseType(); Expect(TokenKind.RightParen);
+                int node = NewNode("DefaultExpression"); ApplyType(node, type); return node;
+            }
             if (At(TokenKind.KwStackalloc) || At(TokenKind.KwNew))
             {
                 bool stack = At(TokenKind.KwStackalloc); Consume();

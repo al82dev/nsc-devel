@@ -960,6 +960,13 @@ if(NSC_BUILD_TESTS)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpCallableGraph.cmake")
     set_tests_properties(nsc.selfhost.callable-graph PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.ownership-cleanup)
 
+    add_test(NAME nsc.selfhost.bootstrap-surface COMMAND "${CMAKE_COMMAND}"
+        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-bootstrap-surface"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpBootstrapSurface.cmake")
+    set_tests_properties(nsc.selfhost.bootstrap-surface PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.callable-graph)
+
     add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
