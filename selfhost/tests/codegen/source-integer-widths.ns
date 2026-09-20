@@ -1,0 +1,40 @@
+static ulong Promote(byte value, uint extra)
+{
+    return value + extra;
+}
+
+static nint NativeHalf(nuint value)
+{
+    return value / 2;
+}
+
+static int Main()
+{
+    byte small = 40;
+    small += 2;
+    char marker = 40;
+    marker += 2;
+    short signedShort = -84;
+    signedShort /= -2;
+    ushort unsignedShort = 84;
+    unsignedShort >>= 1;
+    uint unsigned32 = 84u;
+    unsigned32 /= 2u;
+    long signed64 = -84L;
+    signed64 /= -2L;
+    ulong unsigned64 = 168UL;
+    unsigned64 >>= 2;
+    nint nativeSigned = 84L;
+    nativeSigned /= 2L;
+    nuint nativeUnsigned = 168UL;
+    nativeUnsigned >>= 2;
+    ulong promoted = Promote(40, 2u);
+    nint nativeResult = NativeHalf(84UL);
+
+    bool ok = small == 42 && marker == 42 && signedShort == 42 &&
+        unsignedShort == 42 && unsigned32 == 42u && signed64 == 42L &&
+        unsigned64 == 42UL && nativeSigned == 42L && nativeUnsigned == 42UL &&
+        promoted == 42UL && nativeResult == 42L;
+    if (!ok) { return 1; }
+    return 42;
+}

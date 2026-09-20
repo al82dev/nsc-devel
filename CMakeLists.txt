@@ -801,6 +801,17 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.source-expressions PROPERTIES RUN_SERIAL TRUE)
 
     add_test(
+        NAME nsc.selfhost.source-integer-widths
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-integer-widths"
+            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSourceIntegerWidths.cmake")
+    set_tests_properties(nsc.selfhost.source-integer-widths PROPERTIES RUN_SERIAL TRUE)
+
+    add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"

@@ -1,0 +1,13 @@
+{
+  "schema": "nativesharp-selfhost-source-integer-widths",
+  "version": 1,
+  "gate": "SH22",
+  "source": "selfhost/tests/codegen/source-integer-widths.ns",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "expected_exit_code": 42,
+  "required_symbols": ["__nativesharp_source_Promote", "__nativesharp_source_NativeHalf", "__nativesharp_source_Main"],
+  "required_llvm_api": ["LLVMBuildTrunc", "LLVMBuildSExt", "LLVMBuildZExt", "LLVMBuildUDiv", "LLVMBuildURem", "LLVMBuildLShr"],
+  "source_derived_codegen": true,
+  "scope": "integer-widths-signedness-contextual-conversions"
+}

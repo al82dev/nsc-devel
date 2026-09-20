@@ -664,6 +664,14 @@ con ambos linkers y fallaría si cualquiera de los lados cortocircuitados se eva
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-23-SH21-EXPRESIONES-ESCALARES.md`.
 
+La tanda 24 abre SH22 y añade todos los anchos enteros del perfil: `byte`, `char`, `short`,
+`ushort`, `uint`, `long`, `ulong`, `nint` y `nuint`. Las conversiones semánticas se materializan con
+truncado o extensión con signo correcta; división, resto, comparación y shift derecho distinguen
+signed/unsigned. El gate cubre conversiones en locales, operandos, argumentos, retornos y resultados
+de asignación compuesta.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-24-SH22-ANCHOS-ENTEROS.md`.
+
 ## 9. Orden de dependencias
 
 ```text
@@ -689,6 +697,7 @@ SH00 punto de partida
                                                                       └─ SH19 control de bucles
                                                                           └─ SH20 escalares bool/void
                                                                               └─ SH21 expresiones escalares
+                                                                                  └─ SH22 anchos enteros
 ```
 
 SH02 y SH03 pueden avanzar en paralelo después de SH01. Las demás dependencias son secuenciales por

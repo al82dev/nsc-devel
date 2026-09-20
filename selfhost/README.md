@@ -97,3 +97,7 @@ valores y llamadas con el tipo LLVM real. Todavía no cubre strings, objetos ni 
 SH21 completa operadores escalares enteros y booleanos, actualizaciones de lvalue y selección
 condicional. `&&` y `||` bajan a CFG con `phi`, preservando cortocircuito y efectos laterales; no se
 simulan como operaciones bit a bit.
+
+SH22 añade todos los anchos enteros del perfil y consume las conversiones registradas por semántica
+en inicializadores, operandos, argumentos y retornos. Signedness selecciona extensión, división,
+resto, comparación y shift derecho LLVM correctos.

@@ -62,13 +62,19 @@ namespace NativeSharp.LLVM.C
             public void* LLVMBuildSub(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildMul(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildSDiv(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildUDiv(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildSRem(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildURem(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildAnd(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildOr(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildXor(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildShl(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildAShr(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildLShr(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildNot(void* builder, void* value, byte* name);
+            public void* LLVMBuildTrunc(void* builder, void* value, void* type, byte* name);
+            public void* LLVMBuildSExt(void* builder, void* value, void* type, byte* name);
+            public void* LLVMBuildZExt(void* builder, void* value, void* type, byte* name);
             public void* LLVMBuildICmp(
                 void* builder, LLVMIntPredicate predicate, void* left, void* right, byte* name);
             public void* LLVMBuildBr(void* builder, void* destination);

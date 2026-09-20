@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+def digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Verify NativeSharp integer-width lowering.")
+    parser.add_argument("--contract", type=Path, required=True)
+    parser.add_argument("--backend-source", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
+    arguments = parser.parse_args()
+    try:
+        contract = json.loads(arguments.contract.read_text(encoding="utf-8"))
+        require(contract.get("schema") == "nativesharp-selfhost-source-integer-widths", "bad contract")
+        backend = arguments.backend_source.read_text(encoding="utf-8")
+        for api in contract["required_llvm_api"]:
+            require(api in backend, f"backend misses {api}")
+        artifacts: dict[str, str] = {}
+        executions: list[dict[str, object]] = []
+        for profile in contract["profiles"]:
+            lower = profile.lower()
+            obj = arguments.output_dir / f"integers-{lower}.obj"
+            anatomy = arguments.output_dir / f"integers-{lower}.readobj.txt"
+            require(obj.is_file() and anatomy.is_file(), f"missing {profile} artifacts")
+            anatomy_text = anatomy.read_text(encoding="utf-8", errors="replace")
+            for symbol in contract["required_symbols"]:
+                require(symbol in anatomy_text, f"{profile} misses {symbol}")
+            artifacts[obj.name] = digest(obj)
+            artifacts[anatomy.name] = digest(anatomy)
+            for linker in contract["linkers"]:
+                executable = arguments.output_dir / f"{linker}-{lower}.exe"
+                completed = subprocess.run([str(executable)], check=False)
+                require(completed.returncode == contract["expected_exit_code"],
+                        f"{executable.name} returned {completed.returncode}")
+                artifacts[executable.name] = digest(executable)
+                executions.append({"profile": profile, "linker": linker,
+                                   "actual": completed.returncode})
+        report = {
+            "schema": "nativesharp-selfhost-sh22-report", "version": 1, "gate": "SH22",
+            "status": "passed", "source_derived_codegen": True, "scope": contract["scope"],
+            "profiles": contract["profiles"], "linkers": contract["linkers"],
+            "executions": executions, "artifacts": dict(sorted(artifacts.items())),
+            "backend_source_sha256": digest(arguments.backend_source), "problems": [],
+        }
+        arguments.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"verify_source_integer_widths: error: {error}", file=sys.stderr)
+        return 1
+    print("SH22 integer widths verified across O0-O3 and both linkers")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

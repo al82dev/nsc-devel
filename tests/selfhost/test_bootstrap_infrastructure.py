@@ -201,7 +201,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
         declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
-        self.assertEqual(len(declared), 89)
+        self.assertEqual(len(declared), 95)
         self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
         self.assertTrue(set(declared).issubset(contract["nsc0_import_symbols"]))
         self.assertEqual(
@@ -463,6 +463,15 @@ class BootstrapInfrastructureTests(unittest.TestCase):
             self.assertIn(marker, backend)
         self.assertIn("TokenKind.AmpAmp", backend)
         self.assertIn("TokenKind.PipePipe", backend)
+
+    def test_tanda24_integer_widths_use_explicit_signed_conversions(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/source-integer-widths.contract.json").read_text())
+        self.assertEqual(contract["gate"], "SH22")
+        backend = (ROOT / "selfhost/nsc/CodeGen/LlvmBackend.ns").read_text()
+        for marker in ("IntegerBits", "UnsignedInteger", "ConvertScalar", "ApplyConversion"):
+            self.assertIn(marker, backend)
+        for api in ("LLVMBuildTrunc", "LLVMBuildSExt", "LLVMBuildZExt", "LLVMBuildUDiv", "LLVMBuildLShr"):
+            self.assertIn(api, backend)
 
 
 if __name__ == "__main__":

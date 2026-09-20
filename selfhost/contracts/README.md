@@ -52,3 +52,7 @@ con pila de destinos, matriz O0–O3 y enlace dual.
 `source-expressions.contract.json` congela desde SH21 asignaciones compuestas, incremento y
 decremento, resto, bitwise, shifts, `&&`/`||` con cortocircuito y selección condicional en O0–O3 y
 ambos linkers.
+
+`source-integer-widths.contract.json` congela desde SH22 anchos de 8/16/32/64 bits, `nint`/`nuint`,
+conversiones contextuales y de operandos, signedness de división/resto/comparación/shift y enlace
+dual O0–O3.

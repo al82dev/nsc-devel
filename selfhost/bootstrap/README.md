@@ -77,3 +77,6 @@ tipada O0–O3 con LLD y NSLink.
 
 SH21 añade `verify_source_expressions.py`: exige anatomía fuente, APIs LLVM de resto/bit/shift y
 `phi`, y ejecuta O0–O3 con ambos linkers un fixture que detecta violaciones de cortocircuito.
+
+SH22 añade `verify_source_integer_widths.py`: inspecciona las tres formas de conversión entera y
+ejecuta una matriz con los diez tipos enteros/bool, operaciones signed/unsigned y llamadas tipadas.
