@@ -1,0 +1,16 @@
+namespace GenericsAotFixture
+{
+    public class Token { }
+
+    public int Select<T>(int value) where T : class
+    {
+        return value;
+    }
+
+    public int Main()
+    {
+        int first = Select<Token>(40);
+        int duplicate = Select<Token>(2);
+        return first + duplicate;
+    }
+}

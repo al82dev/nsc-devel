@@ -1,0 +1,79 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Syntax;
+
+namespace NativeSharp.Compiler.Sema
+{
+    // SH34. Explicit generic calls are retained by the parser and folded into a canonical,
+    // path-independent AOT identity. The set is deliberately independent from traversal order:
+    // duplicate call sites collapse and the dumper emits ordinal order.
+    public class GenericInstantiationSet
+    {
+        private owned List<string> identities;
+
+        public GenericInstantiationSet() { identities = new List<string>(); }
+        public int Count() { return identities.Count(); }
+        public string At(int index) { return identities[index]; }
+
+        private void Add(string identity)
+        {
+            int index = 0;
+            while (index < identities.Count())
+            {
+                if (identities[index] == identity) { return; }
+                index = index + 1;
+            }
+            identities.Add(String.Copy(identity));
+        }
+
+        private void Visit(SyntaxTree tree, int syntaxId)
+        {
+            if (syntaxId < 0) { return; }
+            SyntaxNode node = tree.Node(syntaxId);
+            if (node.Kind() == "CallExpression" && node.First() >= 0)
+            {
+                SyntaxNode callee = tree.Node(node.First());
+                if (callee.GenericText().Length != 0)
+                {
+                    raii string begin = String.Concat(callee.Text(), "<");
+                    raii string middle = String.Concat(begin, callee.GenericText());
+                    raii string closed = String.Concat(middle, ">/");
+                    raii string count = String.ToString(node.ChildCount());
+                    raii string identity = String.Concat(closed, count); Add(identity);
+                }
+            }
+            Visit(tree, node.First()); Visit(tree, node.Second()); Visit(tree, node.Third());
+            int child = 0;
+            while (child < node.ChildCount()) { Visit(tree, node.ChildAt(child)); child = child + 1; }
+        }
+
+        public static owned GenericInstantiationSet Build(SyntaxTree tree)
+        {
+            raii GenericInstantiationSet result = new GenericInstantiationSet();
+            result.Visit(tree, tree.Root()); return move(result);
+        }
+
+        public owned string Dump()
+        {
+            raii StringBuilder output = new StringBuilder(); output.Append("generic-instances=");
+            output.Append(identities.Count()); output.Append('\n');
+            raii string previous = String.Copy(""); int emitted = 0;
+            while (emitted < identities.Count())
+            {
+                int best = -1; int index = 0;
+                while (index < identities.Count())
+                {
+                    string candidate = identities[index];
+                    if ((previous.Length == 0 || String.Compare(candidate, previous) > 0) &&
+                        (best < 0 || String.Compare(candidate, identities[best]) < 0)) { best = index; }
+                    index = index + 1;
+                }
+                if (best < 0) { break; }
+                output.Append("instance "); output.Append(identities[best]); output.Append('\n');
+                raii string selected = String.Copy(identities[best]); previous = move(selected);
+                emitted = emitted + 1;
+            }
+            return output.ToOwnedString();
+        }
+    }
+}

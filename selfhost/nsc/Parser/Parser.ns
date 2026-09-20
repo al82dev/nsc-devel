@@ -403,7 +403,7 @@ namespace NativeSharp.Compiler.Parser
             bool scanning = true;
             while (scanning)
             {
-                if (At(TokenKind.Less) && ConsumeGenericCallArguments()) { }
+                if (At(TokenKind.Less) && ConsumeGenericCallArguments(expression)) { }
                 else if (ConsumeIf(TokenKind.LeftParen))
                 {
                     int call = NewNode("CallExpression"); Node(call).SetFirst(expression);
@@ -449,14 +449,16 @@ namespace NativeSharp.Compiler.Parser
             return expression;
         }
 
-        private bool ConsumeGenericCallArguments()
+        private bool ConsumeGenericCallArguments(int expression)
         {
             if (!At(TokenKind.Less)) { return false; }
             int savedIndex = index; int savedPending = pendingGenericGreater; int savedErrors = errors;
-            Consume();
+            Consume(); raii StringBuilder arguments = new StringBuilder(); bool first = true;
             while (!AtGenericGreater() && !At(TokenKind.EndOfFile))
             {
                 raii string argument = ParseType();
+                if (!first) { arguments.Append(','); }
+                arguments.Append(argument); first = false;
                 if (!ConsumeIf(TokenKind.Comma)) { break; }
             }
             bool closed = AtGenericGreater();
@@ -465,6 +467,10 @@ namespace NativeSharp.Compiler.Parser
             if (!valid)
             {
                 index = savedIndex; pendingGenericGreater = savedPending; errors = savedErrors;
+            }
+            else
+            {
+                raii string text = arguments.ToOwnedString(); Node(expression).SetGenericText(text);
             }
             return valid;
         }

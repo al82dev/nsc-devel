@@ -936,6 +936,17 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.interop-base PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.arrays-memory)
 
     add_test(
+        NAME nsc.selfhost.generics-aot
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-generics-aot"
+            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
+            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpGenericsAot.cmake")
+    set_tests_properties(nsc.selfhost.generics-aot PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.interop-base)
+
+    add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"

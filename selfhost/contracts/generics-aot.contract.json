@@ -1,0 +1,9 @@
+{
+  "schema": "nativesharp-selfhost-generics-aot-contract",
+  "version": 1,
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "routes": ["lld", "nslink"],
+  "expected_exit_code": 42,
+  "expected_registry": "generic-instances=1\ninstance Select<Token>/1\n",
+  "work_items": ["NS2-SH-103"]
+}

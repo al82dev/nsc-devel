@@ -769,7 +769,16 @@ con LLD y NSLink en O0–O3.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-35-SH33-FIRMAS-INTEROP.md`.
 
-### 8.36 Plan cerrado restante — Tandas 36–56
+### 8.36 Tanda 36 — SH34
+
+La tanda 36 conserva los argumentos de tipo escritos en cada call site y construye un registro AOT
+canónico: identidad por nombre, tipos y aridad, deduplicación y orden ordinal independientes del
+recorrido. Constraints y parámetros permanecen en AST/símbolos y el registro es idéntico en O0–O3.
+La fixture ejecutable contiene dos usos de una misma instancia y certifica una sola materialización.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-36-SH34-GENERICOS-AOT.md`.
+
+### 8.37 Plan cerrado restante — Tandas 37–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a
@@ -780,7 +789,6 @@ restantes cierran esas brechas sin introducir una segunda lista futura.
 
 | Tanda | Gate | Resultado obligatorio de cierre |
 |---:|---:|---|
-| 36 | SH34 | Genéricos AOT: constraints, inferencia, monomorfización determinista e identidad de instancias entre proyectos. |
 | 37 | SH35 | Ownership completo: `owned`, `borrowed`, RAII, move/copy, destructores y cleanup correcto en todas las salidas. |
 | 38 | SH36 | Despacho y callables: interfaces, virtuales, vtables, delegates, function pointers, callbacks, eventos, lambdas y closures. |
 | 39 | SH37 | Cierre del Bootstrap Profile: `switch`, `foreach`, `default`, `is`/`as`, `sizeof`, `alignof`, `offsetof`, static assertions y conversiones de usuario. |
@@ -1188,13 +1196,13 @@ mantiene un solo commit de cierre por tanda.
 
 ## 23. Resumen ejecutivo
 
-Las tandas 01–35 y los gates SH00–SH33 ya establecieron contratos, retiraron image replay, lograron
+Las tandas 01–36 y los gates SH00–SH34 ya establecieron contratos, retiraron image replay, lograron
 un backend derivado de fuente para la rebanada escalar actual, construyeron el grafo fuente
 determinista, dieron identidad semántica al conjunto multimódulo y cerraron la memoria nativa que
 usa el bootstrap. Eso es una base real, no self-hosting completo: todavía faltan interop extendido, genéricos,
 el resto de la superficie 2.0, bibliotecas, generaciones autónomas, punto fijo y certificación.
 
-El plan cerrado restante comprende las tandas 36–56 y los gates SH34–SH54. SH41, en la tanda 43,
+El plan cerrado restante comprende las tandas 37–56 y los gates SH35–SH54. SH41, en la tanda 43,
 produce la primera autocompilación real; SH54, en la tanda 56, es el único cierre de promoción. El
 roadmap contiene así 56 tandas y 55 gates acumulativos (`SH00`–`SH54`), con baseline, expediente y
 commit por tanda. Después de SH54 no queda una fase de self-hosting 2.0 por descubrir: el siguiente
