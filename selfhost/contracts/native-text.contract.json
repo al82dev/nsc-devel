@@ -1,0 +1,18 @@
+{
+  "schema": "nativesharp-selfhost-native-text-contract",
+  "version": 1,
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "routes": ["lld", "nslink"],
+  "source": "selfhost/tests/native-text/Program.ns",
+  "project": "selfhost/tests/native-text/NativeText.nsproj",
+  "expected_exit_code": 42,
+  "required_semantic_fragments": [
+    "implicit-string-literal-to-char-pointer StringLiteralType<7> -> char*",
+    "StringLiteralType<12> rvalue constant=\"NativeSharp\"",
+    "IndexExpression : char lvalue modifiable addressable",
+    "CharacterLiteralExpression \"'N'\" : char rvalue"
+  ],
+  "required_object_fragments": ["Native", "Sharp", "C3A97869"],
+  "required_backend_symbols": ["LLVMBuildGlobalStringPtr", "EmitGlobalString"],
+  "work_items": ["NS2-SH-130", "NS2-SH-131"]
+}

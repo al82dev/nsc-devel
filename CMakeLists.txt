@@ -900,6 +900,18 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.object-model PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.data-layout)
 
     add_test(
+        NAME nsc.selfhost.native-text
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-native-text"
+            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
+            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpNativeText.cmake")
+    set_tests_properties(nsc.selfhost.native-text PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.object-model)
+
+    add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"

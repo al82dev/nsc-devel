@@ -103,6 +103,7 @@ namespace NativeSharp.LLVM.C
                 void* builder, void* type, void* elementCount, byte* name);
             public void* LLVMBuildGEP2(
                 void* builder, void* type, void* pointer, void** indices, uint count, byte* name);
+            public void* LLVMBuildGlobalStringPtr(void* builder, byte* value, byte* name);
             public void* LLVMBuildLoad2(void* builder, void* type, void* pointer, byte* name);
             public void* LLVMBuildStore(void* builder, void* value, void* pointer);
             public void LLVMSetAlignment(void* value, uint bytes);

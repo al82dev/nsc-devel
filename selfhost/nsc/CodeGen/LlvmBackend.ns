@@ -380,6 +380,8 @@ namespace NativeSharp.Compiler.CodeGen
             raii string destination = String.Copy(semantic.Types().Get(destinationType).Display());
             bool sourcePointer = source.Length > 0 && source[source.Length - 1] == '*';
             bool destinationPointer = destination.Length > 0 && destination[destination.Length - 1] == '*';
+            if (destinationPointer && semantic.Types().Get(sourceType).Kind() == SemanticTypeKind.StringLiteral)
+            { return value; }
             if (destinationPointer && (sourcePointer || source == "null")) { return value; }
             int sourceBits = IntegerBits(source); int destinationBits = IntegerBits(destination);
             void* context = LLVM.LLVMGetModuleContext(module);
@@ -487,6 +489,15 @@ namespace NativeSharp.Compiler.CodeGen
             return null;
         }
 
+        private static void* EmitGlobalString(void* builder, string text)
+        {
+            raii CString value = new CString(text);
+            raii string hashText = String.ToString(StableHash.Text(text));
+            raii string nameText = String.Concat("string.literal.", hashText);
+            raii CString name = new CString(nameText);
+            return LLVM.LLVMBuildGlobalStringPtr(builder, value.Pointer(), name.Pointer());
+        }
+
         private static void* EmitLValue(void* module, void* builder, void* i32, void* i1,
             SyntaxTree tree, SemanticModel semantic, int declarationId, void* function,
             FunctionLoweringState state, int syntaxId, out void* valueType, out bool valid)
@@ -560,6 +571,30 @@ namespace NativeSharp.Compiler.CodeGen
             {
                 valid = true;
                 return LLVM.LLVMConstInt(i1, node.Text() == "true" ? 1UL : 0UL, 0);
+            }
+            if (node.Kind() == "CharacterLiteralExpression")
+            {
+                if (node.Text().Length == 0) { return null; }
+                int at = node.Text()[0] == '\'' ? 1 : 0;
+                if (at >= node.Text().Length) { return null; }
+                char character = node.Text()[at];
+                if (character == '\\' && at + 1 < node.Text().Length)
+                {
+                    char escape = node.Text()[at + 1];
+                    if (escape == 'n') { character = '\n'; }
+                    else if (escape == 'r') { character = '\r'; }
+                    else if (escape == 't') { character = '\t'; }
+                    else if (escape == '0') { character = '\0'; }
+                    else { character = escape; }
+                }
+                valid = true;
+                return LLVM.LLVMConstInt(LLVM.LLVMInt8TypeInContext(
+                    LLVM.LLVMGetModuleContext(module)), (ulong)character, 0);
+            }
+            if (node.Kind() == "StringLiteralExpression")
+            {
+                void* pointer = EmitGlobalString(builder, node.Text());
+                valid = pointer != null; return pointer;
             }
             if (node.Kind() == "FloatingLiteralExpression")
             {
@@ -822,6 +857,14 @@ namespace NativeSharp.Compiler.CodeGen
                 LLVM.LLVMAddIncoming(phi, &incomingValues[0], &incomingBlocks[0], 2u);
                 valid = true; return phi;
             }
+            if (node.Kind() == "BinaryExpression" && semantic.Fact(syntaxId).IsConstant() &&
+                semantic.Types().Get(semantic.Fact(syntaxId).TypeId()).Kind() == SemanticTypeKind.StringLiteral)
+            {
+                string quoted = semantic.Fact(syntaxId).ConstantText();
+                if (quoted.Length < 2) { return null; }
+                raii string text = String.Substring(quoted, 1, quoted.Length - 2);
+                void* pointer = EmitGlobalString(builder, text); valid = pointer != null; return pointer;
+            }
             if (node.Kind() == "ConditionalExpression")
             {
                 bool conditionValid = false;
@@ -930,6 +973,13 @@ namespace NativeSharp.Compiler.CodeGen
             int syntaxId, out bool valid)
         {
             valid = false; SyntaxNode node = tree.Node(syntaxId); raii CString conditionName = new CString("condition");
+            SemanticFact known = semantic.Fact(syntaxId);
+            if (known.IsConstant() && known.TypeId() >= 0 &&
+                semantic.Types().Get(known.TypeId()).Display() == "bool")
+            {
+                valid = true;
+                return LLVM.LLVMConstInt(i1, known.ConstantText() == "true" ? 1UL : 0UL, 0);
+            }
             if (node.Kind() == "BinaryExpression" && Comparison(node.OperatorKind()))
             {
                 bool leftValid = false; bool rightValid = false;

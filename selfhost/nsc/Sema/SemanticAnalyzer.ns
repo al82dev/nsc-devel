@@ -338,6 +338,28 @@ namespace NativeSharp.Compiler.Sema
             if (node.Kind() == "BinaryExpression" || node.Kind() == "AssignmentExpression")
             {
                 SemanticFact left = AnalyzeExpression(node.First()); SemanticFact right = AnalyzeExpression(node.Second()); TokenKind op = node.OperatorKind();
+                if (node.Kind() == "BinaryExpression" &&
+                    (op == TokenKind.EqualEqual || op == TokenKind.BangEqual) &&
+                    model.Types().Get(left.TypeId()).Kind() == SemanticTypeKind.StringLiteral &&
+                    model.Types().Get(right.TypeId()).Kind() == SemanticTypeKind.StringLiteral &&
+                    left.IsConstant() && right.IsConstant())
+                {
+                    bool equal = left.ConstantText() == right.ConstantText();
+                    fact.SetType(model.Types().Find("bool"), ValueCategory.RValue);
+                    fact.SetConstant(op == TokenKind.EqualEqual ? (equal ? "true" : "false") :
+                        (equal ? "false" : "true"));
+                    return fact;
+                }
+                if (node.Kind() == "BinaryExpression" && op == TokenKind.Plus &&
+                    model.Types().Get(left.TypeId()).Kind() == SemanticTypeKind.StringLiteral &&
+                    model.Types().Get(right.TypeId()).Kind() == SemanticTypeKind.StringLiteral &&
+                    left.IsConstant() && right.IsConstant())
+                {
+                    raii string joined = String.Concat(tree.Node(node.First()).Text(), tree.Node(node.Second()).Text());
+                    int stringType = model.Types().StringLiteral(joined.Length + 1);
+                    raii string a = String.Concat("\"", joined); raii string b = String.Concat(a, "\"");
+                    fact.SetType(stringType, ValueCategory.RValue); fact.SetConstant(b); return fact;
+                }
                 int operation = left.TypeId(); int result = operation;
                 bool leftPointer = model.Types().Get(left.TypeId()).Kind() == SemanticTypeKind.Pointer;
                 bool rightPointer = model.Types().Get(right.TypeId()).Kind() == SemanticTypeKind.Pointer;

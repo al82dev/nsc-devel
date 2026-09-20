@@ -1,0 +1,17 @@
+namespace NativeTextFixture
+{
+    public int Main()
+    {
+        char* word = "Native";
+        char* joined = "Native" + "Sharp";
+        char* utf8 = "México";
+        if (word[0] != 'N') { return 1; }
+        if (word[5] != 'e') { return 2; }
+        if (joined[6] != 'S') { return 3; }
+        if (joined[10] != 'p') { return 4; }
+        if (utf8[0] != 'M' || utf8[3] != 'x') { return 5; }
+        if ("same" != "same") { return 6; }
+        if ("left" == "right") { return 7; }
+        return 42;
+    }
+}

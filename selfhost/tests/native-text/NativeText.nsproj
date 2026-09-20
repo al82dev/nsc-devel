@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>NativeTextFixture</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Program.ns" /></ItemGroup>
+</Project>
