@@ -96,7 +96,8 @@ namespace NativeSharp.Compiler.Parser
                 kind == TokenKind.KwForceInline || kind == TokenKind.KwNoInline ||
                 kind == TokenKind.KwNoHeap || kind == TokenKind.KwVirtual ||
                 kind == TokenKind.KwOverride || kind == TokenKind.KwAbstract ||
-                kind == TokenKind.KwSealed || kind == TokenKind.KwExport || kind == TokenKind.KwExtern;
+                kind == TokenKind.KwSealed || kind == TokenKind.KwExport || kind == TokenKind.KwExtern ||
+                kind == TokenKind.KwVectorCall;
         }
         private static bool Ownership(TokenKind kind)
         {
@@ -969,6 +970,10 @@ namespace NativeSharp.Compiler.Parser
             {
                 while (true)
                 {
+                    if (At(TokenKind.Ellipsis))
+                    {
+                        Consume(); Node(declaration).SetVariadic(true); break;
+                    }
                     Node(declaration).AddChild(ParseParameter());
                     if (!ConsumeIf(TokenKind.Comma)) { break; }
                 }

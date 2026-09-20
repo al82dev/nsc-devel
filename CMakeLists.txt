@@ -924,6 +924,18 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.arrays-memory PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.native-text)
 
     add_test(
+        NAME nsc.selfhost.interop-base
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-interop-base"
+            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
+            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpInteropBase.cmake")
+    set_tests_properties(nsc.selfhost.interop-base PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.arrays-memory)
+
+    add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"

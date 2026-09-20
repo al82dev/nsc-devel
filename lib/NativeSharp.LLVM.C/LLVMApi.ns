@@ -37,6 +37,8 @@ namespace NativeSharp.LLVM.C
             public void* LLVMConstNull(void* type);
             public void* LLVMAddFunction(void* module, byte* name, void* functionType);
             public void* LLVMGetNamedFunction(void* module, byte* name);
+            public void LLVMSetFunctionCallConv(void* function, uint callingConvention);
+            public void LLVMSetInstructionCallConv(void* instruction, uint callingConvention);
             public void* LLVMGlobalGetValueType(void* global);
             public void* LLVMAddGlobal(void* module, void* type, byte* name);
             public void* LLVMGetNamedGlobal(void* module, byte* name);

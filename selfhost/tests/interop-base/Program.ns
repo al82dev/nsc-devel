@@ -1,0 +1,30 @@
+extern C
+{
+    public void* GetProcessHeap();
+    public int VariadicBase(int first, ...)
+    {
+        return first;
+    }
+}
+
+namespace InteropBaseFixture
+{
+    public int Transform(ref int value, out int output, in int delta)
+    {
+        *value = *value + *delta;
+        *output = *value + 20;
+        return *output;
+    }
+
+    public int Main()
+    {
+        int value = 10;
+        int output = 0;
+        int delta = 11;
+        Transform(ref value, out output, in delta);
+        int tail = VariadicBase(1, 99);
+        void* heap = GetProcessHeap();
+        if (heap == null) { return 1; }
+        return output + tail;
+    }
+}

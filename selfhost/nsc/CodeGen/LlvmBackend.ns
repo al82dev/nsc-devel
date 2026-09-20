@@ -193,7 +193,8 @@ namespace NativeSharp.Compiler.CodeGen
                 }
                 index = index + 1;
             }
-            return LLVM.LLVMFunctionType(returnType, parameterTypes, (uint)parameterCount, 0);
+            return LLVM.LLVMFunctionType(returnType, parameterTypes, (uint)parameterCount,
+                declaration.IsVariadic() ? 1 : 0);
         }
 
         // SH27 stable native identity. Source spelling alone aliases overloads and equal names in
@@ -209,6 +210,7 @@ namespace NativeSharp.Compiler.CodeGen
             if (symbolId >= 0)
             {
                 Symbol symbol = semantic.GetSymbol(symbolId);
+                if (symbol.IsExternC()) { return String.Copy(symbol.Name()); }
                 raii string symbolName = String.Copy(symbol.QualifiedName()); qualified = move(symbolName);
                 if (symbol.TypeId() >= 0)
                 {
@@ -313,6 +315,25 @@ namespace NativeSharp.Compiler.CodeGen
             return node.First() >= 0 && SupportedScalar(node.TypeText());
         }
 
+        private static bool BackendDeclarableFunction(SyntaxTree tree, SemanticModel semantic, int syntaxId)
+        {
+            SyntaxNode node = tree.Node(syntaxId);
+            if (node.Kind() != "FunctionDeclaration" && node.Kind() != "MethodDeclaration") { return false; }
+            int symbolId = semantic.NodeSymbol(syntaxId);
+            bool external = symbolId >= 0 && semantic.GetSymbol(symbolId).IsExternC();
+            if (!external && !BackendEligibleFunction(tree, semantic, syntaxId)) { return false; }
+            if (!SupportedScalar(node.TypeText())) { return false; }
+            int child = 0;
+            while (child < node.ChildCount())
+            {
+                SyntaxNode parameter = tree.Node(node.ChildAt(child));
+                if (parameter.Kind() == "ParameterDeclaration" &&
+                    !SupportedScalar(parameter.TypeText())) { return false; }
+                child = child + 1;
+            }
+            return true;
+        }
+
         private static int ReturnExpression(SyntaxTree tree, int declarationId)
         {
             SyntaxNode declaration = tree.Node(declarationId);
@@ -333,13 +354,16 @@ namespace NativeSharp.Compiler.CodeGen
         {
             if (syntaxId < 0) { return true; }
             SyntaxNode node = tree.Node(syntaxId);
-            if (BackendEligibleFunction(tree, semantic, syntaxId))
+            if (BackendDeclarableFunction(tree, semantic, syntaxId))
             {
                 void* functionType = ScalarFunctionType(LLVM.LLVMGetModuleContext(module), tree, syntaxId);
                 if (functionType == null) { return false; }
                 raii string llvmNameText = LlvmFunctionName(tree, semantic, syntaxId);
                 raii CString llvmName = new CString(llvmNameText);
-                if (LLVM.LLVMAddFunction(module, llvmName.Pointer(), functionType) == null) { return false; }
+                void* declared = LLVM.LLVMAddFunction(module, llvmName.Pointer(), functionType);
+                if (declared == null) { return false; }
+                if (String.Contains(node.ModifiersText(), "vectorcall"))
+                { LLVM.LLVMSetFunctionCallConv(declared, 80u); }
             }
             if (!DeclareFunctions(module, tree, semantic, node.First())) { return false; }
             if (!DeclareFunctions(module, tree, semantic, node.Second())) { return false; }
@@ -863,7 +887,11 @@ namespace NativeSharp.Compiler.CodeGen
                 if (calleeSymbol >= 0) { calleeDeclaration = semantic.GetSymbol(calleeSymbol).Declaration(); }
                 if (calleeDeclaration < 0)
                 { calleeDeclaration = FindFunctionDeclaration(tree, tree.Root(), callee.Text()); }
-                if (calleeDeclaration < 0 || ParameterCount(tree, calleeDeclaration) != node.ChildCount())
+                if (calleeDeclaration < 0 ||
+                    (!tree.Node(calleeDeclaration).IsVariadic() &&
+                        ParameterCount(tree, calleeDeclaration) != node.ChildCount()) ||
+                    (tree.Node(calleeDeclaration).IsVariadic() &&
+                        ParameterCount(tree, calleeDeclaration) > node.ChildCount()))
                 { return null; }
                 raii string llvmNameText = LlvmFunctionName(tree, semantic, calleeDeclaration);
                 raii CString llvmName = new CString(llvmNameText);
@@ -880,14 +908,19 @@ namespace NativeSharp.Compiler.CodeGen
                     arguments[argument] = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
                         declarationId, function, state, node.ChildAt(argument), out argumentValid);
                     if (!argumentValid || arguments[argument] == null) { return null; }
-                    arguments[argument] = ApplyConversion(module, builder, semantic, semantic.Fact(syntaxId),
-                        arguments[argument], "operand", argument);
-                    if (arguments[argument] == null) { return null; }
+                    if (argument < ParameterCount(tree, calleeDeclaration))
+                    {
+                        arguments[argument] = ApplyConversion(module, builder, semantic, semantic.Fact(syntaxId),
+                            arguments[argument], "operand", argument);
+                        if (arguments[argument] == null) { return null; }
+                    }
                     argument = argument + 1;
                 }
                 raii CString callName = new CString("");
                 void* call = LLVM.LLVMBuildCall2(builder, calleeType, calleeFunction,
                     arguments, (uint)node.ChildCount(), callName.Pointer());
+                if (call != null && String.Contains(tree.Node(calleeDeclaration).ModifiersText(), "vectorcall"))
+                { LLVM.LLVMSetInstructionCallConv(call, 80u); }
                 valid = call != null; return call;
             }
             if (node.Kind() == "BinaryExpression" &&
