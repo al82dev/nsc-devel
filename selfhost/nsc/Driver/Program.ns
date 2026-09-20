@@ -50,6 +50,7 @@ namespace NativeSharp.Compiler.Driver
             Console.WriteLine("  nsc-next --dump-project-generics <project.nsproj>");
             Console.WriteLine("  nsc-next --dump-project-callables <project.nsproj>");
             Console.WriteLine("  nsc-next --dump-project-eh <project.nsproj>");
+            Console.WriteLine("  nsc-next --verify-bootstrap-dependencies <compiler.nsproj>");
             Console.WriteLine("  nsc-next --emit-project-object <project.nsproj> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next --emit-nsmeta|--emit-toolchain-manifest <project.nsproj> <path>");
             Console.WriteLine("  nsc-next --emit-product-plan <project.nsproj> <profile> <linker> <path>");
@@ -411,6 +412,24 @@ namespace NativeSharp.Compiler.Driver
             return moduleSet.Failed() ? 1 : 0;
         }
 
+        private static int VerifyBootstrapDependencies(string projectPath)
+        {
+            raii SourceGraph graph = SourceGraphBuilder.Build(projectPath);
+            raii ProjectModel project = ProjectLoader.Load(projectPath);
+            raii ModuleSet modules = ModuleSet.Build(graph, project);
+            if (graph.Failed() || modules.Failed()) { return 1; }
+            raii StringBuilder output = new StringBuilder();
+            output.Append("bootstrap.dependencies schema=1\nprojects="); output.Append(graph.ProjectCount());
+            output.Append("\ngraph-units="); output.Append(graph.UnitCount());
+            output.Append("\ncompiler-units="); output.Append(modules.UnitCount());
+            output.Append("\nexternal-projects="); output.Append(modules.ExternalProjectCount());
+            output.Append("\nexternal-resolutions="); output.Append(modules.ExternalResolutionCount());
+            output.Append("\nstatus=source-verified\n");
+            raii string rendered = output.ToOwnedString(); Console.Write(rendered);
+            return graph.ProjectCount() == 5 && graph.UnitCount() >= 90 &&
+                modules.ExternalProjectCount() == 4 ? 0 : 1;
+        }
+
         // SH25. Every root unit through the existing lexer and parser, with diagnostics attributed
         // PER UNIT. Each unit gets its own FileId, so a position reported for unit 7 cannot be
         // confused with one reported for unit 3.
@@ -535,6 +554,11 @@ namespace NativeSharp.Compiler.Driver
             {
                 if (count != 3) { return 2; }
                 return DumpModuleSet(arguments[2], command == "--dump-module-exports");
+            }
+            if (command == "--verify-bootstrap-dependencies")
+            {
+                if (count != 3) { return 2; }
+                return VerifyBootstrapDependencies(arguments[2]);
             }
             if (command == "--dump-project" || command == "--verify-project")
             {

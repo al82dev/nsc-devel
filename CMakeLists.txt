@@ -981,6 +981,12 @@ if(NSC_BUILD_TESTS)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDriverProducts.cmake")
     set_tests_properties(nsc.selfhost.driver-products PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.eh-regions)
 
+    add_test(NAME nsc.selfhost.bootstrap-dependencies COMMAND "${CMAKE_COMMAND}"
+        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-bootstrap-dependencies"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpBootstrapDependencies.cmake")
+    set_tests_properties(nsc.selfhost.bootstrap-dependencies PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.driver-products)
+
     add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
