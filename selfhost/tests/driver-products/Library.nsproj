@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>DriverLibrary</Name><OutputType>Library</OutputType></PropertyGroup><ItemGroup><Compile Include="Program.ns" /></ItemGroup></Project>

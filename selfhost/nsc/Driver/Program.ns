@@ -52,6 +52,7 @@ namespace NativeSharp.Compiler.Driver
             Console.WriteLine("  nsc-next --dump-project-eh <project.nsproj>");
             Console.WriteLine("  nsc-next --emit-project-object <project.nsproj> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next --emit-nsmeta|--emit-toolchain-manifest <project.nsproj> <path>");
+            Console.WriteLine("  nsc-next --emit-product-plan <project.nsproj> <profile> <linker> <path>");
             Console.WriteLine("  nsc-next --bootstrap-generation <generation> <manifest> <producer.exe> <output.exe> <trace>");
             Console.WriteLine("  nsc-next [--diagnostic-format=json] <file.ns>");
         }
@@ -544,6 +545,14 @@ namespace NativeSharp.Compiler.Driver
             {
                 if (count != 4) { return 2; }
                 return ProjectCommand(command, arguments[2], arguments[3]);
+            }
+            if (command == "--emit-product-plan")
+            {
+                if (count != 6) { return 2; }
+                raii ProjectModel project = ProjectLoader.Load(arguments[2]);
+                if (!ProjectLoader.Verify(project)) { return 1; }
+                raii string plan = ProductPlan.Create(project, arguments[3], arguments[4]);
+                File.WriteAllText(arguments[5], plan); return File.Exists(arguments[5]) ? 0 : 1;
             }
             if (command == "--verify-nsmeta")
             {

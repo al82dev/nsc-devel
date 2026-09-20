@@ -974,6 +974,13 @@ if(NSC_BUILD_TESTS)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpEhRegions.cmake")
     set_tests_properties(nsc.selfhost.eh-regions PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.bootstrap-surface)
 
+    add_test(NAME nsc.selfhost.driver-products COMMAND "${CMAKE_COMMAND}"
+        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-driver-products"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDriverProducts.cmake")
+    set_tests_properties(nsc.selfhost.driver-products PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.eh-regions)
+
     add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"

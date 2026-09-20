@@ -247,4 +247,31 @@ namespace NativeSharp.Compiler.Projects
             return value.ToOwnedString();
         }
     }
+
+    public class ProductPlan
+    {
+        private static owned string Extension(string outputType)
+        {
+            if (outputType == "Exe") { return String.Copy(".exe"); }
+            if (outputType == "Library") { return String.Copy(".dll"); }
+            if (outputType == "StaticLibrary") { return String.Copy(".lib"); }
+            return String.Copy(".nsmeta");
+        }
+
+        public static owned string Create(ProjectModel project, string profile, string linker)
+        {
+            raii string extension = Extension(project.OutputType());
+            raii string product = String.Concat(project.Name(), extension);
+            raii string object = String.Concat(project.Name(), ".obj");
+            raii string metadata = String.Concat(project.Name(), ".nsmeta");
+            raii string response = String.Concat(project.Name(), ".rsp");
+            raii StringBuilder plan = new StringBuilder(); plan.Append("product.plan schema=1\nname=");
+            plan.Append(project.Name()); plan.Append("\nkind="); plan.Append(project.OutputType());
+            plan.Append("\nprofile="); plan.Append(profile); plan.Append("\nlinker="); plan.Append(linker);
+            plan.Append("\nobject="); plan.Append(object); plan.Append("\nproduct="); plan.Append(product);
+            plan.Append("\nmetadata="); plan.Append(metadata); plan.Append("\nresponse="); plan.Append(response);
+            plan.Append("\nlink="); plan.Append(project.OutputType() == "Facade" ? "false" : "true");
+            plan.Append('\n'); return plan.ToOwnedString();
+        }
+    }
 }
