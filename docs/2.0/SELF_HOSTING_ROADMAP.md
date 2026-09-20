@@ -686,19 +686,35 @@ publica `_fltused`, requerido por el ABI MSVC, y se ejecuta en O0–O3 con LLD y
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-26-SH24-ESCALARES-FLOTANTES.md`.
 
-### 8.27 Plan cerrado restante — Tandas 27–56
+### 8.27 Tanda 27 — SH25
 
-La auditoría posterior a SH24 confirma que `nsc-next` ya puede analizar individualmente los 21
-archivos NativeSharp del compilador y verificar su semántica y SSA por archivo. Eso no equivale aún
-a self-hosting: el backend continúa limitado a una rebanada escalar, la compilación de proyecto no
-construye todavía un programa multimódulo, la generación completa conserva contratos históricos de
-image replay y faltan superficies obligatorias de NativeSharp 2.0. Las tandas restantes cierran esas
-brechas sin introducir una segunda lista futura.
+La tanda 27 construye el grafo fuente determinista completo: 92 unidades de cinco proyectos en
+postorden, con rutas relativas al proyecto propietario y las 22 unidades raíz verificadas por
+lexer/parser en O0–O3. Los errores históricos de bibliotecas quedaron localizados en el parser y no
+se confundieron con semántica multimódulo.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-27-SH25-GRAFO-FUENTE.md`.
+
+### 8.28 Tanda 28 — SH26
+
+La tanda 28 crea el conjunto semántico multimódulo de las 23 unidades raíz. Indexa 1113 exports,
+detecta identidad duplicada y registra 2845 resoluciones hacia símbolos de otra unidad. Añade
+consumo real de registros públicos `NSMETA/2` sin reparsear la biblioteca: la fixture positiva
+importa y resuelve un callable exclusivamente desde metadata. Fixtures positiva y negativa fijan
+metadata externa, overloads válidos y firmas duplicadas; las superficies son idénticas en O0–O3.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-28-SH26-SEMANTICA-MULTIMODULO.md`.
+
+### 8.29 Plan cerrado restante — Tandas 29–56
+
+La auditoría posterior a SH26 confirma que `nsc-next` ya posee grafo fuente e identidad semántica
+entre sus unidades. Eso no equivale aún a self-hosting: el backend continúa limitado a una rebanada
+escalar, la emisión todavía no consume el programa multimódulo completo, la generación conserva
+contratos históricos pendientes y faltan superficies obligatorias de NativeSharp 2.0. Las tandas
+restantes cierran esas brechas sin introducir una segunda lista futura.
 
 | Tanda | Gate | Resultado obligatorio de cierre |
 |---:|---:|---|
-| 27 | SH25 | Grafo fuente completo y determinista: expansión de fuentes y proyectos, orden canónico, los 21 archivos de `nsc-next` en una sola compilación y diagnósticos por unidad. |
-| 28 | SH26 | Semántica multimódulo: namespaces, símbolos, overloads, referencias, metadata externa e identidad de tipos y callables entre archivos y proyectos. |
 | 29 | SH27 | Backend LLVM general: módulos reales, mangling estable, firmas arbitrarias, ABI Win64 y eliminación de wrappers o nombres especiales de fixtures. |
 | 30 | SH28 | HIR/MIR/CFG/SSA de programa completo; el backend consume exclusivamente IR validado y O0–O3 comparten el mismo modelo semántico. |
 | 31 | SH29 | Datos y layout: enums, structs, clases, globals, constantes, inicialización estática y verificación ABI de tamaños y alineación. |
@@ -740,7 +756,7 @@ El C++ de `nsc0` continúa permitido únicamente como semilla y recuperación ha
 reescribe LLVM. Si NSLink o NSAsm requieren implementación nueva en NativeSharp, esa implementación
 se crea desde cero en repositorios independientes y nunca se mezcla con el código de `nsc-next`.
 
-#### Método obligatorio para T27–T56
+#### Método obligatorio para T29–T56
 
 Cada tanda conserva el método de la sección 22: baseline de entrada, cambio acotado, pruebas
 dirigidas O0–O3 con LLD y NSLink, baseline completo de cierre, evidencia y hashes, expediente técnico
@@ -1114,12 +1130,13 @@ mantiene un solo commit de cierre por tanda.
 
 ## 23. Resumen ejecutivo
 
-Las tandas 01–26 y los gates SH00–SH24 ya establecieron contratos, retiraron image replay y lograron
-un backend derivado de fuente para la rebanada escalar actual. Eso es una base real, no self-hosting
-completo: todavía faltan compilación multimódulo, superficie 2.0, backend general, bibliotecas,
+Las tandas 01–28 y los gates SH00–SH26 ya establecieron contratos, retiraron image replay, lograron
+un backend derivado de fuente para la rebanada escalar actual, construyeron el grafo fuente
+determinista y dieron identidad semántica al conjunto multimódulo. Eso es una base real, no
+self-hosting completo: todavía faltan emisión multimódulo, superficie 2.0, backend general, bibliotecas,
 generaciones autónomas, punto fijo y certificación operativa.
 
-El plan cerrado restante comprende las tandas 27–56 y los gates SH25–SH54. SH41, en la tanda 43,
+El plan cerrado restante comprende las tandas 29–56 y los gates SH27–SH54. SH41, en la tanda 43,
 produce la primera autocompilación real; SH54, en la tanda 56, es el único cierre de promoción. El
 roadmap contiene así 56 tandas y 55 gates acumulativos (`SH00`–`SH54`), con baseline, expediente y
 commit por tanda. Después de SH54 no queda una fase de self-hosting 2.0 por descubrir: el siguiente

@@ -1,0 +1,4 @@
+namespace ModuleSetFixture
+{
+    public int Duplicate(int value) { return value; }
+}

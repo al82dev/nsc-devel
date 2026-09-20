@@ -511,12 +511,64 @@ namespace NativeSharp.Compiler.Sema
             AnalyzeStatement(node.First()); currentScope = savedScope; currentFunction = savedFunction;
         }
 
-        public owned SemanticModel Analyze()
+        // SH26. The declaration pass on its own. ModuleSet runs it over every unit to build the
+        // cross-unit index before anything is analysed, because declarations are all the index
+        // needs and a full analysis here would double the cost of every build.
+        public void DeclareOnly()
         {
             SyntaxNode root = tree.Node(tree.Root()); int index = 0;
             while (index < root.ChildCount()) { DeclareGlobalNode(root.ChildAt(index), -1); index = index + 1; }
-            index = 0; while (index < model.SymbolCount())
+        }
+
+        // SH26. Borrowed view of the model, for reading declarations after DeclareOnly without
+        // taking ownership -- Analyze() moves the model out and DeclareOnly must not.
+        public SemanticModel Model() { return model; }
+
+        // SH26. Injects a global declared in ANOTHER unit into this unit's global scope, before
+        // analysis starts. Nothing in Lookup changes: it already walks to scope 0, and scope 0 now
+        // holds the rest of the program.
+        //
+        // `declaration` stays -1 on purpose. That is what marks the symbol as having no body in
+        // THIS tree, and Analyze() below skips those -- without that guard the second pass would
+        // call tree.Node(-1) on every imported function.
+        public int DeclareExternal(SymbolKind kind, string name, string qualifiedName, string typeDisplay,
+            string parentQualifiedName)
+        {
+            int type = typeDisplay.Length == 0 ? model.Types().Find("error") : model.Types().Intern(typeDisplay);
+            raii Symbol symbol = new Symbol(kind, name, type, -1);
+            symbol.SetQualifiedName(qualifiedName);
+            symbol.SetDefined(false);
+            int id = model.AddSymbol(move(symbol));
+            int parent = -1;
+            int position = 0;
+            while (position < model.SymbolCount())
             {
+                if (position != id && model.GetSymbol(position).QualifiedName() == parentQualifiedName)
+                {
+                    parent = position;
+                    break;
+                }
+                position = position + 1;
+            }
+            if (parent >= 0)
+            {
+                model.GetSymbol(id).SetParent(parent);
+                model.GetSymbol(parent).AddMember(id);
+            }
+            else
+            {
+                model.GetScope(0).Declare(name, id);
+            }
+            return id;
+        }
+
+        public owned SemanticModel Analyze()
+        {
+            DeclareOnly();
+            int index = 0; while (index < model.SymbolCount())
+            {
+                // A symbol injected by DeclareExternal has no declaration node in this tree.
+                if (model.GetSymbol(index).Declaration() < 0) { index = index + 1; continue; }
                 SymbolKind kind = model.GetSymbol(index).Kind();
                 if (kind == SymbolKind.Function || kind == SymbolKind.Method || kind == SymbolKind.Constructor) { AnalyzeFunction(index); }
                 else if (kind == SymbolKind.GlobalVariable)

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>ModuleSetNegative</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="A.ns" />
+    <Compile Include="B.ns" />
+  </ItemGroup>
+</Project>

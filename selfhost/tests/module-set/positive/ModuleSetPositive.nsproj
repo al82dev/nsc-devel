@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>ModuleSetPositive</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="A.ns" />
+    <Compile Include="B.ns" />
+    <LibraryReference Include="ExternalFixture.lib" Metadata="ExternalFixture.nsmeta" />
+  </ItemGroup>
+</Project>

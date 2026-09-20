@@ -1,0 +1,5 @@
+namespace ModuleSetFixture
+{
+    public long Select(long value) { return value; }
+    public int FromB() { return FromA() + ExternalValue(); }
+}

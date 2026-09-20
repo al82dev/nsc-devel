@@ -1,0 +1,602 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Basic;
+using NativeSharp.Compiler.Source;
+using NativeSharp.Compiler.Lexer;
+using NativeSharp.Compiler.Syntax;
+using NativeSharp.Compiler.Parser;
+using NativeSharp.Compiler.Symbols;
+using NativeSharp.Compiler.Types;
+using NativeSharp.Compiler.Projects;
+
+namespace NativeSharp.Compiler.Sema
+{
+    // SH26. One global declaration, seen from outside the file that declares it.
+    //
+    // `typeDisplay` is the interned display text of the symbol's type -- for a callable that is its
+    // signature, "(int, int) -> int", produced by TypeTable.Function. Type identity in this
+    // compiler is NOMINAL BY TEXT (TypeTable.Find compares Display()), which is what makes an
+    // export portable between two SemanticModels that never share a type id.
+    public class ModuleExport
+    {
+        private SymbolKind kind;
+        private owned string name;
+        private owned string qualifiedName;
+        private owned string parentQualifiedName;
+        private owned string typeDisplay;
+        private int unit;
+
+        public ModuleExport(SymbolKind symbolKind, string symbolName, string qualified,
+            string parentQualified, string display, int unitIndex)
+        {
+            kind = symbolKind;
+            name = String.Copy(symbolName);
+            qualifiedName = String.Copy(qualified);
+            parentQualifiedName = String.Copy(parentQualified);
+            typeDisplay = String.Copy(display);
+            unit = unitIndex;
+        }
+
+        public SymbolKind Kind() { return kind; }
+        public string Name() { return name; }
+        public string QualifiedName() { return qualifiedName; }
+        public string ParentQualifiedName() { return parentQualifiedName; }
+        public string TypeDisplay() { return typeDisplay; }
+        public int Unit() { return unit; }
+
+        public bool IsType()
+        {
+            return kind == SymbolKind.Struct || kind == SymbolKind.Class ||
+                kind == SymbolKind.Interface || kind == SymbolKind.Enum ||
+                kind == SymbolKind.Union || kind == SymbolKind.Delegate;
+        }
+
+        public bool IsCallable()
+        {
+            return kind == SymbolKind.Function || kind == SymbolKind.Method ||
+                kind == SymbolKind.Constructor;
+        }
+    }
+
+    // SH26. Every global declaration of the compilation set, in one table.
+    //
+    // The identity rules it enforces, and they are not the same rule:
+    //
+    //   * a TYPE qualified name must be unique across the whole set -- two files declaring
+    //     `NativeSharp.Compiler.Lexer.Lexer` is a defect, not an overload;
+    //   * a CALLABLE qualified name may repeat: that is an overload set. What may not repeat is
+    //     the PAIR (qualified name, signature), because return type is not part of overload
+    //     identity and two identical signatures are one symbol declared twice.
+    public class ModuleIndex
+    {
+        private owned List<ModuleExport> exports;
+        private owned List<string> problems;
+
+        public ModuleIndex()
+        {
+            exports = new List<ModuleExport>();
+            problems = new List<string>();
+        }
+
+        public int Count() { return exports.Count(); }
+        public ModuleExport At(int index) { return exports[index]; }
+        public int ProblemCount() { return problems.Count(); }
+        public string ProblemAt(int index) { return problems[index]; }
+
+        private void Report(string message)
+        {
+            raii string copy = String.Copy(message);
+            problems.Add(move(copy));
+        }
+
+        private int FindType(string qualified)
+        {
+            int index = 0;
+            while (index < exports.Count())
+            {
+                if (exports[index].IsType() && exports[index].QualifiedName() == qualified)
+                {
+                    return index;
+                }
+                index = index + 1;
+            }
+            return -1;
+        }
+
+        private int FindCallable(string qualified, string signature)
+        {
+            int index = 0;
+            while (index < exports.Count())
+            {
+                if (exports[index].IsCallable() && exports[index].QualifiedName() == qualified &&
+                    exports[index].TypeDisplay() == signature)
+                {
+                    return index;
+                }
+                index = index + 1;
+            }
+            return -1;
+        }
+
+        public void Add(owned ModuleExport item)
+        {
+            if (item.IsType())
+            {
+                int clash = FindType(item.QualifiedName());
+                if (clash >= 0)
+                {
+                    raii string head = String.Concat("duplicate type across units: ", item.QualifiedName());
+                    Report(head);
+                }
+            }
+            else if (item.IsCallable())
+            {
+                int clash = FindCallable(item.QualifiedName(), item.TypeDisplay());
+                if (clash >= 0)
+                {
+                    raii string head = String.Concat("duplicate signature across units: ", item.QualifiedName());
+                    raii string full = String.Concat(head, item.TypeDisplay());
+                    Report(full);
+                }
+            }
+            exports.Add(move(item));
+        }
+
+        // How many distinct qualified names share this one. One means "not overloaded".
+        public int OverloadCount(string qualified)
+        {
+            int total = 0;
+            int index = 0;
+            while (index < exports.Count())
+            {
+                if (exports[index].IsCallable() && exports[index].QualifiedName() == qualified)
+                {
+                    total = total + 1;
+                }
+                index = index + 1;
+            }
+            return total;
+        }
+    }
+
+    // SH26. One unit of the compilation set, owning its whole pipeline.
+    //
+    // The four pieces are owned together on purpose: the parser reads lexemes out of the buffer,
+    // the analyzer borrows the tree, and the model stores node indices into it. Letting any of
+    // them die early would leave the rest pointing at freed storage.
+    public class ModuleUnit
+    {
+        private owned string owner;
+        private owned string relativePath;
+        private int order;
+        private owned SourceBuffer buffer;
+        private owned TokenStream tokens;
+        private owned SyntaxTree tree;
+        private owned SemanticModel model;
+        private int lexErrors;
+        private int parseErrors;
+        private bool analyzed;
+
+        public ModuleUnit(string ownerProject, string relative, int ordinal,
+            owned SourceBuffer sourceBuffer, owned TokenStream tokenStream, owned SyntaxTree syntax,
+            int lexErrorCount, int parseErrorCount)
+        {
+            owner = String.Copy(ownerProject);
+            relativePath = String.Copy(relative);
+            order = ordinal;
+            buffer = move(sourceBuffer);
+            tokens = move(tokenStream);
+            tree = move(syntax);
+            model = null;
+            lexErrors = lexErrorCount;
+            parseErrors = parseErrorCount;
+            analyzed = false;
+        }
+
+        public string Owner() { return owner; }
+        public string RelativePath() { return relativePath; }
+        public int Order() { return order; }
+        public SyntaxTree Tree() { return tree; }
+        public SemanticModel Model() { return model; }
+        public int LexErrors() { return lexErrors; }
+        public int ParseErrors() { return parseErrors; }
+        public bool Analyzed() { return analyzed; }
+        public int FrontEndErrors() { return lexErrors + parseErrors; }
+
+        public int ExternalResolutionCount()
+        {
+            if (!analyzed) { return 0; }
+            int total = 0;
+            int node = 0;
+            while (node < tree.Count())
+            {
+                int symbol = model.Fact(node).SymbolId();
+                if (symbol >= 0 && model.GetSymbol(symbol).Declaration() < 0)
+                {
+                    total = total + 1;
+                }
+                node = node + 1;
+            }
+            return total;
+        }
+
+        public void SetModel(owned SemanticModel value)
+        {
+            model = move(value);
+            analyzed = true;
+        }
+    }
+
+    // SH26. The compilation set and its cross-unit resolution.
+    //
+    // SCOPE, and it is the roadmap's, not a convenience: SH25 fixed the compilation set as the
+    // ROOT PROJECT's units. A referenced project is consumed through its metadata, not by
+    // re-parsing its sources -- that is what "metadata externa" means in the SH26 row, and
+    // rebuilding Core/Collections/IO/LLVM.C from source is SH40.
+    //
+    // So the graph holds every unit of every project, and the compilation set holds only the root
+    // project's. Two numbers, deliberately different.
+    public class ModuleSet
+    {
+        private owned List<ModuleUnit> units;
+        private owned ModuleIndex index;
+        private owned List<string> externalProjects;
+        private int externalMetadataFiles;
+        private owned string diagnostic;
+
+        public ModuleSet()
+        {
+            units = new List<ModuleUnit>();
+            index = new ModuleIndex();
+            externalProjects = new List<string>();
+            externalMetadataFiles = 0;
+            diagnostic = String.Copy("");
+        }
+
+        public int UnitCount() { return units.Count(); }
+        public ModuleUnit UnitAt(int position) { return units[position]; }
+        public ModuleIndex Index() { return index; }
+        public int ExternalProjectCount() { return externalProjects.Count(); }
+        public string ExternalProjectAt(int position) { return externalProjects[position]; }
+        public int ExternalMetadataCount() { return externalMetadataFiles; }
+        public string Diagnostic() { return diagnostic; }
+        public bool Failed() { return diagnostic.Length != 0; }
+
+        public int ExternalResolutionCount()
+        {
+            int total = 0;
+            int position = 0;
+            while (position < units.Count())
+            {
+                total = total + units[position].ExternalResolutionCount();
+                position = position + 1;
+            }
+            return total;
+        }
+
+        private void Fail(string message)
+        {
+            if (diagnostic.Length != 0) { return; }
+            raii string copy = String.Copy(message);
+            diagnostic = move(copy);
+        }
+
+        private void NoteExternalProject(string name)
+        {
+            int position = 0;
+            while (position < externalProjects.Count())
+            {
+                if (externalProjects[position] == name) { return; }
+                position = position + 1;
+            }
+            raii string copy = String.Copy(name);
+            externalProjects.Add(move(copy));
+        }
+
+        private static SymbolKind MetadataKind(string name)
+        {
+            if (name == "Struct") { return SymbolKind.Struct; }
+            if (name == "Class") { return SymbolKind.Class; }
+            if (name == "Interface") { return SymbolKind.Interface; }
+            if (name == "Enum") { return SymbolKind.Enum; }
+            if (name == "Union") { return SymbolKind.Union; }
+            if (name == "Delegate") { return SymbolKind.Delegate; }
+            if (name == "Function") { return SymbolKind.Function; }
+            if (name == "Method") { return SymbolKind.Method; }
+            if (name == "Constructor") { return SymbolKind.Constructor; }
+            if (name == "Property") { return SymbolKind.Property; }
+            if (name == "Indexer") { return SymbolKind.Indexer; }
+            if (name == "Event") { return SymbolKind.Event; }
+            if (name == "GlobalVariable") { return SymbolKind.GlobalVariable; }
+            if (name == "Field") { return SymbolKind.Field; }
+            return SymbolKind.Type;
+        }
+
+        // SH26 external metadata extension. NSMETA/2 remains backward compatible: producers that
+        // only carry the SH09 identity header have no symbol records; semantic producers append
+        // deterministic records in the form
+        //   symbol|Kind|Name|QualifiedName|ParentQualifiedName|TypeDisplay
+        private void MetadataLine(string line, int metadataUnit)
+        {
+            if (!String.StartsWith(line, "symbol|")) { return; }
+            string[] fields = new string[6];
+            int count = String.Split(line, '|', fields);
+            if (count != 6 || fields[1].Length == 0 || fields[2].Length == 0 ||
+                fields[3].Length == 0 || fields[5].Length == 0)
+            {
+                delete[] fields;
+                Fail("invalid external NSMETA/2 symbol record");
+                return;
+            }
+            SymbolKind kind = MetadataKind(fields[1]);
+            raii ModuleExport item = new ModuleExport(kind, fields[2], fields[3], fields[4],
+                fields[5], metadataUnit);
+            index.Add(move(item));
+            delete[] fields;
+        }
+
+        private void LoadExternalMetadata(ProjectModel project)
+        {
+            raii string directory = Path.GetDirectoryName(project.PathValue());
+            int reference = 0;
+            while (reference < project.MetadataReferenceCount() && !Failed())
+            {
+                raii string path = Path.Combine(directory, project.MetadataReferenceAt(reference));
+                if (!File.Exists(path))
+                {
+                    raii string message = String.Concat("external metadata does not exist: ",
+                        project.MetadataReferenceAt(reference));
+                    Fail(message);
+                    return;
+                }
+                string metadata = File.ReadAllText(path);
+                if (!MetadataContract.ReadCompatible(metadata))
+                {
+                    Fail("external metadata is not NSMETA/1 or NSMETA/2");
+                    return;
+                }
+                int metadataUnit = -1 - externalMetadataFiles;
+                int start = 0;
+                int cursor = 0;
+                while (cursor <= metadata.Length && !Failed())
+                {
+                    if (cursor == metadata.Length || metadata[cursor] == '\n')
+                    {
+                        int length = cursor - start;
+                        if (length > 0 && metadata[cursor - 1] == '\r') { length = length - 1; }
+                        raii string line = String.Substring(metadata, start, length);
+                        MetadataLine(line, metadataUnit);
+                        start = cursor + 1;
+                    }
+                    cursor = cursor + 1;
+                }
+                externalMetadataFiles = externalMetadataFiles + 1;
+                reference = reference + 1;
+            }
+        }
+
+        // Collects the globals a unit declares, WITHOUT analysing bodies. Declarations are all the
+        // index needs, and running full analysis here would double the cost of every build.
+        private void Collect(SyntaxTree tree, int unitIndex)
+        {
+            raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree);
+            analyzer.DeclareOnly();
+            SemanticModel declared = analyzer.Model();
+            int position = 0;
+            while (position < declared.GlobalCount())
+            {
+                CollectSymbol(declared, declared.GlobalAt(position), unitIndex);
+                position = position + 1;
+            }
+        }
+
+        // A namespace is not itself an export, but what it contains is: the qualified name that
+        // another unit has to resolve lives on the member, not on the namespace.
+        private void CollectSymbol(SemanticModel declared, int symbolId, int unitIndex)
+        {
+            Symbol symbol = declared.GetSymbol(symbolId);
+            if (symbol.Kind() == SymbolKind.Namespace)
+            {
+                int member = 0;
+                while (member < symbol.MemberCount())
+                {
+                    CollectSymbol(declared, symbol.MemberAt(member), unitIndex);
+                    member = member + 1;
+                }
+                return;
+            }
+
+            raii string display = String.Copy("");
+            if (symbol.TypeId() >= 0 && symbol.TypeId() < declared.Types().Count())
+            {
+                raii string typeText = String.Copy(declared.Types().Get(symbol.TypeId()).Display());
+                display = move(typeText);
+            }
+            raii string parentQualified = String.Copy("");
+            if (symbol.Parent() >= 0)
+            {
+                raii string parentText = String.Copy(declared.GetSymbol(symbol.Parent()).QualifiedName());
+                parentQualified = move(parentText);
+            }
+            raii ModuleExport item = new ModuleExport(symbol.Kind(), symbol.Name(),
+                symbol.QualifiedName(), parentQualified, display, unitIndex);
+            index.Add(move(item));
+
+            int member = 0;
+            while (member < symbol.MemberCount())
+            {
+                CollectSymbol(declared, symbol.MemberAt(member), unitIndex);
+                member = member + 1;
+            }
+        }
+
+        // `root` is the owning project whose units form the compilation set. It is passed in
+        // rather than read off the graph so this file does not depend on an accessor being added
+        // elsewhere: the caller already holds the ProjectModel and its Name() is that value.
+        public static owned ModuleSet Build(SourceGraph graph, ProjectModel project)
+        {
+            raii ModuleSet moduleSet = new ModuleSet();
+            if (graph.Failed())
+            {
+                moduleSet.Fail(graph.Diagnostic());
+                return move(moduleSet);
+            }
+
+            string root = project.Name();
+
+            // External libraries contribute their public symbols through NSMETA/2 records. Their
+            // sources are deliberately absent from the compilation set.
+            moduleSet.LoadExternalMetadata(project);
+            if (moduleSet.Failed()) { return move(moduleSet); }
+
+            // Pass A -- parse every root unit and collect its declarations.
+            int position = 0;
+            while (position < graph.UnitCount())
+            {
+                SourceUnit unit = graph.UnitAt(position);
+                if (unit.Owner() != root)
+                {
+                    moduleSet.NoteExternalProject(unit.Owner());
+                    position = position + 1;
+                    continue;
+                }
+
+                raii SourceBuffer buffer = SourceBuffer.Load(new FileId(unit.Order() + 1), unit.PathValue());
+                raii Lexer lexer = new Lexer(buffer);
+                raii TokenStream tokens = lexer.LexAll();
+                raii Parser parser = new Parser(buffer, tokens);
+                raii SyntaxTree tree = parser.ParseCompilationUnit();
+                int lexErrors = tokens.ErrorCount();
+                int parseErrors = parser.ErrorCount();
+
+                raii ModuleUnit module = new ModuleUnit(unit.Owner(), unit.RelativePath(), unit.Order(),
+                    move(buffer), move(tokens), move(tree), lexErrors, parseErrors);
+                moduleSet.units.Add(move(module));
+                position = position + 1;
+            }
+
+            position = 0;
+            while (position < moduleSet.units.Count())
+            {
+                moduleSet.Collect(moduleSet.units[position].Tree(), position);
+                position = position + 1;
+            }
+
+            // Pass B -- analyse each unit with the OTHER units' globals already in its global
+            // scope. Nothing in SemanticAnalyzer changes: Lookup walks scopes, and scope 0 now
+            // holds the rest of the program.
+            position = 0;
+            while (position < moduleSet.units.Count())
+            {
+                raii SemanticAnalyzer analyzer = new SemanticAnalyzer(moduleSet.units[position].Tree());
+                int entry = 0;
+                while (entry < moduleSet.index.Count())
+                {
+                    ModuleExport item = moduleSet.index.At(entry);
+                    if (item.Unit() != position)
+                    {
+                        analyzer.DeclareExternal(item.Kind(), item.Name(),
+                            item.QualifiedName(), item.TypeDisplay(), item.ParentQualifiedName());
+                    }
+                    entry = entry + 1;
+                }
+                raii SemanticModel analyzed = analyzer.Analyze();
+                moduleSet.units[position].SetModel(move(analyzed));
+                position = position + 1;
+            }
+
+            return move(moduleSet);
+        }
+    }
+
+    // SH26. Deterministic surface. Same discipline as the SH25 dump: nothing here may depend on a
+    // path, a clock or an enumeration order.
+    public class ModuleSetDumper
+    {
+        public static owned string Dump(ModuleSet moduleSet)
+        {
+            raii StringBuilder output = new StringBuilder();
+            output.Append("module-set schema=1\n");
+            if (moduleSet.Failed())
+            {
+                output.Append("status=failed\nreason=");
+                output.Append(moduleSet.Diagnostic());
+                output.Append('\n');
+                return output.ToOwnedString();
+            }
+
+            output.Append("status=ok\nunits=");
+            output.Append(moduleSet.UnitCount());
+            output.Append("\nexternal-projects=");
+            output.Append(moduleSet.ExternalProjectCount());
+            output.Append("\nexternal-metadata=");
+            output.Append(moduleSet.ExternalMetadataCount());
+            output.Append("\nexports=");
+            output.Append(moduleSet.Index().Count());
+            output.Append("\nproblems=");
+            output.Append(moduleSet.Index().ProblemCount());
+            output.Append("\ncross-unit-resolutions=");
+            output.Append(moduleSet.ExternalResolutionCount());
+            output.Append('\n');
+
+            int position = 0;
+            while (position < moduleSet.ExternalProjectCount())
+            {
+                output.Append("external ");
+                output.Append(moduleSet.ExternalProjectAt(position));
+                output.Append('\n');
+                position = position + 1;
+            }
+
+            position = 0;
+            while (position < moduleSet.UnitCount())
+            {
+                ModuleUnit unit = moduleSet.UnitAt(position);
+                output.Append("unit ");
+                output.Append(unit.Order());
+                output.Append(' ');
+                output.Append(unit.RelativePath());
+                output.Append(" lex=");
+                output.Append(unit.LexErrors());
+                output.Append(" parse=");
+                output.Append(unit.ParseErrors());
+                output.Append(" external=");
+                output.Append(unit.ExternalResolutionCount());
+                output.Append('\n');
+                position = position + 1;
+            }
+
+            position = 0;
+            while (position < moduleSet.Index().ProblemCount())
+            {
+                output.Append("problem ");
+                output.Append(moduleSet.Index().ProblemAt(position));
+                output.Append('\n');
+                position = position + 1;
+            }
+            return output.ToOwnedString();
+        }
+
+        public static owned string DumpExports(ModuleSet moduleSet)
+        {
+            raii StringBuilder output = new StringBuilder();
+            output.Append("module-exports schema=1\nexports=");
+            output.Append(moduleSet.Index().Count());
+            output.Append('\n');
+            int position = 0;
+            while (position < moduleSet.Index().Count())
+            {
+                ModuleExport item = moduleSet.Index().At(position);
+                output.Append("export ");
+                output.Append(SymbolFacts.Name(item.Kind()));
+                output.Append(' ');
+                output.Append(item.QualifiedName());
+                output.Append(' ');
+                output.Append(item.TypeDisplay());
+                output.Append('\n');
+                position = position + 1;
+            }
+            return output.ToOwnedString();
+        }
+    }
+}

@@ -43,6 +43,8 @@ namespace NativeSharp.Compiler.Driver
             Console.WriteLine("  nsc-next --dump-project|--verify-project <project.nsproj>");
             Console.WriteLine("  nsc-next --dump-source-graph <project.nsproj>");
             Console.WriteLine("  nsc-next --check-project <project.nsproj>");
+            Console.WriteLine("  nsc-next --dump-module-set <project.nsproj>");
+            Console.WriteLine("  nsc-next --dump-module-exports <project.nsproj>");
             Console.WriteLine("  nsc-next --emit-project-object <project.nsproj> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next --emit-nsmeta|--emit-toolchain-manifest <project.nsproj> <path>");
             Console.WriteLine("  nsc-next --bootstrap-generation <generation> <manifest> <producer.exe> <output.exe> <trace>");
@@ -233,6 +235,17 @@ namespace NativeSharp.Compiler.Driver
             return graph.Failed() ? 1 : 0;
         }
 
+        // SH26. El conjunto de compilacion y su identidad de simbolos entre unidades.
+        private static int DumpModuleSet(string projectPath, bool exports)
+        {
+            raii SourceGraph graph = SourceGraphBuilder.Build(projectPath);
+            raii ProjectModel project = ProjectLoader.Load(projectPath);
+            raii ModuleSet moduleSet = ModuleSet.Build(graph, project);
+            raii string dump = exports ? ModuleSetDumper.DumpExports(moduleSet) : ModuleSetDumper.Dump(moduleSet);
+            Console.Write(dump);
+            return moduleSet.Failed() ? 1 : 0;
+        }
+
         // SH25. Every root unit through the existing lexer and parser, with diagnostics attributed
         // PER UNIT. Each unit gets its own FileId, so a position reported for unit 7 cannot be
         // confused with one reported for unit 3.
@@ -352,6 +365,11 @@ namespace NativeSharp.Compiler.Driver
                 if (count != 3) { return 2; }
                 if (command == "--dump-source-graph") { return DumpSourceGraph(arguments[2]); }
                 return CheckProject(arguments[2]);
+            }
+            if (command == "--dump-module-set" || command == "--dump-module-exports")
+            {
+                if (count != 3) { return 2; }
+                return DumpModuleSet(arguments[2], command == "--dump-module-exports");
             }
             if (command == "--dump-project" || command == "--verify-project")
             {

@@ -1,0 +1,5 @@
+namespace ModuleSetFixture
+{
+    public int Select(int value) { return value; }
+    public int FromA() { return 40; }
+}

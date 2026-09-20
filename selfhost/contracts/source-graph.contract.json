@@ -27,6 +27,7 @@
     "Parser/Parser.ns",
     "Types/TypeSystem.ns",
     "Symbols/Symbols.ns",
+    "Sema/ModuleSet.ns",
     "Sema/SemanticAnalyzer.ns",
     "Sema/SemanticDumper.ns",
     "Sema/SemanticModel.ns",

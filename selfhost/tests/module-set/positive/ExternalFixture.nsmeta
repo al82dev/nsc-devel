@@ -1,0 +1,7 @@
+NSMETA/2
+producer=nsc-next-sh26-fixture
+name=ExternalFixture
+kind=StaticLibrary
+abi=NativeSharp/2.0
+compatibility=N-1,N
+symbol|Function|ExternalValue|ExternalFixture.ExternalValue||() -> int

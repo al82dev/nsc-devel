@@ -1,0 +1,41 @@
+{
+  "schema": "nativesharp-selfhost-module-set-contract",
+  "version": 1,
+  "scope": "cross-unit-symbol-identity-over-root-project",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
+  "positive_project": "selfhost/tests/module-set/positive/ModuleSetPositive.nsproj",
+  "negative_project": "selfhost/tests/module-set/negative/ModuleSetNegative.nsproj",
+  "expected_status": "ok",
+  "root_owner": "NativeSharpCompilerNext",
+  "expected_units": 23,
+  "expected_external_projects": [
+    "NativeSharpCore",
+    "NativeSharpCoreCollectionsGeneric",
+    "NativeSharpCoreIO",
+    "NativeSharpLLVM_C"
+  ],
+  "expected_external_metadata": 0,
+  "expected_problems": 0,
+  "expected_front_end_errors": 0,
+  "expected_min_cross_unit_resolutions": 1,
+  "expected_positive_units": 2,
+  "expected_positive_external_metadata": 1,
+  "expected_positive_external_symbol": "ExternalFixture.ExternalValue",
+  "expected_positive_overload": "ModuleSetFixture.Select",
+  "expected_negative_problem": "duplicate signature across units: ModuleSetFixture.Duplicate(int) -> int",
+  "required_source_symbols": [
+    "class ModuleExport",
+    "class ModuleIndex",
+    "class ModuleUnit",
+    "class ModuleSet",
+    "class ModuleSetDumper"
+  ],
+  "required_analyzer_symbols": [
+    "public void DeclareOnly()",
+    "public SemanticModel Model()",
+    "public int DeclareExternal("
+  ],
+  "expected_exit_code": 0,
+  "work_items": ["NS2-SH-116", "NS2-SH-119"]
+}
