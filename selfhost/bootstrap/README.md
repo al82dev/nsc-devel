@@ -71,3 +71,6 @@ locales, asignaciones, comparación, `while` e `if`, enlazado por LLD y NSLink.
 
 SH19 añade `verify_source_loop_control.py`: exige lowering explícito de `for`, `do`, `break` y
 `continue`, inspecciona los objetos y ejecuta la matriz O0–O3 con ambos linkers.
+
+SH20 añade `verify_source_bool_void.py`: inspecciona funciones `bool`/`void` y ejecuta su matriz
+tipada O0–O3 con LLD y NSLink.

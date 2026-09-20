@@ -201,7 +201,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
         declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
-        self.assertEqual(len(declared), 80)
+        self.assertEqual(len(declared), 82)
         self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
         self.assertTrue(set(declared).issubset(contract["nsc0_import_symbols"]))
         self.assertEqual(
@@ -414,7 +414,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["expected_exit_codes"], [17, 42])
         backend = (ROOT / "selfhost/nsc/CodeGen/LlvmBackend.ns").read_text()
         self.assertIn("SyntaxTree tree, SemanticModel semantic", backend)
-        self.assertIn("EmitI32Expression", backend)
+        self.assertIn("EmitScalarExpression", backend)
         self.assertNotIn("void* six =", backend)
 
     def test_tanda19_source_functions_use_llvm_parameters_and_calls(self) -> None:
@@ -445,6 +445,14 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn("PushLoop", backend)
         self.assertIn("PopLoop", backend)
         self.assertIn("EmitEntryAlloca", backend)
+
+    def test_tanda22_source_bool_void_uses_typed_scalars(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/source-bool-void.contract.json").read_text())
+        self.assertEqual(contract["gate"], "SH20")
+        backend = (ROOT / "selfhost/nsc/CodeGen/LlvmBackend.ns").read_text()
+        for marker in ("BooleanLiteralExpression", "LLVMBuildNot", "LLVMBuildRetVoid", "LLVMGlobalGetValueType"):
+            self.assertIn(marker, backend)
+        self.assertIn("FindLocalType", backend)
 
 
 if __name__ == "__main__":

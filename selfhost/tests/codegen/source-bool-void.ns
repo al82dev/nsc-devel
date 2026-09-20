@@ -1,0 +1,20 @@
+bool IsReady(int value, bool enabled)
+{
+    if (!enabled) { return false; }
+    return value == 7;
+}
+
+void Observe(bool ready)
+{
+    if (ready) { return; }
+    return;
+}
+
+int Main()
+{
+    bool enabled = true;
+    bool ready = IsReady(7, enabled);
+    Observe(ready);
+    if (ready) { return 42; }
+    return 0;
+}

@@ -45,3 +45,6 @@ comparaciones con signo, `if` y `while`, con la matriz O0–O3 y enlace dual.
 
 `source-loop-control.contract.json` congela desde SH19 `for`, `do`/`while`, `break` y `continue`,
 con pila de destinos, matriz O0–O3 y enlace dual.
+
+`source-bool-void.contract.json` congela desde SH20 funciones, parámetros y locales `bool`, retornos
+`void`, negación, comparaciones como valores y enlace dual O0–O3.

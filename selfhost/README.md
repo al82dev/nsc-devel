@@ -90,3 +90,6 @@ LLVM explícitos. El alcance `i32-locals-assignment-if-while` aún excluye objet
 
 SH19 añade `for`, `do`/`while`, `break` y `continue`. Una pila de destinos distingue salida y
 continuación incluso con anidamiento; el alcance sigue limitado a valores `int`.
+
+SH20 añade firmas, parámetros y locales `bool`, funciones `void`, negación, comparaciones como
+valores y llamadas con el tipo LLVM real. Todavía no cubre strings, objetos ni ownership.

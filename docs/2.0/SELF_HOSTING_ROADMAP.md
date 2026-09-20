@@ -649,6 +649,13 @@ debe devolver 42 en O0–O3 con ambos linkers.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-21-SH19-CONTROL-DE-BUCLES.md`.
 
+La tanda 22 abre SH20 con escalares `bool` junto a `int` y funciones `void`: firmas LLVM tipadas,
+parámetros/locales booleanos, literales, negación, comparaciones que producen valor y retornos sin
+valor. Las llamadas consultan el tipo real de la función LLVM. El fixture debe devolver 42 en los
+cuatro perfiles y ambos linkers.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-22-SH20-BOOL-VOID.md`.
+
 ## 9. Orden de dependencias
 
 ```text
@@ -672,6 +679,7 @@ SH00 punto de partida
                                                               └─ SH17 funciones/parámetros/llamadas
                                                                   └─ SH18 locales/control de flujo
                                                                       └─ SH19 control de bucles
+                                                                          └─ SH20 escalares bool/void
 ```
 
 SH02 y SH03 pueden avanzar en paralelo después de SH01. Las demás dependencias son secuenciales por

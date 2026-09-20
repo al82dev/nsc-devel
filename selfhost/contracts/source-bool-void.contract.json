@@ -1,0 +1,13 @@
+{
+  "schema": "nativesharp-selfhost-source-bool-void",
+  "version": 1,
+  "gate": "SH20",
+  "source": "selfhost/tests/codegen/source-bool-void.ns",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "expected_exit_code": 42,
+  "required_symbols": ["__nativesharp_source_IsReady", "__nativesharp_source_Observe", "__nativesharp_source_Main"],
+  "required_llvm_api": ["LLVMBuildNot", "LLVMBuildRetVoid", "LLVMGlobalGetValueType"],
+  "source_derived_codegen": true,
+  "scope": "bool-void-functions-locals-calls"
+}

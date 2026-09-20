@@ -36,6 +36,7 @@ namespace NativeSharp.LLVM.C
             public void* LLVMConstNull(void* type);
             public void* LLVMAddFunction(void* module, byte* name, void* functionType);
             public void* LLVMGetNamedFunction(void* module, byte* name);
+            public void* LLVMGlobalGetValueType(void* global);
             public void* LLVMAddGlobal(void* module, void* type, byte* name);
             public void LLVMSetInitializer(void* global, void* constantValue);
             public void LLVMSetGlobalConstant(void* global, int isConstant);
@@ -60,6 +61,7 @@ namespace NativeSharp.LLVM.C
             public void* LLVMBuildSub(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildMul(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildSDiv(void* builder, void* left, void* right, byte* name);
+            public void* LLVMBuildNot(void* builder, void* value, byte* name);
             public void* LLVMBuildICmp(
                 void* builder, LLVMIntPredicate predicate, void* left, void* right, byte* name);
             public void* LLVMBuildBr(void* builder, void* destination);

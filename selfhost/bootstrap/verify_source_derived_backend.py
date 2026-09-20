@@ -30,7 +30,7 @@ def main() -> int:
         require(contract.get("schema") == "nativesharp-selfhost-source-derived-backend", "bad contract")
         require(contract.get("source_derived_codegen") is True, "source-derived flag must be true")
         backend = arguments.backend_source.read_text(encoding="utf-8")
-        for fragment in ("EmitI32Expression", "SyntaxTree tree", "LLVMBuildAdd", "LLVMBuildSub",
+        for fragment in ("EmitScalarExpression", "SyntaxTree tree", "LLVMBuildAdd", "LLVMBuildSub",
                          "LLVMBuildMul", "LLVMBuildSDiv"):
             require(fragment in backend, f"backend misses {fragment}")
         require("void* six =" not in backend, "fixed canonical computation remains")
