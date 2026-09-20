@@ -1,0 +1,33 @@
+{
+  "schema": "nativesharp-selfhost-generation-contract",
+  "version": 1,
+  "generation": "nsc2",
+  "built_by": "nsc1",
+  "generation_method": "source-attested-image-replay",
+  "source_derived_codegen": false,
+  "optimizations": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld-link", "NSLink"],
+  "source_roots": [
+    "selfhost/nsc",
+    "lib/NativeSharp.Core",
+    "lib/NativeSharp.Core.Collections.Generic",
+    "lib/NativeSharp.Core.IO",
+    "lib/NativeSharp.LLVM.C"
+  ],
+  "generation_validation_roots": ["selfhost/nsc"],
+  "profile_projects": [
+    "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
+    "lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj",
+    "lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj",
+    "lib/NativeSharp.LLVM.C/NativeSharp.LLVM.C.nsproj"
+  ],
+  "compiler_project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
+  "execution_project": "selfhost/tests/projects/Sh09App/Sh09App.nsproj",
+  "expected_identity": "nsc-next 2.0.0-bootstrap.sh11 (NativeSharp 2.0.0, self-host stage 2)",
+  "expected_exit_code": 42,
+  "work_items": [
+    "NS2-SH-139", "NS2-SH-140", "NS2-SH-141", "NS2-SH-142",
+    "NS2-SH-143", "NS2-SH-144", "NS2-SH-145", "NS2-SH-146",
+    "NS2-SH-147", "NS2-SH-148", "NS2-SH-149"
+  ]
+}

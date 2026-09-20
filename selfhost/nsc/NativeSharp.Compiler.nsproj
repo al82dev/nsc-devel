@@ -13,6 +13,7 @@
     <Compile Include="IR/**/*.ns" />
     <Compile Include="CodeGen/**/*.ns" />
     <Compile Include="Projects/**/*.ns" />
+    <Compile Include="Bootstrap/**/*.ns" />
     <Compile Include="Driver/**/*.ns" />
     <ProjectReference Include="../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
     <ProjectReference Include="../../lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj" />

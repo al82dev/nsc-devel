@@ -40,3 +40,8 @@ objetos por perfil, `nsmeta`, manifiestos y los ocho ejecutables enlazados.
 SH10 añade `verify_first_generation.py`: congela cada `.ns`/`.nsproj` del compilador y sus cuatro
 dependencias bootstrap, compara dos construcciones limpias de `nsc1`, audita PE/imports y ejecuta
 el corpus del compilador y la matriz O0–O3 con ambos linkers.
+
+SH11 añade `verify_self_hosted_generation.py`: observa el árbol de procesos durante `nsc1 → nsc2`,
+exige cero hijos, repite en dos rutas/locale/timezone, compara diagnósticos, `nsmeta` y objetos, y
+ejecuta O0–O3 con ambos linkers. El reporte conserva `source_derived_codegen=false` hasta que el
+backend sustituya la reproducción atestada de la imagen.

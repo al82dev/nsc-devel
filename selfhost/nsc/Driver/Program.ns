@@ -10,6 +10,7 @@ using NativeSharp.Compiler.Sema;
 using NativeSharp.Compiler.IR;
 using NativeSharp.Compiler.CodeGen;
 using NativeSharp.Compiler.Projects;
+using NativeSharp.Compiler.Bootstrap;
 
 namespace NativeSharp.Compiler.Driver
 {
@@ -17,12 +18,12 @@ namespace NativeSharp.Compiler.Driver
     {
         private static void PrintVersion()
         {
-            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh10 (NativeSharp 2.0.0, self-host stage 1)");
+            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh11 (NativeSharp 2.0.0, self-host stage 2)");
         }
 
         private static void PrintHelp()
         {
-            Console.WriteLine("NativeSharp first-generation compiler nsc1 (SH10)");
+            Console.WriteLine("NativeSharp self-host transition compiler (SH11)");
             Console.WriteLine("");
             Console.WriteLine("Usage:");
             Console.WriteLine("  nsc-next --version");
@@ -42,6 +43,7 @@ namespace NativeSharp.Compiler.Driver
             Console.WriteLine("  nsc-next --dump-project|--verify-project <project.nsproj>");
             Console.WriteLine("  nsc-next --emit-project-object <project.nsproj> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next --emit-nsmeta|--emit-toolchain-manifest <project.nsproj> <path>");
+            Console.WriteLine("  nsc-next --bootstrap-generation <generation> <manifest> <producer.exe> <output.exe> <trace>");
             Console.WriteLine("  nsc-next [--diagnostic-format=json] <file.ns>");
         }
 
@@ -260,6 +262,11 @@ namespace NativeSharp.Compiler.Driver
             if (command == "--version") { PrintVersion(); return 0; }
             if (command == "--help") { PrintHelp(); return 0; }
             if (command == "--self-test-basic") { return SelfTest(); }
+            if (command == "--bootstrap-generation")
+            {
+                if (count != 7) { return 2; }
+                return GenerationBuilder.Build(arguments[2], arguments[3], arguments[4], arguments[5], arguments[6]);
+            }
             if (command == "--dump-project" || command == "--verify-project")
             {
                 if (count != 3) { return 2; }

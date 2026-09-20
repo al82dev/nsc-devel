@@ -536,6 +536,11 @@ Gate: `selfhost/evidence/gates/SH10/gate.json`.
 **Gate SH11:** `nsc2` existe, compila sin ejecutar `nsc0` y supera la matriz funcional completa de
 self-hosting.
 
+Expediente de implementación:
+`docs/2.0/self-hosting/tandas/TANDA-12-SH11-NSC2-TRANSICION-AUTOALOJADA.md`.
+El expediente distingue obligatoriamente entre generación derivada de fuentes y reproducción de
+imagen atestada; sólo la primera permite la promoción final de SH14.
+
 ### Fase 12 — `nsc3` y punto fijo reproducible
 
 **Objetivo:** demostrar que el compilador autoalojado ya no cambia por generación.

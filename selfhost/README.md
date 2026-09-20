@@ -47,3 +47,9 @@ N-1/N, claves de caché y manifiestos deterministas; cuatro perfiles enlazan con
 
 SH10 congela el conjunto fuente de `nsc1`, lo construye con `nsc0` en dos rutas absolutas, audita
 PE/imports y ejecuta con el propio `nsc1` el corpus de los subsistemas y O0–O3 con ambos linkers.
+
+SH11 añade una transición autónoma y auditable de `nsc1` a `nsc2`: el productor valida con su
+propio frontend e IR las fuentes congeladas, no crea procesos hijos y reproduce la imagen
+certificada en dos raíces y entornos distintos. Esta frontera se denomina explícitamente
+`source-attested-image-replay`; todavía no es codegen derivado de las fuentes y no autoriza por sí
+sola retirar la semilla C++.

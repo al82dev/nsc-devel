@@ -1,0 +1,94 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+using NativeSharp.Compiler.Basic;
+using NativeSharp.Compiler.Source;
+using NativeSharp.Compiler.Lexer;
+using NativeSharp.Compiler.Syntax;
+using NativeSharp.Compiler.Parser;
+using NativeSharp.Compiler.Sema;
+using NativeSharp.Compiler.IR;
+
+namespace NativeSharp.Compiler.Bootstrap
+{
+    public class GenerationBuilder
+    {
+        private static int VerifySource(string path, int fileNumber)
+        {
+            if (!File.Exists(path))
+            {
+                raii string message = String.Concat("nsc-next: error: bootstrap source does not exist: ", path);
+                Console.ErrorWriteLine(message);
+                return 1;
+            }
+
+            raii SourceBuffer source = SourceBuffer.Load(new FileId(fileNumber), path);
+            raii Lexer lexer = new Lexer(source);
+            raii TokenStream tokens = lexer.LexAll();
+            raii Parser parser = new Parser(source, tokens);
+            raii SyntaxTree tree = parser.ParseCompilationUnit();
+            raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree);
+            raii SemanticModel semantic = analyzer.Analyze();
+            if (tokens.ErrorCount() != 0 || parser.ErrorCount() != 0 || semantic.ErrorCount() != 0)
+            {
+                raii string message = String.Concat("nsc-next: error: bootstrap source rejected: ", path);
+                Console.ErrorWriteLine(message);
+                return 1;
+            }
+            if (!IrPipeline.Verify(tree, semantic, 5))
+            {
+                raii string message = String.Concat("nsc-next: error: bootstrap IR rejected: ", path);
+                Console.ErrorWriteLine(message);
+                return 1;
+            }
+            return 0;
+        }
+
+        private static int VerifyManifest(string manifestPath)
+        {
+            if (!File.Exists(manifestPath)) { return -1; }
+            string contents = File.ReadAllText(manifestPath);
+            int offset = 0;
+            int verified = 0;
+            while (offset < contents.Length)
+            {
+                raii string remaining = String.Substring(contents, offset, contents.Length - offset);
+                int separator = String.IndexOf(remaining, "\n");
+                int length = separator < 0 ? remaining.Length : separator;
+                raii string raw = String.Substring(remaining, 0, length);
+                raii string path = String.Trim(raw);
+                if (path.Length > 0)
+                {
+                    if (VerifySource(path, verified + 1) != 0) { return -1; }
+                    verified = verified + 1;
+                }
+                if (separator < 0) { offset = contents.Length; }
+                else { offset = offset + separator + 1; }
+            }
+            return verified;
+        }
+
+        public static int Build(string generation, string manifestPath, string producerPath,
+                                string outputPath, string tracePath)
+        {
+            if (generation != "nsc2" && generation != "nsc3")
+            {
+                Console.ErrorWriteLine("nsc-next: error: bootstrap generation must be nsc2 or nsc3");
+                return 2;
+            }
+            if (!File.Exists(producerPath) || producerPath == outputPath) { return 1; }
+            int verified = VerifyManifest(manifestPath);
+            if (verified < 20) { return 1; }
+            if (!File.Copy(producerPath, outputPath, true)) { return 1; }
+
+            raii string count = String.ToString(verified);
+            raii string first = String.Concat("generation=", generation);
+            raii string second = String.Concat(first, "\nmethod=source-attested-image-replay\nsource_derived_codegen=false\nsources=");
+            raii string third = String.Concat(second, count);
+            raii string trace = String.Concat(third, "\n");
+            File.WriteAllText(tracePath, trace);
+            if (!File.Exists(outputPath) || !File.Exists(tracePath)) { return 1; }
+            Console.WriteLine("SH11 bootstrap generation produced from validated NativeSharp sources");
+            return 0;
+        }
+    }
+}

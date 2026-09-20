@@ -334,6 +334,28 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn("byte_identical_clean_builds", verifier)
         self.assertNotIn("write_bytes", verifier)
 
+    def test_sh11_contract_freezes_generation_and_does_not_overclaim_codegen(self) -> None:
+        contract = json.loads(
+            (ROOT / "selfhost/contracts/self-hosted-generation.contract.json").read_text()
+        )
+        self.assertEqual(contract["schema"], "nativesharp-selfhost-generation-contract")
+        self.assertEqual(contract["generation"], "nsc2")
+        self.assertEqual(contract["built_by"], "nsc1")
+        self.assertEqual(contract["generation_method"], "source-attested-image-replay")
+        self.assertFalse(contract["source_derived_codegen"])
+        self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
+        self.assertEqual(contract["linkers"], ["lld-link", "NSLink"])
+        self.assertEqual(len(contract["work_items"]), 11)
+
+    def test_sh11_generation_audit_rejects_children_and_records_limitation(self) -> None:
+        verifier = (ROOT / "selfhost/bootstrap/verify_self_hosted_generation.py").read_text()
+        native_builder = (ROOT / "selfhost/nsc/Bootstrap/GenerationBuilder.ns").read_text()
+        self.assertIn("require(not observed", verifier)
+        self.assertIn('"nsc0_invocations_during_generation": 0', verifier)
+        self.assertIn('"source_derived_codegen": False', verifier)
+        self.assertIn("source-attested-image-replay", native_builder)
+        self.assertNotIn("NativeSharp.Core.Diagnostics", native_builder)
+
 
 if __name__ == "__main__":
     unittest.main()

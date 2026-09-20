@@ -32,3 +32,6 @@ razón de existir es el self-hosting.
 
 SH10 reconstruye `nsc1` desde dos copias limpias del conjunto congelado y usa el propio `nsc1`
 para verificar los 20 archivos fuente del compilador y producir la matriz ejecutable O0–O3.
+
+SH11 ejecuta `nsc1 → nsc2` bajo observación de procesos, en dos raíces y dos entornos regionales;
+después compara frontend, diagnósticos, metadata y objetos y ejecuta O0–O3 por `lld-link` y NSLink.
