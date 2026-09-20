@@ -386,6 +386,18 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn('"withhold"', verifier)
         self.assertIn('"promotion_allowed": promoted', verifier)
 
+    def test_tanda16_closure_freezes_commits_and_safe_nonpromotion(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/closure.contract.json").read_text())
+        self.assertEqual(contract["tandas"], list(range(7, 17)))
+        self.assertEqual(contract["required_safe_default"], "nsc0")
+        self.assertFalse(contract["required_promotion_allowed"])
+        self.assertEqual(contract["expected_gate_states"]["SH11"], "LANDED")
+        self.assertEqual(contract["expected_gate_states"]["SH12"], "OPEN")
+        self.assertEqual(contract["known_commits"]["15"], "8f065e892")
+        verifier = (ROOT / "selfhost/bootstrap/verify_closure.py").read_text()
+        self.assertIn("SELFHOST-CROSS-MACHINE", verifier)
+        self.assertIn("SELFHOST-SOURCE-DERIVED-CODEGEN", verifier)
+
 
 if __name__ == "__main__":
     unittest.main()

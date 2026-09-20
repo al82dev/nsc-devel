@@ -1,0 +1,18 @@
+{
+  "schema": "nativesharp-selfhost-closure-contract",
+  "version": 1,
+  "tandas": [7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+  "required_gates": ["SH06", "SH07", "SH08", "SH09", "SH10", "SH11", "SH12", "SH13", "SH14"],
+  "expected_gate_states": {
+    "SH06": "LANDED", "SH07": "LANDED", "SH08": "LANDED",
+    "SH09": "LANDED", "SH10": "LANDED", "SH11": "LANDED",
+    "SH12": "OPEN", "SH13": "OPEN", "SH14": "OPEN"
+  },
+  "required_safe_default": "nsc0",
+  "required_promotion_allowed": false,
+  "known_commits": {
+    "7": "e3bfbb3c8", "8": "58f7ecce2", "9": "ada216aca", "10": "72d181085",
+    "11": "75dd06ed8", "12": "0e10d70fb", "13": "17084784a",
+    "14": "e48b1ef1c", "15": "8f065e892"
+  }
+}

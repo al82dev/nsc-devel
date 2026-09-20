@@ -1,0 +1,89 @@
+{
+  "closure_problems": [],
+  "gate_sha256": {
+    "SH06": "f6847b026c7e5475734b6fdfb45085030400dc6e9053672537d3ab8629494545",
+    "SH07": "21fee5c489ed200ada64dc6195a9fcdf171c50c5ff0ff41d3df2df16efa7ee94",
+    "SH08": "8c9a61bbd97d70b12168078fcdf8476b7d36eab1516c0252372a6a0d4d63ed9b",
+    "SH09": "9c0dd7f74572068849fbea7fd71704542ec659d02d7d3038d50ec5fab8ff409e",
+    "SH10": "891fd21209636e5043f6fe3b68d3c4a16ec9e8ed53492fdfc5ef947b9c9379ff",
+    "SH11": "96bb9d264b433f30019efb8fd89eb1a9a687331f8036b3bdc639c86a511c40cc",
+    "SH12": "7dd71859f538c4bab301d9e06724fdec38fe6dae1756ea419ce9931e8e3f13c0",
+    "SH13": "d390f287cdb1d2843055815ddc7dc777a29ea8b30f630f8997ed7914406646b7",
+    "SH14": "ca6d131c1eeb7335498267a4acc93f3c194dcac103b33e5031373f0bd89422e1"
+  },
+  "gate_states": {
+    "SH06": "LANDED",
+    "SH07": "LANDED",
+    "SH08": "LANDED",
+    "SH09": "LANDED",
+    "SH10": "LANDED",
+    "SH11": "LANDED",
+    "SH12": "OPEN",
+    "SH13": "OPEN",
+    "SH14": "OPEN"
+  },
+  "known_commits": {
+    "10": "72d181085",
+    "11": "75dd06ed8",
+    "12": "0e10d70fb",
+    "13": "17084784a",
+    "14": "e48b1ef1c",
+    "15": "8f065e892",
+    "7": "e3bfbb3c8",
+    "8": "58f7ecce2",
+    "9": "ada216aca"
+  },
+  "nsc0_retired": false,
+  "release_promoted": false,
+  "safe_selection": {
+    "candidate": "nsc2",
+    "default": "nsc0",
+    "promotion_allowed": false,
+    "rollback": "nsc0",
+    "schema": "nativesharp-compiler-selection",
+    "version": 1
+  },
+  "schema": "nativesharp-selfhost-tanda16-closure",
+  "status": "closed-with-explicit-blockers",
+  "tandas": [
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16
+  ],
+  "unresolved": [
+    {
+      "blocks": [
+        "SH12",
+        "SH13",
+        "SH14"
+      ],
+      "condition": "Import matching SH12 machine-attestation.json from a second Windows x64 machine",
+      "id": "SELFHOST-CROSS-MACHINE",
+      "owner_files": [
+        "selfhost/bootstrap/verify_fixed_point.py",
+        "selfhost/evidence/gates/SH12/gate.json"
+      ]
+    },
+    {
+      "blocks": [
+        "SH13",
+        "SH14",
+        "nsc0 retirement"
+      ],
+      "condition": "Replace source-attested image replay with complete source-derived LLVM code generation",
+      "id": "SELFHOST-SOURCE-DERIVED-CODEGEN",
+      "owner_files": [
+        "selfhost/nsc/CodeGen/LlvmBackend.ns",
+        "selfhost/nsc/Bootstrap/GenerationBuilder.ns"
+      ]
+    }
+  ],
+  "version": 1
+}

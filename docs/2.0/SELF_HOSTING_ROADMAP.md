@@ -607,6 +607,10 @@ Expediente de decisión: `docs/2.0/self-hosting/tandas/TANDA-15-SH14-PROMOCION-C
 El verificador también certifica una decisión `withhold`; nunca transforma gates abiertos en una
 promoción por presión de calendario.
 
+El cierre de ejecución de las tandas 7–16 vive en
+`docs/2.0/self-hosting/tandas/TANDA-16-CIERRE-AUDITADO.md`. Cerrar el expediente no cambia el estado
+de SH12–SH14 ni equivale a retirar `nsc0`.
+
 ## 9. Orden de dependencias
 
 ```text

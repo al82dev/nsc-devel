@@ -765,6 +765,14 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.promotion-readiness PROPERTIES RUN_SERIAL TRUE)
 
     add_test(
+        NAME nsc.selfhost.tanda16-closure
+        COMMAND "${CMAKE_COMMAND}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-tanda16-closure"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSelfHostClosure.cmake")
+    set_tests_properties(nsc.selfhost.tanda16-closure PROPERTIES RUN_SERIAL TRUE)
+
+    add_test(
         NAME nsc.selfhost.nsc-next-skeleton
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"

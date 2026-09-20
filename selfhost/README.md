@@ -64,3 +64,6 @@ interrupción y auditoría de temporales sobre las imágenes locales `nsc2`/`nsc
 SH14 automatiza la decisión de promoción. Mientras algún gate requerido esté abierto o no exista
 codegen derivado de fuentes, genera una selección segura con `nsc0` predeterminado y `nsc2`
 candidato, conservando rollback explícito.
+
+Tanda 16 sella el estado de los gates y convierte los pendientes restantes en un ledger
+ejecutable. El cierre administrativo conserva la no promoción y no altera los contratos SH12–14.

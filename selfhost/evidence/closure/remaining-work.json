@@ -1,0 +1,32 @@
+{
+  "items": [
+    {
+      "blocks": [
+        "SH12",
+        "SH13",
+        "SH14"
+      ],
+      "condition": "Import matching SH12 machine-attestation.json from a second Windows x64 machine",
+      "id": "SELFHOST-CROSS-MACHINE",
+      "owner_files": [
+        "selfhost/bootstrap/verify_fixed_point.py",
+        "selfhost/evidence/gates/SH12/gate.json"
+      ]
+    },
+    {
+      "blocks": [
+        "SH13",
+        "SH14",
+        "nsc0 retirement"
+      ],
+      "condition": "Replace source-attested image replay with complete source-derived LLVM code generation",
+      "id": "SELFHOST-SOURCE-DERIVED-CODEGEN",
+      "owner_files": [
+        "selfhost/nsc/CodeGen/LlvmBackend.ns",
+        "selfhost/nsc/Bootstrap/GenerationBuilder.ns"
+      ]
+    }
+  ],
+  "schema": "nativesharp-selfhost-remaining-work",
+  "version": 1
+}
