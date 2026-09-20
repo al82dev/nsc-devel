@@ -377,6 +377,15 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn("maximum_compile_ratio", contract)
         self.assertEqual(len(contract["work_items"]), 12)
 
+    def test_sh14_promotion_contract_keeps_seed_until_all_requirements_land(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/promotion-readiness.contract.json").read_text())
+        self.assertEqual(contract["required_landed_gates"], ["SH10", "SH11", "SH12", "SH13"])
+        self.assertTrue(contract["required_source_derived_codegen"])
+        self.assertEqual(contract["fallback_compiler"], "nsc0")
+        verifier = (ROOT / "selfhost/bootstrap/verify_promotion_readiness.py").read_text()
+        self.assertIn('"withhold"', verifier)
+        self.assertIn('"promotion_allowed": promoted', verifier)
+
 
 if __name__ == "__main__":
     unittest.main()

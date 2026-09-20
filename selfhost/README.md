@@ -60,3 +60,7 @@ atestación coincidente de otra máquina Windows x64.
 
 SH13 añade presupuestos medidos, fuzzing determinista, metadata hostil, fallo atómico de salida,
 interrupción y auditoría de temporales sobre las imágenes locales `nsc2`/`nsc3`.
+
+SH14 automatiza la decisión de promoción. Mientras algún gate requerido esté abierto o no exista
+codegen derivado de fuentes, genera una selección segura con `nsc0` predeterminado y `nsc2`
+candidato, conservando rollback explícito.

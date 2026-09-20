@@ -603,6 +603,10 @@ Expediente: `docs/2.0/self-hosting/tandas/TANDA-14-SH13-ROBUSTEZ-RENDIMIENTO.md`
 **Gate SH14:** el release oficial usa el compilador NativeSharp; la semilla C++ está congelada,
 reproducible y fuera del camino normal, pero todavía recuperable.
 
+Expediente de decisión: `docs/2.0/self-hosting/tandas/TANDA-15-SH14-PROMOCION-CONDICIONADA.md`.
+El verificador también certifica una decisión `withhold`; nunca transforma gates abiertos en una
+promoción por presión de calendario.
+
 ## 9. Orden de dependencias
 
 ```text

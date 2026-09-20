@@ -18,12 +18,12 @@ namespace NativeSharp.Compiler.Driver
     {
         private static void PrintVersion()
         {
-            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh13 (NativeSharp 2.0.0, self-host stage 4)");
+            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh14 (NativeSharp 2.0.0, promotion candidate)");
         }
 
         private static void PrintHelp()
         {
-            Console.WriteLine("NativeSharp robustness candidate compiler (SH13)");
+            Console.WriteLine("NativeSharp promotion candidate compiler (SH14)");
             Console.WriteLine("");
             Console.WriteLine("Usage:");
             Console.WriteLine("  nsc-next --version");

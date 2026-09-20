@@ -1,0 +1,35 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH14",
+  "state": "OPEN",
+  "revision": "selfhost(tanda-15-withheld)",
+  "run_id": "tanda-15-sh14-withheld-final-20260919",
+  "previous_gate": "selfhost/evidence/gates/SH13/gate.json",
+  "artifacts": {
+    "baseline_report_sha256": "aab9ef060208decc10d6504690b098f3b8ce624ef86cb41763620cfde270a493",
+    "baseline_report_json_sha256": "a0bae199a0ea5edfed26e7e9893d6d240892db4e2a7363c3530aed168b5ff526",
+    "baseline_source_sha256": "2906dc697cd07233f30bdc3f8e17f96d069d8b9fb76592364b536a0bc7b9e790",
+    "gate0_sha256": "d7b225c821b0baa0c66d5f0d333affdaa26afa8a1428ab594c72cee32e274db1",
+    "sh14_lld_report_sha256": "374dd0ea45d1289987cb9ca61d73bd44ed9ff52e59a91fbb49629ac8337c1962",
+    "sh14_nslink_report_sha256": "da9241edcb0c91de28615b78923606bf222388c741730fa711810f6c6c050fdc",
+    "compiler_selection_sha256": "ed4bc579b297bb6a7f6a8db72aac1b88a0d5966afdb78c8ea4a90d639915d4f0"
+  },
+  "metrics": {
+    "decision": "withhold",
+    "default_compiler": "nsc0",
+    "candidate_compiler": "nsc2",
+    "rollback_compiler": "nsc0",
+    "promotion_allowed": false,
+    "blockers": 6,
+    "ctest_per_linker": 451,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18,
+    "baseline_seconds": 832.253
+  },
+  "problems": [
+    "SH12 and SH13 are OPEN",
+    "second-machine fixed-point evidence is missing",
+    "source-derived compiler codegen is not certified"
+  ]
+}

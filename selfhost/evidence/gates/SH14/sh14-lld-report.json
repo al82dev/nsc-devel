@@ -1,0 +1,36 @@
+{
+  "blockers": [
+    "SH12 state is OPEN, not LANDED",
+    "SH12: NS2-SH-157 requires a matching attestation from a second Windows x64 machine",
+    "SH13 state is OPEN, not LANDED",
+    "SH13: SH12 remains OPEN until a second-machine attestation is imported",
+    "SH13: source-derived compiler codegen remains false",
+    "source-derived compiler codegen is not certified"
+  ],
+  "candidate_compiler": "nsc2",
+  "decision": "withhold",
+  "default_compiler": "nsc0",
+  "gate_states": {
+    "SH10": "LANDED",
+    "SH11": "LANDED",
+    "SH12": "OPEN",
+    "SH13": "OPEN"
+  },
+  "nsc0_sha256": "a64ef0eac9dce244d193b8647968fe8e974222d8433f193890d8651521c2df43",
+  "rollback_compiler": "nsc0",
+  "schema": "nativesharp-selfhost-promotion-decision",
+  "source_derived_codegen": false,
+  "version": 1,
+  "work_items": [
+    "NS2-SH-172",
+    "NS2-SH-173",
+    "NS2-SH-174",
+    "NS2-SH-175",
+    "NS2-SH-176",
+    "NS2-SH-177",
+    "NS2-SH-178",
+    "NS2-SH-179",
+    "NS2-SH-180",
+    "NS2-SH-181"
+  ]
+}

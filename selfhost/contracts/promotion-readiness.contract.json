@@ -1,0 +1,12 @@
+{
+  "schema": "nativesharp-selfhost-promotion-readiness-contract",
+  "version": 1,
+  "required_landed_gates": ["SH10", "SH11", "SH12", "SH13"],
+  "required_source_derived_codegen": true,
+  "fallback_compiler": "nsc0",
+  "candidate_compiler": "nsc2",
+  "work_items": [
+    "NS2-SH-172", "NS2-SH-173", "NS2-SH-174", "NS2-SH-175", "NS2-SH-176",
+    "NS2-SH-177", "NS2-SH-178", "NS2-SH-179", "NS2-SH-180", "NS2-SH-181"
+  ]
+}

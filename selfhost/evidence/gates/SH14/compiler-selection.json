@@ -1,0 +1,8 @@
+{
+  "candidate": "nsc2",
+  "default": "nsc0",
+  "promotion_allowed": false,
+  "rollback": "nsc0",
+  "schema": "nativesharp-compiler-selection",
+  "version": 1
+}
