@@ -317,6 +317,23 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["metadata_versions"], [1, 2])
         self.assertEqual(len(contract["work_items"]), 14)
 
+    def test_sh10_first_generation_contract_freezes_clean_build_matrix(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/first-generation.contract.json").read_text())
+        self.assertEqual(contract["schema"], "nativesharp-selfhost-first-generation-contract")
+        self.assertEqual(contract["generation"], "nsc1")
+        self.assertEqual(contract["built_by"], "nsc0")
+        self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
+        self.assertEqual(contract["linkers"], ["lld-link", "NSLink"])
+        self.assertEqual(len(contract["source_roots"]), 5)
+        self.assertEqual(len(contract["work_items"]), 12)
+
+    def test_sh10_reproducible_link_is_requested_without_binary_rewriting(self) -> None:
+        source = (ROOT / "src/Linker/LldLinker.cpp").read_text(encoding="utf-8")
+        self.assertGreaterEqual(source.count('\"/Brepro\"'), 2)
+        verifier = (ROOT / "selfhost/bootstrap/verify_first_generation.py").read_text()
+        self.assertIn("byte_identical_clean_builds", verifier)
+        self.assertNotIn("write_bytes", verifier)
+
 
 if __name__ == "__main__":
     unittest.main()

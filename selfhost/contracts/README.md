@@ -25,3 +25,6 @@ certificación cruzada con `lld-link` y NSLink.
 
 `project-driver.contract.json` congela desde SH09 la carga `.nsproj`, orden de fuentes,
 referencias, perfiles, response files, metadata N-1/N, manifiestos y enlace dual.
+
+`first-generation.contract.json` congela desde SH10 las fuentes, dependencias, imports, perfiles
+y linkers que definen el primer `nsc1` construido exclusivamente por `nsc0`.

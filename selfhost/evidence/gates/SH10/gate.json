@@ -1,0 +1,41 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH10",
+  "state": "LANDED",
+  "revision": "selfhost(tanda-11)",
+  "run_id": "tanda-11-sh10-final-20260919",
+  "previous_gate": "selfhost/evidence/gates/SH09/gate.json",
+  "artifacts": {
+    "baseline_report": "selfhost/evidence/runs/tanda-11-sh10-final-20260919/report.md",
+    "baseline_report_json": "selfhost/evidence/runs/tanda-11-sh10-final-20260919/report.json",
+    "baseline_report_sha256": "22494af0f141ff80345cddf41c69748f07df65985621feb24ade2b59ad3e3afb",
+    "baseline_report_json_sha256": "efd5242900489a608c23cbac830581fbcd8f58615541b0fad3ad1720d6853f4a",
+    "baseline_source_sha256": "8a1414455d2804f5342ad209049a4ee5f1cd360da55a383608f056081e7e55ed",
+    "gate0": "_abi/gates/G00/gate.json",
+    "gate0_sha256": "610435a440d97e01fa3e852a4e69bf894fc01d3063884e040db68e08a4425b29",
+    "sh10_lld_report": "selfhost/evidence/gates/SH10/sh10-lld-report.json",
+    "sh10_lld_report_sha256": "88e21d763a3c5de00c580ccf75fe62b39489ae40e2ce4770db81dc236921e783",
+    "sh10_nslink_report": "selfhost/evidence/gates/SH10/sh10-nslink-report.json",
+    "sh10_nslink_report_sha256": "d47a8fbfd56ddc57a83540fc5ef7b9b1e1ec19e8d3bcd4a2a435aa4bed8b9b11",
+    "installed_nsc0_sha256": "314996b65fa1d91cc4996ac059f8f2c779be43f0c7758c25541dceafe575094b",
+    "nslink_sha256": "acc4d5042cf9ad334346b957bcba32c452a3abb3cb2809ea0a5e3a8670b05c1a",
+    "nsc1_lld_sha256": "1f9de137361b10b48e5d415fb7fbf2d2f576b7a8288047760fb75aa9e67dc2d1",
+    "nsc1_nslink_sha256": "d554f8329e310b43159689208b2a3e0bfc84a5e4ef9704409df4e687284b65cd"
+  },
+  "metrics": {
+    "frozen_source_files": 95,
+    "compiler_sources_verified": 20,
+    "bootstrap_projects_verified": 4,
+    "clean_roots_per_linker": 2,
+    "byte_identical_within_linker": true,
+    "profiles": 4,
+    "linkers": 2,
+    "executable_checks": 8,
+    "ctest_per_linker": 447,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18,
+    "baseline_seconds": 784.57
+  },
+  "problems": []
+}

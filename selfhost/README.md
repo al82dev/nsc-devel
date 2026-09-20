@@ -13,8 +13,9 @@ temporal.
 - `out/`: builds, trabajo y temporales; siempre generado e ignorado por Git.
 - `evidence/runs/`: evidencia generada por corrida; no se mezcla con fuentes.
 
-Las generaciones tienen nombres normativos `nsc0`, `nsc1`, `nsc2` y `nsc3`. Ningún directorio de
-salida puede compartirse entre generaciones.
+Las generaciones tienen nombres normativos `nsc0`, `nsc1`, `nsc2` y `nsc3`. SH10 materializa
+`nsc1` dos veces desde raíces limpias independientes y exige identidad byte a byte. Ningún
+directorio de salida puede compartirse entre generaciones.
 
 NSLink y NSAsm no se reescriben dentro de este repositorio. Una reimplementación escrita en
 NativeSharp debe vivir en un repositorio nuevo; este proyecto sólo consume herramientas externas
@@ -43,3 +44,6 @@ assembly y certifica ejecución con `lld-link` y NSLink.
 
 SH09 añade la primera superficie de proyecto: `.nsproj`, referencias, response files, metadata
 N-1/N, claves de caché y manifiestos deterministas; cuatro perfiles enlazan con ambos linkers.
+
+SH10 congela el conjunto fuente de `nsc1`, lo construye con `nsc0` en dos rutas absolutas, audita
+PE/imports y ejecuta con el propio `nsc1` el corpus de los subsistemas y O0–O3 con ambos linkers.

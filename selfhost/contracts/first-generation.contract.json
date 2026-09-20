@@ -1,0 +1,31 @@
+{
+  "schema": "nativesharp-selfhost-first-generation-contract",
+  "version": 1,
+  "generation": "nsc1",
+  "built_by": "nsc0",
+  "optimizations": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld-link", "NSLink"],
+  "source_roots": [
+    "selfhost/nsc",
+    "lib/NativeSharp.Core",
+    "lib/NativeSharp.Core.Collections.Generic",
+    "lib/NativeSharp.Core.IO",
+    "lib/NativeSharp.LLVM.C"
+  ],
+  "profile_projects": [
+    "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
+    "lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj",
+    "lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj",
+    "lib/NativeSharp.LLVM.C/NativeSharp.LLVM.C.nsproj"
+  ],
+  "compiler_project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
+  "execution_project": "selfhost/tests/projects/Sh09App/Sh09App.nsproj",
+  "expected_identity": "nsc-next 2.0.0-bootstrap.sh10 (NativeSharp 2.0.0, self-host stage 1)",
+  "required_imports": ["KERNEL32.dll", "KERNELBASE.dll", "SHELL32.dll", "ucrtbase.dll", "LLVM-C.dll"],
+  "expected_exit_code": 42,
+  "work_items": [
+    "NS2-SH-127", "NS2-SH-128", "NS2-SH-129", "NS2-SH-130",
+    "NS2-SH-131", "NS2-SH-132", "NS2-SH-133", "NS2-SH-134",
+    "NS2-SH-135", "NS2-SH-136", "NS2-SH-137", "NS2-SH-138"
+  ]
+}

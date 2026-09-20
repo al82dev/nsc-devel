@@ -17,12 +17,12 @@ namespace NativeSharp.Compiler.Driver
     {
         private static void PrintVersion()
         {
-            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh09 (NativeSharp 2.0.0, self-host stage 1)");
+            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh10 (NativeSharp 2.0.0, self-host stage 1)");
         }
 
         private static void PrintHelp()
         {
-            Console.WriteLine("NativeSharp self-hosted compiler bootstrap (SH09)");
+            Console.WriteLine("NativeSharp first-generation compiler nsc1 (SH10)");
             Console.WriteLine("");
             Console.WriteLine("Usage:");
             Console.WriteLine("  nsc-next --version");

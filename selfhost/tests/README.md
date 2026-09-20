@@ -29,3 +29,6 @@ Las corridas generadas nunca se escriben aquí: viven bajo `selfhost/out` o
 
 Las pruebas normales de NSC siguen viviendo en `tests/`. Este árbol sólo contiene pruebas cuya
 razón de existir es el self-hosting.
+
+SH10 reconstruye `nsc1` desde dos copias limpias del conjunto congelado y usa el propio `nsc1`
+para verificar los 20 archivos fuente del compilador y producir la matriz ejecutable O0–O3.

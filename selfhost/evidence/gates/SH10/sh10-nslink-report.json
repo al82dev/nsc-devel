@@ -1,0 +1,574 @@
+{
+  "artifacts": {
+    "corpus-o0.obj": "ac1834028eb265d06263f9957a6d255806f626e6791e373d3c2ff0eaf902a4ca",
+    "corpus-o1.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "corpus-o2.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "corpus-o3.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "lld-o0.exe": "5752e5f5b5ad3ecc3f9b30a81406a5bb81b2ac285e46e6cd433e4ff465f81b3a",
+    "lld-o1.exe": "c91dee7c2f74252ef8657b01960ee3d470f509ffe5350591e4127ad11ba05a51",
+    "lld-o2.exe": "c91dee7c2f74252ef8657b01960ee3d470f509ffe5350591e4127ad11ba05a51",
+    "lld-o3.exe": "c91dee7c2f74252ef8657b01960ee3d470f509ffe5350591e4127ad11ba05a51",
+    "nslink-o0.exe": "c8be4c3bf8bd684d28c84126470ff5d463c5313a0289a5b5e54ac894b16ece96",
+    "nslink-o1.exe": "77efd4e8ca9c28df7d6d2b7f8bfb0a3f94ecbca5e40f0f6ec841500f736f8aa1",
+    "nslink-o2.exe": "77efd4e8ca9c28df7d6d2b7f8bfb0a3f94ecbca5e40f0f6ec841500f736f8aa1",
+    "nslink-o3.exe": "77efd4e8ca9c28df7d6d2b7f8bfb0a3f94ecbca5e40f0f6ec841500f736f8aa1"
+  },
+  "binary_size": 380416,
+  "built_by": "nsc0",
+  "byte_identical_clean_builds": true,
+  "clean_roots": 2,
+  "compiler_sources_verified": 20,
+  "executions": 8,
+  "generation": "nsc1",
+  "linkers": 2,
+  "nsc0_sha256": "9c895be9ce3b729780ab42ad2c79d4c8229b1853ba9c0c40b25cb9d5c8b42383",
+  "nsc1_sha256": "d554f8329e310b43159689208b2a3e0bfc84a5e4ef9704409df4e687284b65cd",
+  "pe": {
+    "imports": [
+      "KERNEL32.dll",
+      "KERNELBASE.dll",
+      "SHELL32.dll",
+      "ucrtbase.dll",
+      "LLVM-C.dll"
+    ],
+    "machine": "AMD64",
+    "sections": 7,
+    "timestamp": 0
+  },
+  "profiles": 4,
+  "schema": "nativesharp-selfhost-sh10-report",
+  "source_files": 95,
+  "source_manifest": [
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Algorithm.ns",
+      "sha256": "e702f78252e40527161db68cebc9b4ec208db3135d9d952fa3ccf15de9df9119",
+      "size": 13054
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Comparer.ns",
+      "sha256": "a20ec10b3df7733f51c410437adfeadabb59dc90314157b3091db1e8d8ac4d4b",
+      "size": 4426
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Delegates.ns",
+      "sha256": "8ced823d78d1eae87638de3df240f6022f17ce7bf7e4a19cb2bbc16d4e045d5d",
+      "size": 2967
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Dictionary.ns",
+      "sha256": "a1d33446c63ecfc80bb47513c85977a043d7156240a5586ee92432d0707d200e",
+      "size": 25859
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/HashSet.ns",
+      "sha256": "9bcf370000211cb6619716ffd04fd69b9538a82381c3e2c04d6c7f94177490b8",
+      "size": 10977
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/HashSetEnumerator.ns",
+      "sha256": "7c96a060f002c89316ced8ea894905043af1cfe46d9346b921a803c3e6cf0647",
+      "size": 1458
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Hashing.ns",
+      "sha256": "7eac6296904eeb1453c511033efef6c86ed9173c154b9351dd9e296874c20fcf",
+      "size": 2972
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/KeyValuePair.ns",
+      "sha256": "445b3245267a31e8bf81ce2a0d5ce208033e81ba327a341809aa446b0b410d22",
+      "size": 1015
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/LinkedList.ns",
+      "sha256": "2ca13596d088baf4df7e2d619779d58dc5b70657304ae002b5291b3611ab9265",
+      "size": 12915
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/LinkedListEnumerator.ns",
+      "sha256": "2c95fbb22b5b47559a28bcbdc5e2c7801aae62b7416c72d3c4268354850499c2",
+      "size": 1696
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/LinkedListNode.ns",
+      "sha256": "2897be3f792f3212e70109bd33034edc2402b76ae6783caf6937440822e04d7c",
+      "size": 4356
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/List.ns",
+      "sha256": "a5048d427dd75a12689a543457e87b56b2cbce9dfe22ebf07951aa4034e87a30",
+      "size": 22183
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/ListEnumerator.ns",
+      "sha256": "c6328aa6898d19e44646c2519ba7dc3dbdba34d046f046d8b55f4cccf53bdb8f",
+      "size": 2567
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj",
+      "sha256": "85ac696309f699f110b43c64d11da854ab4770cc325f845fdf374d18bdeebb05",
+      "size": 250
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/PriorityQueue.ns",
+      "sha256": "09e14f0d4fda24326b00aa4c3f253edc23933dc8c3912d9e63d6f40d95c606cb",
+      "size": 11291
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/PriorityQueueEnumerator.ns",
+      "sha256": "d502145362d0de84f1a04a233812bcffe2aeec528df50e54536cb88c354ace60",
+      "size": 1158
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Queue.ns",
+      "sha256": "8f9908ccfcd2609d43afb77667bf2a58ccab04683f85a63eebacf29329272400",
+      "size": 8029
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/QueueEnumerator.ns",
+      "sha256": "6307b0754459d3386966dcbccf8a8c181b563be5ebec23d084a0e8a628ffcf4b",
+      "size": 1316
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/SortedDictionary.ns",
+      "sha256": "431c70ead05707cc32b0db8355e15c67a935d19471a7f22f7ab06a7f0a019c1d",
+      "size": 5365
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/SortedList.ns",
+      "sha256": "15981f80694561ff68851df6fba68fb479067c8833ef2ea9626fd39c644c2600",
+      "size": 15310
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/SortedSet.ns",
+      "sha256": "22d0b8852a47dba8e31c6e4014bb266ab25655c4ab6186691ada7068490ebe7d",
+      "size": 10438
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/SortedSetEnumerator.ns",
+      "sha256": "277fb40688753b116319895e3224a6257e6dc92748e66147e41c9443797b511d",
+      "size": 932
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Stack.ns",
+      "sha256": "c1cd6f581a57b1a187c0d4fde294593a3080106430a83700cabdbb84a41bf0aa",
+      "size": 6367
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/StackEnumerator.ns",
+      "sha256": "3a605e05d15ad35c53554d69ad9828428f831085c6e759707882baea16a183e8",
+      "size": 1020
+    },
+    {
+      "path": "lib/NativeSharp.Core.IO/Directory.ns",
+      "sha256": "1b3504c96a178746f8d0b6e8e581362adee4d66100713e20896e9ce317b299aa",
+      "size": 9461
+    },
+    {
+      "path": "lib/NativeSharp.Core.IO/File.ns",
+      "sha256": "56e840338a23449cbf85713d2760dc55aa2a6eab5377c04e83df342589035964",
+      "size": 11886
+    },
+    {
+      "path": "lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj",
+      "sha256": "537d0381b29bfd6918b89decf42b6c1cecc284c64c43a3433155f3e9645f5681",
+      "size": 234
+    },
+    {
+      "path": "lib/NativeSharp.Core.IO/Path.ns",
+      "sha256": "4a657907299ee890bee8205e962d88b6eb7a540659e4a189ac811ffc6faa9a02",
+      "size": 10094
+    },
+    {
+      "path": "lib/NativeSharp.Core.IO/TextWriter.ns",
+      "sha256": "7f426dba7225290bbcea75b46af5fc5b886aa536b1c0d60634df518d3687ec99",
+      "size": 8488
+    },
+    {
+      "path": "lib/NativeSharp.Core/Allocator.ns",
+      "sha256": "a39d394f7fb3299b22f426e7645ce8ea926ec32e48faa3cee8a3c92b3f4ad536",
+      "size": 3178
+    },
+    {
+      "path": "lib/NativeSharp.Core/ArenaAllocator.ns",
+      "sha256": "af80905b27357f0de92ec243742eb4d4b7dd60bc31051d24f0521cb40f1be88f",
+      "size": 10570
+    },
+    {
+      "path": "lib/NativeSharp.Core/BinaryReader.ns",
+      "sha256": "59447f2219303a7d0d45c2c0f1db9377692d1fdfecd52035f78d83947232da4c",
+      "size": 8220
+    },
+    {
+      "path": "lib/NativeSharp.Core/BinaryWriter.ns",
+      "sha256": "5092fdfcc230c0d37f6ed371388da98ee95eeb0c7286da333b3e0b9e386c6d94",
+      "size": 5792
+    },
+    {
+      "path": "lib/NativeSharp.Core/BitOperations.ns",
+      "sha256": "efc908170b00e9a0814449640615ab7b8bbd956c728b6d3fec43720dbe89a471",
+      "size": 973
+    },
+    {
+      "path": "lib/NativeSharp.Core/ByteBuffer.ns",
+      "sha256": "9f757aefd0e7a4d4feb189c6c8d63e9d40dba193a3dc654daecd47aff23f31f2",
+      "size": 6770
+    },
+    {
+      "path": "lib/NativeSharp.Core/CString.ns",
+      "sha256": "6e16130f2797e29523c40f0298dcddb9e1a15ea11f9be7d965835b59e721f1cf",
+      "size": 4121
+    },
+    {
+      "path": "lib/NativeSharp.Core/Console.ns",
+      "sha256": "3877580dc86ef1c6ff9243adf6115110477beac80b6199e41d32b68c963145d9",
+      "size": 2086
+    },
+    {
+      "path": "lib/NativeSharp.Core/DateTime.ns",
+      "sha256": "df385a8978b0904656d818ac89268b3571eb59fd2e2cd08f66331459045c3d79",
+      "size": 4683
+    },
+    {
+      "path": "lib/NativeSharp.Core/DeterministicMath.ns",
+      "sha256": "cb2c0b555861a654767267f13976873de6302574b3598a88be2e533994ec59fb",
+      "size": 3270
+    },
+    {
+      "path": "lib/NativeSharp.Core/Environment.ns",
+      "sha256": "87bc25347fd7fc8f3986e769ad332c0f659cf95ad9cc3499aeb7d8e6c9c8d60c",
+      "size": 11083
+    },
+    {
+      "path": "lib/NativeSharp.Core/Exception.ns",
+      "sha256": "e30ff921e565d9ff0c1c6d9a361f855e876b12f700e079b19e7ca23aab13e676",
+      "size": 2900
+    },
+    {
+      "path": "lib/NativeSharp.Core/Float32x2.ns",
+      "sha256": "53ce685c9e4d313ed546d794a4681b57a7a8b0f5c1cbcb6fc3abda501c3af28c",
+      "size": 525
+    },
+    {
+      "path": "lib/NativeSharp.Core/Float32x3.ns",
+      "sha256": "82959662c63c37a600e15c140d990829320d0c097a9b141ca287be869d8497d2",
+      "size": 878
+    },
+    {
+      "path": "lib/NativeSharp.Core/Float32x3x3.ns",
+      "sha256": "b281c91398ccf70d24e9290436015921dd97f093d2f217087188e1edcfaa491d",
+      "size": 1121
+    },
+    {
+      "path": "lib/NativeSharp.Core/Float32x4.ns",
+      "sha256": "7ef67f4b64ac4b6360a04c1551ed9562fd0d1c644d854eec8542ccc8b0bca668",
+      "size": 2736
+    },
+    {
+      "path": "lib/NativeSharp.Core/Float32x4x4.ns",
+      "sha256": "0198e5e8ccf3fa729fca453e61c572c2134f32a6081c74467df813443eb5740b",
+      "size": 1306
+    },
+    {
+      "path": "lib/NativeSharp.Core/Float32x8.ns",
+      "sha256": "be552f29c0e67b137ee9c407e4b5186a6afa62c28adc73fc562644e8cc0018fd",
+      "size": 745
+    },
+    {
+      "path": "lib/NativeSharp.Core/Float64x4.ns",
+      "sha256": "8b06e3ad9600ced32993dc60df718a95c734911bdf58f9b733a48bf609f5d81f",
+      "size": 652
+    },
+    {
+      "path": "lib/NativeSharp.Core/Half.ns",
+      "sha256": "bb38f5876daf40715fae489e26250c7ad97dfa1ee3340b4fd23817f7fc0b044f",
+      "size": 401
+    },
+    {
+      "path": "lib/NativeSharp.Core/HardwareIntrinsics.ns",
+      "sha256": "9ec4e4415980d35029e5a5c5dd32128859ac667e9acf87e51928a79f5fd3320c",
+      "size": 262
+    },
+    {
+      "path": "lib/NativeSharp.Core/Int32x4.ns",
+      "sha256": "6eb69a4831210c27a6be8b9c42a3c334025a7dd01b26110e033dd14091aee8fd",
+      "size": 1281
+    },
+    {
+      "path": "lib/NativeSharp.Core/Int32x8.ns",
+      "sha256": "77345b2c283303f143f775596a58d97e2f92dcd0a3f1a20083f8c283a57f79bc",
+      "size": 579
+    },
+    {
+      "path": "lib/NativeSharp.Core/Int64x2.ns",
+      "sha256": "8b8c9b0d8ce8dada20e1fa0a7879cf122069c5fb7c89facdf6cb72d82d55bea3",
+      "size": 587
+    },
+    {
+      "path": "lib/NativeSharp.Core/Int64x4.ns",
+      "sha256": "19985a65b28c122498c2fdc05417b872914418338dc704493067472ca2defa52",
+      "size": 519
+    },
+    {
+      "path": "lib/NativeSharp.Core/MathUtil.ns",
+      "sha256": "a46f89fb810e57527c9e6ccffd3517903e8bb108c822e8029a1c58e61b1c8b6e",
+      "size": 5921
+    },
+    {
+      "path": "lib/NativeSharp.Core/NativeClock.ns",
+      "sha256": "08571e253302140d8ebcf7dca8f47602ce736a844b557ce852b0080abcf92a60",
+      "size": 4423
+    },
+    {
+      "path": "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
+      "sha256": "921fc8d4ebd389a3e222a13bf723f0788bcd005831dc1b089a039ae935f4ad00",
+      "size": 142
+    },
+    {
+      "path": "lib/NativeSharp.Core/Number.ns",
+      "sha256": "77d306e2d5fad614dd359e3acd4f6d8cddc9b9238b5bdb273e005805d72a9c62",
+      "size": 24546
+    },
+    {
+      "path": "lib/NativeSharp.Core/NumericLimits.ns",
+      "sha256": "1d51c17e42527400f99ddb3ab4b233cf3eaf53edab31b7f853e366c7002f1e43",
+      "size": 5230
+    },
+    {
+      "path": "lib/NativeSharp.Core/Object.ns",
+      "sha256": "7fab20293169bc1699932899068eb7139cdbf3c2b2e609cc43596f1354726c03",
+      "size": 3703
+    },
+    {
+      "path": "lib/NativeSharp.Core/Optional.ns",
+      "sha256": "550ec82b2a1eed2fbc404567269763d447d075b5e74b5301123367b543447573",
+      "size": 5325
+    },
+    {
+      "path": "lib/NativeSharp.Core/Random.ns",
+      "sha256": "cbd62ddbe23d2e37f444b2cbcb266203d821c576e913e7a2dcfbbe5dc5dfc454",
+      "size": 17984
+    },
+    {
+      "path": "lib/NativeSharp.Core/Rgb10A2Unorm.ns",
+      "sha256": "13ff033c78270f44eff7e604dca14acc2dbb1650b7cd43d3848067bc5b31d527",
+      "size": 923
+    },
+    {
+      "path": "lib/NativeSharp.Core/Rgba8Unorm.ns",
+      "sha256": "22ef3a8841ae7e4f660a229037d02ecd3f4dde16ec91f30c245ad74a6652be3e",
+      "size": 823
+    },
+    {
+      "path": "lib/NativeSharp.Core/Span.ns",
+      "sha256": "f765cc564d682dd472bb57562cea1e6c28fa038d1c7f09feea9f9eea1f34304d",
+      "size": 14375
+    },
+    {
+      "path": "lib/NativeSharp.Core/String.ns",
+      "sha256": "abad348533762821e7d73159823dc11fc4a44b83c4a091a741d63c2706d4f8ee",
+      "size": 87624
+    },
+    {
+      "path": "lib/NativeSharp.Core/StringBuilder.ns",
+      "sha256": "11b0662d2642ec7a8e60c1d3c8e01efcdede97f1691e54a2187b107f47c92627",
+      "size": 8249
+    },
+    {
+      "path": "lib/NativeSharp.Core/StringView.ns",
+      "sha256": "5cb767a5a1f8a126dd1e52aac66674062aa2238e9d892ecdfdd621b71ed61771",
+      "size": 13803
+    },
+    {
+      "path": "lib/NativeSharp.Core/TimeSpan.ns",
+      "sha256": "dc2a4422879d9337b4d6af84fa1504583cb6ee8857dcabd246e38e29b1df3851",
+      "size": 4069
+    },
+    {
+      "path": "lib/NativeSharp.Core/Utf8.ns",
+      "sha256": "a0da66ba09cfcbaa2ee8229188509916741c23a032235d5d18743614a2d737f4",
+      "size": 11221
+    },
+    {
+      "path": "lib/NativeSharp.LLVM.C/LLVMApi.ns",
+      "sha256": "1457fb794f95cc80c19f4e7d65f555feb3ecc143911495ffff71ff2d61945308",
+      "size": 6676
+    },
+    {
+      "path": "lib/NativeSharp.LLVM.C/LLVMEnums.ns",
+      "sha256": "219d1f64de0fd924548b86afe092be060ce6ebe2c815eb6ebedbcba556017604",
+      "size": 1584
+    },
+    {
+      "path": "lib/NativeSharp.LLVM.C/LLVMVersionPolicy.ns",
+      "sha256": "32ce10af929063d3b89928861d53deccec9fc4f99b35a2615cdee897da9d1d8e",
+      "size": 1262
+    },
+    {
+      "path": "lib/NativeSharp.LLVM.C/NativeSharp.LLVM.C.nsproj",
+      "sha256": "39d548283950b3e0f891c4bc9a5ba5006c911a1653b15b188ad7e06c4a8325cf",
+      "size": 227
+    },
+    {
+      "path": "selfhost/nsc/Basic/GenerationArena.ns",
+      "sha256": "0bc4e7fe0e0187e350c6d1be2e71ae843ea5ce857cb90c860b7adfca353dae7d",
+      "size": 1574
+    },
+    {
+      "path": "selfhost/nsc/Basic/Identifiers.ns",
+      "sha256": "05d0fd72d15c8f751daa758c59f5b13aaf9ce1429ea3322679a63dfb6584f9c5",
+      "size": 2108
+    },
+    {
+      "path": "selfhost/nsc/Basic/StableHash.ns",
+      "sha256": "f0b4a105fbc8543748f2f80eccde98b993b6d85301639d678cfc913b55af448c",
+      "size": 455
+    },
+    {
+      "path": "selfhost/nsc/CodeGen/LlvmBackend.ns",
+      "sha256": "d873459b6fd4d3d8f55498d3b37711c51953533a64c88c0e3761659400a539d4",
+      "size": 8242
+    },
+    {
+      "path": "selfhost/nsc/Diagnostics/Diagnostics.ns",
+      "sha256": "6a058c1e35cc249d672e0e6203eb35cf23b58358fb584c623651723e8f524c0e",
+      "size": 2868
+    },
+    {
+      "path": "selfhost/nsc/Driver/Program.ns",
+      "sha256": "7025c331a830dc851074cf893f8b558d512e4deb2cd575be43ea9d2cfdeb66b4",
+      "size": 17592
+    },
+    {
+      "path": "selfhost/nsc/IR/IntermediateRepresentation.ns",
+      "sha256": "5b8384d4309e6809335f6a419dd84b8641cb1147d0ed4f8a620b9b04a9b9f4eb",
+      "size": 41716
+    },
+    {
+      "path": "selfhost/nsc/Lexer/Lexer.ns",
+      "sha256": "76db77a420e8942c4500a759196a6a0b544846d1aff366eb8dbf781774ed71eb",
+      "size": 20337
+    },
+    {
+      "path": "selfhost/nsc/Lexer/TokenDumper.ns",
+      "sha256": "d3a434582b2b9114803bf6da23245a7d3805edfadbb8a3822c7daa5a39096a9c",
+      "size": 2102
+    },
+    {
+      "path": "selfhost/nsc/Lexer/TokenKind.ns",
+      "sha256": "e2caeaf03352e5ba86122e24bdc206c130a62da200a5422b6745887ffb1236c5",
+      "size": 11440
+    },
+    {
+      "path": "selfhost/nsc/Lexer/TokenStream.ns",
+      "sha256": "0dfe50d847c319ef244edbaeb8f3cd8f93a6642ea037e393fbd797efcaf34817",
+      "size": 1172
+    },
+    {
+      "path": "selfhost/nsc/NativeSharp.Compiler.nsproj",
+      "sha256": "e8b72d72a79aae920faf16c609a51135aa15f33e27b99dd50b85e773cb29b77c",
+      "size": 1047
+    },
+    {
+      "path": "selfhost/nsc/Parser/Parser.ns",
+      "sha256": "49c50406502d005446ce9e1eb016e4d69009b9b7fcf38df1d558682fadf0adfb",
+      "size": 68705
+    },
+    {
+      "path": "selfhost/nsc/Projects/ProjectSystem.ns",
+      "sha256": "4be4a03d7fbd568284506ccef0da20d39d43fff07dcb4acd368b74e05bf1bdec",
+      "size": 11110
+    },
+    {
+      "path": "selfhost/nsc/Sema/SemanticAnalyzer.ns",
+      "sha256": "8c4c06cbb1e71db0e808db5ee78094794aef0b58149177149034be5922a3d25f",
+      "size": 41320
+    },
+    {
+      "path": "selfhost/nsc/Sema/SemanticDumper.ns",
+      "sha256": "025b2914c22eefc59fc4b27c794784bc52dcd188b0058ec65136a2ab0a62a778",
+      "size": 8296
+    },
+    {
+      "path": "selfhost/nsc/Sema/SemanticModel.ns",
+      "sha256": "80d2ba2c74d7113ad92aafa3b656c07847b6f2ddb88206089aec93d9a21e56e3",
+      "size": 5742
+    },
+    {
+      "path": "selfhost/nsc/Source/SourceBuffer.ns",
+      "sha256": "066a5c5bfa6ea88ca3ad98ee40b173208220c2dd20a5cea36ad821dcb9d515f1",
+      "size": 3471
+    },
+    {
+      "path": "selfhost/nsc/Symbols/Symbols.ns",
+      "sha256": "a43b74a496174ffee4ad5079d15d5f9c24e0cd5fd8180a7676dc7ef0eed1deba",
+      "size": 6437
+    },
+    {
+      "path": "selfhost/nsc/Syntax/SyntaxTree.ns",
+      "sha256": "7f08e4ae097d75f998e1692021aa9e0d49443869d3681f7746f226666d2844ca",
+      "size": 7096
+    },
+    {
+      "path": "selfhost/nsc/Types/TypeSystem.ns",
+      "sha256": "851dee30793aba1f2052334eb42e5ff8bd4bf06fe30043d7a9f62ad1409917eb",
+      "size": 9206
+    }
+  ],
+  "source_sha256": "df430bcb019aff0957e13ad5f43f7a75492fd049bd17e796bcbbb32519502608",
+  "status": "passed",
+  "subsystem_checks": 24,
+  "timings_seconds": {
+    "diagnostic": 0.019547,
+    "execute:lld:O0": 0.024467,
+    "execute:lld:O1": 0.025565,
+    "execute:lld:O2": 0.02427,
+    "execute:lld:O3": 0.024422,
+    "execute:nslink:O0": 0.024707,
+    "execute:nslink:O1": 0.024571,
+    "execute:nslink:O2": 0.024697,
+    "execute:nslink:O3": 0.02412,
+    "help": 0.019935,
+    "project:lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj": 0.018798,
+    "project:lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj": 0.019154,
+    "project:lib/NativeSharp.Core/NativeSharp.Core.nsproj": 0.018977,
+    "project:lib/NativeSharp.LLVM.C/NativeSharp.LLVM.C.nsproj": 0.019537,
+    "self_test": 0.01932,
+    "ssa:selfhost/nsc/Basic/GenerationArena.ns": 0.021299,
+    "ssa:selfhost/nsc/Basic/Identifiers.ns": 0.020565,
+    "ssa:selfhost/nsc/Basic/StableHash.ns": 0.021352,
+    "ssa:selfhost/nsc/CodeGen/LlvmBackend.ns": 0.022561,
+    "ssa:selfhost/nsc/Diagnostics/Diagnostics.ns": 0.019509,
+    "ssa:selfhost/nsc/Driver/Program.ns": 0.024934,
+    "ssa:selfhost/nsc/IR/IntermediateRepresentation.ns": 0.034119,
+    "ssa:selfhost/nsc/Lexer/Lexer.ns": 0.027181,
+    "ssa:selfhost/nsc/Lexer/TokenDumper.ns": 0.020321,
+    "ssa:selfhost/nsc/Lexer/TokenKind.ns": 0.024674,
+    "ssa:selfhost/nsc/Lexer/TokenStream.ns": 0.019733,
+    "ssa:selfhost/nsc/Parser/Parser.ns": 0.044561,
+    "ssa:selfhost/nsc/Projects/ProjectSystem.ns": 0.022951,
+    "ssa:selfhost/nsc/Sema/SemanticAnalyzer.ns": 0.042813,
+    "ssa:selfhost/nsc/Sema/SemanticDumper.ns": 0.022668,
+    "ssa:selfhost/nsc/Sema/SemanticModel.ns": 0.021172,
+    "ssa:selfhost/nsc/Source/SourceBuffer.ns": 0.020393,
+    "ssa:selfhost/nsc/Symbols/Symbols.ns": 0.021509,
+    "ssa:selfhost/nsc/Syntax/SyntaxTree.ns": 0.023256,
+    "ssa:selfhost/nsc/Types/TypeSystem.ns": 0.023073,
+    "version": 0.020949
+  },
+  "version": 1,
+  "work_items": [
+    "NS2-SH-127",
+    "NS2-SH-128",
+    "NS2-SH-129",
+    "NS2-SH-130",
+    "NS2-SH-131",
+    "NS2-SH-132",
+    "NS2-SH-133",
+    "NS2-SH-134",
+    "NS2-SH-135",
+    "NS2-SH-136",
+    "NS2-SH-137",
+    "NS2-SH-138"
+  ]
+}

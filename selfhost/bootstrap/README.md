@@ -36,3 +36,7 @@ ejecutables ya probados por CMake en cuatro perfiles y ambos linkers; publica ha
 
 SH09 añade `verify_project_driver.py`: comprueba dumps de proyecto estables, response files,
 objetos por perfil, `nsmeta`, manifiestos y los ocho ejecutables enlazados.
+
+SH10 añade `verify_first_generation.py`: congela cada `.ns`/`.nsproj` del compilador y sus cuatro
+dependencias bootstrap, compara dos construcciones limpias de `nsc1`, audita PE/imports y ejecuta
+el corpus del compilador y la matriz O0–O3 con ambos linkers.

@@ -513,6 +513,10 @@ Gate: `selfhost/evidence/gates/SH09/gate.json`.
 **Gate SH10:** `nsc1` compila el corpus acordado y todos los subsistemas necesarios para construir
 la siguiente generación; `nsc0` sigue verde e instalable.
 
+Expediente de cierre: `docs/2.0/self-hosting/tandas/TANDA-11-SH10-PRIMERA-GENERACION-NSC1.md`.
+Contrato: `selfhost/contracts/first-generation.contract.json`.
+Gate: `selfhost/evidence/gates/SH10/gate.json`.
+
 ### Fase 11 — `nsc2`, primer compilador autoalojado
 
 **Objetivo:** eliminar a `nsc0` del camino de compilación del compilador NativeSharp.

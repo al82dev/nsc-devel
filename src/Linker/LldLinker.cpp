@@ -700,6 +700,9 @@ bool LldLinker::linkDynamicLibrary(
         "/nxcompat",
         "/highentropyva",
         responsePathArgument("/out:", outputPath)};
+    // NSLink ya fija TimeDateStamp=0 y deliberadamente rechaza switches desconocidos. /Brepro
+    // sólo pertenece a lld-link; allí elimina el reloj de pared sin reescribir el PE después.
+    if (isLldLinkExecutable(executablePath_)) arguments.push_back("/Brepro");
     if (!pdbPath.empty())
     {
         arguments.push_back("/debug:full");
@@ -832,6 +835,7 @@ bool LldLinker::linkExecutable(
         "/nxcompat",
         "/highentropyva",
         responsePathArgument("/out:", outputPath)};
+    if (isLldLinkExecutable(executablePath_)) arguments.push_back("/Brepro");
     if (!pdbPath.empty())
     {
         arguments.push_back("/debug:full");
