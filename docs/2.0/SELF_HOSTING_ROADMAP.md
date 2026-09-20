@@ -723,7 +723,15 @@ retirada y el gate SH27 dependiente conserva ejecución real con ambos linkers.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-30-SH28-IR-PROGRAMA-COMPLETO.md`.
 
-### 8.31 Plan cerrado restante — Tandas 31–56
+### 8.31 Tanda 31 — SH29
+
+La tanda 31 publica layout determinista de enums, structs, clases y campos, y baja globals escalares
+mutables/constantes con inicialización estática. El gate detectó y corrigió relocations absolutas
+`ADDR32`: la emisión PIC usa `REL32`, enlaza con LLD y NSLink y devuelve 42 en O0–O3.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-31-SH29-DATOS-LAYOUT.md`.
+
+### 8.32 Plan cerrado restante — Tandas 32–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a
@@ -734,7 +742,6 @@ restantes cierran esas brechas sin introducir una segunda lista futura.
 
 | Tanda | Gate | Resultado obligatorio de cierre |
 |---:|---:|---|
-| 31 | SH29 | Datos y layout: enums, structs, clases, globals, constantes, inicialización estática y verificación ABI de tamaños y alineación. |
 | 32 | SH30 | Modelo de objetos: `this`, `base`, campos, métodos, constructores, propiedades, indexers y operadores. |
 | 33 | SH31 | Texto nativo: `char`, UTF-8, literales globales, `string`/`CString`, concatenación, comparación e indexación. |
 | 34 | SH32 | Arrays y memoria: arrays administrados y nativos, `new`/`delete`, límites, spans, heap y `stackalloc` general. |
@@ -1147,13 +1154,13 @@ mantiene un solo commit de cierre por tanda.
 
 ## 23. Resumen ejecutivo
 
-Las tandas 01–30 y los gates SH00–SH28 ya establecieron contratos, retiraron image replay, lograron
+Las tandas 01–31 y los gates SH00–SH29 ya establecieron contratos, retiraron image replay, lograron
 un backend derivado de fuente para la rebanada escalar actual, construyeron el grafo fuente
 determinista y dieron identidad semántica al conjunto multimódulo. Eso es una base real, no
-self-hosting completo: todavía faltan datos/objetos y el resto de la superficie 2.0, bibliotecas,
+self-hosting completo: todavía faltan el modelo completo de objetos y el resto de la superficie 2.0, bibliotecas,
 generaciones autónomas, punto fijo y certificación operativa.
 
-El plan cerrado restante comprende las tandas 31–56 y los gates SH29–SH54. SH41, en la tanda 43,
+El plan cerrado restante comprende las tandas 32–56 y los gates SH30–SH54. SH41, en la tanda 43,
 produce la primera autocompilación real; SH54, en la tanda 56, es el único cierre de promoción. El
 roadmap contiene así 56 tandas y 55 gates acumulativos (`SH00`–`SH54`), con baseline, expediente y
 commit por tanda. Después de SH54 no queda una fase de self-hosting 2.0 por descubrir: el siguiente

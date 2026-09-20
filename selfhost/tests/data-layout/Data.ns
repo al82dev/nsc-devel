@@ -1,0 +1,24 @@
+namespace DataLayoutFixture
+{
+    public enum Mode : byte { Off = 0, On = 7, Next = 8 }
+
+    public size(8) struct Pair
+    {
+        public int X;
+        public byte Y;
+    }
+
+    public pack(1) size(5) struct PackedPair
+    {
+        public int X;
+        public byte Y;
+    }
+
+    public class Header
+    {
+        public int Value;
+    }
+
+    public int GlobalAnswer = 40;
+    public const int GlobalTwo = 2;
+}

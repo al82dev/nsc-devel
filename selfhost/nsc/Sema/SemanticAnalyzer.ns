@@ -208,7 +208,8 @@ namespace NativeSharp.Compiler.Sema
             if (node.Kind() == "GlobalVariableDeclaration")
             {
                 int type = model.Types().Intern(node.SemanticTypeText()); int symbol = Declare(SymbolKind.GlobalVariable, node.Text(), type, nodeId, parent < 0);
-                model.GetSymbol(symbol).SetConst(node.Flag()); if (parent >= 0) { AttachToParent(symbol, parent); }
+                model.GetSymbol(symbol).SetConst(node.Flag() || String.Contains(node.ModifiersText(), "const"));
+                if (parent >= 0) { AttachToParent(symbol, parent); }
             }
         }
 

@@ -224,6 +224,66 @@ namespace NativeSharp.Compiler.CodeGen
             return String.Concat(separator, declaration.Text());
         }
 
+        private static owned string LlvmGlobalName(SemanticModel semantic, int symbolId)
+        {
+            Symbol symbol = semantic.GetSymbol(symbolId);
+            raii string type = String.Copy(semantic.Types().Get(symbol.TypeId()).Display());
+            raii string left = String.Concat(symbol.QualifiedName(), "|");
+            raii string identity = String.Concat(left, type);
+            raii string hash = String.ToString(StableHash.Text(identity));
+            raii string prefix = String.Concat("__nativesharp_global_", hash);
+            raii string separator = String.Concat(prefix, "_");
+            return String.Concat(separator, symbol.Name());
+        }
+
+        private static void* ConstantInitializer(void* context, SyntaxTree tree,
+            SemanticModel semantic, Symbol symbol)
+        {
+            void* type = ScalarType(context, semantic.Types().Get(symbol.TypeId()).Display());
+            if (type == null) { return null; }
+            int declaration = symbol.Declaration();
+            if (declaration < 0 || tree.Node(declaration).First() < 0) { return LLVM.LLVMConstNull(type); }
+            int initializer = tree.Node(declaration).First();
+            SemanticFact fact = semantic.Fact(initializer);
+            if (!fact.IsConstant()) { return null; }
+            if (FloatingScalar(semantic.Types().Get(symbol.TypeId()).Display()))
+            {
+                double value = 0.0;
+                if (!Number.TryParseDouble(fact.ConstantText(), out value)) { return null; }
+                return LLVM.LLVMConstReal(type, value);
+            }
+            if (semantic.Types().Get(symbol.TypeId()).Display() == "bool")
+            { return LLVM.LLVMConstInt(type, fact.ConstantText() == "true" ? 1UL : 0UL, 0); }
+            long signedValue = 0;
+            if (!Number.TryParseInt64(fact.ConstantText(), out signedValue)) { return null; }
+            return LLVM.LLVMConstInt(type, (ulong)signedValue, 1);
+        }
+
+        private static bool DeclareData(void* module, SyntaxTree tree, SemanticModel semantic)
+        {
+            void* context = LLVM.LLVMGetModuleContext(module); int symbolId = 0;
+            while (symbolId < semantic.SymbolCount())
+            {
+                Symbol symbol = semantic.GetSymbol(symbolId);
+                if (symbol.Kind() == SymbolKind.GlobalVariable && symbol.TypeId() >= 0 &&
+                    SupportedScalar(semantic.Types().Get(symbol.TypeId()).Display()))
+                {
+                    void* initializer = ConstantInitializer(context, tree, semantic, symbol);
+                    if (initializer == null) { return false; }
+                    raii string globalNameText = LlvmGlobalName(semantic, symbolId);
+                    raii CString globalName = new CString(globalNameText);
+                    void* global = LLVM.LLVMAddGlobal(module,
+                        ScalarType(context, semantic.Types().Get(symbol.TypeId()).Display()), globalName.Pointer());
+                    if (global == null) { return false; }
+                    LLVM.LLVMSetInitializer(global, initializer);
+                    LLVM.LLVMSetGlobalConstant(global, symbol.IsConst() ? 1 : 0);
+                    LLVM.LLVMSetAlignment(global, (uint)semantic.Types().Get(symbol.TypeId()).Alignment());
+                }
+                symbolId = symbolId + 1;
+            }
+            return true;
+        }
+
         private static int FindFunctionDeclaration(SyntaxTree tree, int syntaxId, string name)
         {
             if (syntaxId < 0) { return -1; }
@@ -429,6 +489,15 @@ namespace NativeSharp.Compiler.CodeGen
             {
                 int symbol = semantic.Fact(syntaxId).SymbolId();
                 void* storage = state.FindLocal(symbol); valueType = state.FindLocalType(symbol);
+                if (storage == null && symbol >= 0 &&
+                    semantic.GetSymbol(symbol).Kind() == SymbolKind.GlobalVariable)
+                {
+                    raii string globalNameText = LlvmGlobalName(semantic, symbol);
+                    raii CString globalName = new CString(globalNameText);
+                    storage = LLVM.LLVMGetNamedGlobal(module, globalName.Pointer());
+                    valueType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                        semantic.Types().Get(semantic.GetSymbol(symbol).TypeId()).Display());
+                }
                 valid = storage != null && valueType != null; return storage;
             }
             if (node.Kind() == "UnaryExpression" && node.OperatorKind() == TokenKind.Star)
@@ -583,6 +652,17 @@ namespace NativeSharp.Compiler.CodeGen
             if (node.Kind() == "IdentifierExpression")
             {
                 int symbol = semantic.Fact(syntaxId).SymbolId();
+                if (symbol >= 0 && semantic.GetSymbol(symbol).Kind() == SymbolKind.EnumMember &&
+                    semantic.GetSymbol(symbol).HasConstantValue())
+                {
+                    int typeId = semantic.Fact(syntaxId).TypeId();
+                    void* enumType = null;
+                    if (typeId >= 0) { enumType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                        semantic.Types().Get(typeId).Display()); }
+                    if (enumType == null) { enumType = i32; }
+                    valid = true; return LLVM.LLVMConstInt(enumType,
+                        (ulong)semantic.GetSymbol(symbol).ConstantValue(), 1);
+                }
                 void* localStorage = state.FindLocal(symbol);
                 if (localStorage != null)
                 {
@@ -590,6 +670,17 @@ namespace NativeSharp.Compiler.CodeGen
                     void* localType = state.FindLocalType(symbol);
                     if (localType == null) { valid = false; return null; }
                     return LLVM.LLVMBuildLoad2(builder, localType, localStorage, loadName.Pointer());
+                }
+                if (symbol >= 0 && semantic.GetSymbol(symbol).Kind() == SymbolKind.GlobalVariable)
+                {
+                    raii string globalNameText = LlvmGlobalName(semantic, symbol);
+                    raii CString globalName = new CString(globalNameText);
+                    void* global = LLVM.LLVMGetNamedGlobal(module, globalName.Pointer());
+                    void* globalType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                        semantic.Types().Get(semantic.GetSymbol(symbol).TypeId()).Display());
+                    if (global == null || globalType == null) { return null; }
+                    raii CString loadName = new CString("global.load");
+                    valid = true; return LLVM.LLVMBuildLoad2(builder, globalType, global, loadName.Pointer());
                 }
                 SyntaxNode declaration = tree.Node(declarationId);
                 int parameter = 0; int child = 0;
@@ -1212,6 +1303,8 @@ namespace NativeSharp.Compiler.CodeGen
             { Dispose(context, module, builder, machine, layout); return 3; }
             if (!DeclareFunctions(module, tree, semantic, tree.Root()))
             { Dispose(context, module, builder, machine, layout); return 13; }
+            if (!DeclareData(module, tree, semantic))
+            { Dispose(context, module, builder, machine, layout); return 16; }
             if (!EmitFunctions(context, module, builder, i32, i1, tree, semantic, tree.Root()))
             { Dispose(context, module, builder, machine, layout); return 14; }
             void* computeBlock = LLVM.LLVMAppendBasicBlockInContext(context, compute, blockName.Pointer());
@@ -1248,7 +1341,7 @@ namespace NativeSharp.Compiler.CodeGen
             if (LLVM.LLVMGetTargetFromTriple(triple.Pointer(), &target, &targetError) != 0 || target == null)
             { if (targetError != null) { LLVM.LLVMDisposeMessage(targetError); } Dispose(context, module, builder, machine, layout); return 7; }
             machine = LLVM.LLVMCreateTargetMachine(target, triple.Pointer(), empty.Pointer(), empty.Pointer(),
-                CodeGenLevel(optimization), LLVMRelocMode.Static, LLVMCodeModel.Default);
+                CodeGenLevel(optimization), LLVMRelocMode.PIC, LLVMCodeModel.Default);
             layout = LLVM.LLVMCreateTargetDataLayout(machine);
             if (machine == null || layout == null) { Dispose(context, module, builder, machine, layout); return 8; }
             LLVM.LLVMSetModuleDataLayout(module, layout);

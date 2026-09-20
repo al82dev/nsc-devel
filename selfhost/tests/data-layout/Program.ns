@@ -1,0 +1,4 @@
+namespace DataLayoutFixture
+{
+    public int Main() { return GlobalAnswer + GlobalTwo; }
+}

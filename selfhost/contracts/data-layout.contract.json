@@ -1,0 +1,21 @@
+{
+  "schema": "nativesharp-selfhost-data-layout-contract",
+  "version": 1,
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "routes": ["lld", "nslink"],
+  "project": "selfhost/tests/data-layout/DataLayout.nsproj",
+  "expected_exit_code": 42,
+  "required_layout_fragments": [
+    "name=\"Mode\" kind=18 size=1 align=1",
+    "name=\"Pair\" kind=18 size=8 align=4",
+    "name=\"PackedPair\" kind=18 size=5 align=1",
+    "name=\"Header\" kind=18 size=4 align=4",
+    "name=\"DataLayoutFixture.Pair.X\" type=7 parent=5 offset=0 size=4 align=4",
+    "name=\"DataLayoutFixture.Pair.Y\" type=3 parent=5 offset=4 size=1 align=1",
+    "name=\"DataLayoutFixture.GlobalTwo\" type=7 parent=0 offset=-1 size=0 align=1 const=True"
+  ],
+  "required_global_names": ["GlobalAnswer", "GlobalTwo"],
+  "forbidden_global_relocation": "IMAGE_REL_AMD64_ADDR32 __nativesharp_global_",
+  "required_global_relocation": "IMAGE_REL_AMD64_REL32 __nativesharp_global_",
+  "work_items": ["NS2-SH-125", "NS2-SH-126", "NS2-SH-127"]
+}

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>DataLayoutFixture</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Data.ns" />
+    <Compile Include="Program.ns" />
+  </ItemGroup>
+</Project>

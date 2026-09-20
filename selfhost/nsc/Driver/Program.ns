@@ -46,6 +46,7 @@ namespace NativeSharp.Compiler.Driver
             Console.WriteLine("  nsc-next --dump-module-set <project.nsproj>");
             Console.WriteLine("  nsc-next --dump-module-exports <project.nsproj>");
             Console.WriteLine("  nsc-next --dump-project-ir <project.nsproj> hir|mir|cfg|dominance|ssa");
+            Console.WriteLine("  nsc-next --dump-project-layout <project.nsproj>");
             Console.WriteLine("  nsc-next --emit-project-object <project.nsproj> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next --emit-nsmeta|--emit-toolchain-manifest <project.nsproj> <path>");
             Console.WriteLine("  nsc-next --bootstrap-generation <generation> <manifest> <producer.exe> <output.exe> <trace>");
@@ -302,6 +303,28 @@ namespace NativeSharp.Compiler.Driver
             raii string dump = IrPipeline.Dump(tree, semantic, stage); Console.Write(dump); return 0;
         }
 
+        private static int DumpProjectLayout(string projectPath)
+        {
+            raii SourceGraph graph = SourceGraphBuilder.Build(projectPath);
+            raii ProjectModel project = ProjectLoader.Load(projectPath);
+            if (graph.Failed() || !ProjectLoader.Verify(project)) { return 1; }
+            raii StringBuilder sourceText = new StringBuilder(); int unit = 0;
+            while (unit < graph.UnitCount())
+            {
+                SourceUnit value = graph.UnitAt(unit);
+                if (value.Owner() == project.Name())
+                { string text = File.ReadAllText(value.PathValue()); sourceText.Append(text); sourceText.Append('\n'); }
+                unit = unit + 1;
+            }
+            raii string merged = sourceText.ToOwnedString();
+            raii SourceBuffer source = new SourceBuffer(new FileId(1), projectPath, merged);
+            raii Lexer lexer = new Lexer(source); raii TokenStream tokens = lexer.LexAll();
+            raii Parser parser = new Parser(source, tokens); raii SyntaxTree tree = parser.ParseCompilationUnit();
+            raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree); raii SemanticModel semantic = analyzer.Analyze();
+            if (tokens.ErrorCount() != 0 || parser.ErrorCount() != 0 || semantic.ErrorCount() != 0) { return 1; }
+            raii string dump = SemanticDumper.DumpMetadata(semantic); Console.Write(dump); return 0;
+        }
+
         // SH25. The whole source graph, dumped. Deterministic by construction: the order comes
         // from SourceGraph, never from the filesystem enumeration.
         private static int DumpSourceGraph(string projectPath)
@@ -472,6 +495,11 @@ namespace NativeSharp.Compiler.Driver
             {
                 if (count != 4) { return 2; }
                 return DumpProjectIr(arguments[2], arguments[3]);
+            }
+            if (command == "--dump-project-layout")
+            {
+                if (count != 3) { return 2; }
+                return DumpProjectLayout(arguments[2]);
             }
             if (command == "--emit-object" || command == "--emit-assembly")
             {
