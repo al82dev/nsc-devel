@@ -146,7 +146,8 @@ namespace NativeSharp.Compiler.CodeGen
 
         private static bool SupportedScalar(string type)
         {
-            return type == "void" || type == "bool" || type == "byte" || type == "char" ||
+            bool pointer = type.Length > 0 && type[type.Length - 1] == '*';
+            return pointer || type == "void" || type == "bool" || type == "byte" || type == "char" ||
                 type == "short" || type == "ushort" || type == "int" || type == "uint" ||
                 type == "long" || type == "ulong" || type == "nint" || type == "nuint";
         }
@@ -160,6 +161,8 @@ namespace NativeSharp.Compiler.CodeGen
             if (type == "int" || type == "uint") { return LLVM.LLVMInt32TypeInContext(context); }
             if (type == "long" || type == "ulong" || type == "nint" || type == "nuint")
             { return LLVM.LLVMInt64TypeInContext(context); }
+            if (type.Length > 0 && type[type.Length - 1] == '*')
+            { return LLVM.LLVMPointerTypeInContext(context, 0u); }
             return null;
         }
 
@@ -272,6 +275,9 @@ namespace NativeSharp.Compiler.CodeGen
             if (value == null || sourceType == destinationType) { return value; }
             raii string source = String.Copy(semantic.Types().Get(sourceType).Display());
             raii string destination = String.Copy(semantic.Types().Get(destinationType).Display());
+            bool sourcePointer = source.Length > 0 && source[source.Length - 1] == '*';
+            bool destinationPointer = destination.Length > 0 && destination[destination.Length - 1] == '*';
+            if (destinationPointer && (sourcePointer || source == "null")) { return value; }
             int sourceBits = IntegerBits(source); int destinationBits = IntegerBits(destination);
             if (sourceBits == 0 || destinationBits == 0) { return null; }
             void* context = LLVM.LLVMGetModuleContext(module);
@@ -339,6 +345,47 @@ namespace NativeSharp.Compiler.CodeGen
             return null;
         }
 
+        private static void* EmitLValue(void* module, void* builder, void* i32, void* i1,
+            SyntaxTree tree, SemanticModel semantic, int declarationId, void* function,
+            FunctionLoweringState state, int syntaxId, out void* valueType, out bool valid)
+        {
+            valueType = null; valid = false;
+            if (syntaxId < 0) { return null; }
+            SyntaxNode node = tree.Node(syntaxId);
+            if (node.Kind() == "IdentifierExpression")
+            {
+                int symbol = semantic.Fact(syntaxId).SymbolId();
+                void* storage = state.FindLocal(symbol); valueType = state.FindLocalType(symbol);
+                valid = storage != null && valueType != null; return storage;
+            }
+            if (node.Kind() == "UnaryExpression" && node.OperatorKind() == TokenKind.Star)
+            {
+                bool pointerValid = false;
+                void* pointer = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.First(), out pointerValid);
+                int typeId = semantic.Fact(syntaxId).TypeId();
+                if (typeId >= 0)
+                { valueType = ScalarType(LLVM.LLVMGetModuleContext(module), semantic.Types().Get(typeId).Display()); }
+                valid = pointerValid && pointer != null && valueType != null; return pointer;
+            }
+            if (node.Kind() == "IndexExpression")
+            {
+                bool pointerValid = false; bool indexValid = false;
+                void* pointer = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.First(), out pointerValid);
+                void* index = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.Second(), out indexValid);
+                int typeId = semantic.Fact(syntaxId).TypeId();
+                if (typeId < 0) { return null; }
+                valueType = ScalarType(LLVM.LLVMGetModuleContext(module), semantic.Types().Get(typeId).Display());
+                if (!pointerValid || !indexValid || pointer == null || index == null || valueType == null) { return null; }
+                void* gepIndex = index; raii CString gepName = new CString("index.address");
+                void* address = LLVM.LLVMBuildGEP2(builder, valueType, pointer, &gepIndex, 1u, gepName.Pointer());
+                valid = address != null; return address;
+            }
+            return null;
+        }
+
         private static void* EmitScalarExpression(void* module, void* builder, void* i32, void* i1, SyntaxTree tree,
             SemanticModel semantic, int declarationId, void* function, FunctionLoweringState state,
             int syntaxId, out bool valid)
@@ -362,6 +409,42 @@ namespace NativeSharp.Compiler.CodeGen
             {
                 valid = true;
                 return LLVM.LLVMConstInt(i1, node.Text() == "true" ? 1UL : 0UL, 0);
+            }
+            if (node.Kind() == "NullLiteralExpression")
+            {
+                valid = true;
+                return LLVM.LLVMConstNull(LLVM.LLVMPointerTypeInContext(
+                    LLVM.LLVMGetModuleContext(module), 0u));
+            }
+            if (node.Kind() == "StackallocExpression")
+            {
+                bool countValid = false;
+                void* count = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.First(), out countValid);
+                void* elementType = ScalarType(LLVM.LLVMGetModuleContext(module), node.SemanticTypeText());
+                if (!countValid || count == null || elementType == null) { return null; }
+                raii CString allocationName = new CString("stack.buffer");
+                void* allocation = LLVM.LLVMBuildArrayAlloca(
+                    builder, elementType, count, allocationName.Pointer());
+                valid = allocation != null; return allocation;
+            }
+            if (node.Kind() == "UnaryExpression" && node.OperatorKind() == TokenKind.Amp)
+            {
+                void* valueType = null;
+                void* address = EmitLValue(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.First(), out valueType, out valid);
+                return address;
+            }
+            if ((node.Kind() == "UnaryExpression" && node.OperatorKind() == TokenKind.Star) ||
+                node.Kind() == "IndexExpression")
+            {
+                void* valueType = null; bool addressValid = false;
+                void* address = EmitLValue(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, syntaxId, out valueType, out addressValid);
+                if (!addressValid || address == null || valueType == null) { return null; }
+                raii CString loadName = new CString("memory.load");
+                void* value = LLVM.LLVMBuildLoad2(builder, valueType, address, loadName.Pointer());
+                valid = value != null; return value;
             }
             if (node.Kind() == "UnaryExpression" && node.OperatorKind() == TokenKind.Bang)
             {
@@ -433,15 +516,17 @@ namespace NativeSharp.Compiler.CodeGen
                 }
                 return null;
             }
-            if (node.Kind() == "AssignmentExpression" &&
-                node.First() >= 0 && tree.Node(node.First()).Kind() == "IdentifierExpression")
+            if (node.Kind() == "AssignmentExpression")
             {
+                void* valueType = null; bool storageValid = false;
+                void* storage = EmitLValue(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.First(), out valueType, out storageValid);
                 bool assignedValid = false;
                 void* assigned = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
                     declarationId, function, state, node.Second(), out assignedValid);
-                int symbol = semantic.Fact(node.First()).SymbolId(); void* storage = state.FindLocal(symbol);
-                void* valueType = state.FindLocalType(symbol); void* result = assigned;
-                if (!assignedValid || assigned == null || storage == null || valueType == null) { return null; }
+                void* result = assigned;
+                if (!storageValid || !assignedValid || assigned == null ||
+                    storage == null || valueType == null) { return null; }
                 assigned = ApplyConversion(module, builder, semantic, semantic.Fact(syntaxId),
                     assigned, "operand", 1);
                 if (assigned == null) { return null; }

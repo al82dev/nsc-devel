@@ -1,0 +1,32 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH23",
+  "state": "LANDED",
+  "revision": "selfhost(tanda-25-source-pointers)",
+  "run_id": "tanda-25-sh23-source-pointers-20260920",
+  "previous_gate": "selfhost/evidence/gates/SH22/gate.json",
+  "artifacts": {
+    "baseline_report_sha256": "d31b996c687b5d1cf6601ffa4958b6c0224fe44607e2e1ce309c8f42c586cf6d",
+    "baseline_report_json_sha256": "ac55ffb8cec193aea16471242352170e84c5004a8f202ccd2c372d48dd0b14bd",
+    "baseline_source_sha256": "afc16788c12fa1e07e2c063a39dfd266f9ab7397155c67fc632a3db932750b98",
+    "gate0_sha256": "b4b3f1764da31fa6fac9986e296d090a24f6db4c8dfa61203098125a75d6cd1e",
+    "sh23_lld_report_sha256": "2d0362261c022e2401b297fbb520a27edc508c1d09c37ae5c620855705329c61",
+    "sh23_nslink_report_sha256": "19301743df71cbec6b7ae16542bf72b1f04aa9487326438b88e635c56aac5189",
+    "sh23_lld_generated_report_sha256": "8ea08342ad3b04ca2783e871108eb83c7072f28f5a962f895a9c4a23468f30ec",
+    "sh23_nslink_generated_report_sha256": "03406d1e9f0843babf97ed9a4b2c21a48f20d11ae26c869f2e23cc5afabe87ec"
+  },
+  "metrics": {
+    "source_derived_codegen": true,
+    "scope": "pointer-null-address-dereference-index-stackalloc",
+    "binding_symbol_count": 97,
+    "execution_combinations": 8,
+    "profiles": ["O0", "O1", "O2", "O3"],
+    "linkers": ["lld-link", "NSLink"],
+    "ctest_per_linker": 458,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18,
+    "baseline_seconds": 974.24
+  },
+  "problems": []
+}

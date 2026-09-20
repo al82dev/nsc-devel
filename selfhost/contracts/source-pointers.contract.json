@@ -1,0 +1,13 @@
+{
+  "schema": "nativesharp-selfhost-source-pointers",
+  "version": 1,
+  "gate": "SH23",
+  "source": "selfhost/tests/codegen/source-pointers.ns",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "expected_exit_code": 42,
+  "required_symbols": ["__nativesharp_source_Sum", "__nativesharp_source_Main"],
+  "required_llvm_api": ["LLVMBuildArrayAlloca", "LLVMBuildGEP2", "LLVMBuildLoad2", "LLVMBuildStore", "LLVMConstNull"],
+  "source_derived_codegen": true,
+  "scope": "pointer-null-address-dereference-index-stackalloc"
+}

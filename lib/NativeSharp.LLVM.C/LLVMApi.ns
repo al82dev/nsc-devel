@@ -84,6 +84,10 @@ namespace NativeSharp.LLVM.C
             public void LLVMAddIncoming(
                 void* phi, void** incomingValues, void** incomingBlocks, uint count);
             public void* LLVMBuildAlloca(void* builder, void* type, byte* name);
+            public void* LLVMBuildArrayAlloca(
+                void* builder, void* type, void* elementCount, byte* name);
+            public void* LLVMBuildGEP2(
+                void* builder, void* type, void* pointer, void** indices, uint count, byte* name);
             public void* LLVMBuildLoad2(void* builder, void* type, void* pointer, byte* name);
             public void* LLVMBuildStore(void* builder, void* value, void* pointer);
             public void LLVMSetAlignment(void* value, uint bytes);

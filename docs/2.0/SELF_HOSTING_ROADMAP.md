@@ -672,6 +672,13 @@ de asignación compuesta.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-24-SH22-ANCHOS-ENTEROS.md`.
 
+La tanda 25 abre SH23 y añade punteros opacos al lowering fuente: firmas y locales de puntero,
+`null`, toma de dirección, desreferencia, indexación y `stackalloc`. `EmitLValue` centraliza la
+dirección y el tipo de almacenamiento para que cargas y asignaciones compartan semántica. El gate
+ejecuta el fixture en O0–O3 con LLD y NSLink.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-25-SH23-PUNTEROS-MEMORIA-LOCAL.md`.
+
 ## 9. Orden de dependencias
 
 ```text
@@ -698,6 +705,7 @@ SH00 punto de partida
                                                                           └─ SH20 escalares bool/void
                                                                               └─ SH21 expresiones escalares
                                                                                   └─ SH22 anchos enteros
+                                                                                      └─ SH23 punteros/memoria local
 ```
 
 SH02 y SH03 pueden avanzar en paralelo después de SH01. Las demás dependencias son secuenciales por

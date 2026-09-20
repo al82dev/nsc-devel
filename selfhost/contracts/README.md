@@ -56,3 +56,7 @@ ambos linkers.
 `source-integer-widths.contract.json` congela desde SH22 anchos de 8/16/32/64 bits, `nint`/`nuint`,
 conversiones contextuales y de operandos, signedness de división/resto/comparación/shift y enlace
 dual O0–O3.
+
+`source-pointers.contract.json` congela desde SH23 punteros opacos, `null`, toma de dirección,
+desreferencia, indexación, asignación mediante lvalue y memoria local de `stackalloc`, en O0–O3 y
+con LLD/NSLink.

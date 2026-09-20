@@ -1,0 +1,18 @@
+static int Sum(int* values)
+{
+    return values[0] + values[1];
+}
+
+static int Main()
+{
+    int first = 19;
+    int second = 23;
+    int* firstAddress = &first;
+    int loaded = *firstAddress;
+    int* values = stackalloc int[2];
+    values[0] = loaded;
+    values[1] = second;
+    int* absent = null;
+    if (absent != null) { return 1; }
+    return Sum(values);
+}

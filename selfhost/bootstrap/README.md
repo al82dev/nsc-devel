@@ -80,3 +80,6 @@ SH21 añade `verify_source_expressions.py`: exige anatomía fuente, APIs LLVM de
 
 SH22 añade `verify_source_integer_widths.py`: inspecciona las tres formas de conversión entera y
 ejecuta una matriz con los diez tipos enteros/bool, operaciones signed/unsigned y llamadas tipadas.
+
+SH23 añade `verify_source_pointers.py`: comprueba símbolos y anatomía COFF, y ejecuta el mismo
+programa de punteros y memoria local en O0–O3 con LLD y NSLink.

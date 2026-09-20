@@ -101,3 +101,7 @@ simulan como operaciones bit a bit.
 SH22 añade todos los anchos enteros del perfil y consume las conversiones registradas por semántica
 en inicializadores, operandos, argumentos y retornos. Signedness selecciona extensión, división,
 resto, comparación y shift derecho LLVM correctos.
+
+SH23 incorpora punteros opacos como escalares, `null`, dirección y desreferencia, indexación y
+`stackalloc`. Un único camino de lvalue entrega dirección y tipo tanto a cargas como a asignaciones;
+la matriz vuelve a ejecutar O0–O3 con LLD y NSLink.

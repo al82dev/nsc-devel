@@ -1,0 +1,40 @@
+{
+  "artifacts": {
+    "lld-o0.exe": "d31caf9b67cdec86c94b1907f7f8aad25b216a2542601b8cd521f9c0d9ec3a65",
+    "lld-o1.exe": "d6c6d20f4f3e3052e08384e78b263f5041b2ea9d291f96538e916c1958829dc9",
+    "lld-o2.exe": "8c2db070ca4b0ce150e645032f1c4a4779752211b8d18d6d5e27d0a4cf72d2e7",
+    "lld-o3.exe": "4d5adda955fb94e2f7286d2541e2a2e990895068f51c07ac1badb7784bedf519",
+    "nslink-o0.exe": "2999965eb9fb8eb30aea7c1b4da3351ef22b96fe8163dc4ff43f2bb9af04e7df",
+    "nslink-o1.exe": "721c0a018e3238a8f22f57d685ac77e2a86a1a0f97038435d94ef22385c5dc10",
+    "nslink-o2.exe": "721c0a018e3238a8f22f57d685ac77e2a86a1a0f97038435d94ef22385c5dc10",
+    "nslink-o3.exe": "721c0a018e3238a8f22f57d685ac77e2a86a1a0f97038435d94ef22385c5dc10",
+    "pointers-o0.obj": "74d943dcca7e1a2f1f52b974a87cea6aca190ecbb81a2009b438295ecefdbcd3",
+    "pointers-o0.readobj.txt": "e503df2cbbe1efe307249e74d9d2707f3a3643f284210f69f7b96e85234b5709",
+    "pointers-o1.obj": "dd95abe00dc40a49a58423b117cf7a88d45c0a51f5c7010b2998b4e61c77c51a",
+    "pointers-o1.readobj.txt": "690d892611176519595bac6aeca4d84c09d80e148f3401ec11c15efaaeb2cab0",
+    "pointers-o2.obj": "dd95abe00dc40a49a58423b117cf7a88d45c0a51f5c7010b2998b4e61c77c51a",
+    "pointers-o2.readobj.txt": "02548910c1e26a0f78c69fe8059069723ba0bda355644134715be10453fc1ffc",
+    "pointers-o3.obj": "dd95abe00dc40a49a58423b117cf7a88d45c0a51f5c7010b2998b4e61c77c51a",
+    "pointers-o3.readobj.txt": "87b7ee0ccf80c7554e82d4c8d88d2fcdcbc03d5b1fcd3ced145e98f0cdebcaa4"
+  },
+  "backend_source_sha256": "43b198b2ab43896a139f7da0f085ee8adc7a33db7d409e3b1a2a7770891bdd0d",
+  "executions": [
+    {"actual": 42, "linker": "lld", "profile": "O0"},
+    {"actual": 42, "linker": "nslink", "profile": "O0"},
+    {"actual": 42, "linker": "lld", "profile": "O1"},
+    {"actual": 42, "linker": "nslink", "profile": "O1"},
+    {"actual": 42, "linker": "lld", "profile": "O2"},
+    {"actual": 42, "linker": "nslink", "profile": "O2"},
+    {"actual": 42, "linker": "lld", "profile": "O3"},
+    {"actual": 42, "linker": "nslink", "profile": "O3"}
+  ],
+  "gate": "SH23",
+  "linkers": ["lld", "nslink"],
+  "problems": [],
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "schema": "nativesharp-selfhost-sh23-report",
+  "scope": "pointer-null-address-dereference-index-stackalloc",
+  "source_derived_codegen": true,
+  "status": "passed",
+  "version": 1
+}
