@@ -65,3 +65,6 @@ SH17 añade `verify_source_functions.py`: inspecciona los símbolos de funciones
 perfiles, ejecuta los ocho PEs producidos por `lld-link` y NSLink y exige que parámetros y llamada
 directa produzcan 42. El reporte declara literalmente `i32-functions-parameters-calls` para no
 confundir la ampliación con una generación autoalojada completa.
+
+SH18 añade `verify_source_control_flow.py`: valida anatomía COFF y ejecuta en O0–O3 un programa con
+locales, asignaciones, comparación, `while` e `if`, enlazado por LLD y NSLink.

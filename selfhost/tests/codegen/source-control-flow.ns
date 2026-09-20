@@ -1,0 +1,15 @@
+int Main()
+{
+    int total = 0;
+    int value = 1;
+    while (value <= 6)
+    {
+        total = total + value;
+        value = value + 1;
+    }
+    if (total == 21)
+    {
+        return 42;
+    }
+    return 0;
+}

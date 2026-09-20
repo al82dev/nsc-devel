@@ -426,6 +426,15 @@ class BootstrapInfrastructureTests(unittest.TestCase):
             self.assertIn(api, backend)
         self.assertIn("semantic.Fact(syntaxId).SymbolId()", backend)
 
+    def test_tanda20_source_control_flow_uses_semantic_locals_and_llvm_blocks(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/source-control-flow.contract.json").read_text())
+        self.assertEqual(contract["gate"], "SH18")
+        self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
+        backend = (ROOT / "selfhost/nsc/CodeGen/LlvmBackend.ns").read_text()
+        for api in ("LLVMBuildAlloca", "LLVMBuildLoad2", "LLVMBuildStore", "LLVMBuildCondBr"):
+            self.assertIn(api, backend)
+        self.assertIn("semantic.NodeSymbol(syntaxId)", backend)
+
 
 if __name__ == "__main__":
     unittest.main()

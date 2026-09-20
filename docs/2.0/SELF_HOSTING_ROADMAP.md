@@ -636,6 +636,12 @@ fuentes completas de `nsc-next`; por tanto no reabre todavía la generación nsc
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-19-SH17-FUNCIONES-PARAMETROS-LLAMADAS.md`.
 
+La tanda 20 abre SH18 con almacenamiento local `int`, asignación simple, comparaciones con signo,
+`if` y `while`. Los símbolos semánticos identifican slots LLVM y cada ruta debe terminar con CFG
+válido. El acumulador 1..6 certifica resultado 42 en O0–O3 y ambos linkers.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-20-SH18-LOCALES-CONTROL-DE-FLUJO.md`.
+
 ## 9. Orden de dependencias
 
 ```text
@@ -657,6 +663,7 @@ SH00 punto de partida
                                                       └─ SH15 retiro de image replay
                                                           └─ SH16 backend derivado de fuente
                                                               └─ SH17 funciones/parámetros/llamadas
+                                                                  └─ SH18 locales/control de flujo
 ```
 
 SH02 y SH03 pueden avanzar en paralelo después de SH01. Las demás dependencias son secuenciales por

@@ -757,6 +757,17 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.source-functions PROPERTIES RUN_SERIAL TRUE)
 
     add_test(
+        NAME nsc.selfhost.source-control-flow
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-control-flow"
+            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSourceControlFlow.cmake")
+    set_tests_properties(nsc.selfhost.source-control-flow PROPERTIES RUN_SERIAL TRUE)
+
+    add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"

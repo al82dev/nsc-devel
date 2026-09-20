@@ -83,3 +83,7 @@ directas. Los usos de parámetros se resuelven desde el símbolo del hecho semá
 con `LLVMGetParam`; las llamadas usan prototipos predeclarados y `LLVMBuildCall2`. La matriz ejecuta
 O0–O3 con ambos linkers. El alcance sigue siendo `i32-functions-parameters-calls` y no implica que
 `nsc-next` pueda compilar todavía sus propias fuentes.
+
+SH18 añade slots locales `int`, carga/almacenamiento, asignación, comparaciones, `if` y `while`.
+La identidad de cada local proviene del modelo semántico; el backend produce bloques y terminadores
+LLVM explícitos. El alcance `i32-locals-assignment-if-while` aún excluye objetos y runtime.

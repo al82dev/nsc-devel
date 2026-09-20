@@ -39,3 +39,6 @@ resultados 17/42, O0/O3, `lld-link`/NSLink y desigualdad obligatoria entre hashe
 `source-functions.contract.json` congela desde SH17 funciones `int`, un máximo bootstrap de cuatro
 parámetros, llamadas directas, O0–O3, los símbolos fuente obligatorios y ejecución con ambos
 linkers. El límite de cuatro parámetros es de la rebanada, no de NativeSharp ni de LLVM.
+
+`source-control-flow.contract.json` congela desde SH18 locales `int`, asignación simple,
+comparaciones con signo, `if` y `while`, con la matriz O0–O3 y enlace dual.

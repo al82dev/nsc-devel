@@ -1,0 +1,13 @@
+{
+  "schema": "nativesharp-selfhost-source-control-flow",
+  "version": 1,
+  "gate": "SH18",
+  "source": "selfhost/tests/codegen/source-control-flow.ns",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "expected_exit_code": 42,
+  "required_symbols": ["__nativesharp_source_Main", "NativeSharpCompute"],
+  "required_llvm_api": ["LLVMBuildAlloca", "LLVMBuildLoad2", "LLVMBuildStore", "LLVMBuildICmp", "LLVMBuildBr", "LLVMBuildCondBr"],
+  "source_derived_codegen": true,
+  "scope": "i32-locals-assignment-if-while"
+}
