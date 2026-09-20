@@ -303,6 +303,16 @@ namespace NativeSharp.Compiler.CodeGen
             return -1;
         }
 
+        private static bool BackendEligibleFunction(SyntaxTree tree, SemanticModel semantic, int syntaxId)
+        {
+            SyntaxNode node = tree.Node(syntaxId);
+            if (node.Kind() != "FunctionDeclaration" && node.Kind() != "MethodDeclaration") { return false; }
+            int symbolId = semantic.NodeSymbol(syntaxId);
+            if (symbolId >= 0 && semantic.GetSymbol(symbolId).Kind() == SymbolKind.Method &&
+                !semantic.GetSymbol(symbolId).IsStatic()) { return false; }
+            return node.First() >= 0 && SupportedScalar(node.TypeText());
+        }
+
         private static int ReturnExpression(SyntaxTree tree, int declarationId)
         {
             SyntaxNode declaration = tree.Node(declarationId);
@@ -323,8 +333,7 @@ namespace NativeSharp.Compiler.CodeGen
         {
             if (syntaxId < 0) { return true; }
             SyntaxNode node = tree.Node(syntaxId);
-            if ((node.Kind() == "FunctionDeclaration" || node.Kind() == "MethodDeclaration") &&
-                node.First() >= 0 && SupportedScalar(node.TypeText()))
+            if (BackendEligibleFunction(tree, semantic, syntaxId))
             {
                 void* functionType = ScalarFunctionType(LLVM.LLVMGetModuleContext(module), tree, syntaxId);
                 if (functionType == null) { return false; }
@@ -1185,8 +1194,7 @@ namespace NativeSharp.Compiler.CodeGen
         {
             if (syntaxId < 0) { return true; }
             SyntaxNode node = tree.Node(syntaxId);
-            if ((node.Kind() == "FunctionDeclaration" || node.Kind() == "MethodDeclaration") &&
-                node.First() >= 0 && SupportedScalar(node.TypeText()))
+            if (BackendEligibleFunction(tree, semantic, syntaxId))
             {
                 raii string llvmNameText = LlvmFunctionName(tree, semantic, syntaxId);
                 raii CString llvmName = new CString(llvmNameText);

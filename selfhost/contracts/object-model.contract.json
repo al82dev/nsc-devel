@@ -1,0 +1,29 @@
+{
+  "schema": "nativesharp-selfhost-object-model-contract",
+  "version": 1,
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "routes": ["lld", "nslink"],
+  "source": "selfhost/tests/object-model/ObjectModel.ns",
+  "project": "selfhost/tests/object-model/ObjectModel.nsproj",
+  "expected_exit_code": 42,
+  "required_symbol_fragments": [
+    "Class BaseCounter : BaseCounter",
+    "Constructor BaseCounter : (int) -> void defined",
+    "Class Counter : Counter",
+    "Property Amount : int",
+    "Method get_Amount : () -> int defined",
+    "Method set_Amount : (int) -> void defined",
+    "Indexer Item : int",
+    "Method get_Item : (int) -> int defined",
+    "Method set_Item : (int, int) -> void defined",
+    "Method op_Addition : (Counter, Counter) -> Counter defined"
+  ],
+  "required_semantic_fragments": [
+    "ThisExpression \"this\" : Counter lvalue modifiable addressable symbol=Counter",
+    "BaseExpression \"base\" : BaseCounter lvalue modifiable addressable symbol=BaseCounter",
+    "MemberExpression \"BaseValue\" : int lvalue modifiable addressable symbol=BaseValue"
+  ],
+  "forbidden_semantic_fragment": ": error",
+  "required_native_functions": ["Main", "Probe"],
+  "work_items": ["NS2-SH-128", "NS2-SH-129"]
+}

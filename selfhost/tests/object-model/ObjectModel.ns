@@ -1,0 +1,30 @@
+namespace ObjectModelFixture
+{
+    public class BaseCounter
+    {
+        protected int BaseValue;
+        public BaseCounter(int value) { this.BaseValue = value; }
+        public int ReadBase() { return this.BaseValue; }
+    }
+
+    public class Counter : BaseCounter
+    {
+        private int value;
+        public Counter(int initial) { this.value = initial; }
+        public int Amount
+        {
+            get { return this.value; }
+            set { this.value = value; }
+        }
+        public int this[int index]
+        {
+            get { return this.value + index; }
+            set { this.value = value - index; }
+        }
+        public int ReadBoth() { return this.value + base.BaseValue; }
+        public static Counter operator +(Counter left, Counter right) { return left; }
+        public static int Probe() { return 42; }
+    }
+
+    public int Main() { return Probe(); }
+}

@@ -281,6 +281,8 @@ namespace NativeSharp.Compiler.Sema
             if (node.Kind() == "IdentifierExpression")
             {
                 int symbol = Lookup(node.Text()); if (symbol < 0) { symbol = LookupGlobal(node.Text()); }
+                if (symbol < 0 && currentType >= 0)
+                { symbol = LookupMember(model.GetSymbol(currentType).TypeId(), node.Text()); }
                 int type = symbol >= 0 ? model.GetSymbol(symbol).TypeId() : model.Types().Find("error"); SymbolKind kind = symbol >= 0 ? model.GetSymbol(symbol).Kind() : SymbolKind.Variable;
                 if (type < 0) { type = model.Types().Find("error"); }
                 if (kind == SymbolKind.EnumMember && inEnumInitializer) { type = model.Types().Find("int"); }
@@ -289,6 +291,24 @@ namespace NativeSharp.Compiler.Sema
                 fact.SetType(type, category); fact.SetStorage(category == ValueCategory.LValue && !arrayValue && (symbol < 0 || !model.GetSymbol(symbol).IsConst()), category == ValueCategory.LValue); fact.SetSymbol(symbol);
                 if (kind == SymbolKind.Struct || kind == SymbolKind.Class || kind == SymbolKind.Interface || kind == SymbolKind.Enum || kind == SymbolKind.Union || kind == SymbolKind.Namespace) { fact.Hide(); }
                 if (symbol >= 0 && model.GetSymbol(symbol).HasConstantValue()) { raii string value = String.ToString(model.GetSymbol(symbol).ConstantValue()); fact.SetConstant(value); }
+                return fact;
+            }
+            if (node.Kind() == "ThisExpression" || node.Kind() == "BaseExpression")
+            {
+                int type = model.Types().Find("error");
+                int symbol = -1;
+                if (currentType >= 0)
+                {
+                    symbol = currentType;
+                    type = model.GetSymbol(currentType).TypeId();
+                    if (node.Kind() == "BaseExpression")
+                    {
+                        SyntaxNode owner = tree.Node(model.GetSymbol(currentType).Declaration());
+                        if (owner.SemanticTypeText().Length != 0)
+                        { type = model.Types().Intern(owner.SemanticTypeText()); symbol = TypeSymbol(type); }
+                    }
+                }
+                fact.SetType(type, ValueCategory.LValue); fact.SetStorage(true, true); fact.SetSymbol(symbol);
                 return fact;
             }
             if (node.Kind() == "MemberExpression")
@@ -502,7 +522,11 @@ namespace NativeSharp.Compiler.Sema
         private void AnalyzeFunction(int symbolId)
         {
             Symbol function = model.GetSymbol(symbolId); SyntaxNode node = tree.Node(function.Declaration()); if (node.First() < 0) { return; }
-            int savedScope = currentScope; int savedFunction = currentFunction; currentScope = model.AddScope(0); currentFunction = symbolId;
+            int savedScope = currentScope; int savedFunction = currentFunction; int savedType = currentType;
+            currentScope = model.AddScope(0); currentFunction = symbolId;
+            if ((function.Kind() == SymbolKind.Method || function.Kind() == SymbolKind.Constructor) &&
+                function.Parent() >= 0)
+            { currentType = function.Parent(); }
             int index = 0; while (index < node.ChildCount())
             {
                 int parameterNode = node.ChildAt(index); SyntaxNode parameter = tree.Node(parameterNode);
@@ -510,6 +534,7 @@ namespace NativeSharp.Compiler.Sema
                 index = index + 1;
             }
             AnalyzeStatement(node.First()); currentScope = savedScope; currentFunction = savedFunction;
+            currentType = savedType;
         }
 
         // SH26. The declaration pass on its own. ModuleSet runs it over every unit to build the
