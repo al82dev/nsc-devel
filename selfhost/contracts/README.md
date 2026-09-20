@@ -22,3 +22,6 @@ el orden de pases y los mínimos del corpus que debe alcanzar SSA sin divergenci
 `llvm-backend.contract.json` congela desde SH08 el target LLVM 23/Win64, los perfiles O0–O3,
 los artefactos objeto/assembly, símbolos y relocations mínimos, el código observable 42 y la
 certificación cruzada con `lld-link` y NSLink.
+
+`project-driver.contract.json` congela desde SH09 la carga `.nsproj`, orden de fuentes,
+referencias, perfiles, response files, metadata N-1/N, manifiestos y enlace dual.

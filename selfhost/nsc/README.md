@@ -13,5 +13,6 @@ SH05 añadió Lexer, Syntax y Parser. SH06 añadió Symbols, Types, Sema, layout
 contrato de Metadata. SH07 añade `IR`: HIR, MIR explícito, CFG, dominancia, SSA, verificadores y
 perfiles de pases O0/O1/O2/O3. SH08 añade `CodeGen/LlvmBackend.ns`, pipelines LLVM reales y
 emisión COFF/assembly. Las fases siguientes añadirán Projects y Cache sin
-convertir este proyecto en un conjunto de referencias circulares. Este árbol no puede
+convertir este proyecto en un conjunto de referencias circulares. SH09 añade `Projects` con
+carga/validación `.nsproj`, referencias, metadata, cache keys y manifiestos. Este árbol no puede
 contener wrappers C++ ni una segunda implementación oculta del frontend.

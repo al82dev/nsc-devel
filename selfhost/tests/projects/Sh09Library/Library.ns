@@ -1,0 +1,7 @@
+namespace NativeSharp.SelfHost.Sh09
+{
+    public class LibraryValue
+    {
+        public static int Answer() { return 42; }
+    }
+}

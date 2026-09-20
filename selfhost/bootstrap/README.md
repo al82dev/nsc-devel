@@ -33,3 +33,6 @@ primera divergencia estructural.
 
 SH08 añade `verify_llvm_backend.py`: valida objetos, assembly, anatomía `llvm-readobj` y
 ejecutables ya probados por CMake en cuatro perfiles y ambos linkers; publica hashes canónicos.
+
+SH09 añade `verify_project_driver.py`: comprueba dumps de proyecto estables, response files,
+objetos por perfil, `nsmeta`, manifiestos y los ocho ejecutables enlazados.

@@ -9,6 +9,7 @@ using NativeSharp.Compiler.Parser;
 using NativeSharp.Compiler.Sema;
 using NativeSharp.Compiler.IR;
 using NativeSharp.Compiler.CodeGen;
+using NativeSharp.Compiler.Projects;
 
 namespace NativeSharp.Compiler.Driver
 {
@@ -16,12 +17,12 @@ namespace NativeSharp.Compiler.Driver
     {
         private static void PrintVersion()
         {
-            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh08 (NativeSharp 2.0.0, self-host stage 1)");
+            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh09 (NativeSharp 2.0.0, self-host stage 1)");
         }
 
         private static void PrintHelp()
         {
-            Console.WriteLine("NativeSharp self-hosted compiler bootstrap (SH08)");
+            Console.WriteLine("NativeSharp self-hosted compiler bootstrap (SH09)");
             Console.WriteLine("");
             Console.WriteLine("Usage:");
             Console.WriteLine("  nsc-next --version");
@@ -38,6 +39,9 @@ namespace NativeSharp.Compiler.Driver
             Console.WriteLine("  nsc-next --verify-hir|--verify-mir|--verify-cfg <file.ns>");
             Console.WriteLine("  nsc-next --verify-dominance|--verify-ssa <file.ns>");
             Console.WriteLine("  nsc-next --emit-object|--emit-assembly <file.ns> -O0|-O1|-O2|-O3 -o <path>");
+            Console.WriteLine("  nsc-next --dump-project|--verify-project <project.nsproj>");
+            Console.WriteLine("  nsc-next --emit-project-object <project.nsproj> -O0|-O1|-O2|-O3 -o <path>");
+            Console.WriteLine("  nsc-next --emit-nsmeta|--emit-toolchain-manifest <project.nsproj> <path>");
             Console.WriteLine("  nsc-next [--diagnostic-format=json] <file.ns>");
         }
 
@@ -210,6 +214,32 @@ namespace NativeSharp.Compiler.Driver
             return 0;
         }
 
+        private static int ProjectCommand(string command, string projectPath, string outputPath)
+        {
+            raii ProjectModel project = ProjectLoader.Load(projectPath);
+            if (!ProjectLoader.Verify(project)) { Console.ErrorWriteLine("nsc-next: error: invalid project"); return 1; }
+            if (command == "--verify-project") { return 0; }
+            if (command == "--dump-project") { raii string dump = ProjectDumper.Dump(project); Console.Write(dump); return 0; }
+            if (command == "--emit-nsmeta")
+            {
+                raii string metadata = MetadataContract.Write(project); File.WriteAllText(outputPath, metadata); return File.Exists(outputPath) ? 0 : 1;
+            }
+            raii string manifest = ToolchainManifest.Create(project, "O2", "configured");
+            File.WriteAllText(outputPath, manifest); return File.Exists(outputPath) ? 0 : 1;
+        }
+
+        private static int RunResponseFile(string responsePath)
+        {
+            if (!File.Exists(responsePath)) { return 1; }
+            string contents = File.ReadAllText(responsePath); int separator = String.IndexOf(contents, "\n");
+            if (separator < 0) { return 2; }
+            raii string actionRaw = String.Substring(contents, 0, separator); raii string action = String.Trim(actionRaw);
+            raii string pathRaw = String.Substring(contents, separator + 1, contents.Length - separator - 1);
+            raii string path = String.Trim(pathRaw);
+            if (action != "--dump-project" && action != "--verify-project") { return 2; }
+            return ProjectCommand(action, path, "");
+        }
+
         public static int Main()
         {
             int count = Environment.GetCommandLineArgCount();
@@ -222,9 +252,37 @@ namespace NativeSharp.Compiler.Driver
             }
 
             string command = arguments[1];
+            if (command.Length > 1 && command[0] == '@')
+            {
+                raii string responsePath = String.Substring(command, 1, command.Length - 1);
+                return RunResponseFile(responsePath);
+            }
             if (command == "--version") { PrintVersion(); return 0; }
             if (command == "--help") { PrintHelp(); return 0; }
             if (command == "--self-test-basic") { return SelfTest(); }
+            if (command == "--dump-project" || command == "--verify-project")
+            {
+                if (count != 3) { return 2; }
+                return ProjectCommand(command, arguments[2], "");
+            }
+            if (command == "--emit-nsmeta" || command == "--emit-toolchain-manifest")
+            {
+                if (count != 4) { return 2; }
+                return ProjectCommand(command, arguments[2], arguments[3]);
+            }
+            if (command == "--verify-nsmeta")
+            {
+                if (count != 3 || !File.Exists(arguments[2])) { return 2; }
+                string metadata = File.ReadAllText(arguments[2]); return MetadataContract.ReadCompatible(metadata) ? 0 : 1;
+            }
+            if (command == "--emit-project-object")
+            {
+                if (count != 6 || arguments[4] != "-o") { return 2; }
+                raii ProjectModel project = ProjectLoader.Load(arguments[2]);
+                if (!ProjectLoader.Verify(project) || project.SourceCount() == 0) { return 1; }
+                raii string sourcePath = ProjectLoader.FirstSourcePath(project);
+                return EmitBackend("--emit-object", sourcePath, arguments[3], arguments[5]);
+            }
             if (command == "--emit-object" || command == "--emit-assembly")
             {
                 if (count != 6 || arguments[4] != "-o") { return 2; }

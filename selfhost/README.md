@@ -40,3 +40,6 @@ pases hace explícito qué análisis y transformaciones pertenecen a cada nivel.
 SH08 incorpora el primer backend LLVM escrito en NativeSharp. Construye módulo, tipos, globales,
 funciones, bloques, aritmética y llamadas Win64 mediante LLVM-C 23, aplica O0–O3, emite objeto y
 assembly y certifica ejecución con `lld-link` y NSLink.
+
+SH09 añade la primera superficie de proyecto: `.nsproj`, referencias, response files, metadata
+N-1/N, claves de caché y manifiestos deterministas; cuatro perfiles enlazan con ambos linkers.

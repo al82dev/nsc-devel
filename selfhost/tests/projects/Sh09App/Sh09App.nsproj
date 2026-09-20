@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <Name>NativeSharpSelfHostSh09App</Name>
+    <OutputType>Exe</OutputType>
+    <Sdk>NativeSharp/2.0</Sdk>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <ProjectReference Include="../Sh09Library/Sh09Library.nsproj" />
+  </ItemGroup>
+</Project>

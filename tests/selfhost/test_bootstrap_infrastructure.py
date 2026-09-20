@@ -309,6 +309,14 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn("args.report.write_text", source)
         self.assertNotIn("source_root.write_text", source)
 
+    def test_sh09_project_contract_freezes_driver_matrix(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/project-driver.contract.json").read_text())
+        self.assertEqual(contract["schema"], "nativesharp-selfhost-project-driver-contract")
+        self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
+        self.assertEqual(contract["linkers"], ["lld-link", "NSLink"])
+        self.assertEqual(contract["metadata_versions"], [1, 2])
+        self.assertEqual(len(contract["work_items"]), 14)
+
 
 if __name__ == "__main__":
     unittest.main()

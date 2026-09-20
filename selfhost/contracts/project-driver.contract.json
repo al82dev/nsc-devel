@@ -1,0 +1,20 @@
+{
+  "schema": "nativesharp-selfhost-project-driver-contract",
+  "version": 1,
+  "optimizations": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld-link", "NSLink"],
+  "project": "selfhost/tests/projects/Sh09App/Sh09App.nsproj",
+  "expected_project": "NativeSharpSelfHostSh09App",
+  "expected_output": "Exe",
+  "expected_sdk": "NativeSharp/2.0",
+  "expected_sources": 1,
+  "expected_references": 1,
+  "metadata_versions": [1, 2],
+  "expected_exit_code": 42,
+  "work_items": [
+    "NS2-SH-113", "NS2-SH-114", "NS2-SH-115", "NS2-SH-116",
+    "NS2-SH-117", "NS2-SH-118", "NS2-SH-119", "NS2-SH-120",
+    "NS2-SH-121", "NS2-SH-122", "NS2-SH-123", "NS2-SH-124",
+    "NS2-SH-125", "NS2-SH-126"
+  ]
+}

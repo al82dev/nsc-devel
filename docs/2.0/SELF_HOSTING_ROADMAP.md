@@ -489,6 +489,10 @@ Gate versionado al cierre: `selfhost/evidence/gates/SH08/gate.json`.
 **Gate SH09:** `nsc-next` compila proyectos reales, referencias, EXE, LIB y DLL mediante la misma
 superficie pública y produce instalaciones verificables.
 
+Expediente de cierre: `docs/2.0/self-hosting/tandas/TANDA-10-SH09-PROYECTOS-DRIVER-METADATA-CACHE.md`.
+Contrato: `selfhost/contracts/project-driver.contract.json`.
+Gate: `selfhost/evidence/gates/SH09/gate.json`.
+
 ### Fase 10 — primera generación `nsc1`
 
 **Objetivo:** construir por primera vez el compilador NativeSharp con `nsc0`.

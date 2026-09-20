@@ -1,0 +1,7 @@
+namespace NativeSharp.SelfHost.Sh09
+{
+    public class Program
+    {
+        public static int Main() { return 42; }
+    }
+}

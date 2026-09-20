@@ -1,0 +1,215 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Basic;
+
+namespace NativeSharp.Compiler.Projects
+{
+    public class ProjectModel
+    {
+        private owned string path;
+        private owned string name;
+        private owned string outputType;
+        private owned List<string> sources;
+        private owned List<string> references;
+        private owned string sdk;
+
+        public ProjectModel(string projectPath)
+        {
+            path = String.Copy(projectPath); name = String.Copy(""); outputType = String.Copy("Exe");
+            sdk = String.Copy("NativeSharp/2.0"); sources = new List<string>(); references = new List<string>();
+        }
+        public string PathValue() { return path; }
+        public string Name() { return name; }
+        public string OutputType() { return outputType; }
+        public string Sdk() { return sdk; }
+        public void SetName(string value) { name = String.Copy(value); }
+        public void SetOutputType(string value) { outputType = String.Copy(value); }
+        public void SetSdk(string value) { sdk = String.Copy(value); }
+        public void AddSource(string value) { raii string copy = String.Copy(value); sources.Add(move(copy)); }
+        public void AddReference(string value) { raii string copy = String.Copy(value); references.Add(move(copy)); }
+        public int SourceCount() { return sources.Count(); }
+        public string SourceAt(int index) { return sources[index]; }
+        public int ReferenceCount() { return references.Count(); }
+        public string ReferenceAt(int index) { return references[index]; }
+    }
+
+    public class ProjectLoader
+    {
+        private static owned string FindFirstSource(string directory)
+        {
+            raii string best = String.Copy(""); int count = Directory.GetFileCount(directory);
+            string[] files = new string[count]; Directory.GetFiles(directory, files); int index = 0;
+            while (index < count)
+            {
+                if (String.EndsWith(files[index], ".ns") &&
+                    (best.Length == 0 || String.Compare(files[index], best) < 0))
+                {
+                    raii string candidate = Path.Combine(directory, files[index]); best = move(candidate);
+                }
+                index = index + 1;
+            }
+            delete[] files;
+            int directoryCount = Directory.GetDirectoryCount(directory);
+            string[] directories = new string[directoryCount]; Directory.GetDirectories(directory, directories);
+            index = 0;
+            while (index < directoryCount)
+            {
+                raii string childPath = Path.Combine(directory, directories[index]);
+                raii string child = FindFirstSource(childPath);
+                if (child.Length != 0 && (best.Length == 0 || String.Compare(child, best) < 0)) { best = move(child); }
+                index = index + 1;
+            }
+            delete[] directories; return move(best);
+        }
+
+        private static owned string Tag(string xml, string tag)
+        {
+            raii string open = String.Concat("<", tag); raii string close = String.Concat("</", tag);
+            int begin = String.IndexOf(xml, open); if (begin < 0) { return String.Copy(""); }
+            raii string tail = String.Substring(xml, begin, xml.Length - begin);
+            int right = String.IndexOf(tail, ">"); if (right < 0) { return String.Copy(""); }
+            raii string body = String.Substring(tail, right + 1, tail.Length - right - 1);
+            int end = String.IndexOf(body, close); if (end < 0) { return String.Copy(""); }
+            raii string raw = String.Substring(body, 0, end);
+            return String.Trim(raw);
+        }
+
+        private static void Attributes(string xml, string element, string attribute, ProjectModel model, bool reference)
+        {
+            raii string prefix = String.Concat("<", element); raii string needle = String.Concat(attribute, "=\"");
+            raii string rest = String.Copy(xml);
+            while (true)
+            {
+                int elementAt = String.IndexOf(rest, prefix); if (elementAt < 0) { break; }
+                raii string elementTail = String.Substring(rest, elementAt, rest.Length - elementAt);
+                int finish = String.IndexOf(elementTail, ">"); if (finish < 0) { break; }
+                raii string declaration = String.Substring(elementTail, 0, finish + 1);
+                int valueAt = String.IndexOf(declaration, needle);
+                if (valueAt >= 0)
+                {
+                    int start = valueAt + needle.Length;
+                    raii string valueTail = String.Substring(declaration, start, declaration.Length - start);
+                    int quote = String.IndexOf(valueTail, "\"");
+                    if (quote >= 0)
+                    {
+                        raii string value = String.Substring(valueTail, 0, quote);
+                        if (reference) { model.AddReference(value); } else { model.AddSource(value); }
+                    }
+                }
+                int consumed = elementAt + finish + 1;
+                raii string next = String.Substring(rest, consumed, rest.Length - consumed);
+                rest = move(next);
+            }
+        }
+
+        public static owned ProjectModel Load(string projectPath)
+        {
+            raii ProjectModel model = new ProjectModel(projectPath);
+            if (!File.Exists(projectPath)) { return move(model); }
+            string xml = File.ReadAllText(projectPath);
+            raii string name = Tag(xml, "Name");
+            if (name.Length == 0) { raii string fallback = Path.GetFileNameWithoutExtension(projectPath); name = move(fallback); }
+            raii string output = Tag(xml, "OutputType"); raii string sdk = Tag(xml, "Sdk");
+            model.SetName(name); if (output.Length != 0) { model.SetOutputType(output); }
+            if (sdk.Length != 0) { model.SetSdk(sdk); }
+            Attributes(xml, "Compile", "Include", model, false);
+            Attributes(xml, "ProjectReference", "Include", model, true);
+            return move(model);
+        }
+
+        public static bool Verify(ProjectModel project)
+        {
+            if (project == null || project.Name().Length == 0 || project.SourceCount() == 0) { return false; }
+            if (project.OutputType() != "Exe" && project.OutputType() != "Library" &&
+                project.OutputType() != "StaticLibrary" && project.OutputType() != "Facade") { return false; }
+            raii string directory = Path.GetDirectoryName(project.PathValue()); int index = 0;
+            while (index < project.SourceCount())
+            {
+                string include = project.SourceAt(index);
+                if (String.Contains(include, "..") || String.Contains(include, "**")) { index = index + 1; continue; }
+                raii string full = Path.Combine(directory, include);
+                if (!File.Exists(full)) { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
+
+        public static owned string FirstSourcePath(ProjectModel project)
+        {
+            if (project == null || project.SourceCount() == 0) { return String.Copy(""); }
+            raii string directory = Path.GetDirectoryName(project.PathValue()); string include = project.SourceAt(0);
+            if (String.Contains(include, "**")) { return FindFirstSource(directory); }
+            return Path.Combine(directory, include);
+        }
+    }
+
+    public class ProjectDumper
+    {
+        private static int NextSource(ProjectModel project, string after)
+        {
+            int best = -1; int index = 0;
+            while (index < project.SourceCount())
+            {
+                string value = project.SourceAt(index);
+                if ((after.Length == 0 || String.Compare(value, after) > 0) &&
+                    (best < 0 || String.Compare(value, project.SourceAt(best)) < 0)) { best = index; }
+                index = index + 1;
+            }
+            return best;
+        }
+
+        public static owned string Dump(ProjectModel project)
+        {
+            raii StringBuilder output = new StringBuilder(); output.Append("project schema=1\nname=");
+            output.Append(project.Name()); output.Append("\noutput="); output.Append(project.OutputType());
+            output.Append("\nsdk="); output.Append(project.Sdk()); output.Append("\nsources=");
+            output.Append(project.SourceCount()); output.Append("\nreferences="); output.Append(project.ReferenceCount()); output.Append('\n');
+            raii string previous = String.Copy(""); int emitted = 0;
+            while (emitted < project.SourceCount())
+            {
+                int next = NextSource(project, previous); if (next < 0) { break; }
+                string value = project.SourceAt(next); output.Append("compile "); output.Append(value); output.Append('\n');
+                raii string nextPrevious = String.Copy(value); previous = move(nextPrevious); emitted = emitted + 1;
+            }
+            int reference = 0; while (reference < project.ReferenceCount())
+            { output.Append("reference "); output.Append(project.ReferenceAt(reference)); output.Append('\n'); reference = reference + 1; }
+            return output.ToOwnedString();
+        }
+    }
+
+    public class MetadataContract
+    {
+        public static owned string Write(ProjectModel project)
+        {
+            raii StringBuilder value = new StringBuilder(); value.Append("NSMETA/2\nproducer=nsc-next-sh09\nname=");
+            value.Append(project.Name()); value.Append("\nkind="); value.Append(project.OutputType());
+            value.Append("\nabi=NativeSharp/2.0\ncompatibility=N-1,N\n"); return value.ToOwnedString();
+        }
+        public static bool ReadCompatible(string value)
+        { return String.StartsWith(value, "NSMETA/1\n") || String.StartsWith(value, "NSMETA/2\n"); }
+    }
+
+    public class ProjectCache
+    {
+        public static ulong Key(ProjectModel project, string profile, string target)
+        {
+            raii string dump = ProjectDumper.Dump(project); ulong hash = StableHash.Text(dump);
+            hash = (hash ^ StableHash.Text(profile)) * 1099511628211UL;
+            return (hash ^ StableHash.Text(target)) * 1099511628211UL;
+        }
+    }
+
+    public class ToolchainManifest
+    {
+        public static owned string Create(ProjectModel project, string profile, string linker)
+        {
+            raii string key = String.ToString(ProjectCache.Key(project, profile, "x86_64-pc-windows-msvc"));
+            raii StringBuilder value = new StringBuilder(); value.Append("toolchain.manifest schema=1\nproject=");
+            value.Append(project.Name()); value.Append("\ntarget=x86_64-pc-windows-msvc\nprofile=");
+            value.Append(profile); value.Append("\nlinker="); value.Append(linker);
+            value.Append("\nruntime-abi=1.0\nlanguage=2.0\ncache-key="); value.Append(key); value.Append('\n');
+            return value.ToOwnedString();
+        }
+    }
+}
