@@ -1,0 +1,32 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH13",
+  "state": "OPEN",
+  "revision": "selfhost(tanda-14-local)",
+  "run_id": "tanda-14-sh13-local-final-20260919",
+  "previous_gate": "selfhost/evidence/gates/SH12/gate.json",
+  "artifacts": {
+    "baseline_report_sha256": "8dd362a311c0c46535a868abc375a17541e291f2671943fa3a99e7cb898b7231",
+    "baseline_report_json_sha256": "fced0c2b931ce52ee14da932b36843a752af0667681649308a798b407a5def1b",
+    "baseline_source_sha256": "3f0daab228d564b09bce6fd14fd2916bba5c695ebe37d1d338d3031d8c627c2d",
+    "gate0_sha256": "215071edc55c2898d3fc6c2ce73ed1834d0131e0e064dc11c86a2fc4d9964ca7",
+    "sh13_lld_report_sha256": "ff31923b119bb8d6c3ce1e313cbb8d73193ddd5f66e677f88d3e89a818be4925",
+    "sh13_nslink_report_sha256": "5e67883154ef33a267dce97f5922525298af0cc4d6088ff83999e11291cfe8ee"
+  },
+  "metrics": {
+    "fuzz_cases_per_linker": 24,
+    "startup_ratio_lld": 1.2121731904270414,
+    "binary_size_ratio_lld": 0.06505828137706696,
+    "interruption_exercised": true,
+    "temporary_leaks": 0,
+    "ctest_per_linker": 450,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18,
+    "baseline_seconds": 830.883
+  },
+  "problems": [
+    "SH12 remains OPEN until a second-machine attestation is imported",
+    "source-derived compiler codegen remains false"
+  ]
+}

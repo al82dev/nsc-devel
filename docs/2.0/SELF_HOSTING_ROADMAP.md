@@ -583,6 +583,8 @@ mantiene SH12 `OPEN`; la segunda atestación no puede sustituirse por otra ruta 
 **Gate SH13:** cero regresiones funcionales; rendimiento dentro del presupuesto aprobado; artefactos
 y diagnósticos reproducibles; instalación y rollback probados.
 
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-14-SH13-ROBUSTEZ-RENDIMIENTO.md`.
+
 ### Fase 14 — promoción y retiro gradual de `nsc0`
 
 **Objetivo:** cambiar el compilador oficial sin perder una ruta segura de recuperación.

@@ -368,6 +368,15 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn('"cross_machine_verified": cross_machine', verifier)
         self.assertIn("NS2-SH-157 requires", verifier)
 
+    def test_sh13_robustness_contract_has_separate_measured_budgets(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/robustness.contract.json").read_text())
+        self.assertEqual(contract["schema"], "nativesharp-selfhost-robustness-contract")
+        self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
+        self.assertGreaterEqual(contract["fuzz_cases"], 24)
+        self.assertIn("maximum_startup_ratio", contract)
+        self.assertIn("maximum_compile_ratio", contract)
+        self.assertEqual(len(contract["work_items"]), 12)
+
 
 if __name__ == "__main__":
     unittest.main()

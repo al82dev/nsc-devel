@@ -57,3 +57,6 @@ sola retirar la semilla C++.
 SH12 repite `nsc2 → nsc3` tres veces sin normalizar artefactos y exige identidad byte a byte. La
 prueba local exporta una atestación portable; el gate permanece abierto hasta importar una
 atestación coincidente de otra máquina Windows x64.
+
+SH13 añade presupuestos medidos, fuzzing determinista, metadata hostil, fallo atómico de salida,
+interrupción y auditoría de temporales sobre las imágenes locales `nsc2`/`nsc3`.

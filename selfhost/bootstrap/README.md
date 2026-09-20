@@ -49,3 +49,6 @@ backend sustituya la reproducción atestada de la imagen.
 SH12 añade `verify_fixed_point.py`: construye `nsc3` tres veces, compara imágenes y objetos sin
 normalización y exporta `machine-attestation.json`. La opción `--cross-machine-evidence` valida una
 segunda ejecución real; su ausencia queda como problema normativo y no se disfraza con dos rutas.
+
+SH13 añade `verify_robustness.py`: mide startup/compilación/tamaño contra presupuestos separados,
+inyecta entradas hostiles y fallos, prueba interrupción y exige limpieza posterior.

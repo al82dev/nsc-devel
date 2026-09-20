@@ -1,0 +1,219 @@
+{
+  "artifacts": {
+    "nsc2-o0.obj": "ac1834028eb265d06263f9957a6d255806f626e6791e373d3c2ff0eaf902a4ca",
+    "nsc2-o1.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "nsc2-o2.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "nsc2-o3.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "nsc3-o0.obj": "ac1834028eb265d06263f9957a6d255806f626e6791e373d3c2ff0eaf902a4ca",
+    "nsc3-o1.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "nsc3-o2.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311",
+    "nsc3-o3.obj": "dd235026c368d97fcc1ba78ffdbda2b67ff0dcbbccb0189e7148a1bb616a9311"
+  },
+  "atomic_output_failure": true,
+  "binary_size_ratio": 0.0683111954459203,
+  "compile_seconds": {
+    "O0": {
+      "nsc2": 0.023164000012911856,
+      "nsc3": 0.022433900041505694,
+      "ratio": 0.9684812652823693
+    },
+    "O1": {
+      "nsc2": 0.02499289996922016,
+      "nsc3": 0.024363800010178238,
+      "ratio": 0.974828853001585
+    },
+    "O2": {
+      "nsc2": 0.0241692999843508,
+      "nsc3": 0.024319900025147945,
+      "ratio": 1.0062310468608795
+    },
+    "O3": {
+      "nsc2": 0.024384699994698167,
+      "nsc3": 0.025676599994767457,
+      "ratio": 1.0529799423552548
+    }
+  },
+  "corrupt_metadata_rejected": true,
+  "fuzz": [
+    {
+      "case": 0,
+      "exit": 1,
+      "seconds": 0.024044,
+      "sha256": "12a34a582c41f40777876caf1afb0ee81d33c11cfaa2d428b908f607e24b5b89"
+    },
+    {
+      "case": 1,
+      "exit": 0,
+      "seconds": 0.023945,
+      "sha256": "6b30372c4b89d1f16db92cc0d197df9dac709b9af3e87cf11b572f3d0fdfcca4"
+    },
+    {
+      "case": 2,
+      "exit": 1,
+      "seconds": 0.024133,
+      "sha256": "02902b19ee2080539b09255399f9f02a8108836d0180ea160aa0dd4540060c04"
+    },
+    {
+      "case": 3,
+      "exit": 1,
+      "seconds": 0.02352,
+      "sha256": "cd45c2da07b13c9a5521cb40e096fb080ed05852f977eb3dcf20884f337d03ac"
+    },
+    {
+      "case": 4,
+      "exit": 0,
+      "seconds": 0.023934,
+      "sha256": "7f60f7ada917999b746a2367554fb46d615545b89cd245bee40b087fec022dd5"
+    },
+    {
+      "case": 5,
+      "exit": 0,
+      "seconds": 0.024049,
+      "sha256": "ecbe6e6d5a3be40cc9b55ce06eff076751bcd6185e671717bf6beb188c20aa3c"
+    },
+    {
+      "case": 6,
+      "exit": 1,
+      "seconds": 0.023708,
+      "sha256": "82e6d5892c92fa27f90af3c6b0f0f956c8bdc925b5454f8172e16b6a1e4e0c83"
+    },
+    {
+      "case": 7,
+      "exit": 1,
+      "seconds": 0.024162,
+      "sha256": "859c1e6462a054c6d0b13c16197e8a9cc28f6f04e3b15f5ef9ff31d0e6c7b6c6"
+    },
+    {
+      "case": 8,
+      "exit": 1,
+      "seconds": 0.024265,
+      "sha256": "17e98327d7418012bf7f9ae27b77bed5f18389492f5913c98424e1fa4b91f94e"
+    },
+    {
+      "case": 9,
+      "exit": 1,
+      "seconds": 0.023896,
+      "sha256": "9fd266a1bf9be309be73e3873a762991d0cf01db89dbc9d2efeb87edd4b7248d"
+    },
+    {
+      "case": 10,
+      "exit": 1,
+      "seconds": 0.025033,
+      "sha256": "27c2ad56f3d2607c6b6d4416f7151e2bc680402ff8914043a63c66280b5148ea"
+    },
+    {
+      "case": 11,
+      "exit": 1,
+      "seconds": 0.024115,
+      "sha256": "d49c4571e36ebcba3450091107f570da8679f4ee2dd70ce31458d5bccbce42a1"
+    },
+    {
+      "case": 12,
+      "exit": 1,
+      "seconds": 0.024079,
+      "sha256": "f667287596c8c1d80e8bc5a4fd048688718632c348fccbbde528221fe7b432ca"
+    },
+    {
+      "case": 13,
+      "exit": 1,
+      "seconds": 0.023687,
+      "sha256": "127497fe546e65db24773951256b12a32d9ca6b529842047ada0f75b9da33703"
+    },
+    {
+      "case": 14,
+      "exit": 1,
+      "seconds": 0.024107,
+      "sha256": "23e4bf28df6cbd96f3ad73bbd408f55eb8a932bad4fd6a2bf6ac964e90e0a850"
+    },
+    {
+      "case": 15,
+      "exit": 1,
+      "seconds": 0.02455,
+      "sha256": "b7111215884bb75a46d9cb1167dffd3dc70da215206f95a64a3316c18ad2c0b5"
+    },
+    {
+      "case": 16,
+      "exit": 1,
+      "seconds": 0.024212,
+      "sha256": "c9e385a9c182243845c41fe64a9d2c38ce03d24b53681b4ed064f665b76ba343"
+    },
+    {
+      "case": 17,
+      "exit": 1,
+      "seconds": 0.024199,
+      "sha256": "f791f310f8103d5071836d48a1b89f78d533083fc8657af94266834a5e96f776"
+    },
+    {
+      "case": 18,
+      "exit": 0,
+      "seconds": 0.02412,
+      "sha256": "d1aa29e5767b7f6ef4b2ec14adb27c30309f77a86777a32dbbf72305c8607214"
+    },
+    {
+      "case": 19,
+      "exit": 1,
+      "seconds": 0.024393,
+      "sha256": "54cd8c29620340905d2422cefdcf414cd85a82abaae589ccf9674c41f86dcb1d"
+    },
+    {
+      "case": 20,
+      "exit": 1,
+      "seconds": 0.024558,
+      "sha256": "3ec7ed729889bd4e7c38d12a04cd42ba403ee61e785a47c212a73a07edfb0c73"
+    },
+    {
+      "case": 21,
+      "exit": 1,
+      "seconds": 0.023918,
+      "sha256": "c9bdc03635b9d6dcf9226685a3632d92639f790cefda3dd9e6c97a5f1ba8abb2"
+    },
+    {
+      "case": 22,
+      "exit": 1,
+      "seconds": 0.023234,
+      "sha256": "b15fb1a162a25e2af68d15df98c0851765480c9c1cf095944e36a8b77e72a1ea"
+    },
+    {
+      "case": 23,
+      "exit": 1,
+      "seconds": 0.030699,
+      "sha256": "96dcdc8e3149db709571ea1aba367422a5f232456d6460d6e745d68e2fdb3116"
+    }
+  ],
+  "fuzz_cases": 24,
+  "inherited_blockers": [
+    "SH12 second-machine attestation",
+    "source-derived compiler codegen"
+  ],
+  "interruption_exercised": true,
+  "problems": [],
+  "schema": "nativesharp-selfhost-sh13-report",
+  "side_by_side": {
+    "nsc0": "A:\\nsc-devel\\selfhost\\out\\tests-nslink\\bin\\nsc.exe",
+    "nsc2": "A:\\nsc-devel\\selfhost\\out\\tests-nslink\\selfhost-robustness\\fixed-point\\nsc2.exe",
+    "nsc3": "A:\\nsc-devel\\selfhost\\out\\tests-nslink\\selfhost-robustness\\fixed-point\\nsc3-1.exe"
+  },
+  "startup_ratio": 1.1362868241545048,
+  "startup_seconds": {
+    "nsc0_startup": 0.01503080001566559,
+    "nsc2_startup": 0.017579900042619556,
+    "nsc3_startup": 0.017079300014302135
+  },
+  "status": "local-passed",
+  "temporary_leaks": [],
+  "version": 1,
+  "work_items": [
+    "NS2-SH-160",
+    "NS2-SH-161",
+    "NS2-SH-162",
+    "NS2-SH-163",
+    "NS2-SH-164",
+    "NS2-SH-165",
+    "NS2-SH-166",
+    "NS2-SH-167",
+    "NS2-SH-168",
+    "NS2-SH-169",
+    "NS2-SH-170",
+    "NS2-SH-171"
+  ]
+}

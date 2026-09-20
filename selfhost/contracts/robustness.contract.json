@@ -1,0 +1,15 @@
+{
+  "schema": "nativesharp-selfhost-robustness-contract",
+  "version": 1,
+  "fuzz_cases": 24,
+  "timing_iterations": 7,
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "maximum_startup_ratio": 12.0,
+  "maximum_compile_ratio": 4.0,
+  "maximum_binary_size_ratio": 8.0,
+  "work_items": [
+    "NS2-SH-160", "NS2-SH-161", "NS2-SH-162", "NS2-SH-163",
+    "NS2-SH-164", "NS2-SH-165", "NS2-SH-166", "NS2-SH-167",
+    "NS2-SH-168", "NS2-SH-169", "NS2-SH-170", "NS2-SH-171"
+  ]
+}
