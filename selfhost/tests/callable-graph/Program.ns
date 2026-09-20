@@ -1,0 +1,18 @@
+namespace CallableGraphFixture
+{
+    public delegate int Transform(int value);
+    public class Base
+    {
+        public virtual int Apply(int value) { return value; }
+    }
+    public class Derived : Base
+    {
+        public override int Apply(int value) { return value + 1; }
+    }
+    public Transform Make()
+    {
+        return value => value + 1;
+    }
+    public int Increment(int value) { return value + 1; }
+    public int Main() { return Increment(41); }
+}
