@@ -78,17 +78,17 @@ namespace NativeSharp.Compiler.Bootstrap
             if (!File.Exists(producerPath) || producerPath == outputPath) { return 1; }
             int verified = VerifyManifest(manifestPath);
             if (verified < 20) { return 1; }
-            if (!File.Copy(producerPath, outputPath, true)) { return 1; }
-
             raii string count = String.ToString(verified);
             raii string first = String.Concat("generation=", generation);
-            raii string second = String.Concat(first, "\nmethod=source-attested-image-replay\nsource_derived_codegen=false\nsources=");
+            raii string second = String.Concat(first,
+                "\nmethod=source-derived-codegen-required\nsource_derived_codegen=false\nstatus=blocked\nreason=compiler-codegen-incomplete\nsources=");
             raii string third = String.Concat(second, count);
             raii string trace = String.Concat(third, "\n");
             File.WriteAllText(tracePath, trace);
-            if (!File.Exists(outputPath) || !File.Exists(tracePath)) { return 1; }
-            Console.WriteLine("SH11 bootstrap generation produced from validated NativeSharp sources");
-            return 0;
+            if (!File.Exists(tracePath) || File.Exists(outputPath)) { return 1; }
+            Console.ErrorWriteLine(
+                "nsc-next: error: image replay retired; source-derived compiler codegen is required");
+            return 78;
         }
     }
 }

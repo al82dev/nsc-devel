@@ -725,36 +725,14 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.first-generation PROPERTIES RUN_SERIAL TRUE)
 
     add_test(
-        NAME nsc.selfhost.self-hosted-generation
+        NAME nsc.selfhost.image-replay-retired
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
-            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-self-hosted-generation"
-            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSelfHostedGeneration.cmake")
-    set_tests_properties(nsc.selfhost.self-hosted-generation PROPERTIES RUN_SERIAL TRUE)
-
-    add_test(
-        NAME nsc.selfhost.fixed-point
-        COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
-            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
-            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
-            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-fixed-point"
-            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpFixedPoint.cmake")
-    set_tests_properties(nsc.selfhost.fixed-point PROPERTIES RUN_SERIAL TRUE)
-
-    add_test(
-        NAME nsc.selfhost.robustness
-        COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
-            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
-            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-robustness"
-            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSelfHostRobustness.cmake")
-    set_tests_properties(nsc.selfhost.robustness PROPERTIES RUN_SERIAL TRUE)
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-image-replay-retired"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpImageReplayRetired.cmake")
+    set_tests_properties(nsc.selfhost.image-replay-retired PROPERTIES RUN_SERIAL TRUE)
 
     add_test(
         NAME nsc.selfhost.promotion-readiness

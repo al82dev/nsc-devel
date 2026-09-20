@@ -52,3 +52,7 @@ segunda ejecución real; su ausencia queda como problema normativo y no se disfr
 
 SH13 añade `verify_robustness.py`: mide startup/compilación/tamaño contra presupuestos separados,
 inyecta entradas hostiles y fallos, prueba interrupción y exige limpieza posterior.
+
+SH15 añade `verify_image_replay_retired.py`: inspecciona la implementación, invoca una solicitud
+real de generación, exige código 78 y demuestra que ni el productor cambia ni se materializa un
+ejecutable de salida. Su aprobación certifica el retiro del atajo, no codegen derivado de fuentes.

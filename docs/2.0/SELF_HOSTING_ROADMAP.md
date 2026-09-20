@@ -611,6 +611,16 @@ El cierre de ejecución de las tandas 7–16 vive en
 `docs/2.0/self-hosting/tandas/TANDA-16-CIERRE-AUDITADO.md`. Cerrar el expediente no cambia el estado
 de SH12–SH14 ni equivale a retirar `nsc0`.
 
+### Reapertura técnica — retiro del image replay
+
+La tanda 17 elimina de la matriz activa el atajo `source-attested-image-replay` usado para estudiar
+la orquestación de generaciones. A partir de SH15 ninguna solicitud `nsc1 -> nsc2` puede copiar la
+imagen productora: mientras el backend del compilador NativeSharp no produzca el compilador desde
+sus fuentes, la operación falla de forma cerrada con código 78, conserva una traza auditable y no
+crea ejecutable. Esto reduce capacidad aparente, pero restablece la semántica estricta del roadmap.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-17-SH15-RETIRO-IMAGE-REPLAY.md`.
+
 ## 9. Orden de dependencias
 
 ```text
@@ -628,7 +638,8 @@ SH00 punto de partida
                                       └─ SH11 nsc2
                                           └─ SH12 nsc3/punto fijo
                                               └─ SH13 robustez
-                                                  └─ SH14 promoción
+                                                  └─ SH14 promoción condicionada
+                                                      └─ SH15 retiro de image replay
 ```
 
 SH02 y SH03 pueden avanzar en paralelo después de SH01. Las demás dependencias son secuenciales por

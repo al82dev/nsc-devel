@@ -1,0 +1,29 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH15",
+  "state": "LANDED",
+  "revision": "selfhost(tanda-17-image-replay-retired)",
+  "run_id": "tanda-17-sh15-image-replay-retired-20260920",
+  "previous_gate": "selfhost/evidence/gates/SH14/gate.json",
+  "artifacts": {
+    "baseline_report_sha256": "6de94f3a28d14d995c71093dd1a7ef6cf570e66f6be16c6568e3c47f7e3eb69b",
+    "baseline_report_json_sha256": "53072fdad4bfde1e63fb045bcc15c24310ec0ac5bfa0889a92272d58802b5260",
+    "baseline_source_sha256": "f54d9093250c74e5aa425594106e788082a849c85833c10b1c0679de6cf822b0",
+    "gate0_sha256": "20abca35a590bc038ea6cbee39781ee59997c2d9303f605d7531b76e8a9c706d",
+    "sh15_lld_report_sha256": "e11bab508af5ecd4ddd95bcfdf227ad4bb420a6dc46067e461e3c5822197fcde",
+    "sh15_nslink_report_sha256": "e11bab508af5ecd4ddd95bcfdf227ad4bb420a6dc46067e461e3c5822197fcde"
+  },
+  "metrics": {
+    "image_replay_retired": true,
+    "source_derived_codegen": false,
+    "generation_blocked": true,
+    "blocked_exit_code": 78,
+    "compiler_sources": 21,
+    "ctest_per_linker": 450,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18,
+    "baseline_seconds": 796.81
+  },
+  "problems": []
+}

@@ -1,0 +1,23 @@
+{
+  "blocked_exit_code": 78,
+  "compiler_sources": 21,
+  "gate": "SH15",
+  "generation_blocked": true,
+  "image_replay_retired": true,
+  "problems": [],
+  "producer_sha256": "e9ce406dc514ea43dffdd99cd7b08fc9a3329664d339e774268da7916086b27b",
+  "schema": "nativesharp-selfhost-sh15-report",
+  "source_derived_codegen": false,
+  "status": "passed",
+  "stderr": "nsc-next: error: image replay retired; source-derived compiler codegen is required\n",
+  "stdout": "",
+  "trace": {
+    "generation": "nsc2",
+    "method": "source-derived-codegen-required",
+    "reason": "compiler-codegen-incomplete",
+    "source_derived_codegen": "false",
+    "sources": "21",
+    "status": "blocked"
+  },
+  "version": 1
+}

@@ -28,3 +28,7 @@ referencias, perfiles, response files, metadata N-1/N, manifiestos y enlace dual
 
 `first-generation.contract.json` congela desde SH10 las fuentes, dependencias, imports, perfiles
 y linkers que definen el primer `nsc1` construido exclusivamente por `nsc0`.
+
+`image-replay-retirement.contract.json` congela desde SH15 la prohibición de copiar la imagen
+productora, el código 78 de bloqueo y los campos mínimos de la traza emitida mientras todavía no
+existe codegen del compilador derivado de fuentes.

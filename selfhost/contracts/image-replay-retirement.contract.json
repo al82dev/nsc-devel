@@ -1,0 +1,20 @@
+{
+  "schema": "nativesharp-selfhost-image-replay-retirement",
+  "version": 1,
+  "gate": "SH15",
+  "generation": "nsc2",
+  "image_replay_allowed": false,
+  "source_derived_codegen": false,
+  "blocked_exit_code": 78,
+  "minimum_compiler_sources": 20,
+  "required_trace": {
+    "method": "source-derived-codegen-required",
+    "source_derived_codegen": "false",
+    "status": "blocked",
+    "reason": "compiler-codegen-incomplete"
+  },
+  "prohibited_source_fragments": [
+    "File.Copy(producerPath, outputPath",
+    "source-attested-image-replay"
+  ]
+}

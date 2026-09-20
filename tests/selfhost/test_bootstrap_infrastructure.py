@@ -347,13 +347,14 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["linkers"], ["lld-link", "NSLink"])
         self.assertEqual(len(contract["work_items"]), 11)
 
-    def test_sh11_generation_audit_rejects_children_and_records_limitation(self) -> None:
+    def test_sh11_generation_audit_is_historical_after_sh15_retirement(self) -> None:
         verifier = (ROOT / "selfhost/bootstrap/verify_self_hosted_generation.py").read_text()
         native_builder = (ROOT / "selfhost/nsc/Bootstrap/GenerationBuilder.ns").read_text()
         self.assertIn("require(not observed", verifier)
         self.assertIn('"nsc0_invocations_during_generation": 0', verifier)
         self.assertIn('"source_derived_codegen": False', verifier)
-        self.assertIn("source-attested-image-replay", native_builder)
+        self.assertNotIn("source-attested-image-replay", native_builder)
+        self.assertIn("source-derived-codegen-required", native_builder)
         self.assertNotIn("NativeSharp.Core.Diagnostics", native_builder)
 
     def test_sh12_fixed_point_contract_separates_local_and_cross_machine_proof(self) -> None:
@@ -397,6 +398,15 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         verifier = (ROOT / "selfhost/bootstrap/verify_closure.py").read_text()
         self.assertIn("SELFHOST-CROSS-MACHINE", verifier)
         self.assertIn("SELFHOST-SOURCE-DERIVED-CODEGEN", verifier)
+
+    def test_tanda17_retires_image_replay_and_fails_closed(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/image-replay-retirement.contract.json").read_text())
+        self.assertFalse(contract["image_replay_allowed"])
+        self.assertEqual(contract["blocked_exit_code"], 78)
+        builder = (ROOT / "selfhost/nsc/Bootstrap/GenerationBuilder.ns").read_text()
+        self.assertNotIn("File.Copy(", builder)
+        self.assertIn("source-derived-codegen-required", builder)
+        self.assertIn("return 78;", builder)
 
 
 if __name__ == "__main__":

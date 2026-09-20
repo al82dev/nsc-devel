@@ -67,3 +67,8 @@ candidato, conservando rollback explícito.
 
 Tanda 16 sella el estado de los gates y convierte los pendientes restantes en un ledger
 ejecutable. El cierre administrativo conserva la no promoción y no altera los contratos SH12–14.
+
+SH15 retira de la ruta activa `source-attested-image-replay`. `nsc1` ya no puede fabricar `nsc2`
+copiándose: `--bootstrap-generation` valida el conjunto fuente, escribe una traza bloqueada y sale
+con código 78 sin producir un PE. La generación volverá a habilitarse únicamente cuando el objeto
+del compilador sea derivado de sus fuentes por el backend NativeSharp.
