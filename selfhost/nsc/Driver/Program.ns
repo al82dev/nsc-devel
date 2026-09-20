@@ -41,6 +41,8 @@ namespace NativeSharp.Compiler.Driver
             Console.WriteLine("  nsc-next --verify-dominance|--verify-ssa <file.ns>");
             Console.WriteLine("  nsc-next --emit-object|--emit-assembly <file.ns> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next --dump-project|--verify-project <project.nsproj>");
+            Console.WriteLine("  nsc-next --dump-source-graph <project.nsproj>");
+            Console.WriteLine("  nsc-next --check-project <project.nsproj>");
             Console.WriteLine("  nsc-next --emit-project-object <project.nsproj> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next --emit-nsmeta|--emit-toolchain-manifest <project.nsproj> <path>");
             Console.WriteLine("  nsc-next --bootstrap-generation <generation> <manifest> <producer.exe> <output.exe> <trace>");
@@ -221,6 +223,79 @@ namespace NativeSharp.Compiler.Driver
             return 0;
         }
 
+        // SH25. The whole source graph, dumped. Deterministic by construction: the order comes
+        // from SourceGraph, never from the filesystem enumeration.
+        private static int DumpSourceGraph(string projectPath)
+        {
+            raii SourceGraph graph = SourceGraphBuilder.Build(projectPath);
+            raii string dump = SourceGraphDumper.Dump(graph);
+            Console.Write(dump);
+            return graph.Failed() ? 1 : 0;
+        }
+
+        // SH25. Every root unit through the existing lexer and parser, with diagnostics attributed
+        // PER UNIT. Each unit gets its own FileId, so a position reported for unit 7 cannot be
+        // confused with one reported for unit 3.
+        //
+        // This deliberately makes no semantic claim: SemanticAnalyzer does not yet diagnose an
+        // unresolved name. Cross-module symbols and semantic diagnostics belong to SH26.
+        private static int CheckProject(string projectPath)
+        {
+            raii SourceGraph graph = SourceGraphBuilder.Build(projectPath);
+            if (graph.Failed())
+            {
+                raii string failure = String.Concat("nsc-next: error: ", graph.Diagnostic());
+                Console.ErrorWriteLine(failure);
+                return 1;
+            }
+
+            raii ProjectModel rootProject = ProjectLoader.Load(projectPath);
+            raii string rootOwner = String.Copy(rootProject.Name());
+            int failed = 0;
+            int checkedUnits = 0;
+            int index = 0;
+            while (index < graph.UnitCount())
+            {
+                SourceUnit unit = graph.UnitAt(index);
+                if (unit.Owner() != rootOwner)
+                {
+                    index = index + 1;
+                    continue;
+                }
+                raii SourceBuffer source = SourceBuffer.Load(new FileId(unit.Order() + 1), unit.PathValue());
+                raii Lexer lexer = new Lexer(source);
+                raii TokenStream tokens = lexer.LexAll();
+                raii Parser parser = new Parser(source, tokens);
+                raii SyntaxTree tree = parser.ParseCompilationUnit();
+                int errors = tokens.ErrorCount() + parser.ErrorCount();
+                raii StringBuilder line = new StringBuilder();
+                line.Append("unit ");
+                line.Append(unit.Order());
+                line.Append(' ');
+                line.Append(unit.Owner());
+                line.Append(' ');
+                line.Append(unit.RelativePath());
+                line.Append(" errors=");
+                line.Append(errors);
+                raii string rendered = line.ToOwnedString();
+                Console.WriteLine(rendered);
+                if (errors != 0) { failed = failed + 1; }
+                checkedUnits = checkedUnits + 1;
+                index = index + 1;
+            }
+
+            raii StringBuilder summary = new StringBuilder();
+            summary.Append("graph-units=");
+            summary.Append(graph.UnitCount());
+            summary.Append(" checked=");
+            summary.Append(checkedUnits);
+            summary.Append(" failed=");
+            summary.Append(failed);
+            raii string summaryText = summary.ToOwnedString();
+            Console.WriteLine(summaryText);
+            return failed == 0 ? 0 : 1;
+        }
+
         private static int ProjectCommand(string command, string projectPath, string outputPath)
         {
             raii ProjectModel project = ProjectLoader.Load(projectPath);
@@ -271,6 +346,12 @@ namespace NativeSharp.Compiler.Driver
             {
                 if (count != 7) { return 2; }
                 return GenerationBuilder.Build(arguments[2], arguments[3], arguments[4], arguments[5], arguments[6]);
+            }
+            if (command == "--dump-source-graph" || command == "--check-project")
+            {
+                if (count != 3) { return 2; }
+                if (command == "--dump-source-graph") { return DumpSourceGraph(arguments[2]); }
+                return CheckProject(arguments[2]);
             }
             if (command == "--dump-project" || command == "--verify-project")
             {

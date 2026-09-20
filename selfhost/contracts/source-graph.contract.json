@@ -1,0 +1,49 @@
+{
+  "schema": "nativesharp-selfhost-source-graph-contract",
+  "version": 1,
+  "scope": "deterministic-source-graph-per-unit-lexer-parser-diagnostics",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
+  "expected_status": "ok",
+  "expected_projects": [
+    "NativeSharpCore",
+    "NativeSharpCoreCollectionsGeneric",
+    "NativeSharpCoreIO",
+    "NativeSharpLLVM_C",
+    "NativeSharpCompilerNext"
+  ],
+  "root_owner": "NativeSharpCompilerNext",
+  "root_units": [
+    "Basic/GenerationArena.ns",
+    "Basic/Identifiers.ns",
+    "Basic/StableHash.ns",
+    "Source/SourceBuffer.ns",
+    "Diagnostics/Diagnostics.ns",
+    "Lexer/Lexer.ns",
+    "Lexer/TokenDumper.ns",
+    "Lexer/TokenKind.ns",
+    "Lexer/TokenStream.ns",
+    "Syntax/SyntaxTree.ns",
+    "Parser/Parser.ns",
+    "Types/TypeSystem.ns",
+    "Symbols/Symbols.ns",
+    "Sema/SemanticAnalyzer.ns",
+    "Sema/SemanticDumper.ns",
+    "Sema/SemanticModel.ns",
+    "IR/IntermediateRepresentation.ns",
+    "CodeGen/LlvmBackend.ns",
+    "Projects/ProjectSystem.ns",
+    "Projects/SourceGraph.ns",
+    "Bootstrap/GenerationBuilder.ns",
+    "Driver/Program.ns"
+  ],
+  "required_source_symbols": [
+    "class SourceUnit",
+    "class SourceGraph",
+    "class IncludeExpander",
+    "class SourceGraphBuilder",
+    "class SourceGraphDumper"
+  ],
+  "expected_exit_code": 0,
+  "work_items": ["NS2-SH-115", "NS2-SH-116"]
+}

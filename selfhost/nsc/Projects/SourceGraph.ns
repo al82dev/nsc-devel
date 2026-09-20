@@ -1,0 +1,395 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Basic;
+using NativeSharp.Compiler.Source;
+
+namespace NativeSharp.Compiler.Projects
+{
+    // SH25. A compilation unit resolved from a project include pattern.
+    //
+    // `path` is the absolute on-disk path used to open the file. `displayPath` is the normalized
+    // diagnostic spelling produced by DiagnosticPath, so a diagnostic never depends on the drive
+    // letter casing or on the separator the project file happened to use.
+    public class SourceUnit
+    {
+        private owned string path;
+        private owned string displayPath;
+        private owned string relativePath;
+        private owned string owner;
+        private int order;
+
+        // `relativePath` is taken against the OWNING project's directory, never against the root
+        // project's. A referenced library lives outside the root tree, so a root-relative spelling
+        // would carry the absolute prefix into the dump -- and the gate compares that dump between
+        // two clean roots on two machines.
+        public SourceUnit(string absolutePath, string ownerProject, string ownerDirectory, int ordinal)
+        {
+            path = String.Copy(absolutePath);
+            displayPath = DiagnosticPath.Normalize(absolutePath);
+            relativePath = Relative(ownerDirectory, displayPath);
+            owner = String.Copy(ownerProject);
+            order = ordinal;
+        }
+
+        private static owned string Relative(string ownerDirectory, string display)
+        {
+            raii string root = DiagnosticPath.Normalize(ownerDirectory);
+            if (root.Length != 0 && String.StartsWith(display, root))
+            {
+                int start = root.Length;
+                if (start < display.Length && display[start] == '/') { start = start + 1; }
+                return String.Substring(display, start, display.Length - start);
+            }
+            return String.Copy(display);
+        }
+
+        public string PathValue() { return path; }
+        public string DisplayPath() { return displayPath; }
+        public string RelativePath() { return relativePath; }
+        public string Owner() { return owner; }
+        public int Order() { return order; }
+    }
+
+    // SH25. The ordered set of units a project and its references contribute to one compilation.
+    //
+    // The order is CANONICAL, not incidental, and this is the property the gate measures:
+    //
+    //   1. referenced projects contribute before the project that references them (post-order),
+    //   2. within a project, includes contribute in DECLARATION order -- the .nsproj lists Basic,
+    //      Source, Diagnostics, Lexer, ... Driver, and that layering is meaningful,
+    //   3. within one include, files are ordered by ordinal comparison of their display path,
+    //   4. a file matched by two includes is kept once, at its first occurrence.
+    //
+    // Rules 2 and 3 together are what makes the dump reproducible across machines: neither the
+    // filesystem enumeration order nor the locale can move a unit.
+    public class SourceGraph
+    {
+        private owned List<SourceUnit> units;
+        private owned List<string> projects;
+        private owned string diagnostic;
+
+        public SourceGraph()
+        {
+            units = new List<SourceUnit>();
+            projects = new List<string>();
+            diagnostic = String.Copy("");
+        }
+
+        public int UnitCount() { return units.Count(); }
+        public SourceUnit UnitAt(int index) { return units[index]; }
+        public int ProjectCount() { return projects.Count(); }
+        public string ProjectAt(int index) { return projects[index]; }
+        public string Diagnostic() { return diagnostic; }
+        public bool Failed() { return diagnostic.Length != 0; }
+
+        public void Fail(string message)
+        {
+            if (diagnostic.Length != 0) { return; }
+            raii string copy = String.Copy(message);
+            diagnostic = move(copy);
+        }
+
+        public bool Contains(string displayPath)
+        {
+            int index = 0;
+            while (index < units.Count())
+            {
+                if (units[index].DisplayPath() == displayPath) { return true; }
+                index = index + 1;
+            }
+            return false;
+        }
+
+        public bool ContainsProject(string normalizedProject)
+        {
+            int index = 0;
+            while (index < projects.Count())
+            {
+                if (projects[index] == normalizedProject) { return true; }
+                index = index + 1;
+            }
+            return false;
+        }
+
+        public void AddProject(string normalizedProject)
+        {
+            raii string copy = String.Copy(normalizedProject);
+            projects.Add(move(copy));
+        }
+
+        public void AddUnit(string absolutePath, string ownerProject, string ownerDirectory)
+        {
+            raii string display = DiagnosticPath.Normalize(absolutePath);
+            if (Contains(display)) { return; }
+            raii SourceUnit unit = new SourceUnit(absolutePath, ownerProject, ownerDirectory, units.Count());
+            units.Add(move(unit));
+        }
+    }
+
+    // SH25. Expansion of a single `Compile Include` pattern into files.
+    //
+    // Only the three shapes the project files actually use are honoured, and anything else is an
+    // error rather than a silent empty match -- an include that quietly expands to nothing is how a
+    // compilation loses a file without anyone noticing:
+    //
+    //   Driver/Program.ns      literal relative path
+    //   Lexer/*.ns             one directory
+    //   Basic/**/*.ns          directory and everything under it
+    public class IncludeExpander
+    {
+        private static owned string PatternExtension(string pattern)
+        {
+            int star = String.LastIndexOf(pattern, "*");
+            if (star < 0) { return String.Copy(""); }
+            int start = star + 1;
+            return String.Substring(pattern, start, pattern.Length - start);
+        }
+
+        // String.TrimEnd only takes the value -- there is no char overload in the bootstrap
+        // profile -- so the separator strip is written here rather than assumed.
+        private static owned string TrimTrailingSeparators(string value)
+        {
+            int end = value.Length;
+            while (end > 0 && (value[end - 1] == '/' || value[end - 1] == '\\'))
+            {
+                end = end - 1;
+            }
+            return String.Substring(value, 0, end);
+        }
+
+        private static owned string PatternRoot(string directory, string pattern)
+        {
+            int star = String.IndexOf(pattern, "*");
+            if (star < 0) { return String.Copy(directory); }
+            raii string head = String.Substring(pattern, 0, star);
+            raii string cleaned = TrimTrailingSeparators(head);
+            if (cleaned.Length == 0) { return String.Copy(directory); }
+            return Path.Combine(directory, cleaned);
+        }
+
+        private static void CollectSorted(string directory, string extension, bool recursive,
+            string owner, string ownerDirectory, SourceGraph graph)
+        {
+            if (!Directory.Exists(directory)) { return; }
+            int fileCount = Directory.GetFileCount(directory);
+            string[] files = new string[fileCount];
+            Directory.GetFiles(directory, files);
+
+            // Selection sort over the names: List has no sort in the bootstrap profile, and the
+            // enumeration order of the filesystem is exactly what must not reach the dump.
+            raii string previous = String.Copy("");
+            int emitted = 0;
+            while (emitted < fileCount)
+            {
+                int best = -1;
+                int index = 0;
+                while (index < fileCount)
+                {
+                    string candidate = files[index];
+                    bool eligible = String.EndsWith(candidate, extension) &&
+                        (previous.Length == 0 || String.Compare(candidate, previous) > 0);
+                    if (eligible && (best < 0 || String.Compare(candidate, files[best]) < 0))
+                    {
+                        best = index;
+                    }
+                    index = index + 1;
+                }
+                if (best < 0) { break; }
+                raii string full = Path.Combine(directory, files[best]);
+                graph.AddUnit(full, owner, ownerDirectory);
+                raii string nextPrevious = String.Copy(files[best]);
+                previous = move(nextPrevious);
+                emitted = emitted + 1;
+            }
+            delete[] files;
+
+            if (!recursive) { return; }
+
+            int directoryCount = Directory.GetDirectoryCount(directory);
+            string[] directories = new string[directoryCount];
+            Directory.GetDirectories(directory, directories);
+            raii string previousDirectory = String.Copy("");
+            int walked = 0;
+            while (walked < directoryCount)
+            {
+                int best = -1;
+                int index = 0;
+                while (index < directoryCount)
+                {
+                    string candidate = directories[index];
+                    bool eligible = previousDirectory.Length == 0 ||
+                        String.Compare(candidate, previousDirectory) > 0;
+                    if (eligible && (best < 0 || String.Compare(candidate, directories[best]) < 0))
+                    {
+                        best = index;
+                    }
+                    index = index + 1;
+                }
+                if (best < 0) { break; }
+                raii string child = Path.Combine(directory, directories[best]);
+                CollectSorted(child, extension, true, owner, ownerDirectory, graph);
+                raii string nextPrevious = String.Copy(directories[best]);
+                previousDirectory = move(nextPrevious);
+                walked = walked + 1;
+            }
+            delete[] directories;
+        }
+
+        public static void Expand(string projectDirectory, string include, string owner,
+            SourceGraph graph)
+        {
+            ExpandFrom(projectDirectory, projectDirectory, include, owner, graph);
+        }
+
+        private static void ExpandFrom(string projectDirectory, string ownerDirectory, string include,
+            string owner, SourceGraph graph)
+        {
+            if (String.Contains(include, ".."))
+            {
+                raii string message = String.Concat("include escapes the project directory: ", include);
+                graph.Fail(message);
+                return;
+            }
+
+            if (!String.Contains(include, "*"))
+            {
+                raii string literal = Path.Combine(projectDirectory, include);
+                if (!File.Exists(literal))
+                {
+                    raii string message = String.Concat("include matches no file: ", include);
+                    graph.Fail(message);
+                    return;
+                }
+                graph.AddUnit(literal, owner, ownerDirectory);
+                return;
+            }
+
+            raii string extension = PatternExtension(include);
+            if (extension.Length == 0)
+            {
+                raii string message = String.Concat("include has no extension to match: ", include);
+                graph.Fail(message);
+                return;
+            }
+
+            raii string root = PatternRoot(projectDirectory, include);
+            bool recursive = String.Contains(include, "**");
+            int before = graph.UnitCount();
+            CollectSorted(root, extension, recursive, owner, ownerDirectory, graph);
+            if (graph.UnitCount() == before)
+            {
+                raii string message = String.Concat("include matches no file: ", include);
+                graph.Fail(message);
+            }
+        }
+    }
+
+    // SH25. Builds the whole graph: references first, then this project's own includes.
+    public class SourceGraphBuilder
+    {
+        private static void Visit(string projectPath, SourceGraph graph, List<string> active,
+            int depth)
+        {
+            if (graph.Failed()) { return; }
+            if (depth > 32)
+            {
+                graph.Fail("project reference nesting exceeds the bootstrap limit of 32");
+                return;
+            }
+
+            raii string normalized = DiagnosticPath.Normalize(projectPath);
+            int index = 0;
+            while (index < active.Count())
+            {
+                if (active[index] == normalized)
+                {
+                    raii string message = String.Concat("project reference cycle at ", normalized);
+                    graph.Fail(message);
+                    return;
+                }
+                index = index + 1;
+            }
+            if (graph.ContainsProject(normalized)) { return; }
+
+            if (!File.Exists(projectPath))
+            {
+                raii string message = String.Concat("referenced project does not exist: ", normalized);
+                graph.Fail(message);
+                return;
+            }
+
+            raii string marker = String.Copy(normalized);
+            active.Add(move(marker));
+
+            raii ProjectModel project = ProjectLoader.Load(projectPath);
+            raii string directory = Path.GetDirectoryName(projectPath);
+
+            int reference = 0;
+            while (reference < project.ReferenceCount() && !graph.Failed())
+            {
+                raii string referencePath = Path.Combine(directory, project.ReferenceAt(reference));
+                Visit(referencePath, graph, active, depth + 1);
+                reference = reference + 1;
+            }
+
+            int include = 0;
+            while (include < project.SourceCount() && !graph.Failed())
+            {
+                IncludeExpander.Expand(directory, project.SourceAt(include), project.Name(), graph);
+                include = include + 1;
+            }
+
+            graph.AddProject(normalized);
+            active.RemoveAt(active.Count() - 1);
+        }
+
+        public static owned SourceGraph Build(string projectPath)
+        {
+            raii SourceGraph graph = new SourceGraph();
+            raii List<string> active = new List<string>();
+            Visit(projectPath, graph, active, 0);
+            return move(graph);
+        }
+    }
+
+    // SH25. Deterministic textual surface. This is what the gate diffs across O0-O3 and across
+    // two clean roots, so nothing machine-dependent may appear here: no absolute paths, no times,
+    // no counts derived from the filesystem enumeration order.
+    public class SourceGraphDumper
+    {
+        public static owned string Dump(SourceGraph graph)
+        {
+            raii StringBuilder output = new StringBuilder();
+            output.Append("source-graph schema=1\n");
+            if (graph.Failed())
+            {
+                output.Append("status=failed\nreason=");
+                output.Append(graph.Diagnostic());
+                output.Append('\n');
+                return output.ToOwnedString();
+            }
+
+            output.Append("status=ok\nprojects=");
+            output.Append(graph.ProjectCount());
+            output.Append("\nunits=");
+            output.Append(graph.UnitCount());
+            output.Append('\n');
+
+            int index = 0;
+            while (index < graph.UnitCount())
+            {
+                SourceUnit unit = graph.UnitAt(index);
+                output.Append("unit ");
+                output.Append(unit.Order());
+                output.Append(' ');
+                output.Append(unit.Owner());
+                output.Append(' ');
+                output.Append(unit.RelativePath());
+                output.Append('\n');
+                index = index + 1;
+            }
+            return output.ToOwnedString();
+        }
+    }
+}
