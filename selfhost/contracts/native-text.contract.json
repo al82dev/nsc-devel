@@ -13,6 +13,6 @@
     "CharacterLiteralExpression \"'N'\" : char rvalue"
   ],
   "required_object_fragments": ["Native", "Sharp", "C3A97869"],
-  "required_backend_symbols": ["LLVMBuildGlobalStringPtr", "EmitGlobalString"],
+  "required_backend_symbols": ["LLVMConstStringInContext2", "LLVMConstNamedStruct", "EmitGlobalString"],
   "work_items": ["NS2-SH-130", "NS2-SH-131"]
 }

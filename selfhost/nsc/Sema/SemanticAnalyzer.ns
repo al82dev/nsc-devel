@@ -26,12 +26,17 @@ namespace NativeSharp.Compiler.Sema
         private int Lookup(string name)
         {
             int scope = currentScope;
-            while (scope >= 0)
+            while (scope > 0)
             {
                 int result = model.GetScope(scope).LookupLocal(name); if (result >= 0) { return result; }
                 scope = model.GetScope(scope).Parent();
             }
-            return -1;
+            if (currentType >= 0)
+            {
+                int member = LookupMember(model.GetSymbol(currentType).TypeId(), name);
+                if (member >= 0) { return member; }
+            }
+            return model.GetScope(0).LookupLocal(name);
         }
         private int LookupGlobal(string name) { return model.GetScope(0).LookupLocal(name); }
         private int Declare(SymbolKind kind, string name, int type, int node, bool global)
@@ -59,16 +64,81 @@ namespace NativeSharp.Compiler.Sema
         }
         private int TypeSymbol(int typeId)
         {
-            string display = model.Types().Get(typeId).Display(); int index = 0;
+            raii string display = String.Copy(model.Types().Get(typeId).Display());
+            if (String.StartsWith(display, "owned "))
+            { raii string stripped = String.Substring(display, 6, display.Length - 6); display = move(stripped); }
+            else if (String.StartsWith(display, "borrowed "))
+            { raii string stripped = String.Substring(display, 9, display.Length - 9); display = move(stripped); }
+            int generic = String.IndexOf(display, "<");
+            if (generic >= 0) { raii string baseName = String.Substring(display, 0, generic); display = move(baseName); }
+            int index = 0; int externalFallback = -1;
             while (index < model.SymbolCount())
             {
                 Symbol symbol = model.GetSymbol(index);
                 if ((symbol.Kind() == SymbolKind.Struct || symbol.Kind() == SymbolKind.Class ||
                     symbol.Kind() == SymbolKind.Interface || symbol.Kind() == SymbolKind.Enum || symbol.Kind() == SymbolKind.Union) &&
-                    (symbol.Name() == display || symbol.QualifiedName() == display)) { return index; }
+                    (symbol.Name() == display || symbol.QualifiedName() == display))
+                {
+                    if (symbol.Declaration() >= 0) { return index; }
+                    if (externalFallback < 0) { externalFallback = index; }
+                }
                 index = index + 1;
             }
-            return -1;
+            return externalFallback;
+        }
+
+        private owned string GenericArgument(string display, int requested)
+        {
+            int open = String.IndexOf(display, "<"); if (open < 0) { return String.Copy(""); }
+            int depth = 0; int current = 0; int begin = open + 1; int cursor = begin;
+            while (cursor < display.Length)
+            {
+                char value = display[cursor];
+                if (value == '<') { depth = depth + 1; }
+                else if (value == '>' && depth == 0)
+                {
+                    if (current == requested)
+                    {
+                        raii string raw = String.Substring(display, begin, cursor - begin);
+                        return String.Trim(raw);
+                    }
+                    break;
+                }
+                else if (value == '>' ) { depth = depth - 1; }
+                else if (value == ',' && depth == 0)
+                {
+                    if (current == requested)
+                    {
+                        raii string raw = String.Substring(display, begin, cursor - begin);
+                        return String.Trim(raw);
+                    }
+                    current = current + 1; begin = cursor + 1;
+                }
+                cursor = cursor + 1;
+            }
+            return String.Copy("");
+        }
+
+        private int SubstituteMemberType(int receiverType, int owner, int memberType)
+        {
+            string resultName = model.Types().Get(memberType).Display();
+            string parameters = model.GetSymbol(owner).GenericText(); int parameterIndex = 0; int begin = 0;
+            while (begin <= parameters.Length)
+            {
+                raii string remaining = String.Substring(parameters, begin, parameters.Length - begin);
+                int comma = String.IndexOf(remaining, ",");
+                int end = comma < 0 ? parameters.Length : begin + comma;
+                raii string rawParameterName = String.Substring(parameters, begin, end - begin);
+                raii string parameterName = String.Trim(rawParameterName);
+                if (parameterName == resultName)
+                {
+                    raii string argument = GenericArgument(model.Types().Get(receiverType).Display(), parameterIndex);
+                    if (argument.Length != 0) { return model.Types().Intern(argument); }
+                }
+                if (comma < 0) { break; }
+                parameterIndex = parameterIndex + 1; begin = end + 1;
+            }
+            return memberType;
         }
         private int LookupMember(int typeId, string name)
         {
@@ -104,6 +174,17 @@ namespace NativeSharp.Compiler.Sema
                     bool constantField = String.Contains(child.ModifiersText(), "const"); bool staticField = String.Contains(child.ModifiersText(), "static");
                     model.GetSymbol(field).SetConst(constantField); model.GetSymbol(field).SetStatic(staticField);
                     int alignment = model.Types().Get(fieldType).Alignment(); int size = model.Types().Get(fieldType).Size();
+                    // The bootstrap ABI erases nominal structs/classes to stable native
+                    // references. Nested nominal fields therefore occupy one pointer even when
+                    // their source value layout is smaller (FileId inside SourcePosition was
+                    // previously assigned four bytes, then an eight-byte pointer store
+                    // overlapped the following field). Enums remain physical i32 values.
+                    if (model.Types().Get(fieldType).Kind() == SemanticTypeKind.Named)
+                    {
+                        int nominal = TypeSymbol(fieldType);
+                        if (nominal < 0 || model.GetSymbol(nominal).Kind() != SymbolKind.Enum)
+                        { size = 8; alignment = 8; }
+                    }
                     if (pack > 0 && alignment > pack) { alignment = pack; }
                     int explicitOffset = AuxiliaryValue(child.Auxiliary(), "at:");
                     int bitWidth = AuxiliaryValue(child.Auxiliary(), "bits:");
@@ -127,6 +208,18 @@ namespace NativeSharp.Compiler.Sema
                     if (alignment > maxAlignment) { maxAlignment = alignment; } AttachToParent(field, symbol);
                 }
                 else if (child.Kind() == "MethodDeclaration" || child.Kind() == "ConstructorDeclaration") { DeclareFunction(childId, symbol, false); }
+                else if (child.Kind() == "ExternCDeclaration")
+                {
+                    int externalIndex = 0;
+                    while (externalIndex < child.ChildCount())
+                    {
+                        int externalId = child.ChildAt(externalIndex);
+                        SyntaxNode external = tree.Node(externalId);
+                        if (external.Kind() == "FunctionDeclaration" || external.Kind() == "MethodDeclaration")
+                        { DeclareFunction(externalId, symbol, true); }
+                        externalIndex = externalIndex + 1;
+                    }
+                }
                 else if (child.Kind() == "PropertyDeclaration" || child.Kind() == "IndexerDeclaration")
                 {
                     SymbolKind memberKind = child.Kind() == "PropertyDeclaration" ? SymbolKind.Property : SymbolKind.Indexer;
@@ -238,7 +331,11 @@ namespace NativeSharp.Compiler.Sema
         }
         private string NumericConversion(int source, int destination)
         {
-            if (model.Types().Get(source).Kind() == SemanticTypeKind.NullLiteral && model.Types().Get(destination).Kind() == SemanticTypeKind.Pointer) { return "implicit-null-pointer"; }
+            SemanticTypeKind destinationKind = model.Types().Get(destination).Kind();
+            if (model.Types().Get(source).Kind() == SemanticTypeKind.NullLiteral &&
+                (destinationKind == SemanticTypeKind.Pointer || destinationKind == SemanticTypeKind.Named ||
+                 destinationKind == SemanticTypeKind.Array || destinationKind == SemanticTypeKind.Function))
+            { return "implicit-null-pointer"; }
             if (model.Types().Get(source).Kind() == SemanticTypeKind.StringLiteral && model.Types().Get(destination).Kind() == SemanticTypeKind.Pointer) { return "implicit-string-literal-to-char-pointer"; }
             if (model.Types().Get(source).Kind() == SemanticTypeKind.Pointer && model.Types().Get(destination).Kind() == SemanticTypeKind.Pointer &&
                 model.Types().Get(model.Types().Get(destination).ElementType()).Kind() == SemanticTypeKind.Void) { return "implicit-pointer-to-void"; }
@@ -314,6 +411,13 @@ namespace NativeSharp.Compiler.Sema
             if (node.Kind() == "MemberExpression")
             {
                 SemanticFact receiver = AnalyzeExpression(node.First()); int type = receiver.TypeId();
+                SemanticTypeKind receiverKind = model.Types().Get(type).Kind();
+                if (node.Text() == "Length" &&
+                    (model.Types().Get(type).Display() == "string" || receiverKind == SemanticTypeKind.Array))
+                {
+                    fact.SetType(model.Types().Find("int"), ValueCategory.RValue);
+                    fact.SetStorage(false, false); return fact;
+                }
                 if (model.Types().Get(type).Kind() == SemanticTypeKind.Pointer) { type = model.Types().Get(type).ElementType(); }
                 int member = LookupMember(type, node.Text());
                 if (member < 0)
@@ -361,8 +465,12 @@ namespace NativeSharp.Compiler.Sema
                     fact.SetType(stringType, ValueCategory.RValue); fact.SetConstant(b); return fact;
                 }
                 int operation = left.TypeId(); int result = operation;
-                bool leftPointer = model.Types().Get(left.TypeId()).Kind() == SemanticTypeKind.Pointer;
-                bool rightPointer = model.Types().Get(right.TypeId()).Kind() == SemanticTypeKind.Pointer;
+                SemanticTypeKind leftKind = model.Types().Get(left.TypeId()).Kind();
+                SemanticTypeKind rightKind = model.Types().Get(right.TypeId()).Kind();
+                bool leftPointer = leftKind == SemanticTypeKind.Pointer || leftKind == SemanticTypeKind.Named ||
+                    leftKind == SemanticTypeKind.Array || leftKind == SemanticTypeKind.Function;
+                bool rightPointer = rightKind == SemanticTypeKind.Pointer || rightKind == SemanticTypeKind.Named ||
+                    rightKind == SemanticTypeKind.Array || rightKind == SemanticTypeKind.Function;
                 if (leftPointer && rightPointer && op == TokenKind.Minus) { result = model.Types().Find("nint"); }
                 else if (leftPointer && model.Types().IsInteger(right.TypeId()) && (op == TokenKind.Plus || op == TokenKind.Minus)) { result = left.TypeId(); }
                 else if (rightPointer && model.Types().IsInteger(left.TypeId()) && op == TokenKind.Plus) { operation = right.TypeId(); result = right.TypeId(); }
@@ -412,9 +520,26 @@ namespace NativeSharp.Compiler.Sema
             if (node.Kind() == "IndexExpression")
             {
                 SemanticFact receiver = AnalyzeExpression(node.First()); AnalyzeExpression(node.Second()); int type = receiver.TypeId(); bool bounds = false;
-                if (model.Types().Get(type).Kind() == SemanticTypeKind.Pointer || model.Types().Get(type).Kind() == SemanticTypeKind.Array)
+                if (model.Types().Get(type).Display() == "string")
+                { type = model.Types().Find("char"); bounds = true; }
+                else if (model.Types().Get(type).Kind() == SemanticTypeKind.Pointer || model.Types().Get(type).Kind() == SemanticTypeKind.Array)
                 { bounds = model.Types().Get(type).Kind() == SemanticTypeKind.Array; type = model.Types().Get(type).ElementType(); }
-                fact.SetType(type, ValueCategory.LValue); fact.SetStorage(true, true); fact.SetBoundsCheck(bounds);
+                else if (model.Types().Get(type).Kind() == SemanticTypeKind.Named)
+                {
+                    int owner = TypeSymbol(type); int member = owner >= 0 ? LookupMember(type, "get_Item") : -1;
+                    if (member < 0 && owner >= 0) { member = LookupMember(type, "Item"); }
+                    if (member >= 0)
+                    {
+                        int memberType = model.GetSymbol(member).TypeId();
+                        if (model.GetSymbol(member).Kind() == SymbolKind.Method &&
+                            model.Types().Get(memberType).Kind() == SemanticTypeKind.Function)
+                        { memberType = model.Types().Get(memberType).ReturnType(); }
+                        type = SubstituteMemberType(receiver.TypeId(), owner, memberType); fact.SetSymbol(member);
+                    }
+                }
+                bool propertyAccess = fact.SymbolId() >= 0 && model.GetSymbol(fact.SymbolId()).Kind() == SymbolKind.Method;
+                fact.SetType(type, propertyAccess ? ValueCategory.RValue : ValueCategory.LValue);
+                fact.SetStorage(!propertyAccess, !propertyAccess); fact.SetBoundsCheck(bounds);
                 int index = 0; while (index < node.ChildCount()) { AnalyzeExpression(node.ChildAt(index)); index = index + 1; } return fact;
             }
             if (node.Kind() == "CastExpression")
@@ -425,6 +550,14 @@ namespace NativeSharp.Compiler.Sema
                 int sourceSymbol = sourceKind == SemanticTypeKind.Named ? TypeSymbol(operand.TypeId()) : -1;
                 if (sourceSymbol >= 0 && model.GetSymbol(sourceSymbol).Kind() == SymbolKind.Enum) { kind = "explicit-enum"; }
                 AddConversion(fact, kind, operand.TypeId(), result, "contextual", -1); if (operand.IsConstant()) { fact.SetConstant(operand.ConstantText()); } return fact;
+            }
+            if (node.Kind() == "ObjectCreationExpression")
+            {
+                int createdType = model.Types().Intern(node.SemanticTypeText());
+                fact.SetType(createdType, ValueCategory.RValue);
+                int argument = 0; while (argument < node.ChildCount())
+                { AnalyzeExpression(node.ChildAt(argument)); argument = argument + 1; }
+                return fact;
             }
             if (node.Kind() == "NewExpression" || node.Kind() == "StackallocExpression")
             {
@@ -450,7 +583,24 @@ namespace NativeSharp.Compiler.Sema
             if (node.Kind() == "ConditionalExpression")
             {
                 AnalyzeExpression(node.First()); SemanticFact yes = AnalyzeExpression(node.Second()); SemanticFact no = AnalyzeExpression(node.Third());
-                int result = yes.TypeId() == no.TypeId() ? yes.TypeId() : CommonNumeric(yes.TypeId(), no.TypeId()); fact.SetType(result, ValueCategory.RValue); return fact;
+                int result = yes.TypeId() == no.TypeId() ? yes.TypeId() : CommonNumeric(yes.TypeId(), no.TypeId());
+                SemanticTypeKind yesKind = model.Types().Get(yes.TypeId()).Kind();
+                SemanticTypeKind noKind = model.Types().Get(no.TypeId()).Kind();
+                string yesName = model.Types().Get(yes.TypeId()).Display();
+                string noName = model.Types().Get(no.TypeId()).Display();
+                bool yesString = yesKind == SemanticTypeKind.StringLiteral || yesName == "string" ||
+                    yesName == "owned string" || yesName == "borrowed string";
+                bool noString = noKind == SemanticTypeKind.StringLiteral || noName == "string" ||
+                    noName == "owned string" || noName == "borrowed string";
+                if (yesString && noString)
+                { result = yesKind == SemanticTypeKind.StringLiteral ? no.TypeId() : yes.TypeId(); }
+                else if (yesKind == SemanticTypeKind.NullLiteral &&
+                    (noKind == SemanticTypeKind.Named || noKind == SemanticTypeKind.Array || noKind == SemanticTypeKind.Pointer))
+                { result = no.TypeId(); }
+                else if (noKind == SemanticTypeKind.NullLiteral &&
+                    (yesKind == SemanticTypeKind.Named || yesKind == SemanticTypeKind.Array || yesKind == SemanticTypeKind.Pointer))
+                { result = yes.TypeId(); }
+                fact.SetType(result, ValueCategory.RValue); return fact;
             }
             if (node.Kind() == "MoveExpression" || node.Kind() == "PassExpression")
             {
@@ -493,6 +643,11 @@ namespace NativeSharp.Compiler.Sema
                 if (node.First() >= 0)
                 {
                     SemanticFact initializer = AnalyzeExpression(node.First());
+                    if (node.SemanticTypeText() == "var")
+                    {
+                        type = initializer.TypeId(); model.GetSymbol(symbol).SetTypeId(type);
+                        model.Fact(nodeId).SetType(type, ValueCategory.LValue);
+                    }
                     if (initializer.TypeId() != type)
                     {
                         string conversionKind = NumericConversion(initializer.TypeId(), type);
@@ -559,7 +714,15 @@ namespace NativeSharp.Compiler.Sema
             int index = 0; while (index < node.ChildCount())
             {
                 int parameterNode = node.ChildAt(index); SyntaxNode parameter = tree.Node(parameterNode);
-                if (parameter.Kind() == "ParameterDeclaration") { int type = model.Types().Intern(parameter.SemanticTypeText()); int id = Declare(SymbolKind.Parameter, parameter.Text(), type, parameterNode, false); model.GetSymbol(id).SetConst(parameter.Auxiliary() == "pass:in"); }
+                if (parameter.Kind() == "ParameterDeclaration")
+                {
+                    int type = model.Types().Intern(parameter.SemanticTypeText());
+                    if (String.StartsWith(parameter.Auxiliary(), "pass:") &&
+                        model.Types().Get(type).Kind() == SemanticTypeKind.Pointer)
+                    { type = model.Types().Get(type).ElementType(); }
+                    int id = Declare(SymbolKind.Parameter, parameter.Text(), type, parameterNode, false);
+                    model.GetSymbol(id).SetConst(parameter.Auxiliary() == "pass:in");
+                }
                 index = index + 1;
             }
             AnalyzeStatement(node.First()); currentScope = savedScope; currentFunction = savedFunction;

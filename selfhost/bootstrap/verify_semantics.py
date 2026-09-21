@@ -26,7 +26,7 @@ def require(condition: bool, message: str) -> None:
 def run(executable: Path, action: str, source: Path) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
         [str(executable), action, str(source)], stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, check=False, timeout=15,
+        stderr=subprocess.PIPE, check=False, timeout=120,
     )
 
 

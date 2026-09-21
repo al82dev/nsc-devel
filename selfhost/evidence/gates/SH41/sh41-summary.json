@@ -1,0 +1,24 @@
+{
+  "schema": "nativesharp-selfhost-sh41-summary",
+  "version": 1,
+  "status": "passed",
+  "gate": "SH41",
+  "tanda": 43,
+  "generation": "nsc1->nsc2->nsc3",
+  "generation_method": "source-derived-llvm-object",
+  "source_derived_codegen": true,
+  "image_replay": false,
+  "source_files": 101,
+  "source_sha256": "90299cbc1899b23baf659900d8cccdd215245b23c606ab7d3fce1948f11ab9d0",
+  "nsc0_invocations_during_generation": 0,
+  "profiles": {
+    "O0": "8c4d695e00ff8edfcaad07752a238bbd729987ed317ff57a6f0d65467fe4b27f",
+    "O1": "1675e571c937759b9d220360564c8803359cb75c408f7a83885a5162aec2075f",
+    "O2": "e0b5da15155d6d95c67c67d06af2e0b87399a68b7bb05c4c45fc36f8995c3647",
+    "O3": "8c1d6f9179ace3b8c649a3de0c2d34150d92bc16268b51f42e32a47d24933f04"
+  },
+  "object_fixed_point_per_profile": true,
+  "linkers": ["lld-link", "NSLink"],
+  "executions": 16,
+  "problems": []
+}

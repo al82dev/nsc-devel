@@ -44,6 +44,18 @@ namespace NativeSharp.LLVM.C
         ReturnStatus = 2
     }
 
+    public enum LLVMLinkage
+    {
+        External = 0,
+        AvailableExternally = 1,
+        LinkOnceAny = 2,
+        LinkOnceODR = 3,
+        WeakAny = 5,
+        WeakODR = 6,
+        Internal = 8,
+        Private = 9
+    }
+
     // llvm-c/Core.h: valores ABI usados por el backend SH08. Se declaran como enums
     // NativeSharp para impedir que el lowering mezcle predicados u órdenes atómicos.
     public enum LLVMIntPredicate

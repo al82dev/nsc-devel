@@ -128,7 +128,9 @@ namespace NativeSharp.Compiler.Syntax
             output.Append(node.Kind());
             if (node.Text().Length != 0) { output.Append(" \""); output.Append(node.Text()); output.Append('"'); }
             if (node.Auxiliary().Length != 0) { output.Append(" aux=\""); output.Append(node.Auxiliary()); output.Append('"'); }
-            if (node.GenericText().Length != 0)
+            // Explicit generic call arguments participate in resolution but nsc0's public AST
+            // dump does not print them on the callee IdentifierExpression.
+            if (node.GenericText().Length != 0 && node.Kind() != "IdentifierExpression")
             {
                 output.Append(" generic=<"); output.Append(node.GenericText()); output.Append('>');
             }

@@ -35,7 +35,7 @@ class BootstrapProfileTests(unittest.TestCase):
     def test_contract_is_versioned_and_closed(self) -> None:
         self.assertEqual(self.profile["profile"], "NativeSharp.BootstrapProfile/2.0")
         self.assertEqual(self.profile["target"], "windows-x64-msvc")
-        self.assertNotIn("stackalloc", self.profile["allowed_reserved_keywords"])
+        self.assertIn("stackalloc", self.profile["allowed_reserved_keywords"])
         self.assertIn("NativeSharp.Core.nsproj", self.profile["allowed_project_references"])
         known = set(self.profile["known_reserved_keywords"])
         allowed = set(self.profile["allowed_reserved_keywords"])
@@ -81,7 +81,7 @@ class BootstrapProfileTests(unittest.TestCase):
         first = verify_profile.scan_source(source, self.profile)
         second = verify_profile.scan_source(source, self.profile)
         self.assertEqual(first, second)
-        self.assertEqual([item.code for item in first], ["NSBP2005", "NSBP2008"])
+        self.assertEqual([item.code for item in first], ["NSBP2008"])
 
     def test_unapproved_project_reference_is_rejected(self) -> None:
         project = self.root / "Bad.nsproj"
@@ -122,7 +122,7 @@ class BootstrapProfileTests(unittest.TestCase):
             verify_profile.load_profile(path)
 
     def test_cli_exit_codes_distinguish_violation_and_invalid_input(self) -> None:
-        bad_source = FIXTURES / "negative" / "stackalloc.ns"
+        bad_source = FIXTURES / "negative" / "event.ns"
         self.assertEqual(
             verify_profile.main(
                 ["--profile", str(PROFILE), "--source-root", str(bad_source), "--quiet"]

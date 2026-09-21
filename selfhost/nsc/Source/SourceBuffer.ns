@@ -60,7 +60,15 @@ namespace NativeSharp.Compiler.Source
                 }
                 index = index + 1;
             }
-            return starts.ToArray();
+            // The bootstrap generic ABI erases List<T> storage to native pointers. Materialize
+            // this value-typed result explicitly so List<int>'s boxed elements are unboxed by
+            // the indexer before they enter the physical int[] returned to callers.
+            int[] result = new int[starts.Count()]; int resultIndex = 0;
+            while (resultIndex < starts.Count())
+            {
+                result[resultIndex] = starts[resultIndex]; resultIndex = resultIndex + 1;
+            }
+            return result;
         }
 
         public SourceBuffer(FileId file, string sourcePath, string sourceText)

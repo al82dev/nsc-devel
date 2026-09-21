@@ -47,11 +47,16 @@ namespace NativeSharp.Compiler.Sema
         private static void DumpNode(SyntaxTree tree, SemanticModel model, int id, int depth, string edge, StringBuilder output)
         {
             if (id < 0) { return; } SyntaxNode node = tree.Node(id); SemanticFact fact = model.Fact(id);
-            if (fact.Present() || fact.ConversionCount() != 0 || fact.HasOperator())
+            // nsc0 reports conversions attached to declarations, but it does not expose the
+            // declaration's internal lvalue fact.  Keep that fact for lowering while preserving
+            // the public dump: an ordinary declaration stays silent; one with a conversion emits
+            // its node and conversion only.
+            bool showPresent = node.Kind() != "VariableDeclarationStatement";
+            if ((showPresent && fact.Present()) || fact.ConversionCount() != 0 || fact.HasOperator())
             {
                 Indent(output, depth); output.Append(edge); output.Append(node.Kind());
                 if (node.Text().Length != 0) { output.Append(" \""); output.Append(node.Text()); output.Append('"'); }
-                if (fact.Present())
+                if (showPresent && fact.Present())
                 {
                     output.Append(" : "); output.Append(model.Types().Get(fact.TypeId()).Display());
                     output.Append(fact.Category() == ValueCategory.LValue ? " lvalue" : " rvalue");

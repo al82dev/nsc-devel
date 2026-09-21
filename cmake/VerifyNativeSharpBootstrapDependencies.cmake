@@ -3,6 +3,12 @@ if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SO
 endif()
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 set(project "${SOURCE_ROOT}/selfhost/nsc/NativeSharp.Compiler.nsproj")
+set(check_names core collections io llvm-c)
+set(check_projects
+ "${SOURCE_ROOT}/lib/NativeSharp.Core/NativeSharp.Core.nsproj"
+ "${SOURCE_ROOT}/lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj"
+ "${SOURCE_ROOT}/lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj"
+ "${SOURCE_ROOT}/lib/NativeSharp.LLVM.C/NativeSharp.LLVM.C.nsproj")
 foreach(profile IN ITEMS O0 O1 O2 O3)
  string(TOLOWER "${profile}" lower)
  set(candidate "${OUTPUT_DIR}/nsc-next-${lower}.exe")
@@ -16,6 +22,17 @@ foreach(profile IN ITEMS O0 O1 O2 O3)
  endif()
  execute_process(COMMAND "${candidate}" --dump-source-graph "${project}" OUTPUT_FILE "${OUTPUT_DIR}/graph-${lower}.txt" RESULT_VARIABLE result)
  execute_process(COMMAND "${candidate}" --dump-module-set "${project}" OUTPUT_FILE "${OUTPUT_DIR}/modules-${lower}.txt" RESULT_VARIABLE result)
+ list(LENGTH check_projects check_count)
+ math(EXPR check_last "${check_count} - 1")
+ foreach(check_index RANGE 0 ${check_last})
+  list(GET check_names ${check_index} check_name)
+  list(GET check_projects ${check_index} check_project)
+  execute_process(COMMAND "${candidate}" --check-project "${check_project}"
+   OUTPUT_FILE "${OUTPUT_DIR}/check-${check_name}-${lower}.txt" ERROR_VARIABLE check_error RESULT_VARIABLE result)
+  if(NOT result EQUAL 0)
+   message(FATAL_ERROR "SH40 ${profile} source parse check failed for ${check_name}: ${check_error}")
+  endif()
+ endforeach()
 endforeach()
 execute_process(COMMAND "${PYTHON_EXECUTABLE}" -B "${SOURCE_ROOT}/selfhost/bootstrap/verify_bootstrap_dependencies.py" --output-dir "${OUTPUT_DIR}" --report "${OUTPUT_DIR}/sh40-report.json" RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT result EQUAL 0)

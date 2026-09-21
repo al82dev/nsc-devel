@@ -197,13 +197,14 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["schema"], "nativesharp-llvm-c-api-contract")
         self.assertEqual(contract["supported_llvm_major"], 23)
         self.assertEqual(len(contract["nsc0_import_symbols"]), 219)
-        self.assertEqual(len(contract["bootstrap_symbols"]), 44)
+        self.assertEqual(len(contract["bootstrap_symbols"]), 51)
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
         declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
-        self.assertEqual(len(declared), 110)
+        self.assertEqual(len(declared), 120)
         self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
-        self.assertTrue(set(declared).issubset(contract["nsc0_import_symbols"]))
+        audited = set(contract["nsc0_import_symbols"]) | set(contract["bootstrap_extension_symbols"])
+        self.assertTrue(set(declared).issubset(audited))
         self.assertEqual(
             verify_llvm_c_contract.digest(signature_source),
             contract["signature_source_sha256"],
@@ -334,28 +335,29 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn("byte_identical_clean_builds", verifier)
         self.assertNotIn("write_bytes", verifier)
 
-    def test_sh11_contract_freezes_generation_and_does_not_overclaim_codegen(self) -> None:
+    def test_sh41_contract_freezes_real_source_derived_generation(self) -> None:
         contract = json.loads(
             (ROOT / "selfhost/contracts/self-hosted-generation.contract.json").read_text()
         )
         self.assertEqual(contract["schema"], "nativesharp-selfhost-generation-contract")
         self.assertEqual(contract["generation"], "nsc2")
         self.assertEqual(contract["built_by"], "nsc1")
-        self.assertEqual(contract["generation_method"], "source-attested-image-replay")
-        self.assertFalse(contract["source_derived_codegen"])
+        self.assertEqual(contract["version"], 2)
+        self.assertEqual(contract["gate"], "SH41")
+        self.assertEqual(contract["generation_method"], "source-derived-llvm-object")
+        self.assertTrue(contract["source_derived_codegen"])
+        self.assertFalse(contract["image_replay"])
         self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
         self.assertEqual(contract["linkers"], ["lld-link", "NSLink"])
         self.assertEqual(len(contract["work_items"]), 11)
 
-    def test_sh11_generation_audit_is_historical_after_sh15_retirement(self) -> None:
+    def test_sh41_generation_audits_seed_isolation_and_fixed_point(self) -> None:
         verifier = (ROOT / "selfhost/bootstrap/verify_self_hosted_generation.py").read_text()
-        native_builder = (ROOT / "selfhost/nsc/Bootstrap/GenerationBuilder.ns").read_text()
-        self.assertIn("require(not observed", verifier)
+        self.assertIn("forbidden_seed_invocations", verifier)
         self.assertIn('"nsc0_invocations_during_generation": 0', verifier)
-        self.assertIn('"source_derived_codegen": False', verifier)
-        self.assertNotIn("source-attested-image-replay", native_builder)
-        self.assertIn("source-derived-codegen-required", native_builder)
-        self.assertNotIn("NativeSharp.Core.Diagnostics", native_builder)
+        self.assertIn('"source_derived_codegen": True', verifier)
+        self.assertIn("nsc2_object.read_bytes() == nsc3_object.read_bytes()", verifier)
+        self.assertNotIn("source-attested-image-replay", verifier)
 
     def test_sh12_fixed_point_contract_separates_local_and_cross_machine_proof(self) -> None:
         contract = json.loads((ROOT / "selfhost/contracts/fixed-point.contract.json").read_text())

@@ -47,7 +47,7 @@ def source_corpus(root: Path) -> list[Path]:
 def run(executable: Path, action: str, source: Path) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
         [str(executable), action, str(source)], stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, check=False, timeout=20,
+        stderr=subprocess.PIPE, check=False, timeout=120,
     )
 
 

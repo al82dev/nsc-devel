@@ -30,11 +30,16 @@ namespace NativeSharp.LLVM.C
             public void* LLVMVectorType(void* elementType, uint elementCount);
             public void* LLVMStructTypeInContext(
                 void* context, void** elementTypes, uint elementCount, int packed);
+            public void* LLVMStructCreateNamed(void* context, byte* name);
+            public void LLVMStructSetBody(void* structure, void** elementTypes, uint elementCount, int packed);
             public void* LLVMFunctionType(
                 void* returnType, void** parameterTypes, uint parameterCount, int variadic);
             public void* LLVMConstInt(void* integerType, ulong value, int signExtend);
             public void* LLVMConstReal(void* realType, double value);
             public void* LLVMConstNull(void* type);
+            public void* LLVMConstStringInContext2(
+                void* context, byte* value, ulong length, int dontNullTerminate);
+            public void* LLVMConstNamedStruct(void* structure, void** constantValues, uint count);
             public void* LLVMAddFunction(void* module, byte* name, void* functionType);
             public void* LLVMGetNamedFunction(void* module, byte* name);
             public void LLVMSetFunctionCallConv(void* function, uint callingConvention);
@@ -44,6 +49,7 @@ namespace NativeSharp.LLVM.C
             public void* LLVMGetNamedGlobal(void* module, byte* name);
             public void LLVMSetInitializer(void* global, void* constantValue);
             public void LLVMSetGlobalConstant(void* global, int isConstant);
+            public void LLVMSetLinkage(void* global, LLVMLinkage linkage);
             public void* LLVMGetParam(void* function, uint index);
             public void* LLVMGetEntryBasicBlock(void* function);
             public void* LLVMGetFirstInstruction(void* block);
@@ -75,6 +81,8 @@ namespace NativeSharp.LLVM.C
             public void* LLVMBuildAShr(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildLShr(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildNot(void* builder, void* value, byte* name);
+            public void* LLVMBuildSelect(
+                void* builder, void* condition, void* thenValue, void* elseValue, byte* name);
             public void* LLVMBuildFNeg(void* builder, void* value, byte* name);
             public void* LLVMBuildFAdd(void* builder, void* left, void* right, byte* name);
             public void* LLVMBuildFSub(void* builder, void* left, void* right, byte* name);

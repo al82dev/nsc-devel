@@ -80,7 +80,8 @@ def main() -> int:
     declared = declared_binding_symbols(signature_source)
     if not set(contract["bootstrap_symbols"]).issubset(declared):
         failures.append("NativeSharp LLVM binding lost an SH03 bootstrap symbol")
-    if not set(declared).issubset(inventory):
+    audited_bindings = set(inventory) | set(contract.get("bootstrap_extension_symbols", []))
+    if not set(declared).issubset(audited_bindings):
         failures.append("NativeSharp LLVM binding declares symbols outside the audited nsc0 inventory")
     if digest(signature_source) != contract["signature_source_sha256"]:
         failures.append("NativeSharp LLVM signatures changed without contract update")
@@ -94,6 +95,7 @@ def main() -> int:
         "llvm_major": contract["supported_llvm_major"],
         "nsc0_import_count": len(inventory),
         "bootstrap_symbol_count": len(contract["bootstrap_symbols"]),
+        "bootstrap_extension_symbol_count": len(contract.get("bootstrap_extension_symbols", [])),
         "binding_symbol_count": len(declared),
         "failures": failures,
     }

@@ -8,7 +8,7 @@
   "negative_project": "selfhost/tests/module-set/negative/ModuleSetNegative.nsproj",
   "expected_status": "ok",
   "root_owner": "NativeSharpCompilerNext",
-  "expected_units": 23,
+  "expected_units": 26,
   "expected_external_projects": [
     "NativeSharpCore",
     "NativeSharpCoreCollectionsGeneric",

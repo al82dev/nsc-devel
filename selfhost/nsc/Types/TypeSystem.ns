@@ -108,6 +108,66 @@ namespace NativeSharp.Compiler.Types
         public int Intern(string display)
         {
             int existing = Find(display); if (existing >= 0) { return existing; }
+            // Module metadata carries callable types in the same canonical form emitted by
+            // Function(): `(T0, T1) -> TResult`.  Treating that text as an opaque named type
+            // loses ReturnType/ParameterType and makes a later local declaration reuse a
+            // malformed signature.  Rehydrate the structural function type at the boundary.
+            if (display.Length >= 6 && display[0] == '(')
+            {
+                int close = -1; int cursor = 1; int nestedParens = 0; int nestedAngles = 0; int nestedBrackets = 0;
+                while (cursor < display.Length)
+                {
+                    char value = display[cursor];
+                    if (value == '(') { nestedParens = nestedParens + 1; }
+                    else if (value == ')')
+                    {
+                        if (nestedParens == 0) { close = cursor; break; }
+                        nestedParens = nestedParens - 1;
+                    }
+                    else if (value == '<') { nestedAngles = nestedAngles + 1; }
+                    else if (value == '>' && nestedAngles > 0) { nestedAngles = nestedAngles - 1; }
+                    else if (value == '[') { nestedBrackets = nestedBrackets + 1; }
+                    else if (value == ']' && nestedBrackets > 0) { nestedBrackets = nestedBrackets - 1; }
+                    cursor = cursor + 1;
+                }
+                if (close >= 0 && close + 4 < display.Length &&
+                    String.Substring(display, close, 5) == ") -> ")
+                {
+                    raii string returnName = String.Substring(display, close + 5, display.Length - close - 5);
+                    int returnType = Intern(returnName);
+                    raii SemanticType callable = new SemanticType(SemanticTypeKind.Function, display);
+                    callable.SetReturnType(returnType);
+                    int begin = 1; cursor = 1; nestedParens = 0; nestedAngles = 0; nestedBrackets = 0;
+                    while (cursor <= close)
+                    {
+                        bool boundary = cursor == close;
+                        if (!boundary)
+                        {
+                            char value = display[cursor];
+                            if (value == '(') { nestedParens = nestedParens + 1; }
+                            else if (value == ')' && nestedParens > 0) { nestedParens = nestedParens - 1; }
+                            else if (value == '<') { nestedAngles = nestedAngles + 1; }
+                            else if (value == '>' && nestedAngles > 0) { nestedAngles = nestedAngles - 1; }
+                            else if (value == '[') { nestedBrackets = nestedBrackets + 1; }
+                            else if (value == ']' && nestedBrackets > 0) { nestedBrackets = nestedBrackets - 1; }
+                            else if (value == ',' && nestedParens == 0 && nestedAngles == 0 && nestedBrackets == 0)
+                            { boundary = true; }
+                        }
+                        if (boundary)
+                        {
+                            if (cursor > begin)
+                            {
+                                raii string raw = String.Substring(display, begin, cursor - begin);
+                                raii string parameterName = String.Trim(raw);
+                                if (parameterName.Length > 0) { callable.AddParameterType(Intern(parameterName)); }
+                            }
+                            begin = cursor + 1;
+                        }
+                        cursor = cursor + 1;
+                    }
+                    callable.SetLayout(8, 8); types.Add(move(callable)); return types.Count() - 1;
+                }
+            }
             OwnershipKind ownership = OwnershipKind.None; int prefix = 0;
             if (display.Length > 6 && String.Substring(display, 0, 6) == "owned ") { ownership = OwnershipKind.Owned; prefix = 6; }
             else if (display.Length > 9 && String.Substring(display, 0, 9) == "borrowed ") { ownership = OwnershipKind.Borrowed; prefix = 9; }
@@ -136,11 +196,18 @@ namespace NativeSharp.Compiler.Types
                 {
                     raii string countText = String.Substring(display, bracket + 1, display.Length - bracket - 2); Number.TryParseInt64(countText, out count);
                 }
-                array.SetElementType(element); array.SetElementCount(count); array.SetLayout((int)(count * Get(element).Size()), Get(element).Alignment());
+                array.SetElementType(element); array.SetElementCount(count);
+                // Unsized arrays are runtime references.  Treating T[] as a zero-byte inline
+                // field made the following field overlap it (List<T>.items and count were both
+                // at offset zero), corrupting every generic collection during bootstrap.
+                if (count == 0) { array.SetLayout(8, 8); }
+                else { array.SetLayout((int)(count * Get(element).Size()), Get(element).Alignment()); }
                 types.Add(move(array)); return types.Count() - 1;
             }
             raii SemanticType named = new SemanticType(SemanticTypeKind.Named, display);
-            named.SetLayout(0, 1); types.Add(move(named)); return types.Count() - 1;
+            // Nominal values begin life as opaque native references. Aggregate declaration
+            // replaces this with the exact value layout for structs, unions and enums.
+            named.SetLayout(8, 8); types.Add(move(named)); return types.Count() - 1;
         }
 
         public int StringLiteral(int count)

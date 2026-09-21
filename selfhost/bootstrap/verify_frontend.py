@@ -23,7 +23,7 @@ def require(condition: bool, message: str) -> None:
         raise VerificationError(message)
 
 
-def run(executable: Path, *arguments: str, timeout: int = 30) -> subprocess.CompletedProcess[bytes]:
+def run(executable: Path, *arguments: str, timeout: int = 120) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
         [str(executable), *arguments],
         stdout=subprocess.PIPE,

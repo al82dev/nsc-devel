@@ -67,15 +67,17 @@ namespace NativeSharp.Core
             int capacidad = datos.Length;
             while (capacidad < objetivo) { capacidad = capacidad * 2; }
 
-            // El mismo patron exacto que ByteBuffer.EnsureCapacity: una local `const` --que NO
-            // posee-- para el arreglo nuevo, copia por Span, `delete[]` del viejo y asignacion al
-            // campo. Con `owned` en la local el compilador rechaza el `move` ("move(...) source
-            // must be a RAII local or owned parameter"), y ese diagnostico es correcto: la local
-            // no es la duena, el campo lo es.
+            // Una local `const` --que NO posee-- para el arreglo nuevo, copia explicita,
+            // `delete[]` del viejo y asignacion al campo. La copia directa mantiene este tipo
+            // fundamental utilizable durante el bootstrap antes de que la ABI generica de
+            // Span<T> haya alcanzado el punto fijo.
             const char[] mayor = new char[capacidad];
-            Span<char> origen = Spans.OfRange<char>(datos, 0, cuantos);
-            Span<char> destino = Spans.OfRange<char>(mayor, 0, cuantos);
-            origen.CopyTo(destino);
+            int indice = 0;
+            while (indice < cuantos)
+            {
+                mayor[indice] = datos[indice];
+                indice = indice + 1;
+            }
             delete[] datos;
             datos = mayor;
         }
@@ -186,11 +188,11 @@ namespace NativeSharp.Core
             // toma el arreglo entero, asi que pasarle `datos` directamente meteria en la cadena la
             // basura que haya despues de `cuantos`.
             const char[] exacto = new char[cuantos];
-            if (cuantos > 0)
+            int indice = 0;
+            while (indice < cuantos)
             {
-                Span<char> origen = Spans.OfRange<char>(datos, 0, cuantos);
-                Span<char> destino = Spans.OfRange<char>(exacto, 0, cuantos);
-                origen.CopyTo(destino);
+                exacto[indice] = datos[indice];
+                indice = indice + 1;
             }
             return String.FromCharArray(exacto);
         }

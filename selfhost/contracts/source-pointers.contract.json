@@ -6,7 +6,7 @@
   "profiles": ["O0", "O1", "O2", "O3"],
   "linkers": ["lld", "nslink"],
   "expected_exit_code": 42,
-  "required_symbols": ["__nativesharp_source_Sum", "__nativesharp_source_Main"],
+  "required_symbols": ["__nativesharp_10617594450780811446_Sum", "__nativesharp_3347706242812374255_Main"],
   "required_llvm_api": ["LLVMBuildArrayAlloca", "LLVMBuildGEP2", "LLVMBuildLoad2", "LLVMBuildStore", "LLVMConstNull"],
   "source_derived_codegen": true,
   "scope": "pointer-null-address-dereference-index-stackalloc"

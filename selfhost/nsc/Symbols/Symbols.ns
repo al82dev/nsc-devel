@@ -61,6 +61,7 @@ namespace NativeSharp.Compiler.Symbols
         private int bitOffset;
         private owned string genericText;
         private owned string constraintsText;
+        private bool reachable;
 
         public Symbol(SymbolKind symbolKind, string symbolName, int symbolType, int node)
         {
@@ -69,6 +70,7 @@ namespace NativeSharp.Compiler.Symbols
             constant = false; defined = false; externC = false; virtualMember = false; overrideMember = false; staticMember = false;
             constantValue = 0; hasConstantValue = false; offset = -1; size = 0; alignment = 1; bitWidth = -1; bitOffset = -1;
             genericText = String.Copy(""); constraintsText = String.Copy("");
+            reachable = false;
         }
         public SymbolKind Kind() { return kind; }
         public string Name() { return name; }
@@ -93,7 +95,9 @@ namespace NativeSharp.Compiler.Symbols
         public int BitOffset() { return bitOffset; }
         public string GenericText() { return genericText; }
         public string ConstraintsText() { return constraintsText; }
+        public bool IsReachable() { return reachable; }
         public void SetQualifiedName(string value) { qualifiedName = String.Copy(value); }
+        public void SetTypeId(int value) { typeId = value; }
         public void SetParent(int value) { parent = value; }
         public void AddMember(int value) { members.Add(value); }
         public void SetConst(bool value) { constant = value; }
@@ -107,6 +111,7 @@ namespace NativeSharp.Compiler.Symbols
         public void SetBitField(int width, int offsetInBits) { bitWidth = width; bitOffset = offsetInBits; }
         public void SetGenericText(string value) { genericText = String.Copy(value); }
         public void SetConstraintsText(string value) { constraintsText = String.Copy(value); }
+        public void SetReachable(bool value) { reachable = value; }
     }
 
     public class Scope

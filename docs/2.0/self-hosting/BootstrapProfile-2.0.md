@@ -94,9 +94,10 @@ que requiera reflexión o generación de código durante el bootstrap.
 - préstamos que no escapan y handles de arena cuya validez se comprueba por generación;
 - cleanup automático en retornos, excepciones y salidas de scope.
 
-Para el compilador se prefieren arenas por fase y valores inmutables. `destroy`, placement,
-`stackalloc`, VLA y layout manual quedan fuera: reducen la superficie verificable sin ser
-necesarios para el port.
+Para el compilador se prefieren arenas por fase y valores inmutables. `stackalloc` queda permitido
+para arreglos temporales acotados cuyo puntero no escapa de la llamada (por ejemplo, vectores de
+argumentos de LLVM-C); SH23 y SH27 certifican su lowering. `destroy`, placement, VLA y layout manual
+permanecen fuera.
 
 ### 3.6 Punteros, delegates y código inseguro
 
@@ -135,7 +136,7 @@ Los códigos `NSBPxxxx` son estables:
 
 | Familia | Rechazo |
 |---|---|
-| `NSBP2001–2009` | volatile, política forzada de inline, destroy, stackalloc, exports, vectorcall, events y comptime |
+| `NSBP2001–2009` | volatile, política forzada de inline, destroy, exports, vectorcall, events y comptime (`NSBP2005` queda retirado) |
 | `NSBP2101–2108` | assembly integrado, uniones, placement y layout manual (`pack`, `at`, `size`, `align`) |
 | `NSBP2201–2203` | threading e intrinsics de hardware |
 | `NSBP3001` | ProjectReference fuera de los cuatro proyectos permitidos |

@@ -829,7 +829,16 @@ externas. El gate compara O0–O3 y rechaza objetos o ejecutables como entradas 
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-42-SH40-DEPENDENCIAS-FUENTE.md`.
 
-### 8.43 Plan cerrado restante — Tandas 43–56
+### 8.43 Tanda 43 — SH41
+
+La primera autocompilación real está implementada. `nsc1` emite desde las 101 entradas fuente del
+grafo bootstrap los objetos de `nsc2`; `nsc2` repite la compilación y produce objetos `nsc3`
+idénticos en O0–O3. La auditoría observa cero invocaciones de `nsc0`, y las 16 combinaciones de
+generación/perfil/enlazador superan identidad, self-test y análisis del proyecto.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-43-SH41-PRIMERA-AUTOCOMPILACION.md`.
+
+### 8.44 Plan cerrado restante — Tandas 44–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a
@@ -1241,11 +1250,12 @@ mantiene un solo commit de cierre por tanda.
 
 ## 23. Resumen ejecutivo
 
-Las tandas 01–42 y los gates SH00–SH40 ya establecieron contratos, retiraron image replay, lograron
-un backend derivado de fuente para la rebanada escalar actual, construyeron el grafo fuente
-determinista, dieron identidad semántica al conjunto multimódulo y cerraron la memoria nativa que
-usa el bootstrap. Eso es una base real, no self-hosting completo: todavía faltan interop extendido, genéricos,
-el resto de la superficie 2.0, bibliotecas, generaciones autónomas, punto fijo y certificación.
+Las tandas 01–43 y los gates SH00–SH41 ya establecieron contratos, retiraron image replay, lograron
+un backend derivado de fuente para el compilador completo, construyeron el grafo fuente
+determinista, dieron identidad semántica al conjunto multimódulo y alcanzaron la primera cadena real
+`nsc1 -> nsc2 -> nsc3`, con punto fijo de objeto por perfil. Eso es self-hosting funcional, pero no
+la promoción completa: todavía faltan la equivalencia diferencial exhaustiva, determinismo entre
+máquinas, superficies 2.0 restantes, bibliotecas, rendimiento, robustez y certificación.
 
 El plan cerrado restante comprende las tandas 43–56 y los gates SH41–SH54. SH41, en la tanda 43,
 produce la primera autocompilación real; SH54, en la tanda 56, es el único cierre de promoción. El

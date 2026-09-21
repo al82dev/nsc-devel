@@ -4868,6 +4868,10 @@ ast::AstNode* Parser::parseExternCDeclaration()
     {
         while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
         {
+            const TokenKind accessibility =
+                (at(TokenKind::KwPublic) || at(TokenKind::KwInternal))
+                    ? consume().kind()
+                    : TokenKind::Invalid;
             ast::TypeSyntax* returnType = parseType();
             if (!at(TokenKind::Identifier))
             {
@@ -4876,7 +4880,12 @@ ast::AstNode* Parser::parseExternCDeclaration()
                 continue;
             }
             const lexer::Token& name = consume();
-            node->addChild(parseFunctionTail(returnType, name, true));
+            ast::AstNode* function = parseFunctionTail(returnType, name, true);
+            if (function != nullptr && accessibility != TokenKind::Invalid)
+            {
+                function->addModifier(accessibility);
+            }
+            node->addChild(function);
         }
         expect(TokenKind::RightBrace, "'}'");
     }
@@ -5038,7 +5047,27 @@ ast::AstNode* Parser::parseFunctionTail(
 
     if (externalOnly)
     {
-        expect(TokenKind::Semicolon, "';'");
+        if (!consumeIf(TokenKind::Semicolon))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "expected ';'");
+
+            // An extern-C declaration is body-less.  Keeping the current token on an
+            // unexpected '{' makes the surrounding extern-block loop parse the same
+            // token forever.  Consume the balanced block through the regular parser so
+            // every diagnostic/dump action is guaranteed to make forward progress.
+            if (at(TokenKind::LeftBrace))
+            {
+                (void)parseBlock();
+            }
+            else
+            {
+                synchronizeGlobal();
+            }
+        }
     }
     else if (consumeIf(TokenKind::Semicolon))
     {

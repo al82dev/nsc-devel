@@ -13,6 +13,7 @@ namespace NativeSharp.Compiler.Parser
         private owned SyntaxTree tree;
         private int index;
         private int errors;
+        private int firstErrorIndex;
         private owned List<string> knownTypes;
         private int pendingGenericGreater;
         private owned string lastSemanticType;
@@ -24,6 +25,7 @@ namespace NativeSharp.Compiler.Parser
             tree = new SyntaxTree();
             index = 0;
             errors = 0;
+            firstErrorIndex = -1;
             knownTypes = new List<string>();
             pendingGenericGreater = 0;
             lastSemanticType = String.Copy("");
@@ -50,8 +52,13 @@ namespace NativeSharp.Compiler.Parser
         private bool Expect(TokenKind kind)
         {
             if (ConsumeIf(kind)) { return true; }
-            errors = errors + 1;
+            AddError();
             return false;
+        }
+        private void AddError()
+        {
+            if (firstErrorIndex < 0) { firstErrorIndex = index; }
+            errors = errors + 1;
         }
         private owned string LexemeAt(int tokenIndex)
         {
@@ -112,7 +119,7 @@ namespace NativeSharp.Compiler.Parser
                 raii string name = CurrentText();
                 if (name != "pack" && name != "align" && name != "size" && name != "at") { break; }
                 Consume(); Expect(TokenKind.LeftParen); raii string number = CurrentText(); int value = 0;
-                if (!Number.TryParseInt32(number, out value)) { errors = errors + 1; }
+                if (!Number.TryParseInt32(number, out value)) { AddError(); }
                 Expect(TokenKind.IntegerLiteral); Expect(TokenKind.RightParen);
                 if (name == "pack") { pack = value; } else if (name == "align") { alignment = value; }
                 else if (name == "size") { size = value; } else { offset = value; }
@@ -140,7 +147,7 @@ namespace NativeSharp.Compiler.Parser
             if (pendingGenericGreater > 0) { pendingGenericGreater = pendingGenericGreater - 1; return true; }
             if (ConsumeIf(TokenKind.Greater)) { return true; }
             if (At(TokenKind.GreaterGreater)) { Consume(); pendingGenericGreater = 1; return true; }
-            errors = errors + 1; return false;
+            AddError(); return false;
         }
 
         private owned string ParseType()
@@ -152,9 +159,9 @@ namespace NativeSharp.Compiler.Parser
                 raii string qualifier = CurrentText();
                 output.Append(qualifier); output.Append(' '); semantic.Append(qualifier); semantic.Append(' '); Consume();
             }
-            if (!Builtin(Current()) && !At(TokenKind.Identifier))
+            if (!Builtin(Current()) && !At(TokenKind.Identifier) && !At(TokenKind.KwVar))
             {
-                errors = errors + 1;
+                AddError();
                 return output.ToOwnedString();
             }
             raii string first = CurrentText(); output.Append(first); semantic.Append(first); Consume();
@@ -392,7 +399,7 @@ namespace NativeSharp.Compiler.Parser
             {
                 int expression = ParseExpression(); Expect(TokenKind.RightParen); return expression;
             }
-            errors = errors + 1;
+            AddError();
             Consume();
             return NewNode("IdentifierExpression");
         }
@@ -453,6 +460,7 @@ namespace NativeSharp.Compiler.Parser
         {
             if (!At(TokenKind.Less)) { return false; }
             int savedIndex = index; int savedPending = pendingGenericGreater; int savedErrors = errors;
+            int savedFirstErrorIndex = firstErrorIndex;
             Consume(); raii StringBuilder arguments = new StringBuilder(); bool first = true;
             while (!AtGenericGreater() && !At(TokenKind.EndOfFile))
             {
@@ -467,6 +475,7 @@ namespace NativeSharp.Compiler.Parser
             if (!valid)
             {
                 index = savedIndex; pendingGenericGreater = savedPending; errors = savedErrors;
+                firstErrorIndex = savedFirstErrorIndex;
             }
             else
             {
@@ -666,7 +675,7 @@ namespace NativeSharp.Compiler.Parser
             if (tokens.KindAt(cursor) == TokenKind.KwRaii || tokens.KindAt(cursor) == TokenKind.KwConst) { cursor = cursor + 1; }
             if (Ownership(tokens.KindAt(cursor))) { cursor = cursor + 1; }
             TokenKind first = tokens.KindAt(cursor);
-            if (!Builtin(first) && first != TokenKind.Identifier) { return false; }
+            if (!Builtin(first) && first != TokenKind.Identifier && first != TokenKind.KwVar) { return false; }
             cursor = cursor + 1;
             while (tokens.KindAt(cursor) == TokenKind.Dot && tokens.KindAt(cursor + 1) == TokenKind.Identifier)
             { cursor = cursor + 2; }
@@ -719,7 +728,7 @@ namespace NativeSharp.Compiler.Parser
                 int before = index;
                 int statement = ParseStatement();
                 if (statement >= 0) { Node(block).AddChild(statement); }
-                if (index == before) { errors = errors + 1; Consume(); }
+                if (index == before) { AddError(); Consume(); }
             }
             Expect(TokenKind.RightBrace);
             return block;
@@ -789,7 +798,7 @@ namespace NativeSharp.Compiler.Parser
             int node = NewNode("SwitchStatement"); Node(node).SetFirst(governing);
             while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
             {
-                if (!AtSwitchLabel()) { errors = errors + 1; Consume(); continue; }
+                if (!AtSwitchLabel()) { AddError(); Consume(); continue; }
                 int section = NewNode("SwitchSection");
                 while (AtSwitchLabel())
                 {
@@ -801,7 +810,7 @@ namespace NativeSharp.Compiler.Parser
                 while (!AtSwitchLabel() && !At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
                 {
                     int before = index; Node(section).AddChild(ParseStatement());
-                    if (before == index) { Consume(); errors = errors + 1; }
+                    if (before == index) { Consume(); AddError(); }
                 }
                 Node(node).AddChild(section);
             }
@@ -845,7 +854,7 @@ namespace NativeSharp.Compiler.Parser
                     raii string spelling = CurrentText(); raii string decoded = DecodeString(spelling);
                     message = move(decoded); Consume();
                 }
-                else { errors = errors + 1; }
+                else { AddError(); }
             }
             Expect(TokenKind.RightParen); Expect(TokenKind.Semicolon);
             int node = NewNode("StaticAssertStatement"); Node(node).SetFirst(condition); Node(node).SetText(message); return node;
@@ -855,7 +864,7 @@ namespace NativeSharp.Compiler.Parser
         {
             explicitConstraint = ConsumeIf(TokenKind.Colon);
             if (!explicitConstraint) { return String.Copy(output ? "=r" : "r"); }
-            if (!At(TokenKind.StringLiteral)) { errors = errors + 1; return String.Copy(output ? "=r" : "r"); }
+            if (!At(TokenKind.StringLiteral)) { AddError(); return String.Copy(output ? "=r" : "r"); }
             raii string spelling = CurrentText(); raii string decoded = DecodeString(spelling); Consume(); return move(decoded);
         }
         private void ParseAssemblyOperands(int statement, bool output)
@@ -1038,6 +1047,28 @@ namespace NativeSharp.Compiler.Parser
             while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile))
             {
                 int memberBegin = index;
+                if (At(TokenKind.KwExtern) && Peek(1) == TokenKind.Identifier)
+                {
+                    raii string externLanguage = LexemeAt(index + 1);
+                    if (externLanguage == "C")
+                    {
+                        int externalBlock = ParseExternC();
+                        Node(declaration).AddChild(externalBlock);
+                        continue;
+                    }
+                }
+                if (At(TokenKind.Tilde))
+                {
+                    Consume();
+                    raii string destructorName = CurrentText();
+                    Expect(TokenKind.Identifier);
+                    int destructor = NewNode("DestructorDeclaration");
+                    Node(destructor).SetText(destructorName);
+                    Expect(TokenKind.LeftParen); Expect(TokenKind.RightParen);
+                    Node(destructor).SetFirst(ParseBlock());
+                    Node(declaration).AddChild(destructor);
+                    continue;
+                }
                 TokenKind accessibility = TokenKind.Invalid;
                 raii StringBuilder modifierBuilder = new StringBuilder();
                 while (Modifier(Current()))
@@ -1131,7 +1162,7 @@ namespace NativeSharp.Compiler.Parser
                     if (ConsumeIf(TokenKind.Equal)) { Node(field).SetFirst(ParseExpression()); }
                     Expect(TokenKind.Semicolon); Node(declaration).AddChild(field);
                 }
-                if (index == memberBegin) { Consume(); errors = errors + 1; }
+                if (index == memberBegin) { Consume(); AddError(); }
             }
             Expect(TokenKind.RightBrace); ConsumeIf(TokenKind.Semicolon); return declaration;
         }
@@ -1160,7 +1191,7 @@ namespace NativeSharp.Compiler.Parser
             {
                 int before = index; int member = ParseGlobal();
                 if (member >= 0) { Node(node).AddChild(member); }
-                if (before == index) { Consume(); errors = errors + 1; }
+                if (before == index) { Consume(); AddError(); }
             }
             Expect(TokenKind.RightBrace); return node;
         }
@@ -1169,9 +1200,21 @@ namespace NativeSharp.Compiler.Parser
         {
             Consume();
             if (AtText("C")) { Consume(); }
+            raii string library = String.Copy("");
+            if (AtText("from"))
+            {
+                Consume();
+                if (At(TokenKind.StringLiteral))
+                {
+                    raii string spelling = CurrentText(); raii string decoded = DecodeString(spelling);
+                    library = move(decoded); Consume();
+                }
+                else { AddError(); }
+            }
             if (ConsumeIf(TokenKind.LeftBrace))
             {
                 int wrapper = NewNode("ExternCDeclaration");
+                if (library.Length != 0) { Node(wrapper).SetAuxiliary(library); }
                 while (!At(TokenKind.RightBrace) && !At(TokenKind.EndOfFile)) { Node(wrapper).AddChild(ParseGlobal()); }
                 Expect(TokenKind.RightBrace); return wrapper;
             }
@@ -1252,7 +1295,7 @@ namespace NativeSharp.Compiler.Parser
                     int value = NewNode("ParameterDeclaration"); Node(value).SetText("value"); Node(value).SetType(type);
                     Node(setter).AddChild(value); Node(property).AddChild(setter);
                 }
-                else { Consume(); errors = errors + 1; }
+                else { Consume(); AddError(); }
             }
             Expect(TokenKind.RightBrace); return property;
         }
@@ -1306,6 +1349,11 @@ namespace NativeSharp.Compiler.Parser
                 Consume();
                 if (wasExtern && AtText("C")) { Consume(); }
             }
+            if (Ownership(Current()))
+            {
+                if (modifierBuilder.Length() != 0) { modifierBuilder.Append(','); }
+                raii string ownershipName = CurrentText(); modifierBuilder.Append(ownershipName); Consume();
+            }
             raii string modifiers = modifierBuilder.ToOwnedString();
             raii string layout = ParseLayoutModifiers();
             if (At(TokenKind.KwStruct)) { int node = ParseAggregate("StructDeclaration"); Node(node).SetOperator(accessibility); Node(node).SetAuxiliary(layout); Node(node).SetModifiersText(modifiers); return node; }
@@ -1334,11 +1382,12 @@ namespace NativeSharp.Compiler.Parser
             {
                 int before = index; int member = ParseGlobal();
                 if (member >= 0) { Node(root).AddChild(member); }
-                if (before == index) { Consume(); errors = errors + 1; }
+                if (before == index) { Consume(); AddError(); }
             }
             tree.Freeze(); return move(tree);
         }
 
         public int ErrorCount() { return errors; }
+        public int FirstErrorIndex() { return firstErrorIndex; }
     }
 }

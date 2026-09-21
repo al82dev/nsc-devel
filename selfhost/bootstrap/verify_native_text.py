@@ -18,7 +18,10 @@ def main():
             else:need(sema==canonical,f"{profile} semantics differ")
             for x in c["required_semantic_fragments"]:need(x in sema,f"{profile} misses {x}")
             if profile == "O0":
-                for x in c["required_object_fragments"]:need(x in obj,f"{profile} object misses {x}")
+                # llvm-readobj groups section bytes in fixed-width words. A UTF-8 sequence may
+                # cross that presentation boundary (`C3A978 69`) without changing the object.
+                compact_obj="".join(obj.split())
+                for x in c["required_object_fragments"]:need(x in obj or x in compact_obj,f"{profile} object misses {x}")
             for route in c["routes"]:
                 p=a.output_dir/f"{route}-{lower}.result.txt";code=int(p.read_text().strip());need(code==c["expected_exit_code"],f"{profile}/{route}={code}");artifacts[p.name]=sha(p)
             artifacts[semap.name]=sha(semap);artifacts[objp.name]=sha(objp);checks.append({"profile":profile,"routes":c["routes"]})

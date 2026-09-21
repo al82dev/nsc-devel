@@ -22,7 +22,7 @@
     "readonly", "inline", "noheap", "public", "internal", "protected", "private", "if",
     "else", "while", "do", "for", "switch", "case", "break", "continue", "return", "try",
     "catch", "finally", "throw", "struct", "class", "interface", "enum", "namespace",
-    "using", "new", "delete", "sizeof", "alignof", "offsetof", "static_assert", "default",
+    "using", "new", "delete", "stackalloc", "sizeof", "alignof", "offsetof", "static_assert", "default",
     "extern", "true", "false", "null", "this", "base", "virtual", "override", "abstract",
     "sealed", "get", "set", "operator", "implicit", "explicit", "is", "as", "delegate",
     "raii", "move", "owned", "borrowed", "var", "foreach", "in"
@@ -32,7 +32,6 @@
     {"token": "forceinline", "code": "NSBP2002", "message": "forceinline is excluded; bootstrap correctness cannot depend on optimizer policy"},
     {"token": "noinline", "code": "NSBP2003", "message": "noinline is excluded; bootstrap correctness cannot depend on optimizer policy"},
     {"token": "destroy", "code": "NSBP2004", "message": "explicit lifetime termination is excluded from the bootstrap profile"},
-    {"token": "stackalloc", "code": "NSBP2005", "message": "stackalloc is excluded; bootstrap storage must use audited owners or arenas"},
     {"token": "export", "code": "NSBP2006", "message": "native exports are not required by nsc-next"},
     {"token": "vectorcall", "code": "NSBP2007", "message": "vectorcall is outside the LLVM C bootstrap boundary"},
     {"token": "event", "code": "NSBP2008", "message": "events are excluded from the bootstrap profile"},

@@ -987,13 +987,20 @@ if(NSC_BUILD_TESTS)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpBootstrapDependencies.cmake")
     set_tests_properties(nsc.selfhost.bootstrap-dependencies PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.driver-products)
 
+    add_test(NAME nsc.selfhost.self-hosted-generation COMMAND "${CMAKE_COMMAND}"
+        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSelfHostedGeneration.cmake")
+    set_tests_properties(nsc.selfhost.self-hosted-generation PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.bootstrap-dependencies)
+
     add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-promotion-readiness"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpPromotionReadiness.cmake")
-    set_tests_properties(nsc.selfhost.promotion-readiness PROPERTIES RUN_SERIAL TRUE)
+    set_tests_properties(nsc.selfhost.promotion-readiness PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.self-hosted-generation)
 
     add_test(
         NAME nsc.selfhost.tanda16-closure

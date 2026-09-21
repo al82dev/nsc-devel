@@ -7,7 +7,7 @@
   "linkers": ["lld", "nslink"],
   "expected_exit_code": 42,
   "maximum_parameters": 4,
-  "required_symbols": ["__nativesharp_source_Add", "__nativesharp_source_Main", "NativeSharpCompute"],
+  "required_symbols": ["__nativesharp_17267272709668119881_Add", "__nativesharp_3347706242812374255_Main", "NativeSharpCompute"],
   "required_llvm_api": ["LLVMGetParam", "LLVMGetNamedFunction", "LLVMBuildCall2"],
   "source_derived_codegen": true
 }

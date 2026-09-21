@@ -51,6 +51,8 @@ namespace NativeSharp.Compiler.Driver
             Console.WriteLine("  nsc-next --dump-project-callables <project.nsproj>");
             Console.WriteLine("  nsc-next --dump-project-eh <project.nsproj>");
             Console.WriteLine("  nsc-next --verify-bootstrap-dependencies <compiler.nsproj>");
+            Console.WriteLine("  nsc-next --audit-project-pipeline <project.nsproj>");
+            Console.WriteLine("  nsc-next --emit-bootstrap-object <compiler.nsproj> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next --emit-project-object <project.nsproj> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next --emit-nsmeta|--emit-toolchain-manifest <project.nsproj> <path>");
             Console.WriteLine("  nsc-next --emit-product-plan <project.nsproj> <profile> <linker> <path>");
@@ -277,6 +279,50 @@ namespace NativeSharp.Compiler.Driver
             return 0;
         }
 
+        private static int EmitBootstrapBackend(string projectPath, string profile, string outputPath)
+        {
+            raii SourceGraph graph = SourceGraphBuilder.Build(projectPath);
+            raii ProjectModel project = ProjectLoader.Load(projectPath);
+            if (graph.Failed() || !ProjectLoader.Verify(project)) { return 1; }
+            raii StringBuilder sourceText = new StringBuilder(); int unit = 0;
+            while (unit < graph.UnitCount())
+            {
+                SourceUnit value = graph.UnitAt(unit); string text = File.ReadAllText(value.PathValue());
+                sourceText.Append(text); sourceText.Append('\n'); unit = unit + 1;
+            }
+            raii string merged = sourceText.ToOwnedString();
+            raii SourceBuffer source = new SourceBuffer(new FileId(1), projectPath, merged);
+            raii Lexer lexer = new Lexer(source); raii TokenStream tokens = lexer.LexAll();
+            raii Parser parser = new Parser(source, tokens); raii SyntaxTree tree = parser.ParseCompilationUnit();
+            raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree); raii SemanticModel semantic = analyzer.Analyze();
+            raii ValidatedIrProgram program = IrPipeline.Prepare(tree, semantic);
+            if (tokens.ErrorCount() != 0 || parser.ErrorCount() != 0 || semantic.ErrorCount() != 0 || !program.Valid())
+            {
+                raii StringBuilder problem = new StringBuilder(); problem.Append("nsc-next: error: bootstrap graph rejected: lex=");
+                problem.Append(tokens.ErrorCount()); problem.Append(" parse="); problem.Append(parser.ErrorCount());
+                problem.Append(" semantic="); problem.Append(semantic.ErrorCount()); problem.Append(" ir-valid="); problem.Append(program.Valid());
+                problem.Append(" tokens="); problem.Append(tokens.Count());
+                int firstError = parser.FirstErrorIndex();
+                if (firstError >= 0 && firstError < tokens.Count())
+                {
+                    problem.Append(" first-error-token="); problem.Append(firstError);
+                    problem.Append(" kind="); problem.Append(TokenFacts.Name(tokens.KindAt(firstError)));
+                    problem.Append(" begin="); problem.Append(tokens.BeginAt(firstError));
+                    problem.Append(" end="); problem.Append(tokens.EndAt(firstError));
+                }
+                raii string message = problem.ToOwnedString(); Console.ErrorWriteLine(message); return 1;
+            }
+            BackendOptimization optimization = BackendOptimization.O0;
+            if (profile == "-O1") { optimization = BackendOptimization.O1; }
+            else if (profile == "-O2") { optimization = BackendOptimization.O2; }
+            else if (profile == "-O3") { optimization = BackendOptimization.O3; }
+            else if (profile != "-O0") { return 2; }
+            int result = LlvmBackend.EmitExecutableObject(program, outputPath, optimization, BackendArtifactKind.Object);
+            if (result != 0)
+            { raii string code = String.ToString(result); raii string message = String.Concat("nsc-next: error: bootstrap LLVM backend failed with code ", code); Console.ErrorWriteLine(message); return 1; }
+            Console.WriteLine("SH41 bootstrap graph object emission: ok"); return 0;
+        }
+
         private static int DumpProjectIr(string projectPath, string stageName)
         {
             int stage = 0;
@@ -306,6 +352,34 @@ namespace NativeSharp.Compiler.Driver
             raii ValidatedIrProgram program = IrPipeline.Prepare(tree, semantic);
             if (!program.Valid()) { return 1; }
             raii string dump = IrPipeline.Dump(tree, semantic, stage); Console.Write(dump); return 0;
+        }
+
+        private static int AuditProjectPipeline(string projectPath)
+        {
+            raii SourceGraph graph = SourceGraphBuilder.Build(projectPath); raii ProjectModel project = ProjectLoader.Load(projectPath);
+            if (graph.Failed() || !ProjectLoader.Verify(project)) { return 1; }
+            raii StringBuilder text = new StringBuilder(); int unit = 0;
+            while (unit < graph.UnitCount())
+            {
+                SourceUnit value = graph.UnitAt(unit);
+                if (value.Owner() == project.Name()) { string body = File.ReadAllText(value.PathValue()); text.Append(body); text.Append('\n'); }
+                unit = unit + 1;
+            }
+            raii string merged = text.ToOwnedString(); raii SourceBuffer source = new SourceBuffer(new FileId(1), projectPath, merged);
+            raii Lexer lexer = new Lexer(source); raii TokenStream tokens = lexer.LexAll(); raii Parser parser = new Parser(source, tokens);
+            raii SyntaxTree tree = parser.ParseCompilationUnit(); raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree);
+            raii SemanticModel semantic = analyzer.Analyze(); raii HirModule hir = HirBuilder.Build(tree, semantic);
+            bool hirValid = HirVerifier.Verify(hir); raii FlowModule flow = MirBuilder.Build(hir, tree, semantic);
+            bool flowValid = FlowVerifier.Verify(flow); bool ownershipValid = OwnershipCleanupVerifier.Verify(flow);
+            raii StringBuilder output = new StringBuilder(); output.Append("pipeline.audit schema=1\nlex-errors="); output.Append(tokens.ErrorCount());
+            output.Append("\nparse-errors="); output.Append(parser.ErrorCount()); output.Append("\nsemantic-errors="); output.Append(semantic.ErrorCount());
+            output.Append("\nhir-valid="); output.Append(hirValid); output.Append("\nflow-errors="); output.Append(flow.ErrorCount());
+            output.Append("\nflow-functions="); output.Append(flow.FunctionCount()); output.Append("\nflow-valid="); output.Append(flowValid);
+            output.Append("\nownership-valid="); output.Append(ownershipValid); output.Append('\n');
+            if (!ownershipValid)
+            { raii string problem = OwnershipCleanupVerifier.FirstProblem(flow); output.Append("ownership-problem="); output.Append(problem); output.Append('\n'); }
+            raii string rendered = output.ToOwnedString(); Console.Write(rendered);
+            return tokens.ErrorCount() == 0 && parser.ErrorCount() == 0 && semantic.ErrorCount() == 0 && hirValid && flowValid && ownershipValid ? 0 : 1;
         }
 
         private static int DumpProjectLayout(string projectPath)
@@ -474,6 +548,19 @@ namespace NativeSharp.Compiler.Driver
                 line.Append(unit.RelativePath());
                 line.Append(" errors=");
                 line.Append(errors);
+                int firstParserError = parser.FirstErrorIndex();
+                if (parser.ErrorCount() != 0 && firstParserError >= 0 && firstParserError < tokens.Count())
+                {
+                    line.Append(" first-parser-token=");
+                    line.Append(firstParserError);
+                    line.Append("@");
+                    line.Append(tokens.BeginAt(firstParserError));
+                    line.Append(" '");
+                    raii string tokenText = String.Substring(source.RawText(), tokens.BeginAt(firstParserError),
+                        tokens.EndAt(firstParserError) - tokens.BeginAt(firstParserError));
+                    line.Append(tokenText);
+                    line.Append("'");
+                }
                 raii string rendered = line.ToOwnedString();
                 Console.WriteLine(rendered);
                 if (errors != 0) { failed = failed + 1; }
@@ -588,10 +675,20 @@ namespace NativeSharp.Compiler.Driver
                 if (count != 6 || arguments[4] != "-o") { return 2; }
                 return EmitProjectBackend(arguments[2], arguments[3], arguments[5]);
             }
+            if (command == "--emit-bootstrap-object")
+            {
+                if (count != 6 || arguments[4] != "-o") { return 2; }
+                return EmitBootstrapBackend(arguments[2], arguments[3], arguments[5]);
+            }
             if (command == "--dump-project-ir")
             {
                 if (count != 4) { return 2; }
                 return DumpProjectIr(arguments[2], arguments[3]);
+            }
+            if (command == "--audit-project-pipeline")
+            {
+                if (count != 3) { return 2; }
+                return AuditProjectPipeline(arguments[2]);
             }
             if (command == "--dump-project-layout")
             {
