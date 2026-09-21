@@ -64,3 +64,8 @@ con LLD/NSLink.
 `source-floating-scalars.contract.json` congela desde SH24 `float`/`double`, aritmética, comparación,
 casts y conversiones con enteros, parámetros mutables y el símbolo COFF `_fltused`, en O0–O3 y con
 ambos linkers.
+
+`functional-equivalence.contract.json` congela desde SH42 las nueve capas observables que deben
+compararse entre `nsc0` y un `nsc2` realmente autoalojado: diagnósticos, tokens, AST, semántica, IR,
+objetos, metadata, productos y proyectos. Declara además la única normalización permitida, exige
+O0–O3 y ambos linkers y prohíbe reescribir artefactos durante la comparación.

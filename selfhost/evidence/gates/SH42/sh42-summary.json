@@ -1,0 +1,63 @@
+{
+  "schema": "nativesharp-selfhost-sh42-summary",
+  "version": 1,
+  "gate": "SH42",
+  "tanda": 44,
+  "status": "LANDED",
+  "previous_gate": "SH41",
+  "layers": [
+    "diagnostics",
+    "tokens",
+    "ast",
+    "semantics",
+    "ir",
+    "objects",
+    "metadata",
+    "products",
+    "projects"
+  ],
+  "counts": {
+    "diagnostics": 2,
+    "frontend_sources": 523,
+    "token_comparisons": 1046,
+    "ast_comparisons": 32,
+    "recovery_comparisons": 10,
+    "semantic_differential_comparisons": 48,
+    "semantic_stability_comparisons": 1048,
+    "semantic_invariant_checks": 28,
+    "ir_sources": 524,
+    "ir_oracle_ssa_sources": 27,
+    "ir_corpus_stability_comparisons": 1572,
+    "ir_structural_comparisons": 20,
+    "ir_stability_comparisons": 108,
+    "ir_verifier_checks": 24,
+    "ir_invariant_checks": 118,
+    "object_cases": 8,
+    "project_cases": 4,
+    "product_plans": 8,
+    "executions": 40,
+    "skipped": 0
+  },
+  "binary_sha256": {
+    "nsc0": "be4781770ece62ae8b6f1800a16d23a30923290ef4a50a49ca1952573320f6ac",
+    "nsc2_o0": "6f162860c1c5f8254145c536adbe8a4f123bbc711434ed01d0c5c9ed79d392fc",
+    "nsc2_o1": "f36047dc2bf009c39a4f963df30b8777ca65f857cbb5f9691296ef7961e6b0dd",
+    "nsc2_o2": "eca2b5fe10992e9a44a05392069b2dce29dfce41def379a48b46da09bc5c6aa6",
+    "nsc2_o3": "c3d762f925885db02bb4f1d22771cdc9a5d6ad6a7bf4ca774051d0d93f9e1112"
+  },
+  "directed_report_sha256": "d9fe519937be309ebb13e202826b1ad1c6ed5fed131b88659a1bcf6d3222b139",
+  "baseline": {
+    "run_id": "tanda-44-sh42-equivalencia-20260920",
+    "build_id": "4400000000000001",
+    "total_seconds": 2671.441,
+    "lld_ctest": "477/477",
+    "lld_fixtures": "148/148",
+    "lld_triage": "18/18",
+    "nslink_ctest": "477/477",
+    "nslink_fixtures": "148/148",
+    "nslink_triage": "18/18",
+    "gate0": "LANDED",
+    "failures": 0
+  },
+  "problems": []
+}

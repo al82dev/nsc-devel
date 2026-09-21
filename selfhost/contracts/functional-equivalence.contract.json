@@ -1,0 +1,32 @@
+{
+  "schema": "nativesharp-selfhost-functional-equivalence-contract",
+  "version": 1,
+  "gate": "SH42",
+  "tanda": 44,
+  "optimizations": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "expected_exit_code": 42,
+  "diagnostics": ["missing-source", "unknown-option"],
+  "frontend_contract": "selfhost/contracts/frontend.contract.json",
+  "semantic_contract": "selfhost/contracts/semantic.contract.json",
+  "ir_contract": "selfhost/contracts/ir.contract.json",
+  "object_sources": [
+    "selfhost/tests/codegen/source-derived-17.ns",
+    "selfhost/tests/codegen/source-derived-42.ns"
+  ],
+  "project": "selfhost/tests/functional-equivalence/FunctionalEquivalence.nsproj",
+  "library_project": "selfhost/tests/functional-equivalence/FunctionalEquivalenceLibrary.nsproj",
+  "project_name": "FunctionalEquivalence",
+  "project_kind": "Exe",
+  "source_count": 1,
+  "required_layers": [
+    "diagnostics", "tokens", "ast", "semantics", "ir",
+    "objects", "metadata", "products", "projects"
+  ],
+  "normalization_policy": {
+    "line_endings": "comparison-only",
+    "absolute_paths": "diagnostic fixture only",
+    "timestamps": "forbidden",
+    "artifact_rewrite": false
+  }
+}

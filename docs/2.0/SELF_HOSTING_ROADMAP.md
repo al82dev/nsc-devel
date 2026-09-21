@@ -838,7 +838,17 @@ generación/perfil/enlazador superan identidad, self-test y análisis del proyec
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-43-SH41-PRIMERA-AUTOCOMPILACION.md`.
 
-### 8.44 Plan cerrado restante — Tandas 44–56
+### 8.44 Tanda 44 — SH42
+
+La equivalencia funcional entre la semilla `nsc0` y las cuatro imágenes `nsc2` producidas por
+SH41 está implementada. El gate compara diagnósticos, tokens, AST, símbolos, semántica, las cinco
+fronteras IR, COFF AMD64, metadata, modelos de proyecto y planes/productos; además enlaza y ejecuta
+40 combinaciones con LLD y NSLink. La normalización se limita a finales de línea durante la
+comparación y nunca modifica un artefacto.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-44-SH42-EQUIVALENCIA-FUNCIONAL.md`.
+
+### 8.45 Plan cerrado restante — Tandas 45–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a
