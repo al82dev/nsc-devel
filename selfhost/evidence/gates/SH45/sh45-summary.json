@@ -1,0 +1,44 @@
+{
+  "schema": "nativesharp-selfhost-gate-summary",
+  "version": 1,
+  "gate": "SH45",
+  "tanda": 47,
+  "status": "passed",
+  "source_files": 101,
+  "source_sha256": "213ac08ceb2b4ea3975d87fea7d63138c1c836e0bde1c4e2a42611198009556f",
+  "self_hosted_generation": {
+    "profiles": 4,
+    "executions": 16,
+    "object_fixed_point_per_profile": true,
+    "nsc0_invocations_during_generation": 0,
+    "report_sha256": "1d7384d9bf5ab54692b73f7dd2910ca038712d0f5ec4590a10bc9f983c61c902"
+  },
+  "low_level_matrix": {
+    "producer_compilers": 4,
+    "profiles_per_compiler": 4,
+    "linkers": 2,
+    "positive_projects": 5,
+    "passed_executions": 160,
+    "contractual_rejections": 64,
+    "failures": 0,
+    "compiler_sha256": {
+      "O0": "31d342ae6501d6ac576e1d2f5800231dcbea2200fde2f44b8d6c0c4b50d2be5e",
+      "O1": "1caeff00a163ae8db6e5beb2cd7b55eadc09836b6a7d43491fb3b6f4f4bca8c4",
+      "O2": "79197860321a02cfc097fe879e1d39ee4ac88abce8514ebb39a409043910cc46",
+      "O3": "abba34bf589a13341cf3bd6e7f415c99c66c380d11529f3480b062fbc800e1bf"
+    }
+  },
+  "contract_sha256": "cc337a752eb5304276ab482c764e4c01b36fe8aa577340e8f05bc79362a0fd38",
+  "verifier_sha256": "7f4a54e7ff66a9bd1d504cb2a9c6e0d8251e43c44863110fc54b32c831e4f763",
+  "infrastructure_tests": 46,
+  "cmake_gate": "passed",
+  "baseline": {
+    "status": "passed-isolated-pending-linear-integration-after-SH44",
+    "run_id": "tanda-47-sh45-provisional-r3-20260921",
+    "total_seconds": 3866.614,
+    "ctest_per_linker": 479,
+    "fixtures_per_linker": 166,
+    "failures": 0,
+    "gate_0": "LANDED"
+  }
+}

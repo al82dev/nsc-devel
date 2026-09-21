@@ -54,7 +54,7 @@ namespace NativeSharp.Compiler.Sema
         public bool IsCallable()
         {
             return kind == SymbolKind.Function || kind == SymbolKind.Method ||
-                kind == SymbolKind.Constructor;
+                kind == SymbolKind.Constructor || kind == SymbolKind.Destructor;
         }
     }
 
@@ -304,6 +304,7 @@ namespace NativeSharp.Compiler.Sema
             if (name == "Function") { return SymbolKind.Function; }
             if (name == "Method") { return SymbolKind.Method; }
             if (name == "Constructor") { return SymbolKind.Constructor; }
+            if (name == "Destructor") { return SymbolKind.Destructor; }
             if (name == "Property") { return SymbolKind.Property; }
             if (name == "Indexer") { return SymbolKind.Indexer; }
             if (name == "Event") { return SymbolKind.Event; }

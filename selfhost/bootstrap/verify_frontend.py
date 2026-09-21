@@ -65,6 +65,12 @@ def canonical_lines(data: bytes) -> bytes:
     return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 
+def canonical_ast(data: bytes) -> bytes:
+    """Ignore blank raw-assembly lines while preserving the structural AST dump."""
+    lines = canonical_lines(data).splitlines()
+    return b"\n".join(line for line in lines if line.strip()) + b"\n"
+
+
 def verify(
     root: Path,
     nsc0: Path,
@@ -103,7 +109,7 @@ def verify(
                     f"nsc0 did not produce an AST oracle for {relative}")
             require(actual.returncode == 0, f"{optimization} parser rejected {relative}")
             require(actual.stderr == b"", f"{optimization} parser wrote stderr for {relative}")
-            require(canonical_lines(actual.stdout) == canonical_lines(legacy.stdout),
+            require(canonical_ast(actual.stdout) == canonical_ast(legacy.stdout),
                     f"{optimization} AST dump differs from nsc0: {relative}")
             ast_cases += 1
 

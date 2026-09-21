@@ -1,0 +1,16 @@
+public struct Cell
+{
+    public int Value;
+    public noheap Cell(int value) { Value = value; }
+    ~Cell() { Value = 7; }
+}
+public class Program
+{
+    public static noheap int Main()
+    {
+        Cell* storage = stackalloc Cell[1]; Cell* value = new (storage) Cell(42);
+        if (value->Value != 42) { return 1; }
+        destroy value;
+        return value->Value == 7 ? 0 : 2;
+    }
+}

@@ -102,4 +102,10 @@ namespace NativeSharp.LLVM.C
         AcquireRelease = 6,
         SequentiallyConsistent = 7
     }
+
+    public enum LLVMAtomicRMWBinOp
+    {
+        Exchange = 0,
+        Add = 1
+    }
 }

@@ -1,0 +1,9 @@
+public struct InvalidBits
+{
+    public byte TooWide : 9;
+}
+
+public class Program
+{
+    public static int Main() { return 0; }
+}

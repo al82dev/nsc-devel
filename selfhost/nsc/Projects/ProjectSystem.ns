@@ -222,7 +222,10 @@ namespace NativeSharp.Compiler.Projects
             value.Append("\nabi=NativeSharp/2.0\ncompatibility=N-1,N\n"); return value.ToOwnedString();
         }
         public static bool ReadCompatible(string value)
-        { return String.StartsWith(value, "NSMETA/1\n") || String.StartsWith(value, "NSMETA/2\n"); }
+        {
+            return String.StartsWith(value, "NSMETA/1\n") || String.StartsWith(value, "NSMETA/2\n") ||
+                String.StartsWith(value, "NSMETA/1\r\n") || String.StartsWith(value, "NSMETA/2\r\n");
+        }
     }
 
     public class ProjectCache

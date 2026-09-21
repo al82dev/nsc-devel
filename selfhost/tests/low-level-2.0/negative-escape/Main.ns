@@ -1,0 +1,9 @@
+public class Program
+{
+    private static ref int Bad()
+    {
+        int local = 1;
+        return ref local;
+    }
+    public static int Main() { return 0; }
+}

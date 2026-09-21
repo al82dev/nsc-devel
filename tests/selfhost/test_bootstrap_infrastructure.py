@@ -197,11 +197,11 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["schema"], "nativesharp-llvm-c-api-contract")
         self.assertEqual(contract["supported_llvm_major"], 23)
         self.assertEqual(len(contract["nsc0_import_symbols"]), 219)
-        self.assertEqual(len(contract["bootstrap_symbols"]), 51)
+        self.assertEqual(len(contract["bootstrap_symbols"]), 56)
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
         declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
-        self.assertEqual(len(declared), 120)
+        self.assertEqual(len(declared), 125)
         self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
         audited = set(contract["nsc0_import_symbols"]) | set(contract["bootstrap_extension_symbols"])
         self.assertTrue(set(declared).issubset(audited))
@@ -213,6 +213,28 @@ class BootstrapInfrastructureTests(unittest.TestCase):
             verify_llvm_c_contract.digest(enum_source),
             contract["enum_source_sha256"],
         )
+
+    def test_sh45_low_level_contract_covers_profiles_linkers_and_negative_boundaries(self) -> None:
+        contract = json.loads(
+            (ROOT / "selfhost/contracts/low-level-parity.contract.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(contract["schema"], "nativesharp-selfhost-low-level-parity-contract")
+        self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
+        self.assertEqual(contract["linkers"], ["lld", "nslink"])
+        self.assertEqual(len(contract["positive_projects"]), 5)
+        self.assertEqual(len(contract["negative_projects"]), 4)
+        self.assertIn("__chkstk", contract["imports"]["ntdll.dll"])
+        self.assertIn("lock", contract["atomic_disassembly_fragments"])
+        diagnostics = {case["diagnostic"] for case in contract["negative_projects"]}
+        self.assertTrue(any("destroy requires" in text for text in diagnostics))
+        self.assertTrue(any("bitfield width" in text for text in diagnostics))
+        self.assertIn('kind=Destructor name="Cell.Cell"', contract["metadata_fragments"])
+        for project in contract["positive_projects"]:
+            self.assertTrue((ROOT / project).is_file(), project)
+        for case in contract["negative_projects"]:
+            self.assertTrue((ROOT / case["project"]).is_file(), case["project"])
 
     def test_runtime_bootstrap_contract_names_external_artifacts(self) -> None:
         contract = json.loads(
@@ -277,6 +299,14 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(verify_frontend.source_corpus(self.root, corpus_roots, set()), expected)
         self.assertEqual(verify_semantics.source_corpus(self.root, corpus_roots), expected)
         self.assertEqual(verify_ir.source_corpus(self.root, corpus_roots), expected)
+
+    def test_sh05_ast_canonicalization_ignores_only_blank_lines(self) -> None:
+        legacy = b'node "\r\n\r\n  mov rax, rbx\r\n"\r\n  child\r\n'
+        candidate = b'node "\n  mov rax, rbx\n"\n  child\n'
+        self.assertEqual(
+            verify_frontend.canonical_ast(legacy),
+            verify_frontend.canonical_ast(candidate),
+        )
 
     def test_sh05_line_canonicalization_is_host_independent(self) -> None:
         self.assertEqual(

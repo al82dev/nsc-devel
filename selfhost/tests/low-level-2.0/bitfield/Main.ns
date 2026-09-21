@@ -1,0 +1,18 @@
+public struct Bits
+{
+    public volatile uint Low : 3;
+    public uint High : 5;
+    public int Signed : 4;
+    public bool FlagA : 1;
+    public bool FlagB : 1;
+}
+public class Program
+{
+    public static int Main()
+    {
+        Bits bits; bits.High = 17u; bits.Low = 13u; bits.Signed = -3;
+        bits.FlagA = true; bits.FlagB = false;
+        return bits.Low == 5u && bits.High == 17u && bits.Signed == -3 &&
+            bits.FlagA && !bits.FlagB ? 0 : 1;
+    }
+}

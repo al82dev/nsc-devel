@@ -173,6 +173,7 @@ namespace NativeSharp.Compiler.Sema
                     int fieldType = model.Types().Intern(child.SemanticTypeText()); int field = Declare(SymbolKind.Field, child.Text(), fieldType, childId, false);
                     bool constantField = String.Contains(child.ModifiersText(), "const"); bool staticField = String.Contains(child.ModifiersText(), "static");
                     model.GetSymbol(field).SetConst(constantField); model.GetSymbol(field).SetStatic(staticField);
+                    model.GetSymbol(field).SetVolatile(String.Contains(child.ModifiersText(), "volatile"));
                     int alignment = model.Types().Get(fieldType).Alignment(); int size = model.Types().Get(fieldType).Size();
                     // The bootstrap ABI erases nominal structs/classes to stable native
                     // references. Nested nominal fields therefore occupy one pointer even when
@@ -188,9 +189,16 @@ namespace NativeSharp.Compiler.Sema
                     if (pack > 0 && alignment > pack) { alignment = pack; }
                     int explicitOffset = AuxiliaryValue(child.Auxiliary(), "at:");
                     int bitWidth = AuxiliaryValue(child.Auxiliary(), "bits:");
-                    if (constantField || staticField) { }
+                    if (constantField || staticField)
+                    { model.GetSymbol(field).SetLayout(0, size, alignment); }
                     else if (bitWidth >= 0)
                     {
+                        if (bitWidth > size * 8)
+                        {
+                            model.AddError();
+                            Console.ErrorWriteLine("nsc-next: error: bitfield width exceeds its declared storage type");
+                            bitWidth = size * 8;
+                        }
                         if (kind == SymbolKind.Union) { bitStorageOffset = 0; bitUsed = 0; bitStorageSize = size; if (size > offset) { offset = size; } }
                         else if (bitWidth == 0) { offset = Align(offset, alignment); bitUsed = 0; bitStorageSize = 0; bitStorageOffset = offset; }
                         else if (bitUsed == 0 || bitStorageSize != size || bitUsed + bitWidth > size * 8)
@@ -207,7 +215,8 @@ namespace NativeSharp.Compiler.Sema
                     else { bitUsed = 0; bitStorageSize = 0; offset = Align(offset, alignment); model.GetSymbol(field).SetLayout(offset, size, alignment); offset = offset + size; }
                     if (alignment > maxAlignment) { maxAlignment = alignment; } AttachToParent(field, symbol);
                 }
-                else if (child.Kind() == "MethodDeclaration" || child.Kind() == "ConstructorDeclaration") { DeclareFunction(childId, symbol, false); }
+                else if (child.Kind() == "MethodDeclaration" || child.Kind() == "ConstructorDeclaration" ||
+                    child.Kind() == "DestructorDeclaration") { DeclareFunction(childId, symbol, false); }
                 else if (child.Kind() == "ExternCDeclaration")
                 {
                     int externalIndex = 0;
@@ -268,13 +277,16 @@ namespace NativeSharp.Compiler.Sema
                 SyntaxNode child = tree.Node(node.ChildAt(index)); if (child.Kind() == "ParameterDeclaration") { parameters.Add(model.Types().Intern(child.SemanticTypeText())); }
                 index = index + 1;
             }
-            int returnType = node.Kind() == "ConstructorDeclaration" ? model.Types().Find("void") : model.Types().Intern(node.SemanticTypeText());
+            int returnType = (node.Kind() == "ConstructorDeclaration" || node.Kind() == "DestructorDeclaration") ?
+                model.Types().Find("void") : model.Types().Intern(node.SemanticTypeText());
             bool namespaceParent = parent >= 0 && model.GetSymbol(parent).Kind() == SymbolKind.Namespace;
             int functionType = model.Types().Function(returnType, parameters); SymbolKind kind = parent >= 0 && !namespaceParent ? SymbolKind.Method : SymbolKind.Function;
             if (node.Kind() == "ConstructorDeclaration") { kind = SymbolKind.Constructor; }
+            if (node.Kind() == "DestructorDeclaration") { kind = SymbolKind.Destructor; }
             int symbol = Declare(kind, node.Text(), functionType, nodeId, parent < 0); model.GetSymbol(symbol).SetDefined(node.First() >= 0);
             model.GetSymbol(symbol).SetExternC(external); model.GetSymbol(symbol).SetGenericText(node.GenericText()); model.GetSymbol(symbol).SetConstraintsText(node.ConstraintsText());
             model.GetSymbol(symbol).SetStatic(String.Contains(node.ModifiersText(), "static"));
+            model.GetSymbol(symbol).SetNoHeap(String.Contains(node.ModifiersText(), "noheap"));
             model.GetSymbol(symbol).SetVirtual(String.Contains(node.ModifiersText(), "virtual") || String.Contains(node.ModifiersText(), "abstract"));
             model.GetSymbol(symbol).SetOverride(String.Contains(node.ModifiersText(), "override"));
             if (parent >= 0) { AttachToParent(symbol, parent); }
@@ -302,6 +314,7 @@ namespace NativeSharp.Compiler.Sema
             {
                 int type = model.Types().Intern(node.SemanticTypeText()); int symbol = Declare(SymbolKind.GlobalVariable, node.Text(), type, nodeId, parent < 0);
                 model.GetSymbol(symbol).SetConst(node.Flag() || String.Contains(node.ModifiersText(), "const"));
+                model.GetSymbol(symbol).SetVolatile(String.Contains(node.ModifiersText(), "volatile"));
                 if (parent >= 0) { AttachToParent(symbol, parent); }
             }
         }
@@ -559,12 +572,49 @@ namespace NativeSharp.Compiler.Sema
                 { AnalyzeExpression(node.ChildAt(argument)); argument = argument + 1; }
                 return fact;
             }
+            if (node.Kind() == "PlacementConstructionExpression")
+            {
+                SemanticFact storage = AnalyzeExpression(node.First());
+                int createdType = model.Types().Intern(node.SemanticTypeText());
+                raii string pointerName = String.Concat(model.Types().Get(createdType).Display(), "*");
+                int pointer = model.Types().Intern(pointerName); fact.SetType(pointer, ValueCategory.RValue);
+                int argument = 0; while (argument < node.ChildCount())
+                { AnalyzeExpression(node.ChildAt(argument)); argument = argument + 1; }
+                if (storage.TypeId() >= 0 && model.Types().Get(storage.TypeId()).Display() != pointerName)
+                {
+                    model.AddError(); Console.ErrorWriteLine("nsc-next: error: placement construction requires destination storage of exact type");
+                }
+                return fact;
+            }
             if (node.Kind() == "NewExpression" || node.Kind() == "StackallocExpression")
             {
                 int baseType = model.Types().Intern(node.SemanticTypeText()); raii string pointerName = String.Concat(model.Types().Get(baseType).Display(), "*"); int pointer = model.Types().Intern(pointerName);
                 fact.SetType(pointer, ValueCategory.RValue); if (node.First() >= 0) { AnalyzeExpression(node.First()); } return fact;
             }
-            if (node.Kind() == "DeleteExpression") { AnalyzeExpression(node.First()); fact.SetType(model.Types().Find("void"), ValueCategory.RValue); return fact; }
+            if (node.Kind() == "DeleteExpression")
+            { AnalyzeExpression(node.First()); fact.SetType(model.Types().Find("void"), ValueCategory.RValue); return fact; }
+            if (node.Kind() == "DestroyExpression")
+            {
+                SemanticFact operand = AnalyzeExpression(node.First()); bool validTarget = false;
+                if (operand.TypeId() >= 0)
+                {
+                    SemanticType target = model.Types().Get(operand.TypeId()); int owner = -1;
+                    if (target.Kind() == SemanticTypeKind.Pointer && target.ElementType() >= 0)
+                    { owner = TypeSymbol(target.ElementType()); }
+                    else if (target.Kind() == SemanticTypeKind.Named) { owner = TypeSymbol(operand.TypeId()); }
+                    if (owner >= 0)
+                    {
+                        SymbolKind kind = model.GetSymbol(owner).Kind();
+                        validTarget = kind == SymbolKind.Struct || kind == SymbolKind.Class || kind == SymbolKind.Interface;
+                    }
+                }
+                if (!validTarget)
+                {
+                    model.AddError();
+                    Console.ErrorWriteLine("nsc-next: error: destroy requires a class/interface reference or a pointer to a concrete class or struct");
+                }
+                fact.SetType(model.Types().Find("void"), ValueCategory.RValue); return fact;
+            }
             if (node.Kind() == "SizeofTypeExpression" || node.Kind() == "AlignofTypeExpression")
             {
                 int type = model.Types().Intern(node.SemanticTypeText()); int value = node.Kind() == "SizeofTypeExpression" ? model.Types().Get(type).Size() : model.Types().Get(type).Alignment();
@@ -703,12 +753,89 @@ namespace NativeSharp.Compiler.Sema
             int child = 0; while (child < node.ChildCount()) { AnalyzeStatement(node.ChildAt(child)); child = child + 1; }
         }
 
+        private int FirstStorageSymbol(int nodeId)
+        {
+            if (nodeId < 0) { return -1; } SyntaxNode node = tree.Node(nodeId);
+            if (node.Kind() == "IdentifierExpression") { return model.Fact(nodeId).SymbolId(); }
+            int symbol = FirstStorageSymbol(node.First()); if (symbol >= 0) { return symbol; }
+            symbol = FirstStorageSymbol(node.Second()); if (symbol >= 0) { return symbol; }
+            int child = 0; while (child < node.ChildCount())
+            { symbol = FirstStorageSymbol(node.ChildAt(child)); if (symbol >= 0) { return symbol; } child = child + 1; }
+            return -1;
+        }
+
+        private bool ValidateEscapes(int nodeId)
+        {
+            if (nodeId < 0) { return true; } SyntaxNode node = tree.Node(nodeId);
+            if (node.Kind() == "ReturnStatement" && node.First() >= 0)
+            {
+                SyntaxNode expression = tree.Node(node.First());
+                if (expression.Kind() == "UnaryExpression" && expression.OperatorKind() == TokenKind.Amp)
+                {
+                    int origin = FirstStorageSymbol(expression.First());
+                    if (origin >= 0)
+                    {
+                        Symbol value = model.GetSymbol(origin); bool forbidden = value.Kind() == SymbolKind.Variable;
+                        if (value.Kind() == SymbolKind.Parameter)
+                        {
+                            int declaration = value.Declaration();
+                            forbidden = declaration < 0 || tree.Node(declaration).Auxiliary() != "pass:ref";
+                        }
+                        if (forbidden)
+                        {
+                            model.AddError();
+                            Console.ErrorWriteLine("nsc-next: error: reference return cannot expose storage owned by the current stack frame or a by-value/readonly parameter");
+                            return false;
+                        }
+                    }
+                }
+            }
+            bool valid = ValidateEscapes(node.First()) && ValidateEscapes(node.Second()) && ValidateEscapes(node.Third());
+            int child = 0; while (child < node.ChildCount())
+            { valid = ValidateEscapes(node.ChildAt(child)) && valid; child = child + 1; }
+            return valid;
+        }
+
+        private bool ValidateNoHeap(int nodeId)
+        {
+            if (nodeId < 0) { return true; } SyntaxNode node = tree.Node(nodeId); bool valid = true;
+            if (node.Kind() == "ObjectCreationExpression" || node.Kind() == "NewExpression" ||
+                node.Kind() == "LambdaExpression")
+            {
+                model.AddError(); Console.ErrorWriteLine("nsc-next: error: noheap callable cannot contain direct heap allocation"); valid = false;
+            }
+            if (node.Kind() == "BinaryExpression" && node.OperatorKind() == TokenKind.Plus &&
+                model.Fact(nodeId).TypeId() >= 0 && model.Types().Get(model.Fact(nodeId).TypeId()).Display() == "string")
+            {
+                model.AddError(); Console.ErrorWriteLine("nsc-next: error: noheap callable cannot allocate string concatenation"); valid = false;
+            }
+            if (node.Kind() == "CallExpression" && node.First() >= 0)
+            {
+                int target = model.Fact(node.First()).SymbolId();
+                if (target >= 0)
+                {
+                    Symbol callable = model.GetSymbol(target);
+                    if ((callable.Kind() == SymbolKind.Function || callable.Kind() == SymbolKind.Method ||
+                        callable.Kind() == SymbolKind.Constructor || callable.Kind() == SymbolKind.Destructor) &&
+                        !callable.IsNoHeap() && !callable.IsExternC())
+                    {
+                        model.AddError(); Console.ErrorWriteLine("nsc-next: error: noheap callable reaches a callable without a noheap contract"); valid = false;
+                    }
+                }
+            }
+            valid = ValidateNoHeap(node.First()) && valid; valid = ValidateNoHeap(node.Second()) && valid;
+            valid = ValidateNoHeap(node.Third()) && valid; int child = 0;
+            while (child < node.ChildCount()) { valid = ValidateNoHeap(node.ChildAt(child)) && valid; child = child + 1; }
+            return valid;
+        }
+
         private void AnalyzeFunction(int symbolId)
         {
             Symbol function = model.GetSymbol(symbolId); SyntaxNode node = tree.Node(function.Declaration()); if (node.First() < 0) { return; }
             int savedScope = currentScope; int savedFunction = currentFunction; int savedType = currentType;
             currentScope = model.AddScope(0); currentFunction = symbolId;
-            if ((function.Kind() == SymbolKind.Method || function.Kind() == SymbolKind.Constructor) &&
+            if ((function.Kind() == SymbolKind.Method || function.Kind() == SymbolKind.Constructor ||
+                function.Kind() == SymbolKind.Destructor) &&
                 function.Parent() >= 0)
             { currentType = function.Parent(); }
             int index = 0; while (index < node.ChildCount())
@@ -725,7 +852,9 @@ namespace NativeSharp.Compiler.Sema
                 }
                 index = index + 1;
             }
-            AnalyzeStatement(node.First()); currentScope = savedScope; currentFunction = savedFunction;
+            AnalyzeStatement(node.First()); ValidateEscapes(node.First());
+            if (function.IsNoHeap()) { ValidateNoHeap(node.First()); }
+            currentScope = savedScope; currentFunction = savedFunction;
             currentType = savedType;
         }
 
@@ -788,7 +917,8 @@ namespace NativeSharp.Compiler.Sema
                 // A symbol injected by DeclareExternal has no declaration node in this tree.
                 if (model.GetSymbol(index).Declaration() < 0) { index = index + 1; continue; }
                 SymbolKind kind = model.GetSymbol(index).Kind();
-                if (kind == SymbolKind.Function || kind == SymbolKind.Method || kind == SymbolKind.Constructor) { AnalyzeFunction(index); }
+                if (kind == SymbolKind.Function || kind == SymbolKind.Method || kind == SymbolKind.Constructor ||
+                    kind == SymbolKind.Destructor) { AnalyzeFunction(index); }
                 else if (kind == SymbolKind.GlobalVariable)
                 {
                     SyntaxNode declaration = tree.Node(model.GetSymbol(index).Declaration()); if (declaration.First() >= 0)

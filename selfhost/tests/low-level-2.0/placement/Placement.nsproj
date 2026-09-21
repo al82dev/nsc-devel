@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>SH45Placement</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>

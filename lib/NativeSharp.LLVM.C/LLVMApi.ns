@@ -116,8 +116,19 @@ namespace NativeSharp.LLVM.C
             public void* LLVMBuildGlobalStringPtr(void* builder, byte* value, byte* name);
             public void* LLVMBuildLoad2(void* builder, void* type, void* pointer, byte* name);
             public void* LLVMBuildStore(void* builder, void* value, void* pointer);
+            public void* LLVMBuildExtractValue(void* builder, void* aggregate, uint index, byte* name);
+            public void* LLVMBuildAtomicRMW(
+                void* builder, LLVMAtomicRMWBinOp operation, void* pointer, void* value,
+                LLVMAtomicOrdering ordering, int singleThread);
+            public void* LLVMBuildAtomicCmpXchg(
+                void* builder, void* pointer, void* compare, void* newValue,
+                LLVMAtomicOrdering successOrdering, LLVMAtomicOrdering failureOrdering,
+                int singleThread);
+            public void* LLVMBuildFence(
+                void* builder, LLVMAtomicOrdering ordering, int singleThread, byte* name);
             public void LLVMSetAlignment(void* value, uint bytes);
             public void LLVMSetVolatile(void* memoryAccessInstruction, int isVolatile);
+            public void LLVMSetOrdering(void* memoryAccessInstruction, LLVMAtomicOrdering ordering);
             public void* LLVMBuildRet(void* builder, void* value);
             public void* LLVMBuildRetVoid(void* builder);
             public void* LLVMBuildUnreachable(void* builder);

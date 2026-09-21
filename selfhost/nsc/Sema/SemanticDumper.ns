@@ -21,6 +21,8 @@ namespace NativeSharp.Compiler.Sema
             output.Append(' '); output.Append(symbol.Name());
             if (symbol.TypeId() >= 0) { output.Append(" : "); output.Append(model.Types().Get(symbol.TypeId()).Display()); }
             if (symbol.IsConst()) { output.Append(" const"); }
+            if (symbol.IsVolatile()) { output.Append(" volatile"); }
+            if (symbol.IsNoHeap()) { output.Append(" noheap"); }
             if (symbol.IsExternC()) { output.Append(" extern-C"); }
             if (symbol.IsDefined()) { output.Append(" defined"); }
             if (symbol.Kind() == SymbolKind.EnumMember && symbol.HasConstantValue())
@@ -120,7 +122,9 @@ namespace NativeSharp.Compiler.Sema
                 output.Append(" offset="); output.Append(symbol.Offset()); output.Append(" size="); output.Append(symbol.Size());
                 output.Append(" align="); output.Append(symbol.Alignment()); output.Append(" const="); output.Append(symbol.IsConst());
                 output.Append(" static="); output.Append(symbol.IsStatic()); output.Append(" virtual="); output.Append(symbol.IsVirtual());
-                output.Append(" override="); output.Append(symbol.IsOverride()); output.Append(" generic=\""); output.Append(symbol.GenericText());
+                output.Append(" override="); output.Append(symbol.IsOverride()); output.Append(" volatile="); output.Append(symbol.IsVolatile());
+                output.Append(" noheap="); output.Append(symbol.IsNoHeap()); output.Append(" bit-width="); output.Append(symbol.BitWidth());
+                output.Append(" bit-offset="); output.Append(symbol.BitOffset()); output.Append(" generic=\""); output.Append(symbol.GenericText());
                 output.Append("\" constraints=\""); output.Append(symbol.ConstraintsText()); output.Append("\"\n"); index = index + 1;
             }
             return output.ToOwnedString();

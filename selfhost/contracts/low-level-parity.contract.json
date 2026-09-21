@@ -1,0 +1,49 @@
+{
+  "schema": "nativesharp-selfhost-low-level-parity-contract",
+  "version": 1,
+  "target": "x86_64-pc-windows-msvc",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "entry": "mainCRTStartup",
+  "imports": {
+    "KERNEL32.dll": ["GetProcessHeap", "HeapAlloc", "ExitProcess"],
+    "ntdll.dll": ["__chkstk"]
+  },
+  "positive_projects": [
+    "selfhost/tests/low-level-2.0/volatile/Volatile.nsproj",
+    "selfhost/tests/low-level-2.0/bitfield/BitField.nsproj",
+    "selfhost/tests/low-level-2.0/placement/Placement.nsproj",
+    "selfhost/tests/low-level-2.0/atomic/Atomic.nsproj",
+    "selfhost/tests/low-level-2.0/LowLevel.nsproj"
+  ],
+  "negative_projects": [
+    {
+      "project": "selfhost/tests/low-level-2.0/negative-noheap/NoHeap.nsproj",
+      "diagnostic": "noheap callable cannot contain direct heap allocation"
+    },
+    {
+      "project": "selfhost/tests/low-level-2.0/negative-escape/Escape.nsproj",
+      "diagnostic": "reference return cannot expose storage owned by the current stack frame"
+    },
+    {
+      "project": "selfhost/tests/low-level-2.0/negative-destroy/Destroy.nsproj",
+      "diagnostic": "destroy requires a class/interface reference or a pointer to a concrete class or struct"
+    },
+    {
+      "project": "selfhost/tests/low-level-2.0/negative-bitfield/BitField.nsproj",
+      "diagnostic": "bitfield width exceeds its declared storage type"
+    }
+  ],
+  "metadata_fragments": [
+    "name=\"Bits.Low\"",
+    "volatile=True",
+    "bit-width=3",
+    "name=\"Bits.Signed\"",
+    "name=\"Bits.FlagB\"",
+    "kind=Destructor name=\"Cell.Cell\"",
+    "name=\"Program.PlacementRoundTrip\"",
+    "noheap=True"
+  ],
+  "atomic_disassembly_fragments": ["lock", "xchg"],
+  "forbidden_undefined_symbol_fragments": ["__atomic_load", "__atomic_store"]
+}

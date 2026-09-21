@@ -6,7 +6,7 @@ namespace NativeSharp.Compiler.Symbols
     public enum SymbolKind
     {
         Namespace, Type, Struct, Class, Interface, Enum, Union, Delegate,
-        Function, Method, Constructor, Property, Indexer, Event,
+        Function, Method, Constructor, Destructor, Property, Indexer, Event,
         GlobalVariable, Variable, Parameter, Field, EnumMember, TypeParameter
     }
 
@@ -24,6 +24,7 @@ namespace NativeSharp.Compiler.Symbols
             if (kind == SymbolKind.Function) { return "Function"; }
             if (kind == SymbolKind.Method) { return "Method"; }
             if (kind == SymbolKind.Constructor) { return "Constructor"; }
+            if (kind == SymbolKind.Destructor) { return "Destructor"; }
             if (kind == SymbolKind.Property) { return "Property"; }
             if (kind == SymbolKind.Indexer) { return "Indexer"; }
             if (kind == SymbolKind.Event) { return "Event"; }
@@ -52,6 +53,8 @@ namespace NativeSharp.Compiler.Symbols
         private bool virtualMember;
         private bool overrideMember;
         private bool staticMember;
+        private bool volatileMember;
+        private bool noHeapMember;
         private long constantValue;
         private bool hasConstantValue;
         private int offset;
@@ -68,6 +71,7 @@ namespace NativeSharp.Compiler.Symbols
             kind = symbolKind; name = String.Copy(symbolName); qualifiedName = String.Copy(symbolName);
             typeId = symbolType; declaration = node; parent = -1; members = new List<int>();
             constant = false; defined = false; externC = false; virtualMember = false; overrideMember = false; staticMember = false;
+            volatileMember = false; noHeapMember = false;
             constantValue = 0; hasConstantValue = false; offset = -1; size = 0; alignment = 1; bitWidth = -1; bitOffset = -1;
             genericText = String.Copy(""); constraintsText = String.Copy("");
             reachable = false;
@@ -86,6 +90,8 @@ namespace NativeSharp.Compiler.Symbols
         public bool IsVirtual() { return virtualMember; }
         public bool IsOverride() { return overrideMember; }
         public bool IsStatic() { return staticMember; }
+        public bool IsVolatile() { return volatileMember; }
+        public bool IsNoHeap() { return noHeapMember; }
         public bool HasConstantValue() { return hasConstantValue; }
         public long ConstantValue() { return constantValue; }
         public int Offset() { return offset; }
@@ -106,6 +112,8 @@ namespace NativeSharp.Compiler.Symbols
         public void SetVirtual(bool value) { virtualMember = value; }
         public void SetOverride(bool value) { overrideMember = value; }
         public void SetStatic(bool value) { staticMember = value; }
+        public void SetVolatile(bool value) { volatileMember = value; }
+        public void SetNoHeap(bool value) { noHeapMember = value; }
         public void SetConstantValue(long value) { constantValue = value; hasConstantValue = true; }
         public void SetLayout(int byteOffset, int byteSize, int byteAlignment) { offset = byteOffset; size = byteSize; alignment = byteAlignment; }
         public void SetBitField(int width, int offsetInBits) { bitWidth = width; bitOffset = offsetInBits; }

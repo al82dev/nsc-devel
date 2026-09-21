@@ -1,0 +1,85 @@
+public union Overlay
+{
+    public uint Whole;
+    public ushort Low;
+}
+
+public pack(1) size(5) struct Packed
+{
+    public byte Tag;
+    public at(1) uint Value;
+}
+
+public struct Bits
+{
+    public volatile uint Low : 3;
+    public uint High : 5;
+    public int Signed : 4;
+    public bool FlagA : 1;
+    public bool FlagB : 1;
+}
+
+public struct Cell
+{
+    public int Value;
+    public noheap Cell(int value) { Value = value; }
+    ~Cell() { Value = 7; }
+}
+
+public class AtomicInt64
+{
+    private long value_;
+    public AtomicInt64(long value) { value_ = value; }
+    public long Load() { return 0; }
+    public void Store(long value) { }
+    public long Add(long value) { return 0; }
+    public long Exchange(long value) { return 0; }
+    public long CompareExchange(long value, long comparand) { return 0; }
+}
+
+public class Program
+{
+    private static volatile uint Doorbell;
+
+    private static noheap int PlacementRoundTrip()
+    {
+        Cell* storage = stackalloc Cell[1];
+        Cell* value = new (storage) Cell(42);
+        if (value->Value != 42) { return -1; }
+        destroy value;
+        return value->Value;
+    }
+
+    public static int Main()
+    {
+        Doorbell = 7u;
+        if (Doorbell != 7u) { return 1; }
+
+        Overlay overlay;
+        overlay.Whole = 0u;
+        overlay.Low = 42;
+        if (overlay.Whole != 42u) { return 2; }
+
+        Packed packed;
+        packed.Tag = 3;
+        packed.Value = 99u;
+        if (packed.Tag != 3 || packed.Value != 99u) { return 3; }
+
+        Bits bits;
+        bits.High = 17u;
+        bits.Low = 13u;
+        bits.Signed = -3;
+        bits.FlagA = true;
+        bits.FlagB = false;
+        if (bits.Low != 5u || bits.High != 17u || bits.Signed != -3 || !bits.FlagA || bits.FlagB) { return 4; }
+        if (PlacementRoundTrip() != 7) { return 5; }
+
+        AtomicInt64 atomic = new AtomicInt64(40L);
+        if (atomic.Load() != 40L) { return 6; }
+        if (atomic.Add(2L) != 42L) { return 7; }
+        if (atomic.CompareExchange(44L, 42L) != 42L) { return 8; }
+        if (atomic.Exchange(45L) != 44L) { return 9; }
+        atomic.Store(46L);
+        return atomic.Load() == 46L ? 0 : 10;
+    }
+}

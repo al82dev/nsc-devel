@@ -1,0 +1,5 @@
+public class Program
+{
+    private static volatile uint Value;
+    public static int Main() { Value = 42u; return Value == 42u ? 0 : 1; }
+}

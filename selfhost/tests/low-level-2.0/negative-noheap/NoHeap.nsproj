@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>SH45NoHeapNegative</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>

@@ -154,6 +154,8 @@ namespace NativeSharp.Compiler.Parser
         {
             raii StringBuilder output = new StringBuilder();
             raii StringBuilder semantic = new StringBuilder();
+            bool reference = AtText("ref");
+            if (reference) { output.Append("ref "); Consume(); }
             if (Ownership(Current()))
             {
                 raii string qualifier = CurrentText();
@@ -209,6 +211,7 @@ namespace NativeSharp.Compiler.Parser
                 }
                 else { break; }
             }
+            if (reference) { semantic.Append('*'); }
             raii string semanticText = semantic.ToOwnedString(); lastSemanticType = move(semanticText);
             return output.ToOwnedString();
         }
@@ -328,7 +331,7 @@ namespace NativeSharp.Compiler.Parser
 
         private bool TypeStartsHere()
         {
-            if (Builtin(Current()) || Ownership(Current())) { return true; }
+            if (Builtin(Current()) || Ownership(Current()) || AtText("ref")) { return true; }
             if (!At(TokenKind.Identifier)) { return false; }
             raii string name = CurrentText(); return IsKnownType(name);
         }
@@ -508,6 +511,11 @@ namespace NativeSharp.Compiler.Parser
 
         private int ParseUnary()
         {
+            if (AtText("ref"))
+            {
+                Consume(); int node = NewNode("UnaryExpression"); Node(node).SetOperator(TokenKind.Amp);
+                Node(node).SetAuxiliary("pass:ref"); Node(node).SetFirst(ParseUnary()); return node;
+            }
             if (LooksLikeCast())
             {
                 Consume(); raii string type = ParseType(); Expect(TokenKind.RightParen);
@@ -553,6 +561,20 @@ namespace NativeSharp.Compiler.Parser
             if (At(TokenKind.KwStackalloc) || At(TokenKind.KwNew))
             {
                 bool stack = At(TokenKind.KwStackalloc); Consume();
+                if (!stack && At(TokenKind.LeftParen))
+                {
+                    Consume(); int storage = ParseExpression(); Expect(TokenKind.RightParen);
+                    raii string placedType = ParseAllocationType();
+                    int placement = NewNode("PlacementConstructionExpression");
+                    Node(placement).SetType(placedType); Node(placement).SetSemanticType(placedType);
+                    Node(placement).SetFirst(storage); Expect(TokenKind.LeftParen);
+                    while (!At(TokenKind.RightParen) && !At(TokenKind.EndOfFile))
+                    {
+                        Node(placement).AddChild(ParseExpression());
+                        if (!ConsumeIf(TokenKind.Comma)) { break; }
+                    }
+                    Expect(TokenKind.RightParen); return placement;
+                }
                 raii string type = ParseAllocationType();
                 int node = -1;
                 if (!stack && At(TokenKind.LeftParen)) { node = NewNode("ObjectCreationExpression"); }
@@ -755,7 +777,18 @@ namespace NativeSharp.Compiler.Parser
         private int ParseReturn()
         {
             Consume(); int node = NewNode("ReturnStatement");
-            if (!At(TokenKind.Semicolon)) { Node(node).SetFirst(ParseExpression()); }
+            if (!At(TokenKind.Semicolon))
+            {
+                bool byReference = AtText("ref"); if (byReference) { Consume(); }
+                int expression = ParseExpression();
+                if (byReference)
+                {
+                    int wrapper = NewNode("UnaryExpression"); Node(wrapper).SetOperator(TokenKind.Amp);
+                    Node(wrapper).SetAuxiliary("pass:ref-return"); Node(wrapper).SetFirst(expression);
+                    expression = wrapper;
+                }
+                Node(node).SetFirst(expression);
+            }
             Expect(TokenKind.Semicolon); return node;
         }
         private int ParseThrow()
@@ -1064,6 +1097,7 @@ namespace NativeSharp.Compiler.Parser
                     Expect(TokenKind.Identifier);
                     int destructor = NewNode("DestructorDeclaration");
                     Node(destructor).SetText(destructorName);
+                    Node(destructor).SetType("void"); Node(destructor).SetSemanticType("void");
                     Expect(TokenKind.LeftParen); Expect(TokenKind.RightParen);
                     Node(destructor).SetFirst(ParseBlock());
                     Node(declaration).AddChild(destructor);
