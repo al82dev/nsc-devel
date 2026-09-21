@@ -1,0 +1,38 @@
+{
+  "schema": "nativesharp-selfhost-gate-summary",
+  "version": 1,
+  "gate": "SH46",
+  "tanda": 48,
+  "status": "passed",
+  "source_files": 101,
+  "source_sha256": "405366b82e945ab5c07ee1745b45d3c8e5acf95e639c49fe7f39afeb5f023c5a",
+  "self_hosted_generation": {
+    "profiles": 4,
+    "executions": 16,
+    "object_fixed_point_per_profile": true,
+    "report_sha256": "cbf5c3d4e6e2b77b2e5a5da9463a5ab760f47dd31e87d119d2de4ab5c30046cf"
+  },
+  "interop_matrix": {
+    "producer_compilers": 4,
+    "profiles_per_compiler": 4,
+    "linkers": 2,
+    "products": ["EXE", "DLL"],
+    "passed_executions": 64,
+    "failures": 0,
+    "omitted": 0
+  },
+  "contract_sha256": "df2e5e717c3ecfba069ba3caedd23ded3b5bfa742afe2ca70f122e00ee4fad65",
+  "verifier_sha256": "4858478753df21a5bf5b37143817917c671d8d1988f8a99ba06b9514c1d10726",
+  "infrastructure_tests": 47,
+  "cmake_gate": "passed",
+  "baseline": {
+    "status": "passed-isolated-pending-linear-integration-after-SH44",
+    "run_id": "tanda-48-sh46-abi-interop-r2-20260921",
+    "total_seconds": 4030.470,
+    "ctest_per_linker": 480,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18,
+    "failures": 0,
+    "gate_0": "LANDED"
+  }
+}

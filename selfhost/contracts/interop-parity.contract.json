@@ -1,0 +1,25 @@
+{
+  "schema": "nativesharp-selfhost-interop-parity-contract",
+  "version": 1,
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "project": "selfhost/tests/interop-2.0/Interop.nsproj",
+  "host_c": "selfhost/tests/interop-2.0/host.c",
+  "host_cpp": "selfhost/tests/interop-2.0/host.cpp",
+  "dll_consumer": "selfhost/tests/interop-2.0/dll_consumer.c",
+  "entry": "mainCRTStartup",
+  "imports": {
+    "KERNEL32.dll": ["ExitProcess"],
+    "ntdll.dll": ["__chkstk"]
+  },
+  "undefined_host_symbols": [
+    "host_pair_sum", "host_make_pair", "host_apply", "host_com_call",
+    "host_vararg_sum", "host_cpp_pair", "host_vectorcall@@32"
+  ],
+  "exports": ["ns_pair_sum", "ns_make_pair"],
+  "boundaries": [
+    "C", "C++", "COM-vtable", "callback", "aggregate-parameter",
+    "aggregate-return", "varargs", "vectorcall", "DLL"
+  ],
+  "expected_executions_per_profile": 4
+}

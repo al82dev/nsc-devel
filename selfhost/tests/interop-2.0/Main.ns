@@ -1,0 +1,100 @@
+namespace NativeSharp.SelfHost.Interop
+{
+    public struct Pair
+    {
+        public int Left;
+        public int Right;
+    }
+
+    public extern C delegate int BinaryCallback(int left, int right);
+    public extern C delegate int ComInvoke(void* self, int value);
+
+    public struct ComVTable
+    {
+        public ComInvoke Invoke;
+    }
+
+    public struct ComObject
+    {
+        public ComVTable* VTable;
+        public int Bias;
+    }
+
+    public class NativeExports
+    {
+        public static int Add(int left, int right) { return left + right; }
+
+        public static int InvokeCom(void* self, int value)
+        {
+            ComObject* instance = (ComObject*)self;
+            return instance->Bias + value;
+        }
+
+        extern C
+        {
+            public int ns_pair_sum(Pair value)
+            {
+                return value.Left + value.Right;
+            }
+
+            public Pair ns_make_pair(int left, int right)
+            {
+                Pair value;
+                value.Left = left;
+                value.Right = right;
+                return value;
+            }
+        }
+    }
+
+    public class NativeHosts
+    {
+        extern C
+        {
+            public int host_pair_sum(Pair value);
+            public Pair host_make_pair(int left, int right);
+            public int host_apply(BinaryCallback callback, int left, int right);
+            public int host_com_call(ComObject* value, int argument);
+            public int host_vararg_sum(int count, ...);
+            public int host_cpp_pair(Pair value);
+            public vectorcall int host_vectorcall(int a, int b, int c, int d);
+        }
+    }
+
+    public class Program
+    {
+        public static int Add(int left, int right) { return left + right; }
+
+        public static int InvokeCom(void* self, int value)
+        {
+            ComObject* instance = (ComObject*)self;
+            return instance->Bias + value;
+        }
+
+        public static int Main()
+        {
+            Pair value;
+            value.Left = 19;
+            value.Right = 23;
+            if (NativeHosts.host_pair_sum(value) != 42) { return 1; }
+
+            Pair returned = NativeHosts.host_make_pair(20, 22);
+            if (returned.Left + returned.Right != 42) { return 2; }
+            if (NativeHosts.host_cpp_pair(value) != 42) { return 3; }
+            if (NativeHosts.host_apply(Add, 20, 22) != 42) { return 4; }
+            if (NativeHosts.host_vararg_sum(4, (byte)1, (short)2, 3, 36) != 42) { return 5; }
+            if (NativeHosts.host_vectorcall(9, 10, 11, 12) != 42) { return 6; }
+
+            ComVTable table;
+            table.Invoke = InvokeCom;
+            ComObject instance;
+            instance.VTable = &table;
+            instance.Bias = 40;
+            if (NativeHosts.host_com_call(&instance, 2) != 42) { return 7; }
+
+            Pair exported = NativeExports.ns_make_pair(21, 21);
+            if (NativeExports.ns_pair_sum(exported) != 42) { return 8; }
+            return 0;
+        }
+    }
+}

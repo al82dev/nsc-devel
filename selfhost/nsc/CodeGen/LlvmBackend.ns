@@ -228,12 +228,62 @@ namespace NativeSharp.Compiler.CodeGen
             return null;
         }
 
+        private static int AggregateSize(SemanticModel semantic, string type)
+        {
+            int symbol = FindTypeSymbolByDisplay(semantic, type);
+            if (symbol < 0) { return 0; }
+            Symbol aggregate = semantic.GetSymbol(symbol);
+            if (aggregate.Kind() != SymbolKind.Struct && aggregate.Kind() != SymbolKind.Union) { return 0; }
+            return aggregate.Size();
+        }
+
+        private static bool DirectAggregateSize(int size)
+        { return size == 1 || size == 2 || size == 4 || size == 8; }
+
+        private static void* DirectAggregateType(void* context, int size)
+        {
+            if (size == 1) { return LLVM.LLVMInt8TypeInContext(context); }
+            if (size == 2) { return LLVM.LLVMInt16TypeInContext(context); }
+            if (size == 4) { return LLVM.LLVMInt32TypeInContext(context); }
+            if (size == 8) { return LLVM.LLVMInt64TypeInContext(context); }
+            return null;
+        }
+
+        private static void* AbiValueType(void* context, SemanticModel semantic, string type)
+        {
+            int aggregateSize = AggregateSize(semantic, type);
+            if (DirectAggregateSize(aggregateSize)) { return DirectAggregateType(context, aggregateSize); }
+            return ScalarType(context, type);
+        }
+
+        private static int ParameterDeclarationAt(SyntaxTree tree, int declarationId, int ordinal)
+        {
+            SyntaxNode declaration = tree.Node(declarationId); int child = 0; int position = 0;
+            while (child < declaration.ChildCount())
+            {
+                int childId = declaration.ChildAt(child);
+                if (tree.Node(childId).Kind() == "ParameterDeclaration")
+                {
+                    if (position == ordinal) { return childId; }
+                    position = position + 1;
+                }
+                child = child + 1;
+            }
+            return -1;
+        }
+
         private static bool HasReceiver(SemanticModel semantic, int declarationId)
         {
             int symbol = semantic.NodeSymbol(declarationId); if (symbol < 0) { return false; }
             Symbol value = semantic.GetSymbol(symbol);
             return value.Kind() == SymbolKind.Constructor || value.Kind() == SymbolKind.Destructor ||
                 (value.Kind() == SymbolKind.Method && !value.IsStatic() && !value.IsExternC());
+        }
+
+        private static bool UsesNativeAbi(SemanticModel semantic, int declarationId)
+        {
+            int symbol = semantic.NodeSymbol(declarationId);
+            return symbol >= 0 && semantic.GetSymbol(symbol).IsExternC();
         }
 
         private static void* ScalarFunctionType(void* context, SyntaxTree tree,
@@ -244,7 +294,10 @@ namespace NativeSharp.Compiler.CodeGen
             bool lifetimeEntry = declarationSymbol >= 0 &&
                 (semantic.GetSymbol(declarationSymbol).Kind() == SymbolKind.Constructor ||
                  semantic.GetSymbol(declarationSymbol).Kind() == SymbolKind.Destructor);
-            void* returnType = ScalarType(context, lifetimeEntry ? "void" : declaration.TypeText());
+            bool nativeAbi = UsesNativeAbi(semantic, declarationId);
+            void* returnType = nativeAbi ? AbiValueType(context, semantic,
+                lifetimeEntry ? "void" : declaration.TypeText()) :
+                ScalarType(context, lifetimeEntry ? "void" : declaration.TypeText());
             if (returnType == null) { return null; }
             bool receiver = HasReceiver(semantic, declarationId);
             int parameterCount = ParameterCount(tree, declarationId) + (receiver ? 1 : 0);
@@ -259,7 +312,8 @@ namespace NativeSharp.Compiler.CodeGen
                 SyntaxNode child = tree.Node(declaration.ChildAt(index));
                 if (child.Kind() == "ParameterDeclaration")
                 {
-                    void* parameterType = ScalarType(context, child.TypeText());
+                    void* parameterType = nativeAbi ? AbiValueType(context, semantic, child.TypeText()) :
+                        ScalarType(context, child.TypeText());
                     if (parameterType == null || child.TypeText() == "void") { return null; }
                     parameterTypes[parameter] = parameterType; parameter = parameter + 1;
                 }
@@ -1877,6 +1931,15 @@ namespace NativeSharp.Compiler.CodeGen
             }
             if (node.Kind() == "UnaryExpression" && node.OperatorKind() == TokenKind.Amp)
             {
+                int operandType = semantic.Fact(node.First()).TypeId();
+                if (operandType >= 0 && AggregateSize(semantic,
+                    semantic.Types().Get(operandType).Display()) > 0)
+                {
+                    bool aggregateValid = false;
+                    void* aggregateAddress = EmitScalarExpression(module, builder, i32, i1,
+                        tree, semantic, declarationId, function, state, node.First(), out aggregateValid);
+                    valid = aggregateValid; return aggregateAddress;
+                }
                 void* valueType = null;
                 void* address = EmitLValue(module, builder, i32, i1, tree, semantic,
                     declarationId, function, state, node.First(), out valueType, out valid);
@@ -2197,6 +2260,44 @@ namespace NativeSharp.Compiler.CodeGen
                             arguments[argument + physicalOffset], sourceType, destinationType); }
                         if (arguments[argument + physicalOffset] == null)
                         { LoweringFailure(tree, node.ChildAt(argument), "call argument conversion"); return null; }
+                        int parameterDeclaration = ParameterDeclarationAt(tree, calleeDeclaration, argument);
+                        if (UsesNativeAbi(semantic, calleeDeclaration) && parameterDeclaration >= 0)
+                        {
+                            int aggregateSize = AggregateSize(semantic,
+                                tree.Node(parameterDeclaration).TypeText());
+                            if (DirectAggregateSize(aggregateSize))
+                            {
+                                void* aggregateType = DirectAggregateType(
+                                    LLVM.LLVMGetModuleContext(module), aggregateSize);
+                                raii CString loadName = new CString("abi.aggregate.argument");
+                                arguments[argument + physicalOffset] = LLVM.LLVMBuildLoad2(builder,
+                                    aggregateType, arguments[argument + physicalOffset], loadName.Pointer());
+                            }
+                        }
+                    }
+                    else
+                    {
+                        int sourceType = semantic.Fact(node.ChildAt(argument)).TypeId();
+                        if (sourceType >= 0)
+                        {
+                            raii string source = String.Copy(semantic.Types().Get(sourceType).Display());
+                            void* context = LLVM.LLVMGetModuleContext(module);
+                            raii CString promotionName = new CString("abi.vararg.promotion");
+                            if (source == "float")
+                            {
+                                arguments[argument + physicalOffset] = LLVM.LLVMBuildFPExt(builder,
+                                    arguments[argument + physicalOffset], LLVM.LLVMDoubleTypeInContext(context),
+                                    promotionName.Pointer());
+                            }
+                            else if (IntegerBits(source) > 0 && IntegerBits(source) < 32)
+                            {
+                                arguments[argument + physicalOffset] = UnsignedInteger(source) ?
+                                    LLVM.LLVMBuildZExt(builder, arguments[argument + physicalOffset], i32,
+                                        promotionName.Pointer()) :
+                                    LLVM.LLVMBuildSExt(builder, arguments[argument + physicalOffset], i32,
+                                        promotionName.Pointer());
+                            }
+                        }
                     }
                     argument = argument + 1;
                 }
@@ -2205,6 +2306,17 @@ namespace NativeSharp.Compiler.CodeGen
                     arguments, (uint)physicalCount, callName.Pointer());
                 if (call != null && String.Contains(tree.Node(calleeDeclaration).ModifiersText(), "vectorcall"))
                 { LLVM.LLVMSetInstructionCallConv(call, 80u); }
+                int returnAggregateSize = UsesNativeAbi(semantic, calleeDeclaration) ?
+                    AggregateSize(semantic, tree.Node(calleeDeclaration).TypeText()) : 0;
+                if (call != null && DirectAggregateSize(returnAggregateSize))
+                {
+                    void* aggregateType = DirectAggregateType(LLVM.LLVMGetModuleContext(module),
+                        returnAggregateSize);
+                    raii CString storageName = new CString("abi.aggregate.return");
+                    void* storage = EmitEntryAlloca(builder, function, aggregateType, storageName.Pointer());
+                    if (storage == null || LLVM.LLVMBuildStore(builder, call, storage) == null) { return null; }
+                    valid = true; return storage;
+                }
                 valid = call != null; return call;
             }
             if (node.Kind() == "BinaryExpression" &&
@@ -2634,6 +2746,15 @@ namespace NativeSharp.Compiler.CodeGen
                 value = ApplyConversion(module, builder, semantic, semantic.Fact(syntaxId),
                     value, "contextual", -1);
                 if (value == null) { return LoweringFailure(tree, syntaxId, "return conversion"); }
+                int aggregateSize = UsesNativeAbi(semantic, declarationId) ?
+                    AggregateSize(semantic, tree.Node(declarationId).TypeText()) : 0;
+                if (DirectAggregateSize(aggregateSize))
+                {
+                    void* aggregateType = DirectAggregateType(context, aggregateSize);
+                    raii CString loadName = new CString("abi.aggregate.return.value");
+                    value = LLVM.LLVMBuildLoad2(builder, aggregateType, value, loadName.Pointer());
+                    if (value == null) { return LoweringFailure(tree, syntaxId, "aggregate return"); }
+                }
                 if (LLVM.LLVMBuildRet(builder, value) == null)
                 { return LoweringFailure(tree, syntaxId, "return instruction"); }
                 terminated = true; return true;
@@ -2839,6 +2960,29 @@ namespace NativeSharp.Compiler.CodeGen
                                 Console.ErrorWriteLine(message); return false;
                             }
                             state.AddLocal(parameterSymbol, incoming, elementType);
+                            parameter = parameter + 1; child = child + 1; continue;
+                        }
+                        int aggregateSize = UsesNativeAbi(semantic, syntaxId) ?
+                            AggregateSize(semantic, parameterNode.TypeText()) : 0;
+                        if (DirectAggregateSize(aggregateSize))
+                        {
+                            void* aggregateType = DirectAggregateType(context, aggregateSize);
+                            raii CString valueName = new CString("abi.aggregate.parameter.value");
+                            void* valueStorage = EmitEntryAlloca(builder, function, aggregateType,
+                                valueName.Pointer());
+                            raii CString addressName = new CString(parameterNode.Text());
+                            void* addressStorage = EmitEntryAlloca(builder, function,
+                                LLVM.LLVMPointerTypeInContext(context, 0u), addressName.Pointer());
+                            if (incoming == null || valueStorage == null || addressStorage == null ||
+                                LLVM.LLVMBuildStore(builder, incoming, valueStorage) == null ||
+                                LLVM.LLVMBuildStore(builder, valueStorage, addressStorage) == null)
+                            {
+                                raii string message = String.Concat(
+                                    "nsc-next: backend aggregate parameter lowering failed in ", node.Text());
+                                Console.ErrorWriteLine(message); return false;
+                            }
+                            state.AddLocal(semantic.NodeSymbol(childId), addressStorage,
+                                LLVM.LLVMPointerTypeInContext(context, 0u));
                             parameter = parameter + 1; child = child + 1; continue;
                         }
                         raii CString parameterName = new CString(parameterNode.Text());

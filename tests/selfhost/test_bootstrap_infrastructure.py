@@ -236,6 +236,22 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         for case in contract["negative_projects"]:
             self.assertTrue((ROOT / case["project"]).is_file(), case["project"])
 
+    def test_sh46_interop_contract_covers_native_boundaries_and_products(self) -> None:
+        contract = json.loads(
+            (ROOT / "selfhost/contracts/interop-parity.contract.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(contract["schema"], "nativesharp-selfhost-interop-parity-contract")
+        self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
+        self.assertEqual(contract["linkers"], ["lld", "nslink"])
+        self.assertEqual(contract["expected_executions_per_profile"], 4)
+        for boundary in ("C", "C++", "COM-vtable", "callback", "aggregate-parameter",
+                         "aggregate-return", "varargs", "vectorcall", "DLL"):
+            self.assertIn(boundary, contract["boundaries"])
+        for key in ("project", "host_c", "host_cpp", "dll_consumer"):
+            self.assertTrue((ROOT / contract[key]).is_file(), contract[key])
+
     def test_runtime_bootstrap_contract_names_external_artifacts(self) -> None:
         contract = json.loads(
             (ROOT / "selfhost/contracts/runtime-bootstrap.contract.json").read_text(

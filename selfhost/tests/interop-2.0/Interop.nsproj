@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>SelfHostInterop</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Main.ns" /></ItemGroup>
+</Project>
