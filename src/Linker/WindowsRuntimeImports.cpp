@@ -65,16 +65,16 @@ bool createWindowsImportLibraries(
         // directly from KERNEL32.dll.
         "GetEnvironmentVariableA",
         "SetEnvironmentVariableA",
-        // Stage 53.3 "Filesystem/Paths" -- File.Exists/File.Delete/Directory.Exists/
-        // Directory.CreateDirectory (see src/Runtime/WindowsRuntimeBuilder.cpp) import these
-        // directly from KERNEL32.dll.
+        // Stage 53.3/T46 "Filesystem/Paths" -- existence checks use the W variant for UTF-8
+        // paths; legacy mutation operations remain listed independently.
         "GetFileAttributesA",
+        "GetFileAttributesW",
         "DeleteFileA",
         "CreateDirectoryA",
-        // Stage 53.3b "Filesystem/Paths (contenido de archivo)" -- File.ReadAllText/
-        // WriteAllText/AppendAllText (see src/Runtime/WindowsRuntimeBuilder.cpp) import these
-        // directly from KERNEL32.dll.
+        // Stage 53.3b/T46 content operations. ReadAllText uses CreateFileW; other operations keep
+        // their existing CreateFileA path until the complete SH48 filesystem conversion.
         "CreateFileA",
+        "CreateFileW",
         "GetFileSizeEx",
         "ReadFile",
         "CloseHandle",
@@ -105,12 +105,13 @@ bool createWindowsImportLibraries(
         // separate shell32Library block below.
         "GetCommandLineW",
         "WideCharToMultiByte",
+        "MultiByteToWideChar",
         "LocalFree",
         // Stage 53.6 "Enumeracion de directorios" -- Directory.GetFileCount/GetFiles/
         // GetDirectoryCount/GetDirectories (see src/Runtime/WindowsRuntimeBuilder.cpp) import
         // these directly from KERNEL32.dll.
-        "FindFirstFileA",
-        "FindNextFileA",
+        "FindFirstFileW",
+        "FindNextFileW",
         "FindClose",
         // Stage 54.1 "Threads" -- Thread's ThreadCreate/ThreadJoin/ThreadDetach (see
         // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.

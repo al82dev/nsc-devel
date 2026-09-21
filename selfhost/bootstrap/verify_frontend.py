@@ -40,20 +40,20 @@ def load_contract(path: Path) -> dict:
     require(len(contract.get("ast_cases", [])) >= 16, "frontend AST matrix is incomplete")
     require(len(contract.get("recovery", {}).get("cases", [])) >= 5,
             "frontend recovery matrix is incomplete")
+    require(len(contract.get("corpus_roots", [])) >= 6,
+            "frontend corpus roots are incomplete")
     return contract
 
 
-def source_corpus(root: Path, exclusions: set[str]) -> list[Path]:
+def source_corpus(root: Path, corpus_roots: Sequence[str], exclusions: set[str]) -> list[Path]:
     result: list[Path] = []
-    for path in root.rglob("*.ns"):
-        relative = path.relative_to(root).as_posix()
-        if relative in exclusions:
-            continue
-        if relative.startswith("selfhost/out/") or relative.startswith("selfhost/evidence/"):
-            continue
-        if any(part in {".git", "_nscbuilder"} for part in path.parts):
-            continue
-        result.append(path)
+    for relative_root in corpus_roots:
+        corpus_root = root / relative_root
+        require(corpus_root.is_dir(), f"frontend corpus root is missing: {relative_root}")
+        for path in corpus_root.rglob("*.ns"):
+            relative = path.relative_to(root).as_posix()
+            if relative not in exclusions:
+                result.append(path)
     return sorted(result)
 
 
@@ -76,7 +76,7 @@ def verify(
     contract = load_contract(contract_path)
     output_dir.mkdir(parents=True, exist_ok=True)
     exclusions = set(contract["token_exclusions"])
-    sources = source_corpus(root, exclusions)
+    sources = source_corpus(root, contract["corpus_roots"], exclusions)
     require(len(sources) >= 470, f"frontend source corpus unexpectedly small: {len(sources)}")
 
     legacy_tokens: dict[str, bytes] = {}

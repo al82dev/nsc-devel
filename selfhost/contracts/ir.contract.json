@@ -1,6 +1,7 @@
 {
   "schema": "nativesharp-selfhost-ir-contract",
   "version": 1,
+  "corpus_roots": ["book_examples", "examples", "lib", "selfhost/nsc", "selfhost/tests", "tests"],
   "optimizations": ["O0", "O1", "O2", "O3"],
   "stages": [
     {"dump": "--dump-hir", "verify": "--verify-hir", "header": "hir.module schema=1", "legacy_header": "CompilationUnit", "source": "tests/integration/valid/hir_features.ns", "contains": ["Allocation", "Deallocation", "IndexAddress", "Conversion"]},

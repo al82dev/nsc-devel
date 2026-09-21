@@ -89,6 +89,15 @@ int main()
         tests.expect(text.find("WriteFile") != std::string::npos &&
                 text.find("GetStdHandle") != std::string::npos,
             "puts shim is built on direct Win32 console/file APIs");
+        tests.expect(text.find("declare ptr @FindFirstFileW(ptr, ptr)") != std::string::npos &&
+                text.find("declare i32 @FindNextFileW(ptr, ptr)") != std::string::npos,
+            "directory enumeration uses the UTF-16 Win32 boundary");
+        tests.expect(text.find("@FindFirstFileA") == std::string::npos &&
+                text.find("@FindNextFileA") == std::string::npos,
+            "directory enumeration never falls back to the active ANSI code page");
+        tests.expect(text.find("declare i32 @MultiByteToWideChar") != std::string::npos &&
+                text.find("declare i32 @WideCharToMultiByte") != std::string::npos,
+            "runtime exposes both sides of the NativeSharp UTF-8 to Win32 UTF-16 boundary");
 
         std::string targetError;
         std::unique_ptr<LlvmTargetMachine> targetMachine = LlvmTargetMachine::createWindowsX64(targetError);

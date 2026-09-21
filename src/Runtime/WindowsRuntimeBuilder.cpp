@@ -606,6 +606,55 @@ LLVMValueRef buildNullTerminatedCopy(
     return buffer;
 }
 
+// NativeSharp strings are UTF-8. Windows filesystem APIs use UTF-16, so path-bearing runtime
+// hooks must cross that boundary explicitly instead of sending UTF-8 bytes to an ANSI (*A) API.
+// The returned scratch buffer lives in the caller's stack frame and is always null terminated.
+LLVMValueRef buildUtf16NullTerminatedCopy(
+    LLVMContextRef context,
+    LLVMBuilderRef builder,
+    LLVMValueRef sourceString,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
+{
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i16Type = LLVMInt16TypeInContext(context);
+    LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+
+    LLVMValueRef length64 = LLVMBuildLoad2(builder, i64Type, sourceString, "utf8_length");
+    LLVMValueRef length32 = LLVMBuildTrunc(builder, length64, i32Type, "utf8_length32");
+    LLVMValueRef dataIndex[1] = {LLVMConstInt(i64Type, 8, 0)};
+    LLVMValueRef data = LLVMBuildGEP2(builder, i8Type, sourceString, dataIndex, 1, "utf8_data");
+    LLVMValueRef sizeArguments[6] = {
+        LLVMConstInt(i32Type, 65001, 0), // CP_UTF8
+        LLVMConstInt(i32Type, 0x8, 0), // MB_ERR_INVALID_CHARS
+        data,
+        length32,
+        LLVMConstNull(pointerType),
+        LLVMConstInt(i32Type, 0, 0)};
+    LLVMValueRef required = LLVMBuildCall2(
+        builder, multiByteToWideCharType, multiByteToWideChar, sizeArguments, 6, "utf16_required");
+    LLVMValueRef required64 = LLVMBuildZExt(builder, required, i64Type, "utf16_required64");
+    LLVMValueRef capacity = LLVMBuildAdd(
+        builder, required64, LLVMConstInt(i64Type, 1, 0), "utf16_capacity");
+    LLVMValueRef buffer = LLVMBuildArrayAlloca(builder, i16Type, capacity, "utf16_buffer");
+    LLVMValueRef fillArguments[6] = {
+        LLVMConstInt(i32Type, 65001, 0),
+        LLVMConstInt(i32Type, 0x8, 0),
+        data,
+        length32,
+        buffer,
+        required};
+    LLVMBuildCall2(
+        builder, multiByteToWideCharType, multiByteToWideChar, fillArguments, 6, "utf16_written");
+    LLVMValueRef terminatorIndex[1] = {required64};
+    LLVMValueRef terminator = LLVMBuildGEP2(
+        builder, i16Type, buffer, terminatorIndex, 1, "utf16_terminator");
+    LLVMBuildStore(builder, LLVMConstInt(i16Type, 0, 0), terminator);
+    return buffer;
+}
+
 bool buildEnvironmentGetVariable(
     LLVMContextRef context,
     LLVMModuleRef module,
@@ -750,8 +799,10 @@ bool buildEnvironmentSetVariable(
 bool buildFileExists(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef getFileAttributesA,
-    LLVMTypeRef getFileAttributesAType)
+    LLVMValueRef getFileAttributesW,
+    LLVMTypeRef getFileAttributesWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
     LLVMTypeRef i1Type = LLVMInt1TypeInContext(context);
@@ -768,10 +819,11 @@ bool buildFileExists(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef arguments[1] = {pathBuffer};
     LLVMValueRef attributes = LLVMBuildCall2(
-        builder, getFileAttributesAType, getFileAttributesA, arguments, 1, "attributes");
+        builder, getFileAttributesWType, getFileAttributesW, arguments, 1, "attributes");
 
     LLVMValueRef isInvalid = LLVMBuildICmp(
         builder, LLVMIntEQ, attributes, LLVMConstInt(i32Type, 0xFFFFFFFFu, 0), "is_invalid");
@@ -791,8 +843,10 @@ bool buildFileExists(
 bool buildDirectoryExists(
     LLVMContextRef context,
     LLVMModuleRef module,
-    LLVMValueRef getFileAttributesA,
-    LLVMTypeRef getFileAttributesAType)
+    LLVMValueRef getFileAttributesW,
+    LLVMTypeRef getFileAttributesWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
     LLVMTypeRef i1Type = LLVMInt1TypeInContext(context);
@@ -809,10 +863,11 @@ bool buildDirectoryExists(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef arguments[1] = {pathBuffer};
     LLVMValueRef attributes = LLVMBuildCall2(
-        builder, getFileAttributesAType, getFileAttributesA, arguments, 1, "attributes");
+        builder, getFileAttributesWType, getFileAttributesW, arguments, 1, "attributes");
 
     LLVMValueRef isInvalid = LLVMBuildICmp(
         builder, LLVMIntEQ, attributes, LLVMConstInt(i32Type, 0xFFFFFFFFu, 0), "is_invalid");
@@ -957,8 +1012,10 @@ bool buildFileReadAllText(
     LLVMTypeRef getProcessHeapType,
     LLVMValueRef heapAlloc,
     LLVMTypeRef heapAllocType,
-    LLVMValueRef createFileA,
-    LLVMTypeRef createFileAType,
+    LLVMValueRef createFileW,
+    LLVMTypeRef createFileWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
     LLVMValueRef getFileSizeEx,
     LLVMTypeRef getFileSizeExType,
     LLVMValueRef readFile,
@@ -984,7 +1041,8 @@ bool buildFileReadAllText(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     // GENERIC_READ=0x80000000, FILE_SHARE_READ=0x1 (other readers may open the same file
     // concurrently -- there is no writer in this picture yet), lpSecurityAttributes=NULL,
     // OPEN_EXISTING=3 (fail if the file does not exist -- ReadAllText should never CREATE a
@@ -997,7 +1055,7 @@ bool buildFileReadAllText(
         LLVMConstInt(i32Type, 3, 0),
         LLVMConstInt(i32Type, 0x80, 0),
         LLVMConstNull(pointerType)};
-    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileWType, createFileW, createArguments, 7, "handle");
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
     LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
@@ -2042,18 +2100,17 @@ bool buildPathGetFullPath(
 }
 
 // Stage 53.5 "Command-line arguments" -- GetCommandLineW + CommandLineToArgvW + WideCharToMultiByte
-// + LocalFree. These are, deliberately and explicitly, the ONLY *W (UTF-16) Win32 calls in this
-// entire runtime -- every other wrapper in this file is ANSI (*A), per buildNullTerminatedCopy's
-// header comment. Windows simply has no ANSI CommandLineToArgvA; the official parser only exists
-// in its UTF-16 form. Reimplementing that parser's quoting/escaping rules by hand (to keep this
-// file 100% ANSI) was considered and rejected -- see Environment.ns's header comment and
+// + LocalFree. Windows has no ANSI CommandLineToArgvA; the official parser only exists in its
+// UTF-16 form. T46 also uses UTF-16 for compiler filesystem reads, but command parsing remains a
+// separate boundary. Reimplementing its quoting/escaping rules by hand was considered and
+// rejected -- see Environment.ns's header comment and
 // `55_stage53_5_command_line_args.md` for the full design discussion Alberto and Claude worked
 // through -- because CommandLineToArgvW already IS the correct, battle-tested implementation of
 // those exact rules, and a hand-rolled reimplementation would only reintroduce the same class of
 // risk that produced the real cmd.exe quoting bug documented in
 // `15_fix_cmdexe_quoting_tests_host_abi_windows.md`. So this round crosses the ANSI boundary on
-// purpose, for these two functions only, and converts every UTF-16 result back to ANSI
-// immediately via WideCharToMultiByte before it ever reaches NativeSharp code.
+// purpose, and converts every UTF-16 result to NativeSharp's canonical UTF-8 representation via
+// WideCharToMultiByte(CP_UTF8) before it reaches NativeSharp code.
 //
 // GetCommandLineArgCount is the simpler of the two: call GetCommandLineW to get the raw UTF-16
 // command line Windows built for this process, hand it to CommandLineToArgvW (which parses it
@@ -2120,9 +2177,9 @@ bool buildEnvironmentGetCommandLineArgCount(
 // contract.
 //
 // Per-argument shape: argv[i] (from CommandLineToArgvW) is an LPWSTR -- a UTF-16, null-terminated
-// string. It is converted to ANSI with the exact same two-call "ask the size, then fill the
+// string. It is converted to UTF-8 with the exact same two-call "ask the size, then fill the
 // buffer" idiom buildEnvironmentGetVariable/buildPathGetFullPath already established for other
-// Win32 APIs, just applied to WideCharToMultiByte(CP_ACP=0, dwFlags=0, ..., cchWideChar=-1 for
+// Win32 APIs, just applied to WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, ..., cchWideChar=-1 for
 // "auto-detect the null terminator", ...) instead of GetEnvironmentVariableA/GetFullPathNameA.
 //
 // writeCount = min(argc, destination.Length) -- if the real command line has more arguments than
@@ -2237,8 +2294,8 @@ bool buildEnvironmentGetCommandLineArgs(
     // cchWideChar=-1 (0xFFFFFFFF) means "the string is null-terminated, figure out its length
     // yourself" -- the required size this returns INCLUDES room for the null terminator.
     LLVMValueRef sizeArguments[8] = {
-        LLVMConstInt(i32Type, 0, 0), // CP_ACP
-        LLVMConstInt(i32Type, 0, 0), // dwFlags
+        LLVMConstInt(i32Type, 65001, 0), // CP_UTF8
+        LLVMConstInt(i32Type, 0x80, 0), // WC_ERR_INVALID_CHARS
         wideArg,
         LLVMConstInt(i32Type, 0xFFFFFFFFu, 0), // cchWideChar = -1
         LLVMConstNull(pointerType), // lpMultiByteStr
@@ -2279,8 +2336,8 @@ bool buildEnvironmentGetCommandLineArgs(
     // own return value (bytes written) is ignored -- same as every prior two-call wrapper here --
     // because charCount above already derives the same number from requiredSize.
     LLVMValueRef fillArguments[8] = {
-        LLVMConstInt(i32Type, 0, 0),
-        LLVMConstInt(i32Type, 0, 0),
+        LLVMConstInt(i32Type, 65001, 0),
+        LLVMConstInt(i32Type, 0x80, 0),
         wideArg,
         LLVMConstInt(i32Type, 0xFFFFFFFFu, 0),
         elementData,
@@ -2321,15 +2378,16 @@ bool buildEnvironmentGetCommandLineArgs(
     return true;
 }
 
-// Stage 53.6 "Enumeracion de directorios" -- FindFirstFileA/FindNextFileA/FindClose, ANSI (*A)
-// same as ever. Ver el comentario de cabecera de Directory.ns para el diseno completo (arreglo
+// Stage 53.6/T46 directory enumeration uses FindFirstFileW/FindNextFileW/FindClose so paths and
+// discovered names survive independently of the active Windows code page. See Directory.ns for
+// the full two-pass design (a single pair of C++ helpers parameterized by `wantDirectories`,
 // de dos pasadas, un solo par de funciones C++ compartidas parametrizadas por un booleano
-// `wantDirectories` que decide en tiempo de generacion de codigo -- NO en tiempo de ejecucion --
+// which decides at code-generation time -- not runtime --
 // que rama del filtro por atributo emitir, exactamente igual a como buildFileExists/
-// buildDirectoryExists ya comparten el mismo par de constantes GetFileAttributesA pero invierten
+// buildDirectoryExists share the same GetFileAttributesW constants but invert
 // la comparacion).
 //
-// Layout real de WIN32_FIND_DATAA (struct de Win32, NO decision de este compilador) que este
+// Layout real de WIN32_FIND_DATAW (struct de Win32, NO decision de este compilador) que este
 // runtime asume al leerla campo por campo via GEP con offsets constantes, en vez de declarar el
 // struct completo en la capa LLVM C API (que no tiene soporte de structs con nombre en este
 // wrapper -- ver LlvmCApi.h):
@@ -2343,16 +2401,16 @@ bool buildEnvironmentGetCommandLineArgs(
 //   offset 32: DWORD nFileSizeLow                 (4 bytes, sin usar)
 //   offset 36: DWORD dwReserved0                  (4 bytes, sin usar)
 //   offset 40: DWORD dwReserved1                  (4 bytes, sin usar)
-//   offset 44: CHAR cFileName[260]                (el nombre, null-terminated ANSI -- lo unico
+//   offset 44: WCHAR cFileName[260]               (el nombre, null-terminated UTF-16 -- lo unico
 //                                                  que GetFiles/GetDirectories realmente leen)
-//   offset 304: CHAR cAlternateFileName[14]        (nombre corto 8.3, sin usar)
-//   sizeof == 320 (redondeado a multiplo de 4 -- el struct entero es DWORD-aligned)
-// Cada funcion de esta ronda reserva 320 bytes en el stack para este struct via
+//   offset 564: WCHAR cAlternateFileName[14]       (nombre corto 8.3, sin usar)
+//   sizeof == 592 (redondeado a multiplo de 4 -- el struct entero es DWORD-aligned)
+// Cada funcion de esta ronda reserva 592 bytes en el stack para este struct via
 // LLVMBuildArrayAlloca -- el mismo idiom de scratch-en-el-stack que buildNullTerminatedCopy usa
-// para su buffer ANSI temporal, ya que el struct solo necesita vivir durante la llamada.
+// para su buffer temporal, ya que el struct solo necesita vivir durante la llamada.
 
-// Construye "path" + "\*" + terminador nulo -- el patron de busqueda que FindFirstFileA/
-// FindNextFileA requieren para enumerar TODO el contenido de un directorio (un patron sin
+// Construye "path" + "\*" + terminador nulo UTF-16 -- el patron que FindFirstFileW/
+// FindNextFileW requieren para enumerar TODO el contenido de un directorio (un patron sin
 // comodin, o el path a secas, buscaria solo una entrada exacta). No maneja el caso de un path
 // que ya termina en '\\' de forma especial (produciria "C:\foo\\*", que Win32 tolera en la
 // practica) -- misma disciplina de simplificacion deliberada de cada ronda anterior. Deja el
@@ -2361,68 +2419,55 @@ bool buildEnvironmentGetCommandLineArgs(
 LLVMValueRef buildDirectorySearchPattern(
     LLVMContextRef context,
     LLVMBuilderRef builder,
-    LLVMValueRef function,
-    LLVMValueRef sourceString)
+    LLVMValueRef sourceString,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i16Type = LLVMInt16TypeInContext(context);
     LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
 
-    LLVMBasicBlockRef loopBlock = LLVMAppendBasicBlockInContext(context, function, "pattern_loop");
-    LLVMBasicBlockRef bodyBlock = LLVMAppendBasicBlockInContext(context, function, "pattern_body");
-    LLVMBasicBlockRef doneBlock = LLVMAppendBasicBlockInContext(context, function, "pattern_done");
-
-    LLVMValueRef length = LLVMBuildLoad2(builder, i64Type, sourceString, "pattern_source_length");
+    LLVMValueRef length64 = LLVMBuildLoad2(builder, i64Type, sourceString, "pattern_source_length");
+    LLVMValueRef length32 = LLVMBuildTrunc(builder, length64, i32Type, "pattern_source_length32");
     LLVMValueRef sourceDataIndex[1] = {LLVMConstInt(i64Type, 8, 0)};
     LLVMValueRef sourceData = LLVMBuildGEP2(
         builder, i8Type, sourceString, sourceDataIndex, 1, "pattern_source_data");
-    // path bytes + '\\' + '*' + terminador nulo = length + 3.
-    LLVMValueRef bufferSize = LLVMBuildAdd(builder, length, LLVMConstInt(i64Type, 3, 0), "pattern_buffer_size");
-    LLVMValueRef buffer = LLVMBuildArrayAlloca(builder, i8Type, bufferSize, "pattern_buffer");
-    LLVMValueRef indexSlot = LLVMBuildAlloca(builder, i64Type, "pattern_index_slot");
-    LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), indexSlot);
-    LLVMBuildBr(builder, loopBlock);
-
-    LLVMPositionBuilderAtEnd(builder, loopBlock);
-    LLVMValueRef index = LLVMBuildLoad2(builder, i64Type, indexSlot, "pattern_index");
-    LLVMValueRef doneCopying = LLVMBuildICmp(builder, LLVMIntUGE, index, length, "pattern_copy_done_cond");
-    LLVMBuildCondBr(builder, doneCopying, doneBlock, bodyBlock);
-
-    LLVMPositionBuilderAtEnd(builder, bodyBlock);
-    LLVMValueRef srcIndex[1] = {index};
-    LLVMValueRef srcPtr = LLVMBuildGEP2(builder, i8Type, sourceData, srcIndex, 1, "pattern_src_ptr");
-    LLVMValueRef character = LLVMBuildLoad2(builder, i8Type, srcPtr, "pattern_char");
-    LLVMValueRef dstIndex[1] = {index};
-    LLVMValueRef dstPtr = LLVMBuildGEP2(builder, i8Type, buffer, dstIndex, 1, "pattern_dst_ptr");
-    LLVMBuildStore(builder, character, dstPtr);
-    LLVMValueRef nextIndex = LLVMBuildAdd(builder, index, LLVMConstInt(i64Type, 1, 0), "pattern_next_index");
-    LLVMBuildStore(builder, nextIndex, indexSlot);
-    LLVMBuildBr(builder, loopBlock);
-
-    LLVMPositionBuilderAtEnd(builder, doneBlock);
-    LLVMValueRef backslashIndex[1] = {length};
-    LLVMValueRef backslashPtr = LLVMBuildGEP2(builder, i8Type, buffer, backslashIndex, 1, "pattern_backslash_ptr");
-    LLVMBuildStore(builder, LLVMConstInt(i8Type, '\\', 0), backslashPtr);
-    LLVMValueRef starOffset = LLVMBuildAdd(builder, length, LLVMConstInt(i64Type, 1, 0), "pattern_star_offset");
+    LLVMValueRef sizeArguments[6] = {
+        LLVMConstInt(i32Type, 65001, 0), LLVMConstInt(i32Type, 0x8, 0), sourceData, length32,
+        LLVMConstNull(pointerType), LLVMConstInt(i32Type, 0, 0)};
+    LLVMValueRef required = LLVMBuildCall2(
+        builder, multiByteToWideCharType, multiByteToWideChar, sizeArguments, 6, "pattern_required");
+    LLVMValueRef required64 = LLVMBuildZExt(builder, required, i64Type, "pattern_required64");
+    LLVMValueRef capacity = LLVMBuildAdd(
+        builder, required64, LLVMConstInt(i64Type, 3, 0), "pattern_capacity");
+    LLVMValueRef buffer = LLVMBuildArrayAlloca(builder, i16Type, capacity, "pattern_buffer");
+    LLVMValueRef fillArguments[6] = {
+        LLVMConstInt(i32Type, 65001, 0), LLVMConstInt(i32Type, 0x8, 0), sourceData, length32,
+        buffer, required};
+    LLVMBuildCall2(
+        builder, multiByteToWideCharType, multiByteToWideChar, fillArguments, 6, "pattern_written");
+    LLVMValueRef backslashIndex[1] = {required64};
+    LLVMValueRef backslashPtr = LLVMBuildGEP2(builder, i16Type, buffer, backslashIndex, 1, "pattern_backslash_ptr");
+    LLVMBuildStore(builder, LLVMConstInt(i16Type, '\\', 0), backslashPtr);
+    LLVMValueRef starOffset = LLVMBuildAdd(builder, required64, LLVMConstInt(i64Type, 1, 0), "pattern_star_offset");
     LLVMValueRef starIndex[1] = {starOffset};
-    LLVMValueRef starPtr = LLVMBuildGEP2(builder, i8Type, buffer, starIndex, 1, "pattern_star_ptr");
-    LLVMBuildStore(builder, LLVMConstInt(i8Type, '*', 0), starPtr);
-    LLVMValueRef terminatorOffset = LLVMBuildAdd(builder, length, LLVMConstInt(i64Type, 2, 0), "pattern_terminator_offset");
+    LLVMValueRef starPtr = LLVMBuildGEP2(builder, i16Type, buffer, starIndex, 1, "pattern_star_ptr");
+    LLVMBuildStore(builder, LLVMConstInt(i16Type, '*', 0), starPtr);
+    LLVMValueRef terminatorOffset = LLVMBuildAdd(
+        builder, required64, LLVMConstInt(i64Type, 2, 0), "pattern_terminator_offset");
     LLVMValueRef terminatorIndex[1] = {terminatorOffset};
     LLVMValueRef terminatorPtr = LLVMBuildGEP2(
-        builder, i8Type, buffer, terminatorIndex, 1, "pattern_terminator_ptr");
-    LLVMBuildStore(builder, LLVMConstInt(i8Type, 0, 0), terminatorPtr);
+        builder, i16Type, buffer, terminatorIndex, 1, "pattern_terminator_ptr");
+    LLVMBuildStore(builder, LLVMConstInt(i16Type, 0, 0), terminatorPtr);
     return buffer;
 }
 
-// Convierte un buffer ANSI null-terminated crudo (por ejemplo, WIN32_FIND_DATAA.cFileName) en un
-// NativeSharp.Core.String recien asignado en el heap -- la direccion opuesta de
-// buildNullTerminatedCopy (que va de NativeSharp string a buffer ANSI). Mide la longitud con el
-// mismo loop de escaneo byte a byte que buildPuts ya usa para encontrar el largo de un C string,
-// despues copia con el mismo idiom de buildNullTerminatedCopy. Dos loops separados (medir,
-// despues copiar) en vez de uno solo, porque el tamano del alloc del heap debe conocerse ANTES de
-// llamar a HeapAlloc. Deja el builder posicionado justo despues de que la copia termina, mismo
-// contrato que buildNullTerminatedCopy.
-LLVMValueRef buildAnsiCStringToNativeSharpString(
+// Convierte WIN32_FIND_DATAW.cFileName de UTF-16 a la representacion UTF-8 de
+// NativeSharp.Core.String. WideCharToMultiByte incluye el terminador en `required`; el objeto
+// guarda `required - 1` como longitud y reserva esos bytes mas el encabezado de ocho bytes.
+LLVMValueRef buildWideCStringToNativeSharpString(
     LLVMContextRef context,
     LLVMBuilderRef builder,
     LLVMValueRef function,
@@ -2430,43 +2475,28 @@ LLVMValueRef buildAnsiCStringToNativeSharpString(
     LLVMTypeRef getProcessHeapType,
     LLVMValueRef heapAlloc,
     LLVMTypeRef heapAllocType,
+    LLVMValueRef wideCharToMultiByte,
+    LLVMTypeRef wideCharToMultiByteType,
     LLVMValueRef cString)
 {
     LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
     LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    (void)function;
 
-    LLVMBasicBlockRef measureLoop = LLVMAppendBasicBlockInContext(context, function, "cstr_measure_loop");
-    LLVMBasicBlockRef measureAdvance = LLVMAppendBasicBlockInContext(context, function, "cstr_measure_advance");
-    LLVMBasicBlockRef measured = LLVMAppendBasicBlockInContext(context, function, "cstr_measured");
-    LLVMBasicBlockRef copyLoop = LLVMAppendBasicBlockInContext(context, function, "cstr_copy_loop");
-    LLVMBasicBlockRef copyBody = LLVMAppendBasicBlockInContext(context, function, "cstr_copy_body");
-    LLVMBasicBlockRef copyDone = LLVMAppendBasicBlockInContext(context, function, "cstr_copy_done");
-
-    LLVMValueRef measureIndexSlot = LLVMBuildAlloca(builder, i64Type, "cstr_measure_index_slot");
-    LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), measureIndexSlot);
-    LLVMBuildBr(builder, measureLoop);
-
-    LLVMPositionBuilderAtEnd(builder, measureLoop);
-    LLVMValueRef measureIndex = LLVMBuildLoad2(builder, i64Type, measureIndexSlot, "cstr_measure_index");
-    LLVMValueRef measureIndices[1] = {measureIndex};
-    LLVMValueRef measureCharPtr = LLVMBuildGEP2(
-        builder, i8Type, cString, measureIndices, 1, "cstr_measure_char_ptr");
-    LLVMValueRef measureChar = LLVMBuildLoad2(builder, i8Type, measureCharPtr, "cstr_measure_char");
-    LLVMValueRef atTerminator = LLVMBuildICmp(
-        builder, LLVMIntEQ, measureChar, LLVMConstInt(i8Type, 0, 0), "cstr_at_terminator");
-    LLVMBuildCondBr(builder, atTerminator, measured, measureAdvance);
-
-    LLVMPositionBuilderAtEnd(builder, measureAdvance);
-    LLVMValueRef nextMeasureIndex = LLVMBuildAdd(
-        builder, measureIndex, LLVMConstInt(i64Type, 1, 0), "cstr_next_measure_index");
-    LLVMBuildStore(builder, nextMeasureIndex, measureIndexSlot);
-    LLVMBuildBr(builder, measureLoop);
-
-    LLVMPositionBuilderAtEnd(builder, measured);
-    LLVMValueRef length = LLVMBuildLoad2(builder, i64Type, measureIndexSlot, "cstr_length");
+    LLVMValueRef sizeArguments[8] = {
+        LLVMConstInt(i32Type, 65001, 0), LLVMConstInt(i32Type, 0x80, 0), cString,
+        LLVMConstInt(i32Type, 0xFFFFFFFFu, 0), LLVMConstNull(pointerType),
+        LLVMConstInt(i32Type, 0, 0), LLVMConstNull(pointerType), LLVMConstNull(pointerType)};
+    LLVMValueRef required = LLVMBuildCall2(
+        builder, wideCharToMultiByteType, wideCharToMultiByte, sizeArguments, 8, "cstr_required");
+    LLVMValueRef required64 = LLVMBuildZExt(builder, required, i64Type, "cstr_required64");
+    LLVMValueRef length = LLVMBuildSub(
+        builder, required64, LLVMConstInt(i64Type, 1, 0), "cstr_length");
     LLVMValueRef heap = LLVMBuildCall2(builder, getProcessHeapType, getProcessHeap, nullptr, 0, "cstr_heap");
-    LLVMValueRef totalSize = LLVMBuildAdd(builder, length, LLVMConstInt(i64Type, 8, 0), "cstr_total_size");
+    LLVMValueRef totalSize = LLVMBuildAdd(
+        builder, required64, LLVMConstInt(i64Type, 8, 0), "cstr_total_size");
     LLVMValueRef allocArguments[3] = {heap, LLVMConstInt(i32Type, 0, 0), totalSize};
     LLVMValueRef resultString = LLVMBuildCall2(
         builder, heapAllocType, heapAlloc, allocArguments, 3, "cstr_result_string");
@@ -2474,29 +2504,12 @@ LLVMValueRef buildAnsiCStringToNativeSharpString(
     LLVMValueRef resultDataIndex[1] = {LLVMConstInt(i64Type, 8, 0)};
     LLVMValueRef resultData = LLVMBuildGEP2(
         builder, i8Type, resultString, resultDataIndex, 1, "cstr_result_data");
-    LLVMValueRef copyIndexSlot = LLVMBuildAlloca(builder, i64Type, "cstr_copy_index_slot");
-    LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), copyIndexSlot);
-    LLVMBuildBr(builder, copyLoop);
-
-    LLVMPositionBuilderAtEnd(builder, copyLoop);
-    LLVMValueRef copyIndex = LLVMBuildLoad2(builder, i64Type, copyIndexSlot, "cstr_copy_index");
-    LLVMValueRef copyDoneCond = LLVMBuildICmp(builder, LLVMIntUGE, copyIndex, length, "cstr_copy_done_cond");
-    LLVMBuildCondBr(builder, copyDoneCond, copyDone, copyBody);
-
-    LLVMPositionBuilderAtEnd(builder, copyBody);
-    LLVMValueRef copySrcIndices[1] = {copyIndex};
-    LLVMValueRef copySrcPtr = LLVMBuildGEP2(builder, i8Type, cString, copySrcIndices, 1, "cstr_copy_src_ptr");
-    LLVMValueRef copyChar = LLVMBuildLoad2(builder, i8Type, copySrcPtr, "cstr_copy_char");
-    LLVMValueRef copyDstIndices[1] = {copyIndex};
-    LLVMValueRef copyDstPtr = LLVMBuildGEP2(builder, i8Type, resultData, copyDstIndices, 1, "cstr_copy_dst_ptr");
-    LLVMBuildStore(builder, copyChar, copyDstPtr);
-    LLVMValueRef nextCopyIndex = LLVMBuildAdd(builder, copyIndex, LLVMConstInt(i64Type, 1, 0), "cstr_next_copy_index");
-    LLVMBuildStore(builder, nextCopyIndex, copyIndexSlot);
-    LLVMBuildBr(builder, copyLoop);
-
-    LLVMPositionBuilderAtEnd(builder, copyDone);
-    // Builder queda posicionado en copyDone, resultString ya completo -- mismo contrato que
-    // buildNullTerminatedCopy.
+    LLVMValueRef fillArguments[8] = {
+        LLVMConstInt(i32Type, 65001, 0), LLVMConstInt(i32Type, 0x80, 0), cString,
+        LLVMConstInt(i32Type, 0xFFFFFFFFu, 0), resultData, required,
+        LLVMConstNull(pointerType), LLVMConstNull(pointerType)};
+    LLVMBuildCall2(
+        builder, wideCharToMultiByteType, wideCharToMultiByte, fillArguments, 8, "cstr_written");
     return resultString;
 }
 
@@ -2526,35 +2539,36 @@ LLVMValueRef buildDirectoryEntryMatchesKind(
 
 // Emite, dentro del bloque actual, la prueba de "es la entrada pseudo '.' o '..'" -- solo
 // llamada cuando wantDirectories es true (GetFiles nunca la necesita: los archivos nunca se
-// llaman "." o ".."). cFileName vive en el offset 44 de WIN32_FIND_DATAA (ver el comentario de
-// cabecera de este grupo de funciones) -- comparar los primeros tres bytes alcanza para
-// distinguir "." (byte1 == 0) de ".." (byte1=='.', byte2==0) de cualquier nombre real más largo.
+// llaman "." o ".."). cFileName vive en el offset 44 de WIN32_FIND_DATAW (ver el comentario de
+// cabecera de este grupo de funciones); comparar los primeros tres wchar_t distingue ambas
+// entradas de cualquier nombre real mas largo.
 LLVMValueRef buildDirectoryEntryIsPseudo(
     LLVMBuilderRef builder,
     LLVMTypeRef i64Type,
     LLVMTypeRef i8Type,
+    LLVMTypeRef i16Type,
     LLVMValueRef findData)
 {
     LLVMValueRef nameIndex0[1] = {LLVMConstInt(i64Type, 44, 0)};
     LLVMValueRef namePtr0 = LLVMBuildGEP2(builder, i8Type, findData, nameIndex0, 1, "name_char0_ptr");
-    LLVMValueRef char0 = LLVMBuildLoad2(builder, i8Type, namePtr0, "name_char0");
-    LLVMValueRef nameIndex1[1] = {LLVMConstInt(i64Type, 45, 0)};
-    LLVMValueRef namePtr1 = LLVMBuildGEP2(builder, i8Type, findData, nameIndex1, 1, "name_char1_ptr");
-    LLVMValueRef char1 = LLVMBuildLoad2(builder, i8Type, namePtr1, "name_char1");
-    LLVMValueRef nameIndex2[1] = {LLVMConstInt(i64Type, 46, 0)};
-    LLVMValueRef namePtr2 = LLVMBuildGEP2(builder, i8Type, findData, nameIndex2, 1, "name_char2_ptr");
-    LLVMValueRef char2 = LLVMBuildLoad2(builder, i8Type, namePtr2, "name_char2");
+    LLVMValueRef wcharIndex1[1] = {LLVMConstInt(i64Type, 1, 0)};
+    LLVMValueRef wcharIndex2[1] = {LLVMConstInt(i64Type, 2, 0)};
+    LLVMValueRef namePtr1 = LLVMBuildGEP2(builder, i16Type, namePtr0, wcharIndex1, 1, "name_char1_ptr");
+    LLVMValueRef namePtr2 = LLVMBuildGEP2(builder, i16Type, namePtr0, wcharIndex2, 1, "name_char2_ptr");
+    LLVMValueRef char0 = LLVMBuildLoad2(builder, i16Type, namePtr0, "name_char0");
+    LLVMValueRef char1 = LLVMBuildLoad2(builder, i16Type, namePtr1, "name_char1");
+    LLVMValueRef char2 = LLVMBuildLoad2(builder, i16Type, namePtr2, "name_char2");
 
     LLVMValueRef char0IsDot = LLVMBuildICmp(
-        builder, LLVMIntEQ, char0, LLVMConstInt(i8Type, '.', 0), "char0_is_dot");
+        builder, LLVMIntEQ, char0, LLVMConstInt(i16Type, '.', 0), "char0_is_dot");
     LLVMValueRef char1IsNull = LLVMBuildICmp(
-        builder, LLVMIntEQ, char1, LLVMConstInt(i8Type, 0, 0), "char1_is_null");
+        builder, LLVMIntEQ, char1, LLVMConstInt(i16Type, 0, 0), "char1_is_null");
     LLVMValueRef isDot = LLVMBuildAnd(builder, char0IsDot, char1IsNull, "is_dot");
 
     LLVMValueRef char1IsDot = LLVMBuildICmp(
-        builder, LLVMIntEQ, char1, LLVMConstInt(i8Type, '.', 0), "char1_is_dot");
+        builder, LLVMIntEQ, char1, LLVMConstInt(i16Type, '.', 0), "char1_is_dot");
     LLVMValueRef char2IsNull = LLVMBuildICmp(
-        builder, LLVMIntEQ, char2, LLVMConstInt(i8Type, 0, 0), "char2_is_null");
+        builder, LLVMIntEQ, char2, LLVMConstInt(i16Type, 0, 0), "char2_is_null");
     LLVMValueRef dotDotPrefix = LLVMBuildAnd(builder, char0IsDot, char1IsDot, "dotdot_prefix");
     LLVMValueRef isDotDot = LLVMBuildAnd(builder, dotDotPrefix, char2IsNull, "is_dotdot");
 
@@ -2562,25 +2576,28 @@ LLVMValueRef buildDirectoryEntryIsPseudo(
 }
 
 // GetFileCount/GetDirectoryCount: primera pasada, solo cuenta -- ver el comentario de cabecera de
-// Directory.ns. Un solo recorrido FindFirstFileA/FindNextFileA/FindClose sobre "path\*", filtrado
+// Directory.ns. Un solo recorrido FindFirstFileW/FindNextFileW/FindClose sobre "path\*", filtrado
 // por el bit FILE_ATTRIBUTE_DIRECTORY segun `wantDirectories` (y, cuando wantDirectories es true,
 // excluyendo ademas "." y ".." -- ver buildDirectoryEntryIsPseudo). Directorio inexistente/
-// inaccesible (FindFirstFileA devuelve INVALID_HANDLE_VALUE) colapsa a 0, misma simplificacion
+// inaccesible (FindFirstFileW devuelve INVALID_HANDLE_VALUE) colapsa a 0, misma simplificacion
 // deliberada de siempre.
 bool buildDirectoryGetEntryCount(
     LLVMContextRef context,
     LLVMModuleRef module,
     const char* functionName,
     bool wantDirectories,
-    LLVMValueRef findFirstFileA,
-    LLVMTypeRef findFirstFileAType,
-    LLVMValueRef findNextFileA,
-    LLVMTypeRef findNextFileAType,
+    LLVMValueRef findFirstFileW,
+    LLVMTypeRef findFirstFileWType,
+    LLVMValueRef findNextFileW,
+    LLVMTypeRef findNextFileWType,
     LLVMValueRef findClose,
-    LLVMTypeRef findCloseType)
+    LLVMTypeRef findCloseType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType)
 {
     LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i16Type = LLVMInt16TypeInContext(context);
     LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
     LLVMTypeRef type = functionType(i32Type, {pointerType});
@@ -2603,15 +2620,16 @@ bool buildDirectoryGetEntryCount(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef searchPattern = buildDirectorySearchPattern(context, builder, function, pathString);
+    LLVMValueRef searchPattern = buildDirectorySearchPattern(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef findData = LLVMBuildArrayAlloca(
-        builder, i8Type, LLVMConstInt(i64Type, 320, 0), "find_data");
+        builder, i8Type, LLVMConstInt(i64Type, 592, 0), "find_data");
     LLVMValueRef countSlot = LLVMBuildAlloca(builder, i32Type, "count_slot");
     LLVMValueRef handleSlot = LLVMBuildAlloca(builder, pointerType, "handle_slot");
     LLVMBuildStore(builder, LLVMConstInt(i32Type, 0, 0), countSlot);
     LLVMValueRef firstArguments[2] = {searchPattern, findData};
     LLVMValueRef handle = LLVMBuildCall2(
-        builder, findFirstFileAType, findFirstFileA, firstArguments, 2, "handle");
+        builder, findFirstFileWType, findFirstFileW, firstArguments, 2, "handle");
     LLVMBuildStore(builder, handle, handleSlot);
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
@@ -2627,7 +2645,8 @@ bool buildDirectoryGetEntryCount(
     {
         LLVMBuildCondBr(builder, matchesKind, checkPseudo, advance);
         LLVMPositionBuilderAtEnd(builder, checkPseudo);
-        LLVMValueRef isPseudo = buildDirectoryEntryIsPseudo(builder, i64Type, i8Type, findData);
+        LLVMValueRef isPseudo = buildDirectoryEntryIsPseudo(
+            builder, i64Type, i8Type, i16Type, findData);
         LLVMBuildCondBr(builder, isPseudo, advance, countEntry);
     }
     else
@@ -2645,7 +2664,7 @@ bool buildDirectoryGetEntryCount(
     LLVMValueRef currentHandle = LLVMBuildLoad2(builder, pointerType, handleSlot, "current_handle");
     LLVMValueRef nextArguments[2] = {currentHandle, findData};
     LLVMValueRef hasNext = LLVMBuildCall2(
-        builder, findNextFileAType, findNextFileA, nextArguments, 2, "has_next");
+        builder, findNextFileWType, findNextFileW, nextArguments, 2, "has_next");
     LLVMValueRef hasNextBool = LLVMBuildICmp(
         builder, LLVMIntNE, hasNext, LLVMConstInt(i32Type, 0, 0), "has_next_bool");
     LLVMBuildCondBr(builder, hasNextBool, considerEntry, loopDone);
@@ -2663,9 +2682,9 @@ bool buildDirectoryGetEntryCount(
 
 // GetFiles/GetDirectories: segunda pasada, llena `destination` (el buffer provisto por el
 // caller) con los NOMBRES que hacen match, y devuelve cuantos escribio de verdad. Mismo recorrido
-// FindFirstFileA/FindNextFileA/FindClose y mismo filtro que buildDirectoryGetEntryCount arriba,
+// FindFirstFileW/FindNextFileW/FindClose y mismo filtro que buildDirectoryGetEntryCount arriba,
 // pero en vez de incrementar un contador, cada match se convierte a NativeSharp string (via
-// buildAnsiCStringToNativeSharpString) y se escribe en destination[writeIndex] -- exactamente la
+// buildWideCStringToNativeSharpString) y se escribe en destination[writeIndex] -- exactamente la
 // misma direccion "destination's layout es { i64 length; element0; ... }, elemento i en el byte
 // offset 8 + i*8" que buildEnvironmentGetCommandLineArgs ya establecio. Si destination ya esta
 // lleno (writeIndex == destination.Length) el loop corta temprano hacia loopDone en vez de seguir
@@ -2680,15 +2699,20 @@ bool buildDirectoryGetEntries(
     LLVMTypeRef getProcessHeapType,
     LLVMValueRef heapAlloc,
     LLVMTypeRef heapAllocType,
-    LLVMValueRef findFirstFileA,
-    LLVMTypeRef findFirstFileAType,
-    LLVMValueRef findNextFileA,
-    LLVMTypeRef findNextFileAType,
+    LLVMValueRef findFirstFileW,
+    LLVMTypeRef findFirstFileWType,
+    LLVMValueRef findNextFileW,
+    LLVMTypeRef findNextFileWType,
     LLVMValueRef findClose,
-    LLVMTypeRef findCloseType)
+    LLVMTypeRef findCloseType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
+    LLVMValueRef wideCharToMultiByte,
+    LLVMTypeRef wideCharToMultiByteType)
 {
     LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i16Type = LLVMInt16TypeInContext(context);
     LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
     LLVMTypeRef type = functionType(i32Type, {pointerType, pointerType});
@@ -2713,16 +2737,17 @@ bool buildDirectoryGetEntries(
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
     LLVMValueRef destination = LLVMGetParam(function, 1);
-    LLVMValueRef searchPattern = buildDirectorySearchPattern(context, builder, function, pathString);
+    LLVMValueRef searchPattern = buildDirectorySearchPattern(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
     LLVMValueRef findData = LLVMBuildArrayAlloca(
-        builder, i8Type, LLVMConstInt(i64Type, 320, 0), "find_data");
+        builder, i8Type, LLVMConstInt(i64Type, 592, 0), "find_data");
     LLVMValueRef destLength = LLVMBuildLoad2(builder, i64Type, destination, "dest_length");
     LLVMValueRef writeIndexSlot = LLVMBuildAlloca(builder, i64Type, "write_index_slot");
     LLVMValueRef handleSlot = LLVMBuildAlloca(builder, pointerType, "handle_slot");
     LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), writeIndexSlot);
     LLVMValueRef firstArguments[2] = {searchPattern, findData};
     LLVMValueRef handle = LLVMBuildCall2(
-        builder, findFirstFileAType, findFirstFileA, firstArguments, 2, "handle");
+        builder, findFirstFileWType, findFirstFileW, firstArguments, 2, "handle");
     LLVMBuildStore(builder, handle, handleSlot);
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
@@ -2738,7 +2763,8 @@ bool buildDirectoryGetEntries(
     {
         LLVMBuildCondBr(builder, matchesKind, checkPseudo, advance);
         LLVMPositionBuilderAtEnd(builder, checkPseudo);
-        LLVMValueRef isPseudo = buildDirectoryEntryIsPseudo(builder, i64Type, i8Type, findData);
+        LLVMValueRef isPseudo = buildDirectoryEntryIsPseudo(
+            builder, i64Type, i8Type, i16Type, findData);
         LLVMBuildCondBr(builder, isPseudo, advance, spaceCheck);
     }
     else
@@ -2758,8 +2784,9 @@ bool buildDirectoryGetEntries(
     LLVMPositionBuilderAtEnd(builder, writeEntry);
     LLVMValueRef nameIndex[1] = {LLVMConstInt(i64Type, 44, 0)};
     LLVMValueRef namePtr = LLVMBuildGEP2(builder, i8Type, findData, nameIndex, 1, "name_ptr");
-    LLVMValueRef elementString = buildAnsiCStringToNativeSharpString(
-        context, builder, function, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType, namePtr);
+    LLVMValueRef elementString = buildWideCStringToNativeSharpString(
+        context, builder, function, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType,
+        wideCharToMultiByte, wideCharToMultiByteType, namePtr);
     LLVMValueRef writeIndex = LLVMBuildLoad2(builder, i64Type, writeIndexSlot, "write_index");
     LLVMValueRef destElementByteOffset = LLVMBuildAdd(
         builder,
@@ -2778,7 +2805,7 @@ bool buildDirectoryGetEntries(
     LLVMValueRef currentHandle = LLVMBuildLoad2(builder, pointerType, handleSlot, "current_handle");
     LLVMValueRef nextArguments[2] = {currentHandle, findData};
     LLVMValueRef hasNext = LLVMBuildCall2(
-        builder, findNextFileAType, findNextFileA, nextArguments, 2, "has_next");
+        builder, findNextFileWType, findNextFileW, nextArguments, 2, "has_next");
     LLVMValueRef hasNextBool = LLVMBuildICmp(
         builder, LLVMIntNE, hasNext, LLVMConstInt(i32Type, 0, 0), "has_next_bool");
     LLVMBuildCondBr(builder, hasNextBool, considerEntry, loopDone);
@@ -2903,7 +2930,7 @@ LLVMValueRef buildThreadTrampolineFunction(LLVMContextRef context, LLVMModuleRef
 
 // buildThreadCreate: `__nativesharp_thread_create`, i64(ptr). Calls
 // CreateThread(NULL, 0, trampoline, delegateCell, 0, NULL) and returns the resulting HANDLE
-// reinterpreted as i64 (nint) via LLVMBuildPtrToInt directly -- UNLIKE CreateFileA/FindFirstFileA
+// reinterpreted as i64 (nint) via LLVMBuildPtrToInt directly -- unlike CreateFileA/FindFirstFileW
 // above (whose failure sentinel is INVALID_HANDLE_VALUE, all-ones), Win32 defines CreateThread's
 // failure return as NULL (all-ZEROS), so a failed CreateThread already becomes exactly the
 // NativeSharp-visible `nint` value 0 with no extra comparison needed at all -- the SAME "any
@@ -5576,20 +5603,22 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
     LLVMValueRef setEnvironmentVariableA = LLVMAddFunction(
         module, "SetEnvironmentVariableA", setEnvironmentVariableAType);
 
-    // Stage 53.3 "Filesystem/Paths". GetFileAttributesA returns a DWORD of bit flags (or
-    // INVALID_FILE_ATTRIBUTES); DeleteFileA/CreateDirectoryA both return BOOL, discarded by the
-    // wrappers above -- all three ANSI (*A), same reason as every other Win32 call this runtime
-    // makes (see buildNullTerminatedCopy's comment).
+    // Stage 53.3 "Filesystem/Paths". The legacy mutation hooks remain ANSI. Existence checks use
+    // GetFileAttributesW after an explicit UTF-8 -> UTF-16 conversion so compiler source paths
+    // are not constrained by the active Windows code page.
     LLVMTypeRef getFileAttributesAType = functionType(i32Type, {pointerType});
     LLVMValueRef getFileAttributesA = LLVMAddFunction(
         module, "GetFileAttributesA", getFileAttributesAType);
+    LLVMTypeRef getFileAttributesWType = functionType(i32Type, {pointerType});
+    LLVMValueRef getFileAttributesW = LLVMAddFunction(
+        module, "GetFileAttributesW", getFileAttributesWType);
     LLVMTypeRef deleteFileAType = functionType(i32Type, {pointerType});
     LLVMValueRef deleteFileA = LLVMAddFunction(module, "DeleteFileA", deleteFileAType);
     LLVMTypeRef createDirectoryAType = functionType(i32Type, {pointerType, pointerType});
     LLVMValueRef createDirectoryA = LLVMAddFunction(
         module, "CreateDirectoryA", createDirectoryAType);
 
-    // Stage 53.3b "Filesystem/Paths (contenido de archivo)". CreateFileA returns a HANDLE (a
+    // Stage 53.3b "Filesystem/Paths (contenido de archivo)". CreateFileA/CreateFileW return HANDLEs
     // pointer in the C API, even though it is opaque); GetFileSizeEx/ReadFile/CloseHandle/
     // SetFilePointer round out the sequence buildFileReadAllText/buildFileWriteAllText/
     // buildFileAppendAllText need. WriteFile itself needs no new declaration -- it is already
@@ -5598,6 +5627,9 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
     LLVMTypeRef createFileAType = functionType(
         pointerType, {pointerType, i32Type, i32Type, pointerType, i32Type, i32Type, pointerType});
     LLVMValueRef createFileA = LLVMAddFunction(module, "CreateFileA", createFileAType);
+    LLVMTypeRef createFileWType = functionType(
+        pointerType, {pointerType, i32Type, i32Type, pointerType, i32Type, i32Type, pointerType});
+    LLVMValueRef createFileW = LLVMAddFunction(module, "CreateFileW", createFileWType);
     LLVMTypeRef getFileSizeExType = functionType(i32Type, {pointerType, pointerType});
     LLVMValueRef getFileSizeEx = LLVMAddFunction(module, "GetFileSizeEx", getFileSizeExType);
     LLVMTypeRef readFileType = functionType(
@@ -5641,9 +5673,9 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
     LLVMTypeRef getExitCodeProcessType = functionType(i32Type, {pointerType, pointerType});
     LLVMValueRef getExitCodeProcess = LLVMAddFunction(module, "GetExitCodeProcess", getExitCodeProcessType);
 
-    // Stage 53.5 "Command-line arguments". GetCommandLineW/CommandLineToArgvW/WideCharToMultiByte/
+    // Stage 53.5/T46 command-line arguments. GetCommandLineW/CommandLineToArgvW/WideCharToMultiByte/
     // LocalFree -- see buildEnvironmentGetCommandLineArgs's header comment for why this round
-    // deliberately uses *W (UTF-16) Win32 calls, the only place in this entire runtime that does.
+    // deliberately uses UTF-16 Win32 calls and preserves all arguments as UTF-8.
     // CommandLineToArgvW lives in SHELL32.dll (not kernel32.dll like every other Win32 function
     // this runtime calls) -- its import comes from a separate import library, wired up alongside
     // KERNELBASE.dll's below; declaring it here is unaffected by which DLL actually exports it,
@@ -5658,25 +5690,27 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         {i32Type, i32Type, pointerType, i32Type, pointerType, i32Type, pointerType, pointerType});
     LLVMValueRef wideCharToMultiByte = LLVMAddFunction(
         module, "WideCharToMultiByte", wideCharToMultiByteType);
+    LLVMTypeRef multiByteToWideCharType = functionType(
+        i32Type, {i32Type, i32Type, pointerType, i32Type, pointerType, i32Type});
+    LLVMValueRef multiByteToWideChar = LLVMAddFunction(
+        module, "MultiByteToWideChar", multiByteToWideCharType);
     LLVMTypeRef localFreeType = functionType(pointerType, {pointerType});
     LLVMValueRef localFree = LLVMAddFunction(module, "LocalFree", localFreeType);
 
-    // Stage 53.6 "Enumeracion de directorios". FindFirstFileA/FindNextFileA/FindClose -- the
-    // first use of these three in this runtime. All ANSI (*A), same reason as ever (see
-    // buildNullTerminatedCopy's comment). FindFirstFileA returns a HANDLE (a search handle, NOT
-    // a file handle -- checked for INVALID_HANDLE_VALUE exactly like CreateFileA's result above,
-    // see buildFileReadAllText's header comment); its second parameter is an out-pointer to a
-    // WIN32_FIND_DATAA struct the caller allocates (see buildDirectorySearchPattern/
+    // Stage 53.6/T46 directory enumeration. FindFirstFileW/FindNextFileW preserve the compiler's
+    // UTF-8 paths through an explicit UTF-16 Windows boundary. FindFirstFileW returns a HANDLE
+    // (a search handle, not a file handle) checked for INVALID_HANDLE_VALUE; its second parameter
+    // is an out-pointer to a 592-byte WIN32_FIND_DATAW struct (see buildDirectorySearchPattern/
     // buildDirectoryGetEntryCount below for the exact layout this runtime relies on).
-    // FindNextFileA reuses the same search handle and struct pointer, returning BOOL (0 means
+    // FindNextFileW reuses the same search handle and struct pointer, returning BOOL (0 means
     // "no more entries", the loop's real termination condition -- NOT an error the way a
     // discarded BOOL elsewhere in this file usually means "ignored"). FindClose releases the
     // search handle -- a different release function from CloseHandle above, because a search
     // handle is not a file handle.
-    LLVMTypeRef findFirstFileAType = functionType(pointerType, {pointerType, pointerType});
-    LLVMValueRef findFirstFileA = LLVMAddFunction(module, "FindFirstFileA", findFirstFileAType);
-    LLVMTypeRef findNextFileAType = functionType(i32Type, {pointerType, pointerType});
-    LLVMValueRef findNextFileA = LLVMAddFunction(module, "FindNextFileA", findNextFileAType);
+    LLVMTypeRef findFirstFileWType = functionType(pointerType, {pointerType, pointerType});
+    LLVMValueRef findFirstFileW = LLVMAddFunction(module, "FindFirstFileW", findFirstFileWType);
+    LLVMTypeRef findNextFileWType = functionType(i32Type, {pointerType, pointerType});
+    LLVMValueRef findNextFileW = LLVMAddFunction(module, "FindNextFileW", findNextFileWType);
     LLVMTypeRef findCloseType = functionType(i32Type, {pointerType});
     LLVMValueRef findClose = LLVMAddFunction(module, "FindClose", findCloseType);
 
@@ -5884,9 +5918,11 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         getEnvironmentVariableA != nullptr &&
         setEnvironmentVariableA != nullptr &&
         getFileAttributesA != nullptr &&
+        getFileAttributesW != nullptr &&
         deleteFileA != nullptr &&
         createDirectoryA != nullptr &&
         createFileA != nullptr &&
+        createFileW != nullptr &&
         getFileSizeEx != nullptr &&
         readFile != nullptr &&
         closeHandle != nullptr &&
@@ -5896,9 +5932,10 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         getCommandLineW != nullptr &&
         commandLineToArgvW != nullptr &&
         wideCharToMultiByte != nullptr &&
+        multiByteToWideChar != nullptr &&
         localFree != nullptr &&
-        findFirstFileA != nullptr &&
-        findNextFileA != nullptr &&
+        findFirstFileW != nullptr &&
+        findNextFileW != nullptr &&
         findClose != nullptr &&
         createThread != nullptr &&
         waitForSingleObject != nullptr &&
@@ -5971,13 +6008,18 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
             context, module, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType,
             getEnvironmentVariableA, getEnvironmentVariableAType) &&
         buildEnvironmentSetVariable(context, module, setEnvironmentVariableA, setEnvironmentVariableAType) &&
-        buildFileExists(context, module, getFileAttributesA, getFileAttributesAType) &&
-        buildDirectoryExists(context, module, getFileAttributesA, getFileAttributesAType) &&
+        buildFileExists(
+            context, module, getFileAttributesW, getFileAttributesWType,
+            multiByteToWideChar, multiByteToWideCharType) &&
+        buildDirectoryExists(
+            context, module, getFileAttributesW, getFileAttributesWType,
+            multiByteToWideChar, multiByteToWideCharType) &&
         buildFileDelete(context, module, deleteFileA, deleteFileAType) &&
         buildDirectoryCreate(context, module, createDirectoryA, createDirectoryAType) &&
         buildFileReadAllText(
             context, module, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType,
-            createFileA, createFileAType, getFileSizeEx, getFileSizeExType,
+            createFileW, createFileWType, multiByteToWideChar, multiByteToWideCharType,
+            getFileSizeEx, getFileSizeExType,
             readFile, readFileType, closeHandle, closeHandleType) &&
         buildFileGetSize(
             context, module, createFileA, createFileAType, getFileSizeEx, getFileSizeExType,
@@ -6018,22 +6060,24 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
             wideCharToMultiByte, wideCharToMultiByteType, localFree, localFreeType) &&
         buildDirectoryGetEntryCount(
             context, module, "__nativesharp_directory_get_file_count", false,
-            findFirstFileA, findFirstFileAType, findNextFileA, findNextFileAType,
-            findClose, findCloseType) &&
+            findFirstFileW, findFirstFileWType, findNextFileW, findNextFileWType,
+            findClose, findCloseType, multiByteToWideChar, multiByteToWideCharType) &&
         buildDirectoryGetEntryCount(
             context, module, "__nativesharp_directory_get_directory_count", true,
-            findFirstFileA, findFirstFileAType, findNextFileA, findNextFileAType,
-            findClose, findCloseType) &&
+            findFirstFileW, findFirstFileWType, findNextFileW, findNextFileWType,
+            findClose, findCloseType, multiByteToWideChar, multiByteToWideCharType) &&
         buildDirectoryGetEntries(
             context, module, "__nativesharp_directory_get_files", false,
             getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType,
-            findFirstFileA, findFirstFileAType, findNextFileA, findNextFileAType,
-            findClose, findCloseType) &&
+            findFirstFileW, findFirstFileWType, findNextFileW, findNextFileWType,
+            findClose, findCloseType, multiByteToWideChar, multiByteToWideCharType,
+            wideCharToMultiByte, wideCharToMultiByteType) &&
         buildDirectoryGetEntries(
             context, module, "__nativesharp_directory_get_directories", true,
             getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType,
-            findFirstFileA, findFirstFileAType, findNextFileA, findNextFileAType,
-            findClose, findCloseType) &&
+            findFirstFileW, findFirstFileWType, findNextFileW, findNextFileWType,
+            findClose, findCloseType, multiByteToWideChar, multiByteToWideCharType,
+            wideCharToMultiByte, wideCharToMultiByteType) &&
         buildThreadCreate(
             context, module, createThread, createThreadType, threadTrampoline) &&
         buildThreadJoin(

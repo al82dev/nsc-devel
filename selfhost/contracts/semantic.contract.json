@@ -1,6 +1,7 @@
 {
   "schema": "nativesharp-selfhost-semantic-contract",
   "version": 1,
+  "corpus_roots": ["book_examples", "examples", "lib", "selfhost/nsc", "selfhost/tests", "tests"],
   "actions": ["--dump-symbols", "--dump-sema"],
   "differential_cases": [
     "tests/integration/valid/cfg_features.ns",

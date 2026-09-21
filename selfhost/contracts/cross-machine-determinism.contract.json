@@ -1,0 +1,53 @@
+{
+  "schema": "nativesharp-selfhost-cross-machine-determinism-contract",
+  "version": 1,
+  "gate": "SH44",
+  "tanda": 46,
+  "required_machines": 1,
+  "compiler_project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
+  "source_roots": [
+    "selfhost/nsc",
+    "lib/NativeSharp.Core",
+    "lib/NativeSharp.Core.Collections.Generic",
+    "lib/NativeSharp.Core.IO",
+    "lib/NativeSharp.LLVM.C"
+  ],
+  "optimizations": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "expected_identity": "nsc-next 2.0.0-bootstrap.sh14 (NativeSharp 2.0.0, promotion candidate)",
+  "normalization": [],
+  "variants": [
+    {
+      "name": "canonical",
+      "path": "plain",
+      "locale": "C",
+      "timezone": "UTC",
+      "workers": 1,
+      "creation_order": "ascending"
+    },
+    {
+      "name": "spaces",
+      "path": "path with spaces",
+      "locale": "en-US",
+      "timezone": "America/Mexico_City",
+      "workers": 2,
+      "creation_order": "descending"
+    },
+    {
+      "name": "unicode",
+      "path": "ruta-ñ-日本",
+      "locale": "tr-TR",
+      "timezone": "Pacific/Auckland",
+      "workers": 3,
+      "creation_order": "even-odd"
+    },
+    {
+      "name": "long-path",
+      "path": "long-path/segment-0123456789abcdef/segment-0123456789abcdef/segment-0123456789abcdef",
+      "locale": "de-DE",
+      "timezone": "Europe/Berlin",
+      "workers": 4,
+      "creation_order": "odd-even"
+    }
+  ]
+}

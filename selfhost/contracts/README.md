@@ -18,6 +18,9 @@ código y normaliza sólo los campos que el contrato declara no semánticos.
 O0/O2 de todo el corpus e invariantes de genéricos, layout, ensamblador y lambdas.
 `ir.contract.json` congela desde SH07 las cinco fronteras IR, los cuatro niveles O0/O1/O2/O3,
 el orden de pases y los mínimos del corpus que debe alcanzar SSA sin divergencia.
+Los tres contratos comparten raíces de corpus explícitas (`book_examples`, `examples`, `lib`,
+`selfhost/nsc`, `selfhost/tests` y `tests`): una salida temporal o árbol de build bajo el checkout
+nunca se convierte accidentalmente en entrada de un gate histórico.
 
 `llvm-backend.contract.json` congela desde SH08 el target LLVM 23/Win64, los perfiles O0–O3,
 los artefactos objeto/assembly, símbolos y relocations mínimos, el código observable 42 y la

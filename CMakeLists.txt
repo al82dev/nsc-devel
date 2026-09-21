@@ -1010,13 +1010,21 @@ if(NSC_BUILD_TESTS)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpRepeatedFixedPoint.cmake")
     set_tests_properties(nsc.selfhost.repeated-fixed-point PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.functional-equivalence)
 
+    add_test(NAME nsc.selfhost.cross-machine-determinism COMMAND "${CMAKE_COMMAND}"
+        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh44"
+        "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpCrossMachineDeterminism.cmake")
+    set_tests_properties(nsc.selfhost.cross-machine-determinism PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.repeated-fixed-point)
+
     add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-promotion-readiness"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpPromotionReadiness.cmake")
-    set_tests_properties(nsc.selfhost.promotion-readiness PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.repeated-fixed-point)
+    set_tests_properties(nsc.selfhost.promotion-readiness PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.cross-machine-determinism)
 
     add_test(
         NAME nsc.selfhost.tanda16-closure
@@ -2728,7 +2736,7 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.stage53-5.command-line-args COMMAND nsc_stage53_5_command_line_args_tests)
 
     # Stage 53.6 "Enumeracion de directorios" -- Directory.GetFileCount/GetFiles/GetDirectoryCount/
-    # GetDirectories (FindFirstFileA/FindNextFileA/FindClose, the first use of these three in this
+    # GetDirectories (FindFirstFileW/FindNextFileW/FindClose, preserving UTF-8 paths through the
     # runtime -- see src/Runtime/WindowsRuntimeBuilder.cpp). Arreglo de dos pasadas, un solo par de
     # funciones C++ compartidas parametrizadas por un booleano `wantDirectories` que decide en
     # tiempo de generacion de codigo que filtro de atributo emitir. Same O0+O2 discipline as every

@@ -256,6 +256,27 @@ class BootstrapInfrastructureTests(unittest.TestCase):
             "selfhost/tests/profile/negative/comptime.ns",
             contract["token_exclusions"],
         )
+        self.assertEqual(
+            contract["corpus_roots"],
+            ["book_examples", "examples", "lib", "selfhost/nsc", "selfhost/tests", "tests"],
+        )
+
+    def test_selfhost_analysis_corpora_ignore_generated_build_trees(self) -> None:
+        corpus_roots = ["book_examples", "examples", "lib", "selfhost/nsc", "selfhost/tests", "tests"]
+        expected: list[Path] = []
+        for relative_root in corpus_roots:
+            directory = self.root / relative_root
+            directory.mkdir(parents=True)
+            source = directory / "Canonical.ns"
+            source.write_text("int Main() { return 0; }\n", encoding="utf-8")
+            expected.append(source)
+        generated = self.root / "build-any-name" / "selfhost-sh44" / "staged" / "ruta-ñ-日本" / "Generated.ns"
+        generated.parent.mkdir(parents=True)
+        generated.write_text("int Main() { return 1; }\n", encoding="utf-8")
+
+        self.assertEqual(verify_frontend.source_corpus(self.root, corpus_roots, set()), expected)
+        self.assertEqual(verify_semantics.source_corpus(self.root, corpus_roots), expected)
+        self.assertEqual(verify_ir.source_corpus(self.root, corpus_roots), expected)
 
     def test_sh05_line_canonicalization_is_host_independent(self) -> None:
         self.assertEqual(
@@ -270,6 +291,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(len(contract["differential_cases"]), 12)
         self.assertEqual(contract["actions"], ["--dump-symbols", "--dump-sema"])
         self.assertGreaterEqual(len(contract["invariants"]), 6)
+        self.assertEqual(len(contract["corpus_roots"]), 6)
 
     def test_sh06_line_canonicalization_is_host_independent(self) -> None:
         self.assertEqual(
@@ -285,6 +307,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["stages"][4]["dump"], "--dump-ssa")
         self.assertGreaterEqual(contract["corpus_minimum_sources"], 480)
         self.assertGreaterEqual(contract["oracle_ssa_minimum_sources"], 20)
+        self.assertEqual(len(contract["corpus_roots"]), 6)
 
     def test_sh07_line_canonicalization_is_host_independent(self) -> None:
         self.assertEqual(verify_ir.canonical_lines(b"one\r\ntwo\rthree\n"), b"one\ntwo\nthree\n")
@@ -358,6 +381,17 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn('"source_derived_codegen": True', verifier)
         self.assertIn("nsc2_object.read_bytes() == nsc3_object.read_bytes()", verifier)
         self.assertNotIn("source-attested-image-replay", verifier)
+
+    def test_sh44_local_environment_matrix_is_a_complete_gate(self) -> None:
+        contract = json.loads(
+            (ROOT / "selfhost/contracts/cross-machine-determinism.contract.json").read_text()
+        )
+        self.assertEqual(contract["required_machines"], 1)
+        self.assertEqual(len(contract["variants"]), 4)
+        self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
+        self.assertEqual(contract["linkers"], ["lld", "nslink"])
+        verifier = (ROOT / "selfhost/bootstrap/verify_cross_machine_determinism.py").read_text()
+        self.assertIn("requirement_met = peer is not None or required_machines == 1", verifier)
 
     def test_sh12_fixed_point_contract_separates_local_and_cross_machine_proof(self) -> None:
         contract = json.loads((ROOT / "selfhost/contracts/fixed-point.contract.json").read_text())

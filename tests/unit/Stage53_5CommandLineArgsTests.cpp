@@ -2,10 +2,8 @@
 // (see lib/NativeSharp.Core/Environment.ns's header comment for the full design discussion).
 // This is the FIRST core operation in this runtime that deliberately crosses into Win32's *W
 // (UTF-16) API surface -- GetCommandLineW + CommandLineToArgvW (SHELL32.dll, not KERNEL32.dll) --
-// converting every UTF-16 result back to ANSI via WideCharToMultiByte before it ever reaches
-// NativeSharp code. Every other Win32 call this runtime makes is ANSI (*A); see
-// buildNullTerminatedCopy's comment in src/Runtime/WindowsRuntimeBuilder.cpp for why, and this
-// round's own comment there for why THIS one operation is the deliberate, explicit exception.
+// converting every UTF-16 result to UTF-8 via WideCharToMultiByte before it reaches NativeSharp
+// code. T46 made that encoding explicit and added UTF-16 filesystem reads for compiler paths.
 //
 // Design confirmed by Alberto across two rounds of clarification (see the project's own history
 // docs): a single implementation via the official CommandLineToArgvW parser (not a hand-rolled

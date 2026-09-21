@@ -1,6 +1,6 @@
 // Stage 53.3b "Filesystem/Paths (contenido de archivo)" -- File.ReadAllText/WriteAllText/
 // AppendAllText, la pieza que Stage 53.3's primera ronda dejo deliberadamente afuera (ver
-// File.ns): CreateFileA + GetFileSizeEx + ReadFile/WriteFile + CloseHandle, una secuencia de
+// File.ns): CreateFileW/CreateFileA + GetFileSizeEx + ReadFile/WriteFile + CloseHandle, una secuencia de
 // Win32 mas larga que las operaciones de una sola llamada que Stage 53 venia usando hasta ahora.
 //
 // Covers, in increasing order of confidence, exactly like every other Stage 53 real-execution
@@ -11,9 +11,9 @@
 //   2. That the packaged example project (examples/project_stage53_3b) compiles end to end
 //      through a real linked Windows x64 PE executable via the actual `nsc` Driver, AT BOTH O0
 //      and O2 -- same discipline every Stage 53 round has followed since 53.2b, since these
-//      three operations still reuse buildNullTerminatedCopy for their PATH argument (their
-//      CONTENT argument does not need it -- WriteFile takes an explicit byte buffer + count, see
-//      the file-level comment in WindowsRuntimeBuilder.cpp's buildFileWriteAllText for why).
+//      write operations retain buildNullTerminatedCopy while T46 moved ReadAllText paths to an
+//      explicit UTF-8 -> UTF-16 conversion. CONTENT still needs no conversion because WriteFile
+//      takes an explicit byte buffer plus count; see buildFileWriteAllText's comment.
 //   3. REAL EXECUTION under Wine (when available, gracefully skipped otherwise), at BOTH
 //      optimization levels: Main.ns returns 0 only if every one of its 12 runtime checks passed
 //      (see examples/project_stage53_3b/Main.ns for the full numbering). Like Stage 53.3's own

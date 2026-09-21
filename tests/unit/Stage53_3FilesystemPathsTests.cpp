@@ -1,7 +1,8 @@
 // Stage 53.3 "Filesystem/Paths", ronda 1 -- NativeSharp.Core.IO.Path (pure NativeSharp, zero
 // new core operations) + NativeSharp.Core.IO.File.Exists/Delete + NativeSharp.Core.IO.
-// Directory.Exists/CreateDirectory (four new core operations, all built on GetFileAttributesA/
-// DeleteFileA/CreateDirectoryA and the buildNullTerminatedCopy helper Stage 53.2b introduced).
+// Directory.Exists/CreateDirectory (four core operations). T46 moved both existence checks to
+// GetFileAttributesW through an explicit UTF-8 -> UTF-16 path conversion; mutations retain their
+// original Win32 contracts.
 //
 // Covers, in increasing order of confidence, exactly like every other Stage 53 real-execution
 // test file in this suite:

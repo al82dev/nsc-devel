@@ -28,7 +28,7 @@ namespace NativeSharp.Core.IO
     // completo del mecanismo.
     //
     // Todavia fuera de alcance: enumerar el contenido de un directorio (necesitaria
-    // FindFirstFileA/FindNextFileA/FindClose) y borrar un directorio (RemoveDirectoryA, ver
+    // FindFirstFileW/FindNextFileW/FindClose) y borrar un directorio (RemoveDirectoryA, ver
     // Directory.ns) -- ninguna de las dos entro en el alcance conservador de ninguna ronda de
     // Stage 53 todavia.
     public class File

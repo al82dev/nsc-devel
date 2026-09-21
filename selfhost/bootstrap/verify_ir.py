@@ -32,15 +32,12 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def source_corpus(root: Path) -> list[Path]:
+def source_corpus(root: Path, corpus_roots: Sequence[str]) -> list[Path]:
     result: list[Path] = []
-    for path in root.rglob("*.ns"):
-        relative = path.relative_to(root).as_posix()
-        if relative.startswith("selfhost/out/") or relative.startswith("selfhost/evidence/"):
-            continue
-        if any(part in {".git", "_nscbuilder"} for part in path.parts):
-            continue
-        result.append(path)
+    for relative_root in corpus_roots:
+        corpus_root = root / relative_root
+        require(corpus_root.is_dir(), f"IR corpus root is missing: {relative_root}")
+        result.extend(corpus_root.rglob("*.ns"))
     return sorted(result)
 
 
@@ -64,6 +61,8 @@ def load_contract(path: Path) -> dict:
             "SH07 corpus floor is incomplete")
     require(int(contract.get("oracle_ssa_minimum_sources", 0)) >= 20,
             "SH07 standalone SSA oracle floor is incomplete")
+    require(len(contract.get("corpus_roots", [])) >= 6,
+            "IR corpus roots are incomplete")
     for level in contract["optimizations"]:
         require(level in contract.get("required_pass_order", {}),
                 f"missing pass order for {level}")
@@ -209,7 +208,7 @@ def verify(
                     require(observed == baseline, f"{action} {relative} differs across O0/O1/O2/O3")
                     stability_comparisons += 1
 
-    sources = source_corpus(root)
+    sources = source_corpus(root, contract["corpus_roots"])
     require(len(sources) >= int(contract["corpus_minimum_sources"]),
             f"SH07 source corpus unexpectedly small: {len(sources)}")
     for source in sources:

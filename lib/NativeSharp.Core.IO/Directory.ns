@@ -7,7 +7,7 @@ namespace NativeSharp.Core.IO
     // envolviendo UNA sola llamada a Win32 (ver src/Runtime/WindowsRuntimeBuilder.cpp, funciones
     // buildDirectoryExists/buildDirectoryCreate):
     //
-    //   Exists(string path)         -> bool  -- GetFileAttributesA (la MISMA llamada que
+    //   Exists(string path)         -> bool  -- GetFileAttributesW (la MISMA llamada que
     //                                            File.Exists usa, interpretada al reves: ver el
     //                                            comentario de buildDirectoryExists).
     //   CreateDirectory(string path) -> void -- CreateDirectoryA, BOOL de retorno descartado.
@@ -38,7 +38,7 @@ namespace NativeSharp.Core.IO
     // par de funciones (`__nativesharp_directory_get_entry_count`/
     // `__nativesharp_directory_get_entries`, cada una con un parametro booleano extra "wantear
     // directorios en vez de archivos") -- evita duplicar cuatro veces el mismo loop
-    // FindFirstFileA/FindNextFileA/FindClose.
+    // FindFirstFileW/FindNextFileW/FindClose, con conversion UTF-8/UTF-16 en la frontera.
     //
     // Alcance de esta ronda, deliberadamente angosto (misma disciplina de cada ronda anterior):
     //   - Solo el nivel superior del directorio -- SIN recursividad (el equivalente a
@@ -49,7 +49,7 @@ namespace NativeSharp.Core.IO
     //   - GetFiles excluye subdirectorios, GetDirectories excluye archivos -- mismo bit
     //     FILE_ATTRIBUTE_DIRECTORY que File.Exists/Directory.Exists ya usan (ver
     //     buildFileExists/buildDirectoryExists en WindowsRuntimeBuilder.cpp) -- y GetDirectories
-    //     excluye ademas las entradas pseudo "." y ".." que FindFirstFileA/FindNextFileA
+    //     excluye ademas las entradas pseudo "." y ".." que FindFirstFileW/FindNextFileW
     //     devuelven para cualquier directorio.
     //   - Directorio inexistente/inaccesible colapsa a 0 elementos -- misma simplificacion
     //     deliberada de siempre ante cualquier fallo de Win32.
@@ -62,7 +62,7 @@ namespace NativeSharp.Core.IO
     // alcance: no es "casi gratis" en el mismo sentido, merece su propia ronda dedicada.
     public class Directory
     {
-        // Core operation: GetFileAttributesA. Devuelve true si "path" existe y ES un directorio
+        // Core operation: GetFileAttributesW. Devuelve true si "path" existe y ES un directorio
         // -- el espejo exacto de File.Exists (ver el comentario de cabecera de buildFileExists/
         // buildDirectoryExists en WindowsRuntimeBuilder.cpp para el detalle de los bits).
         public static bool Exists(string path)
@@ -92,7 +92,7 @@ namespace NativeSharp.Core.IO
         {
         }
 
-        // Core operation: FindFirstFileA/FindNextFileA/FindClose (primera pasada -- solo cuenta,
+        // Core operation: FindFirstFileW/FindNextFileW/FindClose (primera pasada -- solo cuenta,
         // no llena nada). Existe unicamente para que el caller sepa que tamano pedir ANTES de
         // asignar (`new string[n]`) -- el mismo rol que Environment.GetCommandLineArgCount()
         // cumple para Environment.GetCommandLineArgs. Cuenta solo entradas que NO son
@@ -102,7 +102,7 @@ namespace NativeSharp.Core.IO
             return 0;
         }
 
-        // Core operation: FindFirstFileA/FindNextFileA/FindClose (segunda pasada -- llena
+        // Core operation: FindFirstFileW/FindNextFileW/FindClose (segunda pasada -- llena
         // "destination" con los NOMBRES de archivo, no paths completos). Devuelve cuantos
         // elementos escribio de verdad -- min(cantidad real de archivos, destination.Length); si
         // sobran, se descartan en silencio (ver el comentario de cabecera de esta clase).
