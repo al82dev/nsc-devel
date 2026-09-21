@@ -1,0 +1,40 @@
+{
+  "schema": "nativesharp-selfhost-sh43-summary",
+  "version": 1,
+  "gate": "SH43",
+  "tanda": 45,
+  "status": "LANDED",
+  "previous_gate": "SH42",
+  "repetitions": 3,
+  "generations": ["nsc2", "nsc3", "nsc4"],
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "clean_roots": 12,
+  "cases": 12,
+  "object_comparisons": 24,
+  "image_comparisons": 48,
+  "raw_byte_identity": true,
+  "normalization_applied": [],
+  "object_sha256": {
+    "O0": "8c4d695e00ff8edfcaad07752a238bbd729987ed317ff57a6f0d65467fe4b27f",
+    "O1": "1675e571c937759b9d220360564c8803359cb75c408f7a83885a5162aec2075f",
+    "O2": "e0b5da15155d6d95c67c67d06af2e0b87399a68b7bb05c4c45fc36f8995c3647",
+    "O3": "8c1d6f9179ace3b8c649a3de0c2d34150d92bc16268b51f42e32a47d24933f04"
+  },
+  "directed_report_sha256": "f6f11b5c79287bd37d2cd1d6e3661811544ac2aa7c021d6186c7c1e3181dd5f2",
+  "skipped": 0,
+  "problems": [],
+  "baseline": {
+    "run_id": "tanda-45-sh43-punto-fijo-20260921",
+    "build_id": "4500000000000001",
+    "total_seconds": 3344.791,
+    "lld_ctest": "478/478",
+    "lld_fixtures": "148/148",
+    "lld_triage": "18/18",
+    "nslink_ctest": "478/478",
+    "nslink_fixtures": "148/148",
+    "nslink_triage": "18/18",
+    "gate0": "LANDED",
+    "failures": 0
+  }
+}

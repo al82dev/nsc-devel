@@ -69,3 +69,7 @@ ambos linkers.
 compararse entre `nsc0` y un `nsc2` realmente autoalojado: diagnósticos, tokens, AST, semántica, IR,
 objetos, metadata, productos y proyectos. Declara además la única normalización permitida, exige
 O0–O3 y ambos linkers y prohíbe reescribir artefactos durante la comparación.
+
+`repeated-fixed-point.contract.json` congela desde SH43 tres repeticiones limpias de
+`nsc2 → nsc3 → nsc4`, O0–O3 y LLD/NSLink. La política exige identidad de bytes crudos de objetos e
+imágenes dentro de cada ciclo y entre las tres raíces; la lista de normalización está vacía.

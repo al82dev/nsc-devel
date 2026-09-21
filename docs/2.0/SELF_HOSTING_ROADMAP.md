@@ -848,7 +848,16 @@ comparación y nunca modifica un artefacto.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-44-SH42-EQUIVALENCIA-FUNCIONAL.md`.
 
-### 8.45 Plan cerrado restante — Tandas 45–56
+### 8.45 Tanda 45 — SH43
+
+El punto fijo repetido está implementado. Tres raíces limpias por perfil recorren
+`nsc2 → nsc3 → nsc4`; objetos e imágenes de cada enlazador se comparan byte a byte dentro de la
+repetición y entre repeticiones. LLD recibe `/timestamp:0` al producir el PE para eliminar la fuente
+de no determinismo en origen; no existe normalización posterior.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-45-SH43-PUNTO-FIJO-REPETIDO.md`.
+
+### 8.46 Plan cerrado restante — Tandas 46–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a

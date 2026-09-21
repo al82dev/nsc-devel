@@ -1,0 +1,20 @@
+{
+  "schema": "nativesharp-selfhost-repeated-fixed-point-contract",
+  "version": 1,
+  "gate": "SH43",
+  "tanda": 45,
+  "repetitions": 3,
+  "generations": ["nsc2", "nsc3", "nsc4"],
+  "optimizations": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "compiler_project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
+  "verification_project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
+  "expected_identity": "nsc-next 2.0.0-bootstrap.sh14 (NativeSharp 2.0.0, promotion candidate)",
+  "identity_policy": {
+    "objects": "byte-identical nsc3/nsc4 and across repetitions",
+    "images": "byte-identical per linker nsc3/nsc4 and across repetitions",
+    "normalization": [],
+    "comparison": "raw bytes",
+    "clean_output_root_per_repetition": true
+  }
+}
