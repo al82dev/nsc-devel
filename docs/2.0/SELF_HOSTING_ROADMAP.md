@@ -907,7 +907,18 @@ reproducibilidad y compatibilidad de metadata.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-54-SH52-ROBUSTEZ.md`.
 
-### 8.51 Plan cerrado restante — Tandas 46–56
+### 8.51 Tanda 55 — SH53
+
+La distribución terminal instala un paquete real en un prefijo vacío, valida su inventario, repite
+la instalación como actualización transaccional, rechaza bytes alterados y restaura el paquete
+conocido. `nsc0` y `nsc2` conviven con selección explícita; el lock de recuperación congela el hash
+del seed y los siete componentes del toolchain fueron verificados. El runtime Win32 se resuelve
+relativo al ejecutable instalado y deja de heredar la ruta del build. La matriz dirigida aprobó
+9/9 contratos de instalación, actualización/retiro, compatibilidad, migración, freeze y runtime.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-55-SH53-DISTRIBUCION.md`.
+
+### 8.52 Plan cerrado restante — Tandas 46–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a

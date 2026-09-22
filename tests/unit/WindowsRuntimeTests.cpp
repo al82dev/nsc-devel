@@ -1,12 +1,14 @@
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
+#include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 #include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 #include "nativesharp/Runtime/RuntimeAbiContract.h"
 
 #include "../support/TestContext.h"
 
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 
@@ -20,6 +22,29 @@ int main()
     using nativesharp::tests::TestContext;
 
     TestContext tests;
+    const std::filesystem::path resolutionRoot =
+        std::filesystem::temp_directory_path() / "nativesharp_runtime_resolution_test";
+    std::error_code resolutionError;
+    std::filesystem::remove_all(resolutionRoot, resolutionError);
+    const std::filesystem::path installedCompiler = resolutionRoot / "prefix/bin/nsc.exe";
+    const std::filesystem::path installedRuntime =
+        resolutionRoot / "prefix/lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib";
+    const std::filesystem::path configuredRuntime = resolutionRoot / "configured/runtime.lib";
+    std::filesystem::create_directories(installedRuntime.parent_path(), resolutionError);
+    std::ofstream installedStream(installedRuntime, std::ios::binary);
+    installedStream << "probe";
+    installedStream.close();
+    tests.expect(
+        nativesharp::linker::resolveWindowsRuntimeLibrary(installedCompiler, configuredRuntime) ==
+            installedRuntime,
+        "installed compiler resolves the Windows runtime relative to its own prefix");
+    std::filesystem::remove(installedRuntime, resolutionError);
+    tests.expect(
+        nativesharp::linker::resolveWindowsRuntimeLibrary(installedCompiler, configuredRuntime) ==
+            configuredRuntime,
+        "build-tree compiler falls back to the configured runtime when no colocated archive exists");
+    std::filesystem::remove_all(resolutionRoot, resolutionError);
+
     WindowsRuntimeBuilder builder;
     std::string error;
     std::unique_ptr<LlvmModule> module = builder.build(error);

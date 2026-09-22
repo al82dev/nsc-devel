@@ -11,7 +11,7 @@
       "id": "nsc0",
       "path": "${NSC0_EXE}",
       "state": "locked",
-      "sha256": "556850a81de30e4a440e4c4ccead6cc27c8b5310e2abb595507e6bf500bc7859",
+      "sha256": "b3050c698519e9d7098a4fc74cbde5c8f22546d45eb66267beea08a1f833b472",
       "version_args": ["--version"],
       "version_contains": "NativeSharp 2.0.0"
     },

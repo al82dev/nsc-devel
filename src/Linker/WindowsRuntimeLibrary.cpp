@@ -17,6 +17,12 @@
 #include <system_error>
 #include <vector>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#endif
+
 namespace nativesharp::linker
 {
 namespace
@@ -44,6 +50,37 @@ private:
     std::filesystem::path object_;
     std::filesystem::path archive_;
 };
+
+std::filesystem::path executablePath()
+{
+#ifdef _WIN32
+    std::wstring buffer(32768, L'\0');
+    const DWORD length = GetModuleFileNameW(
+        nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (length != 0 && length < buffer.size())
+    {
+        buffer.resize(length);
+        return std::filesystem::path(buffer);
+    }
+#endif
+    return {};
+}
+}
+
+std::filesystem::path resolveWindowsRuntimeLibrary(
+    const std::filesystem::path& executable,
+    const std::filesystem::path& configuredDefault)
+{
+    if (!executable.empty())
+    {
+        const std::filesystem::path relative =
+            executable.parent_path().parent_path() / "lib" / "nativesharp" / "runtime" /
+            std::string(kWindowsRuntimeLibraryFileName);
+        std::error_code filesystemError;
+        if (std::filesystem::is_regular_file(relative, filesystemError)) return relative;
+        if (configuredDefault.empty()) return relative;
+    }
+    return configuredDefault;
 }
 
 std::filesystem::path configuredWindowsRuntimeLibrary()
@@ -64,7 +101,8 @@ std::filesystem::path configuredWindowsRuntimeLibrary()
         if (*overridePath != '\0') return std::filesystem::path(overridePath);
     }
 #endif
-    return std::filesystem::path(NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY);
+    return resolveWindowsRuntimeLibrary(
+        executablePath(), std::filesystem::path(NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY));
 }
 
 bool verifyWindowsRuntimeLibrary(const std::filesystem::path& source, std::string& error)
@@ -73,7 +111,8 @@ bool verifyWindowsRuntimeLibrary(const std::filesystem::path& source, std::strin
     CoffArchiveVerifier verifier;
     if (!verifier.verify(source))
     {
-        error = "Windows runtime library verification failed: " + verifier.error();
+        error = "Windows runtime library verification failed for '" +
+            source.generic_string() + "': " + verifier.error();
         return false;
     }
     const std::vector<std::string>& symbols = verifier.info().symbolNames;

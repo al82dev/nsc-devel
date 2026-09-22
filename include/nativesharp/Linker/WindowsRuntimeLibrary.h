@@ -13,6 +13,10 @@ inline constexpr std::string_view kWindowsRuntimeLibraryFileName =
 
 std::filesystem::path configuredWindowsRuntimeLibrary();
 
+std::filesystem::path resolveWindowsRuntimeLibrary(
+    const std::filesystem::path& executable,
+    const std::filesystem::path& configuredDefault);
+
 bool writeWindowsRuntimeLibrary(
     const std::filesystem::path& destination,
     std::string& error);

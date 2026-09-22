@@ -1092,6 +1092,19 @@ if(NSC_BUILD_TESTS)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpRobustnessFinal.cmake")
     set_tests_properties(nsc.selfhost.robustness-final PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.developer-experience)
 
+    add_test(NAME nsc.selfhost.distribution-final COMMAND "${CMAKE_COMMAND}"
+        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DCMAKE_EXECUTABLE=${CMAKE_COMMAND}" "-DNINJA_EXECUTABLE=${CMAKE_MAKE_PROGRAM}"
+        "-DCLANG_CL_EXECUTABLE=${CMAKE_CXX_COMPILER}" "-DLLD_LINK_EXECUTABLE=${CMAKE_LINKER}"
+        "-DLLVM_LIBRARY=${NSC_LLVM_MONOLITHIC_LIBRARY}"
+        "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh53"
+        "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
+        "-DCTEST_EXECUTABLE=${CMAKE_CTEST_COMMAND}" "-DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDistributionFinal.cmake")
+    set_tests_properties(nsc.selfhost.distribution-final PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.robustness-final)
+
     add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
@@ -3174,7 +3187,7 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.item407.official-promotion COMMAND nsc_item407_official_promotion_tests)
 
     add_executable(nsc_windows_runtime_tests tests/unit/WindowsRuntimeTests.cpp)
-    target_link_libraries(nsc_windows_runtime_tests PRIVATE nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_link_libraries(nsc_windows_runtime_tests PRIVATE nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_windows_runtime_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_windows_runtime_tests)
     add_test(NAME nsc.windows-runtime COMMAND nsc_windows_runtime_tests)
