@@ -876,7 +876,16 @@ sanitizer y metadata N−1/N. El gate dirigido aprobó 14/14 pruebas y el baseli
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-51-SH49-TOOLCHAIN-AVANZADO.md`.
 
-### 8.48 Plan cerrado restante — Tandas 46–56
+### 8.48 Tanda 52 — SH50
+
+El rendimiento está medido sobre `nsc2`: tres repeticiones O0–O3 de las 80 fuentes, objetos
+deterministas y distintos, O0 en 1.470 s de mediana frente a 8.117 s de O2, y 9/9 contratos de
+caché, incrementalidad, perfiles, LTO/ThinLTO y paralelismo. El baseline aprobó 485/485 CTests por
+enlazador.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-52-SH50-RENDIMIENTO.md`.
+
+### 8.49 Plan cerrado restante — Tandas 46–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a

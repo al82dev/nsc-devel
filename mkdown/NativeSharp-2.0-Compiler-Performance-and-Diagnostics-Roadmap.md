@@ -129,6 +129,16 @@ Cada resultado conserva como mínimo: revisión de NSC/NSLink/LLVM, máquina de 
 - **Gate:** cero regresiones semánticas o ABI no aprobadas; cero fallos conocidos que obliguen a buscar el error fuera del log; todas las metas de rendimiento congeladas en P00 están cumplidas o tienen waiver público y acotado.
 - **Promoción:** solo después de este baseline puede abrirse `NS3-T00`.
 
+## Integración con self-hosting 2.0
+
+SH50/Tanda 52 es el gate normativo de rendimiento para la promoción autoalojada. Mide tres
+repeticiones de las 80 unidades de biblioteca en O0–O3 con `nsc2`, exige determinismo por perfil,
+cuatro contratos de objeto distintos y que O0 cumpla un presupuesto absoluto y relativo frente a
+O2. La misma corrida certifica caché de artefactos, incrementalidad, perfiles, scheduling,
+paralelismo, LTO y ThinLTO. Sus cifras y hashes quedan en
+`docs/2.0/self-hosting/tandas/TANDA-52-SH50-RENDIMIENTO.md`; no sustituyen el programa detallado
+P00–P11, sino que fijan su condición mínima de promoción 2.0.
+
 ## Objetivos agregados iniciales / Initial aggregate targets
 
 P00 debe convertirlos en metas por corpus y máquina de referencia. Como ambición inicial:

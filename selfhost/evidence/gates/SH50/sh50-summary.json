@@ -1,0 +1,26 @@
+{
+  "baseline": {
+    "build_id": "5200000000000001",
+    "ctest_each_linker": "485/485",
+    "fixtures_each_linker": "148/148",
+    "report_sha256": "9d82a28eec380c5a42bbb2b75b105176a7cdf21ac7a9b2cb85ee2a9765a0870e",
+    "run_id": "tanda-52-sh50-performance-20260922",
+    "status": "passed",
+    "total_seconds": 8078.172,
+    "triage_each_linker": "18/18"
+  },
+  "directed": {
+    "build_tests": "9/9",
+    "contract_sha256": "06e67c75757ff728e8f47f5771aaf2377bcbe1e4b8af55bb4a2553ff864a6bf8",
+    "medians_seconds": {"O0": 1.470463, "O1": 7.248189, "O2": 8.116816, "O3": 9.240456},
+    "profiles_deterministic_and_distinct": true,
+    "report_sha256": "9b6ae957c57044ee1243b7acc42070094a156c5e89e4e76c446dd8d9093a1ca3",
+    "status": "passed",
+    "verifier_sha256": "44e736ecb01cbdbb943f77da9b9fb9872658b65dc1f629e151f8de4def106b57"
+  },
+  "gate": "SH50",
+  "schema": "nativesharp-selfhost-gate-summary",
+  "status": "LANDED",
+  "tanda": 52,
+  "version": 1
+}

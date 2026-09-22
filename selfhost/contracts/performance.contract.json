@@ -1,0 +1,22 @@
+{
+  "schema": "nativesharp-selfhost-performance-contract",
+  "version": 1,
+  "gate": "SH50",
+  "project": "selfhost/tests/runtime-2.0/RuntimeLibraries.nsproj",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "repetitions": 3,
+  "o0_max_median_seconds": 5.0,
+  "o0_max_ratio_to_o2": 0.60,
+  "require_distinct_profile_objects": true,
+  "ctests": [
+    "nsc.compilation-artifact-cache",
+    "nsc.compilation-artifact-cache-driver",
+    "nsc.compilation-profile",
+    "nsc.llvm-optimization",
+    "nsc.item390-lto",
+    "nsc.item391-thinlto",
+    "nsc.item392-incremental-link",
+    "nsc.compilation-worker-pool",
+    "nsc.compilation-graph-scheduler"
+  ]
+}
