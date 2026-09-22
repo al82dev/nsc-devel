@@ -1,0 +1,64 @@
+{
+  "schema": "nativesharp-selfhost-runtime-library-contract",
+  "version": 1,
+  "gate": "SH48",
+  "target": "x86_64-pc-windows-msvc",
+  "library_project": "selfhost/tests/runtime-2.0/RuntimeLibraries.nsproj",
+  "smoke_project": "selfhost/tests/runtime-2.0/RuntimeSmoke.nsproj",
+  "library_roots": [
+    "lib/NativeSharp.Core",
+    "lib/NativeSharp.Core.Collections.Generic",
+    "lib/NativeSharp.Core.IO",
+    "lib/NativeSharp.Core.Diagnostics",
+    "lib/NativeSharp.Core.Threading"
+  ],
+  "source_files": 80,
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "expected_executions": 8,
+  "forbidden_library_symbols": ["mainCRTStartup", "NativeSharpCompute"],
+  "required_smoke_hooks": [
+    "__nativesharp_clock_query_frequency",
+    "__nativesharp_debug_output_string",
+    "__nativesharp_directory_exists",
+    "__nativesharp_environment_processor_count",
+    "__nativesharp_event_create",
+    "__nativesharp_event_reset",
+    "__nativesharp_event_set",
+    "__nativesharp_file_exists",
+    "__nativesharp_mutex_create",
+    "__nativesharp_mutex_lock",
+    "__nativesharp_mutex_unlock",
+    "__nativesharp_path_get_full_path",
+    "__nativesharp_process_get_current_process_id",
+    "__nativesharp_semaphore_create",
+    "__nativesharp_semaphore_release",
+    "__nativesharp_system_info_get_page_size",
+    "__nativesharp_thread_sleep",
+    "__nativesharp_wait_for_handle_timeout"
+  ],
+  "runtime_symbol_groups": {
+    "memory_eh": [
+      "__nativesharp_alloc", "__nativesharp_free", "__nativesharp_eh_init",
+      "__nativesharp_eh_filter", "__nativesharp_throw", "__nativesharp_trap"
+    ],
+    "io_filesystem": [
+      "__nativesharp_file_exists", "__nativesharp_file_read_all_text",
+      "__nativesharp_file_read_all_bytes", "__nativesharp_file_write_all_bytes",
+      "__nativesharp_directory_exists", "__nativesharp_directory_get_files",
+      "__nativesharp_path_get_full_path"
+    ],
+    "threading_sync_jobs": [
+      "__nativesharp_thread_create", "__nativesharp_thread_join",
+      "__nativesharp_thread_sleep", "__nativesharp_atomic_load_int32",
+      "__nativesharp_interlocked_add_int32", "__nativesharp_mutex_create",
+      "__nativesharp_monitor_wait", "__nativesharp_semaphore_create",
+      "__nativesharp_event_create", "__nativesharp_wait_for_handle_timeout"
+    ],
+    "process_diagnostics": [
+      "__nativesharp_process_run", "__nativesharp_process_get_current_process_id",
+      "__nativesharp_system_info_get_page_size", "__nativesharp_clock_query_counter",
+      "__nativesharp_debug_is_debugger_present", "__nativesharp_debug_output_string"
+    ]
+  }
+}

@@ -54,6 +54,7 @@ namespace NativeSharp.Compiler.Driver
             Console.WriteLine("  nsc-next --audit-project-pipeline <project.nsproj>");
             Console.WriteLine("  nsc-next --emit-bootstrap-object <compiler.nsproj> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next --emit-project-object <project.nsproj> -O0|-O1|-O2|-O3 -o <path>");
+            Console.WriteLine("  nsc-next --emit-project-library-object <project.nsproj> -O0|-O1|-O2|-O3 -o <path>");
             Console.WriteLine("  nsc-next --emit-nsmeta|--emit-toolchain-manifest <project.nsproj> <path>");
             Console.WriteLine("  nsc-next --emit-product-plan <project.nsproj> <profile> <linker> <path>");
             Console.WriteLine("  nsc-next --bootstrap-generation <generation> <manifest> <producer.exe> <output.exe> <trace>");
@@ -237,7 +238,8 @@ namespace NativeSharp.Compiler.Driver
 
         // SH27 project backend. SourceGraph supplies canonical unit order; the root units become
         // one LLVM program module instead of the historical FirstSourcePath surrogate.
-        private static int EmitProjectBackend(string projectPath, string profile, string outputPath)
+        private static int EmitProjectBackend(string projectPath, string profile, string outputPath,
+            bool includeDependencies)
         {
             raii SourceGraph graph = SourceGraphBuilder.Build(projectPath);
             raii ProjectModel project = ProjectLoader.Load(projectPath);
@@ -247,7 +249,7 @@ namespace NativeSharp.Compiler.Driver
             while (unit < graph.UnitCount())
             {
                 SourceUnit value = graph.UnitAt(unit);
-                if (value.Owner() == project.Name())
+                if (includeDependencies || value.Owner() == project.Name())
                 {
                     string text = File.ReadAllText(value.PathValue());
                     sourceText.Append(text); sourceText.Append('\n');
@@ -673,7 +675,12 @@ namespace NativeSharp.Compiler.Driver
             if (command == "--emit-project-object")
             {
                 if (count != 6 || arguments[4] != "-o") { return 2; }
-                return EmitProjectBackend(arguments[2], arguments[3], arguments[5]);
+                return EmitProjectBackend(arguments[2], arguments[3], arguments[5], false);
+            }
+            if (command == "--emit-project-library-object")
+            {
+                if (count != 6 || arguments[4] != "-o") { return 2; }
+                return EmitProjectBackend(arguments[2], arguments[3], arguments[5], true);
             }
             if (command == "--emit-bootstrap-object")
             {

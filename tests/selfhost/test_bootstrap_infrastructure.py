@@ -197,11 +197,11 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["schema"], "nativesharp-llvm-c-api-contract")
         self.assertEqual(contract["supported_llvm_major"], 23)
         self.assertEqual(len(contract["nsc0_import_symbols"]), 219)
-        self.assertEqual(len(contract["bootstrap_symbols"]), 56)
+        self.assertEqual(len(contract["bootstrap_symbols"]), 57)
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
         declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
-        self.assertEqual(len(declared), 126)
+        self.assertEqual(len(declared), 127)
         self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
         audited = set(contract["nsc0_import_symbols"]) | set(contract["bootstrap_extension_symbols"])
         self.assertTrue(set(declared).issubset(audited))

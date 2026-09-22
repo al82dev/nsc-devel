@@ -1,0 +1,9 @@
+namespace NativeSharp.Runtime.Bundle
+{
+    // The bundle owns no implementation. Its project graph is the canonical SH48 unit set;
+    // --emit-project-library-object emits those dependency sources exactly once in graph order.
+    public class RuntimeBundle
+    {
+        public static int ContractVersion() { return 48; }
+    }
+}

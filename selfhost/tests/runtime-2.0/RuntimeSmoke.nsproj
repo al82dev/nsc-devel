@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup><Name>NativeSharpRuntimeSmoke</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="RuntimeSmoke.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core.Diagnostics/NativeSharp.Core.Diagnostics.nsproj" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj" />
+  </ItemGroup>
+</Project>

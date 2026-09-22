@@ -857,7 +857,17 @@ de no determinismo en origen; no existe normalización posterior.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-45-SH43-PUNTO-FIJO-REPETIDO.md`.
 
-### 8.46 Plan cerrado restante — Tandas 46–56
+### 8.46 Tandas 46–50 — cierre de superficie 2.0
+
+Las tandas 46 a 50 están implementadas. SH44 probó determinismo entre entornos; SH45 cerró la
+superficie low-level; SH46 cerró ABI e interop; SH47 cerró código especializado y NSAsm; SH48
+reconstruyó las 80 unidades de Core, Collections, IO, Diagnostics y Threading como biblioteca COFF
+determinista en O0–O3 y ejecutó el runtime Win32 con ambos linkers. El baseline de T50 aprobó
+483/483 CTests, 148/148 fixtures y 18/18 casos de triaje por enlazador.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-50-SH48-BIBLIOTECA-RUNTIME.md`.
+
+### 8.47 Plan cerrado restante — Tandas 46–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a

@@ -143,6 +143,7 @@ namespace NativeSharp.LLVM.C
             public void* LLVMBuildRetVoid(void* builder);
             public void* LLVMBuildUnreachable(void* builder);
             public byte* LLVMPrintModuleToString(void* module);
+            public int LLVMVerifyFunction(void* function, LLVMVerifierFailureAction action);
             public int LLVMVerifyModule(
                 void* module, LLVMVerifierFailureAction action, byte** outMessage);
             public void LLVMDisposeMessage(byte* message);

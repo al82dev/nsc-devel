@@ -1,0 +1,42 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+using NativeSharp.Core.Diagnostics;
+using NativeSharp.Core.Threading;
+
+namespace NativeSharp.Runtime.Smoke
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            raii ByteBuffer bytes = new ByteBuffer();
+            bytes.Add((byte)42);
+            if (bytes.Count() != 1 || bytes[0] != (byte)42) { return 1; }
+
+            int atomicValue = 40;
+            if (Interlocked.Add(ref atomicValue, 2) != 42 || atomicValue != 42) { return 2; }
+            AtomicFence.Compiler(MemoryOrder.SequentiallyConsistent);
+
+            if (Environment.ProcessorCount() < 1) { return 3; }
+            if (NativeClock.QueryFrequencyRaw() < 1) { return 4; }
+            if (Process.CurrentProcessId() < 1) { return 5; }
+            if (SystemInfo.PageSize() < 1) { return 6; }
+            if (!Directory.Exists(".")) { return 7; }
+            if (!File.Exists(".")) { return 8; }
+            if (Path.GetFullPath(".") == null) { return 9; }
+
+            raii Mutex mutex = new Mutex();
+            mutex.Lock(); mutex.Unlock();
+            raii Semaphore semaphore = new Semaphore(1, 1);
+            if (!semaphore.Wait(0)) { return 10; }
+            semaphore.Release();
+            raii Event signal = new Event(false, true);
+            if (!signal.Wait(0)) { return 11; }
+            signal.Reset(); signal.Set();
+            Thread.Sleep(0);
+
+            Debug.OutputString("NativeSharp SH48 runtime smoke");
+            return 0;
+        }
+    }
+}

@@ -1,0 +1,42 @@
+{
+  "baseline": {
+    "build_id": "5000000000000004",
+    "ctest_lld": "483/483",
+    "ctest_nslink": "483/483",
+    "fixtures_lld": "148/148",
+    "fixtures_nslink": "148/148",
+    "report_sha256": "8346586ad620f64fa29ac5956eccd1e8f1f3bccce19ca3552e91e0c4b2c4d17a",
+    "run_id": "tanda-50-sh48-runtime-library-r4-20260921",
+    "status": "passed",
+    "total_seconds": 7832.537,
+    "triage_lld": "18/18",
+    "triage_nslink": "18/18"
+  },
+  "directed": {
+    "contract_sha256": "567a1108a49caadf4616cbe1fd1097735d9ec1ac19984c9c09007be171292f65",
+    "deterministic_library_objects": true,
+    "executions": "8/8",
+    "linkers": [
+      "lld",
+      "nslink"
+    ],
+    "profiles": [
+      "O0",
+      "O1",
+      "O2",
+      "O3"
+    ],
+    "report_sha256": "a9d50083c9076731bf762b4218172cfc7f510d8f7de811b69f2884d8b6a181d2",
+    "runtime_abi_sha256": "1f516f9a1cb585647250d5a6afa89e549796a28911c3a9d7cbd45d6e0ecb90f2",
+    "runtime_library_sha256": "9ff1c09a433bb3ff788807856cc7e70142f611751a60364560ea7143a95a7a16",
+    "source_files": 80,
+    "status": "passed",
+    "verifier_sha256": "5d0c65a9f856d36e04fdbf73b4879f132499dc71ef057d62f023f12a3dade35f"
+  },
+  "gate": "SH48",
+  "installation": "A:\\native-sharp",
+  "schema": "nativesharp-selfhost-gate-summary",
+  "status": "LANDED",
+  "tanda": 50,
+  "version": 1
+}
