@@ -139,6 +139,15 @@ paralelismo, LTO y ThinLTO. Sus cifras y hashes quedan en
 `docs/2.0/self-hosting/tandas/TANDA-52-SH50-RENDIMIENTO.md`; no sustituyen el programa detallado
 P00–P11, sino que fijan su condición mínima de promoción 2.0.
 
+SH51/Tanda 53 integra la superficie de observabilidad en el producto real. `--quiet` elimina salida
+normal; `--verbose` activa progreso y tiempos; `--time-report` y `--time-trace=<archivo>` exponen el
+perfil; `--log=<archivo>` y `--log-on-error=<archivo>` conservan argumentos, stdout, stderr y código
+de salida en texto o JSON mediante publicación transaccional. El gate valida siete contratos CLI,
+tres rutas de log, diagnósticos estructurados de `nsc2` y ocho pruebas de PDB/stepping/debugger.
+Además, toda metadata producida se relee y su superficie pública y sus templates se analizan antes
+de publicarse: NSC no puede volver a entregar una `.nsmeta` que él mismo rechace. La forma
+`Module::Namespace.Type<T>.Member` es contrato común del escritor y del parser.
+
 ## Objetivos agregados iniciales / Initial aggregate targets
 
 P00 debe convertirlos en metas por corpus y máquina de referencia. Como ambición inicial:

@@ -1134,6 +1134,19 @@ bool Parser::looksLikeClosedGenericTypeReference() const noexcept
     if (!at(TokenKind::Identifier)) return false;
     std::size_t cursor = index_ + 1;
 
+    // Artifact metadata is allowed to preserve the owning module as
+    // `Module::Namespace.Type<T>.Member`.  The ordinary type parser already accepts that
+    // spelling; the expression disambiguator must skip the same prefix before looking for the
+    // generic argument list.  Without this, metadata written by NSC itself was rejected at the
+    // first ':' when a closed generic type headed a static call.
+    if (cursor + 2 < tokens_.size() &&
+        tokens_[cursor].kind() == TokenKind::Colon &&
+        tokens_[cursor + 1].kind() == TokenKind::Colon &&
+        tokens_[cursor + 2].kind() == TokenKind::Identifier)
+    {
+        cursor += 3;
+    }
+
     // Nombre calificado: `Espacio.Caja<int>.Make(...)`.
     while (cursor + 1 < tokens_.size() &&
            tokens_[cursor].kind() == TokenKind::Dot &&
@@ -7483,9 +7496,29 @@ ast::AstNode* Parser::parsePrimaryExpression()
     }
 
     consume();
-    ast::AstNode* node = arena_.make<ast::AstNode>(kind, token.range());
+    SourceRange nodeRange = token.range();
+    std::string nodeText(token.lexeme());
+    // Non-generic static receivers use the ordinary postfix member chain.  Preserve the module
+    // prefix in its first identifier so ProjectNameLookup sees one canonical spelling while the
+    // following dots remain normal MemberExpression nodes.
+    if (kind == ast::AstNodeKind::IdentifierExpression &&
+        at(TokenKind::Colon) && peek().kind() == TokenKind::Colon)
+    {
+        consume();
+        consume();
+        if (!at(TokenKind::Identifier))
+        {
+            expect(TokenKind::Identifier, "type name after module qualifier '::'");
+            return makeErrorExpression();
+        }
+        const lexer::Token& qualified = consume();
+        nodeText += "::";
+        nodeText += qualified.lexeme();
+        nodeRange = join(token.range(), qualified.range());
+    }
+    ast::AstNode* node = arena_.make<ast::AstNode>(kind, nodeRange);
     node->setTokenKind(token.kind());
-    node->setText(std::string(token.lexeme()));
+    node->setText(std::move(nodeText));
 
     if (const auto* integer = std::get_if<std::uint64_t>(&token.value()))
     {

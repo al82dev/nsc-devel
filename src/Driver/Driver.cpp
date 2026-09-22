@@ -2240,6 +2240,81 @@ bool buildPrecompiledGenericTemplateSource(
     return true;
 }
 
+bool verifyPrecompiledGenericTemplateSource(
+    const interop::LibraryMetadata &metadata, std::string &error)
+{
+    std::string generated;
+    if (!buildPrecompiledGenericTemplateSource(metadata, generated, error)) return false;
+    if (generated.empty()) return true;
+
+    source::SourceManager sources;
+    diagnostics::DiagnosticEngine diagnostics;
+    std::filesystem::path displayPath = metadata.moduleName;
+    displayPath += ".nsmeta.public-templates.ns";
+    const FileId fileId = sources.addBuffer(displayPath, std::move(generated));
+    const source::SourceFile *file = sources.getFile(fileId);
+    if (file == nullptr)
+    {
+        error = "generated precompiled template surface has no source buffer";
+        return false;
+    }
+
+    std::vector<std::string> knownTypeNames;
+    const auto appendKnownType = [&](const std::string &typeKey) {
+        const std::string baseKey = metadataBaseTypeKey(typeKey);
+        if (!baseKey.starts_with("type:")) return;
+        std::string sourceType;
+        std::string typeError;
+        if (!sourceTypeForMetadataKey(metadata, baseKey, sourceType, typeError)) return;
+        knownTypeNames.push_back(sourceType);
+        const std::size_t separator = sourceType.find_last_of(".+");
+        knownTypeNames.push_back(
+            separator == std::string::npos ? sourceType : sourceType.substr(separator + 1U));
+    };
+    for (const interop::LibraryMetadataType &type : metadata.types)
+        appendKnownType("type:" + type.identityKey);
+    for (const std::string &typeKey : metadata.externalTypeKeys) appendKnownType(typeKey);
+    std::sort(knownTypeNames.begin(), knownTypeNames.end());
+    knownTypeNames.erase(
+        std::unique(knownTypeNames.begin(), knownTypeNames.end()), knownTypeNames.end());
+
+    frontend::ProjectSyntaxUnit unit(0, 0, metadata.moduleName, fileId, false);
+    if (unit.lex(*file, diagnostics) && unit.parse(diagnostics, knownTypeNames)) return true;
+
+    error = "generated precompiled public template surface is not valid NativeSharp source";
+    if (!diagnostics.diagnostics().empty())
+    {
+        std::ostringstream rendered;
+        diagnostics::DiagnosticRenderer renderer(sources);
+        renderer.renderAll(diagnostics, rendered);
+        error += ":\n" + rendered.str();
+    }
+    return false;
+}
+
+bool writeVerifiedLibraryMetadata(
+    const frontend::ProjectCompilation &compilation,
+    const std::filesystem::path &destination,
+    std::string &error)
+{
+    interop::LibraryMetadataCodec codec;
+    if (!codec.write(compilation, destination, error)) return false;
+
+    interop::LibraryMetadata written;
+    if (codec.read(destination, written, error) &&
+        codec.verifyCurrentCompiler(written, error) &&
+        verifyPrecompiledPublicSource(written, error) &&
+        verifyPrecompiledGenericTemplateSource(written, error))
+    {
+        return true;
+    }
+
+    std::error_code ignored;
+    std::filesystem::remove(destination, ignored);
+    error = "metadata producer read-back verification failed: " + error;
+    return false;
+}
+
 bool configurePrecompiledModules(
     const std::filesystem::path &projectFile, frontend::ProjectCompilation &compilation, std::string &error)
 {
@@ -4141,6 +4216,11 @@ void Driver::printHelp(std::ostream &output)
               "--timeout-ms=N requests cooperative cancellation at safe project phase boundaries.\n"
            << "--progress streams and flushes phase boundaries plus source read, lex and parse "
               "completion so long-running builds remain observable.\n"
+           << "--quiet suppresses normal stdout; --verbose enables progress plus timing. "
+              "--time-report is an alias for --time and --time-trace=<file> writes a JSON trace.\n"
+           << "--log=<file> records stdout, stderr, arguments and exit status; "
+              "--log-format=text|json selects its schema and --log-on-error=<file> publishes only "
+              "after failure. Logs are written transactionally.\n"
            << "--o2-budget-ms=N sets the advisory cumulative LLVM O2 budget; exceeding it warns "
               "without changing the artifact or exit code.\n"
            << "--llvm-pass-trace enables the expensive full LLVM pass log and verify-each "
@@ -5325,10 +5405,9 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
 
     std::filesystem::path metadataDestination = destination;
     metadataDestination.replace_extension(".nsmeta");
-    interop::LibraryMetadataCodec metadataCodec;
     std::string metadataError;
     if (!measureDriverPhase("library-metadata", [&] {
-            return metadataCodec.write(compilation, metadataDestination, metadataError);
+            return writeVerifiedLibraryMetadata(compilation, metadataDestination, metadataError);
         }))
     {
         std::error_code removeError;
@@ -5583,10 +5662,9 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
 
     std::filesystem::path metadataDestination = destination;
     metadataDestination.replace_extension(".nsmeta");
-    interop::LibraryMetadataCodec metadataCodec;
     std::string metadataError;
     if (!measureDriverPhase("library-metadata", [&] {
-            return metadataCodec.write(compilation, metadataDestination, metadataError);
+            return writeVerifiedLibraryMetadata(compilation, metadataDestination, metadataError);
         }))
     {
         std::error_code removeError;
@@ -5740,7 +5818,7 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(
     std::string metadataError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
     if (!measureDriverPhase("library-metadata", [&] {
-            return codec.write(compilation, destination, metadataError);
+            return writeVerifiedLibraryMetadata(compilation, destination, metadataError);
         }))
     {
         error << "nsc: error: Stage 48.2 metadata generation failed: " << metadataError << '\n';

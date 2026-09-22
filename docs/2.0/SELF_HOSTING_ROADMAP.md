@@ -885,7 +885,19 @@ enlazador.
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-52-SH50-RENDIMIENTO.md`.
 
-### 8.49 Plan cerrado restante — Tandas 46–56
+### 8.49 Tanda 53 — SH51
+
+La experiencia de desarrollo ya es observable y auditable. El driver ofrece `--quiet`,
+`--verbose`, `--time-report`, `--time-trace`, logs transaccionales en texto o JSON y
+`--log-on-error`. El productor de metadata relee y analiza la superficie pública y los templates
+que acaba de escribir antes de publicarlos. El parser consume la misma forma canónica
+`Module::Namespace.Type<T>.Member` que emite NSC, cerrando el fallo real de Jobs sin debilitar la
+calificación entre módulos. El gate dirigido aprobó 7 contratos CLI, 3 clases de log, diagnóstico
+estructurado del compilador autoalojado y 8/8 pruebas de diagnóstico/PDB/debugger.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-53-SH51-EXPERIENCIA-DESARROLLO.md`.
+
+### 8.50 Plan cerrado restante — Tandas 46–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a
@@ -932,6 +944,14 @@ tandas la instalación de trabajo se limita a `A:\native-sharp`; las rutas de sc
 configurables y ningún commit puede contener objetos, ejecutables, temporales ni archivos ajenos. No
 se cierra un gate con una prueba obligatoria omitida o con una incidencia abierta de severidad de
 release.
+
+Para el tramo terminal T53–T56 se aprobó una excepción operativa explícita para evitar cuatro
+repeticiones de la matriz de varias horas: T53, T54 y T55 cierran con su gate dirigido acumulativo,
+expediente, hashes y commit único; T56 ejecuta una sola vez el baseline total y acumulativo después
+del último cambio funcional. Durante este tramo el compilador corregido se instala inmediatamente
+en `C:\native-sharp` para no bloquear el trabajo consumidor. Esta excepción sólo consolida la
+ejecución costosa: no omite pruebas, no permite cerrar SH54 en rojo y no cambia el contenido de la
+matriz final.
 
 ## 9. Orden de dependencias
 
@@ -1294,6 +1314,15 @@ Antes de cerrarlo se verifica el diff por rutas y se actualiza el expediente con
 evidencia. El expediente identifica el cierre como `este commit`; el SHA exacto se obtiene del
 propio historial Git, porque un commit no puede contener su identificador sin modificarlo. Así se
 mantiene un solo commit de cierre por tanda.
+
+#### Excepción terminal T53–T56
+
+La ejecución completa que normalmente correspondería a T53, T54 y T55 se difiere y acumula en el
+baseline final de T56. Cada una de esas tandas debe pasar su gate dirigido y dejar evidencia
+estructurada antes de su commit. T56 no puede cerrarse hasta ejecutar desde limpio toda la matriz
+con ambos linkers e incluir los gates SH51–SH54; un fallo descubierto allí se corrige y obliga a
+repetir el baseline total. La instalación operativa en `C:\native-sharp` se verifica por hash,
+`--version`, `--verify-installation` y una reproducción funcional antes de continuar.
 
 ## 23. Resumen ejecutivo
 

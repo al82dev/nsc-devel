@@ -1,0 +1,25 @@
+{
+  "schema": "nativesharp-selfhost-developer-experience-contract",
+  "version": 1,
+  "gate": "SH51",
+  "required_cli": [
+    "--quiet",
+    "--verbose",
+    "--time-report",
+    "--time-trace=<file>",
+    "--log=<file>",
+    "--log-format=text|json",
+    "--log-on-error=<file>"
+  ],
+  "debugger_handoff": "PDB_HANDOVER_AND_ROADMAP.md",
+  "ctests": [
+    "nsc.diagnostics",
+    "nsc.item337.sdk-diagnostics",
+    "nsc.stage55-3.diagnostics",
+    "nsc.debug.codeview-pdb",
+    "nsc.debug.extreme-o0",
+    "nsc.debug.consumer-handoff",
+    "nsc.debug.inline-stepping-o0",
+    "nsc.debug.assembly-stepping-o0"
+  ]
+}

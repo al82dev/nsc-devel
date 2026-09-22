@@ -1,0 +1,24 @@
+{
+  "schema": "nativesharp-selfhost-gate-summary",
+  "version": 1,
+  "gate": "SH51",
+  "tanda": 53,
+  "status": "passed",
+  "baseline_policy": "deferred-to-tanda-56-cumulative-baseline",
+  "directed_report": "build-test-lldlinker/selfhost-sh51/sh51-report.json",
+  "directed_report_sha256": "90f4ea308cf3120520e3118b4792282bd2d17e64f9254751cd7d1ae8645e5763",
+  "contract_sha256": "7697a96a75e7920c526ebe0f3d73cf8453051035358ed5149c4584a6ba77f179",
+  "verifier_sha256": "a4382c225d17f5c5e8c989496df88f8be95051afde79677fe0dcd5307fb24aeb",
+  "observable_cli": 7,
+  "persistent_logs": 3,
+  "debugger_ctests": { "passed": 8, "expected": 8 },
+  "metadata_regression": "passed",
+  "installed_probe": {
+    "prefix": "C:/native-sharp",
+    "build_id": "5300000000000001",
+    "nsc_sha256": "1601696911311b6586e068042bb4889bcbcf8fa2777fd1ca32d8a875f6cbb4d4",
+    "producer_readback": "passed",
+    "library_reference_consumer": "passed"
+  },
+  "failures": []
+}

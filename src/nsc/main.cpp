@@ -4,12 +4,103 @@
 #include "nativesharp/LLVM/LlvmProcessTrace.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
+#include <streambuf>
+#include <string>
 #include <string_view>
 #include <vector>
 
 namespace
 {
+class TeeBuffer final : public std::streambuf
+{
+public:
+    TeeBuffer(std::streambuf* first, std::streambuf* second) : first_(first), second_(second) {}
+
+protected:
+    int overflow(int value) override
+    {
+        if (value == traits_type::eof()) return traits_type::not_eof(value);
+        const char character = static_cast<char>(value);
+        const bool firstOk = first_ == nullptr || first_->sputc(character) != traits_type::eof();
+        const bool secondOk = second_ == nullptr || second_->sputc(character) != traits_type::eof();
+        return firstOk && secondOk ? value : traits_type::eof();
+    }
+
+    int sync() override
+    {
+        const bool firstOk = first_ == nullptr || first_->pubsync() == 0;
+        const bool secondOk = second_ == nullptr || second_->pubsync() == 0;
+        return firstOk && secondOk ? 0 : -1;
+    }
+
+private:
+    std::streambuf* first_;
+    std::streambuf* second_;
+};
+
+std::string jsonEscape(std::string_view value)
+{
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (const unsigned char character : value)
+    {
+        switch (character)
+        {
+        case '\\': escaped += "\\\\"; break;
+        case '"': escaped += "\\\""; break;
+        case '\n': escaped += "\\n"; break;
+        case '\r': escaped += "\\r"; break;
+        case '\t': escaped += "\\t"; break;
+        default:
+            if (character >= 0x20U) escaped.push_back(static_cast<char>(character));
+            break;
+        }
+    }
+    return escaped;
+}
+
+bool publishLog(const std::filesystem::path& path, std::string_view format,
+    const std::vector<std::string_view>& arguments, int exitCode,
+    std::string_view standardOutput, std::string_view standardError)
+{
+    std::error_code error;
+    if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), error);
+    const std::filesystem::path temporary = path.string() + ".tmp";
+    std::ofstream destination(temporary, std::ios::binary | std::ios::trunc);
+    if (!destination) return false;
+    if (format == "json")
+    {
+        destination << "{\n  \"schema\": \"nativesharp-compilation-log\",\n"
+                    << "  \"version\": 1,\n  \"exit_code\": " << exitCode << ",\n"
+                    << "  \"arguments\": [";
+        for (std::size_t index = 0; index < arguments.size(); ++index)
+        {
+            if (index != 0) destination << ", ";
+            destination << '"' << jsonEscape(arguments[index]) << '"';
+        }
+        destination << "],\n  \"stdout\": \"" << jsonEscape(standardOutput)
+                    << "\",\n  \"stderr\": \"" << jsonEscape(standardError) << "\"\n}\n";
+    }
+    else
+    {
+        destination << "NativeSharp compilation log v1\nexit_code=" << exitCode << "\narguments=";
+        for (const std::string_view argument : arguments) destination << ' ' << argument;
+        destination << "\n--- stdout ---\n" << standardOutput
+                    << "--- stderr ---\n" << standardError;
+    }
+    destination.close();
+    if (!destination) return false;
+    std::filesystem::remove(path, error);
+    error.clear();
+    std::filesystem::rename(temporary, path, error);
+    if (error) std::filesystem::remove(temporary, error);
+    return !error;
+}
+
 int runCompiler(int argc, char** argv)
 {
     const auto isTraceWorkerArgument = [](const char* argument) {
@@ -20,10 +111,36 @@ int runCompiler(int argc, char** argv)
 
     std::vector<std::string_view> arguments;
     arguments.reserve(argc > 1 ? static_cast<std::size_t>(argc - 1) : 0U);
+    std::filesystem::path logPath;
+    std::filesystem::path errorLogPath;
+    std::filesystem::path timeTracePath;
+    std::string logFormat = "text";
+    bool quiet = false;
+    bool verbose = false;
     for (int index = 1; index < argc; ++index)
     {
         if (isTraceWorkerArgument(argv[index])) continue;
-        arguments.emplace_back(argv[index]);
+        const std::string_view argument(argv[index]);
+        if (argument.starts_with("--log=")) { logPath = argument.substr(6); continue; }
+        if (argument.starts_with("--log-on-error=")) { errorLogPath = argument.substr(15); continue; }
+        if (argument.starts_with("--log-format=")) { logFormat = argument.substr(13); continue; }
+        if (argument.starts_with("--time-trace=")) { timeTracePath = argument.substr(13); continue; }
+        if (argument == "--time-report") { arguments.emplace_back("--time"); continue; }
+        if (argument == "--quiet") { quiet = true; continue; }
+        if (argument == "--verbose") { verbose = true; continue; }
+        arguments.emplace_back(argument);
+    }
+    if (verbose)
+    {
+        arguments.emplace_back("--progress");
+        arguments.emplace_back("--time");
+    }
+    if (!timeTracePath.empty()) arguments.emplace_back("--time");
+    if (logFormat != "text" && logFormat != "json")
+    {
+        std::cerr << "nsc: error: unsupported log format '" << logFormat
+                  << "'; expected text or json\n";
+        return static_cast<int>(nativesharp::ExitCode::CommandLineError);
     }
 
 #if defined(_WIN32)
@@ -79,9 +196,32 @@ int runCompiler(int argc, char** argv)
         nativesharp::llvm_backend::llvmProcessTraceRequired(arguments));
 #endif
 
+    std::ostringstream capturedOutput;
+    std::ostringstream capturedError;
+    TeeBuffer outputBuffer(quiet ? nullptr : std::cout.rdbuf(), capturedOutput.rdbuf());
+    TeeBuffer errorBuffer(std::cerr.rdbuf(), capturedError.rdbuf());
+    std::ostream observedOutput(&outputBuffer);
+    std::ostream observedError(&errorBuffer);
     const nativesharp::driver::Driver driver;
-    const nativesharp::ExitCode exitCode = driver.run(arguments, std::cout, std::cerr);
-    return static_cast<int>(exitCode);
+    const nativesharp::ExitCode exitCode = driver.run(arguments, observedOutput, observedError);
+    observedOutput.flush();
+    observedError.flush();
+    const int numericExitCode = static_cast<int>(exitCode);
+    bool logOk = true;
+    if (!logPath.empty())
+        logOk = publishLog(logPath, logFormat, arguments, numericExitCode,
+            capturedOutput.str(), capturedError.str());
+    if (numericExitCode != 0 && !errorLogPath.empty())
+        logOk = publishLog(errorLogPath, logFormat, arguments, numericExitCode,
+            capturedOutput.str(), capturedError.str()) && logOk;
+    if (!timeTracePath.empty())
+        logOk = publishLog(timeTracePath, "json", arguments, numericExitCode,
+            capturedOutput.str(), capturedError.str()) && logOk;
+    if (!logOk)
+    {
+        std::cerr << "nsc: warning: compilation log could not be published atomically\n";
+    }
+    return numericExitCode;
 }
 }
 

@@ -1074,6 +1074,15 @@ if(NSC_BUILD_TESTS)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpPerformance.cmake")
     set_tests_properties(nsc.selfhost.performance PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.advanced-toolchain)
 
+    add_test(NAME nsc.selfhost.developer-experience COMMAND "${CMAKE_COMMAND}"
+        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh51"
+        "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
+        "-DCTEST_EXECUTABLE=${CMAKE_CTEST_COMMAND}" "-DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDeveloperExperience.cmake")
+    set_tests_properties(nsc.selfhost.developer-experience PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.performance)
+
     add_test(
         NAME nsc.selfhost.promotion-readiness
         COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"

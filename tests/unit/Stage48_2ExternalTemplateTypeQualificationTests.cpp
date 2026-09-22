@@ -66,9 +66,22 @@ void testExternalTypesInReusableTemplate(
     writeFile(external / "External.ns", R"NS(
 namespace Foreign.Memory
 {
+    public enum FullPolicy
+    {
+        Reject = 0
+    }
+
     public interface IAllocator
     {
         public int Marker();
+    }
+
+    public class RingBuffer<T>
+    {
+        public static RingBuffer<T> TryCreate(IAllocator source, int capacity, FullPolicy policy)
+        {
+            return null;
+        }
     }
 }
 )NS");
@@ -84,6 +97,11 @@ namespace Collections.Core
 {
     public class ArrayOps
     {
+        public static RingBuffer<T> Create<T>(IAllocator allocator, int capacity)
+        {
+            return RingBuffer<T>.TryCreate(allocator, capacity, FullPolicy.Reject);
+        }
+
         public static void FreeArray<T>(IAllocator allocator, T* items, long capacity)
         {
         }
@@ -145,6 +163,15 @@ namespace Collections.Core
         "multiline public template signature keeps the external module and namespace; source=" +
             (tryAllocate == metadata.genericTemplates.end()
                 ? std::string("<missing>") : tryAllocate->sourceText));
+    const auto create = std::ranges::find_if(metadata.genericTemplates, [](const auto& generic) {
+        return generic.name == "Create";
+    });
+    tests.expect(create != metadata.genericTemplates.end() &&
+            create->sourceText.find(
+                "ForeignTypes::Foreign.Memory.RingBuffer<T>.TryCreate") != std::string::npos,
+        "static expression receiver keeps the external module qualifier; source=" +
+            (create == metadata.genericTemplates.end()
+                ? std::string("<missing>") : create->sourceText));
     tests.expect(contains(
             metadata.externalTypeKeys,
             "type:ForeignTypes::Foreign.Memory.IAllocator"),
@@ -162,6 +189,7 @@ public class ConsumerMarker
     public static int Value()
     {
         ArrayOps.FreeArray<int>(null, null, 0);
+        RingBuffer<int> buffer = ArrayOps.Create<int>(null, 4);
         return 42;
     }
 }
