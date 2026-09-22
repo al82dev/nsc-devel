@@ -98,6 +98,9 @@ int main()
         tests.expect(text.find("declare i32 @MultiByteToWideChar") != std::string::npos &&
                 text.find("declare i32 @WideCharToMultiByte") != std::string::npos,
             "runtime exposes both sides of the NativeSharp UTF-8 to Win32 UTF-16 boundary");
+        tests.expect(text.find("declare i32 @GetFullPathNameW") != std::string::npos &&
+                text.find("@GetFullPathNameA") == std::string::npos,
+            "Path.GetFullPath normalizes through UTF-16 without the ANSI MAX_PATH boundary");
 
         std::string targetError;
         std::unique_ptr<LlvmTargetMachine> targetMachine = LlvmTargetMachine::createWindowsX64(targetError);

@@ -1,0 +1,25 @@
+{
+  "schema": "nativesharp-selfhost-specialized-code-contract",
+  "version": 1,
+  "gate": "SH47",
+  "target": "x86_64-pc-windows-msvc",
+  "profiles": ["O0", "O1", "O2", "O3"],
+  "linkers": ["lld", "nslink"],
+  "project": "selfhost/tests/specialized-2.0/Specialized.nsproj",
+  "assembly": "selfhost/tests/specialized-2.0/specialized.asm",
+  "entry": "mainCRTStartup",
+  "imports": {
+    "KERNEL32.dll": ["ExitProcess"],
+    "ntdll.dll": ["__chkstk"]
+  },
+  "required_nsasm_disassembly": [
+    "stmxcsr", "paddd", "roundss", "pause", "rdtsc", "ldmxcsr",
+    "vaddps", "vfmadd213ps", "packssdw", "vzeroupper"
+  ],
+  "required_native_disassembly": ["InlineAdd", "InlineMemory", "addl"],
+  "surfaces": [
+    "vectors", "matrices", "half", "packed-formats", "hardware-intrinsics",
+    "inline-assembly", "floating-point-modes", "NSAsm"
+  ],
+  "expected_executions": 8
+}

@@ -1990,14 +1990,14 @@ bool buildFileAppendAllText(
     return true;
 }
 
-// Stage 53.4 "Filesystem/Paths (cierre)" -- GetFullPathNameA. Calco del mismo patron de dos
+// Stage 53.4/T46 "Filesystem/Paths (cierre)" -- GetFullPathNameW. Calco del mismo patron de dos
 // llamadas "pedir tamaño, despues llenar el buffer" que buildEnvironmentGetVariable estableció en
 // 53.2b (ver el comentario de cabecera de esa función para el detalle completo del patrón) -- la
-// única diferencia real es la firma real de GetFullPathNameA, que tiene CUATRO parámetros en vez
+// única diferencia real es la firma real de GetFullPathNameW, que tiene CUATRO parámetros en vez
 // de tres:
 //
-//   DWORD GetFullPathNameA(LPCSTR lpFileName, DWORD nBufferLength, LPSTR lpBuffer,
-//                           LPSTR *lpFilePart);
+//   DWORD GetFullPathNameW(LPCWSTR lpFileName, DWORD nBufferLength, LPWSTR lpBuffer,
+//                           LPWSTR *lpFilePart);
 //
 // lpFilePart (un puntero de salida opcional al componente "nombre de archivo" dentro del buffer
 // ya resuelto) se pasa siempre NULL -- este compilador no lo necesita, Path.GetFileName ya
@@ -2011,7 +2011,7 @@ bool buildFileAppendAllText(
 // ese motivo de ningún otro, misma simplificación deliberada de siempre.
 //
 // Un detalle que vale la pena aclarar porque NO es obvio -- y que la intuición inicial al diseñar
-// esta ronda tuvo AL REVÉS: un path "" (vacío) SÍ es un error para GetFullPathNameA bajo Wine
+// esta ronda tuvo AL REVÉS: un path "" (vacío) SÍ es un error para GetFullPathNameW bajo Wine
 // (devuelve 0, la rama emptyResult de abajo), a diferencia de "." (que sí resuelve al directorio
 // de trabajo actual sin problema). "" NO es un sinónimo válido de "." para esta función -- ambos
 // se ven parecidos ("ningún path que agregar") pero Win32 los trata distinto. Verificado bajo
@@ -2025,11 +2025,16 @@ bool buildPathGetFullPath(
     LLVMTypeRef getProcessHeapType,
     LLVMValueRef heapAlloc,
     LLVMTypeRef heapAllocType,
-    LLVMValueRef getFullPathNameA,
-    LLVMTypeRef getFullPathNameAType)
+    LLVMValueRef getFullPathNameW,
+    LLVMTypeRef getFullPathNameWType,
+    LLVMValueRef multiByteToWideChar,
+    LLVMTypeRef multiByteToWideCharType,
+    LLVMValueRef wideCharToMultiByte,
+    LLVMTypeRef wideCharToMultiByteType)
 {
     LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i16Type = LLVMInt16TypeInContext(context);
     LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
     LLVMTypeRef type = functionType(pointerType, {pointerType});
@@ -2046,21 +2051,22 @@ bool buildPathGetFullPath(
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef pathString = LLVMGetParam(function, 0);
-    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef pathBuffer = buildUtf16NullTerminatedCopy(
+        context, builder, pathString, multiByteToWideChar, multiByteToWideCharType);
 
     // First call: lpBuffer=NULL, nBufferLength=0, lpFilePart=NULL -- same "ask the required size
-    // first" idiom as buildEnvironmentGetVariable's first call, just with GetFullPathNameA's
+    // first" idiom as buildEnvironmentGetVariable's first call, just with GetFullPathNameW's
     // extra (always-NULL, in this compiler) fourth parameter.
     LLVMValueRef sizeArguments[4] = {
         pathBuffer, LLVMConstInt(i32Type, 0, 0), LLVMConstNull(pointerType), LLVMConstNull(pointerType)};
     LLVMValueRef requiredSize = LLVMBuildCall2(
-        builder, getFullPathNameAType, getFullPathNameA, sizeArguments, 4, "required_size");
+        builder, getFullPathNameWType, getFullPathNameW, sizeArguments, 4, "required_size");
     LLVMValueRef failed = LLVMBuildICmp(
         builder, LLVMIntEQ, requiredSize, LLVMConstInt(i32Type, 0, 0), "failed");
     LLVMBuildCondBr(builder, failed, emptyResult, allocateResult);
 
     // Same deliberate simplification as buildEnvironmentGetVariable's emptyResult block: any
-    // failure (not "the path does not exist" -- GetFullPathNameA never checks that, it is pure
+    // failure (not "the path does not exist" -- GetFullPathNameW never checks that, it is pure
     // lexical resolution -- but things like invalid characters) collapses to an empty NativeSharp
     // string, not an exception.
     LLVMPositionBuilderAtEnd(builder, emptyResult);
@@ -2073,26 +2079,50 @@ bool buildPathGetFullPath(
     LLVMBuildRet(builder, emptyString);
 
     LLVMPositionBuilderAtEnd(builder, allocateResult);
-    // Allocate exactly 8 (the { i64 length; ... } header) + requiredSize bytes -- requiredSize
-    // already includes room for Win32's null terminator, same accounting as
-    // buildEnvironmentGetVariable.
+    // GetFullPathNameW reports UTF-16 code units, including the terminator when the first call's
+    // buffer is too small. Resolve into a wide scratch buffer first; NativeSharp strings remain
+    // UTF-8 and are allocated only after the path has been canonicalized.
     LLVMValueRef requiredSize64 = LLVMBuildZExt(builder, requiredSize, i64Type, "required_size64");
-    LLVMValueRef totalSize = LLVMBuildAdd(builder, requiredSize64, LLVMConstInt(i64Type, 8, 0), "total_size");
-    LLVMValueRef heap = LLVMBuildCall2(builder, getProcessHeapType, getProcessHeap, nullptr, 0, "heap");
-    LLVMValueRef allocArguments[3] = {heap, LLVMConstInt(i32Type, 0, 0), totalSize};
-    LLVMValueRef resultString = LLVMBuildCall2(
-        builder, heapAllocType, heapAlloc, allocArguments, 3, "result_string");
-    LLVMValueRef charCount = LLVMBuildSub(builder, requiredSize64, LLVMConstInt(i64Type, 1, 0), "char_count");
-    LLVMBuildStore(builder, charCount, resultString);
-    LLVMValueRef resultDataIndex[1] = {LLVMConstInt(i64Type, 8, 0)};
-    LLVMValueRef resultData = LLVMBuildGEP2(builder, i8Type, resultString, resultDataIndex, 1, "result_data");
+    LLVMValueRef wideResult = LLVMBuildArrayAlloca(
+        builder, i16Type, requiredSize64, "wide_result");
     // Second call: this time with a real buffer sized exactly to what the first call reported.
     // Its own return value (the length actually copied, excluding the null terminator) is
     // ignored -- same as buildEnvironmentGetVariable's fillArguments call -- because charCount
     // above already derives the same number from requiredSize.
-    LLVMValueRef fillArguments[4] = {pathBuffer, requiredSize, resultData, LLVMConstNull(pointerType)};
+    LLVMValueRef fillArguments[4] = {pathBuffer, requiredSize, wideResult, LLVMConstNull(pointerType)};
     LLVMBuildCall2(
-        builder, getFullPathNameAType, getFullPathNameA, fillArguments, 4, "fill_result");
+        builder, getFullPathNameWType, getFullPathNameW, fillArguments, 4, "fill_result");
+
+    LLVMValueRef utf8SizeArguments[8] = {
+        LLVMConstInt(i32Type, 65001, 0), LLVMConstInt(i32Type, 0x80, 0), wideResult,
+        LLVMConstInt(i32Type, 0xFFFFFFFFu, 0), LLVMConstNull(pointerType),
+        LLVMConstInt(i32Type, 0, 0), LLVMConstNull(pointerType), LLVMConstNull(pointerType)};
+    LLVMValueRef utf8Required = LLVMBuildCall2(
+        builder, wideCharToMultiByteType, wideCharToMultiByte,
+        utf8SizeArguments, 8, "utf8_required");
+    LLVMValueRef utf8Required64 = LLVMBuildZExt(
+        builder, utf8Required, i64Type, "utf8_required64");
+    LLVMValueRef totalSize = LLVMBuildAdd(
+        builder, utf8Required64, LLVMConstInt(i64Type, 8, 0), "total_size");
+    LLVMValueRef heap = LLVMBuildCall2(
+        builder, getProcessHeapType, getProcessHeap, nullptr, 0, "heap");
+    LLVMValueRef allocArguments[3] = {
+        heap, LLVMConstInt(i32Type, 0, 0), totalSize};
+    LLVMValueRef resultString = LLVMBuildCall2(
+        builder, heapAllocType, heapAlloc, allocArguments, 3, "result_string");
+    LLVMValueRef charCount = LLVMBuildSub(
+        builder, utf8Required64, LLVMConstInt(i64Type, 1, 0), "char_count");
+    LLVMBuildStore(builder, charCount, resultString);
+    LLVMValueRef resultDataIndex[1] = {LLVMConstInt(i64Type, 8, 0)};
+    LLVMValueRef resultData = LLVMBuildGEP2(
+        builder, i8Type, resultString, resultDataIndex, 1, "result_data");
+    LLVMValueRef utf8FillArguments[8] = {
+        LLVMConstInt(i32Type, 65001, 0), LLVMConstInt(i32Type, 0x80, 0), wideResult,
+        LLVMConstInt(i32Type, 0xFFFFFFFFu, 0), resultData, utf8Required,
+        LLVMConstNull(pointerType), LLVMConstNull(pointerType)};
+    LLVMBuildCall2(
+        builder, wideCharToMultiByteType, wideCharToMultiByte,
+        utf8FillArguments, 8, "utf8_written");
     LLVMBuildRet(builder, resultString);
 
     LLVMDisposeBuilder(builder);
@@ -2180,7 +2210,7 @@ bool buildEnvironmentGetCommandLineArgCount(
 // string. It is converted to UTF-8 with the exact same two-call "ask the size, then fill the
 // buffer" idiom buildEnvironmentGetVariable/buildPathGetFullPath already established for other
 // Win32 APIs, just applied to WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, ..., cchWideChar=-1 for
-// "auto-detect the null terminator", ...) instead of GetEnvironmentVariableA/GetFullPathNameA.
+// "auto-detect the null terminator", ...) instead of GetEnvironmentVariableA/GetFullPathNameW.
 //
 // writeCount = min(argc, destination.Length) -- if the real command line has more arguments than
 // the caller's buffer can hold, the extra ones are silently dropped (no exception, no partial
@@ -2290,7 +2320,7 @@ bool buildEnvironmentGetCommandLineArgs(
     LLVMValueRef wideArg = LLVMBuildLoad2(builder, pointerType, argvElementAddress, "wide_arg");
 
     // First WideCharToMultiByte call: lpMultiByteStr=NULL, cbMultiByte=0 -- same "ask the
-    // required size" idiom as GetEnvironmentVariableA/GetFullPathNameA's first call above.
+    // required size" idiom as GetEnvironmentVariableA/GetFullPathNameW's first call above.
     // cchWideChar=-1 (0xFFFFFFFF) means "the string is null-terminated, figure out its length
     // yourself" -- the required size this returns INCLUDES room for the null terminator.
     LLVMValueRef sizeArguments[8] = {
@@ -5641,19 +5671,19 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
     LLVMValueRef setFilePointer = LLVMAddFunction(module, "SetFilePointer", setFilePointerType);
 
     // Stage 53.4 "Filesystem/Paths (cierre)". RemoveDirectoryA: BOOL, un LPCSTR, discarded by
-    // buildDirectoryDelete, misma forma que DeleteFileA arriba. GetFullPathNameA: DWORD, cuatro
+    // buildDirectoryDelete, misma forma que DeleteFileA arriba. GetFullPathNameW: DWORD, cuatro
     // parametros (ver el comentario de cabecera de buildPathGetFullPath para el detalle
     // completo). Ambas ANSI (*A), misma razon de siempre.
     LLVMTypeRef removeDirectoryAType = functionType(i32Type, {pointerType});
     LLVMValueRef removeDirectoryA = LLVMAddFunction(module, "RemoveDirectoryA", removeDirectoryAType);
-    LLVMTypeRef getFullPathNameAType = functionType(
+    LLVMTypeRef getFullPathNameWType = functionType(
         i32Type, {pointerType, i32Type, pointerType, pointerType});
-    LLVMValueRef getFullPathNameA = LLVMAddFunction(module, "GetFullPathNameA", getFullPathNameAType);
+    LLVMValueRef getFullPathNameW = LLVMAddFunction(module, "GetFullPathNameW", getFullPathNameWType);
 
     // Bloque 4, fase A. GetCurrentDirectoryA es el UNICO import de Win32 que esta fase anade: las
     // otras tres operaciones (ReadAllBytes/ReadBytes/WriteAllBytes) reutilizan CreateFileA,
     // GetFileSizeEx, ReadFile, WriteFile y CloseHandle, que ya estaban aqui para las variantes de
-    // texto. Su forma es la del "pregunta el tamano primero" de GetFullPathNameA, con un
+    // texto. Su forma es la del "pregunta el tamano primero" de GetFullPathNameW, con un
     // parametro menos:
     //
     //   DWORD GetCurrentDirectoryA(DWORD nBufferLength, LPSTR lpBuffer);
@@ -5928,7 +5958,7 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         closeHandle != nullptr &&
         setFilePointer != nullptr &&
         removeDirectoryA != nullptr &&
-        getFullPathNameA != nullptr &&
+        getFullPathNameW != nullptr &&
         getCommandLineW != nullptr &&
         commandLineToArgvW != nullptr &&
         wideCharToMultiByte != nullptr &&
@@ -6050,7 +6080,9 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         buildDirectoryDelete(context, module, removeDirectoryA, removeDirectoryAType) &&
         buildPathGetFullPath(
             context, module, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType,
-            getFullPathNameA, getFullPathNameAType) &&
+            getFullPathNameW, getFullPathNameWType,
+            multiByteToWideChar, multiByteToWideCharType,
+            wideCharToMultiByte, wideCharToMultiByteType) &&
         buildEnvironmentGetCommandLineArgCount(
             context, module, getCommandLineW, getCommandLineWType,
             commandLineToArgvW, commandLineToArgvWType, localFree, localFreeType) &&

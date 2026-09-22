@@ -1,0 +1,58 @@
+{
+  "schema": "nativesharp-selfhost-gate-summary",
+  "version": 1,
+  "gate": "SH47",
+  "tanda": 49,
+  "status": "landed",
+  "source_files": 101,
+  "source_sha256": "ae83937f7827e5ee98ec690a237101a656841b63eaf0f23f2d379bf1f3fe37fd",
+  "self_hosted_generation": {
+    "profiles": 4,
+    "executions": 16,
+    "object_fixed_point_per_profile": true,
+    "report_sha256": "00f0a67bc53e6a1ed7e5d8b404b5f4fd1fc09b470d33c854c8e3cd778efb399a"
+  },
+  "specialized_matrix": {
+    "profiles": 4,
+    "linkers": 2,
+    "passed_executions": 8,
+    "failures": 0,
+    "omitted": 0,
+    "surfaces": [
+      "vectors",
+      "matrices",
+      "half",
+      "packed-formats",
+      "hardware-intrinsics",
+      "inline-assembly",
+      "floating-point-modes",
+      "NSAsm"
+    ]
+  },
+  "contract_sha256": "ecd874b071d5d950a0e274ae0678f71d28d09232c221c1e945189fa027913096",
+  "verifier_sha256": "2daad6b533242201b14c0e8729871aa478d099c7eb3953d049753edab2ea914e",
+  "directed_report_sha256": "ad0631f93182b05b36e078dbfa3ee1079d9a7fd499ab334a992e0ea61a608091",
+  "compiler_sha256": "511cca8afde930ec2b9221a91531bfe277e847f13e55db20ad9fca6d91421bc2",
+  "nsasm_sha256": "1a4bce62c83281149ffa090612a7b45820cc681581ecae0a9a89580ae3d04a1b",
+  "infrastructure_tests": 51,
+  "cross_environment_matrix": {
+    "status": "passed",
+    "variants": 4,
+    "object_comparisons": 12,
+    "image_comparisons": 24,
+    "report_sha256": "cba07165086e1a1b3e3f135b3a0b930a0301b01743a8b26f4d6845c7fb2489d1"
+  },
+  "cmake_gate": "passed",
+  "baseline": {
+    "status": "passed",
+    "run_id": "tanda-49-sh47-specialized-code-r2-20260921",
+    "build_id": "4900000000000002",
+    "elapsed_seconds": 4638.981,
+    "failures": 0,
+    "ctests_per_linker": 482,
+    "fixtures_per_linker": 148,
+    "triage_per_linker": 18,
+    "gate0_state": "LANDED",
+    "report_sha256": "c72b382c8376525e402aed4dff9d18057d4d8f93dc3d56c002a6db3c72e0d9a0"
+  }
+}

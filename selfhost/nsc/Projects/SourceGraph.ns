@@ -312,7 +312,7 @@ namespace NativeSharp.Compiler.Projects
             }
             if (graph.ContainsProject(normalized)) { return; }
 
-            if (!File.Exists(projectPath))
+            if (!File.Exists(normalized))
             {
                 raii string message = String.Concat("referenced project does not exist: ", normalized);
                 graph.Fail(message);
@@ -322,8 +322,8 @@ namespace NativeSharp.Compiler.Projects
             raii string marker = String.Copy(normalized);
             active.Add(move(marker));
 
-            raii ProjectModel project = ProjectLoader.Load(projectPath);
-            raii string directory = Path.GetDirectoryName(projectPath);
+            raii ProjectModel project = ProjectLoader.Load(normalized);
+            raii string directory = Path.GetDirectoryName(normalized);
 
             int reference = 0;
             while (reference < project.ReferenceCount() && !graph.Failed())

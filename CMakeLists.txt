@@ -638,6 +638,12 @@ if(_nsc_test_compiler_es_ruta AND NOT EXISTS "${NSC_TEST_COMPILER}")
         "(cmake --install <build> --prefix C:/native-sharp)")
 endif()
 
+set(NSC_TEST_NSASM "" CACHE FILEPATH
+    "Ejecutable NSAsm para gates de codigo especializado (vacio = <prefix>/bin/nsasm.exe)")
+if(NSC_TEST_NSASM STREQUAL "")
+    set(NSC_TEST_NSASM "${CMAKE_INSTALL_PREFIX}/bin/nsasm.exe")
+endif()
+
 if(NSC_BUILD_TESTS)
     enable_testing()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -1033,6 +1039,15 @@ if(NSC_BUILD_TESTS)
         "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpInteropParity.cmake")
     set_tests_properties(nsc.selfhost.interop-parity PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.low-level-parity)
+
+    add_test(NAME nsc.selfhost.specialized-code COMMAND "${CMAKE_COMMAND}"
+        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh47"
+        "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DNSASM_EXECUTABLE=${NSC_TEST_NSASM}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSpecializedCode.cmake")
+    set_tests_properties(nsc.selfhost.specialized-code PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.interop-parity)
 
     add_test(
         NAME nsc.selfhost.promotion-readiness

@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>SelfHostSpecialized</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Main.ns" /></ItemGroup>
+</Project>

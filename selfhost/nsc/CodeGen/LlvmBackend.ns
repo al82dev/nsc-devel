@@ -30,11 +30,13 @@ namespace NativeSharp.Compiler.CodeGen
     public class LocalBinding
     {
         private int symbol;
+        private owned string name;
         private void* storage;
         private void* valueType;
-        public LocalBinding(int symbolId, void* storageValue, void* typeValue)
-        { symbol = symbolId; storage = storageValue; valueType = typeValue; }
+        public LocalBinding(int symbolId, string sourceName, void* storageValue, void* typeValue)
+        { symbol = symbolId; name = String.Copy(sourceName); storage = storageValue; valueType = typeValue; }
         public int Symbol() { return symbol; }
+        public string Name() { return name; }
         public void* Storage() { return storage; }
         public void* ValueType() { return valueType; }
     }
@@ -60,9 +62,9 @@ namespace NativeSharp.Compiler.CodeGen
         }
         public void SetThis(void* value) { thisValue = value; }
         public void* ThisValue() { return thisValue; }
-        public void AddLocal(int symbol, void* storage, void* valueType)
+        public void AddLocal(int symbol, string name, void* storage, void* valueType)
         {
-            raii LocalBinding binding = new LocalBinding(symbol, storage, valueType); locals.Add(move(binding));
+            raii LocalBinding binding = new LocalBinding(symbol, name, storage, valueType); locals.Add(move(binding));
         }
         public void* FindLocal(int symbol)
         {
@@ -80,6 +82,26 @@ namespace NativeSharp.Compiler.CodeGen
             while (index >= 0)
             {
                 if (locals[index].Symbol() == symbol) { return locals[index].ValueType(); }
+                index = index - 1;
+            }
+            return null;
+        }
+        public void* FindLocalByName(string name)
+        {
+            int index = locals.Count() - 1;
+            while (index >= 0)
+            {
+                if (locals[index].Name() == name) { return locals[index].Storage(); }
+                index = index - 1;
+            }
+            return null;
+        }
+        public void* FindLocalTypeByName(string name)
+        {
+            int index = locals.Count() - 1;
+            while (index >= 0)
+            {
+                if (locals[index].Name() == name) { return locals[index].ValueType(); }
                 index = index - 1;
             }
             return null;
@@ -227,7 +249,6 @@ namespace NativeSharp.Compiler.CodeGen
             if (type.Length != 0) { return LLVM.LLVMPointerTypeInContext(context, 0u); }
             return null;
         }
-
         private static int AggregateSize(SemanticModel semantic, string type)
         {
             int symbol = FindTypeSymbolByDisplay(semantic, type);
@@ -2609,6 +2630,147 @@ namespace NativeSharp.Compiler.CodeGen
             return storage;
         }
 
+        private static owned string InlineAssemblyTemplate(SyntaxTree tree, SyntaxNode statement,
+            int outputCount, int inputCount)
+        {
+            raii StringBuilder source = new StringBuilder(); int child = 0;
+            while (child < statement.ChildCount())
+            {
+                SyntaxNode part = tree.Node(statement.ChildAt(child));
+                if (part.Kind() == "InlineAssemblyLine")
+                {
+                    if (source.Length() > 0) { source.Append("\n"); }
+                    source.Append(part.Text());
+                }
+                child = child + 1;
+            }
+            raii string rendered = source.ToOwnedString(); int input = inputCount - 1;
+            while (input >= 0)
+            {
+                raii string original = String.Concat("$", String.ToString(input));
+                raii string replacement = String.Concat("$", String.ToString(outputCount + input));
+                raii string replaced = String.Replace(rendered, original, replacement);
+                rendered = move(replaced); input = input - 1;
+            }
+            int output = 0;
+            while (output < outputCount)
+            {
+                raii string original = String.Concat("$out", String.ToString(output));
+                raii string replacement = String.Concat("$", String.ToString(output));
+                raii string replaced = String.Replace(rendered, original, replacement);
+                rendered = move(replaced); output = output + 1;
+            }
+            return move(rendered);
+        }
+
+        private static owned string InlineAssemblyConstraints(SyntaxTree tree, SyntaxNode statement)
+        {
+            raii StringBuilder constraints = new StringBuilder(); int child = 0;
+            while (child < statement.ChildCount())
+            {
+                SyntaxNode part = tree.Node(statement.ChildAt(child)); raii string value = String.Copy("");
+                if (part.Kind() == "InlineAssemblyOutputOperand" || part.Kind() == "InlineAssemblyInputOperand")
+                { raii string operand = String.Copy(part.Auxiliary()); value = move(operand); }
+                else if (part.Kind() == "InlineAssemblyClobber")
+                {
+                    raii string left = String.Concat("~{", part.Text());
+                    raii string clobber = String.Concat(left, "}"); value = move(clobber);
+                }
+                if (value.Length != 0)
+                {
+                    if (constraints.Length() > 0) { constraints.Append(","); }
+                    constraints.Append(value);
+                }
+                child = child + 1;
+            }
+            return constraints.ToOwnedString();
+        }
+
+        private static bool EmitInlineAssembly(void* module, void* builder, void* i32, void* i1,
+            SyntaxTree tree, SemanticModel semantic, int declarationId, void* function,
+            FunctionLoweringState state, int syntaxId)
+        {
+            SyntaxNode statement = tree.Node(syntaxId); int outputCount = 0; int inputCount = 0;
+            int child = 0;
+            while (child < statement.ChildCount())
+            {
+                string kind = tree.Node(statement.ChildAt(child)).Kind();
+                if (kind == "InlineAssemblyOutputOperand") { outputCount = outputCount + 1; }
+                if (kind == "InlineAssemblyInputOperand") { inputCount = inputCount + 1; }
+                child = child + 1;
+            }
+            if (outputCount > 1) { return LoweringFailure(tree, syntaxId, "inline assembly outputs"); }
+            void* context = LLVM.LLVMGetModuleContext(module); void** parameterTypes = null;
+            void** arguments = null;
+            if (inputCount > 0)
+            {
+                parameterTypes = stackalloc void*[inputCount]; arguments = stackalloc void*[inputCount];
+            }
+            void* outputType = LLVM.LLVMVoidTypeInContext(context); void* outputStorage = null;
+            int input = 0; child = 0;
+            while (child < statement.ChildCount())
+            {
+                SyntaxNode part = tree.Node(statement.ChildAt(child));
+                if (part.Kind() == "InlineAssemblyOutputOperand")
+                {
+                    bool storageValid = false;
+                    outputStorage = EmitLValue(module, builder, i32, i1, tree, semantic,
+                        declarationId, function, state, part.First(), out outputType, out storageValid);
+                    SyntaxNode outputNode = tree.Node(part.First());
+                    if (!storageValid && outputNode.Kind() == "IdentifierExpression")
+                    {
+                        outputStorage = state.FindLocalByName(outputNode.Text());
+                        outputType = state.FindLocalTypeByName(outputNode.Text());
+                        storageValid = outputStorage != null && outputType != null;
+                    }
+                    if (!storageValid || outputStorage == null || outputType == null)
+                    { return LoweringFailure(tree, part.First(), "inline assembly output"); }
+                }
+                else if (part.Kind() == "InlineAssemblyInputOperand")
+                {
+                    bool argumentValid = false;
+                    arguments[input] = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
+                        declarationId, function, state, part.First(), out argumentValid);
+                    int typeId = semantic.Fact(part.First()).TypeId();
+                    parameterTypes[input] = null;
+                    if (typeId >= 0) { parameterTypes[input] = ScalarType(context,
+                        semantic.Types().Get(typeId).Display()); }
+                    SyntaxNode inputNode = tree.Node(part.First());
+                    if ((!argumentValid || arguments[input] == null || parameterTypes[input] == null) &&
+                        inputNode.Kind() == "IdentifierExpression")
+                    {
+                        void* storage = state.FindLocalByName(inputNode.Text());
+                        parameterTypes[input] = state.FindLocalTypeByName(inputNode.Text());
+                        if (storage != null && parameterTypes[input] != null)
+                        {
+                            raii CString loadName = new CString("inline.asm.input");
+                            arguments[input] = LLVM.LLVMBuildLoad2(builder, parameterTypes[input],
+                                storage, loadName.Pointer()); argumentValid = arguments[input] != null;
+                        }
+                    }
+                    if (!argumentValid || arguments[input] == null || parameterTypes[input] == null)
+                    { return LoweringFailure(tree, part.First(), "inline assembly input"); }
+                    input = input + 1;
+                }
+                child = child + 1;
+            }
+            raii string templateText = InlineAssemblyTemplate(tree, statement, outputCount, inputCount);
+            raii string constraintText = InlineAssemblyConstraints(tree, statement);
+            raii CString assembly = new CString(templateText); raii CString constraints = new CString(constraintText);
+            void* signature = LLVM.LLVMFunctionType(outputType, parameterTypes, (uint)inputCount, 0);
+            void* inlineAssembly = LLVM.LLVMGetInlineAsm(signature, assembly.Pointer(),
+                (ulong)templateText.Length, constraints.Pointer(), (ulong)constraintText.Length,
+                1, 0, 1, 0);
+            raii CString callName = new CString(outputCount == 0 ? "" : "inline.asm.result");
+            void* result = null;
+            if (inlineAssembly != null) { result = LLVM.LLVMBuildCall2(builder, signature,
+                inlineAssembly, arguments, (uint)inputCount, callName.Pointer()); }
+            if (result == null) { return LoweringFailure(tree, syntaxId, "inline assembly call"); }
+            if (outputCount == 1 && LLVM.LLVMBuildStore(builder, result, outputStorage) == null)
+            { return LoweringFailure(tree, syntaxId, "inline assembly store"); }
+            return true;
+        }
+
         private static bool EmitStatement(void* context, void* module, void* builder, void* i32, void* i1,
             SyntaxTree tree, SemanticModel semantic, int declarationId, void* function,
             FunctionLoweringState state, int syntaxId, out bool terminated)
@@ -2641,7 +2803,7 @@ namespace NativeSharp.Compiler.CodeGen
                 raii CString localName = new CString(node.Text());
                 void* storage = EmitEntryAlloca(builder, function, localType, localName.Pointer());
                 if (storage == null) { return false; }
-                state.AddLocal(semantic.NodeSymbol(syntaxId), storage, localType);
+                state.AddLocal(semantic.NodeSymbol(syntaxId), node.Text(), storage, localType);
                 void* value = LLVM.LLVMConstNull(localType);
                 if (node.First() >= 0)
                 {
@@ -2698,6 +2860,9 @@ namespace NativeSharp.Compiler.CodeGen
                 return true;
             }
             if (node.Kind() == "StaticAssertStatement") { return node.First() >= 0; }
+            if (node.Kind() == "InlineAssemblyStatement")
+            { return EmitInlineAssembly(module, builder, i32, i1, tree, semantic,
+                declarationId, function, state, syntaxId); }
             if (node.Kind() == "ThrowStatement")
             {
                 if (node.First() >= 0)
@@ -2959,7 +3124,7 @@ namespace NativeSharp.Compiler.CodeGen
                                 raii string message = String.Concat("nsc-next: backend indirect parameter lowering failed in ", node.Text());
                                 Console.ErrorWriteLine(message); return false;
                             }
-                            state.AddLocal(parameterSymbol, incoming, elementType);
+                            state.AddLocal(parameterSymbol, parameterNode.Text(), incoming, elementType);
                             parameter = parameter + 1; child = child + 1; continue;
                         }
                         int aggregateSize = UsesNativeAbi(semantic, syntaxId) ?
@@ -2981,7 +3146,7 @@ namespace NativeSharp.Compiler.CodeGen
                                     "nsc-next: backend aggregate parameter lowering failed in ", node.Text());
                                 Console.ErrorWriteLine(message); return false;
                             }
-                            state.AddLocal(semantic.NodeSymbol(childId), addressStorage,
+                            state.AddLocal(semantic.NodeSymbol(childId), parameterNode.Text(), addressStorage,
                                 LLVM.LLVMPointerTypeInContext(context, 0u));
                             parameter = parameter + 1; child = child + 1; continue;
                         }
@@ -2993,7 +3158,7 @@ namespace NativeSharp.Compiler.CodeGen
                             raii string message = String.Concat("nsc-next: backend parameter lowering failed in ", node.Text());
                             Console.ErrorWriteLine(message); return false;
                         }
-                        state.AddLocal(semantic.NodeSymbol(childId), storage, parameterType);
+                        state.AddLocal(semantic.NodeSymbol(childId), parameterNode.Text(), storage, parameterType);
                         parameter = parameter + 1;
                     }
                     child = child + 1;

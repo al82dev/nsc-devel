@@ -1,0 +1,76 @@
+namespace NativeSharp.SelfHost.Specialized
+{
+    public struct Vector4
+    {
+        public float X;
+        public float Y;
+        public float Z;
+        public float W;
+    }
+
+    public struct Matrix2
+    {
+        public float M00;
+        public float M01;
+        public float M10;
+        public float M11;
+    }
+
+    public struct HalfWord { public ushort Bits; }
+    public struct PackedColor { public uint Bits; }
+
+    public class NativeAssembly
+    {
+        extern C from ""
+        {
+            public int sh47_nsasm_probe();
+        }
+    }
+
+    public class Program
+    {
+        public static int InlineAdd(int left, int right)
+        {
+            int result;
+            asm {
+                mov $out0, $0
+                add $out0, $1
+            } out(result : "={eax}") in(left : "r", right : "r") clobber("cc");
+            return result;
+        }
+
+        public static int InlineMemory(int* value, int delta)
+        {
+            asm {
+                add dword ptr [$0], $1
+            } in(value : "r", delta : "r") clobber("cc", "memory");
+            return value[0];
+        }
+
+        public static int Main()
+        {
+            Vector4 left;
+            left.X = 1.0f; left.Y = 2.0f; left.Z = 3.0f; left.W = 4.0f;
+            Vector4 right;
+            right.X = 4.0f; right.Y = 3.0f; right.Z = 2.0f; right.W = 1.0f;
+            float dot = left.X * right.X + left.Y * right.Y + left.Z * right.Z + left.W * right.W;
+            if (dot != 20.0f) { return 1; }
+
+            Matrix2 matrix;
+            matrix.M00 = 1.0f; matrix.M01 = 2.0f; matrix.M10 = 3.0f; matrix.M11 = 4.0f;
+            float determinant = matrix.M00 * matrix.M11 - matrix.M01 * matrix.M10;
+            if (determinant != -2.0f) { return 2; }
+
+            HalfWord half; half.Bits = (ushort)15360;
+            PackedColor packed; packed.Bits = ((uint)42 << 16) | (uint)255;
+            if (half.Bits != (ushort)15360 || ((packed.Bits >> 16) & (uint)255) != (uint)42)
+            { return 3; }
+
+            int memory = 19;
+            if (InlineAdd(20, 22) != 42 || InlineMemory(&memory, 23) != 42 || memory != 42)
+            { return 4; }
+            if (NativeAssembly.sh47_nsasm_probe() != 42) { return 5; }
+            return 0;
+        }
+    }
+}

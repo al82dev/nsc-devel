@@ -21,7 +21,7 @@ namespace NativeSharp.Core.IO
     // GetDirectoryName/GetExtension (que son manipulacion de TEXTO -- el path de entrada nunca se
     // consulta contra el sistema operativo), "convertir un path relativo en absoluto" requiere
     // el directorio de trabajo actual del PROCESO -- un dato que solo el sistema operativo tiene
-    // (GetCurrentDirectory es parte implicita de como GetFullPathNameA resuelve un path relativo;
+    // (GetCurrentDirectory es parte implicita de como GetFullPathNameW resuelve un path relativo;
     // ver el comentario de cabecera de GetFullPath mas abajo y
     // `54_stage53_4_filesystem_paths_cierre.md` para el detalle completo). Por eso GetFullPath SI
     // es una operacion nucleo -- las demas siguen siendo NativeSharp puro, sin cambios.
@@ -147,7 +147,8 @@ namespace NativeSharp.Core.IO
             return String.Substring(fileName, 0, dotIndex);
         }
 
-        // Core operation: GetFullPathNameA. Convierte "path" en un path ABSOLUTO, resolviendo
+        // Core operation: GetFullPathNameW. Convierte el path UTF-8 en UTF-16, lo normaliza y
+        // devuelve nuevamente UTF-8. Convierte "path" en un path ABSOLUTO, resolviendo
         // "." y ".." y anteponiendo el directorio de trabajo actual del proceso si "path" era
         // relativo -- exactamente lo que System.IO.Path.GetFullPath hace en .NET real. Si "path"
         // ya es absoluto, lo normaliza (resuelve "." y ".." igual) pero no cambia su raiz.
@@ -160,10 +161,10 @@ namespace NativeSharp.Core.IO
         // misma clase, que SI son "owned string" por ser NativeSharp puro siguiendo la disciplina
         // de String.ns -- ver el comentario de cabecera de esta clase).
         //
-        // Simplificacion deliberada: si GetFullPathNameA falla, devuelve "" (string vacio) -- la
+        // Simplificacion deliberada: si GetFullPathNameW falla, devuelve "" (string vacio) -- la
         // misma simplificacion ya aplicada a Environment.GetEnvironmentVariable ante cualquier
         // fallo. IMPORTANTE, verificado bajo Wine (no una suposicion): un path VACIO ("") es uno
-        // de esos casos de fallo -- GetFullPathNameA("") devuelve 0, asi que GetFullPath("")
+        // de esos casos de fallo -- GetFullPathNameW("") devuelve 0, asi que GetFullPath("")
         // devuelve "" tambien. La intuicion inicial al diseñar esta ronda (que "" se resolveria
         // como el directorio de trabajo actual, igual que ".") resulto ser INCORRECTA y se
         // corrigio ANTES de empaquetar esta ronda -- usar "." (no "") para pedir el directorio de

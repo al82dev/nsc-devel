@@ -201,7 +201,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
         declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
-        self.assertEqual(len(declared), 125)
+        self.assertEqual(len(declared), 126)
         self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
         audited = set(contract["nsc0_import_symbols"]) | set(contract["bootstrap_extension_symbols"])
         self.assertTrue(set(declared).issubset(audited))
@@ -438,6 +438,10 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["linkers"], ["lld", "nslink"])
         verifier = (ROOT / "selfhost/bootstrap/verify_cross_machine_determinism.py").read_text()
         self.assertIn("requirement_met = peer is not None or required_machines == 1", verifier)
+        source_graph = (ROOT / "selfhost/nsc/Projects/SourceGraph.ns").read_text()
+        self.assertIn("File.Exists(normalized)", source_graph)
+        self.assertIn("ProjectLoader.Load(normalized)", source_graph)
+        self.assertIn("Path.GetDirectoryName(normalized)", source_graph)
 
     def test_sh12_fixed_point_contract_separates_local_and_cross_machine_proof(self) -> None:
         contract = json.loads((ROOT / "selfhost/contracts/fixed-point.contract.json").read_text())
@@ -574,6 +578,24 @@ class BootstrapInfrastructureTests(unittest.TestCase):
             self.assertIn(marker, backend)
         for api in ("LLVMBuildFAdd", "LLVMBuildFRem", "LLVMBuildFCmp", "LLVMBuildFPExt", "LLVMBuildFPToSI"):
             self.assertIn(api, backend)
+
+    def test_sh47_specialized_code_contract_covers_native_and_nsasm_boundaries(self) -> None:
+        contract = json.loads((ROOT / "selfhost/contracts/specialized-code.contract.json").read_text())
+        self.assertEqual(contract["schema"], "nativesharp-selfhost-specialized-code-contract")
+        self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
+        self.assertEqual(contract["linkers"], ["lld", "nslink"])
+        self.assertEqual(contract["expected_executions"], 8)
+        for surface in ("vectors", "matrices", "half", "packed-formats", "hardware-intrinsics",
+                        "inline-assembly", "floating-point-modes", "NSAsm"):
+            self.assertIn(surface, contract["surfaces"])
+
+    def test_sh47_backend_lowers_inline_assembly_through_llvm_c(self) -> None:
+        backend = (ROOT / "selfhost/nsc/CodeGen/LlvmBackend.ns").read_text()
+        binding = (ROOT / "lib/NativeSharp.LLVM.C/LLVMApi.ns").read_text()
+        self.assertIn("EmitInlineAssembly", backend)
+        self.assertIn("InlineAssemblyConstraints", backend)
+        self.assertIn("LLVMGetInlineAsm", backend)
+        self.assertIn("LLVMGetInlineAsm", binding)
 
 
 if __name__ == "__main__":

@@ -34,6 +34,16 @@ namespace NativeSharp.LLVM.C
             public void LLVMStructSetBody(void* structure, void** elementTypes, uint elementCount, int packed);
             public void* LLVMFunctionType(
                 void* returnType, void** parameterTypes, uint parameterCount, int variadic);
+            public void* LLVMGetInlineAsm(
+                void* functionType,
+                byte* assembly,
+                ulong assemblyLength,
+                byte* constraints,
+                ulong constraintsLength,
+                int hasSideEffects,
+                int alignStack,
+                int dialect,
+                int canThrow);
             public void* LLVMConstInt(void* integerType, ulong value, int signExtend);
             public void* LLVMConstReal(void* realType, double value);
             public void* LLVMConstNull(void* type);

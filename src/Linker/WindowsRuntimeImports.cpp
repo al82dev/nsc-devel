@@ -82,7 +82,7 @@ bool createWindowsImportLibraries(
         // Stage 53.4 "Filesystem/Paths (cierre)" -- Directory.Delete/Path.GetFullPath (see
         // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.
         "RemoveDirectoryA",
-        "GetFullPathNameA",
+        "GetFullPathNameW",
         // Bloque 4, fase A -- Environment.CurrentDirectory. ESTA LISTA ES EL DECIMO SITIO QUE HAY
         // QUE TOCAR, y no estaba en la tabla del doc 100: declarar el import con LLVMAddFunction
         // en WindowsRuntimeBuilder NO basta. Esa declaracion solo dice "existe un simbolo con
