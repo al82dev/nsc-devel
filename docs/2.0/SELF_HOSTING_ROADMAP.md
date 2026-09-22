@@ -897,7 +897,17 @@ estructurado del compilador autoalojado y 8/8 pruebas de diagnóstico/PDB/debugg
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-53-SH51-EXPERIENCIA-DESARROLLO.md`.
 
-### 8.50 Plan cerrado restante — Tandas 46–56
+### 8.50 Tanda 54 — SH52
+
+La robustez terminal está certificada contra 32 entradas hostiles en el compilador anfitrión y 8
+en el autoalojado, metadata corrupta, timeout cooperativo, interrupción externa y destino de salida
+hostil. Dos emisiones O0 limpias resultaron idénticas; no quedaron temporales ni dependencias
+`MessageBox`. La matriz dirigida añadió 7/7 pruebas de hardening, frontend, jobs/cancelación,
+reproducibilidad y compatibilidad de metadata.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-54-SH52-ROBUSTEZ.md`.
+
+### 8.51 Plan cerrado restante — Tandas 46–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a

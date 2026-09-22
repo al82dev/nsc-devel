@@ -1,0 +1,18 @@
+{
+  "schema": "nativesharp-selfhost-robustness-final-contract",
+  "version": 1,
+  "gate": "SH52",
+  "fuzz_cases": 32,
+  "selfhost_fuzz_cases": 8,
+  "timeout_ms": 1,
+  "interrupt_payload_mib": [8, 16, 32],
+  "ctests": [
+    "nsc.stage61.compiler-hardening",
+    "nsc.frontend-robustness",
+    "nsc.item373.job-dependencies-cancellation",
+    "nsc.item388.comptime-reproducibility",
+    "nsc.stage48_2.library-metadata",
+    "nsc.library-metadata-merger",
+    "nsc.stage50_9.metadata-host-compatibility"
+  ]
+}

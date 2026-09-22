@@ -1,0 +1,23 @@
+{
+  "schema": "nativesharp-selfhost-gate-summary",
+  "version": 1,
+  "gate": "SH52",
+  "tanda": 54,
+  "status": "passed",
+  "baseline_policy": "deferred-to-tanda-56-cumulative-baseline",
+  "directed_report": "build-test-lldlinker/selfhost-sh52/sh52-report.json",
+  "directed_report_sha256": "4a08d1e9cd9465d6b8c3384523e10b1390d6c06802fb1e1175980889ccb3965e",
+  "contract_sha256": "c6066d42d50d11378d8dce783c73366be4fc37dac66f44f8082879e319dd77cd",
+  "verifier_sha256": "1dd9923f5a620a22a56018d161d1e7636688580162601011bed1f0900f4a4842",
+  "host_fuzz_cases": 32,
+  "selfhost_fuzz_cases": 8,
+  "ctests": { "passed": 7, "expected": 7 },
+  "corrupt_metadata_rejected": true,
+  "cooperative_timeout": true,
+  "external_interruption": true,
+  "atomic_output_failure": true,
+  "reproducible_o0": true,
+  "messagebox_dependencies": [],
+  "temporary_leaks": [],
+  "failures": []
+}
