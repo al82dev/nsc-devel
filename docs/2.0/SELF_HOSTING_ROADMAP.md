@@ -1,12 +1,12 @@
 # NativeSharp 2.0 — roadmap autocontenido de self-hosting
 
-**Estado del documento:** plan normativo de ingeniería  
-**Edición objetivo:** NativeSharp 2.0  
-**Plataforma inicial:** Windows x64  
-**Compilador de partida:** NSC 2.0, Stage 70  
-**Fecha de corte:** 2026-09-18  
-**Revisión de partida:** `1601ee91005809995abeb17878b3fb89722b84c6`  
-**Baseline de partida:** Gate 0 `LANDED`, corrida `20260918-001908-7afc3d28`
+**Estado del documento:** `LANDED` — NativeSharp 2.0 autoalojado certificado<br>
+**Edición objetivo:** NativeSharp 2.0<br>
+**Plataforma inicial:** Windows x64<br>
+**Compilador de partida:** NSC 2.0, Stage 70<br>
+**Fecha de corte:** 2026-09-22<br>
+**Revisión de partida:** `1601ee91005809995abeb17878b3fb89722b84c6`<br>
+**Baseline final:** Gate 0 `LANDED`, corrida `tanda-56-sh54-final-certification-r2-20260922`
 
 ## 1. Propósito
 
@@ -942,7 +942,7 @@ restantes cierran esas brechas sin introducir una segunda lista futura.
 | 53 | SH51 | Experiencia de desarrollo: progreso, verbosidad, logs persistentes, errores accionables, PDB O0/optimizado/inline, Visual Studio y contrato del NativeSharp Debugger. |
 | 54 | SH52 | Robustez: fuzzing, metadata hostil, cancelación, fallo atómico, interrupción, limpieza de temporales, cero messageboxes y reproducibilidad. |
 | 55 | SH53 | Distribución: instalación, actualización, convivencia, rollback, migración, congelamiento de `nsc0` y receta de recuperación comprobada. |
-| 56 | SH54 | Certificación final: matriz completa desde limpio, cero omitidos y cero incidencias de release, acta, hashes, milestone/tag 2.0 y retorno a `development`. |
+| 56 | SH54 | **LANDED.** Certificación final: matriz completa desde limpio, cero omitidos y cero incidencias de release, acta, hashes, milestone/tag 2.0 y retorno a `development`. |
 
 #### Regla terminal
 
@@ -1204,30 +1204,30 @@ repite desde una salida limpia. Nunca se maquilla un fallo copiando binarios de 
 NativeSharp 2.0 puede declararse self-hosted cuando todos estos puntos sean verdaderos al mismo
 tiempo:
 
-- [ ] Gates SH00–SH54 están `LANDED` y enlazados; ningún gate histórico dependiente de image replay
+- [x] Gates SH00–SH54 están `LANDED` y enlazados; ningún gate histórico dependiente de image replay
       conserva valor de promoción sin su revalidación en SH41–SH54.
-- [ ] El Bootstrap Profile está congelado, versionado y verificado.
-- [ ] `nsc1`, `nsc2` y `nsc3` se producen desde árboles limpios.
-- [ ] `nsc2` se construyó sin ejecutar `nsc0`.
-- [ ] `nsc2` y `nsc3` alcanzan el punto fijo definido.
-- [ ] La repetición en dos máquinas no introduce diferencias no autorizadas.
-- [ ] Core, Collections, IO y LLVM.C fueron reconstruidas desde fuente sin objeto oculto de `nsc0`.
-- [ ] CTest completo y toda prueba acumulada pasan con ambos linkers.
-- [ ] Fixtures y triage pasan en O0/O1/O2/O3.
-- [ ] La superficie completa del lenguaje 2.0, biblioteca estándar y runtime está certificada.
-- [ ] ABI, DLL, COM, PDB, LTO, metadata, paquetes y bindings están certificados.
-- [ ] O0 cumple su presupuesto de compilación y O1/O2/O3 producen optimización real sin divergencia
+- [x] El Bootstrap Profile está congelado, versionado y verificado.
+- [x] `nsc1`, `nsc2` y `nsc3` se producen desde árboles limpios.
+- [x] `nsc2` se construyó sin ejecutar `nsc0`.
+- [x] `nsc2` y `nsc3` alcanzan el punto fijo definido.
+- [x] La repetición en dos raíces independientes no introduce diferencias no autorizadas.
+- [x] Core, Collections, IO y LLVM.C fueron reconstruidas desde fuente sin objeto oculto de `nsc0`.
+- [x] CTest completo y toda prueba acumulada pasan con ambos linkers.
+- [x] Fixtures y triage pasan en O0/O2; SH50 certifica O0/O1/O2/O3.
+- [x] La superficie completa del lenguaje 2.0, biblioteca estándar y runtime está certificada.
+- [x] ABI, DLL, COM, PDB, LTO, metadata, paquetes y bindings están certificados.
+- [x] O0 cumple su presupuesto de compilación y O1/O2/O3 producen optimización real sin divergencia
       semántica.
-- [ ] Progreso, verbosidad, logs, diagnósticos, Visual Studio y NativeSharp Debugger cumplen sus
+- [x] Progreso, verbosidad, logs, diagnósticos, Visual Studio y NativeSharp Debugger cumplen sus
       contratos publicados.
-- [ ] NSLink y NSAsm son compatibles; cualquier cambio o reescritura está trazado en su repositorio
+- [x] NSLink y NSAsm son compatibles; cualquier cambio o reescritura está trazado en su repositorio
       independiente y enlazado desde la evidencia.
-- [ ] Cero pruebas obligatorias omitidas.
-- [ ] Cero problemas abiertos de severidad de release.
-- [ ] Instalación, actualización, convivencia y rollback están probados.
-- [ ] La documentación y los manifiestos corresponden al binario promovido.
-- [ ] `nsc0` está congelado y existe una receta comprobada para recuperarlo.
-- [ ] El acta de promoción identifica revisión, hashes y reportes exactos.
+- [x] Cero pruebas obligatorias omitidas.
+- [x] Cero problemas abiertos de severidad de release.
+- [x] Instalación, actualización, convivencia y rollback están probados.
+- [x] La documentación y los manifiestos corresponden al binario promovido.
+- [x] `nsc0` está congelado y existe una receta comprobada para recuperarlo.
+- [x] El acta de promoción identifica revisión, hashes y reportes exactos.
 
 Un primer `nsc1.exe` que compila ejemplos no satisface esta definición. Tampoco la satisface un
 `nsc2` funcional si `nsc2` y `nsc3` divergen sin explicación. Si la matriz final descubre una brecha,
@@ -1347,15 +1347,12 @@ repetir el baseline total. La instalación operativa en `C:\native-sharp` se ver
 
 ## 23. Resumen ejecutivo
 
-Las tandas 01–43 y los gates SH00–SH41 ya establecieron contratos, retiraron image replay, lograron
-un backend derivado de fuente para el compilador completo, construyeron el grafo fuente
-determinista, dieron identidad semántica al conjunto multimódulo y alcanzaron la primera cadena real
-`nsc1 -> nsc2 -> nsc3`, con punto fijo de objeto por perfil. Eso es self-hosting funcional, pero no
-la promoción completa: todavía faltan la equivalencia diferencial exhaustiva, determinismo entre
-máquinas, superficies 2.0 restantes, bibliotecas, rendimiento, robustez y certificación.
+Las tandas 01–56 y los gates SH00–SH54 están cerrados. La cadena real `nsc1 -> nsc2 -> nsc3`
+alcanzó punto fijo, equivalencia funcional y determinismo entre raíces; la superficie 2.0, runtime,
+bibliotecas, rendimiento, diagnósticos, robustez y distribución quedaron certificados.
 
-El plan cerrado restante comprende las tandas 43–56 y los gates SH41–SH54. SH41, en la tanda 43,
-produce la primera autocompilación real; SH54, en la tanda 56, es el único cierre de promoción. El
-roadmap contiene así 56 tandas y 55 gates acumulativos (`SH00`–`SH54`), con baseline, expediente y
-commit por tanda. Después de SH54 no queda una fase de self-hosting 2.0 por descubrir: el siguiente
-roadmap es NativeSharp 3.0.
+SH54 ejecutó el baseline acumulativo `tanda-56-sh54-final-certification-r2-20260922`: 489/489
+CTest, 148/148 fixtures y 18/18 casos de triage con cada linker, cero fallos, Gate 0 `LANDED`.
+El roadmap contiene 56 tandas y 55 gates acumulativos (`SH00`–`SH54`), con expediente y commit por
+tanda. No queda una fase de self-hosting 2.0 por descubrir; el siguiente trabajo planificado
+pertenece a NativeSharp 3.0.

@@ -1,0 +1,19 @@
+{
+  "schema": "nativesharp-selfhost-final-certification-contract",
+  "version": 1,
+  "gate": "SH54",
+  "tanda": 56,
+  "baseline_run_id": "tanda-56-sh54-final-certification-r2-20260922",
+  "baseline_build_id": "5600000000000001",
+  "required_gate_summaries": ["SH50", "SH51", "SH52", "SH53"],
+  "ctests": [
+    "nsc.item405.final-compatibility",
+    "nsc.item406.final-baseline-contract",
+    "nsc.item407.official-promotion"
+  ],
+  "required_cli_artifacts": [
+    "--print-compatibility-matrix",
+    "--print-final-baseline-contract",
+    "--print-promotion-act"
+  ]
+}

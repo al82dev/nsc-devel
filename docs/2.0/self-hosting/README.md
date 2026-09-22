@@ -19,6 +19,9 @@ Este directorio contiene la documentación ejecutable del programa de self-hosti
   semántica autocontenidos con diferencial `nsc0` y estabilidad O0/O2 de todo el corpus.
 - Los reportes grandes, manifiestos, logs y resultados JSON se conservan en el directorio de
   evidencia generado por la orquestación y se enlazan desde el expediente con su hash.
+- `tandas/TANDA-56-SH54-CERTIFICACION-FINAL.md` cierra el programa: ambos linkers pasan 489 CTests,
+  148 fixtures y 18 casos de triage; Gate 0 queda `LANDED` sin incidencias de release.
 
 Una tanda no está cerrada sólo porque el código compile. Está cerrada cuando su expediente, pruebas,
-baseline completo y commit de cierre coinciden entre sí.
+baseline completo y commit de cierre coinciden entre sí. Las 56 tandas de NativeSharp 2.0 cumplen
+esa condición; el trabajo posterior pertenece al roadmap 3.0.

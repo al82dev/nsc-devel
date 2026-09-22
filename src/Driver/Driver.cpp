@@ -463,6 +463,53 @@ std::string metadataBaseTypeKey(std::string typeKey)
     return typeKey;
 }
 
+// The metadata spelling of an open generic declaration carries CLR-style arity
+// (`Module::Namespace.Type`1`).  That spelling is intentionally rejected by
+// sourceTypeForMetadataKey(): it is not a complete source type until arguments
+// have been supplied.  The parser's declaration lookahead needs less
+// information, however; it only needs to know that `Type` can begin a type.
+// Keep that lexical concern separate from metadata type materialization so a
+// reconstructed template can name a generic base that is emitted later in the
+// same source buffer.
+void appendParserKnownTypeNames(
+    const interop::LibraryMetadata &metadata,
+    const std::string &writtenTypeKey,
+    std::vector<std::string> &knownTypeNames)
+{
+    const std::string typeKey = metadataBaseTypeKey(writtenTypeKey);
+    if (!typeKey.starts_with("type:")) return;
+
+    const std::string_view identity(typeKey.data() + 5U, typeKey.size() - 5U);
+    const std::size_t moduleSeparator = identity.find("::");
+    if (moduleSeparator == std::string_view::npos || moduleSeparator + 2U == identity.size()) return;
+
+    std::string sourceName;
+    sourceName.reserve(identity.size() - moduleSeparator - 2U);
+    bool skippingArity = false;
+    for (const char character : identity.substr(moduleSeparator + 2U))
+    {
+        if (character == '`')
+        {
+            skippingArity = true;
+            continue;
+        }
+        if (skippingArity && character >= '0' && character <= '9') continue;
+        skippingArity = false;
+        sourceName.push_back(character == '+' ? '.' : character);
+    }
+    if (sourceName.empty()) return;
+
+    knownTypeNames.push_back(sourceName);
+    const std::size_t terminalSeparator = sourceName.find_last_of('.');
+    knownTypeNames.push_back(terminalSeparator == std::string::npos
+        ? sourceName
+        : sourceName.substr(terminalSeparator + 1U));
+
+    const std::string_view module = identity.substr(0, moduleSeparator);
+    if (!module.empty() && module != metadata.moduleName)
+        knownTypeNames.push_back(std::string(module) + "::" + sourceName);
+}
+
 const interop::LibraryMetadataType *metadataTypeForKey(
     const interop::LibraryMetadata &metadata, const std::string &typeKey)
 {
@@ -2123,14 +2170,7 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
     frontend::ProjectSyntaxUnit unit(0, 0, metadata.moduleName, fileId, true);
     std::vector<std::string> knownTypeNames;
     const auto appendKnownType = [&](const std::string &typeKey) {
-        const std::string baseKey = metadataBaseTypeKey(typeKey);
-        if (!baseKey.starts_with("type:")) return;
-        std::string sourceType;
-        std::string typeError;
-        if (!sourceTypeForMetadataKey(metadata, baseKey, sourceType, typeError)) return;
-        knownTypeNames.push_back(sourceType);
-        const std::size_t separator = sourceType.find_last_of(".+");
-        knownTypeNames.push_back(separator == std::string::npos ? sourceType : sourceType.substr(separator + 1U));
+        appendParserKnownTypeNames(metadata, typeKey, knownTypeNames);
     };
     for (const interop::LibraryMetadataType &type : metadata.types)
     {
@@ -2148,6 +2188,9 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
         appendKnownType(member.declaredTypeKey);
         for (const interop::LibraryMetadataParameter &parameter : member.parameters) appendKnownType(parameter.typeKey);
     }
+    constexpr std::uint8_t kGenericMethodKind = 3U;
+    for (const interop::LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
+        if (generic.kind != kGenericMethodKind) appendKnownType("type:" + generic.canonicalKey);
     std::sort(knownTypeNames.begin(), knownTypeNames.end());
     knownTypeNames.erase(std::unique(knownTypeNames.begin(), knownTypeNames.end()), knownTypeNames.end());
     if (unit.lex(*file, diagnostics) && unit.parse(diagnostics, knownTypeNames)) return true;
@@ -2261,18 +2304,13 @@ bool verifyPrecompiledGenericTemplateSource(
 
     std::vector<std::string> knownTypeNames;
     const auto appendKnownType = [&](const std::string &typeKey) {
-        const std::string baseKey = metadataBaseTypeKey(typeKey);
-        if (!baseKey.starts_with("type:")) return;
-        std::string sourceType;
-        std::string typeError;
-        if (!sourceTypeForMetadataKey(metadata, baseKey, sourceType, typeError)) return;
-        knownTypeNames.push_back(sourceType);
-        const std::size_t separator = sourceType.find_last_of(".+");
-        knownTypeNames.push_back(
-            separator == std::string::npos ? sourceType : sourceType.substr(separator + 1U));
+        appendParserKnownTypeNames(metadata, typeKey, knownTypeNames);
     };
     for (const interop::LibraryMetadataType &type : metadata.types)
         appendKnownType("type:" + type.identityKey);
+    constexpr std::uint8_t kGenericMethodKind = 3U;
+    for (const interop::LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
+        if (generic.kind != kGenericMethodKind) appendKnownType("type:" + generic.canonicalKey);
     for (const std::string &typeKey : metadata.externalTypeKeys) appendKnownType(typeKey);
     std::sort(knownTypeNames.begin(), knownTypeNames.end());
     knownTypeNames.erase(

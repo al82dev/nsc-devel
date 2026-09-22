@@ -1,0 +1,29 @@
+{
+  "schema": "nativesharp-selfhost-gate-summary",
+  "version": 1,
+  "gate": "SH54",
+  "tanda": 56,
+  "status": "LANDED",
+  "baseline_run_id": "tanda-56-sh54-final-certification-r2-20260922",
+  "baseline_build_id": "5600000000000001",
+  "baseline_seconds": 8467.879,
+  "baseline_report": "_nscbuilder/history/tanda-56-sh54-final-certification-r2-20260922/report.md",
+  "baseline_report_sha256": "370ccb60de801ebe32c655ee4cf3ecef830c66b21b3cb82899ea4a51ed7e9cae",
+  "baseline_metadata_sha256": "b47d1e984ea0d8ec454543ed6ea49c546afaa90514f3a370f27b11baf9dacd60",
+  "gate0_sha256": "67f90974e39798f732e0762e793c0c5ead04db2badc4d27306844afd94bca198",
+  "contract_sha256": "1219b4f7b4d704666299a333ce80a0cc75d33826f5688d6022da5f26a8d46b1e",
+  "verifier_sha256": "ad64dd7c7c58fc7120747a6b2ef1d59ec7bc43a14ad2497d2269ee860d20d76e",
+  "cmake_gate_sha256": "cfd411431a06e7816a45d4f99733de98e430cc1f10c601ccb94735af92da17e0",
+  "bootstrap_lock_sha256": "40b81ee899b898a3cfe3f6cba7c2dcacb1c52da5f634ac03ec2adb0b28ca730a",
+  "installed_nsc_sha256": "7c8a5d2178a8bd79b85b00d4514229320e50a723894d11ca5485c893a57faf06",
+  "lld_link": { "ctests": 489, "fixtures": 148, "triage": 18, "failures": 0 },
+  "nslink": { "ctests": 489, "fixtures": 148, "triage": 18, "failures": 0 },
+  "gate0": { "certified": true, "state": "LANDED", "problems": [] },
+  "failed_attempt": {
+    "run_id": "tanda-56-sh54-final-certification-20260922",
+    "status": "failed-and-superseded",
+    "reason": "open generic declaration names were not seeded for metadata template read-back",
+    "corrective_test": "nsc.stage46.native-libraries"
+  },
+  "failures": []
+}
