@@ -13,6 +13,8 @@ namespace NativeSharp.Compiler.Projects
         private owned List<string> sources;
         private owned List<string> references;
         private owned List<string> metadataReferences;
+        private owned List<string> packageReferences;
+        private owned List<string> nativeReferences;
         private owned string sdk;
 
         public ProjectModel(string projectPath)
@@ -20,6 +22,7 @@ namespace NativeSharp.Compiler.Projects
             path = String.Copy(projectPath); name = String.Copy(""); outputType = String.Copy("Exe");
             sdk = String.Copy("NativeSharp/2.0"); sources = new List<string>(); references = new List<string>();
             metadataReferences = new List<string>();
+            packageReferences = new List<string>(); nativeReferences = new List<string>();
         }
         public string PathValue() { return path; }
         public string Name() { return name; }
@@ -31,12 +34,18 @@ namespace NativeSharp.Compiler.Projects
         public void AddSource(string value) { raii string copy = String.Copy(value); sources.Add(move(copy)); }
         public void AddReference(string value) { raii string copy = String.Copy(value); references.Add(move(copy)); }
         public void AddMetadataReference(string value) { raii string copy = String.Copy(value); metadataReferences.Add(move(copy)); }
+        public void AddPackageReference(string value) { raii string copy = String.Copy(value); packageReferences.Add(move(copy)); }
+        public void AddNativeReference(string value) { raii string copy = String.Copy(value); nativeReferences.Add(move(copy)); }
         public int SourceCount() { return sources.Count(); }
         public string SourceAt(int index) { return sources[index]; }
         public int ReferenceCount() { return references.Count(); }
         public string ReferenceAt(int index) { return references[index]; }
         public int MetadataReferenceCount() { return metadataReferences.Count(); }
         public string MetadataReferenceAt(int index) { return metadataReferences[index]; }
+        public int PackageReferenceCount() { return packageReferences.Count(); }
+        public string PackageReferenceAt(int index) { return packageReferences[index]; }
+        public int NativeReferenceCount() { return nativeReferences.Count(); }
+        public string NativeReferenceAt(int index) { return nativeReferences[index]; }
     }
 
     public class ProjectLoader
@@ -137,6 +146,35 @@ namespace NativeSharp.Compiler.Projects
             }
         }
 
+        private static void DependencyAttributes(string xml, string element, ProjectModel model, bool nativeReference)
+        {
+            raii string prefix = String.Concat("<", element); raii string needle = String.Copy("Include=\"");
+            raii string rest = String.Copy(xml);
+            while (true)
+            {
+                int elementAt = String.IndexOf(rest, prefix); if (elementAt < 0) { break; }
+                raii string elementTail = String.Substring(rest, elementAt, rest.Length - elementAt);
+                int finish = String.IndexOf(elementTail, ">"); if (finish < 0) { break; }
+                raii string declaration = String.Substring(elementTail, 0, finish + 1);
+                int valueAt = String.IndexOf(declaration, needle);
+                if (valueAt >= 0)
+                {
+                    int start = valueAt + needle.Length;
+                    raii string valueTail = String.Substring(declaration, start, declaration.Length - start);
+                    int quote = String.IndexOf(valueTail, "\"");
+                    if (quote >= 0)
+                    {
+                        raii string value = String.Substring(valueTail, 0, quote);
+                        if (nativeReference) { model.AddNativeReference(value); }
+                        else { model.AddPackageReference(value); }
+                    }
+                }
+                int consumed = elementAt + finish + 1;
+                raii string next = String.Substring(rest, consumed, rest.Length - consumed);
+                rest = move(next);
+            }
+        }
+
         public static owned ProjectModel Load(string projectPath)
         {
             raii ProjectModel model = new ProjectModel(projectPath);
@@ -150,6 +188,8 @@ namespace NativeSharp.Compiler.Projects
             Attributes(xml, "Compile", "Include", model, false);
             Attributes(xml, "ProjectReference", "Include", model, true);
             MetadataAttributes(xml, model);
+            DependencyAttributes(xml, "PackageReference", model, false);
+            DependencyAttributes(xml, "NativeReference", model, true);
             return move(model);
         }
 
@@ -209,6 +249,10 @@ namespace NativeSharp.Compiler.Projects
             }
             int reference = 0; while (reference < project.ReferenceCount())
             { output.Append("reference "); output.Append(project.ReferenceAt(reference)); output.Append('\n'); reference = reference + 1; }
+            int packageReference = 0; while (packageReference < project.PackageReferenceCount())
+            { output.Append("package "); output.Append(project.PackageReferenceAt(packageReference)); output.Append('\n'); packageReference = packageReference + 1; }
+            int nativeReference = 0; while (nativeReference < project.NativeReferenceCount())
+            { output.Append("native "); output.Append(project.NativeReferenceAt(nativeReference)); output.Append('\n'); nativeReference = nativeReference + 1; }
             return output.ToOwnedString();
         }
     }
@@ -246,7 +290,11 @@ namespace NativeSharp.Compiler.Projects
             raii StringBuilder value = new StringBuilder(); value.Append("toolchain.manifest schema=1\nproject=");
             value.Append(project.Name()); value.Append("\ntarget=x86_64-pc-windows-msvc\nprofile=");
             value.Append(profile); value.Append("\nlinker="); value.Append(linker);
-            value.Append("\nruntime-abi=1.0\nlanguage=2.0\ncache-key="); value.Append(key); value.Append('\n');
+            value.Append("\nsdk="); value.Append(project.Sdk());
+            value.Append("\nruntime-abi=1.0\nlanguage=2.0\nmetadata-compatibility=N-1,N");
+            value.Append("\ncomptime=sandboxed\nsanitizer=native\npackages=");
+            value.Append(project.PackageReferenceCount()); value.Append("\nprecompiled-bindings=");
+            value.Append(project.NativeReferenceCount()); value.Append("\ncache-key="); value.Append(key); value.Append('\n');
             return value.ToOwnedString();
         }
     }

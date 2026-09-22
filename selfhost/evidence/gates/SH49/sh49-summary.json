@@ -1,0 +1,30 @@
+{
+  "baseline": {
+    "build_id": "5100000000000001",
+    "ctest_lld": "484/484",
+    "ctest_nslink": "484/484",
+    "fixtures_lld": "148/148",
+    "fixtures_nslink": "148/148",
+    "report_sha256": "6e715dbc2467fda52ec72e0e45422b5290312748dfdbf22ed27f51d2e0bcddd1",
+    "run_id": "tanda-51-sh49-advanced-toolchain-20260922",
+    "status": "passed",
+    "total_seconds": 7916.541,
+    "triage_lld": "18/18",
+    "triage_nslink": "18/18"
+  },
+  "directed": {
+    "contract_sha256": "c24ee165a3c2fec1fa1fc7c36eee646cbf3ba5fcebcb3015b056a9ed44c144a1",
+    "ctests": "14/14",
+    "manifest_deterministic": true,
+    "manifest_sha256": "062805f9cf9de1151994229ce129dbd7b5f802baf82ca6836845b6f93ec54944",
+    "metadata": "N-1,N",
+    "report_sha256": "b1031ebb2204a3d99c0405cbbc709c801467eef8c5bd3b3b33297ec13cf01574",
+    "status": "passed",
+    "verifier_sha256": "d7a2c3a8d228fb4cef7885291b6159efe50d7916b897944e6ac6ad919be10a52"
+  },
+  "gate": "SH49",
+  "schema": "nativesharp-selfhost-gate-summary",
+  "status": "LANDED",
+  "tanda": 51,
+  "version": 1
+}

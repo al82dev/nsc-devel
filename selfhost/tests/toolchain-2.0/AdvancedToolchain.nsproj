@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <Name>AdvancedToolchain</Name>
+    <OutputType>Facade</OutputType>
+    <Sdk>NativeSharp/2.0</Sdk>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <PackageReference Include="NativeSharp.Foundation/2.0.0" />
+    <NativeReference Include="NativeSharp.Foundation.nsmeta" />
+  </ItemGroup>
+</Project>

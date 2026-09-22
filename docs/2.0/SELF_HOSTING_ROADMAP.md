@@ -867,7 +867,16 @@ determinista en O0–O3 y ejecutó el runtime Win32 con ambos linkers. El baseli
 
 Expediente: `docs/2.0/self-hosting/tandas/TANDA-50-SH48-BIBLIOTECA-RUNTIME.md`.
 
-### 8.47 Plan cerrado restante — Tandas 46–56
+### 8.47 Tanda 51 — SH49
+
+El toolchain avanzado está certificado alrededor del compilador autoalojado. El modelo conserva
+SDK, paquetes y bindings precompilados; el manifiesto determinista publica comptime sandboxed,
+sanitizer y metadata N−1/N. El gate dirigido aprobó 14/14 pruebas y el baseline acumulado aprobó
+484/484 CTests, 148/148 fixtures y 18/18 casos de triaje por enlazador.
+
+Expediente: `docs/2.0/self-hosting/tandas/TANDA-51-SH49-TOOLCHAIN-AVANZADO.md`.
+
+### 8.48 Plan cerrado restante — Tandas 46–56
 
 La auditoría posterior a SH27 confirma que `nsc-next` ya posee grafo fuente, identidad semántica
 entre unidades y emisión LLVM ejecutable del programa raíz completo. Eso no equivale aún a

@@ -1,0 +1,31 @@
+{
+  "schema": "nativesharp-selfhost-advanced-toolchain-contract",
+  "version": 1,
+  "gate": "SH49",
+  "project": "selfhost/tests/toolchain-2.0/AdvancedToolchain.nsproj",
+  "metadata_versions": [1, 2],
+  "required_manifest": {
+    "sdk": "NativeSharp/2.0",
+    "comptime": "sandboxed",
+    "sanitizer": "native",
+    "packages": 1,
+    "precompiled-bindings": 1,
+    "metadata-compatibility": "N-1,N"
+  },
+  "ctests": [
+    "nsc.item334.declarative-sdk-format",
+    "nsc.item335.sdk-mapping",
+    "nsc.item336.sdk-target-selection",
+    "nsc.item337.sdk-diagnostics",
+    "nsc.item385.comptime-core",
+    "nsc.item386.comptime-sandbox",
+    "nsc.item387.comptime-cache",
+    "nsc.item388.comptime-reproducibility",
+    "nsc.item389-native-sanitizer",
+    "nsc.stage48_2.library-metadata",
+    "nsc.library-metadata-merger",
+    "nsc.stage50_9.metadata-host-compatibility",
+    "nsc.stage62.toolchain-contract",
+    "nsc.item393-compatibility-matrix"
+  ]
+}

@@ -1,0 +1,9 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.SelfHost.Toolchain
+{
+    public static class AdvancedToolchainFixture
+    {
+        public static int Value() { return 42; }
+    }
+}
