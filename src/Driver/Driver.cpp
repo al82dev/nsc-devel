@@ -1,4 +1,5 @@
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Driver/ProjectCommands.h"
 #include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/CompilationProfile.h"
@@ -2906,6 +2907,14 @@ void removePackagedFiles(std::span<const std::filesystem::path> copiedFiles)
 
 ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &output, std::ostream &error) const
 {
+    if (!arguments.empty() && isProjectCommand(arguments.front()))
+    {
+        return runProjectCommand(arguments, output, error,
+            [this](std::span<const std::string_view> nested, std::ostream& nestedOutput,
+                   std::ostream& nestedError) {
+                return run(nested, nestedOutput, nestedError);
+            });
+    }
     DriverExecutionScope executionScope(output, error);
     llvm_backend::LlvmOptimizationBudgetScope optimizationBudgetScope(executionScope.o2Budget);
     CompilationJobPolicy jobPolicy;
@@ -4111,6 +4120,16 @@ void Driver::printHelp(std::ostream &output)
 {
     output << "NativeSharp compiler (NativeSharp " << kLanguageVersion << ", stage " << kCompilerStage << ")\n\n"
            << "Usage:\n"
+           << "  nsc new <console|classlib|dll> -n <name> [-o <directory>] [--force]\n"
+           << "  nsc restore [file.nsproj] [--force|--locked-mode|--verify] [--source <directory>]\n"
+           << "  nsc build [file.nsproj] [-c Debug|Release] [-O0|-O1|-O2|-O3] "
+              "[-g0|-gline-tables-only|-g] [--linker NSLink|lld-link] [--no-restore]\n"
+           << "  nsc run [file.nsproj] [build options] [-- program arguments]\n"
+           << "  nsc clean [file.nsproj]\n"
+           << "  nsc add package <id> [--version <version>] [--source <directory>] [file.nsproj]\n"
+           << "  nsc remove package <id> [file.nsproj]\n"
+           << "  nsc list package [file.nsproj]\n"
+           << "  Add --output-format=json to project commands for machine-readable output.\n\n"
            << "  nsc --check-project <file.nsproj>\n"
            << "  nsc --dump-project <file.nsproj>\n"
            << "  nsc --check-project-graph <file.nsproj>\n"

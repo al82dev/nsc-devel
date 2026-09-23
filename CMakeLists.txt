@@ -390,6 +390,7 @@ add_library(nsc_driver STATIC
     src/Driver/MigrationBaseline.cpp
     src/Driver/MigrationGuide.cpp
     src/Driver/PackageLifecycle.cpp
+    src/Driver/ProjectCommands.cpp
     src/Driver/PromotionAct.cpp
     src/Driver/ReleaseCandidateFreeze.cpp
     src/Driver/ToolchainContract.cpp
@@ -3224,6 +3225,12 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_driver_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_driver_tests)
     add_test(NAME nsc.driver COMMAND nsc_driver_tests)
+
+    add_executable(nsc_project_commands_tests tests/unit/ProjectCommandsTests.cpp)
+    target_link_libraries(nsc_project_commands_tests PRIVATE nsc_driver nsc_frontend nsc_target)
+    target_compile_features(nsc_project_commands_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_project_commands_tests)
+    add_test(NAME nsc.project-commands COMMAND nsc_project_commands_tests)
 
     add_executable(nsc_compilation_worker_pool_tests tests/unit/CompilationWorkerPoolTests.cpp)
     target_link_libraries(nsc_compilation_worker_pool_tests PRIVATE nsc_driver)
