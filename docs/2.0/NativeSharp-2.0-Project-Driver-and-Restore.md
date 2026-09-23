@@ -34,6 +34,8 @@ también son JSON y conservan la clase de salida de NSC.
   artefacto.
 - `obj/nativesharp/packages/<id>/<version>` contiene la materialización reproducible.
 - `bin/<Debug|Release>` contiene el producto final.
+- Si existe `<proyecto>/Content`, `build` publica el árbol completo en
+  `bin/<Debug|Release>/Content`, conservando sus subdirectorios.
 
 El package puede declarar `NativeSharp.package.json`, `package.json` o `.nspackage.json`:
 
@@ -72,6 +74,8 @@ le entrega un callback que vuelve a entrar únicamente con una acción de emisi�
 - `makeGeneratedProject()`, que inyecta `LibraryReference` sólo en un `.nsproj` temporal junto al
   proyecto propietario para conservar el significado de globs y referencias relativas;
 - `executeBuild()`, que reutiliza los emisores OOP actuales y selecciona NSLink o lld-link;
+- `publishContentDirectory()`, que prepara recursivamente `Content` en staging y reemplaza la
+  publicación anterior sólo después de completar la copia;
 - lanzamiento Win32 con quoting compatible con `CreateProcessW`;
 - `clean` restringido a `bin`, `obj` y nombres transitorios conocidos.
 
@@ -86,6 +90,7 @@ le entrega un callback que vuelve a entrar únicamente con una acción de emisi�
 6. `Main.ns` nunca se reemplaza al crear un proyecto.
 7. El `.nsproj` temporal se elimina por RAII también ante fallo del compilador.
 8. `clean` nunca recibe globs ni elimina fuera de la raíz propietaria.
+9. `Content` no admite enlaces simbólicos y nunca se publica parcialmente.
 
 ## Compatibilidad
 

@@ -1,5 +1,6 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Driver/ProjectCommands.h"
 
 #include "../support/TestContext.h"
 
@@ -51,7 +52,36 @@ int main()
         tests.expect(code == ExitCode::Success && fs::is_regular_file(project),
                      "new creates a strict NativeSharp project");
         tests.expect(output.str().find("\"success\":true") != std::string::npos && error.str().empty(),
-                     "new emits one successful JSON protocol document");
+                      "new emits one successful JSON protocol document");
+    }
+
+    {
+        writeFile(projectRoot / "Content/title.txt", "NativeSharp");
+        writeFile(projectRoot / "Content/shaders/default.vert", "shader");
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string> owned{"build", project.string(), "--no-restore", "--output-format=json"};
+        std::vector<std::string_view> arguments;
+        for (const std::string& value : owned) arguments.push_back(value);
+        const auto compiler = [](std::span<const std::string_view> compilerArguments,
+                                 std::ostream&, std::ostream&) {
+            for (std::size_t index = 0; index + 1 < compilerArguments.size(); ++index)
+            {
+                if (compilerArguments[index] == "-o")
+                {
+                    writeFile(fs::path(compilerArguments[index + 1]), "executable");
+                    return ExitCode::Success;
+                }
+            }
+            return ExitCode::CommandLineError;
+        };
+        const ExitCode code = nativesharp::driver::runProjectCommand(arguments, output, error, compiler);
+        tests.expect(code == ExitCode::Success &&
+                     fs::is_regular_file(projectRoot / "bin/Debug/Content/title.txt") &&
+                     fs::is_regular_file(projectRoot / "bin/Debug/Content/shaders/default.vert"),
+                     "build recursively publishes the project Content directory");
+        tests.expect(output.str().find("\"contentFiles\":2") != std::string::npos && error.str().empty(),
+                     "build reports the number of published Content files");
     }
 
     const fs::path package = root / "packages" / "NativeSharp.Test" / "2.0.0";

@@ -984,6 +984,113 @@ private:
     fs::path path_;
 };
 
+bool publishContentDirectory(const fs::path& projectRoot, const fs::path& outputDirectory,
+                             std::size_t& copiedFiles, std::string& error)
+{
+    copiedFiles = 0;
+    const fs::path source = projectRoot / "Content";
+    std::error_code fileError;
+    const bool sourceExists = fs::exists(source, fileError);
+    if (fileError)
+    {
+        error = "cannot inspect project Content directory: " + fileError.message();
+        return false;
+    }
+    if (!sourceExists) return true;
+    if (!fs::is_directory(source, fileError) || fileError)
+    {
+        error = "project Content path is not a directory: '" + pathText(source) + "'";
+        return false;
+    }
+
+#if defined(_WIN32)
+    const std::string token = std::to_string(_getpid());
+#else
+    const std::string token = "content";
+#endif
+    const fs::path destination = outputDirectory / "Content";
+    const fs::path staging = outputDirectory / (".nspm.Content.stage." + token);
+    const fs::path backup = outputDirectory / (".nspm.Content.backup." + token);
+    fs::remove_all(staging, fileError);
+    fileError.clear();
+    fs::remove_all(backup, fileError);
+    fileError.clear();
+    fs::create_directories(staging, fileError);
+    if (fileError)
+    {
+        error = "cannot create Content staging directory: " + fileError.message();
+        return false;
+    }
+
+    auto fail = [&](std::string message) {
+        std::error_code cleanupError;
+        fs::remove_all(staging, cleanupError);
+        error = std::move(message);
+        return false;
+    };
+
+    fs::recursive_directory_iterator iterator(source, fileError);
+    const fs::recursive_directory_iterator end;
+    if (fileError) return fail("cannot enumerate project Content directory: " + fileError.message());
+    while (iterator != end)
+    {
+        const fs::directory_entry& entry = *iterator;
+        const fs::path relative = fs::relative(entry.path(), source, fileError);
+        if (fileError) return fail("cannot resolve a Content path: " + fileError.message());
+        const fs::file_status status = entry.symlink_status(fileError);
+        if (fileError) return fail("cannot inspect Content entry: " + fileError.message());
+        const fs::path target = staging / relative;
+        if (fs::is_symlink(status))
+            return fail("Content does not permit symbolic links: '" + pathText(entry.path()) + "'");
+        if (fs::is_directory(status))
+        {
+            fs::create_directories(target, fileError);
+            if (fileError) return fail("cannot create Content directory: " + fileError.message());
+        }
+        else if (fs::is_regular_file(status))
+        {
+            fs::create_directories(target.parent_path(), fileError);
+            if (fileError) return fail("cannot create Content parent directory: " + fileError.message());
+            fs::copy_file(entry.path(), target, fs::copy_options::overwrite_existing, fileError);
+            if (fileError) return fail("cannot copy Content file: " + fileError.message());
+            ++copiedFiles;
+        }
+        else
+            return fail("Content contains an unsupported filesystem entry: '" + pathText(entry.path()) + "'");
+        iterator.increment(fileError);
+        if (fileError) return fail("cannot enumerate project Content directory: " + fileError.message());
+    }
+
+    const bool destinationExists = fs::exists(destination, fileError);
+    if (fileError) return fail("cannot inspect output Content directory: " + fileError.message());
+    if (destinationExists)
+    {
+        fs::rename(destination, backup, fileError);
+        if (fileError) return fail("cannot preserve the previous Content directory: " + fileError.message());
+    }
+    fs::rename(staging, destination, fileError);
+    if (fileError)
+    {
+        const std::string publishError = fileError.message();
+        if (destinationExists)
+        {
+            std::error_code rollbackError;
+            fs::rename(backup, destination, rollbackError);
+        }
+        return fail("cannot publish Content directory: " + publishError);
+    }
+    if (destinationExists)
+    {
+        fs::remove_all(backup, fileError);
+        if (fileError)
+        {
+            error = "Content was published but its previous backup could not be removed: " + fileError.message();
+            return false;
+        }
+    }
+    return true;
+}
+
 class EnvironmentOverride final
 {
 public:
@@ -1171,11 +1278,15 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
             return result.failure(error, compilerError.str().empty() ? "compiler failed" : compilerError.str(), code);
         return code;
     }
+    std::size_t contentFiles = 0;
+    if (!publishContentDirectory(project.parent_path(), artifact.parent_path(), contentFiles, message))
+        return result.failure(error, message, ExitCode::InternalError);
     if (buildResult != nullptr) *buildResult = BuildResult{project, artifact, compilerOutput.str(), compilerError.str()};
     return result.success(output, "Build succeeded: " + artifact.string(),
         "\"artifact\":\"" + jsonEscape(pathText(artifact)) + "\",\"configuration\":\"" +
         jsonEscape(configuration) + "\",\"optimization\":\"" + jsonEscape(optimization) +
-        "\",\"linker\":\"" + jsonEscape(linker) + "\",\"stdout\":\"" +
+        "\",\"linker\":\"" + jsonEscape(linker) + "\",\"contentFiles\":" +
+        std::to_string(contentFiles) + ",\"stdout\":\"" +
         jsonEscape(compilerOutput.str()) + "\",\"stderr\":\"" + jsonEscape(compilerError.str()) + "\"");
 }
 
