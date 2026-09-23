@@ -1893,6 +1893,200 @@ namespace PublicReferenceArraySurface
                  "NSMETA publication and DLL exports agree for arrays of public reference types (" +
                      error + ")");
 }
+
+void testDelegateAggregateSignaturesPublishCompleteDllContract(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const auto producer = root / "DelegateAggregateProducer";
+    writeProject(producer, "DelegateAggregateProducer", "SharedLibrary", R"NS(
+namespace DelegateAggregateContracts
+{
+    internal struct CallbackPayload
+    {
+        public int Value;
+    }
+
+    public extern C delegate void CallbackA(int value);
+    public extern C delegate void CallbackB(void* context);
+    public extern C delegate void RecursiveCallback(RecursiveConfiguration* configuration);
+    public extern C delegate void PayloadCallback(CallbackPayload* payload);
+
+    public struct Configuration
+    {
+        public CallbackA First;
+        public CallbackB Second;
+        public void* UserData;
+    }
+
+    public struct RecursiveConfiguration
+    {
+        public RecursiveCallback Callback;
+    }
+
+    public class Api
+    {
+        public static void AcceptDelegate(CallbackA callback)
+        {
+        }
+
+        public static void AcceptStructPointer(Configuration* configuration)
+        {
+        }
+
+        public static Configuration ReturnStruct()
+        {
+            return default(Configuration);
+        }
+
+        public static Configuration* ReturnStructPointer()
+        {
+            return null;
+        }
+
+        public static Configuration Create(
+            CallbackA first,
+            CallbackB second,
+            void* userData)
+        {
+            Configuration result = default(Configuration);
+            result.First = first;
+            result.Second = second;
+            result.UserData = userData;
+            return result;
+        }
+
+        public static void AcceptRecursive(RecursiveCallback callback)
+        {
+        }
+
+        public static RecursiveConfiguration ReturnRecursive()
+        {
+            return default(RecursiveConfiguration);
+        }
+
+        public static void AcceptPayload(PayloadCallback callback)
+        {
+        }
+    }
+}
+)NS");
+
+    const auto project = producer / "DelegateAggregateProducer.nsproj";
+    const auto library = producer / "DelegateAggregateProducer.lib";
+    const auto runtime = producer / "DelegateAggregateProducer.dll";
+    const auto metadataPath = producer / "DelegateAggregateProducer.nsmeta";
+    std::string output;
+    std::string error;
+    const std::string producerProject = project.string();
+    const std::string producerRuntime = runtime.string();
+    const std::array<std::string_view, 5> producerArgs = {
+        "-O0", "--emit-project-oop-dll", producerProject, "-o", producerRuntime};
+    tests.expect(runDriver(producerArgs, output, error) == ExitCode::Success,
+                 "delegate-aggregate producer emits DLL/LIB/NSMETA (" + error + ")");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    error.clear();
+    const bool read = codec.read(metadataPath, metadata, error);
+    tests.expect(read, "delegate-aggregate NSMETA decodes (" + error + ")");
+    const LibraryMetadataType* callbackA =
+        findType(metadata, "::DelegateAggregateContracts.CallbackA");
+    const LibraryMetadataType* callbackB =
+        findType(metadata, "::DelegateAggregateContracts.CallbackB");
+    const LibraryMetadataType* configuration =
+        findType(metadata, "::DelegateAggregateContracts.Configuration");
+    const LibraryMetadataType* callbackPayload =
+        findType(metadata, "::DelegateAggregateContracts.CallbackPayload");
+    tests.expect(read && callbackA != nullptr && callbackB != nullptr &&
+                     callbackA->kind == LibraryMetadataTypeKind::Delegate &&
+                     callbackB->kind == LibraryMetadataTypeKind::Delegate &&
+                     callbackA->delegateFlags == 1U && callbackB->delegateFlags == 1U,
+                 "NSMETA preserves both extern C delegate identities and calling conventions");
+    tests.expect(read && configuration != nullptr &&
+                     configuration->kind == LibraryMetadataTypeKind::Struct &&
+                     configuration->fields.size() == 3U &&
+                     configuration->fields[0].typeKey.ends_with(
+                         "::DelegateAggregateContracts.CallbackA") &&
+                     configuration->fields[1].typeKey.ends_with(
+                         "::DelegateAggregateContracts.CallbackB"),
+                 "NSMETA preserves delegate fields in the public struct layout");
+    tests.expect(read && callbackPayload != nullptr &&
+                     callbackPayload->kind == LibraryMetadataTypeKind::Struct,
+                 "delegate signature closure publishes its non-root payload type");
+    const std::array<std::string_view, 8> expectedMethods = {
+        "AcceptDelegate", "AcceptStructPointer", "ReturnStruct", "ReturnStructPointer", "Create",
+        "AcceptRecursive", "ReturnRecursive", "AcceptPayload"};
+    for (const std::string_view name : expectedMethods)
+    {
+        tests.expect(std::ranges::any_of(metadata.members, [&](const LibraryMetadataMember& member) {
+                         return member.name == name &&
+                             member.declaringTypeKey.ends_with(
+                                 "::DelegateAggregateContracts.Api") &&
+                             !member.mangledName.empty();
+                     }),
+                     "NSMETA publishes delegate-reachable method '" + std::string(name) + "'");
+    }
+
+    output.clear();
+    error.clear();
+    tests.expect(verifyArtifacts(metadataPath, library, runtime, output, error) == ExitCode::Success,
+                 "delegate-aggregate DLL exports exactly match NSMETA (" + error + ")");
+
+    const auto consumer = root / "DelegateAggregateConsumer";
+    writeFile(consumer / "DelegateAggregateConsumer.nsproj",
+        "<Project><PropertyGroup><Name>DelegateAggregateConsumer</Name>"
+        "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+        "<Compile Include=\"**/*.ns\" />"
+        "<LibraryReference Include=\"" + library.generic_string() + "\" Metadata=\"" +
+        metadataPath.generic_string() + "\" Runtime=\"" + runtime.generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(consumer / "Program.ns", R"NS(
+using DelegateAggregateContracts;
+
+class Program
+{
+    public static void OnA(int value)
+    {
+    }
+
+    public static void OnB(void* context)
+    {
+    }
+
+    public static int Main()
+    {
+        CallbackA first = Program.OnA;
+        CallbackB second = Program.OnB;
+        RecursiveCallback recursive = Program.OnRecursive;
+        Configuration configuration = Api.Create(first, second, null);
+        Api.AcceptDelegate(first);
+        Api.AcceptStructPointer(&configuration);
+        Configuration returned = Api.ReturnStruct();
+        Configuration* pointer = Api.ReturnStructPointer();
+        Api.AcceptRecursive(recursive);
+        RecursiveConfiguration recursiveConfiguration = Api.ReturnRecursive();
+        return returned.UserData == null && pointer == null &&
+            recursiveConfiguration.Callback == null ? 0 : 1;
+    }
+
+    public static void OnRecursive(RecursiveConfiguration* configuration)
+    {
+    }
+}
+)NS");
+
+    const std::string consumerProject =
+        (consumer / "DelegateAggregateConsumer.nsproj").string();
+    const std::string executable = (consumer / "DelegateAggregateConsumer.exe").string();
+    const std::array<std::string_view, 5> consumerArgs = {
+        "-O0", "--emit-project-oop-exe", consumerProject, "-o", executable};
+    output.clear();
+    error.clear();
+    tests.expect(runDriver(consumerArgs, output, error) == ExitCode::Success,
+                 "source-free LibraryReference consumer compiles every delegate-reachable method (" +
+                     error + ")");
+}
 void testPrecompiledStoreGenericKeepsModuleQualifier(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -2014,6 +2208,7 @@ int main()
     testPublicInterfaceSignaturesMatchDllExports(tests, root);
     testPrecompiledStoreGenericKeepsModuleQualifier(tests, root);
     testPublicReferenceArraysMatchDllExports(tests, root);
+    testDelegateAggregateSignaturesPublishCompleteDllContract(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

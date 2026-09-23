@@ -738,6 +738,29 @@ bool buildMetadataModel(
                         addedPublishedType = publishedRootTypes.insert(interfaceOrdinal).second ||
                             addedPublishedType;
             }
+            // A delegate is a nominal type whose signature owns additional type edges.  Those
+            // edges are not ClassMemberSymbols and do not appear in an object layout, so walking
+            // only members and fields stops one node too early.  Preserve the complete transitive
+            // contract even when a delegate parameter or return type is itself a non-root helper.
+            if (typeOrdinal < types.size() &&
+                types[typeOrdinal].kind == frontend::NamedTypeDeclarationKind::Delegate &&
+                types[typeOrdinal].syntax != nullptr)
+            {
+                const ast::AstNode* delegateSyntax = types[typeOrdinal].syntax;
+                addedPublishedType = includeTypeKey(compilation.memberModel()->canonicalTypeKey(
+                    delegateSyntax->typeSyntax(), *compilation.nameLookup())) || addedPublishedType;
+                for (const ast::AstNode* parameter : delegateSyntax->children())
+                {
+                    if (parameter != nullptr &&
+                        parameter->kind() == ast::AstNodeKind::ParameterDeclaration)
+                    {
+                        addedPublishedType = includeTypeKey(
+                            compilation.memberModel()->canonicalTypeKey(
+                                parameter->typeSyntax(), *compilation.nameLookup())) ||
+                            addedPublishedType;
+                    }
+                }
+            }
             const frontend::StructValueLayout* structLayout =
                 compilation.objectLayoutModel()->structLayoutForType(typeOrdinal);
             const frontend::ClassObjectLayout* classLayout =

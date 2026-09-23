@@ -809,11 +809,18 @@ bool canMaterializeContractType(
         const bool managedAbiKnown = metadata.formatMinor >= 8 &&
                                      metadata.delegateAbiVersion == interop::kDelegateAbiVersion &&
                                      metadata.managedDelegateCellSize == interop::kManagedDelegateCellSize;
-        if (metadata.formatMinor < 5 || (!externC && !managedAbiKnown) || type->delegateReturnTypeKey.empty() ||
-            !visiting.insert(type->identityKey).second)
+        if (metadata.formatMinor < 5 || (!externC && !managedAbiKnown) ||
+            type->delegateReturnTypeKey.empty())
         {
             return false;
         }
+        // Re-entering a delegate is a completed nominal edge, not an invalid signature.  A
+        // callback can receive a pointer to a struct that stores that same callback type (the
+        // ImDrawCallback -> ImDrawCmd* -> ImDrawCallback shape).  Struct recursion below already
+        // accepts this closure; rejecting it only at the delegate node made otherwise complete
+        // NSMETA methods disappear from the materialized contract and left their physical DLL
+        // exports looking unexpected.
+        if (!visiting.insert(type->identityKey).second) return true;
         bool valid = canMaterializeContractType(metadata, type->delegateReturnTypeKey, visiting);
         for (const std::string &parameterTypeKey : type->delegateParameterTypeKeys)
             valid = canMaterializeContractType(metadata, parameterTypeKey, visiting) && valid;
