@@ -1,0 +1,208 @@
+{
+  "coworkUserFilesPath": "C:\\Users\\al82dev\\Claude",
+  "mcpServers": {
+    "nsexec": {
+      "command": "A:\\nativesharp-exec-mcp\\publish\\nsexec-mcp.exe",
+      "args": [
+        "--config",
+        "A:\\nativesharp-exec-mcp\\publish\\nsexec-mcp.config.json"
+      ]
+    }
+  },
+  "preferences": {
+    "coworkBrowserToolsEnabled": true,
+    "coworkPreferredBrowser": "built_in",
+    "launchPreviewPersistedWorkspaces": [],
+    "launchPreviewSessionScopedSessions": [],
+    "localAgentModeTrustedFolders": [
+      "A:\\nsc-devel",
+      "A:\\nslink-devel",
+      "A:\\nsc-bindings-devel",
+      "A:\\Saru",
+      "A:\\nsasm-devel",
+      "A:\\development_saru_sharp",
+      "A:\\SaruCore",
+      "A:\\native-sharp-historicos",
+      "A:\\SaruCSHARP",
+      "A:\\SaruFrameworkGLNativeSharp",
+      "A:\\NSC-DEVEL-BRANCHES\\nsc-devel-runtime-2.0",
+      "C:\\native-sharp",
+      "A:\\NativeSharpGames\\Pikshits",
+      "A:\\native-sharp-debugger",
+      "A:\\native-sharp-runtime-2.0",
+      "A:\\al82dev-tools\\apps\\SharpVideoDownloader",
+      "X:\\SaruFrameworkGLNativeSharp"
+    ],
+    "remoteFolderConsentMemory": [
+      "A:\\nslink-devel",
+      "A:\\Saru",
+      "A:\\nsc-devel",
+      "A:\\nsasm-devel",
+      "A:\\development_saru_sharp",
+      "A:\\SaruCore",
+      "A:\\nsc-bindings-devel"
+    ],
+    "remoteSessionFolderGrants": {
+      "session_01YYJbppyFdKwQY9VdSUmNQf": [
+        "A:\\nsc-devel",
+        "C:\\native-sharp",
+        "A:\\nslink-devel",
+        "C:\\clang-llvm"
+      ],
+      "session_01KJGVRhsMkDLScDcXLtYeRK": [
+        "A:\\nslink-devel",
+        "A:\\nsc-devel"
+      ],
+      "session_01PWwGzHqw5Cz7Ba4NdrTWoW": [
+        "A:\\nsc-bindings-devel",
+        "C:\\native-sharp",
+        "A:\\nsc-devel"
+      ],
+      "session_01R5DdeDqbpgTWLJnSA6km17": [
+        "A:\\nslink-devel",
+        "A:\\Saru",
+        "A:\\nsc-devel",
+        "A:\\nsasm-devel",
+        "A:\\development_saru_sharp",
+        "A:\\nsc-bindings-devel",
+        "A:\\Silk.NET-main"
+      ],
+      "session_01CkPLQbtGHGB261M2Xumhwj": [
+        "A:\\nsasm-devel",
+        "A:\\nsc-devel",
+        "A:\\nslink-devel",
+        "A:\\SaruCore",
+        "A:\\nsc-bindings-devel"
+      ],
+      "session_01QKYbkouWizkncBcJgPnrWt": [
+        "A:\\SaruCore",
+        "A:\\nsc-devel",
+        "C:\\native-sharp"
+      ],
+      "session_01QRgXJgABr3bTax6BA91cjZ": [
+        "A:\\native-sharp-historicos"
+      ],
+      "session_0132szGuA2FJBaZmJMLZcAKy": [
+        "A:\\nsasm-devel",
+        "A:\\nsc-bindings-devel",
+        "A:\\nsc-devel",
+        "A:\\nslink-devel"
+      ],
+      "session_01ELo6AXtye2BLLbYXNeDPru": [
+        "A:\\SaruCSHARP",
+        "A:\\SaruFrameworkGLNativeSharp",
+        "A:\\nsc-devel\\spec",
+        "C:\\native-sharp\\lib"
+      ],
+      "session_0138JYFrpcV59HDqevRGYTfM": [
+        "A:\\nsc-devel",
+        "A:\\NSC-DEVEL-BRANCHES\\nsc-devel-runtime-2.0",
+        "C:\\native-sharp",
+        "A:\\native-sharp-runtime-2.0",
+        "C:\\native-sharp-experimental",
+        "A:\\nsc-bindings-devel"
+      ],
+      "session_01GTdQgz2SZkTD1vXFZ3V3sX": [
+        "A:\\development_saru_sharp\\LunarBallSaru",
+        "C:\\native-sharp"
+      ],
+      "session_01UXvfqipvf2noavFDorhYeN": [
+        "A:\\development_saru_sharp\\NeoGravity",
+        "C:\\native-sharp"
+      ],
+      "session_011932KfXjxyzDnvEnorM6zW": [
+        "A:\\development_saru_sharp\\Pikshits-Saru",
+        "A:\\nsc-bindings-devel",
+        "A:\\NativeSharpGames\\Pikshits",
+        "A:\\SaruFrameworkGLNativeSharp",
+        "A:\\development_saru_sharp\\al82dev\\Saru",
+        "A:\\development_saru_sharp\\SaruAl82DevPort\\Source"
+      ],
+      "session_01HRjiSFCZ4m3QaTTCTYCRzY": [
+        "A:\\SaruFrameworkGLNativeSharp",
+        "A:\\nsc-devel",
+        "C:\\Users\\al82dev\\Desktop\\KtxTool"
+      ],
+      "session_01BfnSSi7koghvZvXBTLaBTV": [
+        "A:\\nsasm-devel",
+        "A:\\nsc-bindings-devel",
+        "A:\\nsc-devel",
+        "A:\\nslink-devel",
+        "A:\\SaruFrameworkGLNativeSharp",
+        "A:\\native-sharp-debugger",
+        "A:\\native-sharp-runtime-2.0",
+        "C:\\native-sharp",
+        "X:\\emulators",
+        "X:\\SaruEmu",
+        "X:\\SaruFrameworkGLNativeSharp",
+        "X:\\native-sharp",
+        "A:\\nativesharp-exec-mcp\\publish"
+      ],
+      "session_019VtLLcTbfrtscabSRUjnvo": [
+        "A:\\al82dev-tools\\apps\\SharpVideoDownloader"
+      ],
+      "session_01Aw1Lqgi4hBFm4W87GyVDPn": [
+        "C:\\native-sharp",
+        "X:\\SaruFrameworkGLNativeSharp",
+        "X:\\NativeSharp-Games\\SaruQix",
+        "X:\\NativeSharp-Games\\SpotGame",
+        "X:\\NativeSharp-Games\\PongGameplayImproved",
+        "X:\\NativeSharp-Games\\Pong",
+        "X:\\NativeSharp-Games\\HelloSprite2D",
+        "X:\\NativeSharp-Games\\HelloPrimitives2D"
+      ],
+      "session_01NauL2L8B36PdvDP15VWHRx": [
+        "A:\\nsc-devel",
+        "A:\\nsasm-devel",
+        "A:\\nslink-devel",
+        "A:\\apps\\git",
+        "X:\\SaruEmu",
+        "X:\\SaruFrameworkGLNativeSharp"
+      ]
+    },
+    "coworkLegacyRootGrantsPruned": true,
+    "coworkScheduledTasksEnabled": true,
+    "coworkHipaaRestricted": false,
+    "orgWorkAcrossAppsDisabled": false,
+    "ccdScheduledTasksEnabled": true,
+    "earlyWindowShowLatched": true,
+    "storeReadCacheLatched": true,
+    "sidebarMode": "chat",
+    "bypassPermissionsGateByAccount": {
+      "06bb8484-d74d-4df9-864c-ad3e9e600d26": false
+    },
+    "coworkWebSearchEnabled": true,
+    "coworkModelAutoFallbackByAccount": {
+      "06bb8484-d74d-4df9-864c-ad3e9e600d26": true
+    },
+    "remoteToolsDeviceName": "zebes",
+    "epitaxyPrefs": {
+      "starred-local-code-sessions": [],
+      "starred-cowork-spaces": [],
+      "starred-session-groups": [],
+      "ccd-sessions-filter": {
+        "state": {
+          "selectedProjects": []
+        },
+        "version": 0
+      },
+      "desktop-frame.paneStore.v1": {
+        "state": {
+          "extraPanesByMode": {},
+          "colWeightsByMode": {},
+          "rowSplit": 0.5,
+          "draftNonce": 0,
+          "lastPrimaryCodeSession": null
+        },
+        "version": 4
+      },
+      "dframe-group-scopes": {},
+      "dframe-local-slice": {
+        "pinnedOrder": [],
+        "homeProjectsPinnedOrder": []
+      },
+      "epitaxy-transcript-links-in-preview": false,
+      "epitaxy-transcript-links-chooser-seen": true
+    }
+  }
+}

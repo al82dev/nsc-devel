@@ -2185,7 +2185,7 @@ class PipelineWorker(QObject):
         started = time.monotonic()
         before_failed = self.failed
         cases = [CaseSpec(project, label, 42, "bug triage") for project, label in TRIAGE_CASES]
-        work = [(case, optimization) for case in cases for optimization in ("-O0", "-O2")]
+        work = [(case, optimization) for case in cases for optimization in ("-O0", "-O2", "-O3")]
         self._emit(
             f"{name}: {len(work)} trabajos internos, {self.plan.jobs} en paralelo",
             "info",
@@ -2501,7 +2501,7 @@ class PipelineWorker(QObject):
         assert self.run_dir is not None
         reports: list[dict] = []
         linkers = list(dict.fromkeys(["Compilador", *self.plan.linkers]))
-        optimizations = ("General", "O0", "O2")
+        optimizations = ("General", "O0", "O2", "O3")
         for linker in linkers:
             for optimization in optimizations:
                 rows = [
@@ -2632,7 +2632,7 @@ class PipelineWorker(QObject):
         self.console_path = self.run_dir / "console.log"
         self.console_path.touch()
         for channel in dict.fromkeys(["Compilador", *self.plan.linkers]):
-            for optimization in ("General", "O0", "O2"):
+            for optimization in ("General", "O0", "O2", "O3"):
                 channel_console = (
                     self.run_dir
                     / safe_name(channel)
@@ -2876,11 +2876,13 @@ class MainWindow(QMainWindow):
         self.opt_o0.setChecked(True)
         self.opt_o2 = QCheckBox("O2")
         self.opt_o2.setChecked(True)
+        self.opt_o3 = QCheckBox("O3")
         opt_box = QWidget()
         opt_layout = QHBoxLayout(opt_box)
         opt_layout.setContentsMargins(0, 0, 0, 0)
         opt_layout.addWidget(self.opt_o0)
         opt_layout.addWidget(self.opt_o2)
+        opt_layout.addWidget(self.opt_o3)
         opt_layout.addStretch()
 
         grid.addWidget(QLabel("Construcción"), 0, 0)
@@ -3091,7 +3093,7 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.progress_bar)
 
         self.output_channels = ("Compilador", "LLD-link", "NSLink")
-        self.output_optimizations = ("General", "O0", "O2")
+        self.output_optimizations = ("General", "O0", "O2", "O3")
         self.channel_consoles: dict[tuple[str, str], QTextEdit] = {}
         self.channel_error_tables: dict[str, QTableWidget] = {}
         self.channel_error_counts: dict[str, int] = {}
@@ -3153,7 +3155,8 @@ class MainWindow(QMainWindow):
             self.linker_mode,
         ):
             widget.currentIndexChanged.connect(self._update_plan_summary)
-        for widget in (self.stage_ctest, self.stage_cases, self.stage_triage, self.opt_o0, self.opt_o2):
+        for widget in (self.stage_ctest, self.stage_cases, self.stage_triage, self.opt_o0, self.opt_o2,
+                       self.opt_o3):
             widget.toggled.connect(self._update_plan_summary)
         self.compiler_jobs.valueChanged.connect(self._update_plan_summary)
         self.test_jobs.valueChanged.connect(self._update_plan_summary)
@@ -3786,7 +3789,8 @@ class MainWindow(QMainWindow):
             tests.append("bug triage")
         test_text = ", ".join(tests) if tests else "ninguna prueba"
         test_mode = "sin compilar nada: solo el nsc instalado"
-        optimizations = [name for checked, name in ((self.opt_o0.isChecked(), "O0"), (self.opt_o2.isChecked(), "O2")) if checked]
+        optimizations = [name for checked, name in ((self.opt_o0.isChecked(), "O0"), (self.opt_o2.isChecked(), "O2"),
+                                  (self.opt_o3.isChecked(), "O3")) if checked]
         selected_linkers = list(self.linker_mode.currentData())
         build_paths = {
             "lld-link": self.test_build_lld_path.text().strip(),
@@ -4204,8 +4208,10 @@ class MainWindow(QMainWindow):
             optimizations.append("-O0")
         if self.opt_o2.isChecked():
             optimizations.append("-O2")
+        if self.opt_o3.isChecked():
+            optimizations.append("-O3")
         if operation == "language" and self.stage_cases.isChecked() and not optimizations:
-            QMessageBox.warning(self, APP_NAME, "Selecciona O0, O2 o ambos.")
+            QMessageBox.warning(self, APP_NAME, "Selecciona por lo menos uno de O0, O2 y O3.")
             return None
         selected_ctests = {
             "unit": self._selected_unit_values,
