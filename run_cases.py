@@ -4,8 +4,9 @@ NativeSharp -- construye y ejecuta TODAS las fixtures y ejemplos EN PARALELO.
 
 POR QUE EXISTE
 --------------
-El checklist las corria en serie, una `call :run_case` detras de otra: 47 casos x 2 niveles de
-optimizacion = 94 compilaciones y enlazados, uno despues de otro, en una maquina con muchos nucleos
+El checklist las corria en serie, una `call :run_case` detras de otra. La matriz actual ejecuta
+cada caso en O0, O1, O2 y O3, con compilaciones y enlaces independientes en paralelo en vez de
+dejarlos uno despues de otro en una maquina con muchos nucleos
 ociosos. Cada caso es independiente de los demas --su propio .obj, su propio .exe, su propia
 salida-- asi que la serie no compraba nada.
 
@@ -22,7 +23,7 @@ EL REQUISITO DURO, y no es opcional
 
     rmdir /s /q lib\\NativeSharp.Core   +   xcopy desde el prefijo instalado
 
-En serie eso solo desperdicia 94 sincronizaciones. EN PARALELO ES UNA CARRERA QUE CORROMPE `lib\\`:
+En serie eso desperdicia una sincronizacion por trabajo. EN PARALELO ES UNA CARRERA QUE CORROMPE `lib\\`:
 un proceso borra el directorio mientras otro lo esta leyendo, y el fallo sale en un caso al azar
 con un mensaje que no tiene nada que ver.
 
@@ -79,7 +80,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cases_table import CASES, IC, LC, CC  # noqa: E402
 
 
-OPT_LEVELS = ("-O0", "-O2")
+OPT_LEVELS = ("-O0", "-O1", "-O2", "-O3")
 
 
 _LINKER_PATH_CACHE: str | None = None

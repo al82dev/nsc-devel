@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import runpy
 import shutil
 import sys
 import tempfile
@@ -36,6 +37,14 @@ class BootstrapInfrastructureTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
+
+    def test_import_uses_headless_signals_without_loading_qt(self) -> None:
+        self.assertTrue(nscbuilder.HEADLESS)
+        worker = nscbuilder.PipelineWorker(nscbuilder.make_baseline_plan(1), [])
+        received: list[str] = []
+        worker.stage_started.connect(received.append)
+        worker.stage_started.emit("probe")
+        self.assertEqual(received, ["probe"])
 
     def test_configuration_precedence_environment_over_file(self) -> None:
         config = {"paths": {"prefix": "A:\\from-config"}}
@@ -104,6 +113,57 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         rejected = nscbuilder.validate_plan_write_paths(plan)
         self.assertIn(str((self.root / "forbidden").resolve()), rejected)
         self.assertNotIn(str((allowed / "build").resolve()), rejected)
+
+    def test_baseline_plan_covers_every_optimization_and_both_linkers(self) -> None:
+        plan = nscbuilder.make_baseline_plan(4)
+        self.assertEqual(plan.optimizations, ["-O0", "-O1", "-O2", "-O3"])
+        self.assertEqual(plan.linkers, ["lld-link", "NSLink"])
+        self.assertTrue(plan.run_ctest)
+        self.assertTrue(plan.run_cases)
+        self.assertTrue(plan.run_triage)
+
+    def test_cmake_configuration_explicitly_sets_or_clears_build_identity(self) -> None:
+        distributable = nscbuilder.make_baseline_plan(1, build_id_override="")
+        distributable_command = nscbuilder.PipelineWorker(
+            distributable, []
+        )._configure_command(build_tests=False)
+        self.assertIn("-DNSC_BUILD_ID_OVERRIDE=", distributable_command)
+
+        reproducible = nscbuilder.make_baseline_plan(
+            1, build_id_override="2000000000000000"
+        )
+        reproducible_command = nscbuilder.PipelineWorker(
+            reproducible, []
+        )._configure_command(build_tests=False)
+        self.assertIn(
+            "-DNSC_BUILD_ID_OVERRIDE=2000000000000000",
+            reproducible_command,
+        )
+
+    def test_performance_baseline_uses_the_selected_compiler_installation(self) -> None:
+        module = runpy.run_path(str(ROOT / "tools/nsc_performance_baseline.py"))
+        compiler = self.root / "selected-prefix" / "bin" / "nsc.exe"
+        environment = module["make_environment"](
+            "lld-link",
+            compiler,
+            Path(r"C:\clang-llvm"),
+            Path(r"C:\native-sharp\bin\nslink.exe"),
+        )
+        self.assertEqual(
+            Path(environment["NS_ROOT"]),
+            (self.root / "selected-prefix").resolve(),
+        )
+        self.assertEqual(
+            Path(environment["NS_LIB_ROOT"]),
+            (self.root / "selected-prefix" / "lib").resolve(),
+        )
+
+    def test_legacy_windows_runners_cover_all_optimization_levels(self) -> None:
+        run_cases = (ROOT / "run_cases.py").read_text(encoding="utf-8")
+        self.assertIn('OPT_LEVELS = ("-O0", "-O1", "-O2", "-O3")', run_cases)
+        triage = (ROOT / "run_bug_triage.bat").read_text(encoding="utf-8")
+        for level in ("O0", "O1", "O2", "O3"):
+            self.assertIn(f'call :one "%TPROJ%" "%TNAME%" {level}', triage)
 
     def test_configured_build_is_usable_but_not_deletable_until_marked(self) -> None:
         allowed = self.root / "allowed"

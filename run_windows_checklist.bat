@@ -5,7 +5,7 @@ REM ---------------------------------------------------------------------------
 REM NativeSharp -- real Windows execution checklist.
 REM
 REM Builds and installs the compiler, runs ctest, then BUILDS AND RUNS every
-REM interop contract fixture and every Stage 56 packaged example at -O0 and -O2,
+REM interop contract fixture and every Stage 56 packaged example at -O0 through -O3,
 REM comparing the real process exit code against the documented contract.
 REM
 REM MODOS
@@ -307,8 +307,9 @@ echo [2/5] ctest omitido ^(modo quick^).
 
 REM --- 3+4. Fixtures y ejemplos, EN PARALELO -----------------------------------
 REM
-REM Antes eran dos bloques de `call :run_case` en serie: 40 casos x 2 niveles de
-REM optimizacion = 80 compilaciones y enlazados, uno detras de otro, con los nucleos
+REM Antes eran dos bloques de `call :run_case` en serie. Hoy cada caso cubre los cuatro
+REM niveles O0/O1/O2/O3, con compilaciones y enlaces independientes, en vez de dejarlos
+REM uno detras de otro con los nucleos
 REM de la maquina parados. Cada caso es independiente --su propio .obj, su propio
 REM .exe, su propia salida-- asi que la serie no compraba nada.
 REM
@@ -398,7 +399,7 @@ if not exist "%CPROJ%" (
     exit /b 0
 )
 
-for %%O in (O0 O2) do (
+for %%O in (O0 O1 O2 O3) do (
     set "NSC_OPT=-%%O"
     set "CEXE=%BINDIR%\%CNAME%_%%O.exe"
     >> "%CLOG%" echo.
@@ -432,7 +433,7 @@ if not exist "%CPROJ%" (
     exit /b 0
 )
 
-for %%O in (O0 O2) do (
+for %%O in (O0 O1 O2 O3) do (
     set "NSC_OPT=-%%O"
     set "CEXE=%BINDIR%\%CNAME%_%%O.exe"
     >> "%CLOG%" echo.

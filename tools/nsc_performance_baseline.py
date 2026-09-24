@@ -170,7 +170,12 @@ def load_corpora(path: Path) -> list[Corpus]:
     return result
 
 
-def make_environment(linker: str, llvm_root: Path, nslink: Path) -> dict[str, str]:
+def make_environment(
+    linker: str,
+    compiler: Path,
+    llvm_root: Path,
+    nslink: Path,
+) -> dict[str, str]:
     env = dict(os.environ)
     native_sharp_root = compiler.resolve().parent.parent
     env["NS_ROOT"] = str(native_sharp_root)
@@ -219,7 +224,7 @@ def compile_job(
         str(artifact),
     ]
     linker = job.linker if job.artifact == "exe" else "none"
-    env = make_environment(job.linker, llvm_root, nslink)
+    env = make_environment(job.linker, compiler, llvm_root, nslink)
     exit_code, output, wall_ms, peak = run_process(command, ROOT, env)
     log.write_text(output, encoding="utf-8")
     phases = {name: int(value) for name, value in TIME_RE.findall(output)}

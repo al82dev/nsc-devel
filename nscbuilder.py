@@ -46,50 +46,117 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable
 
-try:
-    from PySide6.QtCore import QObject, QProcess, QSettings, QThread, QTimer, Qt, QUrl, Signal, Slot
-    from PySide6.QtGui import (
-        QColor,
-        QDesktopServices,
-        QFontDatabase,
-        QKeySequence,
-        QShortcut,
-        QTextCharFormat,
-        QTextCursor,
-    )
-    from PySide6.QtWidgets import (
-        QAbstractItemView,
-        QApplication,
-        QCheckBox,
-        QComboBox,
-        QDockWidget,
-        QFormLayout,
-        QGridLayout,
-        QGroupBox,
-        QHBoxLayout,
-        QHeaderView,
-        QLabel,
-        QLineEdit,
-        QListWidget,
-        QListWidgetItem,
-        QMainWindow,
-        QMessageBox,
-        QPlainTextEdit,
-        QProgressBar,
-        QPushButton,
-        QSpinBox,
-        QTableWidget,
-        QTableWidgetItem,
-        QTabWidget,
-        QTextEdit,
-        QVBoxLayout,
-        QWidget,
-    )
-except ModuleNotFoundError as exc:  # pragma: no cover - depende de la máquina del usuario
-    if exc.name and exc.name.startswith("PySide6"):
-        print("PySide6 no está instalado. Instálalo con: python -m pip install PySide6")
-        raise SystemExit(2) from exc
-    raise
+
+# El runner de consola y los tests no necesitan Qt. Importar PySide6 en esos modos hacía que un
+# problema nativo de shiboken6 derribara también `--baseline` antes de procesar un solo argumento.
+# Cuando este archivo se importa como módulo, o se ejecuta con --baseline/--help, se proporcionan
+# únicamente las primitivas de señales que usa PipelineWorker. La GUI conserva los imports reales.
+HEADLESS = __name__ != "__main__" or any(arg in ("--baseline", "--help") for arg in sys.argv[1:])
+
+if HEADLESS:
+    class _HeadlessBoundSignal:
+        def __init__(self) -> None:
+            self.callbacks: list[Callable[..., object]] = []
+
+        def connect(self, callback: Callable[..., object]) -> None:
+            self.callbacks.append(callback)
+
+        def emit(self, *args: object) -> None:
+            for callback in tuple(self.callbacks):
+                callback(*args)
+
+
+    class Signal:  # type: ignore[no-redef]
+        def __init__(self, *_types: object) -> None:
+            self.name = ""
+
+        def __set_name__(self, _owner: type, name: str) -> None:
+            self.name = f"__headless_signal_{name}"
+
+        def __get__(self, instance: object, _owner: type | None = None) -> object:
+            if instance is None:
+                return self
+            values = vars(instance)
+            if self.name not in values:
+                values[self.name] = _HeadlessBoundSignal()
+            return values[self.name]
+
+
+    def Slot(*_types: object, **_options: object):  # type: ignore[no-redef]
+        def decorate(function: Callable[..., object]) -> Callable[..., object]:
+            return function
+
+        return decorate
+
+
+    class QObject:  # type: ignore[no-redef]
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+
+    class _GuiUnavailableMeta(type):
+        def __getattr__(cls, _name: str) -> type:
+            return cls
+
+
+    class _GuiUnavailable(metaclass=_GuiUnavailableMeta):
+        pass
+
+
+    QMainWindow = _GuiUnavailable
+    QProcess = QSettings = QThread = QTimer = Qt = QUrl = _GuiUnavailable
+    QColor = QDesktopServices = QFontDatabase = QKeySequence = QShortcut = _GuiUnavailable
+    QTextCharFormat = QTextCursor = _GuiUnavailable
+    QAbstractItemView = QApplication = QCheckBox = QComboBox = QDockWidget = _GuiUnavailable
+    QFormLayout = QGridLayout = QGroupBox = QHBoxLayout = QHeaderView = QLabel = _GuiUnavailable
+    QLineEdit = QListWidget = QListWidgetItem = QMessageBox = QPlainTextEdit = _GuiUnavailable
+    QProgressBar = QPushButton = QSpinBox = QTableWidget = QTableWidgetItem = _GuiUnavailable
+    QTabWidget = QTextEdit = QVBoxLayout = QWidget = _GuiUnavailable
+else:
+    try:
+        from PySide6.QtCore import QObject, QProcess, QSettings, QThread, QTimer, Qt, QUrl, Signal, Slot
+        from PySide6.QtGui import (
+            QColor,
+            QDesktopServices,
+            QFontDatabase,
+            QKeySequence,
+            QShortcut,
+            QTextCharFormat,
+            QTextCursor,
+        )
+        from PySide6.QtWidgets import (
+            QAbstractItemView,
+            QApplication,
+            QCheckBox,
+            QComboBox,
+            QDockWidget,
+            QFormLayout,
+            QGridLayout,
+            QGroupBox,
+            QHBoxLayout,
+            QHeaderView,
+            QLabel,
+            QLineEdit,
+            QListWidget,
+            QListWidgetItem,
+            QMainWindow,
+            QMessageBox,
+            QPlainTextEdit,
+            QProgressBar,
+            QPushButton,
+            QSpinBox,
+            QTableWidget,
+            QTableWidgetItem,
+            QTabWidget,
+            QTextEdit,
+            QVBoxLayout,
+            QWidget,
+        )
+    except ModuleNotFoundError as exc:  # pragma: no cover - depende de la máquina del usuario
+        if exc.name and exc.name.startswith("PySide6"):
+            print("PySide6 no está instalado. Instálalo con: python -m pip install PySide6")
+            raise SystemExit(2) from exc
+        raise
 
 
 APP_NAME = "NSC Builder"
@@ -218,8 +285,18 @@ ABI_SOURCE_DIRECTORIES: tuple[str, ...] = (
     "spec",
     "docs",
     "selfhost",
+    "tools",
 )
-ABI_SOURCE_FILES: tuple[str, ...] = ("CMakeLists.txt", "nscbuilder.py")
+ABI_SOURCE_FILES: tuple[str, ...] = (
+    "CMakeLists.txt",
+    "nscbuilder.py",
+    "all.bat",
+    "cases_table.py",
+    "report.py",
+    "run_bug_triage.bat",
+    "run_cases.py",
+    "run_windows_checklist.bat",
+)
 ABI_SOURCE_EXCLUDED_NAMES: frozenset[str] = frozenset(
     {".git", "_abi", "_nscbuilder", "__pycache__", ".vs", ".vscode", ".cache"}
 )
@@ -427,7 +504,7 @@ def make_baseline_plan(
             "NSLink": str(test_build_nslink),
         },
         linkers=["lld-link", "NSLink"],
-        optimizations=["-O0", "-O2"],
+        optimizations=["-O0", "-O1", "-O2", "-O3"],
         jobs=jobs,
         run_build=True,
         sync_libraries=True,
@@ -1450,8 +1527,11 @@ class PipelineWorker(QObject):
             f"-DNSC_BUILD_TESTS={'ON' if build_tests else 'OFF'}",
             "-DNSC_WARNINGS_AS_ERRORS=ON",
         ]
-        if self.plan.build_id_override:
-            command.append(f"-DNSC_BUILD_ID_OVERRIDE={self.plan.build_id_override}")
+        # Always write the cache entry, including the empty value. Otherwise a build directory
+        # previously used for a reproducible baseline silently keeps its fixed identity when it
+        # is later reused for a distributable build, and two different binaries report the same
+        # --version. A fixed id is deliberate only when the current plan explicitly requests it.
+        command.append(f"-DNSC_BUILD_ID_OVERRIDE={self.plan.build_id_override}")
         return command
 
     def _configure_tests_command(self, linker: str) -> list[str]:
@@ -1501,17 +1581,16 @@ class PipelineWorker(QObject):
             if status != "passed":
                 return False
 
-        cache = build / "CMakeCache.txt"
-        # Un build-id fijado es parte del lock del bootstrap. Se reconfigura incluso si ya existe
-        # cache para impedir que sobreviva silenciosamente una identidad aleatoria anterior.
-        if self.plan.build_mode == "clean" or not cache.is_file() or self.plan.build_id_override:
-            if not self._command_stage(
-                "Configurar compilador",
-                self._configure_command(build_tests=False),
-                self._base_environment(),
-            ):
-                return False
-            mark_managed_build(build)
+        # Configure on every build operation. CMake keeps this incremental, while the explicit
+        # cache assignments refresh the selected install root, LLVM paths and build identity.
+        # Skipping configure allowed a stale NSC_BUILD_ID_OVERRIDE to survive indefinitely.
+        if not self._command_stage(
+            "Configurar compilador",
+            self._configure_command(build_tests=False),
+            self._base_environment(),
+        ):
+            return False
+        mark_managed_build(build)
 
         targets = [] if self.plan.build_target == "all" else [
             target for target in dict.fromkeys(self.plan.build_target.split(";")) if target
@@ -1657,15 +1736,17 @@ class PipelineWorker(QObject):
                 if status != "passed":
                     continue
 
-            if not (build / "CMakeCache.txt").is_file():
-                if not self._command_stage(
-                    f"Configurar CTest [{linker}]",
-                    self._configure_tests_command(linker),
-                    self._base_environment(linker),
-                    channel=linker,
-                ):
-                    continue
-                mark_managed_build(build)
+            # Reconfigure every buildable CTest tree so a changed prefix, compiler path or build
+            # identity cannot remain hidden in an old cache. This does not rebuild targets that
+            # Ninja already considers current.
+            if not self._command_stage(
+                f"Configurar CTest [{linker}]",
+                self._configure_tests_command(linker),
+                self._base_environment(linker),
+                channel=linker,
+            ):
+                continue
+            mark_managed_build(build)
 
             targets = [
                 target for target in dict.fromkeys(self.plan.test_build_target.split(";")) if target
@@ -2185,7 +2266,7 @@ class PipelineWorker(QObject):
         started = time.monotonic()
         before_failed = self.failed
         cases = [CaseSpec(project, label, 42, "bug triage") for project, label in TRIAGE_CASES]
-        work = [(case, optimization) for case in cases for optimization in ("-O0", "-O2", "-O3")]
+        work = [(case, optimization) for case in cases for optimization in self.plan.optimizations]
         self._emit(
             f"{name}: {len(work)} trabajos internos, {self.plan.jobs} en paralelo",
             "info",
@@ -2501,7 +2582,7 @@ class PipelineWorker(QObject):
         assert self.run_dir is not None
         reports: list[dict] = []
         linkers = list(dict.fromkeys(["Compilador", *self.plan.linkers]))
-        optimizations = ("General", "O0", "O2", "O3")
+        optimizations = ("General", "O0", "O1", "O2", "O3")
         for linker in linkers:
             for optimization in optimizations:
                 rows = [
@@ -2632,7 +2713,7 @@ class PipelineWorker(QObject):
         self.console_path = self.run_dir / "console.log"
         self.console_path.touch()
         for channel in dict.fromkeys(["Compilador", *self.plan.linkers]):
-            for optimization in ("General", "O0", "O2", "O3"):
+            for optimization in ("General", "O0", "O1", "O2", "O3"):
                 channel_console = (
                     self.run_dir
                     / safe_name(channel)
@@ -2874,13 +2955,17 @@ class MainWindow(QMainWindow):
         self.compiler_jobs.setValue(min(os.cpu_count() or 4, 16))
         self.opt_o0 = QCheckBox("O0")
         self.opt_o0.setChecked(True)
+        self.opt_o1 = QCheckBox("O1")
+        self.opt_o1.setChecked(True)
         self.opt_o2 = QCheckBox("O2")
         self.opt_o2.setChecked(True)
         self.opt_o3 = QCheckBox("O3")
+        self.opt_o3.setChecked(True)
         opt_box = QWidget()
         opt_layout = QHBoxLayout(opt_box)
         opt_layout.setContentsMargins(0, 0, 0, 0)
         opt_layout.addWidget(self.opt_o0)
+        opt_layout.addWidget(self.opt_o1)
         opt_layout.addWidget(self.opt_o2)
         opt_layout.addWidget(self.opt_o3)
         opt_layout.addStretch()
@@ -2968,7 +3053,7 @@ class MainWindow(QMainWindow):
             "Esta sección NO COMPILA NADA: ni nsc ni ningún ejecutable de prueba. Usa el nsc "
             "ya instalado para "
             "compilar los programas elegidos. LLD-link y NSLink tienen árboles CTest separados; "
-            "cada enlazador y cada nivel O0/O2 conserva además su propia consola, lista de errores "
+            "cada enlazador y cada nivel O0/O1/O2/O3 conserva además su propia consola, lista de errores "
             "e informe."
         )
         linker_note.setWordWrap(True)
@@ -3093,7 +3178,7 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.progress_bar)
 
         self.output_channels = ("Compilador", "LLD-link", "NSLink")
-        self.output_optimizations = ("General", "O0", "O2", "O3")
+        self.output_optimizations = ("General", "O0", "O1", "O2", "O3")
         self.channel_consoles: dict[tuple[str, str], QTextEdit] = {}
         self.channel_error_tables: dict[str, QTableWidget] = {}
         self.channel_error_counts: dict[str, int] = {}
@@ -3155,8 +3240,8 @@ class MainWindow(QMainWindow):
             self.linker_mode,
         ):
             widget.currentIndexChanged.connect(self._update_plan_summary)
-        for widget in (self.stage_ctest, self.stage_cases, self.stage_triage, self.opt_o0, self.opt_o2,
-                       self.opt_o3):
+        for widget in (self.stage_ctest, self.stage_cases, self.stage_triage, self.opt_o0, self.opt_o1,
+                       self.opt_o2, self.opt_o3):
             widget.toggled.connect(self._update_plan_summary)
         self.compiler_jobs.valueChanged.connect(self._update_plan_summary)
         self.test_jobs.valueChanged.connect(self._update_plan_summary)
@@ -3789,8 +3874,12 @@ class MainWindow(QMainWindow):
             tests.append("bug triage")
         test_text = ", ".join(tests) if tests else "ninguna prueba"
         test_mode = "sin compilar nada: solo el nsc instalado"
-        optimizations = [name for checked, name in ((self.opt_o0.isChecked(), "O0"), (self.opt_o2.isChecked(), "O2"),
-                                  (self.opt_o3.isChecked(), "O3")) if checked]
+        optimizations = [name for checked, name in (
+            (self.opt_o0.isChecked(), "O0"),
+            (self.opt_o1.isChecked(), "O1"),
+            (self.opt_o2.isChecked(), "O2"),
+            (self.opt_o3.isChecked(), "O3"),
+        ) if checked]
         selected_linkers = list(self.linker_mode.currentData())
         build_paths = {
             "lld-link": self.test_build_lld_path.text().strip(),
@@ -4016,7 +4105,7 @@ class MainWindow(QMainWindow):
             "G0.1 archiva el arbol INSTALADO tal como esta ahora mismo, junto a los ultimos logs "
             "verdes. Es evidencia historica: no certifica nada por si sola.\n\n"
             "G0.2 mide el arbol y los binarios, construye, instala, ejecuta la matriz completa "
-            "--CTest, fixtures y bug triage, con los dos enlazadores y O0/O2--, vuelve a medir y "
+            "--CTest, fixtures y bug triage, con los dos enlazadores y O0/O1/O2/O3--, vuelve a medir y "
             "exige que nada se haya movido. Solo entonces escribe el baseline certificado."
         )
         explanation.setWordWrap(True)
@@ -4138,7 +4227,8 @@ class MainWindow(QMainWindow):
             self,
             APP_NAME,
             "El Gate 0 construira, instalara y ejecutara la matriz completa con los dos "
-            "enlazadores y O0/O2, y despues exigira que fuentes y binarios no se hayan movido.\n\n"
+            "enlazadores y O0/O1/O2/O3, y despues exigira que fuentes y binarios no se hayan "
+            "movido.\n\n"
             "¿Continuar?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -4178,6 +4268,14 @@ class MainWindow(QMainWindow):
                 prefix=self.prefix_path.text().strip(),
                 llvm_root=self.llvm_path.text().strip(),
                 nslink_exe=self.nslink_path.text().strip(),
+                history_root=str(HISTORY_ROOT),
+                test_work_root=str(DEFAULT_TEST_WORK_ROOT),
+                temp_root=str(DEFAULT_TEMP_ROOT),
+                allowed_write_roots=[],
+                run_id="",
+                # La pestaña del compilador produce un binario distribuible: identidad nueva.
+                # Los baselines reproducibles la fijan explícitamente con --build-id/config.
+                build_id_override="",
                 build_mode=str(self.build_mode.currentData()),
                 build_target="nsc",
                 build_runner=str(self.build_runner.currentData()),
@@ -4206,12 +4304,14 @@ class MainWindow(QMainWindow):
         optimizations = []
         if self.opt_o0.isChecked():
             optimizations.append("-O0")
+        if self.opt_o1.isChecked():
+            optimizations.append("-O1")
         if self.opt_o2.isChecked():
             optimizations.append("-O2")
         if self.opt_o3.isChecked():
             optimizations.append("-O3")
         if operation == "language" and self.stage_cases.isChecked() and not optimizations:
-            QMessageBox.warning(self, APP_NAME, "Selecciona por lo menos uno de O0, O2 y O3.")
+            QMessageBox.warning(self, APP_NAME, "Selecciona por lo menos uno de O0, O1, O2 y O3.")
             return None
         selected_ctests = {
             "unit": self._selected_unit_values,

@@ -24,7 +24,7 @@ REM     assuming CRLF; with LF-only endings it silently skips calls and runs
 REM     labels out of order.
 REM   * No parenthesized for/if blocks around the work, and no free text in
 REM     call arguments. Characters like ( ) < > ; = break block parsing even
-REM     inside double quotes. Every case is two flat calls instead.
+REM     inside double quotes. Every case is four flat calls instead.
 REM ---------------------------------------------------------------------------
 
 set "ROOT=%~dp0"
@@ -103,11 +103,13 @@ exit /b 0
 
 :triage_run
 call :one "%TPROJ%" "%TNAME%" O0
+call :one "%TPROJ%" "%TNAME%" O1
 call :one "%TPROJ%" "%TNAME%" O2
+call :one "%TPROJ%" "%TNAME%" O3
 exit /b 0
 
 REM ===========================================================================
-REM :one  <absolute .nsproj path>  <label>  <O0|O2>
+REM :one  <absolute .nsproj path>  <label>  <O0|O1|O2|O3>
 REM ===========================================================================
 :one
 set "OPROJ=%~1"
