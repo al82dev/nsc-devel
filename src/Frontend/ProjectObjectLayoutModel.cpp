@@ -10,6 +10,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
+#include <algorithm>
 #include <limits>
 #include <functional>
 #include <set>
@@ -692,6 +693,52 @@ bool ProjectObjectLayoutModel::buildStructLayout(
         return false;
     }
 
+    // Explicit offsets can express the same physical overlap as a union without using the union
+    // keyword.  An overlapping field that owns storage has the identical unsound replacement
+    // behavior: a write releases bytes that may belong to another live field.  Check the computed
+    // ranges (not merely the presence of at(N)) so hand-laid-out but non-overlapping ABI structs
+    // remain legal.
+    const bool hasExplicitFieldOffsets = std::ranges::any_of(
+        physicalFields,
+        [](const target::StructFieldRequest& field) { return field.explicitOffset.has_value(); });
+    if (hasExplicitFieldOffsets)
+    {
+        const auto fieldTransitivelyOwnsStorage = [&](std::size_t index) -> bool
+        {
+            if (index >= fieldMembers.size()) return false;
+            const ClassMemberSymbol& member = memberModel_->members()[fieldMembers[index]];
+            if (member.declaredOwnership == sema::OwnershipKind::Owned) return true;
+            return memberModel_->typeTransitivelyOwnsStorage(member.declaredTypeKey);
+        };
+        for (std::size_t left = 0; left < layout->fields.size(); ++left)
+        {
+            for (std::size_t right = left + 1; right < layout->fields.size(); ++right)
+            {
+                const target::StructFieldLayout& leftLayout = layout->fields[left];
+                const target::StructFieldLayout& rightLayout = layout->fields[right];
+                const bool overlaps = leftLayout.offset < rightLayout.offset + rightLayout.size &&
+                    rightLayout.offset < leftLayout.offset + leftLayout.size;
+                if (!overlaps) continue;
+                const bool leftOwns = fieldTransitivelyOwnsStorage(left);
+                const bool rightOwns = fieldTransitivelyOwnsStorage(right);
+                if (!leftOwns && !rightOwns) continue;
+                const std::size_t owner = leftOwns ? left : right;
+                const std::size_t other = leftOwns ? right : left;
+                const ClassMemberSymbol& ownerMember = memberModel_->members()[fieldMembers[owner]];
+                const ClassMemberSymbol& otherMember = memberModel_->members()[fieldMembers[other]];
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    ownerMember.range,
+                    "field '" + ownerMember.name + "' contains owned storage and overlaps field '" +
+                        otherMember.name + "'; explicit layout cannot overlap owning storage "
+                        "without active-member tracking");
+                namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+                return false;
+            }
+        }
+    }
+
     StructValueLayout valueLayout;
     valueLayout.typeOrdinal = typeOrdinal;
     valueLayout.typeKey = "type:" + type.identity.key();
@@ -700,10 +747,7 @@ bool ProjectObjectLayoutModel::buildStructLayout(
     valueLayout.isUnion = layoutOptions.isUnion;
     valueLayout.pack = layoutOptions.pack;
     valueLayout.minimumAlignment = layoutOptions.minimumAlignment;
-    for (const target::StructFieldRequest& request : physicalFields)
-    {
-        if (request.explicitOffset.has_value()) valueLayout.hasExplicitFieldOffsets = true;
-    }
+    valueLayout.hasExplicitFieldOffsets = hasExplicitFieldOffsets;
     for (std::size_t index = 0; index < fieldMembers.size(); ++index)
     {
         const std::size_t memberOrdinal = fieldMembers[index];

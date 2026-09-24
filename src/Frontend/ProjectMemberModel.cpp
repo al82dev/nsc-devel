@@ -396,6 +396,47 @@ bool ProjectMemberModel::build(
         collectTypeMembers(typeOrdinal, type, nameLookup, diagnostics);
     }
 
+    // Raw unions carry no active-member discriminant.  It is therefore unsafe for any
+    // alternative to own storage, including ownership hidden inside an inline struct or fixed
+    // array of structs: writing through that nested owner would run release-before-store against
+    // whichever overlapping alternative supplied the current bits.  Validate the completed type
+    // graph here, after every member has been collected, so declaration order, anonymous
+    // aggregates and closed generic specializations cannot bypass the rule.
+    for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
+    {
+        const NamedTypeDeclaration& type = nameLookup.namedTypes()[typeOrdinal];
+        const bool isRawUnion = type.kind == NamedTypeDeclarationKind::Struct &&
+            type.syntax != nullptr &&
+            type.syntax->auxiliaryText().find("union") != std::string::npos;
+        if (!isRawUnion) continue;
+        for (const std::size_t memberOrdinal : membersByType_[typeOrdinal])
+        {
+            if (memberOrdinal >= members_.size()) continue;
+            const ClassMemberSymbol& member = members_[memberOrdinal];
+            if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
+            if (member.declaredOwnership == sema::OwnershipKind::Owned)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    member.range,
+                    "owned field '" + member.name +
+                        "' is not permitted in a raw union because the union has no discriminant "
+                        "that identifies the active member");
+            }
+            else if (typeTransitivelyOwnsStorage(member.declaredTypeKey))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    member.range,
+                    "field '" + member.name + "' of type '" + member.declaredTypeKey +
+                        "' is not permitted in a raw union because it transitively contains owned "
+                        "storage and the union has no discriminant that identifies the active member");
+            }
+        }
+    }
+
     collectAnonymousMemberPromotions(nameLookup, diagnostics);
 
     std::unordered_map<std::string, const ClassMemberSymbol*> cAbiExports;
@@ -642,6 +683,56 @@ std::span<const std::size_t> ProjectMemberModel::membersOfType(std::size_t typeO
         return empty;
     }
     return membersByType_[typeOrdinal];
+}
+
+bool ProjectMemberModel::typeTransitivelyOwnsStorage(std::string_view typeKey) const
+{
+    if (nameLookup_ == nullptr) return false;
+
+    const auto typeOrdinalForKey = [&](std::string_view candidate) -> std::optional<std::size_t>
+    {
+        std::string current(candidate);
+        while (const std::optional<std::string> element = fixedArrayElementTypeKey(current))
+            current = *element;
+        if (!current.starts_with("type:")) return std::nullopt;
+        const std::string_view identity = std::string_view(current).substr(5);
+        for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+        {
+            if (nameLookup_->namedTypes()[ordinal].identity.key() == identity) return ordinal;
+        }
+        return std::nullopt;
+    };
+
+    std::vector<std::optional<bool>> memo(nameLookup_->namedTypes().size());
+    std::unordered_set<std::size_t> visiting;
+    std::function<bool(std::string_view)> owns = [&](std::string_view candidate) -> bool
+    {
+        const std::optional<std::size_t> ordinal = typeOrdinalForKey(candidate);
+        if (!ordinal.has_value() ||
+            nameLookup_->namedTypes()[*ordinal].kind != NamedTypeDeclarationKind::Struct)
+            return false;
+        if (memo[*ordinal].has_value()) return *memo[*ordinal];
+        // Recursive by-value aggregates receive their own incomplete-type diagnostic in layout.
+        // Treat the cycle as non-owning here so this safety query does not invent a second cause.
+        if (!visiting.insert(*ordinal).second) return false;
+        bool result = false;
+        for (const std::size_t memberOrdinal : membersByType_[*ordinal])
+        {
+            if (memberOrdinal >= members_.size()) continue;
+            const ClassMemberSymbol& nested = members_[memberOrdinal];
+            if (nested.kind != ClassMemberKind::Field || nested.isStatic) continue;
+            if (nested.declaredOwnership == sema::OwnershipKind::Owned ||
+                owns(nested.declaredTypeKey))
+            {
+                result = true;
+                break;
+            }
+        }
+        visiting.erase(*ordinal);
+        memo[*ordinal] = result;
+        return result;
+    };
+    return owns(typeKey);
 }
 
 std::span<const std::size_t> ProjectMemberModel::promotedMembersOfType(
@@ -1193,27 +1284,6 @@ bool ProjectMemberModel::collectTypeMembers(
                     "static field '" + symbol.name +
                         "' cannot be owned because no destruction ever releases it; ownership is "
                         "discharged by the containing object's destruction");
-            }
-            // A raw union has no runtime discriminant, so the compiler cannot know whether the
-            // bytes currently name this field or a different overlapping alternative.  The
-            // ordinary owned-field replacement path must release the displaced value before a
-            // store; applying that rule to a union can reinterpret an integer alternative as a
-            // pointer and release it.  Reject the unsound declaration instead of allowing a
-            // source-order-dependent access violation.  A future tagged-union feature can admit
-            // ownership because its discriminant will make the active alternative explicit.
-            const bool declaringTypeIsUnion = type.kind == NamedTypeDeclarationKind::Struct &&
-                type.syntax != nullptr &&
-                type.syntax->auxiliaryText().find("union") != std::string::npos;
-            if (declaringTypeIsUnion && symbol.kind == ClassMemberKind::Field && !symbol.isStatic &&
-                symbol.declaredOwnership == sema::OwnershipKind::Owned)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    symbol.range,
-                    "owned field '" + symbol.name +
-                        "' is not permitted in a raw union because the union has no discriminant "
-                        "that identifies the active member");
             }
             symbol.declaringTypeIsStruct = type.kind == NamedTypeDeclarationKind::Struct;
             symbol.hasImplicitThis = symbol.kind == ClassMemberKind::Constructor ||

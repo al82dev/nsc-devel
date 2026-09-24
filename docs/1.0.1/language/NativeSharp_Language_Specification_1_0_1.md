@@ -970,6 +970,17 @@ eleva la alineación del agregado; un offset explícito fija la posición y perm
 union, todos los campos no explícitos comienzan en cero y el tamaño cubre el miembro de mayor
 extensión. Los valores de `pack` y `align` deben ser potencias de dos válidas.
 
+El overlap sólo es válido entre campos de almacenamiento trivial. Un campo `owned`, o un campo por
+valor cuyo tipo contenga transitivamente almacenamiento `owned`, no puede compartir ningún byte
+con otro campo. La clausura transitiva atraviesa structs y unions anidados, agregados anónimos,
+arreglos fijos y especializaciones genéricas cerradas. `at(N)` sí puede usarse para colocar esos
+campos en rangos explícitos que no se solapen.
+
+Explicit overlap is valid only between fields with trivial storage. An `owned` field, or a by-value
+field whose type transitively contains owned storage, may not share any byte with another field.
+The transitive closure includes nested and anonymous aggregates, fixed arrays, and closed generic
+specializations. Explicitly positioned but disjoint owning fields remain valid.
+
 ### NS-LAYOUT-003 — Alineación explícita por campo
 
 `align(N)` aplicado a un campo de instancia establece una alineación mínima para ese campo. La
@@ -1014,10 +1025,22 @@ El cuerpo puede incluir cualquier field válido de una union y anidar structs o 
 posición de su campo contenedor. La accesibilidad y los demás modificadores de field pertenecen al
 contenedor. La union no incorpora discriminante ni seguimiento de la alternativa activa.
 
+Precisamente porque no existe ese seguimiento, ninguna alternativa de una union cruda puede ser
+`owned` ni contener transitivamente almacenamiento `owned`. La regla se aplica también cuando la
+propiedad queda oculta detrás de un struct o union anidado, un agregado anónimo, un arreglo fijo o
+una especialización genérica cerrada. Un modelo que necesite tales alternativas debe representar
+explícitamente un tag y almacenamiento no solapado; escribir una alternativa nunca puede liberar
+los bits pertenecientes a otra.
+
 The form `union { members } name;` declares an inline union with no source-level type name plus a
 containing field named `name`. Alternatives overlap at offset zero, remain qualified through the
 carrier and are not promoted. Ordinary union layout and lifetime restrictions apply. Omitting the
 field name selects NS-LAYOUT-006 promotion.
+
+Because a raw union has no active-member tracking, no alternative may be `owned` or transitively
+contain owned storage. This applies through named or anonymous nested aggregates, fixed arrays, and
+closed generic specializations. Such a model requires an explicit tag and non-overlapping owning
+storage.
 
 ### NS-LAYOUT-006 — Promoción de miembros anónimos
 

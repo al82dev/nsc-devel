@@ -38,9 +38,11 @@ type-member = { member-modifier },
 interface-member = [ ownership ], type,
                    ( identifier, "(", [ parameter-list ], ")", ";" |
                      identifier, accessor-body | "this", "[", parameter-list, "]", accessor-body ) ;
-member-modifier = declaration-modifier | "virtual" | "override" | "new" | "extern" ;
+member-modifier = declaration-modifier | "virtual" | "override" | "new" | "extern" |
+                  field-layout-modifier ;
+field-layout-modifier = ( "at" | "align" ), "(", integer-literal, ")" ;
 
-field-declaration = [ ownership ], type, identifier, [ "at", integer-literal ],
+field-declaration = [ ownership ], type, identifier,
                     [ "=", expression | aggregate-initializer ], ";" ;
 method-declaration = [ ownership ], type, identifier, [ type-parameters ],
                      "(", [ parameter-list ], ")", { constraint-clause },

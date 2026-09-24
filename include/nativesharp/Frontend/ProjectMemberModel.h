@@ -273,6 +273,12 @@ public:
         const ast::TypeSyntax* syntax,
         const ProjectNameLookup& nameLookup) const;
 
+    // True when a by-value type contains an `owned` instance field at any depth. Fixed arrays
+    // are traversed through their element type. Reference-like and scalar types return false:
+    // their bits do not carry an implicit release obligation unless the field itself is marked
+    // `owned`, which callers check separately.
+    bool typeTransitivelyOwnsStorage(std::string_view typeKey) const;
+
     // C2.1 "fixed arrays". The compile-time value of a `T[N]` count expression, or nullopt when
     // it is not a constant. It lives here, next to canonicalTypeKey, because the CANONICAL TYPE
     // KEY is the first consumer: a fixed-array key must read `builtin:float[4]`, with the count

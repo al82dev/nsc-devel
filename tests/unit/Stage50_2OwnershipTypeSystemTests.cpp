@@ -307,6 +307,226 @@ void testRawUnionRejectsOwnedField(TestContext& tests, const std::filesystem::pa
     tests.expect(foundDiagnostic,
         "raw union ownership rejection explains that no active-member discriminant exists");
 }
+
+void testRawUnionRejectsTransitivelyOwnedField(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "RawUnionTransitivelyOwnedField";
+    writeProject(directory);
+    writeFile(
+        directory / "Ownership.ns",
+        "namespace Stage50;\n"
+        "public class Payload { public int Value; }\n"
+        "public struct Wrapper { public owned Payload Object; }\n"
+        "public union Slot { public Wrapper Wrapped; public int Code; }\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMembers(directory / "OwnershipTypes.nsproj", error);
+    tests.expect(!ok,
+        "raw union rejects ownership hidden inside a by-value struct alternative");
+
+    bool foundDiagnostic = false;
+    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+    {
+        if (diagnostic.message().find("transitively contains owned storage") != std::string::npos)
+        {
+            foundDiagnostic = true;
+            break;
+        }
+    }
+    tests.expect(foundDiagnostic,
+        "transitive raw-union diagnostic identifies nested owned storage");
+}
+
+void testRawUnionRejectsTransitiveOwnershipShapes(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    struct Case final
+    {
+        const char* name;
+        const char* source;
+        const char* expectation;
+    };
+    const Case cases[] = {
+        {
+            "AnonymousOwnedField",
+            "namespace Stage50;\n"
+            "public class Payload { public int Value; }\n"
+            "public union Slot {\n"
+            "  public struct { public owned Payload Object; } Wrapped;\n"
+            "  public int Code;\n"
+            "}\n",
+            "raw union rejects ownership hidden in a synthesized anonymous struct",
+        },
+        {
+            "AnonymousUnionOwnedField",
+            "namespace Stage50;\n"
+            "public class Payload { public int Value; }\n"
+            "public struct Envelope {\n"
+            "  public union { public owned Payload Object; public int Code; } Storage;\n"
+            "}\n",
+            "a synthesized anonymous union enforces the same ownership rule",
+        },
+        {
+            "DirectOwnedResourceKinds",
+            "namespace Stage50;\n"
+            "public delegate void Callback();\n"
+            "public union Resources {\n"
+            "  public owned string Text;\n"
+            "  public owned int[] Buffer;\n"
+            "  public owned Callback Handler;\n"
+            "}\n",
+            "raw union rejects every directly owned reference-like resource kind",
+        },
+        {
+            "FixedArrayOfOwnedStruct",
+            "namespace Stage50;\n"
+            "public class Payload { public int Value; }\n"
+            "public struct Wrapper { public owned Payload Object; }\n"
+            "public union Slot { public Wrapper[2] Items; public int Code; }\n",
+            "raw union rejects a fixed array whose inline element transitively owns storage",
+        },
+        {
+            "ClosedGenericOwnedStruct",
+            "namespace Stage50;\n"
+            "public class Payload { public int Value; }\n"
+            "public struct Wrapper<T> { public owned T Object; }\n"
+            "public union Slot { public Wrapper<Payload> Wrapped; public int Code; }\n",
+            "raw union rejects ownership exposed by a closed generic value type",
+        },
+        {
+            "NestedOwnedUnion",
+            "namespace Stage50;\n"
+            "public class Payload { public int Value; }\n"
+            "public struct Wrapper { public owned Payload Object; }\n"
+            "public union Inner { public Wrapper Wrapped; public int Code; }\n"
+            "public union Outer { public Inner Nested; public long Bits; }\n",
+            "raw unions cannot hide owning storage through another nested union",
+        },
+    };
+
+    for (const Case& item : cases)
+    {
+        const std::filesystem::path directory = root / item.name;
+        writeProject(directory);
+        writeFile(directory / "Ownership.ns", item.source);
+
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectMembers(
+            directory / "OwnershipTypes.nsproj", error);
+        tests.expect(!ok, item.expectation);
+        bool foundDiagnostic = false;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+        {
+            if (diagnostic.message().find("raw union") != std::string::npos)
+            {
+                foundDiagnostic = true;
+                break;
+            }
+        }
+        tests.expect(foundDiagnostic,
+            std::string(item.name) + " produces the raw-union ownership diagnostic");
+    }
+}
+
+void testExplicitLayoutRejectsOverlappingOwnedStorage(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "ExplicitOverlapOwnedField";
+    writeProject(directory);
+    writeFile(
+        directory / "Ownership.ns",
+        "namespace Stage50;\n"
+        "public class Payload { public int Value; }\n"
+        "public struct Overlap {\n"
+        "  public at(0) owned Payload Object;\n"
+        "  public at(0) long Bits;\n"
+        "}\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectObjectLayouts(
+        directory / "OwnershipTypes.nsproj", error);
+    tests.expect(!ok,
+        "explicit layout rejects overlap between owned storage and another field");
+
+    bool foundDiagnostic = false;
+    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+    {
+        if (diagnostic.message().find("explicit layout cannot overlap owning storage") !=
+            std::string::npos)
+        {
+            foundDiagnostic = true;
+            break;
+        }
+    }
+    tests.expect(foundDiagnostic,
+        "explicit-overlap diagnostic identifies missing active-member tracking");
+}
+
+void testExplicitLayoutUsesExactOwnedRanges(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const std::filesystem::path nested = root / "ExplicitNestedOwnedOverlap";
+    writeProject(nested);
+    writeFile(
+        nested / "Ownership.ns",
+        "namespace Stage50;\n"
+        "public class Payload { public int Value; }\n"
+        "public struct Wrapper { public owned Payload Object; }\n"
+        "public struct Overlap {\n"
+        "  public at(0) Wrapper Wrapped;\n"
+        "  public at(0) long Bits;\n"
+        "}\n");
+
+    ProjectCompilation nestedCompilation;
+    std::string error;
+    const bool nestedOk = nestedCompilation.compileProjectObjectLayouts(
+        nested / "OwnershipTypes.nsproj", error);
+    tests.expect(!nestedOk,
+        "explicit layout rejects overlap with transitively owned inline storage");
+
+    const std::filesystem::path disjoint = root / "ExplicitDisjointOwnedFields";
+    writeProject(disjoint);
+    writeFile(
+        disjoint / "Ownership.ns",
+        "namespace Stage50;\n"
+        "public class Payload { public int Value; }\n"
+        "public struct Disjoint {\n"
+        "  public at(0) owned Payload Object;\n"
+        "  public at(8) long Bits;\n"
+        "}\n");
+
+    ProjectCompilation disjointCompilation;
+    error.clear();
+    const bool disjointOk = disjointCompilation.compileProjectObjectLayouts(
+        disjoint / "OwnershipTypes.nsproj", error);
+    tests.expect(disjointOk,
+        "explicit non-overlapping ABI layout may contain owned storage");
+
+    const std::filesystem::path scalar = root / "ExplicitScalarOverlap";
+    writeProject(scalar);
+    writeFile(
+        scalar / "Ownership.ns",
+        "namespace Stage50;\n"
+        "public struct ScalarOverlay {\n"
+        "  public at(0) int Signed;\n"
+        "  public at(0) uint Unsigned;\n"
+        "}\n");
+
+    ProjectCompilation scalarCompilation;
+    error.clear();
+    const bool scalarOk = scalarCompilation.compileProjectObjectLayouts(
+        scalar / "OwnershipTypes.nsproj", error);
+    tests.expect(scalarOk,
+        "explicit overlap remains legal when every overlapping field has trivial storage");
+}
 }
 
 int main()
@@ -322,6 +542,10 @@ int main()
     std::filesystem::remove_all(root, error);
     testProjectMemberOwnershipContracts(tests, root);
     testRawUnionRejectsOwnedField(tests, root);
+    testRawUnionRejectsTransitivelyOwnedField(tests, root);
+    testRawUnionRejectsTransitiveOwnershipShapes(tests, root);
+    testExplicitLayoutRejectsOverlappingOwnedStorage(tests, root);
+    testExplicitLayoutUsesExactOwnedRanges(tests, root);
     std::filesystem::remove_all(root, error);
 
     return tests.result();
