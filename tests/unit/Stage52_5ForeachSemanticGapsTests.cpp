@@ -498,6 +498,92 @@ namespace ForeachPropertyCurrent
     // 0+1+2+3+4 == 10.
     tests.expect(exitCode == 10, "foreach over a property-Current enumerator returns the exact expected value (10)");
 }
+
+void testForeachOverStructEnumerator(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "ForeachStructEnumerator";
+    writeProject(directory, "ForeachStructEnumerator");
+    writeFile(directory / "Main.ns", R"NS(
+namespace ForeachStructEnumerator
+{
+    public struct CounterEnumerator
+    {
+        private int current;
+        private int limit;
+
+        public CounterEnumerator(int end) { current = 0; limit = end; }
+        public bool MoveNext() { current = current + 1; return current <= limit; }
+        public int Current { get { return current; } }
+    }
+
+    public struct Counter
+    {
+        private int limit;
+        public Counter(int end) { limit = end; }
+        public CounterEnumerator GetEnumerator() { return new CounterEnumerator(limit); }
+    }
+
+    public class Runner
+    {
+        public static int Main()
+        {
+            int total = 0;
+            Counter counter = new Counter(6);
+            foreach (var value in counter) { total = total + value; }
+            return total * 2;
+        }
+    }
+}
+)NS");
+
+    const auto exePath = root / "ForeachStructEnumerator.exe";
+    const std::string llvm = emitExecutable(
+        tests, directory, exePath, "foreach over a by-value struct enumerator");
+    tests.expect(!llvm.empty(), "foreach struct enumerator reaches verifier-clean LLVM IR");
+}
+
+void testForeachRejectsNonTrivialStructEnumerator(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const auto directory = root / "ForeachNonTrivialStructEnumerator";
+    writeProject(directory, "ForeachNonTrivialStructEnumerator");
+    writeFile(directory / "Main.ns", R"NS(
+namespace ForeachNonTrivialStructEnumerator
+{
+    public class Payload { }
+    public struct Enumerator
+    {
+        private owned Payload payload;
+        public bool MoveNext() { return false; }
+        public int Current { get { return 0; } }
+    }
+    public struct Sequence
+    {
+        public Enumerator GetEnumerator() { return new Enumerator(); }
+    }
+    public class Runner
+    {
+        public static int Main()
+        {
+            Sequence sequence = new Sequence();
+            foreach (var value in sequence) { return value; }
+            return 0;
+        }
+    }
+}
+)NS");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "ForeachNonTrivialStructEnumerator.nsproj", error);
+    tests.expect(!ok,
+        "foreach rejects a struct enumerator whose value lifetime cannot yet be discharged");
+    tests.expect(
+        hasDiagnosticText(compilation, "automatic destruction of value locals is not yet supported"),
+        "non-trivial struct enumerator gets a focused lifetime diagnostic");
+}
 }
 
 int main()
@@ -514,6 +600,8 @@ int main()
     testForeachElementIsReadonly(tests, root);
     testForeachConstKeywordIsNowARejectedSyntaxError(tests, root);
     testForeachOverCustomEnumeratorWithPropertyCurrent(tests, root);
+    testForeachOverStructEnumerator(tests, root);
+    testForeachRejectsNonTrivialStructEnumerator(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

@@ -6210,13 +6210,10 @@ ast::AstNode* Parser::parseForStatement()
 // their concrete types (`builtin:int` for the index; whatever `GetEnumerator()` returns for the
 // enumerator) never need to be known or spelled out at parse time either.
 //
-// The enumerator candidate declares its hidden enumerator local as `raii var`, not a plain
-// `var` -- this makes its destructor run automatically at the end of the synthesized block via
-// the SAME RAII machinery every other `raii` local already relies on, which is this compiler's
-// direct, idiomatic analogue of real C#'s implicit `Dispose()` call in foreach's generated
-// `finally` block (via `IDisposable`) -- without needing `IDisposable`/`using` machinery here at
-// all, since RAII destruction already gives an equivalent guarantee (called once, on every exit
-// path out of the loop, including `break`/`return`/an exception unwinding through the body).
+// The enumerator candidate marks its hidden local for type-directed lifetime handling. Semantic
+// analysis has the resolved GetEnumerator() return type: reference enumerators become RAII owners
+// exactly as before, while trivial struct enumerators remain values in the current stack frame.
+// The parser cannot make that choice because it deliberately has no type information.
 ast::AstNode* Parser::makeIdentifierExpression(const SourceRange& range, std::string name)
 {
     ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::IdentifierExpression, range);
@@ -6483,7 +6480,11 @@ ast::AstNode* Parser::parseForeachStatement()
         ast::AstNode* getEnumeratorCall = makeZeroArgCallExpression(
             makeMemberExpression(makeIdentifierExpression(range, "$__foreach_source"), "GetEnumerator"));
         ast::AstNode* enumeratorDecl = makeVariableDeclaration(
-            varMarker(), "$__foreach_enumerator", getEnumeratorCall, true);
+            varMarker(), "$__foreach_enumerator", getEnumeratorCall, false);
+        // This spelling cannot come from source: it is compiler-owned metadata on the synthetic
+        // declaration. ProjectMethodBodyModel turns it into RAII only when the inferred type is
+        // reference-shaped, avoiding a heap-only contract for value enumerators.
+        enumeratorDecl->setAuxiliaryText("local:foreach-enumerator");
 
         ast::AstNode* condition = makeZeroArgCallExpression(
             makeMemberExpression(makeIdentifierExpression(range, "$__foreach_enumerator"), "MoveNext"));

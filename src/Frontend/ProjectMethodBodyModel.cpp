@@ -2937,6 +2937,8 @@ void ProjectMethodBodyModel::analyzeVariable(
     }
 
     const bool isReferenceLocal = variable->auxiliaryText() == "local:ref";
+    const bool isForeachEnumerator =
+        variable->auxiliaryText() == "local:foreach-enumerator";
 
     // `var`: the parser bypasses parseType() entirely for this keyword and hands us a marker
     // TypeSyntax (baseTokenKind() == TokenKind::KwVar) instead -- see Parser::parseVariableDeclaration.
@@ -3187,11 +3189,19 @@ void ProjectMethodBodyModel::analyzeVariable(
     const bool managedDelegate = isAnyDelegateTypeKey(typeKey) && !isExternCDelegateTypeKey(typeKey);
     const bool ownedQualifierOwnsStorage =
         isOwnedQualified && (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
-    const bool isRaii = variable->hasModifier(TokenKind::KwRaii) || ownedQualifierOwnsStorage;
+    // A foreach enumerator has an automatic lifetime whose representation follows the inferred
+    // GetEnumerator() result. Reference-shaped results retain the established RAII cleanup path;
+    // value-shaped results are ordinary stack locals and therefore allocate nothing.
+    const bool foreachEnumeratorNeedsRaii = isForeachEnumerator &&
+        (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
+    const bool isRaii = variable->hasModifier(TokenKind::KwRaii) || ownedQualifierOwnsStorage ||
+        foreachEnumeratorNeedsRaii;
     // Wording helper: every owner diagnostic below has to name the spelling the user actually
     // wrote, otherwise an `owned` local reports errors about "raii local" and sends them looking at
     // the wrong keyword.
-    const char* const ownerSpelling = ownedQualifierOwnsStorage ? "owned local" : "raii local";
+    const char* const ownerSpelling = ownedQualifierOwnsStorage
+        ? "owned local"
+        : (isForeachEnumerator ? "foreach enumerator" : "raii local");
     std::optional<MethodLocalBorrowBinding> pendingLocalBorrow;
     MethodEscapeOrigin pendingReferenceEscapeOrigin;
     const bool raiiOwnsNativeArrayBuffer =
@@ -3223,6 +3233,17 @@ void ProjectMethodBodyModel::analyzeVariable(
             variable->range(),
             std::string(ownerSpelling) +
                 " requires a NativeSharp class/interface reference, managed delegate, native string, or native array buffer");
+    }
+    if (isForeachEnumerator && typeKeyIsStruct(typeKey) &&
+        !elementTypeHasTrivialLifetime(typeKey))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            variable->range(),
+            "foreach struct enumerator '" + typeKey +
+                "' must have a trivial lifetime; automatic destruction of value locals is not "
+                "yet supported");
     }
     if (isRaii && variable->first() == nullptr)
     {
@@ -14299,12 +14320,21 @@ bool ProjectMethodBodyModel::isEnumTypeKey(std::string_view typeKey) const noexc
 // las referencias son punteros y no poseen nada por si mismas.
 bool ProjectMethodBodyModel::elementTypeHasTrivialLifetime(std::string_view typeKey) const noexcept
 {
-    if (memberModel_ == nullptr || inheritanceModel_ == nullptr) return true;
+    if (memberModel_ == nullptr || nameLookup_ == nullptr) return true;
     if (!typeKey.starts_with("type:")) return true;
 
-    const std::optional<std::size_t> typeOrdinal = inheritanceModel_->typeOrdinalForTypeKey(typeKey);
+    const std::string_view identity = typeKey.substr(5);
+    std::optional<std::size_t> typeOrdinal;
+    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+    {
+        if (nameLookup_->namedTypes()[ordinal].identity.key() == identity)
+        {
+            typeOrdinal = ordinal;
+            break;
+        }
+    }
     if (!typeOrdinal.has_value()) return true;
-    if (nameLookup_ != nullptr && *typeOrdinal < nameLookup_->namedTypes().size())
+    if (*typeOrdinal < nameLookup_->namedTypes().size())
     {
         const NamedTypeDeclarationKind kind = nameLookup_->namedTypes()[*typeOrdinal].kind;
         // Una referencia no posee nada por si misma; un enum es un entero con nombre.
