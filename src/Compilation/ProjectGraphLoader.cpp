@@ -209,14 +209,16 @@ bool normalizeTransitiveSourceOwnership(
 
 ProjectGraphLoader::ProjectGraphLoader(
     std::size_t workerCount,
-    ProjectLoadFunction projectLoader)
+    ProjectLoadFunction projectLoader,
+    ProjectLoadOptions options)
     : workerCount_(std::max<std::size_t>(1, workerCount)),
       projectLoader_(std::move(projectLoader))
 {
     if (!projectLoader_)
     {
-        projectLoader_ = [](const std::filesystem::path& path, std::string& error) {
-            return ProjectLoader{}.load(path, error);
+        projectLoader_ = [options = std::move(options)](
+            const std::filesystem::path& path, std::string& error) {
+            return ProjectLoader{}.load(path, options, error);
         };
     }
 }

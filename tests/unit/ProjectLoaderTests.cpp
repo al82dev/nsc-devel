@@ -14,6 +14,7 @@ namespace
 {
 using nativesharp::compilation::GlobPattern;
 using nativesharp::compilation::ProjectDumper;
+using nativesharp::compilation::ProjectLoadOptions;
 using nativesharp::compilation::ProjectLoader;
 using nativesharp::compilation::ProjectOutputKind;
 using nativesharp::compilation::SimpleXmlElement;
@@ -302,6 +303,47 @@ void testInvalidProjects(TestContext& tests, const std::filesystem::path& root)
         "duplicate LibraryReference",
         "duplicate precompiled library reference is rejected");
 }
+
+void testLibraryReferenceRoot(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path app = root / "ReferenceRootApp";
+    const std::filesystem::path o0 = root / "build" / "O0";
+    const std::filesystem::path o2 = root / "build" / "O2";
+    writeFile(app / "Main.ns", "int Main() { return 0; }\n");
+    writeFile(
+        app / "App.nsproj",
+        "<Project><PropertyGroup><Name>App</Name></PropertyGroup><ItemGroup>"
+        "<LibraryReference Include=\"dependencies/NativeMath.lib\" "
+        "Metadata=\"dependencies/NativeMath.nsmeta\" "
+        "Runtime=\"dependencies/NativeMath.dll\"/>"
+        "</ItemGroup></Project>\n");
+    for (const std::filesystem::path& configuration : {o0, o2})
+    {
+        writeFile(configuration / "dependencies" / "NativeMath.lib", "archive");
+        writeFile(configuration / "dependencies" / "NativeMath.nsmeta", "metadata");
+        writeFile(configuration / "dependencies" / "NativeMath.dll", "runtime");
+    }
+
+    ProjectLoader loader;
+    std::string error;
+    ProjectLoadOptions options;
+    options.libraryReferenceRoot = o2;
+    const auto project = loader.load(app / "App.nsproj", options, error);
+    tests.expect(project.has_value(), "library-reference root loads a configuration-specific dependency set");
+    if (!project.has_value()) return;
+    tests.expect(project->libraryReferences().size() == 1,
+        "library-reference root preserves one precompiled dependency");
+    const auto& reference = project->libraryReferences()[0];
+    tests.expect(reference.libraryPath == std::filesystem::weakly_canonical(
+            o2 / "dependencies" / "NativeMath.lib") &&
+            reference.metadataPath == std::filesystem::weakly_canonical(
+                o2 / "dependencies" / "NativeMath.nsmeta") &&
+            reference.runtimePath == std::filesystem::weakly_canonical(
+                o2 / "dependencies" / "NativeMath.dll"),
+        "Include, Metadata, and Runtime resolve from the selected root without rewriting the project");
+    tests.expect(reference.libraryPath.string().find(o0.string()) == std::string::npos,
+        "the selected O2 root cannot silently retain the O0 dependency path");
+}
 }
 
 int main()
@@ -318,6 +360,7 @@ int main()
 
     testDefaultProject(tests, root);
     testItemsAndReferences(tests, root);
+    testLibraryReferenceRoot(tests, root);
     testInvalidProjects(tests, root);
 
     std::filesystem::remove_all(root, error);

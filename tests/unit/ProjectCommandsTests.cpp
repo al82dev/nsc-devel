@@ -60,13 +60,22 @@ int main()
         writeFile(projectRoot / "Content/shaders/default.vert", "shader");
         std::ostringstream output;
         std::ostringstream error;
-        const std::vector<std::string> owned{"build", project.string(), "--no-restore", "--output-format=json"};
+        const fs::path referenceRoot = root / "configuration" / "O2";
+        const std::vector<std::string> owned{
+            "build", project.string(), "--no-restore", "--library-reference-root",
+            referenceRoot.string(), "--output-format=json"};
         std::vector<std::string_view> arguments;
         for (const std::string& value : owned) arguments.push_back(value);
-        const auto compiler = [](std::span<const std::string_view> compilerArguments,
-                                 std::ostream&, std::ostream&) {
+        bool sawReferenceRoot = false;
+        const auto compiler = [&](std::span<const std::string_view> compilerArguments,
+                                  std::ostream&, std::ostream&) {
             for (std::size_t index = 0; index + 1 < compilerArguments.size(); ++index)
             {
+                if (compilerArguments[index] == "--library-reference-root" &&
+                    compilerArguments[index + 1] == referenceRoot.string())
+                {
+                    sawReferenceRoot = true;
+                }
                 if (compilerArguments[index] == "-o")
                 {
                     writeFile(fs::path(compilerArguments[index + 1]), "executable");
@@ -82,6 +91,8 @@ int main()
                      "build recursively publishes the project Content directory");
         tests.expect(output.str().find("\"contentFiles\":2") != std::string::npos && error.str().empty(),
                      "build reports the number of published Content files");
+        tests.expect(sawReferenceRoot,
+                     "build forwards the library-reference root to the nested compiler invocation");
     }
 
     const fs::path package = root / "packages" / "NativeSharp.Test" / "2.0.0";

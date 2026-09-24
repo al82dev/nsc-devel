@@ -24,6 +24,11 @@ void ProjectCompilation::setCompilationJobs(std::size_t jobs) noexcept
     compilationJobs_ = std::max<std::size_t>(1, jobs);
 }
 
+void ProjectCompilation::setProjectLoadOptions(compilation::ProjectLoadOptions options)
+{
+    projectLoadOptions_ = std::move(options);
+}
+
 void ProjectCompilation::setCancellationCheck(std::function<bool()> check)
 {
     cancellationCheck_ = std::move(check);
@@ -805,7 +810,7 @@ bool ProjectCompilation::compileSyntaxCore(
         return false;
     }
 
-    compilation::ProjectGraphLoader loader(compilationJobs_);
+    compilation::ProjectGraphLoader loader(compilationJobs_, {}, projectLoadOptions_);
     std::optional<compilation::ProjectGraph> graph;
     {
         const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "project-graph");

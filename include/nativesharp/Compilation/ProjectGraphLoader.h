@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Compilation/ProjectGraph.h"
+#include "nativesharp/Compilation/ProjectLoader.h"
 
 #include <filesystem>
 #include <functional>
@@ -17,7 +18,8 @@ public:
 
     explicit ProjectGraphLoader(
         std::size_t workerCount = 1,
-        ProjectLoadFunction projectLoader = {});
+        ProjectLoadFunction projectLoader = {},
+        ProjectLoadOptions options = {});
 
     std::optional<ProjectGraph> load(const std::filesystem::path& rootProjectFile, std::string& error) const;
 

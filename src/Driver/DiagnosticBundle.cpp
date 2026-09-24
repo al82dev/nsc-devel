@@ -42,9 +42,10 @@ bool writeDiagnosticBundle(
     ExitCode result,
     std::string_view standardOutput,
     std::string_view standardError,
+    const compilation::ProjectLoadOptions& projectLoadOptions,
     std::string& error)
 {
-    compilation::ProjectGraphLoader loader;
+    compilation::ProjectGraphLoader loader(1, {}, projectLoadOptions);
     std::optional<compilation::ProjectGraph> graph = loader.load(projectFile, error);
     if (!graph.has_value()) return false;
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Compilation/ProjectGraph.h"
+#include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
@@ -45,6 +46,7 @@ class ProjectCompilation final
 {
 public:
     void setCompilationJobs(std::size_t jobs) noexcept;
+    void setProjectLoadOptions(compilation::ProjectLoadOptions options);
     void setCancellationCheck(std::function<bool()> check);
     void setPhaseTimingSink(
         std::function<void(std::string_view, std::chrono::nanoseconds)> sink);
@@ -127,6 +129,7 @@ private:
     std::function<bool()> cancellationCheck_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;
     std::function<void(std::string_view)> progressSink_;
+    compilation::ProjectLoadOptions projectLoadOptions_;
     std::size_t compilationJobs_ = 1;
 };
 }

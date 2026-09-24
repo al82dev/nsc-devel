@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Basic/ExitCode.h"
+#include "nativesharp/Compilation/ProjectLoader.h"
 
 #include <filesystem>
 #include <string>
@@ -14,5 +15,6 @@ bool writeDiagnosticBundle(
     ExitCode result,
     std::string_view standardOutput,
     std::string_view standardError,
+    const compilation::ProjectLoadOptions& projectLoadOptions,
     std::string& error);
 }

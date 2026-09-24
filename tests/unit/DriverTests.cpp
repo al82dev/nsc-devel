@@ -72,6 +72,8 @@ int main()
             "help documents compiler job and reserved-core controls");
         tests.expect(output.str().find("--progress") != std::string::npos,
             "help documents streaming compilation progress");
+        tests.expect(output.str().find("--library-reference-root") != std::string::npos,
+            "help documents configuration-specific LibraryReference resolution");
         tests.expect(error.str().empty(), "help path keeps stderr empty");
     }
 
@@ -83,6 +85,28 @@ int main()
         tests.expect(code == ExitCode::Success && output.str().find("timing total_ms=") != std::string::npos,
             "--time reports total wall time without changing command success");
         tests.expect(error.str().empty(), "timed version query keeps stderr empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {
+            "--version", "--library-reference-root", "relative/build/O2"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError &&
+                error.str().find("requires an absolute directory") != std::string::npos,
+            "a relative library-reference root is rejected deterministically");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {
+            "--version", "--library-reference-root=A:/one", "--library-reference-root=A:/two"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError &&
+                error.str().find("duplicate library-reference root") != std::string::npos,
+            "duplicate library-reference roots are rejected deterministically");
     }
 
     {
@@ -238,6 +262,31 @@ int main()
         "<Project><PropertyGroup><Name>Game</Name><OutputType>Exe</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>\n");
     writeFile(projectDirectory / "Main.ns", "namespace Game; struct Marker { int X; } int Main() { return 0; }\n");
+
+    const std::filesystem::path referenceRoot = projectDirectory / "configuration" / "O2";
+    std::filesystem::create_directories(referenceRoot);
+    writeFile(referenceRoot / "NativeMath.lib", "archive");
+    writeFile(referenceRoot / "NativeMath.nsmeta", "metadata");
+    const std::filesystem::path referenceRootProject = projectDirectory / "ReferenceRoot.nsproj";
+    writeFile(referenceRootProject,
+        "<Project><PropertyGroup><Name>ReferenceRoot</Name></PropertyGroup><ItemGroup>"
+        "<Compile Include=\"Main.ns\"/>"
+        "<LibraryReference Include=\"NativeMath.lib\" Metadata=\"NativeMath.nsmeta\"/>"
+        "</ItemGroup></Project>\n");
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::string path = referenceRootProject.string();
+        const std::string root = referenceRoot.string();
+        const std::vector<std::string_view> arguments = {
+            "--check-project", path, "--library-reference-root", root};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::Success,
+            "--library-reference-root reaches project loading through the driver");
+        tests.expect(error.str().empty(),
+            "a valid configuration-specific library-reference root keeps stderr empty");
+    }
 
     {
         std::ostringstream output;

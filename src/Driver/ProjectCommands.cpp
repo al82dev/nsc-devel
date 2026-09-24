@@ -1135,6 +1135,7 @@ struct BuildOptions final
     std::optional<std::string> optimization;
     std::optional<std::string> debug;
     std::optional<std::string> linker;
+    std::optional<fs::path> libraryReferenceRoot;
     bool noRestore = false;
     std::vector<std::string> programArguments;
 };
@@ -1150,6 +1151,24 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
         if ((argument == "-c" || argument == "--configuration") && index + 1 < arguments.size()) options.configuration = std::string(arguments[++index]);
         else if (argument == "--linker" && index + 1 < arguments.size()) options.linker = std::string(arguments[++index]);
         else if (argument == "--no-restore") options.noRestore = true;
+        else if (argument == "--library-reference-root")
+        {
+            if (options.libraryReferenceRoot.has_value())
+            { error = "duplicate library-reference root"; return false; }
+            if (index + 1 >= arguments.size())
+            { error = "--library-reference-root requires an absolute directory"; return false; }
+            options.libraryReferenceRoot = fs::path(arguments[++index]);
+        }
+        else if (argument.starts_with("--library-reference-root="))
+        {
+            if (options.libraryReferenceRoot.has_value())
+            { error = "duplicate library-reference root"; return false; }
+            const std::string_view value = argument.substr(
+                std::string_view("--library-reference-root=").size());
+            if (value.empty())
+            { error = "--library-reference-root requires an absolute directory"; return false; }
+            options.libraryReferenceRoot = fs::path(value);
+        }
         else if (argument == "-O0" || argument == "-O1" || argument == "-O2" || argument == "-O3") options.optimization = std::string(argument.substr(1));
         else if (argument == "-g" || argument == "-g0" || argument == "-gline-tables-only") options.debug = std::string(argument);
         else if (argument.starts_with('-')) { error = "unknown build option: '" + std::string(argument) + "'"; return false; }
@@ -1218,6 +1237,8 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
         sidecar.build.debugInformation == "line-tables-only" ? "-gline-tables-only" : "-g");
     std::string linker = options.linker.value_or(sidecar.build.linker);
     if (linker != "NSLink" && linker != "lld-link") return result.failure(error, "linker must be NSLink or lld-link");
+    if (options.libraryReferenceRoot.has_value() && !options.libraryReferenceRoot->is_absolute())
+        return result.failure(error, "library-reference root requires an absolute directory");
 
     RestorePlan plan;
     if (options.noRestore || !sidecar.build.restoreBeforeBuild)
@@ -1240,7 +1261,9 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     if (!makeGeneratedProject(project, plan, generated, message)) return result.failure(error, message, ExitCode::InternalError);
     TemporaryFile removeGenerated(generated);
     compilation::ProjectLoader loader;
-    std::optional<compilation::Project> loaded = loader.load(generated, message);
+    compilation::ProjectLoadOptions projectLoadOptions;
+    projectLoadOptions.libraryReferenceRoot = options.libraryReferenceRoot;
+    std::optional<compilation::Project> loaded = loader.load(generated, projectLoadOptions, message);
     if (!loaded.has_value()) return result.failure(error, "generated build project is invalid: " + message, ExitCode::CompilationError);
     std::string action;
     std::string extension;
@@ -1264,7 +1287,14 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
         if (fs::is_regular_file(installed)) linkerPath = installed.string();
     }
     EnvironmentOverride linkerEnvironment("NSC_LLD_LINK", linkerPath);
-    const std::vector<std::string> owned{action, generated.string(), "-" + optimization, debug, "-o", artifact.string()};
+    std::vector<std::string> owned{action, generated.string(), "-" + optimization, debug};
+    if (options.libraryReferenceRoot.has_value())
+    {
+        owned.push_back("--library-reference-root");
+        owned.push_back(options.libraryReferenceRoot->string());
+    }
+    owned.push_back("-o");
+    owned.push_back(artifact.string());
     std::vector<std::string_view> views;
     for (const std::string& value : owned) views.push_back(value);
     std::ostringstream compilerOutput;

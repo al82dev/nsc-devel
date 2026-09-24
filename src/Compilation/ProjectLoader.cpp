@@ -463,6 +463,14 @@ std::optional<Project> ProjectLoader::load(
     const std::filesystem::path& projectFile,
     std::string& error) const
 {
+    return load(projectFile, ProjectLoadOptions{}, error);
+}
+
+std::optional<Project> ProjectLoader::load(
+    const std::filesystem::path& projectFile,
+    const ProjectLoadOptions& options,
+    std::string& error) const
+{
     error.clear();
     std::error_code filesystemError;
     const std::filesystem::path canonicalProject =
@@ -627,9 +635,19 @@ std::optional<Project> ProjectLoader::load(
 
     std::vector<LibraryReference> libraryReferences;
     std::vector<std::string> libraryReferenceKeys;
+    const auto resolveLibraryReferencePath = [&](std::string_view text)
+    {
+        const std::filesystem::path path{std::string(text)};
+        if (path.is_absolute() || !options.libraryReferenceRoot.has_value())
+        {
+            return projectDirectory / path;
+        }
+        return *options.libraryReferenceRoot / path;
+    };
     for (const LibraryReferenceDescriptor& descriptorReference : descriptor.libraryReferences)
     {
-        const std::filesystem::path unresolvedLibrary = projectDirectory / descriptorReference.include;
+        const std::filesystem::path unresolvedLibrary =
+            resolveLibraryReferencePath(descriptorReference.include);
         filesystemError.clear();
         const std::filesystem::path library =
             std::filesystem::weakly_canonical(unresolvedLibrary, filesystemError);
@@ -647,7 +665,7 @@ std::optional<Project> ProjectLoader::load(
         std::filesystem::path unresolvedMetadata;
         if (descriptorReference.metadata.has_value())
         {
-            unresolvedMetadata = projectDirectory / *descriptorReference.metadata;
+            unresolvedMetadata = resolveLibraryReferencePath(*descriptorReference.metadata);
         }
         else
         {
@@ -671,7 +689,8 @@ std::optional<Project> ProjectLoader::load(
         std::filesystem::path runtime;
         if (descriptorReference.runtime.has_value())
         {
-            const std::filesystem::path unresolvedRuntime = projectDirectory / *descriptorReference.runtime;
+            const std::filesystem::path unresolvedRuntime =
+                resolveLibraryReferencePath(*descriptorReference.runtime);
             filesystemError.clear();
             runtime = std::filesystem::weakly_canonical(unresolvedRuntime, filesystemError);
             if (filesystemError || !std::filesystem::is_regular_file(runtime))

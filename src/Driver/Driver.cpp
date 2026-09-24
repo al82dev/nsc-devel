@@ -176,11 +176,20 @@ struct DriverExecutionScope final
     std::optional<std::chrono::steady_clock::time_point> deadline;
     std::vector<std::pair<std::string, std::chrono::nanoseconds>> phaseTimings;
     llvm_backend::LlvmOptimizationBudgetTracker o2Budget;
+    compilation::ProjectLoadOptions projectLoadOptions;
     bool reportTiming = false;
     bool reportProgress = false;
 };
 
 thread_local DriverExecutionScope* activeExecutionScope = nullptr;
+
+const compilation::ProjectLoadOptions& activeProjectLoadOptions() noexcept
+{
+    static const compilation::ProjectLoadOptions defaults;
+    return activeExecutionScope != nullptr
+        ? activeExecutionScope->projectLoadOptions
+        : defaults;
+}
 
 class DriverPhaseTimer final
 {
@@ -225,6 +234,7 @@ void configureProjectExecution(frontend::ProjectCompilation& compilation)
 {
     const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
     compilation.setCompilationJobs(jobs != nullptr ? jobs->effectiveJobs() : 1);
+    compilation.setProjectLoadOptions(activeProjectLoadOptions());
     compilation.setCancellationCheck([] {
         return activeExecutionScope != nullptr && activeExecutionScope->expired();
     });
@@ -2365,7 +2375,10 @@ bool configurePrecompiledModules(
     const std::filesystem::path &projectFile, frontend::ProjectCompilation &compilation, std::string &error)
 {
     const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
-    compilation::ProjectGraphLoader loader(jobs != nullptr ? jobs->effectiveJobs() : 1);
+    compilation::ProjectGraphLoader loader(
+        jobs != nullptr ? jobs->effectiveJobs() : 1,
+        {},
+        activeProjectLoadOptions());
     std::optional<compilation::ProjectGraph> graph = loader.load(projectFile, error);
     if (!graph.has_value()) return false;
 
@@ -2951,6 +2964,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool jobCountSeen = false;
     bool reservedCoresSeen = false;
     bool artifactCacheSeen = false;
+    bool libraryReferenceRootSeen = false;
     llvm_backend::LinkTimeOptimizationMode linkTimeOptimization =
         llvm_backend::LinkTimeOptimizationMode::None;
     bool linkTimeOptimizationSeen = false;
@@ -3200,6 +3214,40 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CommandLineError;
             }
             artifactCache.setRoot(cachePath);
+            continue;
+        }
+        static constexpr std::string_view libraryReferenceRootOption = "--library-reference-root";
+        static constexpr std::string_view libraryReferenceRootPrefix = "--library-reference-root=";
+        if (argument == libraryReferenceRootOption || argument.starts_with(libraryReferenceRootPrefix))
+        {
+            if (libraryReferenceRootSeen)
+            {
+                error << "nsc: error: duplicate library-reference root\n";
+                return ExitCode::CommandLineError;
+            }
+            libraryReferenceRootSeen = true;
+            std::string_view value;
+            if (argument == libraryReferenceRootOption)
+            {
+                if (argumentIndex + 1U >= arguments.size())
+                {
+                    error << "nsc: error: --library-reference-root requires an absolute directory\n";
+                    return ExitCode::CommandLineError;
+                }
+                value = arguments[++argumentIndex];
+            }
+            else
+            {
+                value = argument.substr(libraryReferenceRootPrefix.size());
+            }
+            const std::filesystem::path root{std::string(value)};
+            if (value.empty() || !root.is_absolute())
+            {
+                error << "nsc: error: library-reference root requires an absolute directory: '"
+                      << value << "'\n";
+                return ExitCode::CommandLineError;
+            }
+            executionScope.projectLoadOptions.libraryReferenceRoot = root.lexically_normal();
             continue;
         }
         static constexpr std::string_view timeoutPrefix = "--timeout-ms=";
@@ -4001,7 +4049,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         std::string bundleError;
         if (!writeDiagnosticBundle(std::filesystem::path(std::string(args[1])),
                 std::filesystem::path(std::string(args[2])), result,
-                capturedOutput.str(), capturedError.str(), bundleError))
+                capturedOutput.str(), capturedError.str(), activeProjectLoadOptions(), bundleError))
         {
             error << "nsc: error: " << bundleError << '\n';
             return ExitCode::CompilationError;
@@ -4293,6 +4341,8 @@ void Driver::printHelp(std::ostream &output)
               "Use --print-job-policy to inspect the effective value.\n"
            << "--artifact-cache=<absolute-directory> enables verified content-addressed reuse "
               "for optimized project object units.\n"
+           << "--library-reference-root <absolute-directory> resolves relative LibraryReference "
+              "Include, Metadata, and Runtime paths from one configuration-specific directory.\n"
            << "--profile=debug selects O0 with full debug information; --profile=release selects "
               "O2 with line tables. Explicit -O and -g flags override profile defaults.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
@@ -4647,7 +4697,8 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
     {
         compilation::ProjectLoader loader;
         std::string loadError;
-        const std::optional<compilation::Project> project = loader.load(std::filesystem::path(path), loadError);
+        const std::optional<compilation::Project> project = loader.load(
+            std::filesystem::path(path), activeProjectLoadOptions(), loadError);
         if (!project.has_value())
         {
             error << "nsc: error: " << loadError << '\n';
@@ -4671,7 +4722,10 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
     if (action == "--check-project-graph" || action == "--dump-project-graph")
     {
         const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
-        compilation::ProjectGraphLoader loader(jobs != nullptr ? jobs->effectiveJobs() : 1);
+        compilation::ProjectGraphLoader loader(
+            jobs != nullptr ? jobs->effectiveJobs() : 1,
+            {},
+            activeProjectLoadOptions());
         std::string loadError;
         const std::optional<compilation::ProjectGraph> graph = loader.load(std::filesystem::path(path), loadError);
         if (!graph.has_value())
