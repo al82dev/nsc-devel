@@ -1194,6 +1194,27 @@ bool ProjectMemberModel::collectTypeMembers(
                         "' cannot be owned because no destruction ever releases it; ownership is "
                         "discharged by the containing object's destruction");
             }
+            // A raw union has no runtime discriminant, so the compiler cannot know whether the
+            // bytes currently name this field or a different overlapping alternative.  The
+            // ordinary owned-field replacement path must release the displaced value before a
+            // store; applying that rule to a union can reinterpret an integer alternative as a
+            // pointer and release it.  Reject the unsound declaration instead of allowing a
+            // source-order-dependent access violation.  A future tagged-union feature can admit
+            // ownership because its discriminant will make the active alternative explicit.
+            const bool declaringTypeIsUnion = type.kind == NamedTypeDeclarationKind::Struct &&
+                type.syntax != nullptr &&
+                type.syntax->auxiliaryText().find("union") != std::string::npos;
+            if (declaringTypeIsUnion && symbol.kind == ClassMemberKind::Field && !symbol.isStatic &&
+                symbol.declaredOwnership == sema::OwnershipKind::Owned)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "owned field '" + symbol.name +
+                        "' is not permitted in a raw union because the union has no discriminant "
+                        "that identifies the active member");
+            }
             symbol.declaringTypeIsStruct = type.kind == NamedTypeDeclarationKind::Struct;
             symbol.hasImplicitThis = symbol.kind == ClassMemberKind::Constructor ||
                 symbol.kind == ClassMemberKind::Destructor ||

@@ -279,6 +279,34 @@ void testProjectMemberOwnershipContracts(TestContext& tests, const std::filesyst
             "owned and borrowed share one physical canonical type key for ABI/layout purposes");
     }
 }
+
+void testRawUnionRejectsOwnedField(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "RawUnionOwnedField";
+    writeProject(directory);
+    writeFile(
+        directory / "Ownership.ns",
+        "namespace Stage50;\n"
+        "public class Payload { public int Value; }\n"
+        "public union Slot { public owned Payload Object; public int Code; }\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMembers(directory / "OwnershipTypes.nsproj", error);
+    tests.expect(!ok, "raw union with an owned field is rejected before lowering");
+
+    bool foundDiagnostic = false;
+    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+    {
+        if (diagnostic.message().find("not permitted in a raw union") != std::string::npos)
+        {
+            foundDiagnostic = true;
+            break;
+        }
+    }
+    tests.expect(foundDiagnostic,
+        "raw union ownership rejection explains that no active-member discriminant exists");
+}
 }
 
 int main()
@@ -293,6 +321,7 @@ int main()
     std::error_code error;
     std::filesystem::remove_all(root, error);
     testProjectMemberOwnershipContracts(tests, root);
+    testRawUnionRejectsOwnedField(tests, root);
     std::filesystem::remove_all(root, error);
 
     return tests.result();
