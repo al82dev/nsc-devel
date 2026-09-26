@@ -117,6 +117,18 @@ bool legalizeSehFuncletFunctionsForO0(
     return true;
 }
 
+bool hasSehFuncletFunctions(llvm_api::LLVMModuleRef module)
+{
+    for (llvm_api::LLVMValueRef function = llvm_api::LLVMGetFirstFunction(module);
+         function != nullptr;
+         function = llvm_api::LLVMGetNextFunction(function))
+    {
+        if (!llvm_api::LLVMIsDeclaration(function) &&
+            llvm_api::LLVMHasPersonalityFn(function)) return true;
+    }
+    return false;
+}
+
 // NSC-LIMIT-005 -- CAPTURAR LA SALIDA DE ERROR DEL PROCESO MIENTRAS CORRE `LLVMRunPasses`.
 //
 // POR QUE ASI Y NO DE OTRA FORMA. `LLVMPassBuilderOptionsSetDebugLogging` hace que LLVM escriba
@@ -222,17 +234,19 @@ bool LlvmOptimizer::optimize(
     LlvmOptimizationObservation* observation,
     std::string& error) const
 {
-    return optimizeImpl(module, targetMachine, level, observation, true, error);
+    return optimizeImpl(module, targetMachine, level, observation, true, true, error);
 }
 
 bool LlvmOptimizer::optimizePrepared(
     LlvmModule& module,
     const LlvmTargetMachine& targetMachine,
     LlvmOptimizationLevel level,
+    bool mandatoryInliningRequired,
     LlvmOptimizationObservation* observation,
     std::string& error) const
 {
-    return optimizeImpl(module, targetMachine, level, observation, false, error);
+    return optimizeImpl(module, targetMachine, level, observation, false,
+        mandatoryInliningRequired, error);
 }
 
 bool LlvmOptimizer::optimizeImpl(
@@ -241,6 +255,7 @@ bool LlvmOptimizer::optimizeImpl(
     LlvmOptimizationLevel level,
     LlvmOptimizationObservation* observation,
     bool prepareModule,
+    bool mandatoryInliningRequired,
     std::string& error) const
 {
     error.clear();
@@ -290,6 +305,28 @@ bool LlvmOptimizer::optimizeImpl(
         observation->verifiedBefore = true;
     }
 
+    llvm_api::LLVMModuleRef moduleRef = static_cast<llvm_api::LLVMModuleRef>(module.module_);
+    llvm_api::LLVMTargetMachineRef targetMachineRef =
+        static_cast<llvm_api::LLVMTargetMachineRef>(targetMachine.targetMachine_);
+    const bool preparedO0FastPath = !prepareModule &&
+        level == LlvmOptimizationLevel::O0 && !mandatoryInliningRequired;
+    const bool requiresSehLegalization =
+        preparedO0FastPath && hasSehFuncletFunctions(moduleRef);
+    if (preparedO0FastPath && !requiresSehLegalization)
+    {
+        // The lowerer already verified this module and target configuration only attaches the
+        // triple/data layout. With no required inlining and no Win64 funclet workaround there is
+        // no correctness pass to run at O0, so enter code generation directly.
+        if (observation != nullptr)
+        {
+            observation->pipeline = "nsc-o0-direct-emission";
+            observation->moduleTriple = moduleString(llvm_api::LLVMGetTarget(moduleRef));
+            observation->moduleDataLayout = moduleString(llvm_api::LLVMGetDataLayoutStr(moduleRef));
+            observation->verifiedAfter = true;
+        }
+        return true;
+    }
+
     llvm_api::LLVMPassBuilderOptionsRef options = llvm_api::LLVMCreatePassBuilderOptions();
     if (options == nullptr)
     {
@@ -308,7 +345,8 @@ bool LlvmOptimizer::optimizeImpl(
     // en el proceso padre produciria un registro que nadie puede capturar: LLVM-C.dll lleva su
     // propio CRT. En POSIX se conserva la captura temporal dentro del proceso.
 #if defined(_WIN32)
-    const bool emitProcessTrace = observation != nullptr && detailedPassDiagnostics;
+    const bool emitProcessTrace = observation != nullptr && detailedPassDiagnostics &&
+        !preparedO0FastPath;
     const bool enableDebugLogging = emitProcessTrace;
 #else
     const bool emitProcessTrace = false;
@@ -319,11 +357,9 @@ bool LlvmOptimizer::optimizeImpl(
         llvm_api::LLVMPassBuilderOptionsSetDebugLogging(options, 1);
     }
 
-    llvm_api::LLVMModuleRef moduleRef = static_cast<llvm_api::LLVMModuleRef>(module.module_);
-    llvm_api::LLVMTargetMachineRef targetMachineRef =
-        static_cast<llvm_api::LLVMTargetMachineRef>(targetMachine.targetMachine_);
-
-    const std::string pipelineText(pipeline);
+    const std::string pipelineText = preparedO0FastPath
+        ? "nsc-o0-seh-mem2reg"
+        : std::string(pipeline);
     if (observation != nullptr)
     {
         observation->pipeline = pipelineText;
@@ -374,11 +410,14 @@ bool LlvmOptimizer::optimizeImpl(
     }
     llvm_api::LLVMErrorRef llvmError = nullptr;
 #if defined(_WIN32)
-    llvmError = llvm_api::LLVMRunPasses(
-        moduleRef, pipelineText.c_str(), targetMachineRef, options);
-    finishProcessTrace();
+    if (!preparedO0FastPath)
+    {
+        llvmError = llvm_api::LLVMRunPasses(
+            moduleRef, pipelineText.c_str(), targetMachineRef, options);
+        finishProcessTrace();
+    }
 #else
-    if (observation != nullptr)
+    if (!preparedO0FastPath && observation != nullptr)
     {
         // El fichero vive lo que dura la llamada y se borra siempre. No es un artifact: es el
         // unico sitio por el que LLVM sabe hablar. Nada de `std::tmpnam`, que MSVC marca como
@@ -435,7 +474,7 @@ bool LlvmOptimizer::optimizeImpl(
             capture.remove();
         }
     }
-    else
+    else if (!preparedO0FastPath)
     {
         llvmError = llvm_api::LLVMRunPasses(
             moduleRef, pipelineText.c_str(), targetMachineRef, options);

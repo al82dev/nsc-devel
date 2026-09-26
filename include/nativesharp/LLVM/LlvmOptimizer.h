@@ -75,6 +75,7 @@ private:
         LlvmModule& module,
         const LlvmTargetMachine& targetMachine,
         LlvmOptimizationLevel level,
+        bool mandatoryInliningRequired,
         LlvmOptimizationObservation* observation,
         std::string& error) const;
 
@@ -84,6 +85,7 @@ private:
         LlvmOptimizationLevel level,
         LlvmOptimizationObservation* observation,
         bool prepareModule,
+        bool mandatoryInliningRequired,
         std::string& error) const;
 };
 }

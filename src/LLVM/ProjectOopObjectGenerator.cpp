@@ -239,10 +239,9 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         }
 
         LlvmOptimizer optimizer;
-        LlvmOptimizationObservation observation;
         if (!optimizer.optimizePrepared(
                 *module, *targetMachine, optimizationLevel,
-                &observation, moduleErrors[ordinal]))
+                requiresWholeModuleRequiredInlining, nullptr, moduleErrors[ordinal]))
         {
             if (moduleErrors[ordinal].empty())
                 moduleErrors[ordinal] = "optimization failed";
