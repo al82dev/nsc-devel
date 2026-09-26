@@ -575,22 +575,35 @@ bool ProjectMethodBodyModel::build(
             }
         }
     }
-    while (true)
+    std::vector<std::size_t> callableWorklist;
+    callableWorklist.reserve(memberModel.members().size());
+    for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
     {
-        for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
+        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+        if (member.isPrecompiled ||
+            ((member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor &&
+              member.kind != ClassMemberKind::Destructor) ||
+             member.syntax == nullptr || member.syntax->first() == nullptr) ||
+            (isDeferredGenericMethod(memberOrdinal) &&
+             !demandedGenericMethods.contains(memberOrdinal)))
         {
-            const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
-            const bool precompiledCallable = member.isPrecompiled;
+            continue;
+        }
+        callableWorklist.push_back(memberOrdinal);
+    }
+
+    std::size_t workCursor = 0;
+    std::size_t callDemandCursor = 0;
+    std::size_t delegateDemandCursor = 0;
+    while (workCursor < callableWorklist.size())
+    {
+        const std::size_t waveEnd = callableWorklist.size();
+        for (; workCursor < waveEnd; ++workCursor)
+        {
+            const std::size_t memberOrdinal = callableWorklist[workCursor];
             if (analyzedCallableMembers_.contains(memberOrdinal) ||
-                precompiledCallable ||
-                ((member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor &&
-                  member.kind != ClassMemberKind::Destructor) ||
-                 member.syntax == nullptr || member.syntax->first() == nullptr) ||
-                (isDeferredGenericMethod(memberOrdinal) &&
-                 !demandedGenericMethods.contains(memberOrdinal)))
-            {
-                continue;
-            }
+                memberOrdinal >= memberModel.members().size()) continue;
+            const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
         // NSC-LIMIT-007. UNA ESPECIALIZACION QUE YA INCUMPLIO SU `where` NO SE ANALIZA.
         //
         // Su cuerpo se sustituyo con un `T` que la clausula prohibe, de modo que analizarlo
@@ -693,28 +706,35 @@ bool ProjectMethodBodyModel::build(
             activeCleanupRegions_.clear();
         }
 
-        bool discoveredDemand = false;
-        for (const MethodCallBinding& call : calls_)
+        std::vector<std::size_t> newlyDemanded;
+        for (; callDemandCursor < calls_.size(); ++callDemandCursor)
         {
+            const MethodCallBinding& call = calls_[callDemandCursor];
             if (call.resolution != MethodCallResolutionKind::Resolved ||
                 !call.selectedMemberOrdinal.has_value() ||
                 !isDeferredGenericMethod(*call.selectedMemberOrdinal))
             {
                 continue;
             }
-            discoveredDemand |= demandedGenericMethods.insert(*call.selectedMemberOrdinal).second;
+            if (demandedGenericMethods.insert(*call.selectedMemberOrdinal).second)
+                newlyDemanded.push_back(*call.selectedMemberOrdinal);
         }
-        for (const MethodDelegateBinding& binding : delegateBindings_)
+        for (; delegateDemandCursor < delegateBindings_.size(); ++delegateDemandCursor)
         {
+            const MethodDelegateBinding& binding = delegateBindings_[delegateDemandCursor];
             if (binding.kind != MethodDelegateOperationKind::Create ||
                 !binding.selectedMemberOrdinal.has_value() ||
                 !isDeferredGenericMethod(*binding.selectedMemberOrdinal))
             {
                 continue;
             }
-            discoveredDemand |= demandedGenericMethods.insert(*binding.selectedMemberOrdinal).second;
+            if (demandedGenericMethods.insert(*binding.selectedMemberOrdinal).second)
+                newlyDemanded.push_back(*binding.selectedMemberOrdinal);
         }
-        if (!discoveredDemand) break;
+        std::ranges::sort(newlyDemanded);
+        newlyDemanded.erase(std::unique(newlyDemanded.begin(), newlyDemanded.end()), newlyDemanded.end());
+        callableWorklist.insert(
+            callableWorklist.end(), newlyDemanded.begin(), newlyDemanded.end());
     }
 
     // Stage 37: field initializers are semantic executable contexts too.  They deliberately have
