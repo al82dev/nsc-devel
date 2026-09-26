@@ -101,6 +101,49 @@ bool publishLog(const std::filesystem::path& path, std::string_view format,
     return !error;
 }
 
+bool publishAutomaticErrorLog(std::string_view format,
+    const std::vector<std::string_view>& arguments, int exitCode,
+    std::string_view standardOutput, std::string_view standardError,
+    std::filesystem::path& publishedPath)
+{
+    std::error_code error;
+    const std::filesystem::path directory = std::filesystem::current_path(error);
+    if (error) return false;
+
+    constexpr std::size_t kMaximumLogOrdinal = 1000000U;
+    for (std::size_t ordinal = 0; ordinal < kMaximumLogOrdinal; ++ordinal)
+    {
+        const std::string fileName = ordinal == 0U
+            ? "error.log"
+            : "error" + std::to_string(ordinal) + ".log";
+        const std::filesystem::path candidate = directory / fileName;
+        const std::filesystem::path claim = candidate.string() + ".claim";
+        error.clear();
+        if (!std::filesystem::create_directory(claim, error))
+        {
+            if (error) return false;
+            continue;
+        }
+
+        const bool available = !std::filesystem::exists(candidate, error) && !error;
+        const bool published = available && publishLog(candidate, format, arguments, exitCode,
+            standardOutput, standardError);
+        std::error_code removeError;
+        std::filesystem::remove(claim, removeError);
+        if (published)
+        {
+            publishedPath = candidate;
+            return true;
+        }
+        if (!available)
+        {
+            continue;
+        }
+        return false;
+    }
+    return false;
+}
+
 int runCompiler(int argc, char** argv)
 {
     const auto isTraceWorkerArgument = [](const char* argument) {
@@ -117,6 +160,7 @@ int runCompiler(int argc, char** argv)
     std::string logFormat = "text";
     bool quiet = false;
     bool verbose = false;
+    bool automaticErrorLog = true;
     for (int index = 1; index < argc; ++index)
     {
         if (isTraceWorkerArgument(argv[index])) continue;
@@ -128,6 +172,7 @@ int runCompiler(int argc, char** argv)
         if (argument == "--time-report") { arguments.emplace_back("--time"); continue; }
         if (argument == "--quiet") { quiet = true; continue; }
         if (argument == "--verbose") { verbose = true; continue; }
+        if (argument == "--no-error-log") { automaticErrorLog = false; continue; }
         arguments.emplace_back(argument);
     }
     if (verbose)
@@ -225,6 +270,17 @@ int runCompiler(int argc, char** argv)
     if (numericExitCode != 0 && !errorLogPath.empty())
         logOk = publishLog(errorLogPath, logFormat, arguments, numericExitCode,
             capturedOutput.str(), capturedError.str()) && logOk;
+    else if (numericExitCode != 0 && automaticErrorLog && logPath.empty())
+    {
+        std::filesystem::path publishedPath;
+        const bool automaticLogOk = publishAutomaticErrorLog(logFormat, arguments,
+            numericExitCode, capturedOutput.str(), capturedError.str(), publishedPath);
+        logOk = automaticLogOk && logOk;
+        if (automaticLogOk)
+        {
+            std::cerr << "nsc: error log written: " << publishedPath.string() << '\n';
+        }
+    }
     if (!timeTracePath.empty())
         logOk = publishLog(timeTracePath, "json", arguments, numericExitCode,
             capturedOutput.str(), capturedError.str()) && logOk;
