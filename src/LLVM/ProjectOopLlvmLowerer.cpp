@@ -3764,13 +3764,27 @@ private:
             }
             for (const auto& child : node->children) self(child.get(), self);
         };
-        for (const frontend::ProjectOopMirFunction& function : mirModel_.functions())
+        const std::span<const frontend::ProjectOopMirFunction> functions = mirModel_.functions();
+        for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
         {
+            // A non-coordinator partition only needs declarations for callback thunks referenced
+            // by bodies that it owns. Scanning every MIR body here used to be harmless because
+            // every partition declared every function; after declaration pruning it asks this
+            // module for unrelated callback targets that are intentionally absent.
+            if (partitioned_ && !ownsModuleGlobals_ &&
+                (ordinal >= functionDefinitions_.size() || !functionDefinitions_[ordinal]))
+            {
+                continue;
+            }
+            const frontend::ProjectOopMirFunction& function = functions[ordinal];
             visit(function.body.get(), visit);
+            for (const frontend::ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
+                visit(cleanup.action, visit);
         }
-        for (const frontend::ProjectOopMirFieldInitializer& initializer : mirModel_.fieldInitializers())
+        if (!partitioned_ || ownsModuleGlobals_)
         {
-            visit(initializer.value.get(), visit);
+            for (const frontend::ProjectOopMirFieldInitializer& initializer : mirModel_.fieldInitializers())
+                visit(initializer.value.get(), visit);
         }
         for (const auto& [target, vectorCall] : targets)
         {

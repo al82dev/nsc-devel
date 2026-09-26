@@ -276,10 +276,6 @@ int runCompiler(int argc, char** argv)
         const bool automaticLogOk = publishAutomaticErrorLog(logFormat, arguments,
             numericExitCode, capturedOutput.str(), capturedError.str(), publishedPath);
         logOk = automaticLogOk && logOk;
-        if (automaticLogOk)
-        {
-            std::cerr << "nsc: error log written: " << publishedPath.string() << '\n';
-        }
     }
     if (!timeTracePath.empty())
         logOk = publishLog(timeTracePath, "json", arguments, numericExitCode,

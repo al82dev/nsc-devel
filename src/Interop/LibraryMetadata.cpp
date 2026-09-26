@@ -1829,17 +1829,6 @@ bool decodePayload(
         return false;
     }
 
-    // Normalize lookup order once at the import boundary. Older compatible producers appended
-    // synthesized constructors after their sorted member table, so consumers cannot assume the
-    // bytes were globally ordered even though ordinary records were. Stable sorting preserves
-    // declaration order inside each owner while enabling logarithmic type lookup and bounded
-    // per-type member scans during public-surface materialization.
-    std::stable_sort(metadata.types.begin(), metadata.types.end(), [](const auto& left, const auto& right) {
-        return left.identityKey < right.identityKey;
-    });
-    std::stable_sort(metadata.members.begin(), metadata.members.end(), [](const auto& left, const auto& right) {
-        return left.declaringTypeKey < right.declaringTypeKey;
-    });
     return true;
 }
 
@@ -2253,6 +2242,17 @@ bool LibraryMetadataCodec::read(
         error = "NativeSharp metadata ABI fingerprint mismatch";
         return false;
     }
+
+    // Normalize lookup order only after authenticating the ABI projection in the exact order
+    // encoded by the producer. Older compatible producers appended synthesized constructors
+    // after their sorted member table; sorting before the fingerprint check changes their
+    // historical projection and incorrectly rejects otherwise valid NSMETA files.
+    std::stable_sort(decoded.types.begin(), decoded.types.end(), [](const auto& left, const auto& right) {
+        return left.identityKey < right.identityKey;
+    });
+    std::stable_sort(decoded.members.begin(), decoded.members.end(), [](const auto& left, const auto& right) {
+        return left.declaringTypeKey < right.declaringTypeKey;
+    });
     metadata = std::move(decoded);
     return true;
 }

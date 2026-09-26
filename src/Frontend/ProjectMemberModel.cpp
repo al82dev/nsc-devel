@@ -303,6 +303,7 @@ bool ProjectMemberModel::build(
     nameLookup_ = &nameLookup;
     membersByType_.resize(nameLookup.namedTypes().size());
     promotedMembersByType_.resize(nameLookup.namedTypes().size());
+    membersByName_.resize(nameLookup.namedTypes().size());
     typeOrdinalByKey_.reserve(nameLookup.namedTypes().size());
     for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
     {
@@ -1928,6 +1929,7 @@ bool ProjectMemberModel::collectTypeMembers(
             const std::size_t memberOrdinal = members_.size();
             members_.push_back(std::move(symbol));
             membersByType_[typeOrdinal].push_back(memberOrdinal);
+            membersByName_[typeOrdinal][members_[memberOrdinal].name].push_back(memberOrdinal);
             memberBySyntax_.emplace(memberNode, memberOrdinal);
             byName[members_[memberOrdinal].name].push_back(memberOrdinal);
         }
@@ -2388,6 +2390,7 @@ bool ProjectMemberModel::collectEnumMembers(
         const std::size_t memberOrdinal = members_.size();
         members_.push_back(std::move(symbol));
         membersByType_[typeOrdinal].push_back(memberOrdinal);
+        membersByName_[typeOrdinal][members_[memberOrdinal].name].push_back(memberOrdinal);
         memberBySyntax_.emplace(memberNode, memberOrdinal);
     }
 
