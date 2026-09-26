@@ -527,9 +527,12 @@ const interop::LibraryMetadataType *metadataTypeForKey(
     const std::string base = metadataBaseTypeKey(typeKey);
     if (!base.starts_with("type:")) return nullptr;
     const std::string_view identity(base.data() + 5, base.size() - 5);
-    const auto found =
-        std::ranges::find_if(metadata.types, [&](const auto &candidate) { return candidate.identityKey == identity; });
-    return found == metadata.types.end() ? nullptr : &*found;
+    const auto found = std::lower_bound(
+        metadata.types.begin(), metadata.types.end(), identity,
+        [](const interop::LibraryMetadataType &candidate, std::string_view value) {
+            return candidate.identityKey < value;
+        });
+    return found == metadata.types.end() || found->identityKey != identity ? nullptr : &*found;
 }
 
 std::optional<std::string> metadataSpecializedTypeKey(
@@ -758,11 +761,9 @@ bool isPubliclyReachableMetadataType(
         const std::size_t separator = current->fullyQualifiedName.find_last_of('+');
         if (separator == std::string::npos) return true;
         const std::string parentName = current->fullyQualifiedName.substr(0, separator);
-        const auto parent = std::ranges::find_if(metadata.types, [&](const auto &candidate) {
-            return candidate.fullyQualifiedName == parentName;
-        });
-        if (parent == metadata.types.end()) return false;
-        current = &*parent;
+        current = metadataTypeForKey(
+            metadata, "type:" + metadata.moduleName + "::" + parentName);
+        if (current == nullptr) return false;
     }
     return false;
 }
@@ -1058,10 +1059,16 @@ const interop::LibraryMetadataMember *metadataFieldMember(
 {
     constexpr std::uint8_t kFieldKind = 0U;
     const std::string typeKey = "type:" + type.identityKey;
-    const auto found = std::ranges::find_if(metadata.members, [&](const auto &member) {
-        return member.kind == kFieldKind && member.declaringTypeKey == typeKey && member.name == name;
-    });
-    return found == metadata.members.end() ? nullptr : &*found;
+    auto found = std::lower_bound(
+        metadata.members.begin(), metadata.members.end(), typeKey,
+        [](const interop::LibraryMetadataMember &member, const std::string &value) {
+            return member.declaringTypeKey < value;
+        });
+    for (; found != metadata.members.end() && found->declaringTypeKey == typeKey; ++found)
+    {
+        if (found->kind == kFieldKind && found->name == name) return &*found;
+    }
+    return nullptr;
 }
 
 const interop::LibraryMetadataMember *metadataEventForBacking(
@@ -1073,12 +1080,17 @@ const interop::LibraryMetadataMember *metadataEventForBacking(
     constexpr std::uint32_t kCompilerGenerated = 1U << 10U;
     if ((field.flags & kCompilerGenerated) == 0U) return nullptr;
     const std::string declaringTypeKey = "type:" + type.identityKey;
-    const auto found = std::ranges::find_if(metadata.members, [&](const auto &member) {
-        return member.kind == kEventKind && member.declaringTypeKey == declaringTypeKey &&
-               member.declaredTypeKey == field.typeKey &&
-               field.name == "__nsc_event_" + member.name + "$stage42";
-    });
-    return found == metadata.members.end() ? nullptr : &*found;
+    auto found = std::lower_bound(
+        metadata.members.begin(), metadata.members.end(), declaringTypeKey,
+        [](const interop::LibraryMetadataMember &member, const std::string &value) {
+            return member.declaringTypeKey < value;
+        });
+    for (; found != metadata.members.end() && found->declaringTypeKey == declaringTypeKey; ++found)
+    {
+        if (found->kind == kEventKind && found->declaredTypeKey == field.typeKey &&
+            field.name == "__nsc_event_" + found->name + "$stage42") return &*found;
+    }
+    return nullptr;
 }
 
 std::string enumConstantSource(const interop::LibraryMetadataType &type, std::uint64_t bits)
@@ -1904,11 +1916,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                     "' does not refer to a nominal aggregate type";
                 return false;
             }
-            const std::string_view carrierIdentity(carrier.typeKey.data() + 5U, carrier.typeKey.size() - 5U);
-            const auto nestedFound = std::ranges::find_if(metadata.types, [&](const auto &candidate) {
-                return candidate.identityKey == carrierIdentity;
-            });
-            if (nestedFound == metadata.types.end() ||
+            const interop::LibraryMetadataType *nestedFound =
+                metadataTypeForKey(metadata, carrier.typeKey);
+            if (nestedFound == nullptr ||
                 nestedFound->kind != interop::LibraryMetadataTypeKind::Struct)
             {
                 error = "metadata anonymous-member carrier '" + carrier.name +
@@ -2268,11 +2278,9 @@ bool buildPrecompiledGenericTemplateSource(
                 const std::string fullyQualifiedOwner = generic.namespaceName.empty()
                     ? ownerPrefix
                     : generic.namespaceName + "." + ownerPrefix;
-                const auto owner = std::ranges::find_if(metadata.types,
-                    [&](const auto &candidate) {
-                        return candidate.fullyQualifiedName == fullyQualifiedOwner;
-                    });
-                if (owner == metadata.types.end() ||
+                const interop::LibraryMetadataType *owner = metadataTypeForKey(
+                    metadata, "type:" + metadata.moduleName + "::" + fullyQualifiedOwner);
+                if (owner == nullptr ||
                     owner->kind != interop::LibraryMetadataTypeKind::Class)
                 {
                     error = "metadata generic method '" + generic.canonicalKey +
@@ -2465,7 +2473,8 @@ bool configurePrecompiledModules(
                     return result;
                 }()});
     }
-    return compilation.setPrecompiledModules(std::move(modules), error);
+    if (!compilation.setPrecompiledModules(std::move(modules), error)) return false;
+    return compilation.setPreloadedProjectGraph(std::move(*graph), error);
 }
 
 bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesystem::path &right);

@@ -480,6 +480,26 @@ bool ProjectCompilation::setPrecompiledModules(
     return true;
 }
 
+bool ProjectCompilation::setPreloadedProjectGraph(
+    compilation::ProjectGraph graph,
+    std::string& error)
+{
+    error.clear();
+    if (projectGraph_.has_value() || !units_.empty() || genericModel_ != nullptr ||
+        nameLookup_ != nullptr || memberModel_ != nullptr)
+    {
+        error = "project graph must be configured before project compilation starts";
+        return false;
+    }
+    if (graph.rootProject() == nullptr)
+    {
+        error = "preloaded project graph has no root project";
+        return false;
+    }
+    projectGraph_ = std::move(graph);
+    return true;
+}
+
 bool ProjectCompilation::compileProjectSyntax(
     const std::filesystem::path& projectFile,
     std::string& loadError)
@@ -800,7 +820,7 @@ bool ProjectCompilation::compileSyntaxCore(
     std::string& loadError)
 {
     loadError.clear();
-    if (projectGraph_.has_value() || !units_.empty() || genericModel_ != nullptr || nameLookup_ != nullptr || memberModel_ != nullptr || inheritanceModel_ != nullptr || interfaceModel_ != nullptr ||
+    if (!units_.empty() || genericModel_ != nullptr || nameLookup_ != nullptr || memberModel_ != nullptr || inheritanceModel_ != nullptr || interfaceModel_ != nullptr ||
         methodBodyModel_ != nullptr || virtualDispatchModel_ != nullptr || destructionModel_ != nullptr ||
         constructionModel_ != nullptr ||
         objectLayoutModel_ != nullptr ||
@@ -810,18 +830,20 @@ bool ProjectCompilation::compileSyntaxCore(
         return false;
     }
 
-    compilation::ProjectGraphLoader loader(compilationJobs_, {}, projectLoadOptions_);
-    std::optional<compilation::ProjectGraph> graph;
+    if (!projectGraph_.has_value())
     {
-        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "project-graph");
-        graph = loader.load(projectFile, loadError);
+        compilation::ProjectGraphLoader loader(compilationJobs_, {}, projectLoadOptions_);
+        std::optional<compilation::ProjectGraph> graph;
+        {
+            const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "project-graph");
+            graph = loader.load(projectFile, loadError);
+        }
+        if (!graph.has_value())
+        {
+            return false;
+        }
+        projectGraph_ = std::move(*graph);
     }
-    if (!graph.has_value())
-    {
-        return false;
-    }
-
-    projectGraph_ = std::move(*graph);
     if (cancellationRequested(loadError, "syntax")) return false;
     std::vector<compilation::PrecompiledProjectDescriptor> precompiledDescriptors;
     precompiledDescriptors.reserve(precompiledModules_.size());

@@ -54,6 +54,9 @@ public:
     bool setPrecompiledModules(
         std::vector<PrecompiledSyntaxModule> modules,
         std::string& error);
+    bool setPreloadedProjectGraph(
+        compilation::ProjectGraph graph,
+        std::string& error);
 
     bool compileProjectSyntax(const std::filesystem::path& projectFile, std::string& loadError);
     bool compileProjectNames(const std::filesystem::path& projectFile, std::string& loadError);
