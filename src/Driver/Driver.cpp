@@ -157,7 +157,7 @@ struct DriverExecutionScope final
     {
         if (!reportProgress) return;
         const std::lock_guard<std::mutex> lock(progressMutex);
-        output << "progress " << message << '\n';
+        output << message << '\n';
         output.flush();
     }
     void recordPhase(std::string_view phase, std::chrono::nanoseconds elapsed)
@@ -204,7 +204,7 @@ public:
                                      : std::chrono::steady_clock::time_point{})
     {
         if (scope_ != nullptr)
-            scope_->writeProgress("phase=" + std::string(phase_) + " state=begin");
+            scope_->writeProgress("-- NSC: " + std::string(phase_));
     }
 
     ~DriverPhaseTimer()
@@ -213,8 +213,9 @@ public:
         const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - started_);
         scope_->recordPhase(phase_, elapsed);
-        scope_->writeProgress("phase=" + std::string(phase_) + " state=end elapsed_ms=" +
-            std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()));
+        scope_->writeProgress("-- NSC: " + std::string(phase_) + " finished (" +
+            std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()) +
+            " ms)");
     }
 
 private:
@@ -2477,6 +2478,15 @@ bool configurePrecompiledModules(
     return compilation.setPreloadedProjectGraph(std::move(*graph), error);
 }
 
+void configureObjectGeneratorProgress(llvm_backend::ProjectOopObjectGenerator& generator)
+{
+    if (activeExecutionScope == nullptr || !activeExecutionScope->reportProgress) return;
+    DriverExecutionScope* const scope = activeExecutionScope;
+    generator.setProgressSink([scope](std::string_view message) {
+        scope->writeProgress(message);
+    });
+}
+
 bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesystem::path &right);
 
 bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compilation,
@@ -4335,9 +4345,9 @@ void Driver::printHelp(std::ostream &output)
            << "--fp-denormal=preserve|ftz|daz|ftz-daz controls subnormal inputs and results.\n"
            << "--time reports deterministic per-phase microseconds plus total wall time; "
               "--timeout-ms=N requests cooperative cancellation at safe project phase boundaries.\n"
-           << "--progress streams and flushes phase boundaries plus source read, lex and parse "
-              "completion so long-running builds remain observable.\n"
-           << "--quiet suppresses normal stdout; --verbose enables progress plus timing. "
+           << "project build commands stream CMake-style phase, source and LLVM-module progress "
+              "by default; --progress enables the same stream on diagnostic commands.\n"
+           << "--quiet suppresses normal stdout and automatic progress; --verbose adds timing. "
               "--time-report is an alias for --time and --time-trace=<file> writes a JSON trace.\n"
            << "--log=<file> records stdout, stderr, arguments and exit status; "
               "--log-format=text|json selects its schema and --log-on-error=<file> publishes only "
@@ -5336,6 +5346,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     }
 
     llvm_backend::ProjectOopObjectGenerator objectGenerator;
+    configureObjectGeneratorProgress(objectGenerator);
     std::string codeGenerationError;
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle =
         measureDriverPhase("llvm-object-generation", [&] {
@@ -5487,6 +5498,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     }
 
     llvm_backend::ProjectOopObjectGenerator objectGenerator;
+    configureObjectGeneratorProgress(objectGenerator);
     std::string codeGenerationError;
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle =
         measureDriverPhase("llvm-object-generation", [&] {
@@ -5711,6 +5723,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         return ExitCode::CompilationError;
     }
     llvm_backend::ProjectOopObjectGenerator objectGenerator;
+    configureObjectGeneratorProgress(objectGenerator);
     std::string codeGenerationError;
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle =
         measureDriverPhase("llvm-object-generation", [&] {

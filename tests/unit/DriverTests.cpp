@@ -678,8 +678,8 @@ int main()
         const std::string report = output.str();
         const std::vector<std::string_view> expectedPhases = {
             "precompiled-metadata",
-            "project-graph",
             "syntax-read",
+            "syntax-comptime",
             "precompiled-syntax",
             "syntax-lex",
             "syntax-parse",
@@ -723,11 +723,11 @@ int main()
         const ExitCode code = runDriver(arguments, output, error);
         const std::string report = output.str();
         const std::size_t graphBegin =
-            report.find("progress phase=project-graph state=begin");
+            report.find("-- NSC: precompiled-metadata");
         const std::size_t readFile =
-            report.find("progress phase=syntax-read file=\"");
+            report.find("] NSC syntax-read ");
         const std::size_t mirEnd =
-            report.find("progress phase=oop-mir state=end elapsed_ms=");
+            report.find("-- NSC: oop-mir finished (");
         tests.expect(code == ExitCode::Success &&
                 graphBegin != std::string::npos &&
                 readFile != std::string::npos &&

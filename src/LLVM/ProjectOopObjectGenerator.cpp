@@ -17,8 +17,10 @@
 #include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <system_error>
 #include <utility>
@@ -27,6 +29,39 @@ namespace nativesharp::llvm_backend
 {
 namespace
 {
+class CodeUnitProgress final
+{
+public:
+    CodeUnitProgress(
+        const std::function<void(std::string_view)>& sink,
+        std::atomic_size_t& completed,
+        std::mutex& mutex,
+        std::size_t total,
+        std::string name)
+        : sink_(sink), completed_(completed), mutex_(mutex), total_(total),
+          name_(std::move(name))
+    {
+        if (sink_)
+            sink_("-- NSC: compiling LLVM module " + name_);
+    }
+
+    ~CodeUnitProgress()
+    {
+        if (!sink_) return;
+        const std::lock_guard<std::mutex> lock(mutex_);
+        const std::size_t current = completed_.fetch_add(1, std::memory_order_relaxed) + 1U;
+        sink_("[" + std::to_string(current) + "/" + std::to_string(total_) +
+            "] NSC LLVM " + name_);
+    }
+
+private:
+    const std::function<void(std::string_view)>& sink_;
+    std::atomic_size_t& completed_;
+    std::mutex& mutex_;
+    std::size_t total_;
+    std::string name_;
+};
+
 std::optional<std::filesystem::path> createTemporaryDirectory(std::string& error)
 {
     std::error_code filesystemError;
@@ -54,6 +89,13 @@ std::optional<std::filesystem::path> createTemporaryDirectory(std::string& error
     error = "could not allocate a unique partitioned code-generation directory";
     return std::nullopt;
 }
+
+}
+
+void ProjectOopObjectGenerator::setProgressSink(
+    std::function<void(std::string_view)> sink)
+{
+    progressSink_ = std::move(sink);
 }
 
 ProjectOopObjectBundle::ProjectOopObjectBundle(
@@ -229,7 +271,17 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
 
     // Process one code unit end to end. The LLVM module and target machine are destroyed as soon
     // as its object is emitted instead of retaining every partition through three global waves.
+    std::atomic_size_t completedModules = 0;
+    std::mutex moduleProgressMutex;
     const auto processModule = [&](std::size_t ordinal) {
+        std::string moduleName = "NativeSharp.OOP";
+        if (usePartitions)
+            moduleName = ordinal == 0
+                ? "NativeSharp.OOP.globals"
+                : "NativeSharp.OOP." + partition.units()[ordinal - 1].stableKey;
+        const CodeUnitProgress progress(
+            progressSink_, completedModules, moduleProgressMutex,
+            moduleCount, std::move(moduleName));
         if (usePreLlvmCache)
         {
             bool hit = false;

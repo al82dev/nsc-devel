@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string>
@@ -60,6 +61,8 @@ private:
 class ProjectOopObjectGenerator final
 {
 public:
+    void setProgressSink(std::function<void(std::string_view)> sink);
+
     std::unique_ptr<ProjectOopObjectBundle> generate(
         const frontend::ProjectNameLookup& nameLookup,
         const frontend::ProjectMemberModel& memberModel,
@@ -82,5 +85,8 @@ public:
         std::span<const DebugPrefixMap> debugPrefixMaps,
         LinkTimeOptimizationMode linkTimeOptimization,
         std::string& error) const;
+
+private:
+    std::function<void(std::string_view)> progressSink_;
 };
 }

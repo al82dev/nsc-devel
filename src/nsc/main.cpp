@@ -135,6 +135,17 @@ int runCompiler(int argc, char** argv)
         arguments.emplace_back("--progress");
         arguments.emplace_back("--time");
     }
+    const bool explicitProgress = std::ranges::any_of(
+        arguments, [](std::string_view argument) { return argument == "--progress"; });
+    const bool buildCommand = !arguments.empty() &&
+        (arguments.front() == "--emit-project-oop-obj" ||
+         arguments.front() == "--emit-project-oop-exe" ||
+         arguments.front() == "--emit-project-oop-lib" ||
+         arguments.front() == "--emit-project-oop-dll" ||
+         arguments.front() == "--emit-project-c-header" ||
+         arguments.front() == "--emit-project-library-metadata");
+    if (buildCommand && !quiet && !explicitProgress)
+        arguments.emplace_back("--progress");
     if (!timeTracePath.empty()) arguments.emplace_back("--time");
     if (logFormat != "text" && logFormat != "json")
     {

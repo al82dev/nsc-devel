@@ -69,7 +69,7 @@ public:
     {
         if (progressSink_)
         {
-            const std::string message = "phase=" + std::string(phase_) + " state=begin";
+            const std::string message = "-- NSC: " + std::string(phase_);
             progressSink_(message);
         }
     }
@@ -83,10 +83,10 @@ public:
         if (timingSink_) timingSink_(phase_, elapsed);
         if (progressSink_)
         {
-            const std::string message = "phase=" + std::string(phase_) +
-                " state=end elapsed_ms=" +
+            const std::string message = "-- NSC: " + std::string(phase_) +
+                " finished (" +
                 std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
-                    elapsed).count());
+                    elapsed).count()) + " ms)";
             progressSink_(message);
         }
     }
@@ -106,9 +106,9 @@ void reportSourceProgress(
     std::size_t total)
 {
     if (!sink) return;
-    const std::string message = "phase=" + std::string(phase) + " file=\"" +
-        path.generic_string() + "\" completed=" + std::to_string(completed) +
-        " total=" + std::to_string(total);
+    const std::string message = "[" + std::to_string(completed) + "/" +
+        std::to_string(total) + "] NSC " + std::string(phase) + " " +
+        path.generic_string();
     sink(message);
 }
 
