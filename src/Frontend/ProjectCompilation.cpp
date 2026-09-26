@@ -841,6 +841,7 @@ bool ProjectCompilation::compileSyntaxCore(
         std::string moduleName;
         std::filesystem::path path;
         std::optional<std::string> buffer;
+        std::optional<ComptimeResult> comptime;
         std::string error;
     };
     driver::CompilationWorkerPool syntaxWorkers(compilationJobs_);
@@ -858,13 +859,13 @@ bool ProjectCompilation::compileSyntaxCore(
                 project.moduleName(),
                 source.absolutePath,
                 std::nullopt,
+                std::nullopt,
                 {}});
         }
     }
 
     {
         const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-read");
-        const auto comptimeCache = std::make_shared<ComptimeCache>();
         std::atomic_size_t completed = 0;
         for (std::size_t index = 0; index < sourceReads.size(); ++index)
         {
@@ -877,21 +878,41 @@ bool ProjectCompilation::compileSyntaxCore(
             });
         }
         if (!waitForSyntaxWorkers(syntaxWorkers, "source reading", loadError)) return false;
-        for (SourceRead& read : sourceReads)
+        for (const SourceRead& read : sourceReads)
         {
             if (!read.buffer.has_value())
             {
                 loadError = read.error;
                 return false;
             }
-            ComptimeResult comptime = ComptimeEngine({}, comptimeCache).execute(*read.buffer);
-            if (!comptime.success)
+        }
+    }
+
+    {
+        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-comptime");
+        const auto comptimeCache = std::make_shared<ComptimeCache>();
+        std::atomic_size_t completed = 0;
+        for (std::size_t index = 0; index < sourceReads.size(); ++index)
+        {
+            syntaxWorkers.submit([&, index](std::size_t) {
+                sourceReads[index].comptime =
+                    ComptimeEngine({}, comptimeCache).execute(*sourceReads[index].buffer);
+                reportSourceProgress(progressSink_, "syntax-comptime", sourceReads[index].path,
+                    completed.fetch_add(1, std::memory_order_relaxed) + 1U,
+                    sourceReads.size());
+            });
+        }
+        if (!waitForSyntaxWorkers(syntaxWorkers, "comptime", loadError)) return false;
+        for (SourceRead& read : sourceReads)
+        {
+            if (!read.comptime.has_value() || !read.comptime->success)
             {
-                loadError = read.path.generic_string() + ": " + comptime.error;
+                loadError = read.path.generic_string() + ": " +
+                    (read.comptime.has_value() ? read.comptime->error : "comptime produced no result");
                 return false;
             }
             const FileId fileId = sourceManager_.addBuffer(
-                read.path, std::move(comptime.source));
+                read.path, std::move(read.comptime->source));
             units_.push_back(std::make_unique<ProjectSyntaxUnit>(
                 read.projectOrdinal,
                 read.sourceOrdinal,
