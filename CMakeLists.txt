@@ -340,6 +340,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/LlvmOptimizer.cpp
     src/LLVM/LlvmLowerer.cpp
     src/LLVM/ProjectOopCodePartition.cpp
+    src/LLVM/ProjectOopMirCacheIdentity.cpp
     src/LLVM/ProjectOopObjectGenerator.cpp
     src/LLVM/ProjectOopLlvmLowerer.cpp
     src/LLVM/LlvmTargetMachine.cpp

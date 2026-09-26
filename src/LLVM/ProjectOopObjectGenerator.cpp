@@ -14,6 +14,7 @@
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/LLVM/ProjectOopCodePartition.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
+#include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
 
 #include <algorithm>
 #include <chrono>
@@ -185,17 +186,68 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     std::vector<std::string> moduleErrors(moduleCount);
     std::vector<std::uint8_t> cacheHits(moduleCount, 0);
     std::vector<std::uint8_t> cacheMisses(moduleCount, 0);
+    const bool usePreLlvmCache = cache != nullptr && cache->enabled() &&
+        debugInformation == DebugInformationKind::None &&
+        linkTimeOptimization != LinkTimeOptimizationMode::Thin;
+    std::vector<std::string> cacheKeys(moduleCount);
+    if (usePreLlvmCache)
+    {
+        std::vector<std::size_t> allFunctionOrdinals(mirModel.functions().size());
+        for (std::size_t ordinal = 0; ordinal < allFunctionOrdinals.size(); ++ordinal)
+            allFunctionOrdinals[ordinal] = ordinal;
+        for (std::size_t moduleOrdinal = 0; moduleOrdinal < moduleCount; ++moduleOrdinal)
+        {
+            std::span<const std::size_t> definitions;
+            std::span<const std::size_t> declarations;
+            if (!usePartitions)
+            {
+                definitions = allFunctionOrdinals;
+                declarations = allFunctionOrdinals;
+            }
+            else if (moduleOrdinal == 0)
+            {
+                declarations = allFunctionOrdinals;
+            }
+            else
+            {
+                const ProjectOopCodeUnit& unit = partition.units()[moduleOrdinal - 1];
+                definitions = unit.functionOrdinals;
+                declarations = unit.declarationOrdinals;
+            }
+            cacheKeys[moduleOrdinal] = cache->inputObjectKey(
+                projectOopMirCacheIdentity(mirModel, definitions, declarations),
+                "windows-x64-msvc", optimizationLevel, debugInformation);
+        }
+    }
     // Textual IR used to be serialized for every code unit even though the Windows import
     // planner no longer consumes it.  Keep it only for the two features whose keys/summaries
     // are intentionally based on IR.  Ordinary EXE/DLL/LIB production already fingerprints
     // the emitted objects when incremental linking is enabled.
     const bool preserveModuleText =
-        (cache != nullptr && cache->enabled()) ||
+        (cache != nullptr && cache->enabled() && !usePreLlvmCache) ||
         linkTimeOptimization == LinkTimeOptimizationMode::Thin;
 
     // Process one code unit end to end. The LLVM module and target machine are destroyed as soon
     // as its object is emitted instead of retaining every partition through three global waves.
     const auto processModule = [&](std::size_t ordinal) {
+        if (usePreLlvmCache)
+        {
+            bool hit = false;
+            if (!cache->restoreObject(
+                    cacheKeys[ordinal], result->objectFiles_[ordinal], hit,
+                    moduleErrors[ordinal])) return;
+            if (hit)
+            {
+                CoffObjectVerifier verifier;
+                if (verifier.verify(result->objectFiles_[ordinal]))
+                {
+                    cacheHits[ordinal] = 1;
+                    return;
+                }
+            }
+            cacheMisses[ordinal] = 1;
+        }
+
         ProjectOopLlvmLowerer lowerer;
         std::unique_ptr<LlvmModule> module;
         if (!usePartitions)
@@ -251,8 +303,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         }
 
         if (preserveModuleText) moduleTexts[ordinal] = module->text();
-        std::string cacheKey;
-        if (cache != nullptr && cache->enabled())
+        std::string cacheKey = cacheKeys[ordinal];
+        if (cache != nullptr && cache->enabled() && !usePreLlvmCache)
         {
             cacheKey = cache->objectKey(
                 moduleTexts[ordinal], targetMachine->triple(),

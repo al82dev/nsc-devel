@@ -25,6 +25,12 @@ public:
         LlvmOptimizationLevel optimization,
         DebugInformationKind debugInformation) const;
 
+    std::string inputObjectKey(
+        std::string_view mirIdentity,
+        std::string_view targetIdentity,
+        LlvmOptimizationLevel optimization,
+        DebugInformationKind debugInformation) const;
+
     bool restoreObject(
         std::string_view key,
         const std::filesystem::path& destination,

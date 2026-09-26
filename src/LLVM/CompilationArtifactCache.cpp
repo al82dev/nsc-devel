@@ -169,6 +169,26 @@ std::string CompilationArtifactCache::objectKey(
     return basic::sha256Hex(basic::sha256(bytes));
 }
 
+std::string CompilationArtifactCache::inputObjectKey(
+    std::string_view mirIdentity,
+    std::string_view targetIdentity,
+    LlvmOptimizationLevel optimization,
+    DebugInformationKind debugInformation) const
+{
+    const LlvmVersion llvm = loadedLlvmVersion();
+    std::string material = "NSCOBJINPUTKEY 1\n";
+    material += "toolchain " + toolchainIdentity_ + "\n";
+    material += "llvm " + llvmVersionString(llvm) + "\n";
+    material += "target " + std::string(targetIdentity) + "\n";
+    material += "optimization " + std::string(llvmOptimizationLevelName(optimization)) + "\n";
+    material += "debug " + std::string(debugInformationKindName(debugInformation)) + "\n";
+    material += "mir-size " + std::to_string(mirIdentity.size()) + "\n";
+    material.append(mirIdentity);
+    const auto bytes = std::span(
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size());
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
 bool CompilationArtifactCache::restoreObject(
     std::string_view key,
     const std::filesystem::path& destination,
