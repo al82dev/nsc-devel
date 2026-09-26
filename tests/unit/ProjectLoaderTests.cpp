@@ -344,6 +344,56 @@ void testLibraryReferenceRoot(TestContext& tests, const std::filesystem::path& r
     tests.expect(reference.libraryPath.string().find(o0.string()) == std::string::npos,
         "the selected O2 root cannot silently retain the O0 dependency path");
 }
+
+void testBuildSettings(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "BuildSettings";
+    writeFile(directory / "Main.ns", "int Main() { return 0; }\n");
+    writeFile(
+        directory / "Configured.nsproj",
+        "<Project><PropertyGroup>"
+        "<Name>Configured</Name><OutputType>Library</OutputType>"
+        "<OptimizationLevel>O0</OptimizationLevel>"
+        "<OutputPath>../products/Configured.lib</OutputPath>"
+        "<LibraryReferenceRoot>../dependencies/O0</LibraryReferenceRoot>"
+        "<CompilerJobs>12</CompilerJobs>"
+        "</PropertyGroup></Project>\n");
+
+    ProjectLoader loader;
+    std::string error;
+    const auto settings = loader.loadBuildSettings(directory / "Configured.nsproj", error);
+    tests.expect(settings.has_value(), "project build settings load without source discovery");
+    if (settings.has_value())
+    {
+        tests.expect(settings->optimizationLevel == 0U,
+            "OptimizationLevel is parsed as the requested LLVM level");
+        tests.expect(settings->compilerJobs == 12U,
+            "CompilerJobs is parsed as the requested concurrency");
+        tests.expect(settings->outputPath == (root / "products" / "Configured.lib").lexically_normal(),
+            "relative OutputPath resolves from the project directory");
+        tests.expect(settings->libraryReferenceRoot ==
+                (root / "dependencies" / "O0").lexically_normal(),
+            "relative LibraryReferenceRoot resolves from the project directory");
+    }
+    tests.expect(loader.load(directory / "Configured.nsproj", error).has_value(),
+        "the normal project loader accepts build properties");
+
+    writeFile(
+        directory / "BadOptimization.nsproj",
+        "<Project><PropertyGroup><OptimizationLevel>fast</OptimizationLevel>"
+        "</PropertyGroup></Project>\n");
+    tests.expect(!loader.loadBuildSettings(directory / "BadOptimization.nsproj", error).has_value() &&
+            error.find("OptimizationLevel must be") != std::string::npos,
+        "invalid project optimization has a deterministic diagnostic");
+
+    writeFile(
+        directory / "BadJobs.nsproj",
+        "<Project><PropertyGroup><CompilerJobs>0</CompilerJobs>"
+        "</PropertyGroup></Project>\n");
+    tests.expect(!loader.loadBuildSettings(directory / "BadJobs.nsproj", error).has_value() &&
+            error.find("1 through 1024") != std::string::npos,
+        "invalid project job count has a deterministic diagnostic");
+}
 }
 
 int main()
@@ -361,6 +411,7 @@ int main()
     testDefaultProject(tests, root);
     testItemsAndReferences(tests, root);
     testLibraryReferenceRoot(tests, root);
+    testBuildSettings(tests, root);
     testInvalidProjects(tests, root);
 
     std::filesystem::remove_all(root, error);

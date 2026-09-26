@@ -35,12 +35,41 @@ struct ProjectDescriptor final
 {
     std::optional<std::string> name;
     std::optional<ProjectOutputKind> outputKind;
+    ProjectBuildSettings buildSettings;
     std::vector<SourceIncludeRule> includes;
     std::vector<GlobPattern> removes;
     std::vector<std::string> projectReferences;
     std::vector<LibraryReferenceDescriptor> libraryReferences;
     std::vector<std::string> sdkReferences;
 };
+
+bool parsePositiveDecimal(std::string_view value, std::size_t maximum, std::size_t& result)
+{
+    if (value.empty())
+    {
+        return false;
+    }
+    std::size_t parsed = 0;
+    for (const char character : value)
+    {
+        if (character < '0' || character > '9')
+        {
+            return false;
+        }
+        const std::size_t digit = static_cast<std::size_t>(character - '0');
+        if (parsed > (maximum - digit) / 10U)
+        {
+            return false;
+        }
+        parsed = parsed * 10U + digit;
+    }
+    if (parsed == 0 || parsed > maximum)
+    {
+        return false;
+    }
+    result = parsed;
+    return true;
+}
 
 std::string trim(std::string_view value)
 {
@@ -238,6 +267,55 @@ bool parsePropertyGroup(
                 error = "OutputType must be 'Exe', 'Library', 'StaticLibrary', or 'SharedLibrary'";
                 return false;
             }
+        }
+        else if (property.name == "OptimizationLevel")
+        {
+            if (descriptor.buildSettings.optimizationLevel.has_value())
+            {
+                error = "project property 'OptimizationLevel' is declared more than once";
+                return false;
+            }
+            if (value.size() != 2U || (value[0] != 'O' && value[0] != 'o') ||
+                value[1] < '0' || value[1] > '3')
+            {
+                error = "OptimizationLevel must be 'O0', 'O1', 'O2', or 'O3'";
+                return false;
+            }
+            descriptor.buildSettings.optimizationLevel =
+                static_cast<unsigned>(value[1] - '0');
+        }
+        else if (property.name == "OutputPath")
+        {
+            if (descriptor.buildSettings.outputPath.has_value())
+            {
+                error = "project property 'OutputPath' is declared more than once";
+                return false;
+            }
+            descriptor.buildSettings.outputPath = std::filesystem::path(value);
+        }
+        else if (property.name == "LibraryReferenceRoot")
+        {
+            if (descriptor.buildSettings.libraryReferenceRoot.has_value())
+            {
+                error = "project property 'LibraryReferenceRoot' is declared more than once";
+                return false;
+            }
+            descriptor.buildSettings.libraryReferenceRoot = std::filesystem::path(value);
+        }
+        else if (property.name == "CompilerJobs")
+        {
+            if (descriptor.buildSettings.compilerJobs.has_value())
+            {
+                error = "project property 'CompilerJobs' is declared more than once";
+                return false;
+            }
+            std::size_t jobs = 0;
+            if (!parsePositiveDecimal(value, 1024U, jobs))
+            {
+                error = "CompilerJobs must be an integer from 1 through 1024";
+                return false;
+            }
+            descriptor.buildSettings.compilerJobs = jobs;
         }
         else
         {
@@ -457,6 +535,91 @@ bool matchesAny(const std::vector<GlobPattern>& patterns, const std::filesystem:
             return pattern.matches(path);
         });
 }
+
+bool loadDescriptorFile(
+    const std::filesystem::path& projectFile,
+    std::filesystem::path& canonicalProject,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    error.clear();
+    std::error_code filesystemError;
+    canonicalProject = std::filesystem::weakly_canonical(projectFile, filesystemError);
+    if (filesystemError || !std::filesystem::is_regular_file(canonicalProject))
+    {
+        error = "project file does not exist or is not a regular file: '" + projectFile.string() + "'";
+        return false;
+    }
+    if (canonicalProject.extension() != ".nsproj")
+    {
+        error = "NativeSharp project file must use the canonical .nsproj extension";
+        return false;
+    }
+
+    std::ifstream stream(canonicalProject, std::ios::binary);
+    if (!stream)
+    {
+        error = "cannot open project file '" + canonicalProject.string() + "'";
+        return false;
+    }
+    constexpr std::uintmax_t kMaximumProjectBytes = 4U * 1024U * 1024U;
+    const std::uintmax_t projectBytes = std::filesystem::file_size(canonicalProject, filesystemError);
+    if (filesystemError || projectBytes > kMaximumProjectBytes)
+    {
+        error = filesystemError
+            ? "cannot determine project file size for '" + canonicalProject.string() + "'"
+            : "project file exceeds the 4 MiB safety limit";
+        return false;
+    }
+    std::string source(static_cast<std::size_t>(projectBytes), '\0');
+    stream.read(source.data(), static_cast<std::streamsize>(source.size()));
+    if ((!stream && !source.empty()) || stream.gcount() != static_cast<std::streamsize>(source.size()) ||
+        stream.peek() != std::char_traits<char>::eof())
+    {
+        error = "cannot read project file '" + canonicalProject.string() + "'";
+        return false;
+    }
+
+    SimpleXmlElement root;
+    SimpleXmlParser parser;
+    if (!parser.parse(source, root, error) || !parseDescriptor(root, descriptor, error))
+    {
+        error = canonicalProject.string() + ": " + error;
+        return false;
+    }
+    return true;
+}
+
+std::filesystem::path resolveProjectPath(
+    const std::filesystem::path& projectDirectory,
+    const std::filesystem::path& value)
+{
+    return (value.is_absolute() ? value : projectDirectory / value).lexically_normal();
+}
+}
+
+std::optional<ProjectBuildSettings> ProjectLoader::loadBuildSettings(
+    const std::filesystem::path& projectFile,
+    std::string& error) const
+{
+    std::filesystem::path canonicalProject;
+    ProjectDescriptor descriptor;
+    if (!loadDescriptorFile(projectFile, canonicalProject, descriptor, error))
+    {
+        return std::nullopt;
+    }
+    ProjectBuildSettings settings = std::move(descriptor.buildSettings);
+    const std::filesystem::path projectDirectory = canonicalProject.parent_path();
+    if (settings.outputPath.has_value())
+    {
+        settings.outputPath = resolveProjectPath(projectDirectory, *settings.outputPath);
+    }
+    if (settings.libraryReferenceRoot.has_value())
+    {
+        settings.libraryReferenceRoot =
+            resolveProjectPath(projectDirectory, *settings.libraryReferenceRoot);
+    }
+    return settings;
 }
 
 std::optional<Project> ProjectLoader::load(
@@ -471,59 +634,13 @@ std::optional<Project> ProjectLoader::load(
     const ProjectLoadOptions& options,
     std::string& error) const
 {
-    error.clear();
-    std::error_code filesystemError;
-    const std::filesystem::path canonicalProject =
-        std::filesystem::weakly_canonical(projectFile, filesystemError);
-    if (filesystemError || !std::filesystem::is_regular_file(canonicalProject))
-    {
-        error = "project file does not exist or is not a regular file: '" + projectFile.string() + "'";
-        return std::nullopt;
-    }
-    if (canonicalProject.extension() != ".nsproj")
-    {
-        error = "NativeSharp project file must use the canonical .nsproj extension";
-        return std::nullopt;
-    }
-
-    std::ifstream stream(canonicalProject, std::ios::binary);
-    if (!stream)
-    {
-        error = "cannot open project file '" + canonicalProject.string() + "'";
-        return std::nullopt;
-    }
-    constexpr std::uintmax_t kMaximumProjectBytes = 4U * 1024U * 1024U;
-    const std::uintmax_t projectBytes = std::filesystem::file_size(canonicalProject, filesystemError);
-    if (filesystemError || projectBytes > kMaximumProjectBytes)
-    {
-        error = filesystemError
-            ? "cannot determine project file size for '" + canonicalProject.string() + "'"
-            : "project file exceeds the 4 MiB safety limit";
-        return std::nullopt;
-    }
-    std::string source(static_cast<std::size_t>(projectBytes), '\0');
-    stream.read(source.data(), static_cast<std::streamsize>(source.size()));
-    if ((!stream && !source.empty()) || stream.gcount() != static_cast<std::streamsize>(source.size()) ||
-        stream.peek() != std::char_traits<char>::eof())
-    {
-        error = "cannot read project file '" + canonicalProject.string() + "'";
-        return std::nullopt;
-    }
-
-    SimpleXmlElement root;
-    SimpleXmlParser parser;
-    if (!parser.parse(source, root, error))
-    {
-        error = canonicalProject.string() + ": " + error;
-        return std::nullopt;
-    }
-
+    std::filesystem::path canonicalProject;
     ProjectDescriptor descriptor;
-    if (!parseDescriptor(root, descriptor, error))
+    if (!loadDescriptorFile(projectFile, canonicalProject, descriptor, error))
     {
-        error = canonicalProject.string() + ": " + error;
         return std::nullopt;
     }
+    std::error_code filesystemError;
 
     const std::string moduleName = descriptor.name.value_or(canonicalProject.stem().string());
     if (!isIdentifier(moduleName))
@@ -638,11 +755,15 @@ std::optional<Project> ProjectLoader::load(
     const auto resolveLibraryReferencePath = [&](std::string_view text)
     {
         const std::filesystem::path path{std::string(text)};
-        if (path.is_absolute() || !options.libraryReferenceRoot.has_value())
+        const std::optional<std::filesystem::path>& referenceRoot =
+            options.libraryReferenceRoot.has_value()
+                ? options.libraryReferenceRoot
+                : descriptor.buildSettings.libraryReferenceRoot;
+        if (path.is_absolute() || !referenceRoot.has_value())
         {
             return projectDirectory / path;
         }
-        return *options.libraryReferenceRoot / path;
+        return resolveProjectPath(projectDirectory, *referenceRoot) / path;
     };
     for (const LibraryReferenceDescriptor& descriptorReference : descriptor.libraryReferences)
     {

@@ -1136,6 +1136,7 @@ struct BuildOptions final
     std::optional<std::string> debug;
     std::optional<std::string> linker;
     std::optional<fs::path> libraryReferenceRoot;
+    std::optional<std::size_t> compilerJobs;
     bool noRestore = false;
     std::vector<std::string> programArguments;
 };
@@ -1151,6 +1152,29 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
         if ((argument == "-c" || argument == "--configuration") && index + 1 < arguments.size()) options.configuration = std::string(arguments[++index]);
         else if (argument == "--linker" && index + 1 < arguments.size()) options.linker = std::string(arguments[++index]);
         else if (argument == "--no-restore") options.noRestore = true;
+        else if (argument == "-j" || (argument.starts_with("-j") && argument.size() > 2U))
+        {
+            if (options.compilerJobs.has_value())
+            { error = "duplicate compilation job count"; return false; }
+            std::string_view value;
+            if (argument == "-j")
+            {
+                if (index + 1U >= arguments.size())
+                { error = "-j requires a job count from 1 through 1024"; return false; }
+                value = arguments[++index];
+            }
+            else value = argument.substr(2U);
+            std::size_t jobs = 0;
+            for (const char character : value)
+            {
+                if (character < '0' || character > '9' || jobs > 1024U)
+                { error = "compilation job count must be between 1 and 1024"; return false; }
+                jobs = jobs * 10U + static_cast<std::size_t>(character - '0');
+            }
+            if (value.empty() || jobs == 0U || jobs > 1024U)
+            { error = "compilation job count must be between 1 and 1024"; return false; }
+            options.compilerJobs = jobs;
+        }
         else if (argument == "--library-reference-root")
         {
             if (options.libraryReferenceRoot.has_value())
@@ -1226,11 +1250,21 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     std::string message;
     if (!inferProject(options.project, project, message)) return result.failure(error, message);
     result.project = project;
+    compilation::ProjectLoader loader;
+    const std::optional<compilation::ProjectBuildSettings> projectSettings =
+        loader.loadBuildSettings(project, message);
+    if (!projectSettings.has_value())
+        return result.failure(error, message, ExitCode::CompilationError);
     Sidecar sidecar;
     if (!loadSidecar(project, sidecar, message, false)) return result.failure(error, message);
     std::string configuration = options.configuration.value_or(sidecar.build.configuration);
     if (configuration != "Debug" && configuration != "Release") return result.failure(error, "configuration must be Debug or Release");
-    std::string optimization = options.optimization.value_or(sidecar.build.optimization);
+    const std::optional<std::string> projectOptimization =
+        projectSettings->optimizationLevel.has_value()
+            ? std::optional<std::string>{"O" + std::to_string(*projectSettings->optimizationLevel)}
+            : std::nullopt;
+    std::string optimization = options.optimization.value_or(
+        projectOptimization.value_or(sidecar.build.optimization));
     if (optimization != "O0" && optimization != "O1" && optimization != "O2" && optimization != "O3")
         return result.failure(error, "optimization must be O0, O1, O2, or O3");
     std::string debug = options.debug.value_or(sidecar.build.debugInformation == "none" ? "-g0" :
@@ -1239,6 +1273,12 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     if (linker != "NSLink" && linker != "lld-link") return result.failure(error, "linker must be NSLink or lld-link");
     if (options.libraryReferenceRoot.has_value() && !options.libraryReferenceRoot->is_absolute())
         return result.failure(error, "library-reference root requires an absolute directory");
+    const std::optional<fs::path> libraryReferenceRoot =
+        options.libraryReferenceRoot.has_value()
+            ? options.libraryReferenceRoot
+            : projectSettings->libraryReferenceRoot;
+    const std::optional<std::size_t> compilerJobs =
+        options.compilerJobs.has_value() ? options.compilerJobs : projectSettings->compilerJobs;
 
     RestorePlan plan;
     if (options.noRestore || !sidecar.build.restoreBeforeBuild)
@@ -1260,9 +1300,8 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     fs::path generated;
     if (!makeGeneratedProject(project, plan, generated, message)) return result.failure(error, message, ExitCode::InternalError);
     TemporaryFile removeGenerated(generated);
-    compilation::ProjectLoader loader;
     compilation::ProjectLoadOptions projectLoadOptions;
-    projectLoadOptions.libraryReferenceRoot = options.libraryReferenceRoot;
+    projectLoadOptions.libraryReferenceRoot = libraryReferenceRoot;
     std::optional<compilation::Project> loaded = loader.load(generated, projectLoadOptions, message);
     if (!loaded.has_value()) return result.failure(error, "generated build project is invalid: " + message, ExitCode::CompilationError);
     std::string action;
@@ -1270,7 +1309,8 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     if (loaded->outputKind() == compilation::ProjectOutputKind::Executable) { action = "--emit-project-oop-exe"; extension = ".exe"; }
     else if (loaded->outputKind() == compilation::ProjectOutputKind::Library) { action = "--emit-project-oop-lib"; extension = ".lib"; }
     else { action = "--emit-project-oop-dll"; extension = ".dll"; }
-    const fs::path artifact = project.parent_path() / "bin" / configuration / (loaded->moduleName() + extension);
+    const fs::path artifact = projectSettings->outputPath.value_or(
+        project.parent_path() / "bin" / configuration / (loaded->moduleName() + extension));
     std::error_code fileError;
     fs::create_directories(artifact.parent_path(), fileError);
     if (fileError) return result.failure(error, "cannot create build output directory: " + fileError.message(), ExitCode::InternalError);
@@ -1288,10 +1328,15 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     }
     EnvironmentOverride linkerEnvironment("NSC_LLD_LINK", linkerPath);
     std::vector<std::string> owned{action, generated.string(), "-" + optimization, debug};
-    if (options.libraryReferenceRoot.has_value())
+    if (libraryReferenceRoot.has_value())
     {
         owned.push_back("--library-reference-root");
-        owned.push_back(options.libraryReferenceRoot->string());
+        owned.push_back(libraryReferenceRoot->string());
+    }
+    if (compilerJobs.has_value())
+    {
+        owned.push_back("-j");
+        owned.push_back(std::to_string(*compilerJobs));
     }
     owned.push_back("-o");
     owned.push_back(artifact.string());

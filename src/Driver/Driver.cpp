@@ -3005,6 +3005,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool subsystemSeen = false;
     std::vector<std::string_view> normalizedArguments;
     normalizedArguments.reserve(arguments.size());
+    std::string projectConfiguredOutput;
     // Interop Foundation: external .lib inputs for the link. Extracted here (like
     // -O) so every positional action keeps its exact shape; consumed by the
     // exe/dll emission paths.
@@ -3428,6 +3429,67 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             return ExitCode::CommandLineError;
         }
         normalizedArguments.push_back(argument);
+    }
+
+    const auto isProjectBuildAction = [](std::string_view action)
+    {
+        return action == "--emit-project-oop-obj" ||
+            action == "--emit-project-oop-exe" ||
+            action == "--emit-project-oop-lib" ||
+            action == "--emit-project-oop-dll";
+    };
+    if (normalizedArguments.size() >= 2U && isProjectBuildAction(normalizedArguments[0]))
+    {
+        compilation::ProjectLoader projectLoader;
+        std::string settingsError;
+        const std::optional<compilation::ProjectBuildSettings> projectSettings =
+            projectLoader.loadBuildSettings(
+                std::filesystem::path(std::string(normalizedArguments[1])), settingsError);
+        if (!projectSettings.has_value())
+        {
+            error << "nsc: error: " << settingsError << '\n';
+            return ExitCode::CompilationError;
+        }
+        if (!optimizationLevelSeen && !compilationProfileSeen &&
+            projectSettings->optimizationLevel.has_value())
+        {
+            switch (*projectSettings->optimizationLevel)
+            {
+                case 0U: optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0; break;
+                case 1U: optimizationLevel = llvm_backend::LlvmOptimizationLevel::O1; break;
+                case 2U: optimizationLevel = llvm_backend::LlvmOptimizationLevel::O2; break;
+                case 3U: optimizationLevel = llvm_backend::LlvmOptimizationLevel::O3; break;
+                default: break;
+            }
+            optimizationLevelSeen = true;
+        }
+        if (!jobCountSeen && projectSettings->compilerJobs.has_value())
+        {
+            jobPolicy.setRequestedJobs(*projectSettings->compilerJobs);
+        }
+        if (!libraryReferenceRootSeen && projectSettings->libraryReferenceRoot.has_value())
+        {
+            executionScope.projectLoadOptions.libraryReferenceRoot =
+                projectSettings->libraryReferenceRoot->lexically_normal();
+        }
+        if (normalizedArguments.size() == 2U && projectSettings->outputPath.has_value())
+        {
+            std::error_code directoryError;
+            const std::filesystem::path parent = projectSettings->outputPath->parent_path();
+            if (!parent.empty())
+            {
+                std::filesystem::create_directories(parent, directoryError);
+            }
+            if (directoryError)
+            {
+                error << "nsc: error: cannot create project OutputPath directory '"
+                      << parent.string() << "': " << directoryError.message() << '\n';
+                return ExitCode::CompilationError;
+            }
+            projectConfiguredOutput = projectSettings->outputPath->string();
+            normalizedArguments.push_back("-o");
+            normalizedArguments.push_back(projectConfiguredOutput);
+        }
     }
 
     const CompilationProfileSettings profileSettings = resolveCompilationProfile(
@@ -4197,7 +4259,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc new <console|classlib|dll> -n <name> [-o <directory>] [--force]\n"
            << "  nsc restore [file.nsproj] [--force|--locked-mode|--verify] [--source <directory>]\n"
            << "  nsc build [file.nsproj] [-c Debug|Release] [-O0|-O1|-O2|-O3] "
-              "[-g0|-gline-tables-only|-g] [--linker NSLink|lld-link] [--no-restore]\n"
+              "[-g0|-gline-tables-only|-g] [-j <jobs>] [--linker NSLink|lld-link] [--no-restore]\n"
            << "  nsc run [file.nsproj] [build options] [-- program arguments]\n"
            << "  nsc clean [file.nsproj]\n"
            << "  nsc add package <id> [--version <version>] [--source <directory>] [file.nsproj]\n"
@@ -4250,6 +4312,8 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --emit-project-oop-dll <file.nsproj> [-O0|-O1|-O2|-O3] -o "
               "<file.dll> [--profile=debug|release] [-g0|-gline-tables-only|-g] "
               "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>]\n"
+           << "  Project defaults: OptimizationLevel, OutputPath, LibraryReferenceRoot, "
+              "CompilerJobs (explicit CLI options override them).\n"
            << "  nsc --emit-project-host-header <file.nsproj> -o <file.h>\n"
            << "  nsc --emit-project-library-metadata <file.nsproj> -o "
               "<file.nsmeta>\n"
