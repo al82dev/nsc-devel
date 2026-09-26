@@ -497,7 +497,8 @@ bool WindowsExecutableBuilder::buildObjects(
     }
     for (std::size_t ordinal = 0; ordinal < programObjects.size(); ++ordinal)
     {
-        if (!verifyObject(programObjects[ordinal], "program code unit", error)) return false;
+        if (!programObjectsVerified_ &&
+            !verifyObject(programObjects[ordinal], "program code unit", error)) return false;
     }
 
     std::string targetError;
@@ -646,6 +647,11 @@ void WindowsExecutableBuilder::setDebugInformation(
 void WindowsExecutableBuilder::setIncrementalLink(bool enabled) noexcept
 {
     incrementalLink_ = enabled;
+}
+
+void WindowsExecutableBuilder::setProgramObjectsVerified(bool verified) noexcept
+{
+    programObjectsVerified_ = verified;
 }
 
 bool WindowsExecutableBuilder::reusedIncrementalLink() const noexcept

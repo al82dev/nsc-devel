@@ -61,6 +61,7 @@ public:
     void setSubsystem(WindowsExecutableSubsystem subsystem) noexcept;
     void setDebugInformation(llvm_backend::DebugInformationKind debugInformation) noexcept;
     void setIncrementalLink(bool enabled) noexcept;
+    void setProgramObjectsVerified(bool verified) noexcept;
     bool reusedIncrementalLink() const noexcept;
 
 private:
@@ -71,6 +72,7 @@ private:
     WindowsExecutableSubsystem subsystem_ = WindowsExecutableSubsystem::Console;
     llvm_backend::DebugInformationKind debugInformation_ = llvm_backend::DebugInformationKind::None;
     bool incrementalLink_ = false;
+    bool programObjectsVerified_ = false;
     bool reusedIncrementalLink_ = false;
 };
 }

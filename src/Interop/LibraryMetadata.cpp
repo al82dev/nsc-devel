@@ -1959,10 +1959,20 @@ bool LibraryMetadataCodec::write(
     const std::filesystem::path& destination,
     std::string& error) const
 {
+    LibraryMetadata ignored;
+    return write(compilation, destination, ignored, error);
+}
+
+bool LibraryMetadataCodec::write(
+    const frontend::ProjectCompilation& compilation,
+    const std::filesystem::path& destination,
+    LibraryMetadata& writtenModel,
+    std::string& error) const
+{
     error.clear();
     LibraryMetadata metadata;
     if (!buildMetadataModel(compilation, metadata, error)) return false;
-    return writeModel(metadata, destination, error);
+    return writeModelImpl(metadata, destination, &writtenModel, error);
 }
 
 // Escribe un MODELO ya construido, en la version menor que el propio modelo
@@ -1976,6 +1986,15 @@ bool LibraryMetadataCodec::write(
 bool LibraryMetadataCodec::writeModel(
     const LibraryMetadata& model,
     const std::filesystem::path& destination,
+    std::string& error) const
+{
+    return writeModelImpl(model, destination, nullptr, error);
+}
+
+bool LibraryMetadataCodec::writeModelImpl(
+    const LibraryMetadata& model,
+    const std::filesystem::path& destination,
+    LibraryMetadata* writtenModel,
     std::string& error) const
 {
     error.clear();
@@ -2126,7 +2145,9 @@ bool LibraryMetadataCodec::writeModel(
     file.raw(metadata.abiFingerprint);
     file.raw(payloadHash);
     file.raw(payload);
-    return writeBytesAtomically(destination, file.bytes(), error);
+    if (!writeBytesAtomically(destination, file.bytes(), error)) return false;
+    if (writtenModel != nullptr) *writtenModel = std::move(metadata);
+    return true;
 }
 
 bool LibraryMetadataCodec::read(

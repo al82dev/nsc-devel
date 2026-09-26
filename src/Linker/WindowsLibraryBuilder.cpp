@@ -488,7 +488,8 @@ bool WindowsLibraryBuilder::buildStaticObjects(
     if (!validateOutputParent(outputPath, "static library", error)) return false;
     for (const std::filesystem::path& object : programObjects)
     {
-        if (!verifyObject(object, "program code unit", error)) return false;
+        if (!programObjectsVerified_ &&
+            !verifyObject(object, "program code unit", error)) return false;
     }
 
     if (!runtimeLibrary_.empty())
@@ -587,7 +588,8 @@ bool WindowsLibraryBuilder::buildDynamicObjects(
     }
     for (const std::filesystem::path& object : programObjects)
     {
-        if (!verifyObject(object, "program code unit", error)) return false;
+        if (!programObjectsVerified_ &&
+            !verifyObject(object, "program code unit", error)) return false;
     }
 
     std::string targetError;
@@ -712,6 +714,11 @@ void WindowsLibraryBuilder::setExtraLinkLibraries(std::vector<std::filesystem::p
 void WindowsLibraryBuilder::setRuntimeLibrary(std::filesystem::path runtimeLibrary)
 {
     runtimeLibrary_ = std::move(runtimeLibrary);
+}
+
+void WindowsLibraryBuilder::setProgramObjectsVerified(bool verified) noexcept
+{
+    programObjectsVerified_ = verified;
 }
 
 const CoffArchiveInfo& WindowsLibraryBuilder::archiveInfo() const noexcept

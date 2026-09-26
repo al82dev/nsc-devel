@@ -2359,17 +2359,17 @@ bool verifyPrecompiledGenericTemplateSource(
 bool writeVerifiedLibraryMetadata(
     const frontend::ProjectCompilation &compilation,
     const std::filesystem::path &destination,
-    std::string &error)
+    std::string &error,
+    interop::LibraryMetadata* writtenModel = nullptr)
 {
     interop::LibraryMetadataCodec codec;
-    if (!codec.write(compilation, destination, error)) return false;
-
     interop::LibraryMetadata written;
-    if (codec.read(destination, written, error) &&
+    if (codec.write(compilation, destination, written, error) &&
         codec.verifyCurrentCompiler(written, error) &&
         verifyPrecompiledPublicSource(written, error) &&
         verifyPrecompiledGenericTemplateSource(written, error))
     {
+        if (writtenModel != nullptr) *writtenModel = std::move(written);
         return true;
     }
 
@@ -5361,6 +5361,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     }
 
     linker::WindowsExecutableBuilder builder;
+    builder.setProgramObjectsVerified(true);
     builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     builder.setSubsystem(subsystem);
     builder.setDebugInformation(debugInformation);
@@ -5502,6 +5503,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     }
 
     linker::WindowsLibraryBuilder builder;
+    builder.setProgramObjectsVerified(true);
     builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(referencedLibraries);
@@ -5748,6 +5750,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     }
 
     linker::WindowsLibraryBuilder builder;
+    builder.setProgramObjectsVerified(true);
     builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(linkLibraries);
@@ -5941,25 +5944,15 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(
         return ExitCode::CompilationError;
     }
 
-    interop::LibraryMetadataCodec codec;
     std::string metadataError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
+    interop::LibraryMetadata metadata;
     if (!measureDriverPhase("library-metadata", [&] {
-            return writeVerifiedLibraryMetadata(compilation, destination, metadataError);
+            return writeVerifiedLibraryMetadata(
+                compilation, destination, metadataError, &metadata);
         }))
     {
         error << "nsc: error: Stage 48.2 metadata generation failed: " << metadataError << '\n';
-        return ExitCode::CompilationError;
-    }
-
-    interop::LibraryMetadata metadata;
-    if (!codec.read(destination, metadata, metadataError) || !codec.verifyCurrentCompiler(metadata, metadataError))
-    {
-        std::error_code removeError;
-        std::filesystem::remove(destination, removeError);
-        error << "nsc: error: Stage 48.2 generated metadata failed "
-                 "self-verification: "
-              << metadataError << '\n';
         return ExitCode::CompilationError;
     }
 

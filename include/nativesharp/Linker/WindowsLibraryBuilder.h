@@ -62,6 +62,7 @@ public:
     void setExternalImports(std::vector<ExternalImportModule> externalImports);
     void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
     void setRuntimeLibrary(std::filesystem::path runtimeLibrary);
+    void setProgramObjectsVerified(bool verified) noexcept;
 
 private:
     CoffArchiveInfo archiveInfo_;
@@ -69,5 +70,6 @@ private:
     std::vector<ExternalImportModule> externalImports_;
     std::vector<std::filesystem::path> extraLinkLibraries_;
     std::filesystem::path runtimeLibrary_;
+    bool programObjectsVerified_ = false;
 };
 }
