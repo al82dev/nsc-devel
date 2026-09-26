@@ -55,7 +55,8 @@ public:
         std::span<const std::size_t> functionOrdinals,
         bool ownsModuleGlobals,
         std::string_view moduleName,
-        std::span<const DebugPrefixMap> debugPrefixMaps = {});
+        std::span<const DebugPrefixMap> debugPrefixMaps = {},
+        std::span<const std::size_t> declarationOrdinals = {});
 
 private:
     friend class ProjectOopLlvmLowerer;
@@ -67,6 +68,7 @@ private:
     LlvmOptimizationLevel optimizationLevel_ = LlvmOptimizationLevel::O0;
     std::span<const DebugPrefixMap> debugPrefixMaps_;
     std::span<const std::size_t> functionOrdinals_;
+    std::span<const std::size_t> declarationOrdinals_;
     bool partitioned_ = false;
     bool ownsModuleGlobals_ = true;
     std::string_view moduleName_ = "NativeSharp.Stage34.OOP";

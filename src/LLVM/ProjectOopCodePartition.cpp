@@ -7,6 +7,8 @@
 #include <limits>
 #include <sstream>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace nativesharp::llvm_backend
 {
@@ -95,7 +97,7 @@ bool ProjectOopCodePartition::build(
         std::max<std::size_t>(1, requestedUnitCount), candidates.size());
     units_.reserve(unitCount);
     for (std::size_t ordinal = 0; ordinal < unitCount; ++ordinal)
-        units_.push_back(ProjectOopCodeUnit{ordinal, codeUnitKey(ordinal), 0, {}});
+        units_.push_back(ProjectOopCodeUnit{ordinal, codeUnitKey(ordinal), 0, {}, {}});
 
     if (policy == ProjectOopCodePartitionPolicy::StableIncremental)
     {
@@ -145,6 +147,51 @@ bool ProjectOopCodePartition::build(
         for (const std::size_t functionOrdinal : unit.functionOrdinals)
             unitByFunction_[functionOrdinal] = unit.ordinal;
     }
+
+    std::unordered_map<std::string_view, std::vector<std::size_t>> functionsByName;
+    std::unordered_map<std::size_t, std::size_t> functionByMember;
+    for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
+    {
+        functionsByName[functions[ordinal].mangledName].push_back(ordinal);
+        if (!functions[ordinal].isLambda)
+            functionByMember.emplace(functions[ordinal].memberOrdinal, ordinal);
+    }
+    const auto addMember = [&](std::optional<std::size_t> member, auto& dependencies)
+    {
+        if (!member.has_value()) return;
+        const auto found = functionByMember.find(*member);
+        if (found != functionByMember.end()) dependencies.insert(found->second);
+    };
+    const auto collectNode = [&](const auto& self, const frontend::ProjectOopMirNode* node,
+                                 auto& dependencies) -> void
+    {
+        if (node == nullptr) return;
+        if (!node->calleeName.empty())
+        {
+            const auto found = functionsByName.find(node->calleeName);
+            if (found != functionsByName.end())
+                dependencies.insert(found->second.begin(), found->second.end());
+        }
+        addMember(node->memberOrdinal, dependencies);
+        addMember(node->secondaryMemberOrdinal, dependencies);
+        addMember(node->disposeImplementationMemberOrdinal, dependencies);
+        for (const auto& child : node->children) self(self, child.get(), dependencies);
+    };
+    for (ProjectOopCodeUnit& unit : units_)
+    {
+        std::unordered_set<std::size_t> dependencies(
+            unit.functionOrdinals.begin(), unit.functionOrdinals.end());
+        for (const std::size_t functionOrdinal : unit.functionOrdinals)
+        {
+            if (functionOrdinal >= functions.size()) continue;
+            const frontend::ProjectOopMirFunction& function = functions[functionOrdinal];
+            collectNode(collectNode, function.body.get(), dependencies);
+            for (const frontend::ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
+                collectNode(collectNode, cleanup.action, dependencies);
+        }
+        unit.declarationOrdinals.assign(dependencies.begin(), dependencies.end());
+        std::sort(unit.declarationOrdinals.begin(), unit.declarationOrdinals.end());
+    }
     built_ = true;
     return true;
 }
@@ -173,7 +220,7 @@ std::string ProjectOopCodePartition::dump() const
             if (index != 0) stream << ',';
             stream << unit.functionOrdinals[index];
         }
-        stream << '\n';
+        stream << " declarations=" << unit.declarationOrdinals.size() << '\n';
     }
     return stream.str();
 }

@@ -191,7 +191,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             modules[moduleOrdinal] = lowerer.lower(ProjectOopLlvmLoweringRequest::partition(
                 nameLookup, memberModel, mirModel, sourceManager, debugInformation,
                 optimizationLevel, unit.functionOrdinals, false,
-                "NativeSharp.OOP." + unit.stableKey, debugPrefixMaps));
+                "NativeSharp.OOP." + unit.stableKey, debugPrefixMaps,
+                unit.declarationOrdinals));
         }
         moduleErrors[moduleOrdinal] = lowerer.error();
     };

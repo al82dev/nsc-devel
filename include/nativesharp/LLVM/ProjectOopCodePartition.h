@@ -26,6 +26,7 @@ struct ProjectOopCodeUnit final
     std::string stableKey;
     std::uint64_t estimatedCost = 0;
     std::vector<std::size_t> functionOrdinals;
+    std::vector<std::size_t> declarationOrdinals;
 };
 
 class ProjectOopCodePartition final

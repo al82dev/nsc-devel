@@ -407,6 +407,7 @@ public:
         bool partitioned = false,
         bool ownsModuleGlobals = true,
         std::span<const std::size_t> functionOrdinals = {},
+        std::span<const std::size_t> declarationOrdinals = {},
         std::string_view moduleName = "NativeSharp.Stage34.OOP")
         : nameLookup_(nameLookup),
           memberModel_(memberModel),
@@ -418,6 +419,8 @@ public:
           partitioned_(partitioned),
           ownsModuleGlobals_(ownsModuleGlobals),
           functionDefinitions_(mirModel.functions().size(), false),
+          functionDeclarations_(mirModel.functions().size(), false),
+          restrictFunctionDeclarations_(!declarationOrdinals.empty()),
           moduleName_(moduleName)
     {
         for (const std::size_t ordinal : functionOrdinals)
@@ -425,6 +428,13 @@ public:
             if (ordinal < functionDefinitions_.size()) functionDefinitions_[ordinal] = true;
             else invalidFunctionOrdinal_ = ordinal;
         }
+        for (const std::size_t ordinal : declarationOrdinals)
+        {
+            if (ordinal < functionDeclarations_.size()) functionDeclarations_[ordinal] = true;
+            else invalidFunctionOrdinal_ = ordinal;
+        }
+        for (std::size_t ordinal = 0; ordinal < functionDefinitions_.size(); ++ordinal)
+            functionDeclarations_[ordinal] = functionDeclarations_[ordinal] || functionDefinitions_[ordinal];
     }
 
     bool lower(std::string& error)
@@ -2799,6 +2809,9 @@ private:
         const std::span<const frontend::ProjectOopMirFunction> mirFunctions = mirModel_.functions();
         for (std::size_t functionOrdinal = 0; functionOrdinal < mirFunctions.size(); ++functionOrdinal)
         {
+            if (partitioned_ && !ownsModuleGlobals_ &&
+                restrictFunctionDeclarations_ &&
+                !functionDeclarations_[functionOrdinal]) continue;
             const frontend::ProjectOopMirFunction& function = mirFunctions[functionOrdinal];
             // Win64 aggregate ABI (ground truth: clang for x86_64-pc-windows-msvc). An indirect
             // struct return becomes `void` plus a leading sret pointer parameter; an indirect
@@ -13655,6 +13668,8 @@ private:
     bool partitioned_ = false;
     bool ownsModuleGlobals_ = true;
     std::vector<bool> functionDefinitions_;
+    std::vector<bool> functionDeclarations_;
+    bool restrictFunctionDeclarations_ = false;
     std::string moduleName_;
     std::optional<std::size_t> invalidFunctionOrdinal_;
     LLVMContextRef context_ = nullptr;
@@ -13997,13 +14012,15 @@ ProjectOopLlvmLoweringRequest ProjectOopLlvmLoweringRequest::partition(
     std::span<const std::size_t> functionOrdinals,
     bool ownsModuleGlobals,
     std::string_view moduleName,
-    std::span<const DebugPrefixMap> debugPrefixMaps)
+    std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const std::size_t> declarationOrdinals)
 {
     ProjectOopLlvmLoweringRequest request = withDebug(
         nameLookup, memberModel, mirModel, sourceManager, debugInformation,
         optimizationLevel, debugPrefixMaps);
     request.partitioned_ = true;
     request.functionOrdinals_ = functionOrdinals;
+    request.declarationOrdinals_ = declarationOrdinals;
     request.ownsModuleGlobals_ = ownsModuleGlobals;
     request.moduleName_ = moduleName;
     return request;
@@ -14041,6 +14058,7 @@ std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
         *request.nameLookup_, request.memberModel_, *request.mirModel_, request.sourceManager_,
         request.debugInformation_, request.optimizationLevel_, request.debugPrefixMaps_,
         request.partitioned_, request.ownsModuleGlobals_, request.functionOrdinals_,
+        request.declarationOrdinals_,
         request.moduleName_);
     if (!implementation.lower(error_)) return nullptr;
     return std::unique_ptr<LlvmModule>(
