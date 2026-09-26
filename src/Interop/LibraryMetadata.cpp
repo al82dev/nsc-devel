@@ -1828,6 +1828,18 @@ bool decodePayload(
         error = "metadata payload has trailing bytes";
         return false;
     }
+
+    // Normalize lookup order once at the import boundary. Older compatible producers appended
+    // synthesized constructors after their sorted member table, so consumers cannot assume the
+    // bytes were globally ordered even though ordinary records were. Stable sorting preserves
+    // declaration order inside each owner while enabling logarithmic type lookup and bounded
+    // per-type member scans during public-surface materialization.
+    std::stable_sort(metadata.types.begin(), metadata.types.end(), [](const auto& left, const auto& right) {
+        return left.identityKey < right.identityKey;
+    });
+    std::stable_sort(metadata.members.begin(), metadata.members.end(), [](const auto& left, const auto& right) {
+        return left.declaringTypeKey < right.declaringTypeKey;
+    });
     return true;
 }
 
