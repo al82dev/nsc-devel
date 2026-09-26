@@ -190,6 +190,40 @@ NamedArgumentMap mapArgumentsToParameters(
     NamedArgumentMap result;
     if (reservedLeadingParameters > candidate.parameters.size()) return result;
 
+    // Positional calls are overwhelmingly the common case, especially in generated numeric
+    // libraries. Reject impossible arities before allocating the per-candidate assignment map.
+    // The general path below remains authoritative for named/reordered arguments.
+    const bool hasNamedArguments = std::ranges::any_of(arguments, [](const ast::AstNode* argument)
+    {
+        return argument != nullptr && !argument->argumentName().empty();
+    });
+    if (!hasNamedArguments)
+    {
+        const std::size_t fixedAvailable = candidate.parameters.size() - reservedLeadingParameters;
+        if (arguments.size() > fixedAvailable && !candidate.isVariadic) return result;
+
+        const std::size_t fixedArguments = std::min(arguments.size(), fixedAvailable);
+        result.explicitParameterOrdinals.reserve(arguments.size());
+        for (std::size_t index = 0; index < fixedArguments; ++index)
+        {
+            if (arguments[index] == nullptr) return {};
+            result.explicitParameterOrdinals.push_back(reservedLeadingParameters + index);
+        }
+        for (std::size_t index = fixedArguments; index < arguments.size(); ++index)
+        {
+            if (arguments[index] == nullptr) return {};
+            result.explicitParameterOrdinals.push_back(candidate.parameters.size() + index - fixedArguments);
+        }
+        for (std::size_t index = reservedLeadingParameters + fixedArguments;
+             index < candidate.parameters.size(); ++index)
+        {
+            if (candidate.parameters[index].defaultValueSyntax == nullptr) return {};
+            result.defaultedParameterOrdinals.push_back(index);
+        }
+        result.valid = true;
+        return result;
+    }
+
     std::vector<bool> assigned(candidate.parameters.size(), false);
     for (std::size_t index = 0; index < reservedLeadingParameters; ++index) assigned[index] = true;
 
@@ -8174,7 +8208,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         });
     }
 
-    std::vector<std::string> lambdaTargetTypes(expression->children().size());
+    const bool hasLambdaArguments = std::ranges::any_of(
+        expression->children(), [](const ast::AstNode* argument)
+        {
+            return argument != nullptr && argument->kind() == ast::AstNodeKind::LambdaExpression;
+        });
+    std::vector<std::string> lambdaTargetTypes;
+    if (hasLambdaArguments) lambdaTargetTypes.resize(expression->children().size());
     const auto seedLambdaTargetsFromSignature = [&](const std::vector<std::string>& parameterTypes)
     {
         if (parameterTypes.size() != expression->children().size()) return;
@@ -8188,7 +8228,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         }
     };
 
-    if (callee.eventMemberOrdinal.has_value() && memberModel_ != nullptr &&
+    if (hasLambdaArguments && callee.eventMemberOrdinal.has_value() && memberModel_ != nullptr &&
         *callee.eventMemberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& event = memberModel_->members()[*callee.eventMemberOrdinal];
@@ -8198,7 +8238,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         if (delegateSignature(event.declaredTypeKey, ignoredReturnType, parameterTypes, ignoredDelegateOrdinal))
             seedLambdaTargetsFromSignature(parameterTypes);
     }
-    else if (!callee.methodGroup && isDelegateTypeKey(callee.typeKey))
+    else if (hasLambdaArguments && !callee.methodGroup && isDelegateTypeKey(callee.typeKey))
     {
         std::string ignoredReturnType;
         std::vector<std::string> parameterTypes;
@@ -8206,7 +8246,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         if (delegateSignature(callee.typeKey, ignoredReturnType, parameterTypes, ignoredDelegateOrdinal))
             seedLambdaTargetsFromSignature(parameterTypes);
     }
-    else if (callee.methodGroup && memberModel_ != nullptr)
+    else if (hasLambdaArguments && callee.methodGroup && memberModel_ != nullptr)
     {
         std::vector<std::pair<const ClassMemberSymbol*, NamedArgumentMap>> arityMatches;
         for (const std::size_t candidateOrdinal : callee.methodCandidates)
@@ -8541,6 +8581,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     std::vector<const ast::AstNode*> constraintRejectedSyntaxes;
     if (memberModel_ != nullptr)
     {
+        call.evaluatedCandidates.reserve(callee.methodCandidates.size());
+        call.viableCandidateMemberOrdinals.reserve(callee.methodCandidates.size());
         for (const std::size_t candidateOrdinal : callee.methodCandidates)
         {
             if (candidateOrdinal >= memberModel_->members().size())
@@ -8681,6 +8723,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     }
 
     std::vector<std::size_t> viableEvaluationOrdinals;
+    viableEvaluationOrdinals.reserve(call.viableCandidateMemberOrdinals.size());
     for (std::size_t index = 0; index < call.evaluatedCandidates.size(); ++index)
     {
         if (call.evaluatedCandidates[index].viable)
@@ -8880,27 +8923,25 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     }
 
     std::vector<std::size_t> nonDominated;
+    nonDominated.reserve(viableEvaluationOrdinals.size());
     for (const std::size_t candidateIndex : viableEvaluationOrdinals)
     {
-        bool dominated = false;
-        for (const std::size_t otherIndex : viableEvaluationOrdinals)
+        const bool dominated = std::ranges::any_of(
+            nonDominated, [&](const std::size_t otherIndex)
         {
-            if (candidateIndex == otherIndex)
-            {
-                continue;
-            }
-            if (betterCandidate(
-                    call.evaluatedCandidates[otherIndex],
-                    call.evaluatedCandidates[candidateIndex]))
-            {
-                dominated = true;
-                break;
-            }
-        }
-        if (!dominated)
+            return betterCandidate(
+                call.evaluatedCandidates[otherIndex],
+                call.evaluatedCandidates[candidateIndex]);
+        });
+        if (dominated) continue;
+
+        std::erase_if(nonDominated, [&](const std::size_t otherIndex)
         {
-            nonDominated.push_back(candidateIndex);
-        }
+            return betterCandidate(
+                call.evaluatedCandidates[candidateIndex],
+                call.evaluatedCandidates[otherIndex]);
+        });
+        nonDominated.push_back(candidateIndex);
     }
 
     if (nonDominated.size() != 1)
