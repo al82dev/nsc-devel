@@ -11,10 +11,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -265,9 +267,9 @@ public:
     std::span<const MemberBodyBinding> bodyBindings() const noexcept;
     std::span<const std::size_t> membersOfType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> promotedMembersOfType(std::size_t typeOrdinal) const noexcept;
-    std::vector<std::size_t> findMembers(
+    std::span<const std::size_t> findMembers(
         std::size_t typeOrdinal,
-        std::string_view name) const;
+        std::string_view name) const noexcept;
     bool isBuilt() const noexcept;
     std::string canonicalTypeKey(
         const ast::TypeSyntax* syntax,
@@ -298,7 +300,30 @@ public:
     static std::optional<std::string> flexibleArrayElementTypeKey(std::string_view typeKey);
 
 private:
+    struct TransparentStringHash final
+    {
+        using is_transparent = void;
+
+        std::size_t operator()(std::string_view value) const noexcept
+        {
+            return std::hash<std::string_view>{}(value);
+        }
+
+        std::size_t operator()(const std::string& value) const noexcept
+        {
+            return (*this)(std::string_view(value));
+        }
+    };
+
+    using MemberNameIndex = std::unordered_map<
+        std::string,
+        std::vector<std::size_t>,
+        TransparentStringHash,
+        std::equal_to<>>;
+
     std::string syntaxFingerprint(const ast::AstNode* node) const;
+    std::optional<std::size_t> typeOrdinalForKey(std::string_view typeKey) const noexcept;
+    void buildMemberNameIndex();
     bool collectTypeMembers(
         std::size_t typeOrdinal,
         const NamedTypeDeclaration& type,
@@ -330,6 +355,12 @@ private:
     std::vector<MemberBodyBinding> bodyBindings_;
     std::vector<std::vector<std::size_t>> membersByType_;
     std::vector<std::vector<std::size_t>> promotedMembersByType_;
+    std::vector<MemberNameIndex> membersByName_;
+    std::unordered_map<
+        std::string,
+        std::size_t,
+        TransparentStringHash,
+        std::equal_to<>> typeOrdinalByKey_;
     std::unordered_map<const ast::AstNode*, std::size_t> memberBySyntax_;
     bool built_ = false;
 };

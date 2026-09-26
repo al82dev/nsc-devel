@@ -303,6 +303,11 @@ bool ProjectMemberModel::build(
     nameLookup_ = &nameLookup;
     membersByType_.resize(nameLookup.namedTypes().size());
     promotedMembersByType_.resize(nameLookup.namedTypes().size());
+    typeOrdinalByKey_.reserve(nameLookup.namedTypes().size());
+    for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
+    {
+        typeOrdinalByKey_.emplace(nameLookup.namedTypes()[typeOrdinal].identity.key(), typeOrdinal);
+    }
 
     for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
     {
@@ -438,6 +443,7 @@ bool ProjectMemberModel::build(
     }
 
     collectAnonymousMemberPromotions(nameLookup, diagnostics);
+    buildMemberNameIndex();
 
     std::unordered_map<std::string, const ClassMemberSymbol*> cAbiExports;
     for (const ClassMemberSymbol& member : members_)
@@ -689,25 +695,14 @@ bool ProjectMemberModel::typeTransitivelyOwnsStorage(std::string_view typeKey) c
 {
     if (nameLookup_ == nullptr) return false;
 
-    const auto typeOrdinalForKey = [&](std::string_view candidate) -> std::optional<std::size_t>
-    {
-        std::string current(candidate);
-        while (const std::optional<std::string> element = fixedArrayElementTypeKey(current))
-            current = *element;
-        if (!current.starts_with("type:")) return std::nullopt;
-        const std::string_view identity = std::string_view(current).substr(5);
-        for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
-        {
-            if (nameLookup_->namedTypes()[ordinal].identity.key() == identity) return ordinal;
-        }
-        return std::nullopt;
-    };
-
     std::vector<std::optional<bool>> memo(nameLookup_->namedTypes().size());
     std::unordered_set<std::size_t> visiting;
     std::function<bool(std::string_view)> owns = [&](std::string_view candidate) -> bool
     {
-        const std::optional<std::size_t> ordinal = typeOrdinalForKey(candidate);
+        std::string current(candidate);
+        while (const std::optional<std::string> element = fixedArrayElementTypeKey(current))
+            current = *element;
+        const std::optional<std::size_t> ordinal = typeOrdinalForKey(current);
         if (!ordinal.has_value() ||
             nameLookup_->namedTypes()[*ordinal].kind != NamedTypeDeclarationKind::Struct)
             return false;
@@ -744,38 +739,51 @@ std::span<const std::size_t> ProjectMemberModel::promotedMembersOfType(
         : std::span<const std::size_t>(empty);
 }
 
-std::vector<std::size_t> ProjectMemberModel::findMembers(
+std::span<const std::size_t> ProjectMemberModel::findMembers(
     std::size_t typeOrdinal,
-    std::string_view name) const
+    std::string_view name) const noexcept
 {
-    std::vector<std::size_t> result;
-    if (typeOrdinal >= membersByType_.size())
-    {
-        return result;
-    }
+    static const std::vector<std::size_t> empty;
+    if (typeOrdinal >= membersByName_.size()) return empty;
+    const auto found = membersByName_[typeOrdinal].find(name);
+    return found != membersByName_[typeOrdinal].end()
+        ? std::span<const std::size_t>(found->second)
+        : std::span<const std::size_t>(empty);
+}
 
-    for (const std::size_t memberOrdinal : membersByType_[typeOrdinal])
+std::optional<std::size_t> ProjectMemberModel::typeOrdinalForKey(
+    std::string_view typeKey) const noexcept
+{
+    if (!typeKey.starts_with("type:")) return std::nullopt;
+    const auto found = typeOrdinalByKey_.find(typeKey.substr(5));
+    return found != typeOrdinalByKey_.end()
+        ? std::optional<std::size_t>(found->second)
+        : std::nullopt;
+}
+
+void ProjectMemberModel::buildMemberNameIndex()
+{
+    membersByName_.clear();
+    membersByName_.resize(membersByType_.size());
+    for (std::size_t typeOrdinal = 0; typeOrdinal < membersByType_.size(); ++typeOrdinal)
     {
-        if (memberOrdinal < members_.size() && members_[memberOrdinal].name == name &&
-            !(members_[memberOrdinal].isCompilerGenerated &&
-              members_[memberOrdinal].syntax != nullptr &&
-              members_[memberOrdinal].syntax->auxiliaryText().find("anonymous-member-carrier") !=
-                  std::string::npos))
+        MemberNameIndex& byName = membersByName_[typeOrdinal];
+        for (const std::size_t memberOrdinal : membersByType_[typeOrdinal])
         {
-            result.push_back(memberOrdinal);
+            if (memberOrdinal >= members_.size()) continue;
+            const ClassMemberSymbol& member = members_[memberOrdinal];
+            if (member.isCompilerGenerated && member.syntax != nullptr &&
+                member.syntax->auxiliaryText().find("anonymous-member-carrier") != std::string::npos)
+                continue;
+            byName[member.name].push_back(memberOrdinal);
         }
-    }
-    if (typeOrdinal < promotedMembersByType_.size())
-    {
+        if (typeOrdinal >= promotedMembersByType_.size()) continue;
         for (const std::size_t memberOrdinal : promotedMembersByType_[typeOrdinal])
         {
-            if (memberOrdinal < members_.size() && members_[memberOrdinal].name == name)
-            {
-                result.push_back(memberOrdinal);
-            }
+            if (memberOrdinal < members_.size())
+                byName[members_[memberOrdinal].name].push_back(memberOrdinal);
         }
     }
-    return result;
 }
 
 bool ProjectMemberModel::isBuilt() const noexcept
@@ -1937,16 +1945,6 @@ bool ProjectMemberModel::collectAnonymousMemberPromotions(
     // tail padding remain authoritative. The aliases live outside membersByType_: ordinary model
     // consumers therefore continue to see exactly the physical fields, while findMembers() adds
     // the promoted surface for source resolution.
-    const auto typeOrdinalForKey = [&](std::string_view key) -> std::optional<std::size_t>
-    {
-        if (!key.starts_with("type:")) return std::nullopt;
-        const std::string_view identity = key.substr(5);
-        for (std::size_t ordinal = 0; ordinal < nameLookup.namedTypes().size(); ++ordinal)
-        {
-            if (nameLookup.namedTypes()[ordinal].identity.key() == identity) return ordinal;
-        }
-        return std::nullopt;
-    };
     const auto intersectAccessibility = [](
         ClassMemberAccessibility carrier,
         ClassMemberAccessibility member) noexcept
@@ -2200,7 +2198,7 @@ public:
             return std::nullopt;
         }
 
-        const std::vector<std::size_t> candidates =
+        const std::span<const std::size_t> candidates =
             members_.findMembers(*declaringTypeOrdinal, syntax->text());
         if (candidates.size() != 1) return std::nullopt;
         return candidates.front();
@@ -2424,7 +2422,8 @@ void ProjectMemberModel::scanMethodBody(
         node->first()->kind() == ast::AstNodeKind::ThisExpression)
     {
         scanMethodBody(node->first(), typeOrdinal, methodMemberOrdinal, diagnostics);
-        std::vector<std::size_t> candidates = findMembers(typeOrdinal, node->text());
+        const std::span<const std::size_t> directCandidates = findMembers(typeOrdinal, node->text());
+        std::vector<std::size_t> candidates(directCandidates.begin(), directCandidates.end());
         if (candidates.empty())
         {
             for (const std::size_t ordinal : findMembers(typeOrdinal, "get_" + node->text()))

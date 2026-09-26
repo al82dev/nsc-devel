@@ -12869,7 +12869,8 @@ std::vector<std::size_t> ProjectMethodBodyModel::memberCandidatesForType(
     std::optional<std::size_t> current = typeOrdinal;
     while (current.has_value())
     {
-        std::vector<std::size_t> candidates = memberModel_->findMembers(*current, name);
+        const std::span<const std::size_t> found = memberModel_->findMembers(*current, name);
+        std::vector<std::size_t> candidates(found.begin(), found.end());
         if (!candidates.empty())
         {
             return candidates;
