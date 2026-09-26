@@ -653,6 +653,50 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def write_run_bootstrap_lock(
+    template: Path,
+    output: Path,
+    captured_artifacts: dict[str, Path],
+) -> dict:
+    """Congela los artefactos mutables del bootstrap para una corrida concreta.
+
+    El lock versionado conserva la identidad del último bootstrap promovido. Un baseline nuevo no
+    debe reescribirlo ni comparar el nsc recién instalado contra un hash histórico. En su lugar se
+    crea una copia dentro de la evidencia de la corrida y sólo se actualizan las identidades que
+    el propio plan seleccionó explícitamente (hoy nsc0 y NSLink). Las herramientas externas
+    continúan usando, sin cambios, los hashes estrictos del lock versionado.
+    """
+    value = json.loads(template.read_text(encoding="utf-8"))
+    if value.get("schema") != "nativesharp-bootstrap-lock" or value.get("version") != 1:
+        raise ValueError(f"lock de bootstrap no compatible: {template}")
+    artifacts = value.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise ValueError(f"lock de bootstrap sin artefactos: {template}")
+    pending = set(captured_artifacts)
+    for item in artifacts:
+        if not isinstance(item, dict):
+            continue
+        identifier = item.get("id")
+        if identifier not in captured_artifacts:
+            continue
+        artifact = captured_artifacts[str(identifier)].resolve()
+        if not artifact.is_file():
+            raise FileNotFoundError(f"artefacto de bootstrap ausente: {artifact}")
+        item["sha256"] = sha256_file(artifact)
+        pending.remove(str(identifier))
+    if pending:
+        raise ValueError("artefactos ausentes del lock de bootstrap: " + ", ".join(sorted(pending)))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_suffix(output.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(value, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    temporary.replace(output)
+    return value
+
+
 def canonical_manifest(root: Path, files: Iterable[Path]) -> list[dict]:
     """Manifiesto canonico del plan 123 §4.3: (ruta relativa, tamano, sha256).
 
@@ -1121,6 +1165,7 @@ class PipelineWorker(QObject):
         self.completed_units = 0
         self.total_units = 1
         self.ctest_ready_linkers: set[str] = set()
+        self.bootstrap_lock_path: Path | None = None
 
     def cancel(self) -> None:
         self.cancel_event.set()
@@ -1541,7 +1586,54 @@ class PipelineWorker(QObject):
         )
         compiler = (Path(self.plan.prefix) / "bin" / "nsc.exe").as_posix()
         command.append(f"-DNSC_TEST_COMPILER={compiler}")
+        if self.bootstrap_lock_path is not None:
+            command.append(f"-DNSC_BOOTSTRAP_LOCK={self.bootstrap_lock_path.as_posix()}")
         return command
+
+    def _freeze_bootstrap_lock(self) -> bool:
+        """Crea el lock inmutable de esta corrida sin modificar el árbol de fuentes."""
+        if self.plan.operation != "baseline":
+            return True
+        assert self.run_dir is not None
+        compiler = Path(self.plan.prefix) / "bin" / "nsc.exe"
+        nslink = Path(self.plan.nslink_exe)
+        template = Path(self.plan.root) / "selfhost" / "bootstrap" / "bootstrap.lock"
+        output = self.run_dir / "bootstrap" / "bootstrap.lock"
+        try:
+            value = write_run_bootstrap_lock(
+                template,
+                output,
+                {"nsc0": compiler, "nslink": nslink},
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            self._emit(f"No se pudo congelar el bootstrap de la corrida: {exc}", "error")
+            self.failed += 1
+            self._report_failure(
+                {
+                    "linker": "Compilador",
+                    "optimization": "General",
+                    "kind": "Infraestructura de pruebas",
+                    "source": "Bootstrap lock por corrida",
+                    "detail": str(exc),
+                    "error_log": str(self.console_path.resolve()) if self.console_path else "",
+                }
+            )
+            return False
+        self.bootstrap_lock_path = output.resolve()
+        hashes = {
+            str(item["id"]): str(item["sha256"])
+            for item in value["artifacts"]
+            if isinstance(item, dict) and item.get("id") in ("nsc0", "nslink")
+        }
+        self.metadata["bootstrap_lock"] = {
+            "path": str(self.bootstrap_lock_path),
+            "sha256": sha256_file(self.bootstrap_lock_path),
+            "source_lock_sha256": sha256_file(template),
+            "captured_artifacts": hashes,
+        }
+        self._save_metadata()
+        self._emit(f"Bootstrap congelado para esta corrida: {self.bootstrap_lock_path}", "success")
+        return True
 
     def _build(self) -> bool:
         if not self.plan.run_build or self.plan.build_mode == "skip":
@@ -2773,7 +2865,12 @@ class PipelineWorker(QObject):
                     self._abi_measure("before-build", binaries=False) if is_baseline else None
                 )
                 baseline_built: dict | None = None
-                if self._build() and not self.cancel_event.is_set():
+                if (
+                    self._build()
+                    and not self.cancel_event.is_set()
+                    and self._freeze_bootstrap_lock()
+                    and not self.cancel_event.is_set()
+                ):
                     if (
                         self._prepare_test_outputs()
                         and not self.cancel_event.is_set()

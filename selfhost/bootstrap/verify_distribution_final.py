@@ -28,6 +28,8 @@ def main() -> int:
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--compiler", type=Path, required=True)
     parser.add_argument("--selfhost-compiler", type=Path, required=True)
+    parser.add_argument("--bootstrap-compiler", type=Path, required=True)
+    parser.add_argument("--bootstrap-lock", type=Path, required=True)
     parser.add_argument("--cmake", type=Path, required=True)
     parser.add_argument("--ninja", type=Path, required=True)
     parser.add_argument("--llvm-root", type=Path, required=True)
@@ -76,7 +78,7 @@ def main() -> int:
     coexist.mkdir(exist_ok=True)
     nsc0 = coexist / "nsc0.exe"
     nsc2 = coexist / "nsc2.exe"
-    shutil.copy2(args.compiler, nsc0)
+    shutil.copy2(args.bootstrap_compiler, nsc0)
     shutil.copy2(args.selfhost_compiler, nsc2)
     nsc0_version = run([str(nsc0), "--version"], root)
     nsc2_version = run([str(nsc2), "--version"], root)
@@ -111,8 +113,8 @@ def main() -> int:
     environment_report = output / "bootstrap-environment.json"
     environment = run([
         sys.executable, "-B", str(root / "selfhost/bootstrap/verify_environment.py"),
-        "--lock", str(root / "selfhost/bootstrap/bootstrap.lock"),
-        "--set", f"NSC0_EXE={args.compiler}",
+        "--lock", str(args.bootstrap_lock),
+        "--set", f"NSC0_EXE={args.bootstrap_compiler}",
         "--set", f"NSC_LLVM_ROOT={args.llvm_root}",
         "--set", f"NSLINK_EXE={args.nslink}",
         "--set", f"PYTHON_EXE={Path(sys.executable)}",
@@ -136,6 +138,9 @@ def main() -> int:
         "tanda": 55,
         "status": "passed" if not failures else "failed",
         "compiler_sha256": digest(args.compiler),
+        "bootstrap_compiler_sha256": digest(args.bootstrap_compiler),
+        "bootstrap_lock_sha256": digest(args.bootstrap_lock),
+        "nslink_sha256": digest(args.nslink),
         "selfhost_compiler_sha256": digest(args.selfhost_compiler),
         "contract_sha256": digest(args.contract),
         "fresh_install": first_install.returncode == 0,

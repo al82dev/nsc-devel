@@ -37,6 +37,19 @@ el árbol del compilador cuando existe este valor, aun si el cache de CMake ya e
 Los procesos hijos reciben `TEMP`, `TMP` y `TMPDIR` con el `temp_root` resuelto. Las rutas efectivas
 quedan incluidas en `metadata.json` mediante la serialización del `RunPlan`.
 
+## Lock físico por corrida
+
+Después de construir e instalar `nsc` y antes de configurar los dos árboles CTest, el baseline crea
+`<run_dir>/bootstrap/bootstrap.lock`. La copia captura los SHA-256 del `nsc0` instalado y del NSLink
+seleccionado por el plan. Los hashes de clang-cl, LLD, LLVM-C, Python, CMake y Ninja se conservan
+sin cambios desde el lock versionado. Ambos árboles CTest reciben la misma copia mediante
+`NSC_BOOTSTRAP_LOCK`; SH53 usa además `NSC_TEST_COMPILER` como semilla explícita.
+
+Esto evita dos errores de diseño: comparar un build nuevo contra el hash histórico del último
+bootstrap promovido y tratar como si fueran la misma semilla los `nsc.exe` privados de dos árboles
+CTest, cuyas identidades de construcción pueden ser distintas. El lock versionado nunca se
+reescribe durante el baseline y la copia queda dentro de su evidencia para reproducir la corrida.
+
 ## Corrida aislada en A:
 
 ```text

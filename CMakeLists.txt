@@ -618,6 +618,8 @@ endif()
 # =====================================================================================
 set(NSC_TEST_COMPILER "" CACHE FILEPATH
     "Ejecutable nsc que mide ctest (vacio = C:/native-sharp/bin/nsc.exe en Windows)")
+set(NSC_BOOTSTRAP_LOCK "${CMAKE_CURRENT_SOURCE_DIR}/selfhost/bootstrap/bootstrap.lock" CACHE FILEPATH
+    "Lock físico del bootstrap; nscbuilder usa una copia inmutable por corrida")
 set(_nsc_test_compiler_es_ruta TRUE)
 if(NSC_TEST_COMPILER STREQUAL "")
     if(WIN32)
@@ -1095,6 +1097,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(NAME nsc.selfhost.distribution-final COMMAND "${CMAKE_COMMAND}"
         "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DBOOTSTRAP_COMPILER=${NSC_TEST_COMPILER}" "-DBOOTSTRAP_LOCK=${NSC_BOOTSTRAP_LOCK}"
         "-DCMAKE_EXECUTABLE=${CMAKE_COMMAND}" "-DNINJA_EXECUTABLE=${CMAKE_MAKE_PROGRAM}"
         "-DCLANG_CL_EXECUTABLE=${CMAKE_CXX_COMPILER}" "-DLLD_LINK_EXECUTABLE=${CMAKE_LINKER}"
         "-DLLVM_LIBRARY=${NSC_LLVM_MONOLITHIC_LIBRARY}"

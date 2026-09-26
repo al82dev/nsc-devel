@@ -196,6 +196,42 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(report["status"], "passed")
         self.assertEqual(report["problems"], [])
 
+    def test_run_bootstrap_lock_captures_selected_artifacts_only(self) -> None:
+        nsc0 = self.root / "nsc0.exe"
+        nslink = self.root / "nslink.exe"
+        llvm = self.root / "LLVM-C.lib"
+        nsc0.write_bytes(b"current nsc0")
+        nslink.write_bytes(b"current nslink")
+        llvm.write_bytes(b"frozen llvm")
+        template = self.root / "bootstrap.lock"
+        original_llvm_hash = hashlib.sha256(llvm.read_bytes()).hexdigest()
+        template.write_text(
+            json.dumps(
+                {
+                    "schema": "nativesharp-bootstrap-lock",
+                    "version": 1,
+                    "artifacts": [
+                        {"id": "nsc0", "sha256": "0" * 64},
+                        {"id": "nslink", "sha256": "1" * 64},
+                        {"id": "llvm-c-library", "sha256": original_llvm_hash},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        output = self.root / "run" / "bootstrap.lock"
+        captured = nscbuilder.write_run_bootstrap_lock(
+            template,
+            output,
+            {"nsc0": nsc0, "nslink": nslink},
+        )
+        by_id = {item["id"]: item for item in captured["artifacts"]}
+        self.assertEqual(by_id["nsc0"]["sha256"], nscbuilder.sha256_file(nsc0))
+        self.assertEqual(by_id["nslink"]["sha256"], nscbuilder.sha256_file(nslink))
+        self.assertEqual(by_id["llvm-c-library"]["sha256"], original_llvm_hash)
+        self.assertEqual(json.loads(template.read_text())["artifacts"][0]["sha256"], "0" * 64)
+        self.assertTrue(output.is_file())
+
     def test_environment_verifier_rejects_pending_hash(self) -> None:
         artifact = self.root / "artifact.bin"
         artifact.write_bytes(b"pending")
