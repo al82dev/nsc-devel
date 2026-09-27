@@ -1189,7 +1189,11 @@ class PipelineWorker(QObject):
         channels = (
             [channel]
             if channel
-            else (["Compilador"] if self.plan.operation == "compiler" else self.plan.linkers)
+            else (
+                ["Compilador"]
+                if self.plan.operation in ("compiler", "install")
+                else self.plan.linkers
+            )
         )
         if not channels:
             channels = ["Compilador"]
@@ -1449,7 +1453,11 @@ class PipelineWorker(QObject):
                 channels = (
                     [linker_match.group(1)]
                     if linker_match
-                    else (["Compilador"] if self.plan.operation == "compiler" else self.plan.linkers)
+                    else (
+                        ["Compilador"]
+                        if self.plan.operation in ("compiler", "install")
+                        else self.plan.linkers
+                    )
                 )
                 for channel in channels:
                     self._report_failure(
@@ -1458,7 +1466,7 @@ class PipelineWorker(QObject):
                             "optimization": "General",
                             "kind": (
                                 "Compilador"
-                                if self.plan.operation == "compiler"
+                                if self.plan.operation in ("compiler", "install")
                                 else "Infraestructura de pruebas"
                             ),
                             "source": name,
@@ -1509,6 +1517,7 @@ class PipelineWorker(QObject):
     def _validate_paths(self) -> list[str]:
         required: list[Path] = []
         building = self.plan.run_build and self.plan.build_mode != "skip"
+        installing = self.plan.operation == "install"
         building_tests = self.plan.build_test_trees
         running_tests = self.plan.run_ctest or self.plan.run_cases or self.plan.run_triage
         if building or building_tests:
@@ -1525,6 +1534,8 @@ class PipelineWorker(QObject):
                 required.append(Path("cmake.exe (PATH)"))
             if self.plan.build_runner == "ninja" and shutil.which("ninja") is None:
                 required.append(Path("ninja.exe (PATH)"))
+        elif installing and shutil.which("cmake") is None:
+            required.append(Path("cmake.exe (PATH)"))
         if running_tests:
             # En `baseline` el compilador instalado lo produce esta misma corrida, asi que exigirlo
             # de entrada rechazaria una maquina limpia por no tener todavia lo que va a construir.
@@ -1636,7 +1647,15 @@ class PipelineWorker(QObject):
         return True
 
     def _build(self) -> bool:
-        if not self.plan.run_build or self.plan.build_mode == "skip":
+        if not self.plan.run_build:
+            return True
+        if self.plan.operation == "install":
+            return self._command_stage(
+                "Instalar",
+                ["cmake", "--install", self.plan.compiler_build_dir, "--prefix", self.plan.prefix],
+                self._base_environment(),
+            )
+        if self.plan.build_mode == "skip":
             return True
         root = Path(self.plan.root).resolve()
         build = Path(self.plan.compiler_build_dir).resolve()
@@ -2632,7 +2651,9 @@ class PipelineWorker(QObject):
 
     def _calculate_total(self) -> int:
         total = 0
-        if self.plan.run_build and self.plan.build_mode != "skip":
+        if self.plan.run_build and self.plan.operation == "install":
+            total += 1
+        elif self.plan.run_build and self.plan.build_mode != "skip":
             if self.plan.build_mode == "clean":
                 total += 4  # limpiar, configurar, construir, instalar
             elif not (Path(self.plan.compiler_build_dir) / "CMakeCache.txt").is_file():
@@ -2840,7 +2861,7 @@ class PipelineWorker(QObject):
                     self._emit(f"Falta herramienta: {path}", "error")
                     channels = (
                         ["Compilador"]
-                        if self.plan.operation == "compiler"
+                        if self.plan.operation in ("compiler", "install")
                         else self.plan.linkers
                     )
                     for channel in channels:
@@ -2900,7 +2921,9 @@ class PipelineWorker(QObject):
                 traceback.format_exc(), encoding="utf-8", errors="replace"
             )
             channels = (
-                ["Compilador"] if self.plan.operation == "compiler" else self.plan.linkers
+                ["Compilador"]
+                if self.plan.operation in ("compiler", "install")
+                else self.plan.linkers
             )
             for channel in channels:
                 self._report_failure(
@@ -3089,7 +3112,17 @@ class MainWindow(QMainWindow):
         grid.addWidget(self.compiler_summary, 4, 0, 1, 2)
         self.compiler_start_button = QPushButton("Construir e instalar nsc")
         self.compiler_start_button.clicked.connect(self._start_compiler)
-        grid.addWidget(self.compiler_start_button, 5, 0, 1, 2)
+        self.compiler_install_button = QPushButton("Instalar build existente")
+        self.compiler_install_button.setToolTip(
+            "Instala el contenido ya construido sin configurar ni recompilar"
+        )
+        self.compiler_install_button.clicked.connect(self._start_install)
+        compiler_buttons = QWidget()
+        compiler_buttons_layout = QHBoxLayout(compiler_buttons)
+        compiler_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        compiler_buttons_layout.addWidget(self.compiler_start_button)
+        compiler_buttons_layout.addWidget(self.compiler_install_button)
+        grid.addWidget(compiler_buttons, 5, 0, 1, 2)
         config_layout.addWidget(options)
 
         # Estos controles pertenecen exclusivamente al panel de pruebas.
@@ -3896,6 +3929,10 @@ class MainWindow(QMainWindow):
         self.start_run("compiler")
 
     @Slot()
+    def _start_install(self) -> None:
+        self.start_run("install")
+
+    @Slot()
     def _start_tests(self) -> None:
         """El botón grande de la pestaña del lenguaje: lo marcado, o todo si no hay nada."""
         self.start_run("language")
@@ -4353,7 +4390,7 @@ class MainWindow(QMainWindow):
                 "El compilador no puede compartir directorio con ninguno de los árboles de CTest.",
             )
             return None
-        if operation == "compiler":
+        if operation in ("compiler", "install"):
             if compiler_build.name.casefold().startswith("build-test"):
                 QMessageBox.warning(
                     self,
@@ -4361,8 +4398,16 @@ class MainWindow(QMainWindow):
                     "El directorio del compilador no puede ser un árbol build-test-*.",
                 )
                 return None
+            if operation == "install" and not (compiler_build / "cmake_install.cmake").is_file():
+                QMessageBox.warning(
+                    self,
+                    APP_NAME,
+                    "El build seleccionado no está configurado para instalar:\n"
+                    f"{compiler_build}\n\nFalta cmake_install.cmake.",
+                )
+                return None
             return RunPlan(
-                operation="compiler",
+                operation=operation,
                 root=str(ROOT),
                 compiler_build_dir=self.build_path.text().strip(),
                 prefix=self.prefix_path.text().strip(),
@@ -4376,7 +4421,9 @@ class MainWindow(QMainWindow):
                 # La pestaña del compilador produce un binario distribuible: identidad nueva.
                 # Los baselines reproducibles la fijan explícitamente con --build-id/config.
                 build_id_override="",
-                build_mode=str(self.build_mode.currentData()),
+                build_mode=(
+                    "skip" if operation == "install" else str(self.build_mode.currentData())
+                ),
                 build_target="nsc",
                 build_runner=str(self.build_runner.currentData()),
                 # La pestaña del compilador construye nsc, y ya. No toca los árboles de prueba.
@@ -4533,7 +4580,7 @@ class MainWindow(QMainWindow):
                 return
         self._save_settings()
         test_channels = ["LLD-link" if linker == "lld-link" else linker for linker in plan.linkers]
-        if plan.operation == "compiler":
+        if plan.operation in ("compiler", "install"):
             self.active_result_channels = ["Compilador"]
         elif plan.operation == "baseline":
             # El Gate 0 construye el compilador Y ejecuta la matriz en la misma corrida, asi que
@@ -4571,6 +4618,7 @@ class MainWindow(QMainWindow):
         self.current_run_dir = None
         self.open_button.setEnabled(False)
         self.compiler_start_button.setEnabled(False)
+        self.compiler_install_button.setEnabled(False)
         self.tests_start_button.setEnabled(False)
         self.abi_baseline_button.setEnabled(False)
         self.abi_archive_button.setEnabled(False)
@@ -4643,6 +4691,7 @@ class MainWindow(QMainWindow):
         self.active_result_channels = ["Compilador"]
         self.output_channel_tabs.setCurrentIndex(self.channel_outer_indices["Compilador"])
         self.compiler_start_button.setEnabled(False)
+        self.compiler_install_button.setEnabled(False)
         self.tests_start_button.setEnabled(False)
         self.abi_baseline_button.setEnabled(False)
         self.abi_archive_button.setEnabled(False)
@@ -4823,6 +4872,7 @@ class MainWindow(QMainWindow):
     def on_finished(self, summary: dict) -> None:
         self.current_run_dir = Path(summary["run_dir"])
         self.compiler_start_button.setEnabled(True)
+        self.compiler_install_button.setEnabled(True)
         self.tests_start_button.setEnabled(True)
         self.abi_baseline_button.setEnabled(True)
         self.abi_archive_button.setEnabled(True)
@@ -4838,6 +4888,7 @@ class MainWindow(QMainWindow):
     @Slot(dict)
     def on_cleanup_finished(self, summary: dict) -> None:
         self.compiler_start_button.setEnabled(True)
+        self.compiler_install_button.setEnabled(True)
         self.tests_start_button.setEnabled(True)
         self.abi_baseline_button.setEnabled(True)
         self.abi_archive_button.setEnabled(True)
