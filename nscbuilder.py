@@ -2208,7 +2208,10 @@ class PipelineWorker(QObject):
                 else:
                     run = self._run_process(
                         [str(exe)],
-                        Path(self.plan.root),
+                        # Cada variante tiene su propio directorio de artefactos. Ejecutarla ahi
+                        # tambien aisla los archivos relativos que cree el fixture: si O1 y O2
+                        # comparten la raiz del repositorio pueden truncarse o borrarse entre si.
+                        artifact_dir,
                         env,
                         log.with_suffix(".run.log"),
                         timeout=CASE_TIMEOUT_SECONDS,
