@@ -613,15 +613,27 @@ def cleanup_targets(configured_builds: Iterable[Path]) -> tuple[list[Path], list
     """Devuelve artefactos borrables y rutas rechazadas, siempre dentro del repositorio.
 
     Los builds configurados por el usuario sólo son aceptables como hijos directos de ``ROOT``
-    cuyo nombre comienza con ``build-``. También se permite exactamente el área temporal que usa
-    el runner. Resolver primero la ruta impide que un enlace o junction escape del repositorio.
+    cuyo nombre comienza con ``build-``. También se permiten exactamente las áreas temporales que
+    usa el runner y los logs automáticos ``errorN.log`` en la raíz. Resolver primero la ruta
+    impide que un enlace o junction escape del repositorio.
     """
     root = ROOT.resolve()
     test_work = TEST_WORK_ROOT.resolve()
+    temp_root = DEFAULT_TEMP_ROOT.resolve()
+    error_logs = sorted(
+        (
+            path
+            for path in ROOT.iterdir()
+            if path.is_file() and re.fullmatch(r"error(?:\d+)?\.log", path.name, re.IGNORECASE)
+        ),
+        key=lambda path: path.name.casefold(),
+    )
     candidates = [
         *(Path(path) for path in configured_builds),
         *(ROOT / name for name in CLEANUP_BUILD_NAMES),
         TEST_WORK_ROOT,
+        DEFAULT_TEMP_ROOT,
+        *error_logs,
     ]
     accepted: list[Path] = []
     rejected: list[Path] = []
@@ -633,7 +645,10 @@ def cleanup_targets(configured_builds: Iterable[Path]) -> tuple[list[Path], list
             continue
         seen.add(key)
         is_build_tree = resolved.parent == root and resolved.name.casefold().startswith("build-")
-        if resolved != test_work and not is_build_tree:
+        is_error_log = resolved.parent == root and bool(
+            re.fullmatch(r"error(?:\d+)?\.log", resolved.name, re.IGNORECASE)
+        )
+        if resolved not in (test_work, temp_root) and not is_build_tree and not is_error_log:
             rejected.append(resolved)
             continue
         if resolved.exists():
@@ -3018,7 +3033,7 @@ class CleanupWorker(QObject):
             self._emit(f"Limpieza terminada con {len(failures)} error(es).", "error")
         else:
             status = "passed"
-            self._emit(f"Limpieza completada: {removed} árbol(es) eliminado(s).", "success")
+            self._emit(f"Limpieza completada: {removed} destino(s) eliminado(s).", "success")
         self.finished.emit(
             {
                 "status": status,
@@ -3051,6 +3066,7 @@ class MainWindow(QMainWindow):
         self.current_run_dir: Path | None = None
         self.stage_rows_by_name: dict[str, list[tuple[str, int]]] = {}
         self.active_result_channels: list[str] = ["Compilador"]
+        self.baseline_cleanup_available = False
         self.close_after_cancel = False
         self._build_ui()
         self._load_settings()
@@ -4269,6 +4285,13 @@ class MainWindow(QMainWindow):
         self.abi_baseline_button = QPushButton("Construir, medir y certificar el baseline")
         self.abi_baseline_button.clicked.connect(self._start_baseline)
         certified_layout.addWidget(self.abi_baseline_button)
+        self.baseline_clean_button = QPushButton("Clean")
+        self.baseline_clean_button.setToolTip(
+            "Elimina builds, ejecutables de pruebas, temporales y error*.log; conserva evidencia"
+        )
+        self.baseline_clean_button.setEnabled(False)
+        self.baseline_clean_button.clicked.connect(self.start_cleanup)
+        certified_layout.addWidget(self.baseline_clean_button)
         layout.addWidget(certified)
         layout.addStretch(1)
         return page
@@ -4621,6 +4644,7 @@ class MainWindow(QMainWindow):
         self.compiler_install_button.setEnabled(False)
         self.tests_start_button.setEnabled(False)
         self.abi_baseline_button.setEnabled(False)
+        self.baseline_clean_button.setEnabled(False)
         self.abi_archive_button.setEnabled(False)
         self.cleanup_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
@@ -4673,11 +4697,20 @@ class MainWindow(QMainWindow):
         if not targets:
             QMessageBox.information(self, APP_NAME, "No hay artefactos de compilación que limpiar.")
             return
-        paths = "\n".join(f"• {path}" for path in targets)
+        error_logs = [
+            path
+            for path in targets
+            if path.parent == ROOT.resolve()
+            and re.fullmatch(r"error(?:\d+)?\.log", path.name, re.IGNORECASE)
+        ]
+        displayed_targets = [path for path in targets if path not in error_logs]
+        paths = "\n".join(f"• {path}" for path in displayed_targets)
+        if error_logs:
+            paths += f"\n• {len(error_logs)} archivo(s) error*.log en {ROOT.resolve()}"
         answer = QMessageBox.question(
             self,
             APP_NAME,
-            "Se eliminarán permanentemente estos árboles de compilación:\n\n"
+            "Se eliminarán permanentemente estos artefactos de compilación y pruebas:\n\n"
             f"{paths}\n\n"
             "Se conservarán _abi, _nscbuilder\\history, las fuentes y C:\\native-sharp.\n\n"
             "¿Continuar?",
@@ -4694,6 +4727,7 @@ class MainWindow(QMainWindow):
         self.compiler_install_button.setEnabled(False)
         self.tests_start_button.setEnabled(False)
         self.abi_baseline_button.setEnabled(False)
+        self.baseline_clean_button.setEnabled(False)
         self.abi_archive_button.setEnabled(False)
         self.cleanup_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
@@ -4871,10 +4905,12 @@ class MainWindow(QMainWindow):
     @Slot(dict)
     def on_finished(self, summary: dict) -> None:
         self.current_run_dir = Path(summary["run_dir"])
+        self.baseline_cleanup_available = summary.get("operation") == "baseline"
         self.compiler_start_button.setEnabled(True)
         self.compiler_install_button.setEnabled(True)
         self.tests_start_button.setEnabled(True)
         self.abi_baseline_button.setEnabled(True)
+        self.baseline_clean_button.setEnabled(self.baseline_cleanup_available)
         self.abi_archive_button.setEnabled(True)
         self.cleanup_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
@@ -4887,22 +4923,25 @@ class MainWindow(QMainWindow):
 
     @Slot(dict)
     def on_cleanup_finished(self, summary: dict) -> None:
+        status = str(summary["status"])
+        if status == "passed":
+            self.baseline_cleanup_available = False
         self.compiler_start_button.setEnabled(True)
         self.compiler_install_button.setEnabled(True)
         self.tests_start_button.setEnabled(True)
         self.abi_baseline_button.setEnabled(True)
+        self.baseline_clean_button.setEnabled(self.baseline_cleanup_available)
         self.abi_archive_button.setEnabled(True)
         self.cleanup_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
-        status = str(summary["status"])
         removed = int(summary["removed"])
         seconds = float(summary["seconds"])
         if status == "passed":
             self.status_label.setText(
-                f"Limpieza completada — {removed} árbol(es) — {seconds:.2f} s"
+                f"Limpieza completada — {removed} destino(s) — {seconds:.2f} s"
             )
         elif status == "cancelled":
-            self.status_label.setText(f"Limpieza cancelada — {removed} árbol(es) eliminados")
+            self.status_label.setText(f"Limpieza cancelada — {removed} destino(s) eliminados")
         else:
             failures = list(summary.get("failures", []))
             self.status_label.setText(
