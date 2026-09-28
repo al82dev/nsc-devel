@@ -22,7 +22,7 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 12;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 13;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -677,6 +677,7 @@ struct ProjectOopMirFunction final
     bool capturesThisCell = false;
     std::string genericSpecializationKey;
     std::string mangledName;
+    std::string debugDisplayName;
     std::string returnTypeKey;
     sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
     std::vector<std::string> parameterNames;

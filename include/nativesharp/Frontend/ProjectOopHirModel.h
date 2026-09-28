@@ -558,6 +558,7 @@ struct ProjectOopHirFunction final
     bool capturesThisCell = false;
     std::string genericSpecializationKey;
     std::string mangledName;
+    std::string debugDisplayName;
     std::string returnTypeKey;
     sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
     std::vector<std::string> parameterNames;

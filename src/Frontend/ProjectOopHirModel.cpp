@@ -1871,6 +1871,9 @@ bool ProjectOopHirModel::buildImpl(
             function.referenceReturn = symbol.isReferenceReturn;
             function.isVariadic = symbol.isVariadic;
             function.mangledName = symbol.mangledName;
+            function.debugDisplayName = symbol.namespaceName.empty()
+                ? symbol.name
+                : symbol.namespaceName + "." + symbol.name;
             function.returnTypeKey = symbol.declaredTypeKey;
             function.returnOwnership = symbol.declaredOwnership;
             for (const MethodParameterSymbol& parameter : symbol.parameters)

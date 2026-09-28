@@ -1204,6 +1204,7 @@ bool ProjectOopMirModel::build(
         function.capturesThisCell = source.capturesThisCell;
         function.genericSpecializationKey = source.genericSpecializationKey;
         function.mangledName = source.mangledName;
+        function.debugDisplayName = source.debugDisplayName;
         function.returnTypeKey = source.returnTypeKey;
         function.returnOwnership = source.returnOwnership;
         function.parameterNames = source.parameterNames;
