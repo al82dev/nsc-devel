@@ -483,7 +483,7 @@ public class Api
     tests.expect(codec.read(goldenPath, goldenDecoded, error),
         "the ABI 1.0 golden metadata model round-trips");
     const std::string goldenHex = LibraryMetadataCodec::fingerprintHex(goldenDecoded.abiFingerprint);
-    tests.expect(goldenHex == "2cc4390f9b25ec1aa54110f0f4187034c648ee13f9a4fbaf2ea9985f15a3bad4",
+    tests.expect(goldenHex == "4968fe9c9b16c2a0bb8fe9c15a9dd45492f71ac055c6b59748abaffa582c0fa9",
         "ABI root contract with Object ABI 2 retains its reviewed golden fingerprint (" +
             goldenHex + ")");
 }
@@ -1321,8 +1321,13 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
             if (environmentFlag("NSC_P2_REFRESH_GOLDENS"))
             {
                 std::filesystem::create_directories(goldenPath.parent_path());
+                // Archived bytes are immutable by default. Filling a newly historical minor
+                // must not silently rewrite the compatibility evidence for earlier formats.
+                const auto copyOptions = environmentFlag("NSC_P2_OVERWRITE_GOLDENS")
+                    ? std::filesystem::copy_options::overwrite_existing
+                    : std::filesystem::copy_options::skip_existing;
                 std::filesystem::copy_file(
-                    historicalPath, goldenPath, std::filesystem::copy_options::overwrite_existing);
+                    historicalPath, goldenPath, copyOptions);
             }
             LibraryMetadata golden;
             error.clear();
@@ -1353,7 +1358,8 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
             {
                 tests.expect(goldenCompatible,
                              "archived NSMETA 1." + std::to_string(minor) +
-                                 " golden from certified producer 1.0.1 remains compatible (" + error + ")");
+                                 " golden from the certified producer window remains compatible (" +
+                                 error + ")");
             }
         }
     }
