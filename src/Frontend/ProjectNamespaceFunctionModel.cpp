@@ -183,7 +183,9 @@ bool compatibleDeclarations(
         symbol.declaredOwnership == returnOwnership &&
         symbol.isReferenceReturn == syntax->isReference() &&
         symbol.isVariadic == syntax->isVariadic() &&
-        symbol.isExternC == syntax->flag();
+        symbol.isExternC ==
+            (syntax->flag() || syntax->hasModifier(lexer::TokenKind::KwExtern)) &&
+        symbol.isExportedC == syntax->hasModifier(lexer::TokenKind::KwExport);
 }
 
 struct FunctionLookupEnvironment final
@@ -249,6 +251,7 @@ bool ProjectNamespaceFunctionModel::build(
     built_ = false;
     const std::size_t initialErrorCount = diagnostics.errorCount();
     std::unordered_map<std::string, std::size_t> symbolByIdentity;
+    std::unordered_map<std::string, std::size_t> exportedCByName;
 
     for (const NamespaceFunctionDeclaration& declaration : nameLookup.namespaceFunctions())
     {
@@ -272,7 +275,9 @@ bool ProjectNamespaceFunctionModel::build(
         candidate.definitionSyntax = declaration.hasBody ? declaration.syntax : nullptr;
         candidate.isReferenceReturn = syntax.isReference();
         candidate.isVariadic = syntax.isVariadic();
-        candidate.isExternC = syntax.flag();
+        candidate.isExternC =
+            syntax.flag() || syntax.hasModifier(lexer::TokenKind::KwExtern);
+        candidate.isExportedC = syntax.hasModifier(lexer::TokenKind::KwExport);
         candidate.isPrecompiled = declaration.isPrecompiled;
         candidate.parts.push_back(NamespaceFunctionPart{
             declaration.accessibility,
@@ -346,12 +351,37 @@ bool ProjectNamespaceFunctionModel::build(
             (candidate.isExternC ? "|extern-c" : "|native") +
             (candidate.isVariadic ? "|variadic" : "");
         candidate.mangledName = namespaceFunctionMangledName(candidate);
+        if (candidate.isExportedC &&
+            candidate.accessibility != NamespaceFunctionAccessibility::Public)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidExternCSignature,
+                diagnostics::DiagnosticSeverity::Error,
+                candidate.range,
+                "exported namespace function '" + candidate.name +
+                    "' must be public");
+        }
 
         const std::string identity = mergeKey(candidate);
         const auto existing = symbolByIdentity.find(identity);
         if (existing == symbolByIdentity.end())
         {
             const std::size_t ordinal = functions_.size();
+            if (candidate.isExportedC)
+            {
+                const auto [previousExport, insertedExport] =
+                    exportedCByName.emplace(candidate.name, ordinal);
+                if (!insertedExport)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::DuplicateSymbol,
+                        diagnostics::DiagnosticSeverity::Error,
+                        candidate.range,
+                        "C ABI symbol '" + candidate.name +
+                            "' is exported by more than one namespace function");
+                    reportPrevious(functions_[previousExport->second], diagnostics);
+                }
+            }
             symbolByIdentity.emplace(identity, ordinal);
             functionsByName_[nameLookupKey(
                 candidate.projectOrdinal, candidate.namespaceName, candidate.name)].push_back(ordinal);

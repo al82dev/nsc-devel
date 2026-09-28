@@ -2188,6 +2188,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         }
         if (!function.namespaceName.empty())
             generated << "namespace " << function.namespaceName << std::endl << '{' << std::endl;
+        if ((function.flags & 8U) != 0U)
+            generated << "extern C" << std::endl << '{' << std::endl;
         generated << "public ";
         if ((function.flags & 1U) != 0U) generated << "ref ";
         generated << ownershipPrefix(function.declaredOwnership) << returnType << ' '
@@ -2199,6 +2201,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             generated << "...";
         }
         generated << ");" << std::endl;
+        if ((function.flags & 8U) != 0U) generated << '}' << std::endl;
         if (!function.namespaceName.empty()) generated << '}' << std::endl;
     }
     source = generated.str();
@@ -5770,6 +5773,32 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         exportSymbols.push_back(function.mangledName);
         if (member.isExportedC) exportSymbols.push_back(member.cAbiName);
     }
+    if (compilation.namespaceFunctionModel() != nullptr)
+    {
+        const auto namespaceFunctions =
+            compilation.namespaceFunctionModel()->functions();
+        for (const frontend::ProjectOopMirFunction &function :
+             compilation.oopMirModel()->functions())
+        {
+            if (!function.namespaceFunctionOrdinal.has_value() ||
+                *function.namespaceFunctionOrdinal >= namespaceFunctions.size())
+            {
+                continue;
+            }
+            const frontend::NamespaceFunctionSymbol &symbol =
+                namespaceFunctions[*function.namespaceFunctionOrdinal];
+            if (symbol.projectOrdinal != rootProjectOrdinal ||
+                symbol.accessibility !=
+                    frontend::NamespaceFunctionAccessibility::Public ||
+                function.isImportedC || function.isImportedNative)
+            {
+                continue;
+            }
+            exportSymbols.push_back(function.mangledName);
+            if (function.isExportedC && !function.cAbiName.empty())
+                exportSymbols.push_back(function.cAbiName);
+        }
+    }
     for (const frontend::ProjectOopMirDispatchTable &table : compilation.oopMirModel()->dispatchTables())
     {
         if (table.isImported || table.typeOrdinal >= types.size()) continue;
@@ -5801,7 +5830,15 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     const bool hasPublicMetadataSurface = std::ranges::any_of(types, [&](const frontend::NamedTypeDeclaration &type) {
         return type.projectOrdinal == rootProjectOrdinal &&
             isPubliclyReachableNamedType(types, static_cast<std::size_t>(&type - types.data()));
-    }) || (compilation.genericModel() != nullptr &&
+    }) || (compilation.namespaceFunctionModel() != nullptr &&
+           std::ranges::any_of(
+               compilation.namespaceFunctionModel()->functions(),
+               [&](const auto& function) {
+                   return function.projectOrdinal == rootProjectOrdinal &&
+                       function.accessibility ==
+                           frontend::NamespaceFunctionAccessibility::Public &&
+                       !function.isPrecompiled;
+               })) || (compilation.genericModel() != nullptr &&
            std::ranges::any_of(compilation.genericModel()->templates(), [&](const auto& generic) {
                if (generic.projectOrdinal != rootProjectOrdinal || generic.syntax == nullptr) return false;
                return generic.kind == frontend::GenericTemplateKind::Method

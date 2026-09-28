@@ -1084,7 +1084,8 @@ bool buildMetadataModel(
              compilation.namespaceFunctionModel()->functions())
         {
             if (function.projectOrdinal != *rootOrdinal ||
-                function.accessibility != frontend::NamespaceFunctionAccessibility::Public)
+                function.accessibility != frontend::NamespaceFunctionAccessibility::Public ||
+                (function.isExternC && !function.isExportedC))
             {
                 continue;
             }
@@ -1099,6 +1100,7 @@ bool buildMetadataModel(
             if (function.isReferenceReturn) record.flags |= 1U;
             if (function.isVariadic) record.flags |= 2U;
             if (function.isExternC) record.flags |= 4U;
+            if (function.isExportedC) record.flags |= 8U;
             record.namespaceName = function.namespaceName;
             record.name = function.name;
             record.signatureKey = function.signatureKey;
@@ -1924,7 +1926,7 @@ bool decodePayload(
         {
             LibraryMetadataNamespaceFunction function;
             if (!reader.u8(function.accessibility) || !reader.u8(function.flags) ||
-                function.accessibility > 1U || function.flags > 7U ||
+                function.accessibility > 1U || function.flags > 15U ||
                 !reader.text(function.namespaceName) || !reader.text(function.name) ||
                 !reader.text(function.signatureKey) || !reader.text(function.declaredTypeKey))
             {

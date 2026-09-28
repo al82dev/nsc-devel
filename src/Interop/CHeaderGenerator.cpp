@@ -41,6 +41,7 @@ struct HostContext final
     const ProjectNameLookup& names;
     const ProjectMemberModel& members;
     const ProjectObjectLayoutModel& layouts;
+    const frontend::ProjectNamespaceFunctionModel& namespaceFunctions;
     std::size_t rootProjectOrdinal = 0;
     std::unordered_map<std::string, std::string> cNames;
 };
@@ -268,6 +269,18 @@ std::set<std::string> collectReachableHostTypes(const HostContext& context)
         }
     }
 
+    for (const frontend::NamespaceFunctionSymbol& function :
+         context.namespaceFunctions.functions())
+    {
+        if (!function.isExportedC ||
+            function.projectOrdinal != context.rootProjectOrdinal)
+        {
+            continue;
+        }
+        collectNamedTypeFromKey(function.declaredTypeKey, context.names, keys);
+        for (const auto& parameter : function.parameters)
+            collectNamedTypeFromKey(parameter.typeKey, context.names, keys);
+    }
     bool changed = true;
     while (changed)
     {
@@ -322,7 +335,8 @@ std::set<std::string> collectReachableHostTypes(const HostContext& context)
 std::optional<HostContext> makeContext(const ProjectCompilation& compilation, std::string& error)
 {
     if (compilation.projectGraph() == nullptr || compilation.nameLookup() == nullptr ||
-        compilation.memberModel() == nullptr || compilation.objectLayoutModel() == nullptr)
+        compilation.memberModel() == nullptr || compilation.objectLayoutModel() == nullptr ||
+        compilation.namespaceFunctionModel() == nullptr)
     {
         error = "Stage 48.1 C header generation requires project names, members and object layouts";
         return std::nullopt;
@@ -337,6 +351,7 @@ std::optional<HostContext> makeContext(const ProjectCompilation& compilation, st
         *compilation.nameLookup(),
         *compilation.memberModel(),
         *compilation.objectLayoutModel(),
+        *compilation.namespaceFunctionModel(),
         projects.size() - 1,
         buildHostTypeNames(*compilation.nameLookup())};
 }
@@ -642,6 +657,34 @@ bool emitExport(
     return true;
 }
 
+bool emitExport(
+    std::ostringstream& out,
+    const HostContext& context,
+    const frontend::NamespaceFunctionSymbol& function,
+    std::string& error)
+{
+    const std::string returnType =
+        hostType(function.declaredTypeKey, context, error);
+    if (!error.empty()) return false;
+    out << "NS_API " << returnType << " NS_CALL "
+        << sanitizeIdentifier(function.name) << '(';
+    if (function.parameters.empty()) out << "void";
+    else
+    {
+        for (std::size_t index = 0; index < function.parameters.size(); ++index)
+        {
+            if (index != 0) out << ", ";
+            const auto& parameter = function.parameters[index];
+            const std::string parameterType =
+                hostType(parameter.typeKey, context, error);
+            if (!error.empty()) return false;
+            out << parameterType << ' ' << sanitizeIdentifier(parameter.name);
+        }
+    }
+    out << ");" << std::endl;
+    return true;
+}
+
 std::vector<std::string> definitionDependencies(
     const HostContext& context,
     const NamedTypeDeclaration& type,
@@ -885,6 +928,17 @@ bool CHeaderGenerator::writeHeader(
         if (!member.isExportedC || member.declaringTypeOrdinal >= namedTypes.size()) continue;
         if (namedTypes[member.declaringTypeOrdinal].projectOrdinal != context.rootProjectOrdinal) continue;
         if (!emitExport(out, context, member, error)) return false;
+        ++exportCount;
+    }
+    for (const frontend::NamespaceFunctionSymbol& function :
+         context.namespaceFunctions.functions())
+    {
+        if (!function.isExportedC ||
+            function.projectOrdinal != context.rootProjectOrdinal)
+        {
+            continue;
+        }
+        if (!emitExport(out, context, function, error)) return false;
         ++exportCount;
     }
     if (exportCount == 0) out << "/* This library has no export extern C host functions. */\n";

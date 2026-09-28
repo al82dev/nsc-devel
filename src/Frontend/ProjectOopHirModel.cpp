@@ -1870,6 +1870,8 @@ bool ProjectOopHirModel::buildImpl(
             function.isStatic = true;
             function.referenceReturn = symbol.isReferenceReturn;
             function.isVariadic = symbol.isVariadic;
+            function.isExportedC = symbol.isExportedC;
+            if (symbol.isExportedC) function.cAbiName = symbol.name;
             function.mangledName = symbol.mangledName;
             function.debugDisplayName = symbol.namespaceName.empty()
                 ? symbol.name
@@ -1885,6 +1887,13 @@ bool ProjectOopHirModel::buildImpl(
 
             if (symbol.definitionSyntax == nullptr)
             {
+                if (symbol.isPrecompiled && !symbol.isExternC)
+                {
+                    function.isImportedNative = true;
+                    functionByNamespaceFunction_[functionOrdinal] = functions_.size();
+                    functions_.push_back(std::move(function));
+                    continue;
+                }
                 if (!symbol.isExternC)
                 {
                     error = "namespace function '" + symbol.signatureKey +

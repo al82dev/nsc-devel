@@ -1358,6 +1358,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     bool isAbstract = false;
     bool isSealed = false;
     bool isStatic = false;
+    bool isExportedFunction = false;
     bool isReadonlyType = false;
     // C2.2 "union and explicit layout": `pack(N)` and `align(N)` are contextual-keyword layout
     // modifiers on a struct/union declaration -- the NativeSharp spellings of C's
@@ -1464,6 +1465,31 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                 value.reset();
             }
             layoutSize = value;
+            continue;
+        }
+        if (at(TokenKind::KwExport))
+        {
+            const lexer::Token& modifier = consume();
+            if (isExportedFunction)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate export extern C modifier on namespace function");
+            }
+            isExportedFunction = true;
+            const bool sawExtern = consumeIf(TokenKind::KwExtern);
+            const bool sawC = sawExtern && atContextualKeyword("C");
+            if (sawC) consume();
+            if (!sawExtern || !sawC)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "namespace exports require the exact modifier sequence 'export extern C'");
+            }
             continue;
         }
         if (at(TokenKind::KwPublic) || at(TokenKind::KwInternal))
@@ -1799,6 +1825,30 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         return nullptr;
     }
 
+    if (declaration != nullptr && isExportedFunction)
+    {
+        if (declaration->kind() != ast::AstNodeKind::FunctionDeclaration)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                declaration->range(),
+                "export extern C is valid only on a namespace function");
+        }
+        else
+        {
+            declaration->addModifier(TokenKind::KwExport);
+            declaration->addModifier(TokenKind::KwExtern);
+            if (declaration->first() == nullptr)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    declaration->range(),
+                    "an exported namespace function requires a body");
+            }
+        }
+    }
     if (declaration != nullptr)
     {
         // SHR-013: la misma forma que pack/align de abajo. `borrowed` describe el TIEMPO DE VIDA
@@ -4892,6 +4942,7 @@ ast::AstNode* Parser::parseExternCDeclaration()
             ast::AstNode* function = parseFunctionTail(returnType, name, true);
             if (function != nullptr && accessibility != TokenKind::Invalid)
             {
+                function->setTokenKind(accessibility);
                 function->addModifier(accessibility);
             }
             node->addChild(function);
