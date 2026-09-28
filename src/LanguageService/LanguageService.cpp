@@ -4,6 +4,8 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
+#include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Lexer/Token.h"
 #include "nativesharp/Target/TargetInfo.h"
 
 #include <algorithm>
@@ -13,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace nativesharp::language_service
@@ -23,6 +26,15 @@ struct IndexedReference final
 {
     LanguageLocation location;
     std::vector<std::size_t> targetSymbolIndices;
+    bool exactIdentifierRange = false;
+};
+
+struct IndexedCall final
+{
+    LanguageLocation location;
+    SignatureInformation signature;
+    std::vector<TextRange> argumentRanges;
+    std::vector<std::size_t> argumentParameterOrdinals;
 };
 
 struct SemanticIndex final
@@ -30,6 +42,7 @@ struct SemanticIndex final
     std::shared_ptr<frontend::ProjectCompilation> compilation;
     std::vector<LanguageSymbol> symbols;
     std::vector<IndexedReference> references;
+    std::vector<IndexedCall> calls;
 };
 
 std::string pathKey(const std::filesystem::path& path)
@@ -68,6 +81,56 @@ std::optional<LanguageLocation> languageLocation(
     const auto end = utf16PositionForOffset(file->buffer(), range.end().offset());
     if (!start.has_value() || !end.has_value()) return std::nullopt;
     return LanguageLocation{file->path(), TextRange{*start, *end}};
+}
+
+std::optional<LanguageLocation> identifierLocation(
+    const frontend::ProjectCompilation& compilation,
+    FileId fileId,
+    SourceRange enclosingRange,
+    std::string_view name)
+{
+    if (!enclosingRange.isValid() || name.empty()) return std::nullopt;
+    for (const auto& unit : compilation.units())
+    {
+        if (unit == nullptr || unit->fileId() != fileId) continue;
+        for (const lexer::Token& token : unit->tokens())
+        {
+            const SourceRange tokenRange = token.range();
+            if (token.kind() == lexer::TokenKind::Identifier && token.lexeme() == name &&
+                tokenRange.isValid() && tokenRange.begin().offset() >= enclosingRange.begin().offset() &&
+                tokenRange.end().offset() <= enclosingRange.end().offset())
+                return languageLocation(compilation.sourceManager(), fileId, tokenRange);
+        }
+    }
+    return std::nullopt;
+}
+
+bool sameLocation(const LanguageLocation& left, const LanguageLocation& right)
+{
+    return pathKey(left.path) == pathKey(right.path) && left.range == right.range;
+}
+
+bool validRenameIdentifier(std::string_view name)
+{
+    if (name.empty()) return false;
+    const auto start = [](unsigned char value) { return std::isalpha(value) != 0 || value == '_'; };
+    const auto part = [&](unsigned char value) { return start(value) || std::isdigit(value) != 0; };
+    if (!start(static_cast<unsigned char>(name.front()))) return false;
+    if (!std::ranges::all_of(name.substr(1), [&](char value) {
+            return part(static_cast<unsigned char>(value));
+        })) return false;
+    static const std::unordered_set<std::string_view> keywords = {
+        "void", "bool", "sbyte", "byte", "char", "short", "ushort", "int", "uint", "long",
+        "ulong", "nint", "nuint", "float", "double", "string", "const", "static", "readonly",
+        "volatile", "inline", "forceinline", "noinline", "noheap", "public", "internal", "protected",
+        "private", "if", "else", "while", "do", "for", "switch", "case", "break", "continue",
+        "return", "try", "catch", "finally", "throw", "struct", "class", "interface", "enum",
+        "namespace", "using", "new", "delete", "destroy", "stackalloc", "sizeof", "alignof",
+        "offsetof", "static_assert", "default", "extern", "export", "c", "vectorcall", "true",
+        "false", "null", "this", "base", "virtual", "override", "abstract", "sealed", "get", "set",
+        "operator", "implicit", "explicit", "is", "as", "delegate", "event", "raii", "move",
+        "owned", "borrowed", "var", "foreach", "in"};
+    return !keywords.contains(name);
 }
 
 LanguageSymbolKind typeSymbolKind(frontend::NamedTypeDeclarationKind kind) noexcept
@@ -141,9 +204,11 @@ std::shared_ptr<SemanticIndex> buildSemanticIndex(
         -> std::optional<std::size_t> {
         const auto location = languageLocation(sources, fileId, range);
         if (!location.has_value()) return std::nullopt;
+        const auto selection = identifierLocation(*index->compilation, fileId, range, name);
         return addSymbol(LanguageSymbol{
             std::move(name), std::move(qualifiedName), std::move(detail), kind,
-            *location, location->range});
+            *location, selection.has_value() ? selection->range : location->range,
+            selection.has_value()});
     };
 
     std::vector<std::optional<std::size_t>> typeSymbols(names->namedTypes().size());
@@ -224,17 +289,41 @@ std::shared_ptr<SemanticIndex> buildSemanticIndex(
             LanguageSymbolKind::Variable, local.fileId, local.range);
     }
 
-    const auto addReference = [&](FileId fileId, SourceRange range, std::vector<std::size_t> targets) {
+    const auto addReference = [&](FileId fileId, SourceRange range, std::vector<std::size_t> targets,
+                                  std::string_view name) {
         if (targets.empty()) return;
-        const auto location = languageLocation(sources, fileId, range);
-        if (location.has_value()) index->references.push_back({*location, std::move(targets)});
+        auto location = identifierLocation(*index->compilation, fileId, range, name);
+        const bool exact = location.has_value();
+        if (!location.has_value()) location = languageLocation(sources, fileId, range);
+        if (location.has_value()) index->references.push_back({*location, std::move(targets), exact});
+    };
+    const auto addCall = [&](const ast::AstNode* syntax, const LanguageSymbol& symbol,
+                             std::span<const frontend::MethodParameterSymbol> parameters,
+                             std::span<const std::size_t> ordinals) {
+        if (syntax == nullptr || !syntax->range().isValid()) return;
+        const auto location = languageLocation(
+            sources, syntax->range().begin().fileId(), syntax->range());
+        if (!location.has_value()) return;
+        IndexedCall indexed{*location, SignatureInformation{symbol.detail, {}}, {},
+                            std::vector<std::size_t>(ordinals.begin(), ordinals.end())};
+        for (const auto& parameter : parameters)
+            indexed.signature.parameters.push_back(parameter.typeKey + " " + parameter.name);
+        for (const ast::AstNode* argument : syntax->children())
+        {
+            if (argument == nullptr) continue;
+            const auto argumentLocation = languageLocation(
+                sources, argument->range().begin().fileId(), argument->range());
+            if (argumentLocation.has_value()) indexed.argumentRanges.push_back(argumentLocation->range);
+        }
+        index->calls.push_back(std::move(indexed));
     };
     for (const auto& binding : names->bindings())
     {
         if (binding.syntax == nullptr || !binding.targetTypeOrdinal.has_value()) continue;
         const std::size_t target = *binding.targetTypeOrdinal;
         if (target < typeSymbols.size() && typeSymbols[target].has_value())
-            addReference(binding.fileId, binding.syntax->range(), {*typeSymbols[target]});
+            addReference(binding.fileId, binding.syntax->range(), {*typeSymbols[target]},
+                         index->symbols[*typeSymbols[target]].name);
     }
     for (const auto& binding : bodies->nameBindings())
     {
@@ -253,7 +342,8 @@ std::shared_ptr<SemanticIndex> buildSemanticIndex(
         for (const std::size_t member : binding.candidateMemberOrdinals)
             if (member < memberSymbols.size() && memberSymbols[member].has_value())
                 targets.push_back(*memberSymbols[member]);
-        addReference(binding.syntax->range().begin().fileId(), binding.syntax->range(), std::move(targets));
+        addReference(binding.syntax->range().begin().fileId(), binding.syntax->range(), std::move(targets),
+                     binding.name);
     }
     for (const auto& call : bodies->calls())
     {
@@ -262,7 +352,10 @@ std::shared_ptr<SemanticIndex> buildSemanticIndex(
         if (member < memberSymbols.size() && memberSymbols[member].has_value())
         {
             const ast::AstNode* callee = call.syntax->first() != nullptr ? call.syntax->first() : call.syntax;
-            addReference(callee->range().begin().fileId(), callee->range(), {*memberSymbols[member]});
+            addReference(callee->range().begin().fileId(), callee->range(), {*memberSymbols[member]},
+                         call.methodName);
+            addCall(call.syntax, index->symbols[*memberSymbols[member]], members->members()[member].parameters,
+                    call.selectedArgumentParameterOrdinals);
         }
     }
     for (const auto& reference : functions->referenceBindings())
@@ -272,7 +365,8 @@ std::shared_ptr<SemanticIndex> buildSemanticIndex(
         for (const std::size_t function : reference.candidateFunctionOrdinals)
             if (function < functionSymbols.size() && functionSymbols[function].has_value())
                 targets.push_back(*functionSymbols[function]);
-        addReference(reference.fileId, reference.calleeSyntax->range(), std::move(targets));
+        addReference(reference.fileId, reference.calleeSyntax->range(), std::move(targets),
+                     reference.writtenName.substr(reference.writtenName.find_last_of('.') + 1));
     }
     for (const auto& reference : functions->stateReferenceBindings())
     {
@@ -281,9 +375,72 @@ std::shared_ptr<SemanticIndex> buildSemanticIndex(
         for (const std::size_t state : reference.candidateStateOrdinals)
             if (state < stateSymbols.size() && stateSymbols[state].has_value())
                 targets.push_back(*stateSymbols[state]);
-        addReference(reference.fileId, reference.expressionSyntax->range(), std::move(targets));
+        addReference(reference.fileId, reference.expressionSyntax->range(), std::move(targets),
+                     reference.writtenName.substr(reference.writtenName.find_last_of('.') + 1));
+    }
+    for (const auto& call : bodies->namespaceFunctionCalls())
+    {
+        if (call.syntax == nullptr || !call.selectedFunctionOrdinal.has_value()) continue;
+        const std::size_t function = *call.selectedFunctionOrdinal;
+        if (function >= functionSymbols.size() || !functionSymbols[function].has_value()) continue;
+        const ast::AstNode* callee = call.syntax->first() != nullptr ? call.syntax->first() : call.syntax;
+        addReference(callee->range().begin().fileId(), callee->range(), {*functionSymbols[function]},
+                     call.writtenName.substr(call.writtenName.find_last_of('.') + 1));
+        addCall(call.syntax, index->symbols[*functionSymbols[function]], functions->functions()[function].parameters,
+                call.selectedArgumentParameterOrdinals);
     }
     return index;
+}
+
+const IndexedReference* bestReferenceAt(
+    const SemanticIndex& index,
+    const std::filesystem::path& path,
+    TextPosition position)
+{
+    const std::string wanted = pathKey(path);
+    const IndexedReference* best = nullptr;
+    for (const IndexedReference& reference : index.references)
+    {
+        if (pathKey(reference.location.path) != wanted || !contains(reference.location.range, position)) continue;
+        if (best == nullptr || rangeSize(reference.location.range) < rangeSize(best->location.range) ||
+            (rangeSize(reference.location.range) == rangeSize(best->location.range) &&
+             reference.targetSymbolIndices.size() < best->targetSymbolIndices.size()))
+            best = &reference;
+    }
+    return best;
+}
+
+std::vector<std::size_t> targetIndicesAt(
+    const SemanticIndex& index,
+    const std::filesystem::path& path,
+    TextPosition position)
+{
+    std::vector<std::size_t> result;
+    if (const IndexedReference* reference = bestReferenceAt(index, path, position))
+        result = reference->targetSymbolIndices;
+    else
+    {
+        const std::string wanted = pathKey(path);
+        for (std::size_t ordinal = 0; ordinal < index.symbols.size(); ++ordinal)
+        {
+            const LanguageSymbol& symbol = index.symbols[ordinal];
+            if (pathKey(symbol.location.path) == wanted && contains(symbol.selectionRange, position))
+                result.push_back(ordinal);
+        }
+    }
+    if (result.empty()) return result;
+    const LanguageSymbol& selected = index.symbols[result.front()];
+    if (selected.kind == LanguageSymbolKind::Method || selected.kind == LanguageSymbolKind::Function)
+    {
+        for (std::size_t ordinal = 0; ordinal < index.symbols.size(); ++ordinal)
+        {
+            const LanguageSymbol& candidate = index.symbols[ordinal];
+            if (candidate.kind == selected.kind && candidate.qualifiedName == selected.qualifiedName &&
+                std::ranges::find(result, ordinal) == result.end())
+                result.push_back(ordinal);
+        }
+    }
+    return result;
 }
 }
 
@@ -427,23 +584,15 @@ std::optional<LanguageSymbol> AnalysisSnapshot::symbolAt(
 {
     if (implementation_ == nullptr || implementation_->semanticIndex == nullptr) return std::nullopt;
     const std::string wanted = pathKey(path);
-    const IndexedReference* bestReference = nullptr;
-    for (const IndexedReference& reference : implementation_->semanticIndex->references)
-    {
-        if (pathKey(reference.location.path) != wanted || !contains(reference.location.range, position)) continue;
-        if (bestReference == nullptr || rangeSize(reference.location.range) < rangeSize(bestReference->location.range) ||
-            (rangeSize(reference.location.range) == rangeSize(bestReference->location.range) &&
-             reference.targetSymbolIndices.size() < bestReference->targetSymbolIndices.size()))
-            bestReference = &reference;
-    }
+    const IndexedReference* bestReference = bestReferenceAt(*implementation_->semanticIndex, path, position);
     if (bestReference != nullptr && !bestReference->targetSymbolIndices.empty())
         return implementation_->semanticIndex->symbols[bestReference->targetSymbolIndices.front()];
 
     const LanguageSymbol* bestSymbol = nullptr;
     for (const LanguageSymbol& symbol : implementation_->semanticIndex->symbols)
     {
-        if (pathKey(symbol.location.path) != wanted || !contains(symbol.location.range, position)) continue;
-        if (bestSymbol == nullptr || rangeSize(symbol.location.range) < rangeSize(bestSymbol->location.range))
+        if (pathKey(symbol.location.path) != wanted || !contains(symbol.selectionRange, position)) continue;
+        if (bestSymbol == nullptr || rangeSize(symbol.selectionRange) < rangeSize(bestSymbol->selectionRange))
             bestSymbol = &symbol;
     }
     return bestSymbol != nullptr ? std::optional<LanguageSymbol>(*bestSymbol) : std::nullopt;
@@ -455,16 +604,7 @@ std::vector<LanguageLocation> AnalysisSnapshot::definitions(
 {
     std::vector<LanguageLocation> result;
     if (implementation_ == nullptr || implementation_->semanticIndex == nullptr) return result;
-    const std::string wanted = pathKey(path);
-    const IndexedReference* bestReference = nullptr;
-    for (const IndexedReference& reference : implementation_->semanticIndex->references)
-    {
-        if (pathKey(reference.location.path) != wanted || !contains(reference.location.range, position)) continue;
-        if (bestReference == nullptr || rangeSize(reference.location.range) < rangeSize(bestReference->location.range) ||
-            (rangeSize(reference.location.range) == rangeSize(bestReference->location.range) &&
-             reference.targetSymbolIndices.size() < bestReference->targetSymbolIndices.size()))
-            bestReference = &reference;
-    }
+    const IndexedReference* bestReference = bestReferenceAt(*implementation_->semanticIndex, path, position);
     if (bestReference != nullptr)
     {
         for (const std::size_t target : bestReference->targetSymbolIndices)
@@ -473,6 +613,190 @@ std::vector<LanguageLocation> AnalysisSnapshot::definitions(
         return result;
     }
     if (const auto symbol = symbolAt(path, position)) result.push_back(symbol->location);
+    return result;
+}
+
+std::vector<CompletionItem> AnalysisSnapshot::completions(
+    const std::filesystem::path& path,
+    std::string_view prefix,
+    std::size_t limit) const
+{
+    std::vector<CompletionItem> result;
+    if (implementation_ == nullptr || implementation_->semanticIndex == nullptr || limit == 0) return result;
+    std::string needle(prefix);
+    std::ranges::transform(needle, needle.begin(), [](unsigned char value) {
+        return static_cast<char>(std::tolower(value));
+    });
+    const std::string wanted = pathKey(path);
+    std::unordered_set<std::string> seen;
+    for (const LanguageSymbol& symbol : implementation_->semanticIndex->symbols)
+    {
+        if ((symbol.kind == LanguageSymbolKind::Variable || symbol.kind == LanguageSymbolKind::Parameter) &&
+            pathKey(symbol.location.path) != wanted) continue;
+        std::string candidate = symbol.name;
+        std::ranges::transform(candidate, candidate.begin(), [](unsigned char value) {
+            return static_cast<char>(std::tolower(value));
+        });
+        if (!needle.empty() && !candidate.starts_with(needle)) continue;
+        const std::string identity = symbol.name + "\n" + symbol.detail;
+        if (!seen.insert(identity).second) continue;
+        result.push_back({symbol.name, symbol.detail, symbol.kind});
+        if (result.size() == limit) break;
+    }
+    std::ranges::sort(result, [](const CompletionItem& left, const CompletionItem& right) {
+        return left.label < right.label || (left.label == right.label && left.detail < right.detail);
+    });
+    return result;
+}
+
+std::optional<SignatureHelp> AnalysisSnapshot::signatureHelp(
+    const std::filesystem::path& path,
+    TextPosition position) const
+{
+    if (implementation_ == nullptr || implementation_->semanticIndex == nullptr) return std::nullopt;
+    const std::string wanted = pathKey(path);
+    const IndexedCall* best = nullptr;
+    for (const IndexedCall& call : implementation_->semanticIndex->calls)
+    {
+        if (pathKey(call.location.path) != wanted || !contains(call.location.range, position)) continue;
+        if (best == nullptr || rangeSize(call.location.range) < rangeSize(best->location.range)) best = &call;
+    }
+    if (best == nullptr) return std::nullopt;
+    std::size_t argument = 0;
+    for (std::size_t index = 0; index < best->argumentRanges.size(); ++index)
+    {
+        if (contains(best->argumentRanges[index], position))
+        {
+            argument = index;
+            break;
+        }
+        if (!positionLess(position, best->argumentRanges[index].end)) argument = index + 1;
+    }
+    std::size_t parameter = argument;
+    if (argument < best->argumentParameterOrdinals.size())
+        parameter = best->argumentParameterOrdinals[argument];
+    if (!best->signature.parameters.empty())
+        parameter = std::min(parameter, best->signature.parameters.size() - 1);
+    return SignatureHelp{{best->signature}, 0, parameter};
+}
+
+std::vector<LanguageLocation> AnalysisSnapshot::references(
+    const std::filesystem::path& path,
+    TextPosition position,
+    bool includeDeclaration) const
+{
+    std::vector<LanguageLocation> result;
+    if (implementation_ == nullptr || implementation_->semanticIndex == nullptr) return result;
+    const SemanticIndex& index = *implementation_->semanticIndex;
+    const std::vector<std::size_t> targets = targetIndicesAt(index, path, position);
+    if (targets.empty()) return result;
+    const auto wantedTarget = [&](std::size_t target) {
+        return std::ranges::find(targets, target) != targets.end();
+    };
+    const auto append = [&](const LanguageLocation& location) {
+        if (std::ranges::none_of(result, [&](const LanguageLocation& existing) {
+                return sameLocation(existing, location);
+            })) result.push_back(location);
+    };
+    if (includeDeclaration)
+        for (const std::size_t target : targets)
+            if (target < index.symbols.size())
+                append({index.symbols[target].location.path, index.symbols[target].selectionRange});
+    for (const IndexedReference& reference : index.references)
+        if (std::ranges::any_of(reference.targetSymbolIndices, wantedTarget)) append(reference.location);
+    return result;
+}
+
+std::optional<TextRange> AnalysisSnapshot::prepareRename(
+    const std::filesystem::path& path,
+    TextPosition position) const
+{
+    if (implementation_ == nullptr || implementation_->semanticIndex == nullptr) return std::nullopt;
+    const SemanticIndex& index = *implementation_->semanticIndex;
+    const std::vector<std::size_t> targets = targetIndicesAt(index, path, position);
+    if (targets.empty() || std::ranges::any_of(targets, [&](std::size_t target) {
+            return target >= index.symbols.size() || !index.symbols[target].renameable;
+        })) return std::nullopt;
+    if (const IndexedReference* reference = bestReferenceAt(index, path, position))
+        return reference->exactIdentifierRange ? std::optional<TextRange>(reference->location.range) : std::nullopt;
+    return index.symbols[targets.front()].selectionRange;
+}
+
+RenameResult AnalysisSnapshot::rename(
+    const std::filesystem::path& path,
+    TextPosition position,
+    std::string_view newName) const
+{
+    RenameResult result;
+    if (!validRenameIdentifier(newName))
+    {
+        result.error = "the new name is not a valid NativeSharp identifier";
+        return result;
+    }
+    if (implementation_ == nullptr || implementation_->semanticIndex == nullptr)
+    {
+        result.error = "no semantic model is available";
+        return result;
+    }
+    const SemanticIndex& index = *implementation_->semanticIndex;
+    const std::vector<std::size_t> targets = targetIndicesAt(index, path, position);
+    if (targets.empty() || !prepareRename(path, position).has_value())
+    {
+        result.error = "the selected symbol cannot be renamed safely";
+        return result;
+    }
+    const auto wantedTarget = [&](std::size_t target) {
+        return std::ranges::find(targets, target) != targets.end();
+    };
+    const auto append = [&](const LanguageLocation& location) {
+        if (std::ranges::none_of(result.edits, [&](const LanguageTextEdit& existing) {
+                return sameLocation(existing.location, location);
+            })) result.edits.push_back({location, std::string(newName)});
+    };
+    for (const std::size_t target : targets)
+        append({index.symbols[target].location.path, index.symbols[target].selectionRange});
+    for (const IndexedReference& reference : index.references)
+    {
+        if (!std::ranges::any_of(reference.targetSymbolIndices, wantedTarget)) continue;
+        if (!reference.exactIdentifierRange)
+        {
+            result.edits.clear();
+            result.error = "a reference does not have an exact identifier range";
+            return result;
+        }
+        append(reference.location);
+    }
+    result.allowed = !result.edits.empty();
+    if (!result.allowed) result.error = "the selected symbol has no editable occurrences";
+    return result;
+}
+
+std::vector<LanguageSemanticToken> AnalysisSnapshot::semanticTokens(
+    const std::filesystem::path& path) const
+{
+    std::vector<LanguageSemanticToken> result;
+    if (implementation_ == nullptr || implementation_->semanticIndex == nullptr) return result;
+    const SemanticIndex& index = *implementation_->semanticIndex;
+    const std::string wanted = pathKey(path);
+    const auto append = [&](TextRange range, LanguageSymbolKind kind, bool declaration) {
+        if (std::ranges::none_of(result, [&](const LanguageSemanticToken& token) {
+                return token.range == range && token.kind == kind && token.declaration == declaration;
+            })) result.push_back({range, kind, declaration});
+    };
+    for (const LanguageSymbol& symbol : index.symbols)
+        if (symbol.renameable && pathKey(symbol.location.path) == wanted)
+            append(symbol.selectionRange, symbol.kind, true);
+    for (const IndexedReference& reference : index.references)
+    {
+        if (!reference.exactIdentifierRange || pathKey(reference.location.path) != wanted ||
+            reference.targetSymbolIndices.empty()) continue;
+        const std::size_t target = reference.targetSymbolIndices.front();
+        if (target < index.symbols.size()) append(reference.location.range, index.symbols[target].kind, false);
+    }
+    std::ranges::sort(result, [](const LanguageSemanticToken& left, const LanguageSemanticToken& right) {
+        return positionLess(left.range.start, right.range.start) ||
+            (left.range.start == right.range.start && positionLess(left.range.end, right.range.end));
+    });
     return result;
 }
 

@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace nativesharp::language_service
 {
@@ -57,6 +58,26 @@ public:
     std::vector<LanguageLocation> definitions(
         const std::filesystem::path& path,
         TextPosition position) const;
+    std::vector<CompletionItem> completions(
+        const std::filesystem::path& path,
+        std::string_view prefix,
+        std::size_t limit = 100) const;
+    std::optional<SignatureHelp> signatureHelp(
+        const std::filesystem::path& path,
+        TextPosition position) const;
+    std::vector<LanguageLocation> references(
+        const std::filesystem::path& path,
+        TextPosition position,
+        bool includeDeclaration = true) const;
+    std::optional<TextRange> prepareRename(
+        const std::filesystem::path& path,
+        TextPosition position) const;
+    RenameResult rename(
+        const std::filesystem::path& path,
+        TextPosition position,
+        std::string_view newName) const;
+    std::vector<LanguageSemanticToken> semanticTokens(
+        const std::filesystem::path& path) const;
 
 private:
     class Implementation;

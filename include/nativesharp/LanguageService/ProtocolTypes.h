@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace nativesharp::language_service
 {
@@ -75,6 +76,47 @@ struct LanguageSymbol final
     LanguageSymbolKind kind = LanguageSymbolKind::Variable;
     LanguageLocation location;
     TextRange selectionRange;
+    bool renameable = false;
+};
+
+struct CompletionItem final
+{
+    std::string label;
+    std::string detail;
+    LanguageSymbolKind kind = LanguageSymbolKind::Variable;
+};
+
+struct SignatureInformation final
+{
+    std::string label;
+    std::vector<std::string> parameters;
+};
+
+struct SignatureHelp final
+{
+    std::vector<SignatureInformation> signatures;
+    std::size_t activeSignature = 0;
+    std::size_t activeParameter = 0;
+};
+
+struct LanguageTextEdit final
+{
+    LanguageLocation location;
+    std::string newText;
+};
+
+struct RenameResult final
+{
+    bool allowed = false;
+    std::string error;
+    std::vector<LanguageTextEdit> edits;
+};
+
+struct LanguageSemanticToken final
+{
+    TextRange range;
+    LanguageSymbolKind kind = LanguageSymbolKind::Variable;
+    bool declaration = false;
 };
 
 std::optional<TextPosition> utf16PositionForOffset(

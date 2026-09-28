@@ -1277,6 +1277,16 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_language_service_symbol_tests)
     add_test(NAME nsc.language-service.symbols COMMAND nsc_language_service_symbol_tests)
 
+    add_executable(
+        nsc_language_service_advanced_query_tests
+        tests/unit/LanguageServiceAdvancedQueryTests.cpp)
+    target_link_libraries(nsc_language_service_advanced_query_tests PRIVATE nsc_language_service)
+    target_compile_features(nsc_language_service_advanced_query_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_language_service_advanced_query_tests PRIVATE
+        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_language_service_advanced_query_tests)
+    add_test(NAME nsc.language-service.advanced-queries COMMAND nsc_language_service_advanced_query_tests)
+
     add_executable(nsc_target_data_layout_tests tests/unit/TargetDataLayoutTests.cpp)
     target_link_libraries(nsc_target_data_layout_tests PRIVATE nsc_target)
     target_compile_features(nsc_target_data_layout_tests PRIVATE cxx_std_20)
