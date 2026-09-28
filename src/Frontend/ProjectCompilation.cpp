@@ -34,6 +34,11 @@ void ProjectCompilation::setCancellationCheck(std::function<bool()> check)
     cancellationCheck_ = std::move(check);
 }
 
+void ProjectCompilation::setSourceBufferProvider(SourceBufferProvider provider)
+{
+    sourceBufferProvider_ = std::move(provider);
+}
+
 void ProjectCompilation::setPhaseTimingSink(
     std::function<void(std::string_view, std::chrono::nanoseconds)> sink)
 {
@@ -898,8 +903,15 @@ bool ProjectCompilation::compileSyntaxCore(
         for (std::size_t index = 0; index < sourceReads.size(); ++index)
         {
             syntaxWorkers.submit([&, index](std::size_t) {
-                sourceReads[index].buffer = source::SourceManager::readFileBuffer(
-                    sourceReads[index].path, sourceReads[index].error);
+                if (sourceBufferProvider_)
+                {
+                    sourceReads[index].buffer = sourceBufferProvider_(sourceReads[index].path);
+                }
+                if (!sourceReads[index].buffer.has_value())
+                {
+                    sourceReads[index].buffer = source::SourceManager::readFileBuffer(
+                        sourceReads[index].path, sourceReads[index].error);
+                }
                 reportSourceProgress(progressSink_, "syntax-read", sourceReads[index].path,
                     completed.fetch_add(1, std::memory_order_relaxed) + 1U,
                     sourceReads.size());

@@ -46,9 +46,14 @@ struct PrecompiledSyntaxModule final
 class ProjectCompilation final
 {
 public:
+    using SourceBufferProvider =
+        std::function<std::optional<std::string>(const std::filesystem::path&)>;
+
     void setCompilationJobs(std::size_t jobs) noexcept;
     void setProjectLoadOptions(compilation::ProjectLoadOptions options);
     void setCancellationCheck(std::function<bool()> check);
+    // Called concurrently by syntax workers. Returning nullopt falls back to the file on disk.
+    void setSourceBufferProvider(SourceBufferProvider provider);
     void setPhaseTimingSink(
         std::function<void(std::string_view, std::chrono::nanoseconds)> sink);
     void setProgressSink(std::function<void(std::string_view)> sink);
@@ -133,6 +138,7 @@ private:
     std::unique_ptr<ProjectOopHirModel> oopHirModel_;
     std::unique_ptr<ProjectOopMirModel> oopMirModel_;
     std::function<bool()> cancellationCheck_;
+    SourceBufferProvider sourceBufferProvider_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;
     std::function<void(std::string_view)> progressSink_;
     compilation::ProjectLoadOptions projectLoadOptions_;
