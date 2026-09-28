@@ -2505,16 +2505,12 @@ private:
                 applyGenericOdrDefinition(global, field.genericSpecializationKey);
 
             LLVMValueRef initializer = LLVMConstNull(type);
-            if (field.isConst)
+            if (field.isConst && !field.hasConstantInitializer)
             {
-                if (!field.hasConstantInitializer)
-                {
-                    return fail(error, "Stage 37 const field lost its compile-time initializer");
-                }
-                // La clave de tipo de un miembro de enum es la del propio enum, no
-                // "builtin:int"/"builtin:uint", asi que isIntegral() sola no lo veria:
-                // isEnumConstant es lo que lo marca. El SIGNO sale del tipo subyacente y no de una
-                // suposicion -- un `enum : byte` con un miembro en 200 se emite sin signo.
+                return fail(error, "Stage 37 const field lost its compile-time initializer");
+            }
+            if (field.hasConstantInitializer)
+            {
                 const frontend::builtins::IntegerTypeInfo* fieldEnum = enumUnderlyingInfo(field.typeKey);
                 if (frontend::ProjectTypeConversion::isIntegral(field.typeKey) || field.isEnumConstant)
                 {
@@ -2538,12 +2534,17 @@ private:
                     initializer = internStringLiteral(field.constantStringValue, error);
                     if (initializer == nullptr) return false;
                 }
+                else if (frontend::ProjectTypeConversion::isPointer(field.typeKey) ||
+                         frontend::ProjectTypeConversion::isNativeArray(field.typeKey))
+                {
+                    initializer = LLVMConstNull(type);
+                }
                 else
                 {
-                    return fail(error, "Stage 37 const field type is not supported by native constant initialization");
+                    return fail(error, "Stage 37 static storage type is not supported by native constant initialization");
                 }
-                LLVMSetGlobalConstant(global, 1);
             }
+            if (field.isConst) LLVMSetGlobalConstant(global, 1);
             LLVMSetInitializer(global, initializer);
             // Constants are materialized from the same certified value in producers and
             // consumers. Mark both sides ODR: a DLL consumer keeps a local selectable copy,
@@ -7442,6 +7443,7 @@ private:
                 return extractBitField(node, storage, error);
             }
             case frontend::ProjectOopMirNodeKind::StaticFieldLoad:
+            case frontend::ProjectOopMirNodeKind::NamespaceStateLoad:
             {
                 LLVMValueRef address = staticFieldAddress(node, error);
                 LLVMTypeRef type = llvmType(node->typeKey, error);
@@ -7459,6 +7461,7 @@ private:
             case frontend::ProjectOopMirNodeKind::BitFieldAddress:
                 return fieldAddress(node, error);
             case frontend::ProjectOopMirNodeKind::StaticFieldAddress:
+            case frontend::ProjectOopMirNodeKind::NamespaceStateAddress:
                 return staticFieldAddress(node, error);
 
             case frontend::ProjectOopMirNodeKind::IntegerConstant:

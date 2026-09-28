@@ -443,6 +443,7 @@ bool ProjectNamespaceFunctionModel::build(
         state.declarationSyntax = declaration.syntax;
         state.initializerSyntax = syntax.first();
         state.isConst = declaration.isConst;
+        state.isPrecompiled = declaration.isPrecompiled;
         state.storageName = namespaceStateStorageName(state);
 
         const std::string lookupKey =
@@ -557,6 +558,29 @@ bool ProjectNamespaceFunctionModel::build(
                 {
                     candidates.push_back(ordinal);
                 }
+            }
+        };
+        appendProject(projectOrdinal);
+        for (const std::size_t visibleProject : visibleProjects(projectOrdinal))
+            if (visibleProject != projectOrdinal) appendProject(visibleProject);
+        std::sort(candidates.begin(), candidates.end());
+        candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+        return candidates;
+    };
+    auto stateCandidatesInNamespace = [&](std::size_t projectOrdinal,
+                                          std::string_view namespaceName,
+                                          std::string_view stateName)
+    {
+        std::vector<std::size_t> candidates;
+        const auto appendProject = [&](std::size_t visibleProject)
+        {
+            const auto found = stateByName_.find(
+                nameLookupKey(visibleProject, namespaceName, stateName));
+            if (found == stateByName_.end() || found->second >= states_.size()) return;
+            if (visibleProject == projectOrdinal ||
+                states_[found->second].accessibility == NamespaceFunctionAccessibility::Public)
+            {
+                candidates.push_back(found->second);
             }
         };
         appendProject(projectOrdinal);
@@ -708,6 +732,64 @@ bool ProjectNamespaceFunctionModel::build(
                 }
             }
 
+            if (node->kind() == ast::AstNodeKind::IdentifierExpression ||
+                node->kind() == ast::AstNodeKind::MemberExpression)
+            {
+                const std::optional<std::string> written = expressionName(node);
+                if (written.has_value())
+                {
+                    const std::size_t lastDot = written->find_last_of('.');
+                    const bool qualified = lastDot != std::string::npos;
+                    const std::string stateName = qualified
+                        ? written->substr(lastDot + 1) : *written;
+                    std::vector<std::size_t> candidates;
+                    if (qualified)
+                    {
+                        const std::optional<std::string> resolvedNamespace = resolveNamespace(
+                            unit.projectOrdinal(), lexicalNamespace, environment,
+                            written->substr(0, lastDot));
+                        if (resolvedNamespace.has_value())
+                        {
+                            candidates = stateCandidatesInNamespace(
+                                unit.projectOrdinal(), *resolvedNamespace, stateName);
+                        }
+                    }
+                    else
+                    {
+                        candidates = stateCandidatesInNamespace(
+                            unit.projectOrdinal(), lexicalNamespace, stateName);
+                        if (candidates.empty())
+                        {
+                            for (const std::string& imported : environment.importedNamespaces)
+                            {
+                                std::vector<std::size_t> importedCandidates =
+                                    stateCandidatesInNamespace(
+                                        unit.projectOrdinal(), imported, stateName);
+                                candidates.insert(candidates.end(),
+                                    importedCandidates.begin(), importedCandidates.end());
+                            }
+                            std::sort(candidates.begin(), candidates.end());
+                            candidates.erase(
+                                std::unique(candidates.begin(), candidates.end()), candidates.end());
+                        }
+                    }
+
+                    if (!candidates.empty())
+                    {
+                        NamespaceStateReferenceBinding binding;
+                        binding.expressionSyntax = node;
+                        binding.projectOrdinal = unit.projectOrdinal();
+                        binding.fileId = unit.fileId();
+                        binding.lexicalNamespace = lexicalNamespace;
+                        binding.writtenName = *written;
+                        binding.qualified = qualified;
+                        binding.candidateStateOrdinals = std::move(candidates);
+                        stateReferenceBindingBySyntax_.emplace(
+                            node, stateReferenceBindings_.size());
+                        stateReferenceBindings_.push_back(std::move(binding));
+                    }
+                }
+            }
             walkNode(node->first(), lexicalNamespace, environment);
             walkNode(node->second(), lexicalNamespace, environment);
             walkNode(node->third(), lexicalNamespace, environment);
@@ -764,6 +846,20 @@ std::span<const NamespaceFunctionReferenceBinding>
 ProjectNamespaceFunctionModel::referenceBindings() const noexcept
 {
     return referenceBindings_;
+}
+
+const NamespaceStateReferenceBinding* ProjectNamespaceFunctionModel::stateReferenceBinding(
+    const ast::AstNode* expressionSyntax) const noexcept
+{
+    const auto found = stateReferenceBindingBySyntax_.find(expressionSyntax);
+    if (found == stateReferenceBindingBySyntax_.end()) return nullptr;
+    return &stateReferenceBindings_[found->second];
+}
+
+std::span<const NamespaceStateReferenceBinding>
+ProjectNamespaceFunctionModel::stateReferenceBindings() const noexcept
+{
+    return stateReferenceBindings_;
 }
 
 bool ProjectNamespaceFunctionModel::isBuilt() const noexcept

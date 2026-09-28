@@ -22,6 +22,8 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
     if (node->memberOrdinal.has_value()) output << " member=#" << *node->memberOrdinal;
     if (node->namespaceFunctionOrdinal.has_value())
         output << " namespace-function=#" << *node->namespaceFunctionOrdinal;
+    if (node->namespaceStateOrdinal.has_value())
+        output << " namespace-state=#" << *node->namespaceStateOrdinal;
     if (node->localOrdinal.has_value()) output << " local=#" << *node->localOrdinal;
     if (node->hirRegionOrdinal.has_value()) output << " hir-region=#" << *node->hirRegionOrdinal;
     if (node->exceptionTargetRegionOrdinal.has_value()) output << " exception-target=#" << *node->exceptionTargetRegionOrdinal;

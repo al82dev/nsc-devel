@@ -818,7 +818,7 @@ bool ProjectCompilation::compileProjectOopMir(
     oopMirModel_ = std::make_unique<ProjectOopMirModel>();
     return oopMirModel_->build(
         *nameLookup_, *memberModel_, *objectLayoutModel_, *virtualDispatchModel_, *interfaceModel_,
-        *destructionModel_, *oopHirModel_, loadError, compilationJobs_);
+        *destructionModel_, *oopHirModel_, *namespaceFunctionModel_, loadError, compilationJobs_);
 }
 
 bool ProjectCompilation::compileSyntaxCore(

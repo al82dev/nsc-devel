@@ -105,11 +105,13 @@ enum class ProjectOopMirNodeKind
     // unit so the backend can perform one masked read-modify-write.
     BitFieldLoad,
     StaticFieldLoad,
+    NamespaceStateLoad,
     ParameterAddress,
     LocalAddress,
     FieldAddress,
     BitFieldAddress,
     StaticFieldAddress,
+    NamespaceStateAddress,
     IntegerConstant,
     FloatingConstant,
     BooleanConstant,
@@ -336,6 +338,7 @@ struct ProjectOopMirNode final
     lexer::TokenKind operation = lexer::TokenKind::Invalid;
     std::optional<std::size_t> memberOrdinal;
     std::optional<std::size_t> namespaceFunctionOrdinal;
+    std::optional<std::size_t> namespaceStateOrdinal;
     // Stage 54.4 "Condition Variables" -- mirrors ProjectOopHirNode::secondaryMemberOrdinal (see
     // its comment there). Set only on a CoreMonitorWait node.
     std::optional<std::size_t> secondaryMemberOrdinal;
@@ -543,6 +546,7 @@ struct ProjectOopMirStaticField final
     // representation -- so `ProjectTypeConversion::isIntegral(typeKey)` returns false for it.
     // This flag lets the LLVM lowerer take the integral constant-materialization path anyway.
     bool isEnumConstant = false;
+    std::optional<std::size_t> namespaceStateOrdinal = std::nullopt;
 };
 
 
@@ -727,6 +731,7 @@ public:
         const ProjectInterfaceModel& interfaceModel,
         const ProjectDestructionModel& destructionModel,
         const ProjectOopHirModel& hirModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel,
         std::string& error,
         std::size_t workerCount = 1);
 

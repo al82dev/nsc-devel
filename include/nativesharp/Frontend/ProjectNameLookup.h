@@ -128,6 +128,7 @@ struct NamespaceStateDeclaration final
     std::string namespaceName;
     std::string name;
     bool isConst = false;
+    bool isPrecompiled = false;
 };
 enum class TypeNameBindingKind
 {

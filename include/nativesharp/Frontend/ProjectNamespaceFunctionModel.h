@@ -90,6 +90,7 @@ struct NamespaceStateSymbol final
     bool booleanValue = false;
     std::string stringValue;
     bool isConst = false;
+    bool isPrecompiled = false;
 };
 
 struct NamespaceFunctionReferenceBinding final
@@ -102,6 +103,17 @@ struct NamespaceFunctionReferenceBinding final
     std::string writtenName;
     bool qualified = false;
     std::vector<std::size_t> candidateFunctionOrdinals;
+};
+
+struct NamespaceStateReferenceBinding final
+{
+    const ast::AstNode* expressionSyntax = nullptr;
+    std::size_t projectOrdinal = 0;
+    FileId fileId;
+    std::string lexicalNamespace;
+    std::string writtenName;
+    bool qualified = false;
+    std::vector<std::size_t> candidateStateOrdinals;
 };
 
 class ProjectNamespaceFunctionModel final
@@ -126,6 +138,9 @@ public:
     const NamespaceFunctionReferenceBinding* referenceBinding(
         const ast::AstNode* callSyntax) const noexcept;
     std::span<const NamespaceFunctionReferenceBinding> referenceBindings() const noexcept;
+    const NamespaceStateReferenceBinding* stateReferenceBinding(
+        const ast::AstNode* expressionSyntax) const noexcept;
+    std::span<const NamespaceStateReferenceBinding> stateReferenceBindings() const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -135,6 +150,8 @@ private:
     std::unordered_map<std::string, std::vector<std::size_t>> functionsByName_;
     std::vector<NamespaceFunctionReferenceBinding> referenceBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> referenceBindingBySyntax_;
+    std::vector<NamespaceStateReferenceBinding> stateReferenceBindings_;
+    std::unordered_map<const ast::AstNode*, std::size_t> stateReferenceBindingBySyntax_;
     bool built_ = false;
 };
 }

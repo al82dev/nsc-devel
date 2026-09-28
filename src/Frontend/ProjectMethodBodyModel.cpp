@@ -7159,6 +7159,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         return result;
     }
 
+    const bool namespaceCallable =
+        methodMemberOrdinal >= namespaceCallableBase_ &&
+        methodMemberOrdinal - namespaceCallableBase_ < namespaceCallableAdapters_.size();
+    if (namespaceCallable && namespaceFunctionModel_ != nullptr)
+    {
+        if (const NamespaceStateReferenceBinding* stateReference =
+                namespaceFunctionModel_->stateReferenceBinding(expression);
+            stateReference != nullptr && !stateReference->qualified)
+        {
+            return analyzeNamespaceState(
+                expression, *stateReference, methodMemberOrdinal, scopeOrdinal, diagnostics);
+        }
+    }
     const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
     if (caller == nullptr || memberModel_ == nullptr || nameLookup_ == nullptr || inheritanceModel_ == nullptr)
     {
@@ -7431,6 +7444,50 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
     return result;
 }
 
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespaceState(
+    const ast::AstNode* expression,
+    const NamespaceStateReferenceBinding& reference,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    ExpressionResult result;
+    if (namespaceFunctionModel_ == nullptr || reference.candidateStateOrdinals.empty())
+        return result;
+    if (reference.candidateStateOrdinals.size() != 1)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidMemberAccess,
+            diagnostics::DiagnosticSeverity::Error,
+            expression != nullptr ? expression->range() : SourceRange{},
+            "ambiguous namespace state reference '" + reference.writtenName + "'");
+        return result;
+    }
+
+    const std::size_t stateOrdinal = reference.candidateStateOrdinals.front();
+    if (stateOrdinal >= namespaceFunctionModel_->states().size()) return result;
+    const NamespaceStateSymbol& state = namespaceFunctionModel_->states()[stateOrdinal];
+    result.typeKey = state.declaredTypeKey;
+    result.valid = true;
+    result.assignable = !state.isConst;
+    result.addressable = true;
+    result.readonlyReceiver = state.isConst;
+    nameBindings_.push_back(MethodNameBinding{
+        MethodNameBindingKind::NamespaceState,
+        expression,
+        methodMemberOrdinal,
+        scopeOrdinal,
+        reference.writtenName,
+        result.typeKey,
+        std::nullopt,
+        std::nullopt,
+        {stateOrdinal},
+        nullptr,
+        "",
+        std::nullopt,
+        false});
+    return result;
+}
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     const ast::AstNode* expression,
     std::size_t methodMemberOrdinal,
@@ -7441,6 +7498,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
+    if (namespaceFunctionModel_ != nullptr && expression != nullptr)
+    {
+        if (const NamespaceStateReferenceBinding* stateReference =
+                namespaceFunctionModel_->stateReferenceBinding(expression);
+            stateReference != nullptr && stateReference->qualified)
+        {
+            const bool receiverShadowed =
+                expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                lookupScopeName(scopeOrdinal, expression->first()->text()).has_value();
+            if (!receiverShadowed)
+            {
+                return analyzeNamespaceState(
+                    expression, *stateReference, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            }
+        }
+    }
     if (expression == nullptr || expression->first() == nullptr || memberModel_ == nullptr ||
         nameLookup_ == nullptr || inheritanceModel_ == nullptr)
     {
@@ -14911,6 +14985,7 @@ const char* methodNameBindingKindName(MethodNameBindingKind kind) noexcept
         case MethodNameBindingKind::ExplicitBaseField: return "base-field";
         case MethodNameBindingKind::ExplicitBaseMethodGroup: return "base-method-group";
         case MethodNameBindingKind::StaticField: return "static-field";
+        case MethodNameBindingKind::NamespaceState: return "namespace-state";
         case MethodNameBindingKind::StaticMethodGroup: return "static-method-group";
         case MethodNameBindingKind::ImplicitEvent: return "implicit-event";
         case MethodNameBindingKind::ExplicitThisEvent: return "this-event";

@@ -715,11 +715,13 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::FieldLoad: return "field-load";
         case ProjectOopMirNodeKind::BitFieldLoad: return "bit-field-load";
         case ProjectOopMirNodeKind::StaticFieldLoad: return "static-field-load";
+        case ProjectOopMirNodeKind::NamespaceStateLoad: return "namespace-state-load";
         case ProjectOopMirNodeKind::ParameterAddress: return "parameter-address";
         case ProjectOopMirNodeKind::LocalAddress: return "local-address";
         case ProjectOopMirNodeKind::FieldAddress: return "field-address";
         case ProjectOopMirNodeKind::BitFieldAddress: return "bit-field-address";
         case ProjectOopMirNodeKind::StaticFieldAddress: return "static-field-address";
+        case ProjectOopMirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopMirNodeKind::IntegerConstant: return "integer-constant";
         case ProjectOopMirNodeKind::FloatingConstant: return "floating-constant";
         case ProjectOopMirNodeKind::BooleanConstant: return "boolean-constant";
@@ -904,6 +906,7 @@ bool ProjectOopMirModel::build(
     const ProjectInterfaceModel& interfaceModel,
     const ProjectDestructionModel& destructionModel,
     const ProjectOopHirModel& hirModel,
+    const ProjectNamespaceFunctionModel& namespaceFunctionModel,
     std::string& error,
     std::size_t workerCount)
 {
@@ -1417,6 +1420,51 @@ bool ProjectOopMirModel::build(
         }
     }
 
+    const std::size_t namespaceStateMemberBase = memberModel.members().size();
+    for (std::size_t stateOrdinal = 0;
+         stateOrdinal < namespaceFunctionModel.states().size(); ++stateOrdinal)
+    {
+        const NamespaceStateSymbol& state = namespaceFunctionModel.states()[stateOrdinal];
+        ProjectOopMirStaticField staticField{
+            namespaceStateMemberBase + stateOrdinal,
+            nameLookup.namedTypes().size(),
+            state.name,
+            state.declaredTypeKey,
+            state.isConst,
+            false,
+            state.isConst,
+            state.isPrecompiled,
+            {},
+            state.storageName,
+            "__nsc_get_" + state.storageName};
+        staticField.namespaceStateOrdinal = stateOrdinal;
+        switch (state.initializerKind)
+        {
+            case NamespaceStateInitializerKind::Integer:
+                staticField.hasConstantInitializer = true;
+                staticField.constantIntegerValue = state.integerValue;
+                break;
+            case NamespaceStateInitializerKind::Floating:
+                staticField.hasConstantInitializer = true;
+                staticField.constantFloatingValue = state.floatingValue;
+                break;
+            case NamespaceStateInitializerKind::Boolean:
+                staticField.hasConstantInitializer = true;
+                staticField.constantBooleanValue = state.booleanValue;
+                break;
+            case NamespaceStateInitializerKind::String:
+                staticField.hasConstantInitializer = true;
+                staticField.constantStringValue = state.stringValue;
+                break;
+            case NamespaceStateInitializerKind::Null:
+                staticField.hasConstantInitializer = true;
+                break;
+            case NamespaceStateInitializerKind::Zero:
+                if (state.isConst) staticField.hasConstantInitializer = true;
+                break;
+        }
+        staticFields_.push_back(std::move(staticField));
+    }
     const auto recordGenericSpecialization = [&](std::string_view key) -> std::size_t {
         const auto found = std::find_if(genericSpecializations_.begin(), genericSpecializations_.end(),
             [key](const ProjectOopMirGenericSpecialization& specialization) {
@@ -1640,6 +1688,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->operation = node->operation;
     result->memberOrdinal = node->memberOrdinal;
     result->namespaceFunctionOrdinal = node->namespaceFunctionOrdinal;
+    result->namespaceStateOrdinal = node->namespaceStateOrdinal;
     result->secondaryMemberOrdinal = node->secondaryMemberOrdinal;
     result->localOrdinal = node->localOrdinal;
     result->parameterOrdinal = node->parameterOrdinal;
@@ -2425,6 +2474,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->kind = ProjectOopMirNodeKind::StaticFieldAddress;
             break;
 
+        case ProjectOopHirNodeKind::NamespaceStateValue:
+            result->kind = ProjectOopMirNodeKind::NamespaceStateLoad;
+            break;
+        case ProjectOopHirNodeKind::NamespaceStateAddress:
+            result->kind = ProjectOopMirNodeKind::NamespaceStateAddress;
+            break;
         case ProjectOopHirNodeKind::FieldValue:
         case ProjectOopHirNodeKind::FieldAddress:
         {

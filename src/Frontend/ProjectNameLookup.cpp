@@ -630,7 +630,8 @@ void ProjectNameLookup::predeclareNode(
             std::string(unit.moduleName()),
             joinSegments(namespaceSegments),
             node->text(),
-            node->flag()});
+            node->flag(),
+            unit.isPrecompiled()});
         return;
     }
     if (isNamedTypeDeclaration(node->kind()))

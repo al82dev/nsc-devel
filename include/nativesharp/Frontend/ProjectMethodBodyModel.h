@@ -154,6 +154,7 @@ enum class MethodNameBindingKind
     ExplicitBaseField,
     ExplicitBaseMethodGroup,
     StaticField,
+    NamespaceState,
     StaticMethodGroup,
     ImplicitEvent,
     ExplicitThisEvent,
@@ -1601,6 +1602,12 @@ private:
         bool allowMethodGroup,
         bool allowEvent,
         bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeNamespaceState(
+        const ast::AstNode* expression,
+        const NamespaceStateReferenceBinding& reference,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     ExpressionResult analyzeMember(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,

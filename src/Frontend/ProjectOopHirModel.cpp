@@ -1001,10 +1001,12 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::LocalValue: return "local-value";
         case ProjectOopHirNodeKind::FieldValue: return "field-value";
         case ProjectOopHirNodeKind::StaticFieldValue: return "static-field-value";
+        case ProjectOopHirNodeKind::NamespaceStateValue: return "namespace-state-value";
         case ProjectOopHirNodeKind::ParameterAddress: return "parameter-address";
         case ProjectOopHirNodeKind::LocalAddress: return "local-address";
         case ProjectOopHirNodeKind::FieldAddress: return "field-address";
         case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
+        case ProjectOopHirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopHirNodeKind::IntegerConstant: return "integer-constant";
         case ProjectOopHirNodeKind::FloatingConstant: return "floating-constant";
         case ProjectOopHirNodeKind::BooleanConstant: return "boolean-constant";
@@ -3677,6 +3679,32 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     memberModel_->members()[*node->memberOrdinal].isVolatile;
                 node->baseReceiver = binding->baseReceiver;
                 node->children.push_back(std::move(receiver));
+                return node;
+            }
+            if (binding->kind == MethodNameBindingKind::NamespaceState)
+            {
+                if (binding->candidateMemberOrdinals.size() != 1 ||
+                    namespaceFunctionModel_ == nullptr ||
+                    binding->candidateMemberOrdinals.front() >=
+                        namespaceFunctionModel_->states().size())
+                {
+                    error = "namespace state binding has no unique state ordinal";
+                    return nullptr;
+                }
+                const std::size_t stateOrdinal =
+                    binding->candidateMemberOrdinals.front();
+                const NamespaceStateSymbol& state =
+                    namespaceFunctionModel_->states()[stateOrdinal];
+                auto node = makeNode(
+                    addressContext ? ProjectOopHirNodeKind::NamespaceStateAddress
+                                   : ProjectOopHirNodeKind::NamespaceStateValue,
+                    expression,
+                    binding->typeKey);
+                node->namespaceStateOrdinal = stateOrdinal;
+                node->memberOrdinal =
+                    (memberModel_ != nullptr ? memberModel_->members().size() : 0) +
+                    stateOrdinal;
+                node->stringValue = state.storageName;
                 return node;
             }
             if (binding->kind == MethodNameBindingKind::StaticField)

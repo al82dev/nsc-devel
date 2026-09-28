@@ -1237,6 +1237,14 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &
             symbols.push_back(dispatch.descriptorAccessorName);
         }
     }
+    for (const interop::LibraryMetadataNamespaceState &state : metadata.namespaceStates)
+    {
+        if (state.accessibility == 1U && (state.flags & 1U) == 0U &&
+            !state.accessorName.empty())
+        {
+            symbols.push_back(state.accessorName);
+        }
+    }
     std::sort(symbols.begin(), symbols.end());
     symbols.erase(std::unique(symbols.begin(), symbols.end()), symbols.end());
     return symbols;
@@ -2204,6 +2212,50 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         if ((function.flags & 8U) != 0U) generated << '}' << std::endl;
         if (!function.namespaceName.empty()) generated << '}' << std::endl;
     }
+    for (const interop::LibraryMetadataNamespaceState &state :
+         metadata.namespaceStates)
+    {
+        if (state.accessibility != 1U) continue;
+        std::string typeSource;
+        if (!sourceTypeForMetadataKey(
+                metadata, state.declaredTypeKey, typeSource, error))
+        {
+            return false;
+        }
+        if (!state.namespaceName.empty())
+            generated << "namespace " << state.namespaceName << std::endl << '{' << std::endl;
+        generated << "public ";
+        const bool isConst = (state.flags & 1U) != 0U;
+        if (isConst) generated << "const ";
+        generated << typeSource << ' ' << state.name;
+        if (isConst)
+        {
+            std::string initializer;
+            using Kind = interop::LibraryMetadataNamespaceStateInitializerKind;
+            if (state.initializerKind == Kind::Zero)
+                initializer = "default(" + typeSource + ")";
+            else if (state.initializerKind == Kind::Null)
+                initializer = "null";
+            else
+            {
+                interop::LibraryMetadataMember constant;
+                constant.name = state.name;
+                constant.declaredTypeKey = state.declaredTypeKey;
+                constant.constantBits = state.initializerBits;
+                constant.constantText = state.initializerText;
+                if (state.initializerKind == Kind::Integer) constant.constantKind = 1U;
+                else if (state.initializerKind == Kind::Boolean) constant.constantKind = 3U;
+                else if (state.initializerKind == Kind::Floating)
+                    constant.constantKind =
+                        state.declaredTypeKey == "builtin:float" ? 4U : 5U;
+                else if (state.initializerKind == Kind::String) constant.constantKind = 6U;
+                if (!metadataConstantSource(constant, initializer, error)) return false;
+            }
+            generated << " = " << initializer;
+        }
+        generated << ';' << std::endl;
+        if (!state.namespaceName.empty()) generated << '}' << std::endl;
+    }
     source = generated.str();
     return true;
 }
@@ -2254,6 +2306,11 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
         {
             appendKnownType(parameter.typeKey);
         }
+    }
+    for (const interop::LibraryMetadataNamespaceState &state :
+         metadata.namespaceStates)
+    {
+        appendKnownType(state.declaredTypeKey);
     }
     constexpr std::uint8_t kGenericMethodKind = 3U;
     for (const interop::LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
@@ -5826,6 +5883,20 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
             exportSymbols.push_back(field.accessorName);
         }
     }
+    if (compilation.namespaceFunctionModel() != nullptr)
+    {
+        for (const frontend::NamespaceStateSymbol &state :
+             compilation.namespaceFunctionModel()->states())
+        {
+            if (state.projectOrdinal == rootProjectOrdinal &&
+                state.accessibility ==
+                    frontend::NamespaceFunctionAccessibility::Public &&
+                !state.isConst && !state.isPrecompiled)
+            {
+                exportSymbols.push_back("__nsc_get_" + state.storageName);
+            }
+        }
+    }
     std::sort(exportSymbols.begin(), exportSymbols.end());
     exportSymbols.erase(std::unique(exportSymbols.begin(), exportSymbols.end()), exportSymbols.end());
     const bool hasPublicMetadataSurface = std::ranges::any_of(types, [&](const frontend::NamedTypeDeclaration &type) {
@@ -5839,6 +5910,14 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
                        function.accessibility ==
                            frontend::NamespaceFunctionAccessibility::Public &&
                        !function.isPrecompiled;
+               })) || (compilation.namespaceFunctionModel() != nullptr &&
+           std::ranges::any_of(
+               compilation.namespaceFunctionModel()->states(),
+               [&](const auto& state) {
+                   return state.projectOrdinal == rootProjectOrdinal &&
+                       state.accessibility ==
+                           frontend::NamespaceFunctionAccessibility::Public &&
+                       !state.isPrecompiled;
                })) || (compilation.genericModel() != nullptr &&
            std::ranges::any_of(compilation.genericModel()->templates(), [&](const auto& generic) {
                if (generic.projectOrdinal != rootProjectOrdinal || generic.syntax == nullptr) return false;

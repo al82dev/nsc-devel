@@ -48,8 +48,8 @@ int main()
         codec.write(compilation, metadataPath, written, error);
     tests.expect(wrote && error.empty(),
         "NSMETA producer writes namespace function records");
-    tests.expect(written.formatMinor == 21,
-        "namespace function publication uses NSMETA 1.21");
+    tests.expect(written.formatMinor == 22,
+        "namespace function publication uses current NSMETA format");
     tests.expect(written.namespaceFunctions.size() == 1,
         "only public namespace functions are published");
     if (!written.namespaceFunctions.empty())
@@ -69,7 +69,7 @@ int main()
     error.clear();
     const bool read = wrote && codec.read(metadataPath, decoded, error);
     tests.expect(read && error.empty() && decoded.namespaceFunctions.size() == 1,
-        "NSMETA 1.21 round trip preserves namespace functions");
+        "current NSMETA round trip preserves namespace functions");
     tests.expect(read && codec.verifyCurrentCompiler(decoded, error),
         "current compiler validates namespace function metadata");
 

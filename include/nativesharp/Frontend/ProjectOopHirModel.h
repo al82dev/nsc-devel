@@ -113,10 +113,12 @@ enum class ProjectOopHirNodeKind
     LocalValue,
     FieldValue,
     StaticFieldValue,
+    NamespaceStateValue,
     ParameterAddress,
     LocalAddress,
     FieldAddress,
     StaticFieldAddress,
+    NamespaceStateAddress,
     IntegerConstant,
     FloatingConstant,
     BooleanConstant,
@@ -429,6 +431,7 @@ struct ProjectOopHirNode final
     lexer::TokenKind operation = lexer::TokenKind::Invalid;
     std::optional<std::size_t> memberOrdinal;
     std::optional<std::size_t> namespaceFunctionOrdinal;
+    std::optional<std::size_t> namespaceStateOrdinal;
     // Stage 54.4 "Condition Variables" -- set ONLY on a CoreMonitorWait node, alongside
     // memberOrdinal above (which, for THIS node kind only, holds the `cv_` field's ordinal rather
     // than an ordinary field access's own ordinal). Holds the `lock_` field's ordinal. Default-

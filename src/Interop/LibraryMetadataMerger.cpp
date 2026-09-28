@@ -81,6 +81,19 @@ bool equalNamespaceFunction(
         vectorEqual(left.parameters, right.parameters, equalParameter);
 }
 
+bool equalNamespaceState(
+    const LibraryMetadataNamespaceState& left,
+    const LibraryMetadataNamespaceState& right)
+{
+    return std::tie(left.accessibility, left.flags, left.initializerKind,
+               left.namespaceName, left.name, left.declaredTypeKey,
+               left.storageName, left.accessorName, left.initializerBits,
+               left.initializerText) ==
+        std::tie(right.accessibility, right.flags, right.initializerKind,
+            right.namespaceName, right.name, right.declaredTypeKey,
+            right.storageName, right.accessorName, right.initializerBits,
+            right.initializerText);
+}
 bool equalTemplate(
     const LibraryMetadataGenericTemplate& left,
     const LibraryMetadataGenericTemplate& right)
@@ -240,6 +253,16 @@ bool canonicalizeModel(LibraryMetadata& metadata, std::string& error)
             error))
         return false;
     if (!canonicalize(
+            metadata.namespaceStates,
+            [](const auto& item) {
+                return item.namespaceName + std::string(1, static_cast<char>(31)) +
+                    item.name;
+            },
+            equalNamespaceState,
+            "namespace state",
+            error))
+        return false;
+    if (!canonicalize(
             metadata.genericTemplates,
             [](const auto& item) -> const std::string& { return item.canonicalKey; },
             equalTemplate,
@@ -292,6 +315,7 @@ bool LibraryMetadataMerger::merge(
     candidate.types.clear();
     candidate.members.clear();
     candidate.namespaceFunctions.clear();
+    candidate.namespaceStates.clear();
     candidate.genericTemplates.clear();
     candidate.genericSpecializations.clear();
     candidate.externalTypeKeys.clear();
@@ -311,6 +335,7 @@ bool LibraryMetadataMerger::merge(
         append(candidate.types, fragment.types);
         append(candidate.members, fragment.members);
         append(candidate.namespaceFunctions, fragment.namespaceFunctions);
+        append(candidate.namespaceStates, fragment.namespaceStates);
         append(candidate.genericTemplates, fragment.genericTemplates);
         append(candidate.genericSpecializations, fragment.genericSpecializations);
         append(candidate.externalTypeKeys, fragment.externalTypeKeys);
