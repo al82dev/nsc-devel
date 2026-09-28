@@ -486,7 +486,7 @@ bool ProjectCompilation::setPreloadedProjectGraph(
 {
     error.clear();
     if (projectGraph_.has_value() || !units_.empty() || genericModel_ != nullptr ||
-        nameLookup_ != nullptr || memberModel_ != nullptr)
+        nameLookup_ != nullptr || memberModel_ != nullptr || namespaceFunctionModel_ != nullptr)
     {
         error = "project graph must be configured before project compilation starts";
         return false;
@@ -591,8 +591,14 @@ bool ProjectCompilation::compileProjectMembers(
                 specializationTypeAliases.emplace_back(localTypeKey, publishedTypeKey);
         }
     }
-    return memberModel_->bindPrecompiledPhysicalNames(
-        precompiledMembers, specializationTypeAliases, loadError);
+    if (!memberModel_->bindPrecompiledPhysicalNames(
+            precompiledMembers, specializationTypeAliases, loadError))
+    {
+        return false;
+    }
+
+    namespaceFunctionModel_ = std::make_unique<ProjectNamespaceFunctionModel>();
+    return namespaceFunctionModel_->build(*nameLookup_, *memberModel_, diagnostics_);
 }
 
 
@@ -1113,6 +1119,11 @@ const ProjectGenericConstraintModel* ProjectCompilation::genericConstraintModel(
 const ProjectMemberModel* ProjectCompilation::memberModel() const noexcept
 {
     return memberModel_.get();
+}
+
+const ProjectNamespaceFunctionModel* ProjectCompilation::namespaceFunctionModel() const noexcept
+{
+    return namespaceFunctionModel_.get();
 }
 
 const ProjectInheritanceModel* ProjectCompilation::inheritanceModel() const noexcept

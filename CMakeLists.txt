@@ -246,6 +246,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectNameLookup.cpp
     src/Frontend/ProjectNameLookupDumper.cpp
     src/Frontend/ProjectMemberModel.cpp
+    src/Frontend/ProjectNamespaceFunctionModel.cpp
     src/Frontend/ProjectMemberModelDumper.cpp
     src/Frontend/ProjectInheritanceModel.cpp
     src/Frontend/ProjectInheritanceModelDumper.cpp
@@ -1228,6 +1229,12 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_namespace_function_model_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_namespace_function_model_tests)
     add_test(NAME nsc.namespace-function-model COMMAND nsc_namespace_function_model_tests)
+
+    add_executable(nsc_namespace_function_signature_tests tests/unit/NamespaceFunctionSignatureTests.cpp)
+    target_link_libraries(nsc_namespace_function_signature_tests PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(nsc_namespace_function_signature_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_namespace_function_signature_tests)
+    add_test(NAME nsc.namespace-function-signatures COMMAND nsc_namespace_function_signature_tests)
 
     nsc_add_unit_test(nsc_source_manager_tests tests/unit/SourceManagerTests.cpp nsc.source-manager)
     nsc_add_unit_test(nsc_diagnostic_tests tests/unit/DiagnosticTests.cpp nsc.diagnostics)

@@ -7,6 +7,7 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
+#include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
@@ -94,6 +95,7 @@ public:
     const ProjectGenericModel* genericModel() const noexcept;
     const ProjectGenericConstraintModel* genericConstraintModel() const noexcept;
     const ProjectMemberModel* memberModel() const noexcept;
+    const ProjectNamespaceFunctionModel* namespaceFunctionModel() const noexcept;
     const ProjectInheritanceModel* inheritanceModel() const noexcept;
     const ProjectInterfaceModel* interfaceModel() const noexcept;
     const ProjectMethodBodyModel* methodBodyModel() const noexcept;
@@ -116,6 +118,7 @@ private:
     std::unique_ptr<ProjectNameLookup> nameLookup_;
     std::unique_ptr<ProjectGenericModel> genericModel_;
     std::unique_ptr<ProjectMemberModel> memberModel_;
+    std::unique_ptr<ProjectNamespaceFunctionModel> namespaceFunctionModel_;
     std::unique_ptr<ProjectInheritanceModel> inheritanceModel_;
     std::unique_ptr<ProjectInterfaceModel> interfaceModel_;
     // NSC-LIMIT-007. Va entre las interfaces y los cuerpos, que es el unico sitio donde se puede:

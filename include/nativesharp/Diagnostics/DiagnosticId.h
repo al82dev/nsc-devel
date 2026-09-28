@@ -35,6 +35,7 @@ enum class DiagnosticId
     PreviousDeclaration,
     ConflictingFunctionDeclaration,
     DuplicateFunctionDefinition,
+    MissingFunctionDefinition,
     InvalidType,
     IncompleteType,
     TypeMismatch,
