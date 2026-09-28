@@ -56,6 +56,28 @@ int main()
     }
 
     {
+        std::ostringstream output;
+        std::ostringstream error;
+        const ExitCode code = run({"--language", "es", "new", "console", "--bad-option"},
+                                  output, error);
+        tests.expect(code == ExitCode::CommandLineError &&
+                         error.str().find("opción de new desconocida") != std::string::npos,
+                     "project commands localize human-readable failures");
+        tests.expect(output.str().empty(), "localized project-command failure keeps stdout empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const ExitCode code = run({"--language", "es", "new", "console", "--bad-option",
+                                   "--output-format=json"}, output, error);
+        tests.expect(code == ExitCode::CommandLineError &&
+                         error.str().find("unknown new option") != std::string::npos &&
+                         error.str().find("opción de new") == std::string::npos,
+                     "JSON project-command protocol remains language-neutral");
+    }
+
+    {
         writeFile(projectRoot / "Content/title.txt", "NativeSharp");
         writeFile(projectRoot / "Content/shaders/default.vert", "shader");
         std::ostringstream output;

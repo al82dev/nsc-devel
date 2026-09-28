@@ -3,6 +3,7 @@
 #include "nativesharp/Basic/Version.h"
 
 #include <ostream>
+#include <utility>
 
 namespace nativesharp::driver
 {
@@ -102,6 +103,81 @@ CompilerLanguageScope::~CompilerLanguageScope()
 std::string_view compilerText(std::string_view english, std::string_view spanish) noexcept
 {
     return currentLanguage == CompilerLanguage::Spanish ? spanish : english;
+}
+
+std::string localizeCompilerMessage(std::string_view english)
+{
+    if (currentLanguage != CompilerLanguage::Spanish) return std::string(english);
+
+    static constexpr std::pair<std::string_view, std::string_view> exact[] = {
+        {"project name must be a valid NativeSharp identifier",
+         "el nombre del proyecto debe ser un identificador NativeSharp válido"},
+        {"template must be console, classlib, or dll",
+         "la plantilla debe ser console, classlib o dll"},
+        {"cannot resolve output directory", "no se puede resolver el directorio de salida"},
+        {"project already exists; pass --force to replace its configuration",
+         "el proyecto ya existe; use --force para reemplazar su configuración"},
+        {"configuration must be Debug or Release", "la configuración debe ser Debug o Release"},
+        {"optimization must be O0, O1, O2, or O3", "la optimización debe ser O0, O1, O2 u O3"},
+        {"linker must be NSLink or lld-link", "el enlazador debe ser NSLink o lld-link"},
+        {"library-reference root requires an absolute directory",
+         "la raíz de referencias de bibliotecas requiere un directorio absoluto"},
+        {"compiler failed", "el compilador falló"},
+        {"nsc run requires an executable project", "nsc run requiere un proyecto ejecutable"},
+        {"nsc run is currently supported on Windows only",
+         "nsc run actualmente sólo es compatible con Windows"},
+        {"clean safety validation failed", "falló la validación de seguridad de clean"},
+        {"package id is required", "se requiere el identificador del paquete"},
+        {"only one project may be specified", "sólo se puede especificar un proyecto"},
+        {"unsafe package id or version", "el identificador o la versión del paquete no son seguros"},
+        {"restore accepts only one project", "restore acepta un solo proyecto"},
+        {"build accepts only one project", "build acepta un solo proyecto"},
+        {"--force cannot be combined with --locked-mode or --verify",
+         "--force no puede combinarse con --locked-mode ni --verify"},
+        {"duplicate compilation job count", "el número de trabajos de compilación está repetido"},
+        {"-j requires a job count from 1 through 1024",
+         "-j requiere un número de trabajos entre 1 y 1024"},
+        {"compilation job count must be between 1 and 1024",
+         "el número de trabajos de compilación debe estar entre 1 y 1024"},
+        {"duplicate library-reference root", "la raíz de referencias de bibliotecas está repetida"},
+        {"--library-reference-root requires an absolute directory",
+         "--library-reference-root requiere un directorio absoluto"},
+    };
+    for (const auto& [source, translated] : exact)
+        if (english == source) return std::string(translated);
+
+    static constexpr std::pair<std::string_view, std::string_view> prefixes[] = {
+        {"usage: ", "uso: "},
+        {"unknown new option: ", "opción de new desconocida: "},
+        {"unknown restore option: ", "opción de restore desconocida: "},
+        {"unknown build option: ", "opción de build desconocida: "},
+        {"unknown package option: ", "opción de paquete desconocida: "},
+        {"cannot create project directory: ", "no se puede crear el directorio del proyecto: "},
+        {"cannot create build output directory: ", "no se puede crear el directorio de salida: "},
+        {"cannot clean generated project files: ", "no se pueden limpiar los archivos generados: "},
+        {"cannot clean '", "no se puede limpiar '"},
+        {"project does not exist: ", "el proyecto no existe: "},
+        {"project must have the .nsproj extension", "el proyecto debe tener la extensión .nsproj"},
+        {"no .nsproj was found in the current directory", "no se encontró un .nsproj en el directorio actual"},
+        {"more than one .nsproj exists; specify the project explicitly",
+         "existe más de un .nsproj; especifique el proyecto explícitamente"},
+        {"generated build project is invalid: ", "el proyecto de construcción generado no es válido: "},
+        {"program exited with code ", "el programa terminó con el código "},
+        {"package is not present: ", "el paquete no está presente: "},
+        {"Created NativeSharp project: ", "Proyecto NativeSharp creado: "},
+        {"Restore verified: ", "Restauración verificada: "},
+        {"Restored ", "Restaurados "},
+        {"Build succeeded: ", "Construcción correcta: "},
+        {"Program exited with code 0", "El programa terminó con el código 0"},
+        {"Package request saved: ", "Solicitud de paquete guardada: "},
+        {"Package request removed: ", "Solicitud de paquete eliminada: "},
+    };
+    for (const auto& [source, translated] : prefixes)
+    {
+        if (english.starts_with(source))
+            return std::string(translated) + std::string(english.substr(source.size()));
+    }
+    return std::string(english);
 }
 
 void printCompilerBanner(std::ostream& output)

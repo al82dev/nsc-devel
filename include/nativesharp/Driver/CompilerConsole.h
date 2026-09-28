@@ -41,5 +41,6 @@ private:
 };
 
 std::string_view compilerText(std::string_view english, std::string_view spanish) noexcept;
+std::string localizeCompilerMessage(std::string_view english);
 void printCompilerBanner(std::ostream& output);
 }

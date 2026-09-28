@@ -1,5 +1,7 @@
 #include "nativesharp/Driver/ProjectCommands.h"
 
+#include "nativesharp/Driver/CompilerConsole.h"
+
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
 
@@ -494,7 +496,7 @@ struct CommandOutput final
             if (!extra.empty()) output << ',' << extra;
             output << ",\"message\":\"" << jsonEscape(message) << "\"}\n";
         }
-        else output << message << '\n';
+        else output << localizeCompilerMessage(message) << '\n';
         return ExitCode::Success;
     }
 
@@ -505,7 +507,7 @@ struct CommandOutput final
             error << "{\"schemaVersion\":1,\"command\":\"" << jsonEscape(command)
                   << "\",\"success\":false,\"exitCode\":" << static_cast<int>(code)
                   << ",\"message\":\"" << jsonEscape(message) << "\"}\n";
-        else error << "nsc: error: " << message << '\n';
+        else error << "nsc: error: " << localizeCompilerMessage(message) << '\n';
         return code;
     }
 };
