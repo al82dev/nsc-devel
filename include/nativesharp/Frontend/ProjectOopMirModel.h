@@ -748,7 +748,9 @@ public:
         std::size_t& slot) const noexcept;
     const ProjectOopMirFunction* functionForMember(std::size_t memberOrdinal) const noexcept;
     const ProjectOopMirFunction* functionForNamespaceFunction(
-        std::size_t functionOrdinal) const noexcept;
+        std::size_t functionOrdinal) const noexcept;    const ProjectOopMirFunction* executableEntryPoint(
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel,
+        bool& ambiguous) const noexcept;
     bool isBuilt() const noexcept;
 
 private:

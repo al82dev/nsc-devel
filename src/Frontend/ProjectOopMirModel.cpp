@@ -1582,6 +1582,42 @@ const ProjectOopMirFunction* ProjectOopMirModel::functionForNamespaceFunction(
     }
     return &functions_[*functionByNamespaceFunction_[functionOrdinal]];
 }
+const ProjectOopMirFunction* ProjectOopMirModel::executableEntryPoint(
+    const ProjectNamespaceFunctionModel& namespaceFunctionModel,
+    bool& ambiguous) const noexcept
+{
+    ambiguous = false;
+    const ProjectOopMirFunction* result = nullptr;
+    for (const ProjectOopMirFunction& function : functions_)
+    {
+        bool candidate = false;
+        if (function.namespaceFunctionOrdinal.has_value())
+        {
+            if (*function.namespaceFunctionOrdinal >= namespaceFunctionModel.functions().size())
+                continue;
+            const NamespaceFunctionSymbol& symbol =
+                namespaceFunctionModel.functions()[*function.namespaceFunctionOrdinal];
+            candidate = symbol.name == "Main" && symbol.parameters.empty() &&
+                symbol.declaredTypeKey == "builtin:int" && !symbol.isExternC;
+        }
+        else if (!function.isLambda && !function.constructor && !function.destructor &&
+                 memberModel_ != nullptr && function.memberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
+            candidate = member.kind == ClassMemberKind::Method && member.name == "Main" &&
+                member.isStatic && member.parameters.empty() &&
+                member.declaredTypeKey == "builtin:int";
+        }
+        if (!candidate) continue;
+        if (result != nullptr)
+        {
+            ambiguous = true;
+            return nullptr;
+        }
+        result = &function;
+    }
+    return result;
+}
 bool ProjectOopMirModel::isBuilt() const noexcept
 {
     return built_;

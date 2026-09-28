@@ -5380,36 +5380,28 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
         return ExitCode::CompilationError;
     }
 
-    const frontend::ProjectOopMirFunction *entryFunction = nullptr;
-    const auto members = compilation.memberModel()->members();
-    for (const frontend::ProjectOopMirFunction &function : compilation.oopMirModel()->functions())
+    if (compilation.namespaceFunctionModel() == nullptr)
     {
-        if (function.isLambda || function.constructor || function.destructor ||
-            function.memberOrdinal >= members.size())
-        {
-            continue;
-        }
-        const frontend::ClassMemberSymbol &member = members[function.memberOrdinal];
-        if (member.kind != frontend::ClassMemberKind::Method || member.name != "Main" || !member.isStatic ||
-            !member.parameters.empty() || member.declaredTypeKey != "builtin:int")
-        {
-            continue;
-        }
-        if (entryFunction != nullptr)
-        {
-            error << "nsc: error: OOP executable has multiple static int Main() "
-                     "entry points\n";
-            return ExitCode::CompilationError;
-        }
-        entryFunction = &function;
+        error << "nsc: internal error: namespace function model is unavailable" << std::endl;
+        return ExitCode::CompilationError;
+    }
+    bool ambiguousEntryPoint = false;
+    const frontend::ProjectOopMirFunction *entryFunction =
+        compilation.oopMirModel()->executableEntryPoint(
+            *compilation.namespaceFunctionModel(), ambiguousEntryPoint);
+    if (ambiguousEntryPoint)
+    {
+        error << "nsc: error: OOP executable has multiple int Main() entry points"
+              << std::endl;
+        return ExitCode::CompilationError;
     }
     if (entryFunction == nullptr)
     {
-        error << "nsc: error: OOP executable requires exactly one static int "
-                 "Main() method with no parameters\n";
+        error << "nsc: error: OOP executable requires exactly one int Main() "
+                 "function or static method with no parameters"
+              << std::endl;
         return ExitCode::CompilationError;
     }
-
     llvm_backend::ProjectOopObjectGenerator objectGenerator;
     configureObjectGeneratorProgress(objectGenerator);
     std::string codeGenerationError;
