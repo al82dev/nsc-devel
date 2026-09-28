@@ -68,6 +68,19 @@ bool equalMember(const LibraryMetadataMember& left, const LibraryMetadataMember&
         vectorEqual(left.parameters, right.parameters, equalParameter);
 }
 
+bool equalNamespaceFunction(
+    const LibraryMetadataNamespaceFunction& left,
+    const LibraryMetadataNamespaceFunction& right)
+{
+    return std::tie(left.accessibility, left.flags, left.namespaceName, left.name,
+               left.signatureKey, left.declaredTypeKey, left.declaredOwnership,
+               left.mangledName) ==
+            std::tie(right.accessibility, right.flags, right.namespaceName, right.name,
+                right.signatureKey, right.declaredTypeKey, right.declaredOwnership,
+                right.mangledName) &&
+        vectorEqual(left.parameters, right.parameters, equalParameter);
+}
+
 bool equalTemplate(
     const LibraryMetadataGenericTemplate& left,
     const LibraryMetadataGenericTemplate& right)
@@ -217,6 +230,16 @@ bool canonicalizeModel(LibraryMetadata& metadata, std::string& error)
             error))
         return false;
     if (!canonicalize(
+            metadata.namespaceFunctions,
+            [](const auto& item) {
+                return item.namespaceName + std::string(1, static_cast<char>(31)) +
+                    item.signatureKey;
+            },
+            equalNamespaceFunction,
+            "namespace function",
+            error))
+        return false;
+    if (!canonicalize(
             metadata.genericTemplates,
             [](const auto& item) -> const std::string& { return item.canonicalKey; },
             equalTemplate,
@@ -268,6 +291,7 @@ bool LibraryMetadataMerger::merge(
     candidate.abiFingerprint = {};
     candidate.types.clear();
     candidate.members.clear();
+    candidate.namespaceFunctions.clear();
     candidate.genericTemplates.clear();
     candidate.genericSpecializations.clear();
     candidate.externalTypeKeys.clear();
@@ -286,6 +310,7 @@ bool LibraryMetadataMerger::merge(
         }
         append(candidate.types, fragment.types);
         append(candidate.members, fragment.members);
+        append(candidate.namespaceFunctions, fragment.namespaceFunctions);
         append(candidate.genericTemplates, fragment.genericTemplates);
         append(candidate.genericSpecializations, fragment.genericSpecializations);
         append(candidate.externalTypeKeys, fragment.externalTypeKeys);

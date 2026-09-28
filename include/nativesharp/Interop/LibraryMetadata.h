@@ -55,8 +55,9 @@ namespace nativesharp::interop
 // MINOR 3 (2026-09-06): cada parametro conserva su valor predeterminado literal.
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
+// MINOR 21 (2026-09-27): public namespace functions preserve signature and physical identity.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 20;
+inline constexpr std::uint16_t kMetadataFormatMinor = 21;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing
@@ -222,6 +223,19 @@ struct LibraryMetadataMember final
     std::string inlineSourceText;
 };
 
+struct LibraryMetadataNamespaceFunction final
+{
+    std::uint8_t accessibility = 0;
+    std::uint8_t flags = 0;
+    std::string namespaceName;
+    std::string name;
+    std::string signatureKey;
+    std::string declaredTypeKey;
+    LibraryMetadataOwnershipKind declaredOwnership = LibraryMetadataOwnershipKind::None;
+    std::string mangledName;
+    std::vector<LibraryMetadataParameter> parameters;
+};
+
 struct LibraryMetadataGenericTemplate final
 {
     std::uint8_t kind = 0;
@@ -310,6 +324,7 @@ struct LibraryMetadata final
     std::array<std::uint8_t, 32> abiFingerprint{};
     std::vector<LibraryMetadataType> types;
     std::vector<LibraryMetadataMember> members;
+    std::vector<LibraryMetadataNamespaceFunction> namespaceFunctions;
     std::vector<LibraryMetadataGenericTemplate> genericTemplates;
     std::vector<LibraryMetadataGenericSpecialization> genericSpecializations;
     // NSMETA 1.12: exact nominal types used by this module but owned by another

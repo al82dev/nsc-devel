@@ -273,6 +273,7 @@ bool ProjectNamespaceFunctionModel::build(
         candidate.isReferenceReturn = syntax.isReference();
         candidate.isVariadic = syntax.isVariadic();
         candidate.isExternC = syntax.flag();
+        candidate.isPrecompiled = declaration.isPrecompiled;
         candidate.parts.push_back(NamespaceFunctionPart{
             declaration.accessibility,
             declaration.sourceOrdinal,
@@ -450,7 +451,7 @@ bool ProjectNamespaceFunctionModel::build(
 
     for (const NamespaceFunctionSymbol& symbol : functions_)
     {
-        if (symbol.definitionSyntax == nullptr && !symbol.isExternC)
+        if (symbol.definitionSyntax == nullptr && !symbol.isExternC && !symbol.isPrecompiled)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::MissingFunctionDefinition,

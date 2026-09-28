@@ -112,6 +112,7 @@ struct NamespaceFunctionDeclaration final
     std::string namespaceName;
     std::string name;
     bool hasBody = false;
+    bool isPrecompiled = false;
 };
 
 struct NamespaceStateDeclaration final

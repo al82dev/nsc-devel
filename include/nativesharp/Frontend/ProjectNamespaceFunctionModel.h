@@ -53,6 +53,7 @@ struct NamespaceFunctionSymbol final
     bool isReferenceReturn = false;
     bool isVariadic = false;
     bool isExternC = false;
+    bool isPrecompiled = false;
 };
 
 enum class NamespaceStateInitializerKind

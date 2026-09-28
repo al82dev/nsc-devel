@@ -1501,7 +1501,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             if (!defaultValue.empty()) generated << " = " << defaultValue;
             return true;
     };
-    const auto emitParameterRange = [&](const interop::LibraryMetadataMember &member,
+    const auto emitParameterRange = [&](const auto &member,
                                         const std::size_t count) -> bool {
         if (count > member.parameters.size())
         {
@@ -2176,6 +2176,31 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             return false;
         }
     }
+    for (const interop::LibraryMetadataNamespaceFunction &function :
+         metadata.namespaceFunctions)
+    {
+        if (function.accessibility != 1U) continue;
+        std::string returnType;
+        if (!sourceTypeForMetadataKey(
+                metadata, function.declaredTypeKey, returnType, error))
+        {
+            return false;
+        }
+        if (!function.namespaceName.empty())
+            generated << "namespace " << function.namespaceName << std::endl << '{' << std::endl;
+        generated << "public ";
+        if ((function.flags & 1U) != 0U) generated << "ref ";
+        generated << ownershipPrefix(function.declaredOwnership) << returnType << ' '
+                  << function.name << '(';
+        if (!emitParameterRange(function, function.parameters.size())) return false;
+        if ((function.flags & 2U) != 0U)
+        {
+            if (!function.parameters.empty()) generated << ", ";
+            generated << "...";
+        }
+        generated << ");" << std::endl;
+        if (!function.namespaceName.empty()) generated << '}' << std::endl;
+    }
     source = generated.str();
     return true;
 }
@@ -2216,6 +2241,16 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
         appendKnownType(member.declaringTypeKey);
         appendKnownType(member.declaredTypeKey);
         for (const interop::LibraryMetadataParameter &parameter : member.parameters) appendKnownType(parameter.typeKey);
+    }
+    for (const interop::LibraryMetadataNamespaceFunction &function :
+         metadata.namespaceFunctions)
+    {
+        appendKnownType(function.declaredTypeKey);
+        for (const interop::LibraryMetadataParameter &parameter :
+             function.parameters)
+        {
+            appendKnownType(parameter.typeKey);
+        }
     }
     constexpr std::uint8_t kGenericMethodKind = 3U;
     for (const interop::LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)

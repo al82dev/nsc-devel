@@ -608,7 +608,8 @@ void ProjectNameLookup::predeclareNode(
             std::string(unit.moduleName()),
             joinSegments(namespaceSegments),
             node->text(),
-            node->first() != nullptr});
+            node->first() != nullptr,
+            unit.isPrecompiled()});
         return;
     }
 
