@@ -139,7 +139,8 @@ struct DriverExecutionScope final
             if (reportTiming) output << o2Budget.report() << '\n';
             if (o2Budget.exceeded())
             {
-                error << "nsc: warning: O2 optimization budget exceeded; "
+                error << compilerText("nsc: warning: O2 optimization budget exceeded; ",
+                                      "nsc: advertencia: se excedió el presupuesto de optimización O2; ")
                       << o2Budget.report() << '\n';
             }
         }
@@ -3146,7 +3147,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (linkTimeOptimizationSeen)
             {
-                error << "nsc: error: duplicate link-time optimization mode\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate link-time optimization mode\n",
+                    "el modo de optimización en tiempo de enlace está repetido\n");
                 return ExitCode::CommandLineError;
             }
             linkTimeOptimizationSeen = true;
@@ -3157,7 +3160,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (linkTimeOptimizationSeen)
             {
-                error << "nsc: error: duplicate link-time optimization mode\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate link-time optimization mode\n",
+                    "el modo de optimización en tiempo de enlace está repetido\n");
                 return ExitCode::CommandLineError;
             }
             linkTimeOptimizationSeen = true;
@@ -3167,8 +3172,12 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 linkTimeOptimization = llvm_backend::LinkTimeOptimizationMode::Full;
             else
             {
-                error << "nsc: error: unsupported link-time optimization mode '" << argument
-                      << "'; expected -flto, -flto=full, or -flto=thin\n";
+                error << "nsc: error: " << compilerText(
+                             "unsupported link-time optimization mode '",
+                             "modo de optimización en tiempo de enlace no compatible '")
+                      << argument << compilerText(
+                             "'; expected -flto, -flto=full, or -flto=thin\n",
+                             "'; se esperaba -flto, -flto=full o -flto=thin\n");
                 return ExitCode::CommandLineError;
             }
             continue;
@@ -3178,7 +3187,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (floatingPointModeSeen)
             {
-                error << "nsc: error: duplicate floating-point mode\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate floating-point mode\n", "el modo de punto flotante está repetido\n");
                 return ExitCode::CommandLineError;
             }
             floatingPointModeSeen = true;
@@ -3186,8 +3196,12 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 llvm_backend::parseFloatingPointMode(argument.substr(floatingPointModePrefix.size()));
             if (!parsed.has_value())
             {
-                error << "nsc: error: unsupported floating-point mode '" << argument
-                      << "'; expected --fp-mode=precise, fast, or deterministic\n";
+                error << "nsc: error: " << compilerText(
+                             "unsupported floating-point mode '",
+                             "modo de punto flotante no compatible '")
+                      << argument << compilerText(
+                             "'; expected --fp-mode=precise, fast, or deterministic\n",
+                             "'; se esperaba --fp-mode=precise, fast o deterministic\n");
                 return ExitCode::CommandLineError;
             }
             floatingPointMode = *parsed;
@@ -3198,7 +3212,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (fmaContractPolicySeen)
             {
-                error << "nsc: error: duplicate FMA contraction policy\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate FMA contraction policy\n", "la política de contracción FMA está repetida\n");
                 return ExitCode::CommandLineError;
             }
             fmaContractPolicySeen = true;
@@ -3206,8 +3221,12 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 llvm_backend::parseFmaContractPolicy(argument.substr(fmaContractPrefix.size()));
             if (!parsed.has_value())
             {
-                error << "nsc: error: unsupported FMA contraction policy '" << argument
-                      << "'; expected --fp-contract=off, on, or fast\n";
+                error << "nsc: error: " << compilerText(
+                             "unsupported FMA contraction policy '",
+                             "política de contracción FMA no compatible '")
+                      << argument << compilerText(
+                             "'; expected --fp-contract=off, on, or fast\n",
+                             "'; se esperaba --fp-contract=off, on o fast\n");
                 return ExitCode::CommandLineError;
             }
             fmaContractPolicy = *parsed;
@@ -3218,7 +3237,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (floatingPointRoundingModeSeen)
             {
-                error << "nsc: error: duplicate floating-point rounding mode\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate floating-point rounding mode\n",
+                    "el modo de redondeo de punto flotante está repetido\n");
                 return ExitCode::CommandLineError;
             }
             floatingPointRoundingModeSeen = true;
@@ -3227,8 +3248,12 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                     argument.substr(floatingPointRoundingPrefix.size()));
             if (!parsed.has_value())
             {
-                error << "nsc: error: unsupported floating-point rounding mode '" << argument
-                      << "'; expected --fp-rounding=dynamic, nearest-even, toward-zero, upward, or downward\n";
+                error << "nsc: error: " << compilerText(
+                             "unsupported floating-point rounding mode '",
+                             "modo de redondeo de punto flotante no compatible '")
+                      << argument << compilerText(
+                             "'; expected --fp-rounding=dynamic, nearest-even, toward-zero, upward, or downward\n",
+                             "'; se esperaba --fp-rounding=dynamic, nearest-even, toward-zero, upward o downward\n");
                 return ExitCode::CommandLineError;
             }
             floatingPointRoundingMode = *parsed;
@@ -3239,7 +3264,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (floatingPointDenormalModeSeen)
             {
-                error << "nsc: error: duplicate floating-point denormal mode\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate floating-point denormal mode\n",
+                    "el modo de desnormalizados de punto flotante está repetido\n");
                 return ExitCode::CommandLineError;
             }
             floatingPointDenormalModeSeen = true;
@@ -3248,8 +3275,12 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                     argument.substr(floatingPointDenormalPrefix.size()));
             if (!parsed.has_value())
             {
-                error << "nsc: error: unsupported floating-point denormal mode '" << argument
-                      << "'; expected --fp-denormal=preserve, ftz, daz, or ftz-daz\n";
+                error << "nsc: error: " << compilerText(
+                             "unsupported floating-point denormal mode '",
+                             "modo de desnormalizados de punto flotante no compatible '")
+                      << argument << compilerText(
+                             "'; expected --fp-denormal=preserve, ftz, daz, or ftz-daz\n",
+                             "'; se esperaba --fp-denormal=preserve, ftz, daz o ftz-daz\n");
                 return ExitCode::CommandLineError;
             }
             floatingPointDenormalMode = *parsed;
@@ -3260,7 +3291,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (compilationProfileSeen)
             {
-                error << "nsc: error: duplicate compilation profile\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate compilation profile\n", "el perfil de compilación está repetido\n");
                 return ExitCode::CommandLineError;
             }
             compilationProfileSeen = true;
@@ -3268,8 +3300,12 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 argument.substr(compilationProfilePrefix.size()));
             if (!compilationProfile.has_value())
             {
-                error << "nsc: error: unsupported compilation profile '" << argument
-                      << "'; expected --profile=debug or --profile=release\n";
+                error << "nsc: error: " << compilerText(
+                             "unsupported compilation profile '",
+                             "perfil de compilación no compatible '")
+                      << argument << compilerText(
+                             "'; expected --profile=debug or --profile=release\n",
+                             "'; se esperaba --profile=debug o --profile=release\n");
                 return ExitCode::CommandLineError;
             }
             continue;
@@ -3278,7 +3314,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (jobCountSeen)
             {
-                error << "nsc: error: duplicate compilation job count\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate compilation job count\n", "el número de trabajos de compilación está repetido\n");
                 return ExitCode::CommandLineError;
             }
             jobCountSeen = true;
@@ -3287,7 +3324,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             {
                 if (argumentIndex + 1U >= arguments.size())
                 {
-                    error << "nsc: error: -j requires a job count from 1 through 1024\n";
+                    error << "nsc: error: " << compilerText(
+                        "-j requires a job count from 1 through 1024\n",
+                        "-j requiere un número de trabajos entre 1 y 1024\n");
                     return ExitCode::CommandLineError;
                 }
                 value = arguments[++argumentIndex];
@@ -3299,7 +3338,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             std::size_t jobs = 0;
             if (!parseBoundedDecimal(value, kMaximumCompilationJobs, jobs) || jobs == 0)
             {
-                error << "nsc: error: compilation job count must be between 1 and 1024\n";
+                error << "nsc: error: " << compilerText(
+                    "compilation job count must be between 1 and 1024\n",
+                    "el número de trabajos de compilación debe estar entre 1 y 1024\n");
                 return ExitCode::CommandLineError;
             }
             jobPolicy.setRequestedJobs(jobs);
@@ -3310,7 +3351,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (reservedCoresSeen)
             {
-                error << "nsc: error: duplicate reserved-core count\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate reserved-core count\n", "el número de núcleos reservados está repetido\n");
                 return ExitCode::CommandLineError;
             }
             reservedCoresSeen = true;
@@ -3318,7 +3360,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             std::size_t reserved = 0;
             if (!parseBoundedDecimal(value, kMaximumCompilationJobs - 1U, reserved))
             {
-                error << "nsc: error: reserved-core count must be between 0 and 1023\n";
+                error << "nsc: error: " << compilerText(
+                    "reserved-core count must be between 0 and 1023\n",
+                    "el número de núcleos reservados debe estar entre 0 y 1023\n");
                 return ExitCode::CommandLineError;
             }
             jobPolicy.setReservedCores(reserved);
@@ -3329,7 +3373,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (artifactCacheSeen)
             {
-                error << "nsc: error: duplicate artifact-cache directory\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate artifact-cache directory\n", "el directorio de caché de artefactos está repetido\n");
                 return ExitCode::CommandLineError;
             }
             artifactCacheSeen = true;
@@ -3337,7 +3382,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             const std::filesystem::path cachePath{std::string(value)};
             if (value.empty() || !cachePath.is_absolute())
             {
-                error << "nsc: error: artifact cache requires an absolute directory: '"
+                error << "nsc: error: " << compilerText(
+                             "artifact cache requires an absolute directory: '",
+                             "la caché de artefactos requiere un directorio absoluto: '")
                       << value << "'\n";
                 return ExitCode::CommandLineError;
             }
@@ -3350,7 +3397,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (libraryReferenceRootSeen)
             {
-                error << "nsc: error: duplicate library-reference root\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate library-reference root\n", "la raíz de referencias de bibliotecas está repetida\n");
                 return ExitCode::CommandLineError;
             }
             libraryReferenceRootSeen = true;
@@ -3359,7 +3407,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             {
                 if (argumentIndex + 1U >= arguments.size())
                 {
-                    error << "nsc: error: --library-reference-root requires an absolute directory\n";
+                    error << "nsc: error: " << compilerText(
+                        "--library-reference-root requires an absolute directory\n",
+                        "--library-reference-root requiere un directorio absoluto\n");
                     return ExitCode::CommandLineError;
                 }
                 value = arguments[++argumentIndex];
@@ -3371,7 +3421,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             const std::filesystem::path root{std::string(value)};
             if (value.empty() || !root.is_absolute())
             {
-                error << "nsc: error: library-reference root requires an absolute directory: '"
+                error << "nsc: error: " << compilerText(
+                             "library-reference root requires an absolute directory: '",
+                             "la raíz de referencias de bibliotecas requiere un directorio absoluto: '")
                       << value << "'\n";
                 return ExitCode::CommandLineError;
             }
@@ -3386,13 +3438,17 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             if (value.empty() || value.size() > 8U ||
                 !std::ranges::all_of(value, [](unsigned char ch) { return std::isdigit(ch) != 0; }))
             {
-                error << "nsc: error: malformed timeout; expected --timeout-ms=1..86400000\n";
+                error << "nsc: error: " << compilerText(
+                    "malformed timeout; expected --timeout-ms=1..86400000\n",
+                    "tiempo límite mal formado; se esperaba --timeout-ms=1..86400000\n");
                 return ExitCode::CommandLineError;
             }
             for (char ch : value) milliseconds = milliseconds * 10U + static_cast<unsigned>(ch - '0');
             if (milliseconds == 0 || milliseconds > 86400000U)
             {
-                error << "nsc: error: timeout must be between 1 and 86400000 milliseconds\n";
+                error << "nsc: error: " << compilerText(
+                    "timeout must be between 1 and 86400000 milliseconds\n",
+                    "el tiempo límite debe estar entre 1 y 86400000 milisegundos\n");
                 return ExitCode::CommandLineError;
             }
             executionScope.deadline = executionScope.started + std::chrono::milliseconds(milliseconds);
@@ -3403,7 +3459,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (optimizationBudgetSeen)
             {
-                error << "nsc: error: duplicate O2 optimization budget\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate O2 optimization budget\n", "el presupuesto de optimización O2 está repetido\n");
                 return ExitCode::CommandLineError;
             }
             optimizationBudgetSeen = true;
@@ -3428,7 +3485,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (subsystemSeen)
             {
-                error << "nsc: error: duplicate executable subsystem\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate executable subsystem\n", "el subsistema del ejecutable está repetido\n");
                 return ExitCode::CommandLineError;
             }
             subsystemSeen = true;
@@ -3452,7 +3510,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (argumentIndex + 1 >= arguments.size())
             {
-                error << "nsc: error: --link-lib requires a library file path\n";
+                error << "nsc: error: " << compilerText(
+                    "--link-lib requires a library file path\n",
+                    "--link-lib requiere la ruta de un archivo de biblioteca\n");
                 return ExitCode::CommandLineError;
             }
             extraLinkLibraries.emplace_back(std::string(arguments[++argumentIndex]));
@@ -3491,7 +3551,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             if (optimizationLevelSeen)
             {
-                error << "nsc: error: duplicate LLVM optimization level\n";
+                error << "nsc: error: " << compilerText(
+                    "duplicate LLVM optimization level\n", "el nivel de optimización LLVM está repetido\n");
                 return ExitCode::CommandLineError;
             }
             optimizationLevelSeen = true;
@@ -3502,7 +3563,10 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 case '2': optimizationLevel = llvm_backend::LlvmOptimizationLevel::O2; break;
                 case '3': optimizationLevel = llvm_backend::LlvmOptimizationLevel::O3; break;
                 default:
-                    error << "nsc: error: unsupported LLVM optimization level '" << argument << "'\n";
+                    error << "nsc: error: " << compilerText(
+                                 "unsupported LLVM optimization level '",
+                                 "nivel de optimización LLVM no compatible '")
+                          << argument << "'\n";
                     return ExitCode::CommandLineError;
             }
             continue;
@@ -3821,7 +3885,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         }
         if (!argument.empty() && argument.front() == '-')
         {
-            error << "nsc: error: unknown option '" << argument << "'\n";
+            error << "nsc: error: " << compilerText("unknown option '", "opción desconocida '")
+                  << argument << "'\n";
             return ExitCode::CommandLineError;
         }
         return runFrontend("--program", argument, optimizationLevel, output, error);
@@ -4354,8 +4419,10 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         }
     }
 
-    error << "nsc: error: invalid command line; use --help for supported options "
-             "(stage "
+    error << "nsc: error: " << compilerText(
+                 "invalid command line; use --help for supported options ",
+                 "línea de comandos no válida; use --help para ver las opciones compatibles ")
+          << "(stage "
           << kCompilerStage << ")\n";
     return ExitCode::CommandLineError;
 }
@@ -4506,8 +4573,30 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-target\n"
            << "  nsc --print-data-layout\n"
            << "  nsc --version\n\n"
-           << "  nsc --language <en|es> ...\n\n"
-           << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a "
+           << "  nsc --language <en|es> ...\n\n";
+    if (activeCompilerLanguage() == CompilerLanguage::Spanish)
+    {
+        output << "Las opciones -O0, -O1, -O2 y -O3 pueden aparecer en cualquier posición del comando de compilación.\n"
+               << "--fp-mode, --fp-contract, --fp-rounding y --fp-denormal controlan el contrato de punto flotante.\n"
+               << "--time muestra tiempos por fase y tiempo total; --timeout-ms=N solicita cancelación cooperativa.\n"
+               << "Los comandos de construcción muestran progreso de fases, fuentes y módulos LLVM de forma predeterminada; "
+                  "--progress lo habilita en comandos de diagnóstico.\n"
+               << "--quiet suprime la salida normal y el progreso automático; --verbose agrega tiempos.\n"
+               << "--language en|es selecciona los mensajes legibles; --no-banner suprime el banner de compilación.\n"
+               << "--log=<archivo> registra salida, errores, argumentos y estado; los fallos crean error.log, error1.log, ... "
+                  "salvo que se use --no-error-log.\n"
+               << "--o2-budget-ms=N establece el presupuesto consultivo de LLVM O2 sin cambiar el artefacto ni el código de salida.\n"
+               << "--llvm-pass-trace habilita la traza completa y costosa de pases LLVM.\n"
+               << "-j N limita los trabajos; --reserve-cores=N conserva capacidad del equipo.\n"
+               << "--artifact-cache=<directorio-absoluto> habilita reutilización verificada por contenido.\n"
+               << "--library-reference-root <directorio-absoluto> resuelve referencias de biblioteca desde una raíz de configuración.\n"
+               << "--profile=debug selecciona O0 con depuración completa; --profile=release selecciona O2 con tablas de líneas.\n"
+               << "NSC_LLD_LINK selecciona el enlazador PE y NSC_LLVM_LIB selecciona el bibliotecario estático.\n"
+               << "Este ejecutable es la versión estable NativeSharp 2.0; la documentación vigente está en "
+                  "share/nativesharp/docs/2.0.\n";
+        return;
+    }
+    output << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a "
               "compilation command.\n"
            << "--fp-mode=precise|fast|deterministic selects the floating-point IR contract; "
               "precise is the default and fast is explicit opt-in.\n"

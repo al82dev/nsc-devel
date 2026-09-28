@@ -229,8 +229,10 @@ int runCompiler(int argc, char** argv)
     if (!timeTracePath.empty()) arguments.emplace_back("--time");
     if (logFormat != "text" && logFormat != "json")
     {
-        std::cerr << "nsc: error: unsupported log format '" << logFormat
-                  << "'; expected text or json\n";
+        std::cerr << "nsc: error: " << nativesharp::driver::compilerText(
+            "unsupported log format '", "formato de registro no compatible '") << logFormat
+                  << nativesharp::driver::compilerText("'; expected text or json\n",
+                                                       "'; se esperaba text o json\n");
         return static_cast<int>(nativesharp::ExitCode::CommandLineError);
     }
 
@@ -246,7 +248,9 @@ int runCompiler(int argc, char** argv)
             std::cerr << trace.diagnostics;
             if (!child.launchError.empty())
             {
-                std::cerr << "nsc: warning: LLVM trace supervisor could not read its child: "
+                std::cerr << nativesharp::driver::compilerText(
+                                 "nsc: warning: LLVM trace supervisor could not read its child: ",
+                                 "nsc: advertencia: el supervisor de trazas LLVM no pudo leer su proceso hijo: ")
                           << child.launchError << '\n';
             }
 
@@ -259,15 +263,20 @@ int runCompiler(int argc, char** argv)
                 nativesharp::llvm_backend::observeLlvmPassLog(trace.passLog, observation);
                 if (!observation.lastObservedPass.empty())
                 {
-                    std::cerr << "nsc: LLVM optimization trace: ultimo pass observado '"
+                    std::cerr << nativesharp::driver::compilerText(
+                                     "nsc: LLVM optimization trace: last observed pass '",
+                                     "nsc: traza de optimización LLVM: último pase observado '")
                               << observation.lastObservedPass << "'";
                     if (!observation.lastObservedUnit.empty())
                     {
-                        std::cerr << "; ultima funcion/unidad observada '"
+                        std::cerr << nativesharp::driver::compilerText(
+                                         "; last observed function/unit '",
+                                         "; última función/unidad observada '")
                                   << observation.lastObservedUnit << "'";
                     }
                     std::cerr << "; " << observation.observedPassCount
-                              << " pases observados\n";
+                              << nativesharp::driver::compilerText(
+                                     " passes observed\n", " pases observados\n");
                 }
             }
             return static_cast<int>(child.exitCode);
@@ -275,7 +284,9 @@ int runCompiler(int argc, char** argv)
 
         // Observar no puede crear una forma nueva de impedir la compilacion. Si ni siquiera se
         // pudo crear el hijo, se ejecuta el driver localmente y se conserva la causa en stderr.
-        std::cerr << "nsc: warning: LLVM trace supervisor unavailable: "
+        std::cerr << nativesharp::driver::compilerText(
+                         "nsc: warning: LLVM trace supervisor unavailable: ",
+                         "nsc: advertencia: el supervisor de trazas LLVM no está disponible: ")
                   << child.launchError << '\n';
     }
     else if (traceWorker)
@@ -324,7 +335,9 @@ int runCompiler(int argc, char** argv)
             capturedOutput.str(), capturedError.str()) && logOk;
     if (!logOk)
     {
-        std::cerr << "nsc: warning: compilation log could not be published atomically\n";
+        std::cerr << nativesharp::driver::compilerText(
+            "nsc: warning: compilation log could not be published atomically\n",
+            "nsc: advertencia: el registro de compilación no pudo publicarse de forma atómica\n");
     }
     return numericExitCode;
 }

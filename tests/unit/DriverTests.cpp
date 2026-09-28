@@ -106,6 +106,27 @@ int main()
     {
         std::ostringstream output;
         std::ostringstream error;
+        const std::vector<std::string_view> arguments = {"--language=es", "--not-an-option"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError &&
+                error.str().find("opción desconocida '--not-an-option'") != std::string::npos,
+            "Spanish selection localizes an unknown-option diagnostic");
+        tests.expect(output.str().empty(), "Spanish option failure keeps stdout empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {"--language", "es", "--version", "-j0"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError &&
+                error.str().find("debe estar entre 1 y 1024") != std::string::npos,
+            "Spanish selection localizes numeric command-line validation");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
         const std::vector<std::string_view> arguments = {"--version", "--time"};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success && output.str().find("timing total_ms=") != std::string::npos,
