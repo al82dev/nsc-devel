@@ -26,7 +26,7 @@ endif()
 
 # CC1-000 / version de build. La version compatible es estable; la identidad visible cambia en
 # CADA construccion real de nsc, incluso en un build incremental que no vuelve a configurar CMake.
-# `nsc_build_identity` es un target siempre desactualizado y nsc_driver depende de el. Solo
+# `nsc_build_identity` es un target siempre desactualizado y nsc_basic depende de el. Solo
 # Version.cpp incluye el header generado: asi no existe una carrera con los muchos tests que
 # incluyen Version.h y tampoco se obliga a recompilar todo el frontend por cambiar un string.
 set(NSC_COMPILER_RELEASE_VERSION "${PROJECT_VERSION}")
@@ -73,15 +73,15 @@ message(STATUS
 # por defecto:
 #
 #   build/bin/    -- nsc (el compilador). Unico ejecutable "de producto" de este proyecto.
-#   build/lib/    -- las 7 librerias estaticas internas (nsc_compilation, nsc_target,
-#                    nsc_frontend, nsc_llvm, nsc_runtime, nsc_linker, nsc_driver) -- .a en
+#   build/lib/    -- las librerias estaticas internas (incluidas nsc_basic, nsc_compilation,
+#                    nsc_target, nsc_frontend, nsc_language_service, backend y driver) -- .a en
 #                    Linux/macOS, .lib en Windows/MSVC. Estas variables tambien cubren
 #                    CMAKE_LIBRARY_OUTPUT_DIRECTORY (.so/.dll si alguna vez se agrega una
 #                    libreria compartida) e IMPORTED_IMPLIB en Windows.
 #   build/tests/  -- los ~95 ejecutables de test (solo si NSC_BUILD_TESTS=ON, el default).
 #
 # CMAKE_ARCHIVE_OUTPUT_DIRECTORY / CMAKE_LIBRARY_OUTPUT_DIRECTORY se fijan UNA sola vez aqui,
-# antes de cualquier add_library(), y aplican a las 7 sin excepcion -- no hay split como con los
+# antes de cualquier add_library(), y aplican a todas sin excepcion -- no hay split como con los
 # ejecutables porque aqui no hace falta separar "producto" de "test", todas son librerias
 # internas del propio compilador.
 #
@@ -113,6 +113,16 @@ function(nsc_enable_warnings target_name)
         endif()
     endif()
 endfunction()
+
+add_library(nsc_basic STATIC
+    src/Basic/Version.cpp)
+
+target_include_directories(nsc_basic PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_BINARY_DIR}/generated)
+target_compile_features(nsc_basic PUBLIC cxx_std_20)
+nsc_enable_warnings(nsc_basic)
+add_dependencies(nsc_basic nsc_build_identity)
 
 add_library(nsc_compilation STATIC
     src/Driver/CompilationJobPolicy.cpp
@@ -278,6 +288,30 @@ target_link_libraries(nsc_frontend PUBLIC nsc_target nsc_compilation)
 target_compile_features(nsc_frontend PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_frontend)
 
+add_library(nsc_language_service STATIC
+    src/LanguageService/LanguageService.cpp)
+
+target_include_directories(nsc_language_service PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(nsc_language_service PUBLIC nsc_frontend PRIVATE nsc_basic)
+target_compile_features(nsc_language_service PUBLIC cxx_std_20)
+nsc_enable_warnings(nsc_language_service)
+
+# Build-tree contract consumed by the separate A:\nsc-lsp repository. The language server links
+# the facade statically; only nsc-lsp.exe is installed in the final NativeSharp distribution.
+set_target_properties(nsc_language_service PROPERTIES EXPORT_NAME LanguageService)
+set_target_properties(nsc_frontend PROPERTIES EXPORT_NAME Frontend)
+set_target_properties(nsc_target PROPERTIES EXPORT_NAME Target)
+set_target_properties(nsc_compilation PROPERTIES EXPORT_NAME Compilation)
+set_target_properties(nsc_basic PROPERTIES EXPORT_NAME Basic)
+export(TARGETS
+    nsc_language_service
+    nsc_frontend
+    nsc_target
+    nsc_compilation
+    nsc_basic
+    NAMESPACE NativeSharp::
+    FILE "${CMAKE_CURRENT_BINARY_DIR}/NativeSharpLanguageServiceTargets.cmake")
+
 # Delivery 18: LLVM is a real backend dependency. Prefer an installed LLVM CMake
 # package, but allow a monolithic libLLVM fallback for environments that ship
 # the runtime library without development headers. The implementation uses the
@@ -379,7 +413,6 @@ target_compile_features(nsc_linker PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_linker)
 
 add_library(nsc_driver STATIC
-    src/Basic/Version.cpp
     src/Driver/BreakingChangeLedger.cpp
     src/Driver/CompilationProfile.cpp
     src/Driver/CompilationGraphScheduler.cpp
@@ -402,10 +435,9 @@ add_library(nsc_driver STATIC
     src/Interop/LibraryMetadataMerger.cpp)
 
 target_include_directories(nsc_driver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(nsc_driver PUBLIC nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+target_link_libraries(nsc_driver PUBLIC nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target nsc_basic)
 target_compile_features(nsc_driver PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_driver)
-add_dependencies(nsc_driver nsc_build_identity)
 
 # nsc cae en build/bin/ -- CMAKE_RUNTIME_OUTPUT_DIRECTORY ya quedo en ${CMAKE_BINARY_DIR}/bin
 # desde el bloque de arriba (justo despues de los option()), asi que no hace falta reasignarla
@@ -1197,6 +1229,14 @@ if(NSC_BUILD_TESTS)
         nsc_enable_warnings(${target_name})
         add_test(NAME ${test_name} COMMAND ${target_name})
     endfunction()
+
+    add_executable(
+        nsc_language_service_identity_tests
+        tests/unit/LanguageServiceIdentityTests.cpp)
+    target_link_libraries(nsc_language_service_identity_tests PRIVATE nsc_language_service)
+    target_compile_features(nsc_language_service_identity_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_service_identity_tests)
+    add_test(NAME nsc.language-service.identity COMMAND nsc_language_service_identity_tests)
 
     add_executable(nsc_target_data_layout_tests tests/unit/TargetDataLayoutTests.cpp)
     target_link_libraries(nsc_target_data_layout_tests PRIVATE nsc_target)
