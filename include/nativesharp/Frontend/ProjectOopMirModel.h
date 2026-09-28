@@ -22,7 +22,7 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 11;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 12;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -335,6 +335,7 @@ struct ProjectOopMirNode final
     std::string debugDisplayName;
     lexer::TokenKind operation = lexer::TokenKind::Invalid;
     std::optional<std::size_t> memberOrdinal;
+    std::optional<std::size_t> namespaceFunctionOrdinal;
     // Stage 54.4 "Condition Variables" -- mirrors ProjectOopHirNode::secondaryMemberOrdinal (see
     // its comment there). Set only on a CoreMonitorWait node.
     std::optional<std::size_t> secondaryMemberOrdinal;
@@ -649,6 +650,7 @@ struct ProjectOopMirDispatchTable final
 struct ProjectOopMirFunction final
 {
     std::size_t memberOrdinal = 0;
+    std::optional<std::size_t> namespaceFunctionOrdinal;
     std::size_t declaringTypeOrdinal = 0;
     bool constructor = false;
     bool destructor = false;
@@ -744,6 +746,8 @@ public:
         std::uint64_t& stableInterfaceTypeId,
         std::size_t& slot) const noexcept;
     const ProjectOopMirFunction* functionForMember(std::size_t memberOrdinal) const noexcept;
+    const ProjectOopMirFunction* functionForNamespaceFunction(
+        std::size_t functionOrdinal) const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -772,6 +776,7 @@ private:
     std::vector<ProjectOopMirStructLayout> structLayouts_;
     std::vector<ProjectOopMirClassLayout> classLayouts_;
     std::vector<std::optional<std::size_t>> functionByMember_;
+    std::vector<std::optional<std::size_t>> functionByNamespaceFunction_;
     std::vector<ProjectOopMirDispatchTable> dispatchTables_;
     std::vector<std::optional<std::size_t>> dispatchTableByType_;
     std::vector<ProjectOopMirGenericSpecialization> genericSpecializations_;

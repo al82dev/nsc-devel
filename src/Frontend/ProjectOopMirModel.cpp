@@ -950,6 +950,14 @@ bool ProjectOopMirModel::build(
             layout.fields});
     }
     functionByMember_.resize(memberModel.members().size());
+    for (const ProjectOopHirFunction& function : hirModel.functions())
+    {
+        if (function.namespaceFunctionOrdinal.has_value() &&
+            *function.namespaceFunctionOrdinal >= functionByNamespaceFunction_.size())
+        {
+            functionByNamespaceFunction_.resize(*function.namespaceFunctionOrdinal + 1U);
+        }
+    }
     dispatchTableByType_.resize(nameLookup.namedTypes().size());
 
     for (const ClassVirtualTable& sourceTable : virtualDispatchModel.classTables())
@@ -1167,6 +1175,7 @@ bool ProjectOopMirModel::build(
                                    std::string& functionError) {
         ProjectOopMirFunction function;
         function.memberOrdinal = source.memberOrdinal;
+        function.namespaceFunctionOrdinal = source.namespaceFunctionOrdinal;
         function.declaringTypeOrdinal = source.declaringTypeOrdinal;
         function.constructor = source.constructor;
         function.destructor = source.destructor;
@@ -1289,8 +1298,14 @@ bool ProjectOopMirModel::build(
             return false;
         }
         ProjectOopMirFunction function = std::move(*loweredFunctions[index]);
-        if (!function.isLambda && !function.isSyntheticImplicitConstructor)
+        if (function.namespaceFunctionOrdinal.has_value())
+        {
+            functionByNamespaceFunction_[*function.namespaceFunctionOrdinal] = functions_.size();
+        }
+        else if (!function.isLambda && !function.isSyntheticImplicitConstructor)
+        {
             functionByMember_[function.memberOrdinal] = functions_.size();
+        }
         functions_.push_back(std::move(function));
     }
 
@@ -1556,6 +1571,16 @@ const ProjectOopMirFunction* ProjectOopMirModel::functionForMember(std::size_t m
     return &functions_[*functionByMember_[memberOrdinal]];
 }
 
+const ProjectOopMirFunction* ProjectOopMirModel::functionForNamespaceFunction(
+    std::size_t functionOrdinal) const noexcept
+{
+    if (functionOrdinal >= functionByNamespaceFunction_.size() ||
+        !functionByNamespaceFunction_[functionOrdinal].has_value())
+    {
+        return nullptr;
+    }
+    return &functions_[*functionByNamespaceFunction_[functionOrdinal]];
+}
 bool ProjectOopMirModel::isBuilt() const noexcept
 {
     return built_;
@@ -1577,6 +1602,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->debugDisplayName = node->debugDisplayName;
     result->operation = node->operation;
     result->memberOrdinal = node->memberOrdinal;
+    result->namespaceFunctionOrdinal = node->namespaceFunctionOrdinal;
     result->secondaryMemberOrdinal = node->secondaryMemberOrdinal;
     result->localOrdinal = node->localOrdinal;
     result->parameterOrdinal = node->parameterOrdinal;
@@ -2459,12 +2485,26 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
 
         case ProjectOopHirNodeKind::StaticCall:
         {
-            if (!node->memberOrdinal.has_value() || hirModel_ == nullptr)
+            if (hirModel_ == nullptr)
             {
-                error = "Stage 37 static call has no selected target method";
+                error = "Stage 37 static call has no HIR model";
                 return nullptr;
             }
-            const ProjectOopHirFunction* target = hirModel_->functionForMember(*node->memberOrdinal);
+            const ProjectOopHirFunction* target = nullptr;
+            if (node->namespaceFunctionOrdinal.has_value())
+            {
+                target = hirModel_->functionForNamespaceFunction(
+                    *node->namespaceFunctionOrdinal);
+            }
+            else if (node->memberOrdinal.has_value())
+            {
+                target = hirModel_->functionForMember(*node->memberOrdinal);
+            }
+            else
+            {
+                error = "Stage 37 static call has no selected target";
+                return nullptr;
+            }
             if (target == nullptr || !target->isStatic)
             {
                 error = "Stage 37 static call target is missing or is not static";
@@ -2474,7 +2514,6 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->calleeName = target->mangledName;
             break;
         }
-
         case ProjectOopHirNodeKind::TemporaryAddress:
             result->kind = ProjectOopMirNodeKind::TemporaryAddress;
             break;
@@ -2550,6 +2589,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                 }
                 result->calleeName = constructor->mangledName;
                 result->memberOrdinal = node->memberOrdinal;
+    result->namespaceFunctionOrdinal = node->namespaceFunctionOrdinal;
             }
             break;
         }
@@ -2600,6 +2640,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                 }
                 result->calleeName = constructor->mangledName;
                 result->memberOrdinal = node->memberOrdinal;
+    result->namespaceFunctionOrdinal = node->namespaceFunctionOrdinal;
             }
             break;
         }
