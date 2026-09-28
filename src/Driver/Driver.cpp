@@ -2291,9 +2291,10 @@ bool buildPrecompiledGenericTemplateSource(
         {
             if (generic.ownerName.empty())
             {
-                error =
-                    "metadata generic method '" + generic.canonicalKey + "' has an unsupported declaring-type identity";
-                return false;
+                generated << generic.sourceText << std::endl;
+                if (!generic.namespaceName.empty())
+                    generated << static_cast<char>(125) << std::endl;
+                continue;
             }
 
             std::size_t openedOwners = 0;

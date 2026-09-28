@@ -593,7 +593,8 @@ void ProjectNameLookup::predeclareNode(
         return;
     }
 
-    if (node->kind() == ast::AstNodeKind::FunctionDeclaration && !namespaceSegments.empty())
+    if (node->kind() == ast::AstNodeKind::FunctionDeclaration &&
+        !namespaceSegments.empty() && node->genericParameters().empty())
     {
         index.namespaceFunctions.push_back(NamespaceFunctionDeclaration{
             node->tokenKind() == lexer::TokenKind::KwPublic
