@@ -93,6 +93,27 @@ struct NamedTypeDeclaration final
     std::vector<NamedTypeDeclarationPart> parts;
 };
 
+enum class NamespaceFunctionAccessibility
+{
+    Internal,
+    Public
+};
+
+struct NamespaceFunctionDeclaration final
+{
+    NamespaceFunctionAccessibility accessibility = NamespaceFunctionAccessibility::Internal;
+    std::size_t projectOrdinal = 0;
+    std::size_t sourceOrdinal = 0;
+    FileId fileId;
+    SourceRange range;
+    const ast::AstNode* syntax = nullptr;
+    std::string sourcePath;
+    std::string moduleName;
+    std::string namespaceName;
+    std::string name;
+    bool hasBody = false;
+};
+
 enum class TypeNameBindingKind
 {
     Builtin,
@@ -167,6 +188,7 @@ public:
 
     std::span<const std::unique_ptr<ModuleDeclarationSpace>> modules() const noexcept;
     std::span<const NamedTypeDeclaration> namedTypes() const noexcept;
+    std::span<const NamespaceFunctionDeclaration> namespaceFunctions() const noexcept;
     std::span<const TypeNameBinding> bindings() const noexcept;
 
     const NamedTypeDeclaration* resolvedDeclaration(const ast::TypeSyntax* syntax) const noexcept;
@@ -189,6 +211,7 @@ private:
     {
         std::vector<std::vector<std::string>> namespaces;
         std::vector<PendingTypeDeclaration> pendingTypes;
+        std::vector<NamespaceFunctionDeclaration> namespaceFunctions;
     };
 
     struct UnitBindingIndex final
@@ -291,6 +314,7 @@ private:
     std::vector<std::unique_ptr<ModuleDeclarationSpace>> modules_;
     std::vector<PendingTypeDeclaration> pendingTypes_;
     std::vector<NamedTypeDeclaration> namedTypes_;
+    std::vector<NamespaceFunctionDeclaration> namespaceFunctions_;
     std::vector<TypeNameBinding> bindings_;
     std::vector<std::unordered_map<std::string, std::size_t>> typesByModule_;
     // NSC-LIMIT-009. `ns.Outer.Item` -> ordinal. Solo tipos anidados; nunca sustituye a

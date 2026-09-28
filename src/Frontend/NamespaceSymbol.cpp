@@ -81,6 +81,16 @@ std::span<const std::size_t> NamespaceSymbol::typeOrdinals() const noexcept
     return typeOrdinals_;
 }
 
+void NamespaceSymbol::addFunctionOrdinal(std::size_t ordinal)
+{
+    functionOrdinals_.push_back(ordinal);
+}
+
+std::span<const std::size_t> NamespaceSymbol::functionOrdinals() const noexcept
+{
+    return functionOrdinals_;
+}
+
 std::span<const std::unique_ptr<NamespaceSymbol>> NamespaceSymbol::children() const noexcept
 {
     return children_;

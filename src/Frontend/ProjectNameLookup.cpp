@@ -304,7 +304,8 @@ bool ProjectNameLookup::build(
     diagnostics::DiagnosticEngine& diagnostics,
     std::size_t workerCount)
 {
-    if (built_ || !modules_.empty() || !pendingTypes_.empty() || !namedTypes_.empty() || !bindings_.empty())
+    if (built_ || !modules_.empty() || !pendingTypes_.empty() || !namedTypes_.empty() ||
+        !namespaceFunctions_.empty() || !bindings_.empty())
     {
         return false;
     }
@@ -345,8 +346,29 @@ bool ProjectNameLookup::build(
             pendingTypes_.end(),
             std::make_move_iterator(unitIndex.pendingTypes.begin()),
             std::make_move_iterator(unitIndex.pendingTypes.end()));
+        namespaceFunctions_.insert(
+            namespaceFunctions_.end(),
+            std::make_move_iterator(unitIndex.namespaceFunctions.begin()),
+            std::make_move_iterator(unitIndex.namespaceFunctions.end()));
     }
     finalizePredeclarations(diagnostics);
+    std::sort(
+        namespaceFunctions_.begin(),
+        namespaceFunctions_.end(),
+        [](const NamespaceFunctionDeclaration& left, const NamespaceFunctionDeclaration& right)
+        {
+            if (left.moduleName != right.moduleName) return left.moduleName < right.moduleName;
+            if (left.namespaceName != right.namespaceName) return left.namespaceName < right.namespaceName;
+            if (left.name != right.name) return left.name < right.name;
+            if (left.sourceOrdinal != right.sourceOrdinal) return left.sourceOrdinal < right.sourceOrdinal;
+            return left.range.begin().offset() < right.range.begin().offset();
+        });
+    for (std::size_t ordinal = 0; ordinal < namespaceFunctions_.size(); ++ordinal)
+    {
+        const NamespaceFunctionDeclaration& function = namespaceFunctions_[ordinal];
+        std::vector<std::string> segments = splitQualifiedName(function.namespaceName);
+        modules_[function.projectOrdinal]->globalNamespace().ensureNamespace(segments).addFunctionOrdinal(ordinal);
+    }
 
     std::vector<UnitBindingIndex> bindingIndexes(units.size());
     std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
@@ -396,6 +418,11 @@ std::span<const std::unique_ptr<ModuleDeclarationSpace>> ProjectNameLookup::modu
 std::span<const NamedTypeDeclaration> ProjectNameLookup::namedTypes() const noexcept
 {
     return namedTypes_;
+}
+
+std::span<const NamespaceFunctionDeclaration> ProjectNameLookup::namespaceFunctions() const noexcept
+{
+    return namespaceFunctions_;
 }
 
 std::span<const TypeNameBinding> ProjectNameLookup::bindings() const noexcept
@@ -544,6 +571,25 @@ void ProjectNameLookup::predeclareNode(
         {
             predeclareNode(unit, child, nestedNamespace, containingTypes, sourcePath, index);
         }
+        return;
+    }
+
+    if (node->kind() == ast::AstNodeKind::FunctionDeclaration && !namespaceSegments.empty())
+    {
+        index.namespaceFunctions.push_back(NamespaceFunctionDeclaration{
+            node->tokenKind() == lexer::TokenKind::KwPublic
+                ? NamespaceFunctionAccessibility::Public
+                : NamespaceFunctionAccessibility::Internal,
+            unit.projectOrdinal(),
+            unit.sourceOrdinal(),
+            unit.fileId(),
+            node->range(),
+            node,
+            sourcePath,
+            std::string(unit.moduleName()),
+            joinSegments(namespaceSegments),
+            node->text(),
+            node->first() != nullptr});
         return;
     }
 
