@@ -428,6 +428,7 @@ struct ProjectOopHirNode final
     std::string debugDisplayName;
     lexer::TokenKind operation = lexer::TokenKind::Invalid;
     std::optional<std::size_t> memberOrdinal;
+    std::optional<std::size_t> namespaceFunctionOrdinal;
     // Stage 54.4 "Condition Variables" -- set ONLY on a CoreMonitorWait node, alongside
     // memberOrdinal above (which, for THIS node kind only, holds the `cv_` field's ordinal rather
     // than an ordinary field access's own ordinal). Holds the `lock_` field's ordinal. Default-
@@ -520,6 +521,7 @@ struct ProjectOopHirFieldInitializer final
 struct ProjectOopHirFunction final
 {
     std::size_t memberOrdinal = 0;
+    std::optional<std::size_t> namespaceFunctionOrdinal;
     std::size_t declaringTypeOrdinal = 0;
     bool constructor = false;
     bool destructor = false;
@@ -578,11 +580,14 @@ public:
         const ProjectObjectLayoutModel& objectLayoutModel,
         std::string& error,
         const ProjectGenericConstraintModel* genericConstraintModel = nullptr,
-        std::size_t workerCount = 1);
+        std::size_t workerCount = 1,
+        const ProjectNamespaceFunctionModel* namespaceFunctionModel = nullptr);
 
     std::span<const ProjectOopHirFunction> functions() const noexcept;
     std::span<const ProjectOopHirFieldInitializer> fieldInitializers() const noexcept;
     const ProjectOopHirFunction* functionForMember(std::size_t memberOrdinal) const noexcept;
+    const ProjectOopHirFunction* functionForNamespaceFunction(
+        std::size_t functionOrdinal) const noexcept;
     bool isBuilt() const noexcept;
 
     static std::string mangleCallable(
@@ -601,6 +606,7 @@ private:
         std::string& error,
         const ProjectGenericConstraintModel* genericConstraintModel,
         std::size_t workerCount,
+        const ProjectNamespaceFunctionModel* namespaceFunctionModel,
         std::optional<std::size_t> memberFilter,
         const ProjectOopHirModel* lookupSource);
 
@@ -703,6 +709,8 @@ private:
     const MethodNameBinding* nameBinding(const ast::AstNode* syntax) const noexcept;
     const MethodExpressionTypeBinding* expressionType(const ast::AstNode* syntax) const noexcept;
     const MethodCallBinding* callBinding(const ast::AstNode* syntax) const noexcept;
+    const NamespaceFunctionCallBinding* namespaceFunctionCallBinding(
+        const ast::AstNode* syntax) const noexcept;
     const MethodSwitchBinding* switchBinding(const ast::AstNode* syntax) const noexcept;
     const MethodRuntimeTypeBinding* runtimeTypeBinding(const ast::AstNode* syntax) const noexcept;
     const MethodDelegateBinding* delegateBinding(const ast::AstNode* syntax) const noexcept;
@@ -751,6 +759,7 @@ private:
     const ProjectInheritanceModel* inheritanceModel_ = nullptr;
     const ProjectInterfaceModel* interfaceModel_ = nullptr;
     const ProjectMethodBodyModel* methodBodyModel_ = nullptr;
+    const ProjectNamespaceFunctionModel* namespaceFunctionModel_ = nullptr;
     const ProjectConstructionModel* constructionModel_ = nullptr;
     const ProjectObjectLayoutModel* objectLayoutModel_ = nullptr;
     const ProjectGenericConstraintModel* genericConstraintModel_ = nullptr;
@@ -758,9 +767,12 @@ private:
     std::vector<ProjectOopHirFunction> functions_;
     std::vector<ProjectOopHirFieldInitializer> fieldInitializers_;
     std::vector<std::optional<std::size_t>> functionByMember_;
+    std::vector<std::optional<std::size_t>> functionByNamespaceFunction_;
     std::unordered_map<const ast::AstNode*, const MethodNameBinding*> nameBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodExpressionTypeBinding*> expressionTypeBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodCallBinding*> callBySyntax_;
+    std::unordered_map<const ast::AstNode*, const NamespaceFunctionCallBinding*>
+        namespaceFunctionCallBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodSwitchBinding*> switchBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodRuntimeTypeBinding*> runtimeTypeBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodDelegateBinding*> delegateBindingBySyntax_;
