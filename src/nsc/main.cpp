@@ -149,9 +149,21 @@ bool isCompilationInvocation(std::span<const std::string_view> arguments)
 {
     if (arguments.empty()) return false;
     if (arguments.front() == "build" || arguments.front() == "run") return true;
+    if (arguments.front() == "new" || arguments.front() == "restore" ||
+        arguments.front() == "clean" || arguments.front() == "add" ||
+        arguments.front() == "remove" || arguments.front() == "list")
+        return false;
     for (const std::string_view argument : arguments)
     {
         if (argument.starts_with("--emit-")) return true;
+        if (argument.starts_with("--check") || argument.starts_with("--dump-") ||
+            argument.starts_with("--verify-") || argument.starts_with("--print-") ||
+            argument.starts_with("--write-") || argument.starts_with("--compare-") ||
+            argument.starts_with("--apply-"))
+            return false;
+    }
+    for (const std::string_view argument : arguments)
+    {
         if (!argument.empty() && argument.front() != '-' &&
             (argument.ends_with(".ns") || argument.ends_with(".nsproj")))
             return true;
