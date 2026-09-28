@@ -52,12 +52,25 @@ struct NamespaceFunctionSymbol final
     bool isExternC = false;
 };
 
+struct NamespaceFunctionReferenceBinding final
+{
+    const ast::AstNode* callSyntax = nullptr;
+    const ast::AstNode* calleeSyntax = nullptr;
+    std::size_t projectOrdinal = 0;
+    FileId fileId;
+    std::string lexicalNamespace;
+    std::string writtenName;
+    bool qualified = false;
+    std::vector<std::size_t> candidateFunctionOrdinals;
+};
+
 class ProjectNamespaceFunctionModel final
 {
 public:
     bool build(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics);
 
     std::span<const NamespaceFunctionSymbol> functions() const noexcept;
@@ -65,11 +78,16 @@ public:
         std::size_t projectOrdinal,
         std::string_view namespaceName,
         std::string_view name) const noexcept;
+    const NamespaceFunctionReferenceBinding* referenceBinding(
+        const ast::AstNode* callSyntax) const noexcept;
+    std::span<const NamespaceFunctionReferenceBinding> referenceBindings() const noexcept;
     bool isBuilt() const noexcept;
 
 private:
     std::vector<NamespaceFunctionSymbol> functions_;
     std::unordered_map<std::string, std::vector<std::size_t>> functionsByName_;
+    std::vector<NamespaceFunctionReferenceBinding> referenceBindings_;
+    std::unordered_map<const ast::AstNode*, std::size_t> referenceBindingBySyntax_;
     bool built_ = false;
 };
 }

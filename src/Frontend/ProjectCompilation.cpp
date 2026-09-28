@@ -598,7 +598,7 @@ bool ProjectCompilation::compileProjectMembers(
     }
 
     namespaceFunctionModel_ = std::make_unique<ProjectNamespaceFunctionModel>();
-    return namespaceFunctionModel_->build(*nameLookup_, *memberModel_, diagnostics_);
+    return namespaceFunctionModel_->build(*nameLookup_, *memberModel_, units_, diagnostics_);
 }
 
 
