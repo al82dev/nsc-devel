@@ -1003,7 +1003,9 @@ if(NSC_BUILD_TESTS)
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
         "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSelfHostedGeneration.cmake")
-    set_tests_properties(nsc.selfhost.self-hosted-generation PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.bootstrap-dependencies)
+    set_tests_properties(nsc.selfhost.self-hosted-generation PROPERTIES
+        RUN_SERIAL FALSE PROCESSORS 4 COST 1035
+        DEPENDS nsc.selfhost.bootstrap-dependencies)
 
     add_test(NAME nsc.selfhost.functional-equivalence COMMAND "${CMAKE_COMMAND}"
         "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
@@ -1011,7 +1013,9 @@ if(NSC_BUILD_TESTS)
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
         "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpFunctionalEquivalence.cmake")
-    set_tests_properties(nsc.selfhost.functional-equivalence PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.self-hosted-generation)
+    set_tests_properties(nsc.selfhost.functional-equivalence PROPERTIES
+        RUN_SERIAL FALSE PROCESSORS 4 COST 273
+        DEPENDS nsc.selfhost.self-hosted-generation)
 
     add_test(NAME nsc.selfhost.repeated-fixed-point COMMAND "${CMAKE_COMMAND}"
         "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
@@ -1019,7 +1023,9 @@ if(NSC_BUILD_TESTS)
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
         "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpRepeatedFixedPoint.cmake")
-    set_tests_properties(nsc.selfhost.repeated-fixed-point PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.functional-equivalence)
+    set_tests_properties(nsc.selfhost.repeated-fixed-point PROPERTIES
+        RUN_SERIAL FALSE PROCESSORS 4 COST 849
+        DEPENDS nsc.selfhost.self-hosted-generation)
 
     add_test(NAME nsc.selfhost.cross-machine-determinism COMMAND "${CMAKE_COMMAND}"
         "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
@@ -1027,7 +1033,9 @@ if(NSC_BUILD_TESTS)
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
         "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpCrossMachineDeterminism.cmake")
-    set_tests_properties(nsc.selfhost.cross-machine-determinism PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.repeated-fixed-point)
+    set_tests_properties(nsc.selfhost.cross-machine-determinism PROPERTIES
+        RUN_SERIAL FALSE PROCESSORS 4 COST 1010
+        DEPENDS nsc.selfhost.self-hosted-generation)
 
     add_test(NAME nsc.selfhost.low-level-parity COMMAND "${CMAKE_COMMAND}"
         "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
@@ -1035,7 +1043,8 @@ if(NSC_BUILD_TESTS)
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
         "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpLowLevelParity.cmake")
-    set_tests_properties(nsc.selfhost.low-level-parity PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.cross-machine-determinism)
+    set_tests_properties(nsc.selfhost.low-level-parity PROPERTIES RUN_SERIAL TRUE
+        DEPENDS "nsc.selfhost.functional-equivalence;nsc.selfhost.repeated-fixed-point;nsc.selfhost.cross-machine-determinism")
 
     add_test(NAME nsc.selfhost.interop-parity COMMAND "${CMAKE_COMMAND}"
         "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
