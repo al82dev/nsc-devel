@@ -47,6 +47,16 @@ public:
     bool cancelled() const noexcept;
     std::string_view error() const noexcept;
     std::span<const LanguageDiagnostic> diagnostics() const noexcept;
+    std::vector<LanguageSymbol> documentSymbols(const std::filesystem::path& path) const;
+    std::vector<LanguageSymbol> workspaceSymbols(
+        std::string_view query,
+        std::size_t limit = 100) const;
+    std::optional<LanguageSymbol> symbolAt(
+        const std::filesystem::path& path,
+        TextPosition position) const;
+    std::vector<LanguageLocation> definitions(
+        const std::filesystem::path& path,
+        TextPosition position) const;
 
 private:
     class Implementation;

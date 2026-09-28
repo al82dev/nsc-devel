@@ -44,6 +44,39 @@ struct LanguageDiagnostic final
     std::string message;
 };
 
+enum class LanguageSymbolKind
+{
+    Class,
+    Interface,
+    Struct,
+    Enum,
+    Delegate,
+    Function,
+    Method,
+    Constructor,
+    Destructor,
+    Field,
+    Event,
+    Variable,
+    Parameter
+};
+
+struct LanguageLocation final
+{
+    std::filesystem::path path;
+    TextRange range;
+};
+
+struct LanguageSymbol final
+{
+    std::string name;
+    std::string qualifiedName;
+    std::string detail;
+    LanguageSymbolKind kind = LanguageSymbolKind::Variable;
+    LanguageLocation location;
+    TextRange selectionRange;
+};
+
 std::optional<TextPosition> utf16PositionForOffset(
     std::string_view utf8,
     std::size_t byteOffset) noexcept;
