@@ -3,6 +3,8 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 #include <algorithm>
 #include <cctype>
@@ -86,6 +88,71 @@ std::string namespaceFunctionMangledName(const NamespaceFunctionSymbol& symbol)
     if (symbol.isVariadic) result += "__variadic";
     if (symbol.isExternC) result += "__extern_c";
     return result;
+}
+
+std::string namespaceStateStorageName(const NamespaceStateSymbol& symbol)
+{
+    return "__nsc_state_" +
+        compilation::symbolFragmentForIdentityKey(
+            symbol.moduleName + "::" + symbol.namespaceName) +
+        "__" + sanitizeSymbol(symbol.name);
+}
+
+bool isReferenceLikeStateType(std::string_view typeKey) noexcept
+{
+    return typeKey == "builtin:string" ||
+        ProjectTypeConversion::isPointer(typeKey) ||
+        ProjectTypeConversion::isNativeArray(typeKey);
+}
+
+bool initializeNamespaceStateConstant(NamespaceStateSymbol& symbol)
+{
+    const ast::AstNode* initializer = symbol.initializerSyntax;
+    if (initializer == nullptr)
+    {
+        symbol.initializerKind = NamespaceStateInitializerKind::Zero;
+        return !symbol.isConst;
+    }
+
+    ProjectIntegerEvaluator integerEvaluator(nullptr);
+    if (const std::optional<ProjectIntegerValue> value = integerEvaluator.evaluate(initializer);
+        value.has_value() && ProjectTypeConversion::isIntegral(symbol.declaredTypeKey))
+    {
+        symbol.initializerKind = NamespaceStateInitializerKind::Integer;
+        symbol.integerValue = ProjectIntegerEvaluator::normalize(
+            value->bits, symbol.declaredTypeKey);
+        return true;
+    }
+
+    switch (initializer->kind())
+    {
+        case ast::AstNodeKind::FloatingLiteralExpression:
+            if (symbol.declaredTypeKey != "builtin:float" &&
+                symbol.declaredTypeKey != "builtin:double") return false;
+            symbol.initializerKind = NamespaceStateInitializerKind::Floating;
+            symbol.floatingValue = initializer->floatingValue();
+            return true;
+        case ast::AstNodeKind::BooleanLiteralExpression:
+            if (symbol.declaredTypeKey != "builtin:bool") return false;
+            symbol.initializerKind = NamespaceStateInitializerKind::Boolean;
+            symbol.booleanValue = initializer->tokenKind() == lexer::TokenKind::KwTrue;
+            return true;
+        case ast::AstNodeKind::StringLiteralExpression:
+            if (symbol.declaredTypeKey != "builtin:string" &&
+                symbol.declaredTypeKey != "builtin:char*") return false;
+            symbol.initializerKind = NamespaceStateInitializerKind::String;
+            symbol.stringValue = initializer->text();
+            return true;
+        case ast::AstNodeKind::NullLiteralExpression:
+            if (!isReferenceLikeStateType(symbol.declaredTypeKey)) return false;
+            symbol.initializerKind = NamespaceStateInitializerKind::Null;
+            return true;
+        case ast::AstNodeKind::DefaultValueExpression:
+            symbol.initializerKind = NamespaceStateInitializerKind::Zero;
+            return true;
+        default:
+            return false;
+    }
 }
 
 std::string mergeKey(const NamespaceFunctionSymbol& symbol)
@@ -174,6 +241,8 @@ bool ProjectNamespaceFunctionModel::build(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     functions_.clear();
+    states_.clear();
+    stateByName_.clear();
     functionsByName_.clear();
     referenceBindings_.clear();
     referenceBindingBySyntax_.clear();
@@ -319,6 +388,64 @@ bool ProjectNamespaceFunctionModel::build(
 
         symbol.parts.push_back(candidate.parts.front());
         if (declaration.hasBody) symbol.definitionSyntax = declaration.syntax;
+    }
+
+    for (const NamespaceStateDeclaration& declaration : nameLookup.namespaceStates())
+    {
+        if (declaration.syntax == nullptr) continue;
+        const ast::AstNode& syntax = *declaration.syntax;
+
+        NamespaceStateSymbol state;
+        state.accessibility = declaration.accessibility;
+        state.projectOrdinal = declaration.projectOrdinal;
+        state.sourceOrdinal = declaration.sourceOrdinal;
+        state.fileId = declaration.fileId;
+        state.range = declaration.range;
+        state.sourcePath = declaration.sourcePath;
+        state.moduleName = declaration.moduleName;
+        state.namespaceName = declaration.namespaceName;
+        state.name = declaration.name;
+        state.declaredTypeSyntax = syntax.typeSyntax();
+        state.declaredTypeKey = memberModel.canonicalTypeKey(syntax.typeSyntax(), nameLookup);
+        state.identityKey = "state:" + state.moduleName + "::" +
+            state.namespaceName + "." + state.name;
+        state.declarationSyntax = declaration.syntax;
+        state.initializerSyntax = syntax.first();
+        state.isConst = declaration.isConst;
+        state.storageName = namespaceStateStorageName(state);
+
+        const std::string lookupKey =
+            nameLookupKey(state.projectOrdinal, state.namespaceName, state.name);
+        const auto previous = stateByName_.find(lookupKey);
+        if (previous != stateByName_.end())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::DuplicateSymbol,
+                diagnostics::DiagnosticSeverity::Error,
+                state.range,
+                "duplicate namespace state '" + state.namespaceName + "." + state.name + "'");
+            diagnostics.report(
+                diagnostics::DiagnosticId::PreviousDeclaration,
+                diagnostics::DiagnosticSeverity::Note,
+                states_[previous->second].range,
+                "previous namespace state declaration is here");
+            continue;
+        }
+
+        if (!initializeNamespaceStateConstant(state))
+        {
+            diagnostics.report(
+                state.isConst
+                    ? diagnostics::DiagnosticId::ConstRequiresConstant
+                    : diagnostics::DiagnosticId::GlobalRequiresConstant,
+                diagnostics::DiagnosticSeverity::Error,
+                state.initializerSyntax != nullptr ? state.initializerSyntax->range() : state.range,
+                "namespace state '" + state.namespaceName + "." + state.name +
+                    "' requires a constant initializer; dynamic initialization is not supported");
+        }
+
+        stateByName_.emplace(lookupKey, states_.size());
+        states_.push_back(std::move(state));
     }
 
     for (const NamespaceFunctionSymbol& symbol : functions_)
@@ -567,6 +694,21 @@ bool ProjectNamespaceFunctionModel::build(
 std::span<const NamespaceFunctionSymbol> ProjectNamespaceFunctionModel::functions() const noexcept
 {
     return functions_;
+}
+
+std::span<const NamespaceStateSymbol> ProjectNamespaceFunctionModel::states() const noexcept
+{
+    return states_;
+}
+
+const NamespaceStateSymbol* ProjectNamespaceFunctionModel::findState(
+    std::size_t projectOrdinal,
+    std::string_view namespaceName,
+    std::string_view name) const noexcept
+{
+    const auto found = stateByName_.find(nameLookupKey(projectOrdinal, namespaceName, name));
+    if (found == stateByName_.end() || found->second >= states_.size()) return nullptr;
+    return &states_[found->second];
 }
 
 std::span<const std::size_t> ProjectNamespaceFunctionModel::findFunctions(

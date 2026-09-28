@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>
@@ -54,6 +55,41 @@ struct NamespaceFunctionSymbol final
     bool isExternC = false;
 };
 
+enum class NamespaceStateInitializerKind
+{
+    Zero,
+    Integer,
+    Floating,
+    Boolean,
+    String,
+    Null
+};
+
+struct NamespaceStateSymbol final
+{
+    NamespaceFunctionAccessibility accessibility = NamespaceFunctionAccessibility::Internal;
+    std::size_t projectOrdinal = 0;
+    std::size_t sourceOrdinal = 0;
+    FileId fileId;
+    SourceRange range;
+    std::string sourcePath;
+    std::string moduleName;
+    std::string namespaceName;
+    std::string name;
+    const ast::TypeSyntax* declaredTypeSyntax = nullptr;
+    std::string declaredTypeKey;
+    std::string identityKey;
+    std::string storageName;
+    const ast::AstNode* declarationSyntax = nullptr;
+    const ast::AstNode* initializerSyntax = nullptr;
+    NamespaceStateInitializerKind initializerKind = NamespaceStateInitializerKind::Zero;
+    std::uint64_t integerValue = 0;
+    double floatingValue = 0.0;
+    bool booleanValue = false;
+    std::string stringValue;
+    bool isConst = false;
+};
+
 struct NamespaceFunctionReferenceBinding final
 {
     const ast::AstNode* callSyntax = nullptr;
@@ -76,6 +112,11 @@ public:
         diagnostics::DiagnosticEngine& diagnostics);
 
     std::span<const NamespaceFunctionSymbol> functions() const noexcept;
+    std::span<const NamespaceStateSymbol> states() const noexcept;
+    const NamespaceStateSymbol* findState(
+        std::size_t projectOrdinal,
+        std::string_view namespaceName,
+        std::string_view name) const noexcept;
     std::span<const std::size_t> findFunctions(
         std::size_t projectOrdinal,
         std::string_view namespaceName,
@@ -87,6 +128,8 @@ public:
 
 private:
     std::vector<NamespaceFunctionSymbol> functions_;
+    std::vector<NamespaceStateSymbol> states_;
+    std::unordered_map<std::string, std::size_t> stateByName_;
     std::unordered_map<std::string, std::vector<std::size_t>> functionsByName_;
     std::vector<NamespaceFunctionReferenceBinding> referenceBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> referenceBindingBySyntax_;

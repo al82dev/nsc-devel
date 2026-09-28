@@ -305,7 +305,7 @@ bool ProjectNameLookup::build(
     std::size_t workerCount)
 {
     if (built_ || !modules_.empty() || !pendingTypes_.empty() || !namedTypes_.empty() ||
-        !namespaceFunctions_.empty() || !bindings_.empty())
+        !namespaceFunctions_.empty() || !namespaceStates_.empty() || !bindings_.empty())
     {
         return false;
     }
@@ -350,12 +350,27 @@ bool ProjectNameLookup::build(
             namespaceFunctions_.end(),
             std::make_move_iterator(unitIndex.namespaceFunctions.begin()),
             std::make_move_iterator(unitIndex.namespaceFunctions.end()));
+        namespaceStates_.insert(
+            namespaceStates_.end(),
+            std::make_move_iterator(unitIndex.namespaceStates.begin()),
+            std::make_move_iterator(unitIndex.namespaceStates.end()));
     }
     finalizePredeclarations(diagnostics);
     std::sort(
         namespaceFunctions_.begin(),
         namespaceFunctions_.end(),
         [](const NamespaceFunctionDeclaration& left, const NamespaceFunctionDeclaration& right)
+        {
+            if (left.moduleName != right.moduleName) return left.moduleName < right.moduleName;
+            if (left.namespaceName != right.namespaceName) return left.namespaceName < right.namespaceName;
+            if (left.name != right.name) return left.name < right.name;
+            if (left.sourceOrdinal != right.sourceOrdinal) return left.sourceOrdinal < right.sourceOrdinal;
+            return left.range.begin().offset() < right.range.begin().offset();
+        });
+    std::sort(
+        namespaceStates_.begin(),
+        namespaceStates_.end(),
+        [](const NamespaceStateDeclaration& left, const NamespaceStateDeclaration& right)
         {
             if (left.moduleName != right.moduleName) return left.moduleName < right.moduleName;
             if (left.namespaceName != right.namespaceName) return left.namespaceName < right.namespaceName;
@@ -425,6 +440,10 @@ std::span<const NamespaceFunctionDeclaration> ProjectNameLookup::namespaceFuncti
     return namespaceFunctions_;
 }
 
+std::span<const NamespaceStateDeclaration> ProjectNameLookup::namespaceStates() const noexcept
+{
+    return namespaceStates_;
+}
 std::span<const TypeNameBinding> ProjectNameLookup::bindings() const noexcept
 {
     return bindings_;
@@ -593,6 +612,25 @@ void ProjectNameLookup::predeclareNode(
         return;
     }
 
+    if (node->kind() == ast::AstNodeKind::GlobalVariableDeclaration &&
+        !namespaceSegments.empty())
+    {
+        index.namespaceStates.push_back(NamespaceStateDeclaration{
+            node->tokenKind() == lexer::TokenKind::KwPublic
+                ? NamespaceFunctionAccessibility::Public
+                : NamespaceFunctionAccessibility::Internal,
+            unit.projectOrdinal(),
+            unit.sourceOrdinal(),
+            unit.fileId(),
+            node->range(),
+            node,
+            sourcePath,
+            std::string(unit.moduleName()),
+            joinSegments(namespaceSegments),
+            node->text(),
+            node->flag()});
+        return;
+    }
     if (isNamedTypeDeclaration(node->kind()))
     {
         const bool isNested = !containingTypes.empty();
