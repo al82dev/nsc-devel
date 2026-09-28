@@ -289,7 +289,8 @@ target_compile_features(nsc_frontend PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_frontend)
 
 add_library(nsc_language_service STATIC
-    src/LanguageService/LanguageService.cpp)
+    src/LanguageService/LanguageService.cpp
+    src/LanguageService/ProtocolTypes.cpp)
 
 target_include_directories(nsc_language_service PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(nsc_language_service PUBLIC nsc_frontend PRIVATE nsc_basic)
@@ -1247,6 +1248,14 @@ if(NSC_BUILD_TESTS)
         NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     nsc_enable_warnings(nsc_language_service_document_tests)
     add_test(NAME nsc.language-service.documents COMMAND nsc_language_service_document_tests)
+
+    add_executable(
+        nsc_language_service_protocol_types_tests
+        tests/unit/LanguageServiceProtocolTypesTests.cpp)
+    target_link_libraries(nsc_language_service_protocol_types_tests PRIVATE nsc_language_service)
+    target_compile_features(nsc_language_service_protocol_types_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_service_protocol_types_tests)
+    add_test(NAME nsc.language-service.protocol-types COMMAND nsc_language_service_protocol_types_tests)
 
     add_executable(nsc_target_data_layout_tests tests/unit/TargetDataLayoutTests.cpp)
     target_link_libraries(nsc_target_data_layout_tests PRIVATE nsc_target)
