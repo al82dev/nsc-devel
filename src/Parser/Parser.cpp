@@ -1778,20 +1778,15 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         synchronizeGlobal();
         return nullptr;
     }
-    else if (accessibility != TokenKind::Invalid)
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "top-level accessibility supports only public/internal class, interface, struct, enum, and delegate declarations");
-        synchronizeGlobal();
-        return nullptr;
-    }
     else if (at(TokenKind::KwConst) || lexer::isOwnershipQualifierKeyword(current().kind()) ||
              lexer::isBuiltinTypeKeyword(current().kind()) || at(TokenKind::Identifier))
     {
-        return parseFunctionOrGlobalVariable();
+        declaration = parseFunctionOrGlobalVariable();
+        if (declaration != nullptr && accessibility != TokenKind::Invalid)
+        {
+            declaration->setTokenKind(accessibility);
+            declaration->addModifier(accessibility);
+        }
     }
     else
     {
@@ -1870,7 +1865,8 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                 declaration->setAuxiliaryText(std::move(layout));
             }
         }
-        if (accessibility != TokenKind::Invalid)
+        if (accessibility != TokenKind::Invalid &&
+            declaration->tokenKind() == TokenKind::Invalid)
         {
             declaration->setTokenKind(accessibility);
         }
