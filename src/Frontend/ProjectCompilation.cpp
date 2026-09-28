@@ -676,7 +676,7 @@ bool ProjectCompilation::compileProjectMethodBodies(
         publicSurfaceProjectOrdinal = projectGraph_->projects().size() - 1U;
     }
     return methodBodyModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, diagnostics_,
+        *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_, diagnostics_,
         genericConstraintModel_.get(), publicSurfaceProjectOrdinal);
 }
 

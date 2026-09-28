@@ -1248,6 +1248,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_namespace_function_identity_tests)
     add_test(NAME nsc.namespace-function-identity COMMAND nsc_namespace_function_identity_tests)
 
+    add_executable(nsc_namespace_function_body_tests tests/unit/NamespaceFunctionBodyTests.cpp)
+    target_link_libraries(nsc_namespace_function_body_tests PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(nsc_namespace_function_body_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_namespace_function_body_tests)
+    add_test(NAME nsc.namespace-function-bodies COMMAND nsc_namespace_function_body_tests)
+
     nsc_add_unit_test(nsc_source_manager_tests tests/unit/SourceManagerTests.cpp nsc.source-manager)
     nsc_add_unit_test(nsc_diagnostic_tests tests/unit/DiagnosticTests.cpp nsc.diagnostics)
     nsc_add_unit_test(nsc_lexer_tests tests/unit/LexerTests.cpp nsc.lexer)

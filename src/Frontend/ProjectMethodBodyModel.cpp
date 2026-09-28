@@ -468,6 +468,7 @@ double normalizeFloatingConstant(double value, std::string_view typeKey) noexcep
 bool ProjectMethodBodyModel::build(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
+    const ProjectNamespaceFunctionModel& namespaceFunctionModel,
     const ProjectInheritanceModel& inheritanceModel,
     const ProjectInterfaceModel& interfaceModel,
     diagnostics::DiagnosticEngine& diagnostics,
@@ -493,6 +494,44 @@ bool ProjectMethodBodyModel::build(
 
     nameLookup_ = &nameLookup;
     memberModel_ = &memberModel;
+    namespaceFunctionModel_ = &namespaceFunctionModel;
+    namespaceCallableBase_ = memberModel.members().size();
+    namespaceCallableAdapters_.clear();
+    namespaceCallableAdapters_.reserve(namespaceFunctionModel.functions().size());
+    for (std::size_t functionOrdinal = 0;
+         functionOrdinal < namespaceFunctionModel.functions().size(); ++functionOrdinal)
+    {
+        const NamespaceFunctionSymbol& function = namespaceFunctionModel.functions()[functionOrdinal];
+        ClassMemberSymbol adapter;
+        adapter.kind = ClassMemberKind::Method;
+        adapter.accessibility = function.accessibility == NamespaceFunctionAccessibility::Public
+            ? ClassMemberAccessibility::Public : ClassMemberAccessibility::Internal;
+        adapter.declaringTypeOrdinal = nameLookup.namedTypes().size();
+        adapter.sourceOrdinal = function.sourceOrdinal;
+        adapter.declarationOrdinal = functionOrdinal;
+        adapter.fileId = function.fileId;
+        adapter.range = function.range;
+        adapter.syntax = function.definitionSyntax;
+        for (const NamespaceFunctionPart& part : function.parts)
+        {
+            if (!part.hasBody) continue;
+            adapter.sourceOrdinal = part.sourceOrdinal;
+            adapter.fileId = part.fileId;
+            adapter.range = part.range;
+            break;
+        }
+        adapter.name = function.name;
+        adapter.declaredTypeSyntax = function.declaredTypeSyntax;
+        adapter.declaredTypeKey = function.declaredTypeKey;
+        adapter.declaredOwnership = function.declaredOwnership;
+        adapter.parameters = function.parameters;
+        adapter.signatureKey = function.signatureKey;
+        adapter.hasImplicitThis = false;
+        adapter.isStatic = true;
+        adapter.isReferenceReturn = function.isReferenceReturn;
+        adapter.isVariadic = function.isVariadic;
+        namespaceCallableAdapters_.push_back(std::move(adapter));
+    }
     inheritanceModel_ = &inheritanceModel;
     interfaceModel_ = &interfaceModel;
 
@@ -592,6 +631,14 @@ bool ProjectMethodBodyModel::build(
         callableWorklist.push_back(memberOrdinal);
     }
 
+    for (std::size_t functionOrdinal = 0;
+         functionOrdinal < namespaceCallableAdapters_.size(); ++functionOrdinal)
+    {
+        const ClassMemberSymbol& callable = namespaceCallableAdapters_[functionOrdinal];
+        if (callable.syntax != nullptr && callable.syntax->first() != nullptr)
+            callableWorklist.push_back(namespaceCallableBase_ + functionOrdinal);
+    }
+
     std::size_t workCursor = 0;
     std::size_t callDemandCursor = 0;
     std::size_t delegateDemandCursor = 0;
@@ -601,9 +648,10 @@ bool ProjectMethodBodyModel::build(
         for (; workCursor < waveEnd; ++workCursor)
         {
             const std::size_t memberOrdinal = callableWorklist[workCursor];
-            if (analyzedCallableMembers_.contains(memberOrdinal) ||
-                memberOrdinal >= memberModel.members().size()) continue;
-            const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+            if (analyzedCallableMembers_.contains(memberOrdinal)) continue;
+            const ClassMemberSymbol* memberPointer = methodSymbol(memberOrdinal);
+            if (memberPointer == nullptr) continue;
+            const ClassMemberSymbol& member = *memberPointer;
         // NSC-LIMIT-007. UNA ESPECIALIZACION QUE YA INCUMPLIO SU `where` NO SE ANALIZA.
         //
         // Su cuerpo se sustituyo con un `T` que la clausula prohibe, de modo que analizarlo
@@ -618,7 +666,7 @@ bool ProjectMethodBodyModel::build(
         // esta en su propio nodo; para un TIPO generico --`Caja<int>` con `where T : class`--
         // esta en el nodo del tipo, y sus metodos son hijos suyos, asi que preguntar solo por
         // `member.syntax` no la veria nunca.
-            if (genericConstraintModel_ != nullptr &&
+            if (memberOrdinal < namespaceCallableBase_ && genericConstraintModel_ != nullptr &&
                 (!genericConstraintModel_->specializationSatisfiesConstraints(member.syntax) ||
                  (member.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
                   !genericConstraintModel_->specializationSatisfiesConstraints(
@@ -1621,9 +1669,29 @@ std::span<const MethodCallBinding> ProjectMethodBodyModel::calls() const noexcep
     return calls_;
 }
 
+std::span<const NamespaceFunctionCallBinding>
+ProjectMethodBodyModel::namespaceFunctionCalls() const noexcept
+{
+    return namespaceFunctionCalls_;
+}
+
+const NamespaceFunctionCallBinding* ProjectMethodBodyModel::namespaceFunctionCall(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto found = namespaceFunctionCallBySyntax_.find(syntax);
+    return found == namespaceFunctionCallBySyntax_.end()
+        ? nullptr : &namespaceFunctionCalls_[found->second];
+}
+
 bool ProjectMethodBodyModel::callableBodyAnalyzed(std::size_t memberOrdinal) const noexcept
 {
     return analyzedCallableMembers_.contains(memberOrdinal);
+}
+
+bool ProjectMethodBodyModel::namespaceFunctionBodyAnalyzed(
+    std::size_t functionOrdinal) const noexcept
+{
+    return analyzedCallableMembers_.contains(namespaceCallableBase_ + functionOrdinal);
 }
 
 bool ProjectMethodBodyModel::isBuilt() const noexcept
@@ -8054,6 +8122,197 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     return result;
 }
 
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespaceFunctionCall(
+    const ast::AstNode* expression,
+    const NamespaceFunctionReferenceBinding& reference,
+    std::size_t callerCallableOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    ExpressionResult result;
+    NamespaceFunctionCallBinding call;
+    call.syntax = expression;
+    call.callerCallableOrdinal = callerCallableOrdinal;
+    call.scopeOrdinal = scopeOrdinal;
+    call.writtenName = reference.writtenName;
+    call.candidateFunctionOrdinals = reference.candidateFunctionOrdinals;
+    const auto store = [&]()
+    {
+        namespaceFunctionCallBySyntax_[expression] = namespaceFunctionCalls_.size();
+        namespaceFunctionCalls_.push_back(call);
+    };
+
+    std::vector<ExpressionResult> arguments;
+    arguments.reserve(expression->children().size());
+    bool argumentsValid = true;
+    for (const ast::AstNode* argument : expression->children())
+    {
+        ExpressionResult analyzed = analyzeExpression(
+            argument, callerCallableOrdinal, scopeOrdinal, diagnostics,
+            false, false, true);
+        argumentsValid = argumentsValid && analyzed.valid && !analyzed.methodGroup;
+        arguments.push_back(std::move(analyzed));
+    }
+    if (!argumentsValid)
+    {
+        store();
+        return result;
+    }
+
+    bool matchingArity = false;
+    for (const std::size_t functionOrdinal : reference.candidateFunctionOrdinals)
+    {
+        if (functionOrdinal >= namespaceCallableAdapters_.size()) continue;
+        const ClassMemberSymbol& candidate = namespaceCallableAdapters_[functionOrdinal];
+        MethodCallCandidate evaluated;
+        evaluated.memberOrdinal = functionOrdinal;
+        evaluated.isVariadicCandidate = candidate.isVariadic;
+        const NamedArgumentMap mapping = mapArgumentsToParameters(expression->children(), candidate);
+        if (!mapping.valid)
+        {
+            call.evaluatedCandidates.push_back(std::move(evaluated));
+            continue;
+        }
+        matchingArity = true;
+        evaluated.viable = true;
+        evaluated.argumentParameterOrdinals = mapping.explicitParameterOrdinals;
+        evaluated.defaultedParameterOrdinals = mapping.defaultedParameterOrdinals;
+        evaluated.defaultedParameterCount = mapping.defaultedParameterOrdinals.size();
+        for (std::size_t argumentOrdinal = 0; argumentOrdinal < arguments.size(); ++argumentOrdinal)
+        {
+            const std::size_t parameterOrdinal =
+                evaluated.argumentParameterOrdinals[argumentOrdinal];
+            ProjectImplicitConversion conversion;
+            if (parameterOrdinal >= candidate.parameters.size())
+            {
+                conversion = classifyCVariadicPromotion(arguments[argumentOrdinal].typeKey);
+                if (!conversion.exists() ||
+                    arguments[argumentOrdinal].argumentPassKind != ParameterPassKind::Value ||
+                    arguments[argumentOrdinal].ownership != sema::OwnershipKind::None)
+                {
+                    evaluated.viable = false;
+                    evaluated.invalidVariadicArgumentOrdinal = argumentOrdinal;
+                }
+            }
+            else
+            {
+                const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
+                conversion = classifyImplicit(
+                    arguments[argumentOrdinal].typeKey,
+                    parameter.typeKey,
+                    arguments[argumentOrdinal].integerConstant);
+                if (!conversion.exists() || parameter.passKind != arguments[argumentOrdinal].argumentPassKind)
+                {
+                    evaluated.viable = false;
+                }
+                else if (classifyOwnershipArgument(
+                             typeKeyIsOwnable(parameter.typeKey),
+                             parameter.ownership,
+                             arguments[argumentOrdinal].ownership,
+                             arguments[argumentOrdinal].ownershipTransfer,
+                             arguments[argumentOrdinal].ownershipFreshOwner) != OwnershipArgumentFit::Ok)
+                {
+                    evaluated.viable = false;
+                }
+            }
+            evaluated.conversions.push_back(std::move(conversion));
+        }
+        if (evaluated.viable)
+            call.viableCandidateFunctionOrdinals.push_back(functionOrdinal);
+        call.evaluatedCandidates.push_back(std::move(evaluated));
+    }
+
+    if (!matchingArity)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidArgumentCount,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "no overload of namespace function '" + reference.writtenName + "' accepts " +
+                std::to_string(arguments.size()) + " argument(s)");
+        store();
+        return result;
+    }
+
+    std::vector<std::size_t> viable;
+    for (std::size_t index = 0; index < call.evaluatedCandidates.size(); ++index)
+        if (call.evaluatedCandidates[index].viable) viable.push_back(index);
+    if (viable.empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "no viable overload of namespace function '" + reference.writtenName +
+                "' accepts the argument types");
+        store();
+        return result;
+    }
+
+    std::vector<std::size_t> nonDominated;
+    for (const std::size_t candidateIndex : viable)
+    {
+        const bool dominated = std::ranges::any_of(nonDominated, [&](std::size_t other)
+        {
+            return betterCandidate(
+                call.evaluatedCandidates[other], call.evaluatedCandidates[candidateIndex]);
+        });
+        if (dominated) continue;
+        std::erase_if(nonDominated, [&](std::size_t other)
+        {
+            return betterCandidate(
+                call.evaluatedCandidates[candidateIndex], call.evaluatedCandidates[other]);
+        });
+        nonDominated.push_back(candidateIndex);
+    }
+    if (nonDominated.size() != 1)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "ambiguous namespace function call to '" + reference.writtenName + "'");
+        call.resolution = MethodCallResolutionKind::Ambiguous;
+        store();
+        return result;
+    }
+
+    const MethodCallCandidate& selected = call.evaluatedCandidates[nonDominated.front()];
+    const std::size_t functionOrdinal = selected.memberOrdinal;
+    const ClassMemberSymbol& callable = namespaceCallableAdapters_[functionOrdinal];
+    checkArgumentPassKinds(
+        expression,
+        callable.name,
+        namespaceCallableBase_ + functionOrdinal,
+        arguments,
+        diagnostics,
+        selected.argumentParameterOrdinals);
+    call.resolution = MethodCallResolutionKind::Resolved;
+    call.selectedFunctionOrdinal = functionOrdinal;
+    call.selectedConversions = selected.conversions;
+    call.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
+    for (const std::size_t parameterOrdinal : selected.defaultedParameterOrdinals)
+    {
+        call.selectedDefaultArguments.push_back(callable.parameters[parameterOrdinal].defaultValueSyntax);
+        call.selectedDefaultArgumentParameterOrdinals.push_back(parameterOrdinal);
+    }
+    call.resultTypeKey = callable.declaredTypeKey;
+    result.typeKey = callable.declaredTypeKey;
+    result.valid = true;
+    result.assignable = callable.isReferenceReturn;
+    result.addressable = callable.isReferenceReturn;
+    result.ownership = callable.declaredOwnership;
+    result.ownershipTransfer = callable.declaredOwnership == sema::OwnershipKind::Owned;
+    result.ownershipFreshOwner = result.ownershipTransfer;
+    if (result.ownership != sema::OwnershipKind::None)
+    {
+        result.objectLifetimeOwnership = result.ownership;
+        result.storageOwnership = result.ownership;
+    }
+    store();
+    return result;
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     const ast::AstNode* expression,
     std::size_t methodMemberOrdinal,
@@ -8061,6 +8320,39 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     ExpressionResult result;
+    if (namespaceFunctionModel_ != nullptr)
+    {
+        if (const NamespaceFunctionReferenceBinding* reference =
+                namespaceFunctionModel_->referenceBinding(expression);
+            reference != nullptr)
+        {
+            bool shadowed = lookupScopeName(scopeOrdinal,
+                expression->first() != nullptr ? expression->first()->text() : std::string{}).has_value();
+            if (!reference->qualified && !shadowed && memberModel_ != nullptr)
+            {
+                const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+                if (caller != nullptr && caller->declaringTypeOrdinal < nameLookup_->namedTypes().size())
+                {
+                    for (const std::size_t ordinal : memberModel_->findMembers(
+                             caller->declaringTypeOrdinal,
+                             expression->first() != nullptr ? expression->first()->text() : std::string{}))
+                    {
+                        if (ordinal < memberModel_->members().size() &&
+                            memberModel_->members()[ordinal].kind == ClassMemberKind::Method)
+                        {
+                            shadowed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (reference->qualified || !shadowed)
+            {
+                return analyzeNamespaceFunctionCall(
+                    expression, *reference, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            }
+        }
+    }
     MethodCallBinding call;
     call.syntax = expression;
     call.callerMethodMemberOrdinal = methodMemberOrdinal;
@@ -14500,11 +14792,13 @@ bool ProjectMethodBodyModel::canRuntimeReferenceConvert(
 const ClassMemberSymbol* ProjectMethodBodyModel::methodSymbol(
     std::size_t methodMemberOrdinal) const noexcept
 {
-    if (memberModel_ == nullptr || methodMemberOrdinal >= memberModel_->members().size())
-    {
-        return nullptr;
-    }
-    return &memberModel_->members()[methodMemberOrdinal];
+    if (memberModel_ == nullptr) return nullptr;
+    if (methodMemberOrdinal < memberModel_->members().size())
+        return &memberModel_->members()[methodMemberOrdinal];
+    if (methodMemberOrdinal < namespaceCallableBase_) return nullptr;
+    const std::size_t functionOrdinal = methodMemberOrdinal - namespaceCallableBase_;
+    return functionOrdinal < namespaceCallableAdapters_.size()
+        ? &namespaceCallableAdapters_[functionOrdinal] : nullptr;
 }
 
 bool ProjectMethodBodyModel::betterCandidate(
