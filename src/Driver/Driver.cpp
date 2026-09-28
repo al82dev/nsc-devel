@@ -4,6 +4,7 @@
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/CompilationProfile.h"
 #include "nativesharp/Driver/CompilationJobPolicy.h"
+#include "nativesharp/Driver/CompilerConsole.h"
 #include "nativesharp/Driver/DiagnosticBundle.h"
 #include "nativesharp/Driver/FinalBaselineContract.h"
 #include "nativesharp/Driver/InstallationManifest.h"
@@ -213,7 +214,8 @@ public:
         const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - started_);
         scope_->recordPhase(phase_, elapsed);
-        scope_->writeProgress("-- NSC: " + std::string(phase_) + " finished (" +
+        scope_->writeProgress("-- NSC: " + std::string(phase_) + std::string(compilerText(
+            " finished (", " finalizada (")) +
             std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()) +
             " ms)");
     }
@@ -3042,6 +3044,16 @@ void removePackagedFiles(std::span<const std::filesystem::path> copiedFiles)
 
 ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &output, std::ostream &error) const
 {
+    CompilerConsoleArguments consoleArguments =
+        parseCompilerConsoleArguments(arguments, activeCompilerLanguage());
+    CompilerLanguageScope languageScope(consoleArguments.language);
+    if (!consoleArguments.error.empty())
+    {
+        error << "nsc: " << compilerText("error: ", "error: ")
+              << consoleArguments.error << '\n';
+        return ExitCode::CommandLineError;
+    }
+    arguments = std::span<const std::string_view>(consoleArguments.arguments);
     if (!arguments.empty() && isProjectCommand(arguments.front()))
     {
         return runProjectCommand(arguments, output, error,
@@ -4350,8 +4362,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
 
 void Driver::printHelp(std::ostream &output)
 {
-    output << "NativeSharp compiler (NativeSharp " << kLanguageVersion << ", stage " << kCompilerStage << ")\n\n"
-           << "Usage:\n"
+    printCompilerBanner(output);
+    output << '\n' << compilerText("Usage:\n", "Uso:\n")
            << "  nsc new <console|classlib|dll> -n <name> [-o <directory>] [--force]\n"
            << "  nsc restore [file.nsproj] [--force|--locked-mode|--verify] [--source <directory>]\n"
            << "  nsc build [file.nsproj] [-c Debug|Release] [-O0|-O1|-O2|-O3] "
@@ -4494,6 +4506,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-target\n"
            << "  nsc --print-data-layout\n"
            << "  nsc --version\n\n"
+           << "  nsc --language <en|es> ...\n\n"
            << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a "
               "compilation command.\n"
            << "--fp-mode=precise|fast|deterministic selects the floating-point IR contract; "
@@ -4509,6 +4522,8 @@ void Driver::printHelp(std::ostream &output)
               "by default; --progress enables the same stream on diagnostic commands.\n"
            << "--quiet suppresses normal stdout and automatic progress; --verbose adds timing. "
               "--time-report is an alias for --time and --time-trace=<file> writes a JSON trace.\n"
+           << "--language en|es selects human-readable console messages; --no-banner suppresses "
+              "the compilation banner.\n"
            << "--log=<file> records stdout, stderr, arguments and exit status; "
               "--log-format=text|json selects its schema and --log-on-error=<file> publishes only "
               "after failure. Failures otherwise create error.log, error1.log, ... in the working "
@@ -4839,12 +4854,7 @@ ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
 
 void Driver::printVersion(std::ostream &output)
 {
-    // CC1-000: the unique build id appears both in the SemVer build metadata of
-    // `kCompilerVersion` and on its own machine-friendly line. A consumer can
-    // compare either one without hashing nsc.exe.
-    output << "nsc " << kCompilerVersion << " (NativeSharp " << kLanguageVersion << ", stage " << kCompilerStage
-           << ")\n"
-           << "build " << kCompilerBuildId << '\n';
+    printCompilerBanner(output);
 }
 
 void Driver::printTarget(std::ostream &output)

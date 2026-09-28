@@ -1,4 +1,5 @@
 #include "nativesharp/Driver/CrashBoundary.h"
+#include "nativesharp/Driver/CompilerConsole.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 #include "nativesharp/LLVM/LlvmProcessTrace.h"
@@ -144,6 +145,27 @@ bool publishAutomaticErrorLog(std::string_view format,
     return false;
 }
 
+bool isCompilationInvocation(std::span<const std::string_view> arguments)
+{
+    if (arguments.empty()) return false;
+    if (arguments.front() == "build" || arguments.front() == "run") return true;
+    for (const std::string_view argument : arguments)
+    {
+        if (argument.starts_with("--emit-")) return true;
+        if (!argument.empty() && argument.front() != '-' &&
+            (argument.ends_with(".ns") || argument.ends_with(".nsproj")))
+            return true;
+    }
+    return false;
+}
+
+bool requestsJsonOutput(std::span<const std::string_view> arguments)
+{
+    return std::ranges::any_of(arguments, [](std::string_view argument) {
+        return argument == "--output-format=json";
+    });
+}
+
 int runCompiler(int argc, char** argv)
 {
     const auto isTraceWorkerArgument = [](const char* argument) {
@@ -152,25 +174,38 @@ int runCompiler(int argc, char** argv)
     };
     const bool traceWorker = std::any_of(argv + 1, argv + argc, isTraceWorkerArgument);
 
+    std::vector<std::string_view> rawArguments;
+    rawArguments.reserve(argc > 1 ? static_cast<std::size_t>(argc - 1) : 0U);
+    for (int index = 1; index < argc; ++index)
+        if (!isTraceWorkerArgument(argv[index])) rawArguments.emplace_back(argv[index]);
+    nativesharp::driver::CompilerConsoleArguments consoleArguments =
+        nativesharp::driver::parseCompilerConsoleArguments(rawArguments);
+    nativesharp::driver::CompilerLanguageScope languageScope(consoleArguments.language);
+    if (!consoleArguments.error.empty())
+    {
+        std::cerr << "nsc: error: " << consoleArguments.error << '\n';
+        return static_cast<int>(nativesharp::ExitCode::CommandLineError);
+    }
+
     std::vector<std::string_view> arguments;
-    arguments.reserve(argc > 1 ? static_cast<std::size_t>(argc - 1) : 0U);
+    arguments.reserve(consoleArguments.arguments.size());
     std::filesystem::path logPath;
     std::filesystem::path errorLogPath;
     std::filesystem::path timeTracePath;
     std::string logFormat = "text";
     bool quiet = false;
     bool verbose = false;
+    bool banner = true;
     bool automaticErrorLog = true;
-    for (int index = 1; index < argc; ++index)
+    for (const std::string_view argument : consoleArguments.arguments)
     {
-        if (isTraceWorkerArgument(argv[index])) continue;
-        const std::string_view argument(argv[index]);
         if (argument.starts_with("--log=")) { logPath = argument.substr(6); continue; }
         if (argument.starts_with("--log-on-error=")) { errorLogPath = argument.substr(15); continue; }
         if (argument.starts_with("--log-format=")) { logFormat = argument.substr(13); continue; }
         if (argument.starts_with("--time-trace=")) { timeTracePath = argument.substr(13); continue; }
         if (argument == "--time-report") { arguments.emplace_back("--time"); continue; }
         if (argument == "--quiet") { quiet = true; continue; }
+        if (argument == "--no-banner") { banner = false; continue; }
         if (argument == "--verbose") { verbose = true; continue; }
         if (argument == "--no-error-log") { automaticErrorLog = false; continue; }
         arguments.emplace_back(argument);
@@ -258,6 +293,13 @@ int runCompiler(int argc, char** argv)
     TeeBuffer errorBuffer(std::cerr.rdbuf(), capturedError.rdbuf());
     std::ostream observedOutput(&outputBuffer);
     std::ostream observedError(&errorBuffer);
+    if (banner && !quiet && !traceWorker && !requestsJsonOutput(arguments) &&
+        isCompilationInvocation(arguments))
+    {
+        nativesharp::driver::printCompilerBanner(observedOutput);
+        observedOutput << '\n';
+        observedOutput.flush();
+    }
     const nativesharp::driver::Driver driver;
     const nativesharp::ExitCode exitCode = driver.run(arguments, observedOutput, observedError);
     observedOutput.flush();

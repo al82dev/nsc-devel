@@ -1,5 +1,6 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/CompilationJobPolicy.h"
+#include "nativesharp/Driver/CompilerConsole.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
 
@@ -53,7 +54,7 @@ int main()
         std::ostringstream error;
         const ExitCode code = runDriver({}, output, error);
         tests.expect(code == ExitCode::Success, "empty command line prints help successfully");
-        const std::string helpText = "NativeSharp compiler (NativeSharp";
+        const std::string helpText = "NativeSharp Compiler 2.0.0 (nsc)";
         tests.expect(
             output.str().find(helpText) != std::string::npos,
             "help text is written to stdout");
@@ -75,6 +76,31 @@ int main()
         tests.expect(output.str().find("--library-reference-root") != std::string::npos,
             "help documents configuration-specific LibraryReference resolution");
         tests.expect(error.str().empty(), "help path keeps stderr empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {"--language", "es", "--help"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::Success,
+            "Spanish help selection succeeds");
+        tests.expect(output.str().find("Compilador NativeSharp 2.0.0 (nsc)") != std::string::npos &&
+                output.str().find("Uso:") != std::string::npos &&
+                output.str().find("Hash de compilación: ") != std::string::npos,
+            "Spanish help uses the localized compiler identity and heading");
+        tests.expect(error.str().empty(), "Spanish help keeps stderr empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {"--language=fr", "--version"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError &&
+                error.str().find("unsupported language 'fr'; expected en or es") != std::string::npos,
+            "unsupported console language is rejected before command dispatch");
+        tests.expect(output.str().empty(), "invalid language does not print a banner");
     }
 
     {

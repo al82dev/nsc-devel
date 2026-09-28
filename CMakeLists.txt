@@ -383,6 +383,7 @@ add_library(nsc_driver STATIC
     src/Driver/BreakingChangeLedger.cpp
     src/Driver/CompilationProfile.cpp
     src/Driver/CompilationGraphScheduler.cpp
+    src/Driver/CompilerConsole.cpp
     src/Driver/CompatibilityPolicy.cpp
     src/Driver/DiagnosticBundle.cpp
     src/Driver/FinalBaselineContract.cpp
