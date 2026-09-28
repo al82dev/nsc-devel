@@ -5,6 +5,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <optional>
 #include <string>
@@ -56,6 +57,35 @@ std::string nameLookupKey(
 {
     return std::to_string(projectOrdinal) + "\x1f" + std::string(namespaceName) +
         "\x1f" + std::string(name);
+}
+
+std::string sanitizeSymbol(std::string value)
+{
+    for (char& character : value)
+    {
+        const unsigned char byte = static_cast<unsigned char>(character);
+        if (std::isalnum(byte) == 0 && character != '_') character = '_';
+    }
+    return value;
+}
+
+std::string namespaceFunctionMangledName(const NamespaceFunctionSymbol& symbol)
+{
+    std::string result = "__nsc_function_" +
+        compilation::symbolFragmentForIdentityKey(
+            symbol.moduleName + "::" + symbol.namespaceName) +
+        "__" + sanitizeSymbol(symbol.name);
+    for (const MethodParameterSymbol& parameter : symbol.parameters)
+    {
+        if (parameter.ownership == sema::OwnershipKind::Owned) result += "__owned";
+        else if (parameter.ownership == sema::OwnershipKind::Borrowed) result += "__borrowed";
+        if (parameter.passKind != ParameterPassKind::Value)
+            result += "__" + std::string(parameterPassKindKeyword(parameter.passKind));
+        result += "__" + compilation::symbolFragmentForIdentityKey(parameter.typeKey);
+    }
+    if (symbol.isVariadic) result += "__variadic";
+    if (symbol.isExternC) result += "__extern_c";
+    return result;
 }
 
 std::string mergeKey(const NamespaceFunctionSymbol& symbol)
@@ -241,6 +271,11 @@ bool ProjectNamespaceFunctionModel::build(
             candidate.signatureKey += parameter.typeKey;
         }
         candidate.signatureKey.push_back(')');
+        candidate.callableIdentityKey = "function:" + candidate.moduleName + "::" +
+            candidate.namespaceName + "." + candidate.signatureKey +
+            (candidate.isExternC ? "|extern-c" : "|native") +
+            (candidate.isVariadic ? "|variadic" : "");
+        candidate.mangledName = namespaceFunctionMangledName(candidate);
 
         const std::string identity = mergeKey(candidate);
         const auto existing = symbolByIdentity.find(identity);

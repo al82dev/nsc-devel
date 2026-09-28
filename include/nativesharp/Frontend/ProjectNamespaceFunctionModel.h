@@ -44,6 +44,8 @@ struct NamespaceFunctionSymbol final
     sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
     std::vector<MethodParameterSymbol> parameters;
     std::string signatureKey;
+    std::string callableIdentityKey;
+    std::string mangledName;
     const ast::AstNode* declarationSyntax = nullptr;
     const ast::AstNode* definitionSyntax = nullptr;
     std::vector<NamespaceFunctionPart> parts;
