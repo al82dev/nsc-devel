@@ -1,9 +1,14 @@
 #pragma once
 
+#include "nativesharp/LanguageService/ProtocolTypes.h"
+
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -26,6 +31,29 @@ struct DocumentSnapshot final
     std::filesystem::path path;
     std::string text;
     std::int64_t version = 0;
+};
+
+class AnalysisSnapshot final
+{
+public:
+    AnalysisSnapshot() noexcept = default;
+
+    bool available() const noexcept;
+    std::uint64_t generation() const noexcept;
+    const std::filesystem::path& projectPath() const noexcept;
+    bool currentAnalysisSucceeded() const noexcept;
+    bool semanticModelAvailable() const noexcept;
+    bool usedPreviousSemanticModel() const noexcept;
+    bool cancelled() const noexcept;
+    std::string_view error() const noexcept;
+    std::span<const LanguageDiagnostic> diagnostics() const noexcept;
+
+private:
+    class Implementation;
+    explicit AnalysisSnapshot(std::shared_ptr<Implementation> implementation) noexcept;
+
+    std::shared_ptr<Implementation> implementation_;
+    friend class LanguageService;
 };
 
 // Stable facade for editor analysis. Internal lexer, parser and semantic model classes remain
@@ -54,6 +82,10 @@ public:
     bool closeDocument(const std::filesystem::path& path) noexcept;
     std::optional<DocumentSnapshot> document(const std::filesystem::path& path) const;
     std::size_t documentCount() const noexcept;
+    AnalysisSnapshot analyzeProject(
+        const std::filesystem::path& project,
+        std::size_t jobs = 1,
+        std::function<bool()> cancellationCheck = {});
 
 private:
     class Implementation;
