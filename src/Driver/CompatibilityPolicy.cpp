@@ -43,8 +43,8 @@ std::vector<Field> fields()
         {"compiler_compatibility", "same-minor-before-1;same-major-after-1"},
         {"language_compatibility", "same-minor-before-1;same-major-after-1"},
         {"deprecation", "diagnostic-before-removal;one-minor-minimum"},
-        {"nsmeta_read", "1.0-1." + std::to_string(kMetadataFormatMinor)},
-        {"nsmeta_write", std::to_string(kMetadataFormatMajor) + "." + std::to_string(kMetadataFormatMinor)},
+        {"nsmeta_read", "1.0-1." + std::to_string(interop::kMetadataFormatMinor)},
+        {"nsmeta_write", std::to_string(interop::kMetadataFormatMajor) + "." + std::to_string(interop::kMetadataFormatMinor)},
         {"native_abi", std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
         {"runtime_abi", std::to_string(kRuntimeAbiMajor) + "." + std::to_string(kRuntimeAbiMinor)},
         {"toolchain_contract", std::to_string(kToolchainContractFormatVersion)},
@@ -220,7 +220,8 @@ std::string currentCompatibilityMatrix()
     matrix += "certification=final\n";
     matrix += "compiler.N=2.0.0\n";
     matrix += "compiler.N-1=1.0.1\n";
-    matrix += "nsmeta.N=1.20\n";
+    matrix += "nsmeta.N=" + std::to_string(interop::kMetadataFormatMajor) + "." +
+        std::to_string(interop::kMetadataFormatMinor) + "\n";
     matrix += "nsmeta.N-1=1.20\n";
     matrix += "native-abi.N=1.0\n";
     matrix += "native-abi.N-1=1.0\n";

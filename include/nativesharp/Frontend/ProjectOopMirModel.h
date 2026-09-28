@@ -22,7 +22,8 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 13;
+// MINOR 14: namespace state has explicit load/address nodes and stable storage identity.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 14;
 
 enum class ProjectOopMirAbiPassing
 {

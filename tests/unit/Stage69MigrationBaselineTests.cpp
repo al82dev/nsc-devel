@@ -41,11 +41,11 @@ int main()
                      baseline.find("target_release=2.0.0\n") != std::string::npos &&
                      baseline.find("status=promoted\n") != std::string::npos,
         "migration baseline identifies its frozen source and final target");
-    tests.expect(baseline.find("nsmeta=1.20\n") != std::string::npos &&
+    tests.expect(baseline.find("nsmeta=1.22\n") != std::string::npos &&
                      baseline.find("native_abi=1.0\n") != std::string::npos &&
                      baseline.find("runtime_abi=1.0\n") != std::string::npos &&
                      baseline.find("runtime_symbol_set=2\n") != std::string::npos &&
-                     baseline.find("mir_schema=1.11\n") != std::string::npos,
+                     baseline.find("mir_schema=1.14\n") != std::string::npos,
         "migration baseline freezes every cross-component contract");
     tests.expect(baseline.find("breaking_change_ledger=1\n") != std::string::npos &&
                      baseline.find("migration_notes=1\n") != std::string::npos &&

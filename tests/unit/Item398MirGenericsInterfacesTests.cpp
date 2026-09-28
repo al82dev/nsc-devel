@@ -124,7 +124,7 @@ class Probe
         "interface call sites consume the same consolidated MIR identity and slot");
 
     const std::string dump = ProjectOopMirModelDumper::dump(model);
-    tests.expect(dump.find("schema=1.11") != std::string::npos &&
+    tests.expect(dump.find("schema=1.14") != std::string::npos &&
             dump.find("generic-specializations=") != std::string::npos &&
             dump.find("interface-bindings=") != std::string::npos,
         "versioned MIR dump publishes generic and interface catalogues");
