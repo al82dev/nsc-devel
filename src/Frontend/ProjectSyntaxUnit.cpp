@@ -52,7 +52,7 @@ bool ProjectSyntaxUnit::parse(
     }
 
     const std::size_t errorsBefore = diagnostics.errorCount();
-    parser::Parser parser(tokens_, *arena_, diagnostics, knownTypeNames);
+    parser::Parser parser(tokens_, *arena_, diagnostics, knownTypeNames, languageEdition_);
     syntaxTree_ = parser.parseCompilationUnit();
     syntaxValid_ = syntaxTree_ != nullptr && diagnostics.errorCount() == errorsBefore;
     return syntaxValid_;

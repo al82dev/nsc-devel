@@ -83,6 +83,9 @@ struct MethodParameterSymbol final
     FileId fileId;
     SourceRange range;
     const ast::AstNode* syntax = nullptr;
+    // NativeSharp 3.0 T01. A typed pack is always the final ReadOnlySpan<T> parameter. This bit
+    // changes call-site binding only; the physical ABI remains one ordinary span value.
+    bool isParameterPack = false;
     // NSC-LIMIT-020. Defaults remain attached to the declaration AST so ProjectReference calls
     // materialize the value fixed by the callee's contract, not a caller-side reparse.
     const ast::AstNode* defaultValueSyntax = nullptr;

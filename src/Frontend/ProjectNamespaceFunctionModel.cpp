@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
+#include "nativesharp/Language/ExpressionErgonomics.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
@@ -289,6 +290,7 @@ bool ProjectNamespaceFunctionModel::build(
             declaration.hasBody});
 
         std::unordered_map<std::string, const ast::AstNode*> parameterNames;
+        bool sawParameterPack = false;
         for (const ast::AstNode* parameterNode : syntax.children())
         {
             if (parameterNode == nullptr ||
@@ -307,6 +309,35 @@ bool ProjectNamespaceFunctionModel::build(
             parameter.range = parameterNode->range();
             parameter.syntax = parameterNode;
             parameter.defaultValueSyntax = parameterNode->first();
+            parameter.isParameterPack = parameterNode->auxiliaryText() == "params";
+            if (sawParameterPack)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    parameter.range,
+                    "a typed parameter pack must be the final parameter");
+            }
+            if (parameter.isParameterPack)
+            {
+                sawParameterPack = true;
+                if (!language::isTypedParameterPackType(parameter.typeKey))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        parameter.range,
+                        "params requires ReadOnlySpan<T>; implicit heap arrays are forbidden");
+                }
+                if (parameter.defaultValueSyntax != nullptr)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        parameter.range,
+                        "a typed parameter pack cannot declare a default value");
+                }
+            }
             if (parameter.passKind != ParameterPassKind::Value)
             {
                 parameter.pointeeTypeKey = parameter.typeKey.empty() || parameter.typeKey.back() != '*'

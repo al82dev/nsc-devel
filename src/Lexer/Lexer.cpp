@@ -210,6 +210,10 @@ Token Lexer::nextToken()
     {
         token = lexString(begin);
     }
+    else if (current() == '$' && peek() == '"')
+    {
+        token = lexInterpolatedString(begin);
+    }
     else
     {
         token = lexOperatorOrPunctuation(begin);
@@ -712,6 +716,75 @@ Token Lexer::lexString(std::uint32_t begin)
     return Token(TokenKind::StringLiteral, range(begin, offset_), text(begin, offset_), std::move(decoded));
 }
 
+Token Lexer::lexInterpolatedString(std::uint32_t begin)
+{
+    // Keep the complete decoded template in one token. Parsing the holes belongs to the T01
+    // static-handler lowering pass, which needs brace nesting and format text as a unit.
+    advance(); // '$'
+    advance(); // opening quote
+    std::string decoded;
+    bool valid = true;
+    std::uint32_t braceDepth = 0;
+    while (!isAtEnd() && current() != '\n' && current() != '\r')
+    {
+        if (current() == '"' && braceDepth == 0)
+        {
+            advance();
+            return valid
+                ? Token(TokenKind::InterpolatedStringLiteral, range(begin, offset_),
+                    text(begin, offset_), std::move(decoded))
+                : Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
+        }
+        if (current() == '\\')
+        {
+            advance();
+            if (!decodeEscape(decoded, begin)) valid = false;
+            continue;
+        }
+        if (current() == '{')
+        {
+            if (peek() == '{')
+            {
+                advance();
+                advance();
+                decoded += "{{";
+                continue;
+            }
+            ++braceDepth;
+            decoded.push_back(advance());
+            continue;
+        }
+        if (current() == '}')
+        {
+            if (peek() == '}' && braceDepth == 0)
+            {
+                advance();
+                advance();
+                decoded += "}}";
+                continue;
+            }
+            if (braceDepth == 0)
+            {
+                valid = false;
+            }
+            else
+            {
+                --braceDepth;
+            }
+            decoded.push_back(advance());
+            continue;
+        }
+        decoded.push_back(advance());
+    }
+    valid = false;
+    diagnostics_.report(
+        diagnostics::DiagnosticId::InvalidStringLiteral,
+        diagnostics::DiagnosticSeverity::Error,
+        range(begin, offset_),
+        "invalid or unterminated interpolated string literal");
+    return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
+}
+
 Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
 {
     const char first = advance();
@@ -737,6 +810,12 @@ Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
         case ':':
             return makeToken(TokenKind::Colon, begin);
         case '?':
+            if (match('?'))
+            {
+                if (match('=')) return makeToken(TokenKind::QuestionQuestionEqual, begin);
+                return makeToken(TokenKind::QuestionQuestion, begin);
+            }
+            if (match('.')) return makeToken(TokenKind::QuestionDot, begin);
             return makeToken(TokenKind::Question, begin);
         case '.':
             if (current() == '.' && peek() == '.')
@@ -745,6 +824,7 @@ Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
                 advance();
                 return makeToken(TokenKind::Ellipsis, begin);
             }
+            if (match('.')) return makeToken(TokenKind::DotDot, begin);
             return makeToken(TokenKind::Dot, begin);
         case '~':
             return makeToken(TokenKind::Tilde, begin);

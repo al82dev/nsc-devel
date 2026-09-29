@@ -126,6 +126,7 @@ add_dependencies(nsc_basic nsc_build_identity)
 
 add_library(nsc_compilation STATIC
     src/Language/LanguageEdition.cpp
+    src/Language/ExpressionErgonomics.cpp
     src/Driver/CompilationJobPolicy.cpp
     src/Driver/CompilationWorkerPool.cpp
     src/Compilation/SimpleXmlParser.cpp
@@ -698,6 +699,16 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_ns3_t00_constitution_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_ns3_t00_constitution_tests)
     add_test(NAME nsc.ns3.t00.constitution COMMAND nsc_ns3_t00_constitution_tests)
+
+    add_executable(
+        nsc_ns3_t01_expression_tests
+        tests/unit/NativeSharp3T01ExpressionTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t01_expression_tests
+        PRIVATE nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_ns3_t01_expression_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_t01_expression_tests)
+    add_test(NAME nsc.ns3.t01.expressions COMMAND nsc_ns3_t01_expression_tests)
 
     add_test(
         NAME nsc.ns3.t00.conformance-harness

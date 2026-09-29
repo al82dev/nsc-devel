@@ -149,6 +149,11 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(CaretEqual);
         NS_TOKEN_CASE(LessLessEqual);
         NS_TOKEN_CASE(GreaterGreaterEqual);
+        NS_TOKEN_CASE(InterpolatedStringLiteral);
+        NS_TOKEN_CASE(QuestionQuestion);
+        NS_TOKEN_CASE(QuestionQuestionEqual);
+        NS_TOKEN_CASE(QuestionDot);
+        NS_TOKEN_CASE(DotDot);
 #undef NS_TOKEN_CASE
     }
 
@@ -168,7 +173,8 @@ bool isOwnershipQualifierKeyword(TokenKind kind) noexcept
 bool isAssignmentOperator(TokenKind kind) noexcept
 {
     return kind == TokenKind::Equal ||
-        (kind >= TokenKind::PlusEqual && kind <= TokenKind::GreaterGreaterEqual);
+        (kind >= TokenKind::PlusEqual && kind <= TokenKind::GreaterGreaterEqual) ||
+        kind == TokenKind::QuestionQuestionEqual;
 }
 
 // IDs 79/81. La correspondencia `+=` -> `+` vive AQUI, junto a isAssignmentOperator, y no en el

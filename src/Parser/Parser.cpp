@@ -3,6 +3,7 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Lexer/TokenKind.h"
+#include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Target/TargetInfo.h"
 
 #include <algorithm>
@@ -125,10 +126,12 @@ Parser::Parser(
     std::span<const lexer::Token> tokens,
     ast::AstArena& arena,
     diagnostics::DiagnosticEngine& diagnostics,
-    std::span<const std::string> knownTypeNames)
+    std::span<const std::string> knownTypeNames,
+    language::LanguageEdition languageEdition)
     : tokens_(tokens),
       arena_(arena),
-      diagnostics_(diagnostics)
+      diagnostics_(diagnostics),
+      languageEdition_(languageEdition)
 {
     static constexpr std::array<std::string_view, 16> builtinNames = {
         "void", "bool", "byte", "char", "short", "ushort", "int", "uint", "long", "ulong",
@@ -151,6 +154,17 @@ Parser::Parser(
             knownTypeNames_.insert(name);
         }
     }
+}
+
+bool Parser::requireEdition3(SourceRange range, std::string_view feature)
+{
+    if (languageEdition_ == language::LanguageEdition::V3) return true;
+    diagnostics_.report(
+        diagnostics::DiagnosticId::NS3002FeatureRequiresLanguageEdition3,
+        diagnostics::DiagnosticSeverity::Error,
+        range,
+        std::string(feature) + " requires <Language>3</Language>");
+    return false;
 }
 
 ast::AstNode* Parser::parseCompilationUnit()
@@ -5153,6 +5167,11 @@ ast::AstNode* Parser::parseFunctionTail(
 ast::AstNode* Parser::parseParameter()
 {
     const std::size_t beginIndex = index_;
+    const bool parameterPack = atContextualKeyword("params");
+    if (parameterPack)
+    {
+        requireEdition3(consume().range(), "typed parameter packs");
+    }
     // C4 "language references": `ref`/`out`/`in` before the type. The parameter's TYPE becomes a
     // pointer to what was written -- which is what a by-reference parameter actually receives,
     // and which reuses the pointer machinery C1 already certified end to end instead of adding a
@@ -5183,7 +5202,16 @@ ast::AstNode* Parser::parseParameter()
         tokenRangeFrom(beginIndex));
     parameter->setTypeSyntax(type);
     parameter->setText(std::string(name.lexeme()));
-    if (!passKind.empty()) parameter->setAuxiliaryText("pass:" + passKind);
+    if (parameterPack && !passKind.empty())
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            parameter->range(),
+            "a params ReadOnlySpan<T> parameter cannot also be ref, out, or in");
+    }
+    if (parameterPack) parameter->setAuxiliaryText("params");
+    else if (!passKind.empty()) parameter->setAuxiliaryText("pass:" + passKind);
     if (consumeIf(TokenKind::Equal))
     {
         parameter->setFirst(parseAssignmentExpression());
@@ -5953,8 +5981,31 @@ ast::AstNode* Parser::parseAggregateInitializer()
         ast::AstNodeKind::AggregateInitializerExpression, open.range());
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
-        ast::AstNode* element =
-            at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression();
+        ast::AstNode* element = nullptr;
+        if (at(TokenKind::DotDot))
+        {
+            const SourceRange spread = consume().range();
+            requireEdition3(spread, "spread elements in generalized initializers");
+            ast::AstNode* value = parseExpression();
+            element = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::SpreadElementExpression,
+                join(spread, value != nullptr ? value->range() : spread));
+            element->setTokenKind(TokenKind::DotDot);
+            element->setFirst(value);
+        }
+        else if (at(TokenKind::Identifier) && peek().kind() == TokenKind::Equal)
+        {
+            const std::string memberName(current().lexeme());
+            const SourceRange memberRange = consume().range();
+            requireEdition3(memberRange, "named members in generalized initializers");
+            consume(); // '='
+            element = at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression();
+            if (element != nullptr) element->setArgumentName(memberName);
+        }
+        else
+        {
+            element = at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression();
+        }
         if (element == nullptr)
         {
             break;
@@ -6774,6 +6825,9 @@ ast::AstNode* Parser::parseAssignmentExpression()
     }
 
     const TokenKind operation = consume().kind();
+    if (operation == TokenKind::QuestionQuestionEqual)
+        requireEdition3(tokens_[index_ - 1].range(),
+            "the null-coalescing assignment operator '?' '?='");
     ast::AstNode* right = parseAssignmentExpression();
     ast::AstNode* node = arena_.make<ast::AstNode>(
         ast::AstNodeKind::AssignmentExpression,
@@ -6792,7 +6846,7 @@ ast::AstNode* Parser::parseAssignmentExpression()
 // nested conditional cannot be ambiguous.
 ast::AstNode* Parser::parseConditionalExpression()
 {
-    ast::AstNode* condition = parseLogicalOrExpression();
+    ast::AstNode* condition = parseNullCoalescingExpression();
     if (!at(TokenKind::Question))
     {
         return condition;
@@ -6809,6 +6863,22 @@ ast::AstNode* Parser::parseConditionalExpression()
     node->setFirst(condition);
     node->setSecond(whenTrue);
     node->setThird(whenFalse);
+    return node;
+}
+
+ast::AstNode* Parser::parseNullCoalescingExpression()
+{
+    ast::AstNode* left = parseLogicalOrExpression();
+    if (!at(TokenKind::QuestionQuestion)) return left;
+    const SourceRange operation = consume().range();
+    requireEdition3(operation, "the null-coalescing operator '?' '?'");
+    ast::AstNode* right = parseNullCoalescingExpression();
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::NullCoalescingExpression,
+        join(left->range(), right != nullptr ? right->range() : operation));
+    node->setTokenKind(TokenKind::QuestionQuestion);
+    node->setFirst(left);
+    node->setSecond(right);
     return node;
 }
 
@@ -6993,6 +7063,19 @@ ast::AstNode* Parser::parseMultiplicativeExpression()
 
 ast::AstNode* Parser::parseUnaryExpression()
 {
+    if (at(TokenKind::Caret))
+    {
+        const SourceRange start = consume().range();
+        requireEdition3(start, "the from-end index operator '^'");
+        ast::AstNode* operand = parseUnaryExpression();
+        ast::AstNode* node = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::FromEndExpression,
+            join(start, operand != nullptr ? operand->range() : start));
+        node->setTokenKind(TokenKind::Caret);
+        node->setFirst(operand);
+        return node;
+    }
+
     if (at(TokenKind::KwMove))
     {
         const SourceRange start = consume().range();
@@ -7422,7 +7505,29 @@ ast::AstNode* Parser::parsePostfixExpression()
             {
                 while (true)
                 {
-                    ast::AstNode* indexExpression = parseAssignmentExpression();
+                    ast::AstNode* indexExpression = nullptr;
+                    ast::AstNode* rangeStart = nullptr;
+                    if (!at(TokenKind::DotDot)) rangeStart = parseAssignmentExpression();
+                    if (at(TokenKind::DotDot))
+                    {
+                        const SourceRange rangeToken = consume().range();
+                        requireEdition3(rangeToken, "range expressions");
+                        ast::AstNode* rangeEnd = nullptr;
+                        if (!at(TokenKind::Comma) && !at(TokenKind::RightBracket))
+                            rangeEnd = parseAssignmentExpression();
+                        indexExpression = arena_.make<ast::AstNode>(
+                            ast::AstNodeKind::RangeExpression,
+                            SourceRange(
+                                rangeStart != nullptr ? rangeStart->range().begin() : rangeToken.begin(),
+                                rangeEnd != nullptr ? rangeEnd->range().end() : rangeToken.end()));
+                        indexExpression->setTokenKind(TokenKind::DotDot);
+                        indexExpression->setFirst(rangeStart);
+                        indexExpression->setSecond(rangeEnd);
+                    }
+                    else
+                    {
+                        indexExpression = rangeStart;
+                    }
                     if (indexExpression != nullptr) indices.push_back(indexExpression);
                     if (!consumeIf(TokenKind::Comma)) break;
                 }
@@ -7435,6 +7540,26 @@ ast::AstNode* Parser::parsePostfixExpression()
             if (!indices.empty()) indexNode->setSecond(indices.front());
             for (ast::AstNode* indexExpression : indices) indexNode->addChild(indexExpression);
             expression = indexNode;
+            continue;
+        }
+
+        if (at(TokenKind::QuestionDot))
+        {
+            const SourceRange operation = consume().range();
+            requireEdition3(operation, "null-conditional member access");
+            if (!at(TokenKind::Identifier))
+            {
+                expect(TokenKind::Identifier, "member name after '?.'");
+                return expression;
+            }
+            const lexer::Token& member = consume();
+            ast::AstNode* access = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::NullConditionalMemberExpression,
+                SourceRange(expression->range().begin(), member.range().end()));
+            access->setTokenKind(TokenKind::QuestionDot);
+            access->setFirst(expression);
+            access->setText(std::string(member.lexeme()));
+            expression = access;
             continue;
         }
 
@@ -7496,10 +7621,48 @@ ast::AstNode* Parser::parsePostfixExpression()
             continue;
         }
 
+        if (atContextualKeyword("with"))
+        {
+            expression = parseWithExpression(expression);
+            continue;
+        }
+
         break;
     }
 
     return expression;
+}
+
+ast::AstNode* Parser::parseWithExpression(ast::AstNode* source)
+{
+    const SourceRange keyword = consume().range();
+    requireEdition3(keyword, "with expressions");
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::WithExpression, join(source->range(), keyword));
+    node->setFirst(source);
+    if (!expect(TokenKind::LeftBrace, "'{' after with")) return node;
+    while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+    {
+        if (!at(TokenKind::Identifier))
+        {
+            expect(TokenKind::Identifier, "member name in with expression");
+            break;
+        }
+        const std::string name(current().lexeme());
+        consume();
+        expect(TokenKind::Equal, "'=' after with member name");
+        ast::AstNode* value = parseAssignmentExpression();
+        if (value != nullptr)
+        {
+            value->setArgumentName(name);
+            node->addChild(value);
+        }
+        if (!consumeIf(TokenKind::Comma)) break;
+        if (at(TokenKind::RightBrace)) break;
+    }
+    expect(TokenKind::RightBrace, "'}' after with expression");
+    node->setRange(SourceRange(source->range().begin(), tokens_[index_ - 1].range().end()));
+    return node;
 }
 
 ast::AstNode* Parser::parsePrimaryExpression()
@@ -7514,6 +7677,10 @@ ast::AstNode* Parser::parsePrimaryExpression()
         case TokenKind::FloatingLiteral: kind = ast::AstNodeKind::FloatingLiteralExpression; break;
         case TokenKind::CharacterLiteral: kind = ast::AstNodeKind::CharacterLiteralExpression; break;
         case TokenKind::StringLiteral: kind = ast::AstNodeKind::StringLiteralExpression; break;
+        case TokenKind::InterpolatedStringLiteral:
+            requireEdition3(token.range(), "static string interpolation");
+            kind = ast::AstNodeKind::InterpolatedStringExpression;
+            break;
         case TokenKind::KwTrue:
         case TokenKind::KwFalse: kind = ast::AstNodeKind::BooleanLiteralExpression; break;
         case TokenKind::KwNull: kind = ast::AstNodeKind::NullLiteralExpression; break;
@@ -7583,6 +7750,20 @@ ast::AstNode* Parser::parsePrimaryExpression()
     if (const auto* string = std::get_if<std::string>(&token.value()))
     {
         node->setText(*string);
+        if (kind == ast::AstNodeKind::InterpolatedStringExpression)
+        {
+            std::vector<language::InterpolationPart> parts;
+            std::string error;
+            if (!language::parseStaticInterpolation(*string, parts, error))
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidStringLiteral,
+                    diagnostics::DiagnosticSeverity::Error,
+                    token.range(),
+                    std::move(error));
+            }
+            node->setIntegerValue(parts.size());
+        }
     }
 
     return node;

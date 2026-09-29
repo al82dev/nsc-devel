@@ -107,7 +107,7 @@ bool FrontendCompilation::run(FileId fileId, bool requireMain)
         return false;
     }
 
-    parser::Parser parser(tokens_, arena_, diagnostics_);
+    parser::Parser parser(tokens_, arena_, diagnostics_, {}, languageEdition_);
     syntaxTree_ = parser.parseCompilationUnit();
     if (diagnostics_.hasErrors())
     {

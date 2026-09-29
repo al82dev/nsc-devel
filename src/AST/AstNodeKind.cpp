@@ -90,6 +90,13 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(StackallocExpression);
         NS_AST_KIND(MoveExpression);
         NS_AST_KIND(AggregateInitializerExpression);
+        NS_AST_KIND(NullCoalescingExpression);
+        NS_AST_KIND(NullConditionalMemberExpression);
+        NS_AST_KIND(RangeExpression);
+        NS_AST_KIND(FromEndExpression);
+        NS_AST_KIND(SpreadElementExpression);
+        NS_AST_KIND(InterpolatedStringExpression);
+        NS_AST_KIND(WithExpression);
 #undef NS_AST_KIND
     }
 
