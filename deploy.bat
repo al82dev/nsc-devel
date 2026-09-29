@@ -1,0 +1,1 @@
+cmake --install A:\nsc-devel\build-clang --prefix C:\native-sharp-3.0

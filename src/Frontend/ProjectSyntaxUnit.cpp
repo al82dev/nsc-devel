@@ -14,13 +14,15 @@ ProjectSyntaxUnit::ProjectSyntaxUnit(
     std::size_t sourceOrdinal,
     std::string moduleName,
     FileId fileId,
-    bool precompiled)
+    bool precompiled,
+    language::LanguageEdition languageEdition)
     : projectOrdinal_(projectOrdinal),
       sourceOrdinal_(sourceOrdinal),
       moduleName_(std::move(moduleName)),
       fileId_(fileId),
       arena_(std::make_unique<ast::AstArena>()),
-      precompiled_(precompiled)
+      precompiled_(precompiled),
+      languageEdition_(languageEdition)
 {
 }
 
@@ -50,7 +52,7 @@ bool ProjectSyntaxUnit::parse(
     }
 
     const std::size_t errorsBefore = diagnostics.errorCount();
-    parser::Parser parser(tokens_, *arena_, diagnostics, knownTypeNames);
+    parser::Parser parser(tokens_, *arena_, diagnostics, knownTypeNames, languageEdition_);
     syntaxTree_ = parser.parseCompilationUnit();
     syntaxValid_ = syntaxTree_ != nullptr && diagnostics.errorCount() == errorsBefore;
     return syntaxValid_;
@@ -115,5 +117,10 @@ bool ProjectSyntaxUnit::isSyntaxValid() const noexcept
 bool ProjectSyntaxUnit::isPrecompiled() const noexcept
 {
     return precompiled_;
+}
+
+language::LanguageEdition ProjectSyntaxUnit::languageEdition() const noexcept
+{
+    return languageEdition_;
 }
 }

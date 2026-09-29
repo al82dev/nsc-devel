@@ -123,7 +123,20 @@ enum class AstNodeKind
     MoveExpression,
     // C7 "aggregate initializer": `V v = {1, 2};` -- the braced form, with the elements as
     // children in declaration order and nested braces for nested aggregates.
-    AggregateInitializerExpression
+    AggregateInitializerExpression,
+
+    // NativeSharp 3.0 T01. Appended to preserve every 2.x serialized node identity.
+    NullCoalescingExpression,
+    NullConditionalMemberExpression,
+    RangeExpression,
+    FromEndExpression,
+    SpreadElementExpression,
+    InterpolatedStringExpression,
+    WithExpression,
+
+    // NativeSharp 3.0 T02. A tuple remains a structural aggregate; assignment decides whether
+    // this syntax is a value literal or a deconstruction target.
+    TupleExpression
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

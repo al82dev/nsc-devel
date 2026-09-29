@@ -11,14 +11,16 @@ Project::Project(
     ProjectSourceSet sourceSet,
     std::vector<std::filesystem::path> projectReferences,
     std::vector<LibraryReference> libraryReferences,
-    std::vector<SdkManifest> sdkReferences)
+    std::vector<SdkManifest> sdkReferences,
+    language::LanguageEdition languageEdition)
     : projectFile_(std::move(projectFile)),
       moduleName_(std::move(moduleName)),
       outputKind_(outputKind),
       sourceSet_(std::move(sourceSet)),
       projectReferences_(std::move(projectReferences)),
       libraryReferences_(std::move(libraryReferences)),
-      sdkReferences_(std::move(sdkReferences))
+      sdkReferences_(std::move(sdkReferences)),
+      languageEdition_(languageEdition)
 {
 }
 
@@ -55,5 +57,10 @@ std::span<const LibraryReference> Project::libraryReferences() const noexcept
 std::span<const SdkManifest> Project::sdkReferences() const noexcept
 {
     return sdkReferences_;
+}
+
+language::LanguageEdition Project::languageEdition() const noexcept
+{
+    return languageEdition_;
 }
 }

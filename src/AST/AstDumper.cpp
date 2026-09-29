@@ -33,6 +33,10 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
     {
         output << " aux=\"" << node->auxiliaryText() << '"';
     }
+    if (!node->argumentName().empty())
+    {
+        output << " name=\"" << node->argumentName() << '"';
+    }
     if (!node->genericParameters().empty())
     {
         output << " generic=<";

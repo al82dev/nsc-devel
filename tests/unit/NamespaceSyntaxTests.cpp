@@ -144,5 +144,39 @@ int main()
         }
     }
 
+    {
+        ParsedFixture fixture;
+        parse(
+            fixture,
+            "namespace Numeric\n"
+            "{\n"
+            "    public int Add(int left, int right) { return left + right; }\n"
+            "    internal const int Limit = 32;\n"
+            "    int Plain() { return Limit; }\n"
+            "}\n");
+
+        tests.expect(!fixture.diagnostics.hasErrors(),
+            "namespace functions and storage accept public/internal accessibility");
+        const AstNode* space = fixture.root != nullptr && !fixture.root->children().empty()
+            ? fixture.root->children().front()
+            : nullptr;
+        tests.expect(space != nullptr && space->children().size() == 3,
+            "namespace retains accessible function and storage declarations");
+        if (space != nullptr && space->children().size() == 3)
+        {
+            tests.expect(space->children()[0]->kind() == AstNodeKind::FunctionDeclaration &&
+                    space->children()[0]->tokenKind() == TokenKind::KwPublic &&
+                    space->children()[0]->hasModifier(TokenKind::KwPublic),
+                "public namespace function accessibility survives in the AST");
+            tests.expect(space->children()[1]->kind() == AstNodeKind::GlobalVariableDeclaration &&
+                    space->children()[1]->tokenKind() == TokenKind::KwInternal &&
+                    space->children()[1]->hasModifier(TokenKind::KwInternal),
+                "internal namespace storage accessibility survives in the AST");
+            tests.expect(space->children()[2]->kind() == AstNodeKind::FunctionDeclaration &&
+                    space->children()[2]->tokenKind() == TokenKind::Invalid,
+                "an unmodified namespace function retains default accessibility syntax");
+        }
+    }
+
     return tests.result();
 }

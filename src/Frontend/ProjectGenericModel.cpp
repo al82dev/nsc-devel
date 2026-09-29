@@ -72,7 +72,9 @@ std::size_t valueParameterCount(const ast::AstNode* node) noexcept
 
 bool isGenericMethodTemplateNode(const ast::AstNode* node) noexcept
 {
-    return node != nullptr && node->kind() == ast::AstNodeKind::MethodDeclaration &&
+    return node != nullptr &&
+        (node->kind() == ast::AstNodeKind::MethodDeclaration ||
+         node->kind() == ast::AstNodeKind::FunctionDeclaration) &&
         !node->genericParameters().empty();
 }
 
@@ -724,7 +726,8 @@ void ProjectGenericModel::collectTemplates(
         }
         GenericTemplateRecord record;
         record.kind = GenericTemplateKind::Method;
-        record.accessibility = genericTemplateAccessibility(node, true);
+        record.accessibility = genericTemplateAccessibility(
+            node, node->kind() == ast::AstNodeKind::MethodDeclaration);
         record.syntax = node;
         record.projectOrdinal = unit.projectOrdinal();
         record.sourceOrdinal = unit.sourceOrdinal();
@@ -735,8 +738,12 @@ void ProjectGenericModel::collectTemplates(
         record.parameters = node->genericParameters();
         record.constraints = node->genericConstraints();
         record.qualifiedTypeName = ownerName;
-        record.canonicalKey = record.moduleName + "::" + qualifiedName(currentNamespace, ownerName) +
-            "." + record.name + "``" + std::to_string(record.parameters.size());
+        const std::string callableScope = ownerName.empty()
+            ? currentNamespace
+            : qualifiedName(currentNamespace, ownerName);
+        record.canonicalKey = record.moduleName + "::" +
+            (callableScope.empty() ? std::string{} : callableScope + ".") +
+            record.name + "``" + std::to_string(record.parameters.size());
         templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
     }
 

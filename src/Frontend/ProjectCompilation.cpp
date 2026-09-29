@@ -34,6 +34,11 @@ void ProjectCompilation::setCancellationCheck(std::function<bool()> check)
     cancellationCheck_ = std::move(check);
 }
 
+void ProjectCompilation::setSourceBufferProvider(SourceBufferProvider provider)
+{
+    sourceBufferProvider_ = std::move(provider);
+}
+
 void ProjectCompilation::setPhaseTimingSink(
     std::function<void(std::string_view, std::chrono::nanoseconds)> sink)
 {
@@ -486,7 +491,7 @@ bool ProjectCompilation::setPreloadedProjectGraph(
 {
     error.clear();
     if (projectGraph_.has_value() || !units_.empty() || genericModel_ != nullptr ||
-        nameLookup_ != nullptr || memberModel_ != nullptr)
+        nameLookup_ != nullptr || memberModel_ != nullptr || namespaceFunctionModel_ != nullptr)
     {
         error = "project graph must be configured before project compilation starts";
         return false;
@@ -591,8 +596,14 @@ bool ProjectCompilation::compileProjectMembers(
                 specializationTypeAliases.emplace_back(localTypeKey, publishedTypeKey);
         }
     }
-    return memberModel_->bindPrecompiledPhysicalNames(
-        precompiledMembers, specializationTypeAliases, loadError);
+    if (!memberModel_->bindPrecompiledPhysicalNames(
+            precompiledMembers, specializationTypeAliases, loadError))
+    {
+        return false;
+    }
+
+    namespaceFunctionModel_ = std::make_unique<ProjectNamespaceFunctionModel>();
+    return namespaceFunctionModel_->build(*nameLookup_, *memberModel_, units_, diagnostics_);
 }
 
 
@@ -670,7 +681,7 @@ bool ProjectCompilation::compileProjectMethodBodies(
         publicSurfaceProjectOrdinal = projectGraph_->projects().size() - 1U;
     }
     return methodBodyModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, diagnostics_,
+        *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_, diagnostics_,
         genericConstraintModel_.get(), publicSurfaceProjectOrdinal);
 }
 
@@ -768,7 +779,7 @@ bool ProjectCompilation::compileProjectOopHir(
     if (oopHirModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
             *constructionModel_, *objectLayoutModel_, loadError, genericConstraintModel_.get(),
-            compilationJobs_))
+            compilationJobs_, namespaceFunctionModel_.get()))
     {
         return true;
     }
@@ -812,7 +823,7 @@ bool ProjectCompilation::compileProjectOopMir(
     oopMirModel_ = std::make_unique<ProjectOopMirModel>();
     return oopMirModel_->build(
         *nameLookup_, *memberModel_, *objectLayoutModel_, *virtualDispatchModel_, *interfaceModel_,
-        *destructionModel_, *oopHirModel_, loadError, compilationJobs_);
+        *destructionModel_, *oopHirModel_, *namespaceFunctionModel_, loadError, compilationJobs_);
 }
 
 bool ProjectCompilation::compileSyntaxCore(
@@ -861,6 +872,7 @@ bool ProjectCompilation::compileSyntaxCore(
         std::size_t projectOrdinal = 0;
         std::size_t sourceOrdinal = 0;
         std::string moduleName;
+        language::LanguageEdition languageEdition = language::LanguageEdition::V2;
         std::filesystem::path path;
         std::optional<std::string> buffer;
         std::optional<ComptimeResult> comptime;
@@ -879,6 +891,7 @@ bool ProjectCompilation::compileSyntaxCore(
                 projectOrdinal,
                 source.ordinal,
                 project.moduleName(),
+                project.languageEdition(),
                 source.absolutePath,
                 std::nullopt,
                 std::nullopt,
@@ -892,8 +905,15 @@ bool ProjectCompilation::compileSyntaxCore(
         for (std::size_t index = 0; index < sourceReads.size(); ++index)
         {
             syntaxWorkers.submit([&, index](std::size_t) {
-                sourceReads[index].buffer = source::SourceManager::readFileBuffer(
-                    sourceReads[index].path, sourceReads[index].error);
+                if (sourceBufferProvider_)
+                {
+                    sourceReads[index].buffer = sourceBufferProvider_(sourceReads[index].path);
+                }
+                if (!sourceReads[index].buffer.has_value())
+                {
+                    sourceReads[index].buffer = source::SourceManager::readFileBuffer(
+                        sourceReads[index].path, sourceReads[index].error);
+                }
                 reportSourceProgress(progressSink_, "syntax-read", sourceReads[index].path,
                     completed.fetch_add(1, std::memory_order_relaxed) + 1U,
                     sourceReads.size());
@@ -939,7 +959,9 @@ bool ProjectCompilation::compileSyntaxCore(
                 read.projectOrdinal,
                 read.sourceOrdinal,
                 std::move(read.moduleName),
-                fileId));
+                fileId,
+                false,
+                read.languageEdition));
         }
     }
 
@@ -987,7 +1009,12 @@ bool ProjectCompilation::compileSyntaxCore(
             return false;
         }
         auto unit = std::make_unique<ProjectSyntaxUnit>(
-            *projectOrdinal, 0, module.moduleName, fileId, true);
+            *projectOrdinal,
+            0,
+            module.moduleName,
+            fileId,
+            true,
+            projectGraph_->projects()[*projectOrdinal].languageEdition());
         units_.push_back(std::move(unit));
 
         if (!module.templateSourceText.empty())
@@ -1005,7 +1032,12 @@ bool ProjectCompilation::compileSyntaxCore(
             // Deliberately NOT precompiled: these public bodies are input to the consumer's
             // ordinary generic pass, which specializes only what that consumer requests.
             auto templateUnit = std::make_unique<ProjectSyntaxUnit>(
-                *projectOrdinal, 1, module.moduleName, templateFileId, false);
+                *projectOrdinal,
+                1,
+                module.moduleName,
+                templateFileId,
+                false,
+                projectGraph_->projects()[*projectOrdinal].languageEdition());
             units_.push_back(std::move(templateUnit));
         }
         }
@@ -1113,6 +1145,11 @@ const ProjectGenericConstraintModel* ProjectCompilation::genericConstraintModel(
 const ProjectMemberModel* ProjectCompilation::memberModel() const noexcept
 {
     return memberModel_.get();
+}
+
+const ProjectNamespaceFunctionModel* ProjectCompilation::namespaceFunctionModel() const noexcept
+{
+    return namespaceFunctionModel_.get();
 }
 
 const ProjectInheritanceModel* ProjectCompilation::inheritanceModel() const noexcept

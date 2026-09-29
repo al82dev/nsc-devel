@@ -68,6 +68,7 @@ void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
     output.text(node->debugDisplayName);
     output.scalar(node->operation);
     output.optional(node->memberOrdinal);
+    output.optional(node->namespaceFunctionOrdinal);
     output.optional(node->secondaryMemberOrdinal);
     output.optional(node->localOrdinal);
     output.optional(node->parameterOrdinal);
@@ -145,6 +146,7 @@ void writeFunction(
     bool definition)
 {
     output.scalar(function.memberOrdinal);
+    output.optional(function.namespaceFunctionOrdinal);
     output.scalar(function.declaringTypeOrdinal);
     output.scalar(function.constructor);
     output.scalar(function.destructor);
@@ -170,6 +172,7 @@ void writeFunction(
     output.scalar(function.capturesThisCell);
     output.text(function.genericSpecializationKey);
     output.text(function.mangledName);
+    output.text(function.debugDisplayName);
     output.text(function.returnTypeKey);
     output.scalar(function.returnOwnership);
     output.texts(function.parameterNames);

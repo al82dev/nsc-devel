@@ -23,8 +23,10 @@ void DiagnosticRenderer::render(const Diagnostic& diagnostic, std::ostream& outp
         << (path.empty() ? "<source>" : path)
         << ':' << position.line
         << ':' << position.column
-        << ": " << diagnosticSeverityName(diagnostic.severity())
-        << ": " << diagnostic.message() << '\n';
+        << ": " << diagnosticSeverityName(diagnostic.severity());
+    const std::string_view code = diagnosticIdName(diagnostic.id());
+    if (code.starts_with("NS3")) output << '[' << code << ']';
+    output << ": " << diagnostic.message() << '\n';
 
     const std::string_view line = sourceManager_.getLineText(diagnostic.location());
     if (line.empty() && position.column != 1)
@@ -57,6 +59,16 @@ void DiagnosticRenderer::render(const Diagnostic& diagnostic, std::ostream& outp
         output << '~';
     }
     output << '\n';
+
+    for (const DiagnosticLabel& label : diagnostic.secondaryLabels())
+    {
+        const source::SourcePosition labelPosition = sourceManager_.getPosition(label.range.begin());
+        const std::string_view labelPath = sourceManager_.getPath(label.range.begin());
+        output << (labelPath.empty() ? "<source>" : labelPath)
+               << ':' << labelPosition.line << ':' << labelPosition.column
+               << ": note: " << label.message << '\n';
+    }
+    for (const std::string& note : diagnostic.notes()) output << "note: " << note << '\n';
 }
 
 void DiagnosticRenderer::renderAll(const DiagnosticEngine& engine, std::ostream& output) const

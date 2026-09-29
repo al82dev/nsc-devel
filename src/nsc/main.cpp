@@ -1,4 +1,5 @@
 #include "nativesharp/Driver/CrashBoundary.h"
+#include "nativesharp/Driver/CompilerConsole.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 #include "nativesharp/LLVM/LlvmProcessTrace.h"
@@ -144,6 +145,39 @@ bool publishAutomaticErrorLog(std::string_view format,
     return false;
 }
 
+bool isCompilationInvocation(std::span<const std::string_view> arguments)
+{
+    if (arguments.empty()) return false;
+    if (arguments.front() == "build" || arguments.front() == "run") return true;
+    if (arguments.front() == "new" || arguments.front() == "restore" ||
+        arguments.front() == "clean" || arguments.front() == "add" ||
+        arguments.front() == "remove" || arguments.front() == "list")
+        return false;
+    for (const std::string_view argument : arguments)
+    {
+        if (argument.starts_with("--emit-")) return true;
+        if (argument.starts_with("--check") || argument.starts_with("--dump-") ||
+            argument.starts_with("--verify-") || argument.starts_with("--print-") ||
+            argument.starts_with("--write-") || argument.starts_with("--compare-") ||
+            argument.starts_with("--apply-"))
+            return false;
+    }
+    for (const std::string_view argument : arguments)
+    {
+        if (!argument.empty() && argument.front() != '-' &&
+            (argument.ends_with(".ns") || argument.ends_with(".nsproj")))
+            return true;
+    }
+    return false;
+}
+
+bool requestsJsonOutput(std::span<const std::string_view> arguments)
+{
+    return std::ranges::any_of(arguments, [](std::string_view argument) {
+        return argument == "--output-format=json";
+    });
+}
+
 int runCompiler(int argc, char** argv)
 {
     const auto isTraceWorkerArgument = [](const char* argument) {
@@ -152,25 +186,38 @@ int runCompiler(int argc, char** argv)
     };
     const bool traceWorker = std::any_of(argv + 1, argv + argc, isTraceWorkerArgument);
 
+    std::vector<std::string_view> rawArguments;
+    rawArguments.reserve(argc > 1 ? static_cast<std::size_t>(argc - 1) : 0U);
+    for (int index = 1; index < argc; ++index)
+        if (!isTraceWorkerArgument(argv[index])) rawArguments.emplace_back(argv[index]);
+    nativesharp::driver::CompilerConsoleArguments consoleArguments =
+        nativesharp::driver::parseCompilerConsoleArguments(rawArguments);
+    nativesharp::driver::CompilerLanguageScope languageScope(consoleArguments.language);
+    if (!consoleArguments.error.empty())
+    {
+        std::cerr << "nsc: error: " << consoleArguments.error << '\n';
+        return static_cast<int>(nativesharp::ExitCode::CommandLineError);
+    }
+
     std::vector<std::string_view> arguments;
-    arguments.reserve(argc > 1 ? static_cast<std::size_t>(argc - 1) : 0U);
+    arguments.reserve(consoleArguments.arguments.size());
     std::filesystem::path logPath;
     std::filesystem::path errorLogPath;
     std::filesystem::path timeTracePath;
     std::string logFormat = "text";
     bool quiet = false;
     bool verbose = false;
+    bool banner = true;
     bool automaticErrorLog = true;
-    for (int index = 1; index < argc; ++index)
+    for (const std::string_view argument : consoleArguments.arguments)
     {
-        if (isTraceWorkerArgument(argv[index])) continue;
-        const std::string_view argument(argv[index]);
         if (argument.starts_with("--log=")) { logPath = argument.substr(6); continue; }
         if (argument.starts_with("--log-on-error=")) { errorLogPath = argument.substr(15); continue; }
         if (argument.starts_with("--log-format=")) { logFormat = argument.substr(13); continue; }
         if (argument.starts_with("--time-trace=")) { timeTracePath = argument.substr(13); continue; }
         if (argument == "--time-report") { arguments.emplace_back("--time"); continue; }
         if (argument == "--quiet") { quiet = true; continue; }
+        if (argument == "--no-banner") { banner = false; continue; }
         if (argument == "--verbose") { verbose = true; continue; }
         if (argument == "--no-error-log") { automaticErrorLog = false; continue; }
         arguments.emplace_back(argument);
@@ -194,8 +241,10 @@ int runCompiler(int argc, char** argv)
     if (!timeTracePath.empty()) arguments.emplace_back("--time");
     if (logFormat != "text" && logFormat != "json")
     {
-        std::cerr << "nsc: error: unsupported log format '" << logFormat
-                  << "'; expected text or json\n";
+        std::cerr << "nsc: error: " << nativesharp::driver::compilerText(
+            "unsupported log format '", "formato de registro no compatible '") << logFormat
+                  << nativesharp::driver::compilerText("'; expected text or json\n",
+                                                       "'; se esperaba text o json\n");
         return static_cast<int>(nativesharp::ExitCode::CommandLineError);
     }
 
@@ -211,7 +260,9 @@ int runCompiler(int argc, char** argv)
             std::cerr << trace.diagnostics;
             if (!child.launchError.empty())
             {
-                std::cerr << "nsc: warning: LLVM trace supervisor could not read its child: "
+                std::cerr << nativesharp::driver::compilerText(
+                                 "nsc: warning: LLVM trace supervisor could not read its child: ",
+                                 "nsc: advertencia: el supervisor de trazas LLVM no pudo leer su proceso hijo: ")
                           << child.launchError << '\n';
             }
 
@@ -224,15 +275,20 @@ int runCompiler(int argc, char** argv)
                 nativesharp::llvm_backend::observeLlvmPassLog(trace.passLog, observation);
                 if (!observation.lastObservedPass.empty())
                 {
-                    std::cerr << "nsc: LLVM optimization trace: ultimo pass observado '"
+                    std::cerr << nativesharp::driver::compilerText(
+                                     "nsc: LLVM optimization trace: last observed pass '",
+                                     "nsc: traza de optimización LLVM: último pase observado '")
                               << observation.lastObservedPass << "'";
                     if (!observation.lastObservedUnit.empty())
                     {
-                        std::cerr << "; ultima funcion/unidad observada '"
+                        std::cerr << nativesharp::driver::compilerText(
+                                         "; last observed function/unit '",
+                                         "; última función/unidad observada '")
                                   << observation.lastObservedUnit << "'";
                     }
                     std::cerr << "; " << observation.observedPassCount
-                              << " pases observados\n";
+                              << nativesharp::driver::compilerText(
+                                     " passes observed\n", " pases observados\n");
                 }
             }
             return static_cast<int>(child.exitCode);
@@ -240,7 +296,9 @@ int runCompiler(int argc, char** argv)
 
         // Observar no puede crear una forma nueva de impedir la compilacion. Si ni siquiera se
         // pudo crear el hijo, se ejecuta el driver localmente y se conserva la causa en stderr.
-        std::cerr << "nsc: warning: LLVM trace supervisor unavailable: "
+        std::cerr << nativesharp::driver::compilerText(
+                         "nsc: warning: LLVM trace supervisor unavailable: ",
+                         "nsc: advertencia: el supervisor de trazas LLVM no está disponible: ")
                   << child.launchError << '\n';
     }
     else if (traceWorker)
@@ -258,6 +316,13 @@ int runCompiler(int argc, char** argv)
     TeeBuffer errorBuffer(std::cerr.rdbuf(), capturedError.rdbuf());
     std::ostream observedOutput(&outputBuffer);
     std::ostream observedError(&errorBuffer);
+    if (banner && !quiet && !traceWorker && !requestsJsonOutput(arguments) &&
+        isCompilationInvocation(arguments))
+    {
+        nativesharp::driver::printCompilerBanner(observedOutput);
+        observedOutput << '\n';
+        observedOutput.flush();
+    }
     const nativesharp::driver::Driver driver;
     const nativesharp::ExitCode exitCode = driver.run(arguments, observedOutput, observedError);
     observedOutput.flush();
@@ -282,7 +347,9 @@ int runCompiler(int argc, char** argv)
             capturedOutput.str(), capturedError.str()) && logOk;
     if (!logOk)
     {
-        std::cerr << "nsc: warning: compilation log could not be published atomically\n";
+        std::cerr << nativesharp::driver::compilerText(
+            "nsc: warning: compilation log could not be published atomically\n",
+            "nsc: advertencia: el registro de compilación no pudo publicarse de forma atómica\n");
     }
     return numericExitCode;
 }

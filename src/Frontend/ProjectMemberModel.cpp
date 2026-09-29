@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
+#include "nativesharp/Language/ExpressionErgonomics.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
@@ -1478,6 +1479,7 @@ bool ProjectMemberModel::collectTypeMembers(
             {
                 std::unordered_map<std::string, const ast::AstNode*> parameterNames;
                 bool sawOptionalParameter = false;
+                bool sawParameterPack = false;
                 for (const ast::AstNode* parameterNode : memberNode->children())
                 {
                     if (parameterNode == nullptr ||
@@ -1495,6 +1497,35 @@ bool ProjectMemberModel::collectTypeMembers(
                     parameter.range = parameterNode->range();
                     parameter.syntax = parameterNode;
                     parameter.defaultValueSyntax = parameterNode->first();
+                    parameter.isParameterPack = parameterNode->auxiliaryText() == "params";
+                    if (sawParameterPack)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidType,
+                            diagnostics::DiagnosticSeverity::Error,
+                            parameter.range,
+                            "a typed parameter pack must be the final parameter");
+                    }
+                    if (parameter.isParameterPack)
+                    {
+                        sawParameterPack = true;
+                        if (!language::isTypedParameterPackType(parameter.typeKey))
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidType,
+                                diagnostics::DiagnosticSeverity::Error,
+                                parameter.range,
+                                "params requires ReadOnlySpan<T>; implicit heap arrays are forbidden");
+                        }
+                        if (parameter.defaultValueSyntax != nullptr)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                parameter.range,
+                                "a typed parameter pack cannot declare a default value");
+                        }
+                    }
                     // C4 "language references": the parser already turned the written type into a
                     // pointer, so `typeKey` is `T*`. `pointeeTypeKey` is what the programmer
                     // wrote, and it is what a USE of the parameter inside the body evaluates to --

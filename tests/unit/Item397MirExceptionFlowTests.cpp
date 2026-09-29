@@ -89,7 +89,7 @@ class Probe
         "MIR preserves rethrow as a distinct nonlocal exit");
 
     const std::string dump = ProjectOopMirModelDumper::dump(model);
-    tests.expect(dump.find("schema=1.11") != std::string::npos &&
+    tests.expect(dump.find("schema=1.14") != std::string::npos &&
             dump.find("exception-flow personality=true") != std::string::npos &&
             dump.find("nonlocal-exit kind=rethrow") != std::string::npos,
         "versioned MIR dump exposes exception and nonlocal-flow contracts");

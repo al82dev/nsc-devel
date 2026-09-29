@@ -24,6 +24,9 @@ public:
 
     void addTypeOrdinal(std::size_t ordinal);
     std::span<const std::size_t> typeOrdinals() const noexcept;
+
+    void addFunctionOrdinal(std::size_t ordinal);
+    std::span<const std::size_t> functionOrdinals() const noexcept;
     std::span<const std::unique_ptr<NamespaceSymbol>> children() const noexcept;
 
 private:
@@ -32,6 +35,7 @@ private:
     NamespaceSymbol* parent_ = nullptr;
     std::vector<std::unique_ptr<NamespaceSymbol>> children_;
     std::vector<std::size_t> typeOrdinals_;
+    std::vector<std::size_t> functionOrdinals_;
 };
 
 class GlobalNamespace final

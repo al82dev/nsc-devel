@@ -20,6 +20,10 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
            << projectOopHirNodeKindName(node->kind);
     if (!node->typeKey.empty()) output << " type=" << node->typeKey;
     if (node->memberOrdinal.has_value()) output << " member=#" << *node->memberOrdinal;
+    if (node->namespaceFunctionOrdinal.has_value())
+        output << " namespace-function=#" << *node->namespaceFunctionOrdinal;
+    if (node->namespaceStateOrdinal.has_value())
+        output << " namespace-state=#" << *node->namespaceStateOrdinal;
     if (node->localOrdinal.has_value()) output << " local=#" << *node->localOrdinal;
     if (node->hirRegionOrdinal.has_value()) output << " hir-region=#" << *node->hirRegionOrdinal;
     if (node->exceptionTargetRegionOrdinal.has_value()) output << " exception-target=#" << *node->exceptionTargetRegionOrdinal;
@@ -99,7 +103,10 @@ std::string ProjectOopHirModelDumper::dump(const ProjectOopHirModel& model)
     output << "project.oop.hir functions=" << model.functions().size() << '\n';
     for (const ProjectOopHirFunction& function : model.functions())
     {
-        output << "function #" << function.memberOrdinal << ' ' << function.mangledName
+        output << "function #" << function.memberOrdinal;
+        if (function.namespaceFunctionOrdinal.has_value())
+            output << " namespace-function=#" << *function.namespaceFunctionOrdinal;
+        output << ' ' << function.mangledName
                << " abi=" << (function.isStatic ? "static" : "this:first")
                << " inlining=" << inliningPolicyName(function.inliningPolicy)
                << " noheap=" << (function.isNoHeap ? "true" : "false")

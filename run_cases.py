@@ -120,7 +120,7 @@ def linker_path() -> str:
 
     nsc = os.environ.get("NSC_EXE", "")
     if not nsc:
-        nsc = str(Path(os.environ.get("NS_ROOT", r"C:\native-sharp")) / "bin" / "nsc.exe")
+        nsc = str(Path(os.environ.get("NS_ROOT", r"C:\native-sharp-3.0")) / "bin" / "nsc.exe")
 
     resolved = ""
     if Path(nsc).is_file():

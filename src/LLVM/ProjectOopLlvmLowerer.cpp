@@ -789,7 +789,23 @@ private:
     {
         if (debugBuilder_ == nullptr || function.isImportedC || function.isImportedNative)
             return nullptr;
-        if (function.isSyntheticImplicitConstructor)
+        if (function.namespaceFunctionOrdinal.has_value())
+        {
+            if (function.body == nullptr || function.body->syntax == nullptr)
+                return nullptr;
+            const SourceRange range = function.body->syntax->range();
+            const std::string displayName = function.debugDisplayName.empty()
+                ? function.mangledName
+                : function.debugDisplayName;
+            return createSynthesizedDebugSubprogram(
+                range,
+                displayName,
+                function.mangledName,
+                function.referenceReturn ? function.returnTypeKey + "*" : function.returnTypeKey,
+                function.parameterTypeKeys,
+                true,
+                false);
+        }        if (function.isSyntheticImplicitConstructor)
         {
             if (function.declaringTypeOrdinal >= nameLookup_.namedTypes().size()) return nullptr;
             const frontend::NamedTypeDeclaration& type =
@@ -888,6 +904,25 @@ private:
         std::string_view linkageName,
         bool localToUnit)
     {
+        if (origin.namespaceFunctionOrdinal.has_value())
+        {
+            if (debugBuilder_ == nullptr || origin.body == nullptr ||
+                origin.body->syntax == nullptr)
+            {
+                return nullptr;
+            }
+            const std::string displayName = (origin.debugDisplayName.empty()
+                ? origin.mangledName
+                : origin.debugDisplayName) + " [generated: " + std::string(role) + "]";
+            return createSynthesizedDebugSubprogram(
+                origin.body->syntax->range(),
+                displayName,
+                linkageName,
+                origin.referenceReturn ? origin.returnTypeKey + "*" : origin.returnTypeKey,
+                origin.parameterTypeKeys,
+                localToUnit,
+                true);
+        }
         if (debugBuilder_ == nullptr || memberModel_ == nullptr ||
             origin.memberOrdinal >= memberModel_->members().size() ||
             origin.declaringTypeOrdinal >= nameLookup_.namedTypes().size())
@@ -918,6 +953,15 @@ private:
         const frontend::ProjectOopMirFunction& origin,
         LLVMMetadataRef subprogram)
     {
+        if (origin.namespaceFunctionOrdinal.has_value())
+        {
+            if (subprogram == nullptr || sourceManager_ == nullptr ||
+                origin.body == nullptr || origin.body->syntax == nullptr)
+            {
+                return nullptr;
+            }
+            return debugSubprogramLocation(origin.body->syntax->range(), subprogram);
+        }
         if (subprogram == nullptr || sourceManager_ == nullptr || memberModel_ == nullptr ||
             origin.memberOrdinal >= memberModel_->members().size())
             return nullptr;
@@ -2461,16 +2505,12 @@ private:
                 applyGenericOdrDefinition(global, field.genericSpecializationKey);
 
             LLVMValueRef initializer = LLVMConstNull(type);
-            if (field.isConst)
+            if (field.isConst && !field.hasConstantInitializer)
             {
-                if (!field.hasConstantInitializer)
-                {
-                    return fail(error, "Stage 37 const field lost its compile-time initializer");
-                }
-                // La clave de tipo de un miembro de enum es la del propio enum, no
-                // "builtin:int"/"builtin:uint", asi que isIntegral() sola no lo veria:
-                // isEnumConstant es lo que lo marca. El SIGNO sale del tipo subyacente y no de una
-                // suposicion -- un `enum : byte` con un miembro en 200 se emite sin signo.
+                return fail(error, "Stage 37 const field lost its compile-time initializer");
+            }
+            if (field.hasConstantInitializer)
+            {
                 const frontend::builtins::IntegerTypeInfo* fieldEnum = enumUnderlyingInfo(field.typeKey);
                 if (frontend::ProjectTypeConversion::isIntegral(field.typeKey) || field.isEnumConstant)
                 {
@@ -2494,12 +2534,17 @@ private:
                     initializer = internStringLiteral(field.constantStringValue, error);
                     if (initializer == nullptr) return false;
                 }
+                else if (frontend::ProjectTypeConversion::isPointer(field.typeKey) ||
+                         frontend::ProjectTypeConversion::isNativeArray(field.typeKey))
+                {
+                    initializer = LLVMConstNull(type);
+                }
                 else
                 {
-                    return fail(error, "Stage 37 const field type is not supported by native constant initialization");
+                    return fail(error, "Stage 37 static storage type is not supported by native constant initialization");
                 }
-                LLVMSetGlobalConstant(global, 1);
             }
+            if (field.isConst) LLVMSetGlobalConstant(global, 1);
             LLVMSetInitializer(global, initializer);
             // Constants are materialized from the same certified value in producers and
             // consumers. Mark both sides ODR: a DLL consumer keeps a local selectable copy,
@@ -4584,8 +4629,19 @@ private:
         debugDeclaredLocals_.clear();
         debugCaptureVariables_.clear();
         currentDebugFileKey_ = 0;
-        if (memberModel_ != nullptr && function.memberOrdinal < memberModel_->members().size())
-            currentDebugFileKey_ = memberModel_->members()[function.memberOrdinal].fileId.value();
+        if (function.namespaceFunctionOrdinal.has_value() &&
+            function.body != nullptr && function.body->syntax != nullptr &&
+            function.body->syntax->range().isValid())
+        {
+            currentDebugFileKey_ =
+                function.body->syntax->range().begin().fileId().value();
+        }
+        else if (memberModel_ != nullptr &&
+                 function.memberOrdinal < memberModel_->members().size())
+        {
+            currentDebugFileKey_ =
+                memberModel_->members()[function.memberOrdinal].fileId.value();
+        }
         LLVMSetCurrentDebugLocation2(
             builder_,
             currentDebugSubprogram_ == nullptr
@@ -4621,7 +4677,8 @@ private:
         {
             thisValue_ = nullptr;
             closureEnvironment_ = nullptr;
-            if (!function.isLambda && !ensureTypeInitialized(function.declaringTypeOrdinal, error))
+            if (!function.isLambda && !function.namespaceFunctionOrdinal.has_value() &&
+                !ensureTypeInitialized(function.declaringTypeOrdinal, error))
             {
                 return false;
             }
@@ -7386,6 +7443,7 @@ private:
                 return extractBitField(node, storage, error);
             }
             case frontend::ProjectOopMirNodeKind::StaticFieldLoad:
+            case frontend::ProjectOopMirNodeKind::NamespaceStateLoad:
             {
                 LLVMValueRef address = staticFieldAddress(node, error);
                 LLVMTypeRef type = llvmType(node->typeKey, error);
@@ -7403,6 +7461,7 @@ private:
             case frontend::ProjectOopMirNodeKind::BitFieldAddress:
                 return fieldAddress(node, error);
             case frontend::ProjectOopMirNodeKind::StaticFieldAddress:
+            case frontend::ProjectOopMirNodeKind::NamespaceStateAddress:
                 return staticFieldAddress(node, error);
 
             case frontend::ProjectOopMirNodeKind::IntegerConstant:

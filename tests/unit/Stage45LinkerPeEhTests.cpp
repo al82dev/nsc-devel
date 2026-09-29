@@ -220,8 +220,10 @@ class Program
             missing / "MissingMain.nsproj", missingExe, output, error, false) ==
             ExitCode::CompilationError,
         "OOP executable generation rejects a project without static int Main()");
-    tests.expect(error.find("requires exactly one static int Main()") != std::string::npos,
-        "missing project entry point reports the precise Stage 45.12 contract");
+    tests.expect(error.find(
+            "requires exactly one int Main() function or static method with no parameters") !=
+            std::string::npos,
+        "missing project entry point reports the namespace-or-method contract");
     tests.expect(!std::filesystem::exists(missingExe),
         "missing-entry failure leaves no stale executable");
 
@@ -237,7 +239,7 @@ class Second { public static int Main() { return 2; } }
             ambiguous / "AmbiguousMain.nsproj", ambiguousExe, output, error, false) ==
             ExitCode::CompilationError,
         "OOP executable generation rejects multiple static int Main() methods");
-    tests.expect(error.find("multiple static int Main() entry points") != std::string::npos,
+    tests.expect(error.find("multiple int Main() entry points") != std::string::npos,
         "ambiguous project entry point reports a deterministic diagnostic");
     tests.expect(!std::filesystem::exists(ambiguousExe),
         "ambiguous-entry failure leaves no stale executable");

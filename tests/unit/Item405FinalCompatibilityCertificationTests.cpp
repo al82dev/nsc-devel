@@ -21,8 +21,8 @@ int main()
         "final N-1/N matrix is explicitly certified");
     tests.expect(matrix.find("compiler.N=2.0.0\ncompiler.N-1=1.0.1\n") != std::string::npos,
         "compiler window is explicit 1.0.1 and 2.0.0 rather than arithmetic");
-    tests.expect(matrix.find("nsmeta.N=1.20\nnsmeta.N-1=1.20\n") != std::string::npos,
-        "NSMETA 1.20 is preserved across the final window");
+    tests.expect(matrix.find("nsmeta.N=1.22\nnsmeta.N-1=1.20\n") != std::string::npos,
+        "the final window accepts NSMETA 1.20 producers in the NSMETA 1.22 compiler");
     tests.expect(matrix.find("native-abi.N=1.0\nnative-abi.N-1=1.0\n") != std::string::npos &&
             matrix.find("runtime-abi.N=1.0\nruntime-abi.N-1=1.0\n") != std::string::npos,
         "native and runtime ABI 1.0 are preserved across the final window");

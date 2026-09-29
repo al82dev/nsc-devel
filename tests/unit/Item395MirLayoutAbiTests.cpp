@@ -88,7 +88,7 @@ int main()
         "MIR freezes the direct aggregate function ABI without a hidden slot");
 
     const std::string dump = ProjectOopMirModelDumper::dump(model);
-    tests.expect(dump.find("schema=1.11") != std::string::npos &&
+    tests.expect(dump.find("schema=1.14") != std::string::npos &&
             dump.find("abi=win64-indirect") != std::string::npos,
         "versioned MIR dumps expose layout and ABI decisions");
 

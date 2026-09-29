@@ -1001,10 +1001,12 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::LocalValue: return "local-value";
         case ProjectOopHirNodeKind::FieldValue: return "field-value";
         case ProjectOopHirNodeKind::StaticFieldValue: return "static-field-value";
+        case ProjectOopHirNodeKind::NamespaceStateValue: return "namespace-state-value";
         case ProjectOopHirNodeKind::ParameterAddress: return "parameter-address";
         case ProjectOopHirNodeKind::LocalAddress: return "local-address";
         case ProjectOopHirNodeKind::FieldAddress: return "field-address";
         case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
+        case ProjectOopHirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopHirNodeKind::IntegerConstant: return "integer-constant";
         case ProjectOopHirNodeKind::FloatingConstant: return "floating-constant";
         case ProjectOopHirNodeKind::BooleanConstant: return "boolean-constant";
@@ -1207,7 +1209,8 @@ bool ProjectOopHirModel::build(
     const ProjectObjectLayoutModel& objectLayoutModel,
     std::string& error,
     const ProjectGenericConstraintModel* genericConstraintModel,
-    std::size_t workerCount)
+    std::size_t workerCount,
+    const ProjectNamespaceFunctionModel* namespaceFunctionModel)
 {
     return buildImpl(
         nameLookup,
@@ -1220,6 +1223,7 @@ bool ProjectOopHirModel::build(
         error,
         genericConstraintModel,
         workerCount,
+        namespaceFunctionModel,
         std::nullopt,
         nullptr);
 }
@@ -1235,6 +1239,7 @@ bool ProjectOopHirModel::buildImpl(
     std::string& error,
     const ProjectGenericConstraintModel* genericConstraintModel,
     std::size_t workerCount,
+    const ProjectNamespaceFunctionModel* namespaceFunctionModel,
     std::optional<std::size_t> memberFilter,
     const ProjectOopHirModel* lookupSource)
 {
@@ -1259,6 +1264,7 @@ bool ProjectOopHirModel::buildImpl(
     inheritanceModel_ = &inheritanceModel;
     interfaceModel_ = &interfaceModel;
     methodBodyModel_ = &methodBodyModel;
+    namespaceFunctionModel_ = namespaceFunctionModel;
     constructionModel_ = &constructionModel;
     objectLayoutModel_ = &objectLayoutModel;
     nextSyntheticLocalOrdinal_ = methodBodyModel.locals().size();
@@ -1273,6 +1279,7 @@ bool ProjectOopHirModel::buildImpl(
         indexBySyntax(nameBindingBySyntax_, methodBodyModel.nameBindings());
         indexBySyntax(expressionTypeBySyntax_, methodBodyModel.expressionTypes());
         indexBySyntax(callBySyntax_, methodBodyModel.calls());
+        indexBySyntax(namespaceFunctionCallBySyntax_, methodBodyModel.namespaceFunctionCalls());
         indexBySyntax(switchBindingBySyntax_, methodBodyModel.switchBindings());
         indexBySyntax(runtimeTypeBindingBySyntax_, methodBodyModel.runtimeTypeBindings());
         indexBySyntax(delegateBindingBySyntax_, methodBodyModel.delegateBindings());
@@ -1290,6 +1297,8 @@ bool ProjectOopHirModel::buildImpl(
         indexBySyntax(localBySyntax_, methodBodyModel.locals());
     }
     functionByMember_.resize(memberModel.members().size());
+    if (namespaceFunctionModel_ != nullptr)
+        functionByNamespaceFunction_.resize(namespaceFunctionModel_->functions().size());
     const bool regularFunctionsBuiltInParallel = workerCount > 1 && !memberFilter.has_value();
     if (regularFunctionsBuiltInParallel)
     {
@@ -1326,6 +1335,7 @@ bool ProjectOopHirModel::buildImpl(
                     result.error,
                     genericConstraintModel,
                     1,
+                    namespaceFunctionModel,
                     memberOrdinal,
                     this);
                 result.errorRange = worker.lastErrorRange();
@@ -1844,6 +1854,126 @@ bool ProjectOopHirModel::buildImpl(
     }
     }
 
+    if (!memberFilter.has_value() && namespaceFunctionModel_ != nullptr)
+    {
+        const std::size_t callableBase = memberModel.members().size();
+        for (std::size_t functionOrdinal = 0;
+             functionOrdinal < namespaceFunctionModel_->functions().size();
+             ++functionOrdinal)
+        {
+            const NamespaceFunctionSymbol& symbol =
+                namespaceFunctionModel_->functions()[functionOrdinal];
+            const std::size_t callableOrdinal = callableBase + functionOrdinal;
+
+            ProjectOopHirFunction function;
+            function.memberOrdinal = callableOrdinal;
+            function.namespaceFunctionOrdinal = functionOrdinal;
+            function.declaringTypeOrdinal = nameLookup.namedTypes().size();
+            function.isStatic = true;
+            function.referenceReturn = symbol.isReferenceReturn;
+            function.isVariadic = symbol.isVariadic;
+            function.isExportedC = symbol.isExportedC;
+            if (symbol.isExportedC) function.cAbiName = symbol.name;
+            function.mangledName = symbol.mangledName;
+            function.debugDisplayName = symbol.namespaceName.empty()
+                ? symbol.name
+                : symbol.namespaceName + "." + symbol.name;
+            function.returnTypeKey = symbol.declaredTypeKey;
+            function.returnOwnership = symbol.declaredOwnership;
+            for (const MethodParameterSymbol& parameter : symbol.parameters)
+            {
+                function.parameterNames.push_back(parameter.name);
+                function.parameterTypeKeys.push_back(parameter.typeKey);
+                function.parameterOwnerships.push_back(parameter.ownership);
+            }
+
+            if (symbol.definitionSyntax == nullptr)
+            {
+                if (symbol.isPrecompiled && !symbol.isExternC)
+                {
+                    function.isImportedNative = true;
+                    functionByNamespaceFunction_[functionOrdinal] = functions_.size();
+                    functions_.push_back(std::move(function));
+                    continue;
+                }
+                if (!symbol.isExternC)
+                {
+                    error = "namespace function '" + symbol.signatureKey +
+                        "' reached HIR without a definition";
+                    return false;
+                }
+                function.isImportedC = true;
+                function.cAbiName = symbol.name;
+                function.mangledName = symbol.name;
+                functionByNamespaceFunction_[functionOrdinal] = functions_.size();
+                functions_.push_back(std::move(function));
+                continue;
+            }
+            if (!methodBodyModel.namespaceFunctionBodyAnalyzed(functionOrdinal))
+            {
+                error = "namespace function '" + symbol.signatureKey +
+                    "' reached HIR without analyzed body bindings";
+                return false;
+            }
+            if (symbol.definitionSyntax->first() == nullptr)
+            {
+                error = "namespace function '" + symbol.signatureKey +
+                    "' has no body syntax";
+                return false;
+            }
+
+            for (std::size_t localOrdinal = 0;
+                 localOrdinal < methodBodyModel.locals().size();
+                 ++localOrdinal)
+            {
+                const MethodLocalSymbol& local = methodBodyModel.locals()[localOrdinal];
+                if (local.methodMemberOrdinal == callableOrdinal && !local.lambdaOrdinal.has_value())
+                    function.localOrdinals.push_back(localOrdinal);
+            }
+
+            activeHirCleanupRegions_.clear();
+            std::vector<std::unique_ptr<ProjectOopHirNode>> ownedParameterCleanupNodes;
+            for (std::size_t cleanupOrdinal = 0;
+                 cleanupOrdinal < methodBodyModel.cleanupRegions().size();
+                 ++cleanupOrdinal)
+            {
+                const MethodCleanupRegion& region = methodBodyModel.cleanupRegions()[cleanupOrdinal];
+                if (region.methodMemberOrdinal != callableOrdinal ||
+                    region.kind != MethodCleanupRegionKind::OwnedParameterDestroy ||
+                    !region.resourceParameterOrdinal.has_value())
+                {
+                    continue;
+                }
+                const std::size_t parameterOrdinal = *region.resourceParameterOrdinal;
+                if (parameterOrdinal >= symbol.parameters.size())
+                {
+                    error = "namespace function owned-parameter cleanup has an invalid parameter ordinal";
+                    return false;
+                }
+                activeHirCleanupRegions_.push_back(cleanupOrdinal);
+                auto cleanup = makeNode(
+                    ProjectOopHirNodeKind::OwnedParameterCleanup,
+                    symbol.definitionSyntax,
+                    symbol.parameters[parameterOrdinal].typeKey);
+                cleanup->parameterOrdinal = parameterOrdinal;
+                cleanup->cleanupRegionOrdinal = cleanupOrdinal;
+                ownedParameterCleanupNodes.push_back(std::move(cleanup));
+            }
+
+            function.body = lowerBlock(symbol.definitionSyntax->first(), callableOrdinal, error);
+            activeHirCleanupRegions_.clear();
+            if (function.body == nullptr) return false;
+            if (!ownedParameterCleanupNodes.empty())
+            {
+                function.body->children.insert(
+                    function.body->children.begin(),
+                    std::make_move_iterator(ownedParameterCleanupNodes.begin()),
+                    std::make_move_iterator(ownedParameterCleanupNodes.end()));
+            }
+            functionByNamespaceFunction_[functionOrdinal] = functions_.size();
+            functions_.push_back(std::move(function));
+        }
+    }
     if (memberFilter.has_value())
     {
         built_ = true;
@@ -2132,6 +2262,16 @@ const ProjectOopHirFunction* ProjectOopHirModel::functionForMember(std::size_t m
     return &functions_[*functionByMember_[memberOrdinal]];
 }
 
+const ProjectOopHirFunction* ProjectOopHirModel::functionForNamespaceFunction(
+    std::size_t functionOrdinal) const noexcept
+{
+    if (functionOrdinal >= functionByNamespaceFunction_.size() ||
+        !functionByNamespaceFunction_[functionOrdinal].has_value())
+    {
+        return nullptr;
+    }
+    return &functions_[*functionByNamespaceFunction_[functionOrdinal]];
+}
 bool ProjectOopHirModel::isBuilt() const noexcept
 {
     return built_;
@@ -2734,31 +2874,57 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             attachStructuredExit(*node);
             if (statement->first() != nullptr)
             {
-                if (memberModel_ == nullptr || memberOrdinal >= memberModel_->members().size())
+                bool referenceReturn = false;
+                bool valueReturningCallable = false;
+                std::string declaredTypeKey;
+                sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
+                if (memberModel_ != nullptr && memberOrdinal < memberModel_->members().size())
                 {
-                    error = "Stage 34 return refers to invalid callable member";
-                    return nullptr;
+                    const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+                    referenceReturn = member.isReferenceReturn;
+                    valueReturningCallable = member.kind == ClassMemberKind::Method;
+                    declaredTypeKey = member.declaredTypeKey;
+                    declaredOwnership = member.declaredOwnership;
                 }
-                const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+                else
+                {
+                    const std::size_t callableBase =
+                        memberModel_ != nullptr ? memberModel_->members().size() : 0;
+                    const std::size_t functionOrdinal =
+                        memberOrdinal >= callableBase ? memberOrdinal - callableBase :
+                        std::numeric_limits<std::size_t>::max();
+                    if (namespaceFunctionModel_ == nullptr ||
+                        functionOrdinal >= namespaceFunctionModel_->functions().size())
+                    {
+                        error = "Stage 34 return refers to invalid callable";
+                        return nullptr;
+                    }
+                    const NamespaceFunctionSymbol& function =
+                        namespaceFunctionModel_->functions()[functionOrdinal];
+                    referenceReturn = function.isReferenceReturn;
+                    valueReturningCallable = true;
+                    declaredTypeKey = function.declaredTypeKey;
+                    declaredOwnership = function.declaredOwnership;
+                }
+
                 auto value = lowerExpression(
-                    statement->first(), memberOrdinal, member.isReferenceReturn, error);
+                    statement->first(), memberOrdinal, referenceReturn, error);
                 if (value == nullptr)
                 {
                     return nullptr;
                 }
-                if (member.kind == ClassMemberKind::Method && member.declaredTypeKey != "builtin:void" &&
-                    !member.isReferenceReturn)
+                if (valueReturningCallable && declaredTypeKey != "builtin:void" && !referenceReturn)
                 {
                     const MethodExpressionTypeBinding* type = expressionType(statement->first());
                     const ProjectImplicitConversion conversion = classifyImplicit(
                         value->typeKey,
-                        member.declaredTypeKey,
+                        declaredTypeKey,
                         type != nullptr ? type->integerConstant : std::nullopt);
                     if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
                     {
                         value = wrapImplicitConversion(std::move(value), conversion, statement->first());
                     }
-                    if (member.declaredOwnership == sema::OwnershipKind::Borrowed)
+                    if (declaredOwnership == sema::OwnershipKind::Borrowed)
                     {
                         const MethodBorrowBinding* borrow = borrowBinding(statement->first());
                         if (borrow == nullptr)
@@ -2766,7 +2932,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                             error = "Stage 50.8 borrowed return has no frozen borrow binding";
                             return nullptr;
                         }
-                        auto borrowed = makeNode(ProjectOopHirNodeKind::BorrowValue, statement->first(), member.declaredTypeKey);
+                        auto borrowed = makeNode(
+                            ProjectOopHirNodeKind::BorrowValue,
+                            statement->first(),
+                            declaredTypeKey);
                         borrowed->borrowKind = borrow->kind;
                         borrowed->localOrdinal = borrow->sourceLocalOrdinal;
                         borrowed->parameterOrdinal = borrow->sourceParameterOrdinal;
@@ -2778,7 +2947,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             }
             return node;
         }
-
         case ast::AstNodeKind::ThrowStatement:
         {
             const MethodExceptionBinding* binding = exceptionBinding(statement);
@@ -3511,6 +3679,32 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     memberModel_->members()[*node->memberOrdinal].isVolatile;
                 node->baseReceiver = binding->baseReceiver;
                 node->children.push_back(std::move(receiver));
+                return node;
+            }
+            if (binding->kind == MethodNameBindingKind::NamespaceState)
+            {
+                if (binding->candidateMemberOrdinals.size() != 1 ||
+                    namespaceFunctionModel_ == nullptr ||
+                    binding->candidateMemberOrdinals.front() >=
+                        namespaceFunctionModel_->states().size())
+                {
+                    error = "namespace state binding has no unique state ordinal";
+                    return nullptr;
+                }
+                const std::size_t stateOrdinal =
+                    binding->candidateMemberOrdinals.front();
+                const NamespaceStateSymbol& state =
+                    namespaceFunctionModel_->states()[stateOrdinal];
+                auto node = makeNode(
+                    addressContext ? ProjectOopHirNodeKind::NamespaceStateAddress
+                                   : ProjectOopHirNodeKind::NamespaceStateValue,
+                    expression,
+                    binding->typeKey);
+                node->namespaceStateOrdinal = stateOrdinal;
+                node->memberOrdinal =
+                    (memberModel_ != nullptr ? memberModel_->members().size() : 0) +
+                    stateOrdinal;
+                node->stringValue = state.storageName;
                 return node;
             }
             if (binding->kind == MethodNameBindingKind::StaticField)
@@ -4481,6 +4675,116 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
 
         case ast::AstNodeKind::CallExpression:
         {
+            const NamespaceFunctionCallBinding* namespaceCall =
+                namespaceFunctionCallBinding(expression);
+            if (namespaceCall != nullptr)
+            {
+                if (namespaceCall->resolution != MethodCallResolutionKind::Resolved ||
+                    !namespaceCall->selectedFunctionOrdinal.has_value() ||
+                    namespaceFunctionModel_ == nullptr ||
+                    *namespaceCall->selectedFunctionOrdinal >=
+                        namespaceFunctionModel_->functions().size())
+                {
+                    error = "namespace function call reached HIR without a resolved target";
+                    return nullptr;
+                }
+                const std::size_t functionOrdinal =
+                    *namespaceCall->selectedFunctionOrdinal;
+                const NamespaceFunctionSymbol& target =
+                    namespaceFunctionModel_->functions()[functionOrdinal];
+                if (addressContext && !target.isReferenceReturn)
+                {
+                    error = "namespace function call result is not addressable unless it returns ref";
+                    return nullptr;
+                }
+
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::StaticCall,
+                    expression,
+                    namespaceCall->resultTypeKey);
+                node->namespaceFunctionOrdinal = functionOrdinal;
+                node->stringValue = target.mangledName;
+                const std::size_t targetCallableOrdinal =
+                    (memberModel_ != nullptr ? memberModel_->members().size() : 0) +
+                    functionOrdinal;
+                bool hasOwnedTemporary = false;
+                for (std::size_t index = 0; index < expression->children().size(); ++index)
+                {
+                    const ast::AstNode* argumentSyntax = expression->children()[index];
+                    auto argument = lowerExpression(
+                        argumentSyntax, memberOrdinal, false, error);
+                    if (argument == nullptr) return nullptr;
+                    if (index >= namespaceCall->selectedArgumentParameterOrdinals.size())
+                    {
+                        error = "namespace function argument has no selected parameter ordinal";
+                        return nullptr;
+                    }
+                    const std::size_t parameterOrdinal =
+                        namespaceCall->selectedArgumentParameterOrdinals[index];
+                    if (parameterOrdinal >= target.parameters.size())
+                    {
+                        error = "namespace function argument has no matching parameter";
+                        return nullptr;
+                    }
+                    if (index < namespaceCall->selectedConversions.size() &&
+                        namespaceCall->selectedConversions[index].kind !=
+                            ProjectConversionKind::Identity)
+                    {
+                        argument = wrapImplicitConversion(
+                            std::move(argument),
+                            namespaceCall->selectedConversions[index],
+                            argumentSyntax);
+                    }
+                    argument = wrapCallArgumentBorrow(
+                        std::move(argument),
+                        argumentSyntax,
+                        targetCallableOrdinal,
+                        parameterOrdinal,
+                        hasOwnedTemporary);
+                    node->children.push_back(std::move(argument));
+                    node->argumentParameterOrdinals.push_back(parameterOrdinal);
+                    node->argumentTypeKeys.push_back(
+                        target.parameters[parameterOrdinal].typeKey);
+                }
+                for (std::size_t index = 0;
+                     index < namespaceCall->selectedDefaultArguments.size();
+                     ++index)
+                {
+                    if (index >=
+                        namespaceCall->selectedDefaultArgumentParameterOrdinals.size())
+                    {
+                        error = "namespace function default argument has no parameter ordinal";
+                        return nullptr;
+                    }
+                    const std::size_t parameterOrdinal =
+                        namespaceCall->selectedDefaultArgumentParameterOrdinals[index];
+                    if (parameterOrdinal >= target.parameters.size())
+                    {
+                        error = "namespace function default argument has no matching parameter";
+                        return nullptr;
+                    }
+                    auto argument = lowerDefaultArgument(
+                        namespaceCall->selectedDefaultArguments[index],
+                        target.parameters[parameterOrdinal].typeKey,
+                        error);
+                    if (argument == nullptr) return nullptr;
+                    node->children.push_back(std::move(argument));
+                    node->argumentParameterOrdinals.push_back(parameterOrdinal);
+                    node->argumentTypeKeys.push_back(
+                        target.parameters[parameterOrdinal].typeKey);
+                }
+                node->argumentCount = node->children.size();
+                node->referenceResult = target.isReferenceReturn;
+                auto loweredCall = wrapFullExpressionCleanup(
+                    std::move(node), expression, hasOwnedTemporary);
+                if (!target.isReferenceReturn || addressContext) return loweredCall;
+                auto load = makeNode(
+                    ProjectOopHirNodeKind::PointerLoad,
+                    expression,
+                    target.declaredTypeKey);
+                load->children.push_back(std::move(loweredCall));
+                return load;
+            }
             const MethodEventBinding* stage42Event = eventBinding(expression);
             if (stage42Event != nullptr && stage42Event->kind == MethodEventOperationKind::Invoke)
             {
@@ -6459,6 +6763,15 @@ const MethodCallBinding* ProjectOopHirModel::callBinding(const ast::AstNode* syn
     return found == index.end() ? nullptr : found->second;
 }
 
+const NamespaceFunctionCallBinding* ProjectOopHirModel::namespaceFunctionCallBinding(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto& index = lookupSource_ == nullptr
+        ? namespaceFunctionCallBySyntax_
+        : lookupSource_->namespaceFunctionCallBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
+}
 const MethodSwitchBinding* ProjectOopHirModel::switchBinding(const ast::AstNode* syntax) const noexcept
 {
     const auto& index = lookupSource_ == nullptr ? switchBindingBySyntax_ : lookupSource_->switchBindingBySyntax_;

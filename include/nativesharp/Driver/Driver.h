@@ -26,6 +26,7 @@ public:
 private:
     static void printHelp(std::ostream& output);
     static void printVersion(std::ostream& output);
+    static void printCompilerIdentity(std::ostream& output);
     static void printTarget(std::ostream& output);
     static void printDataLayout(std::ostream& output);
     static void printLlvmPipeline(

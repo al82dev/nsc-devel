@@ -1078,6 +1078,101 @@ bool buildMetadataModel(
         }
         return false;
     }
+    if (compilation.namespaceFunctionModel() != nullptr)
+    {
+        for (const frontend::NamespaceFunctionSymbol& function :
+             compilation.namespaceFunctionModel()->functions())
+        {
+            if (function.projectOrdinal != *rootOrdinal ||
+                function.accessibility != frontend::NamespaceFunctionAccessibility::Public ||
+                (function.isExternC && !function.isExportedC))
+            {
+                continue;
+            }
+            if (function.mangledName.empty())
+            {
+                error = "public namespace function '" + function.namespaceName + "." +
+                    function.signatureKey + "' has no physical identity";
+                return false;
+            }
+            LibraryMetadataNamespaceFunction record;
+            record.accessibility = 1U;
+            if (function.isReferenceReturn) record.flags |= 1U;
+            if (function.isVariadic) record.flags |= 2U;
+            if (function.isExternC) record.flags |= 4U;
+            if (function.isExportedC) record.flags |= 8U;
+            record.namespaceName = function.namespaceName;
+            record.name = function.name;
+            record.signatureKey = function.signatureKey;
+            record.declaredTypeKey = function.declaredTypeKey;
+            record.declaredOwnership = metadataOwnership(function.declaredOwnership);
+            record.mangledName = function.mangledName;
+            for (const frontend::MethodParameterSymbol& parameter : function.parameters)
+            {
+                LibraryMetadataParameter parameterRecord;
+                parameterRecord.name = parameter.name;
+                parameterRecord.typeKey = parameter.typeKey;
+                parameterRecord.ownership = metadataOwnership(parameter.ownership);
+                parameterRecord.passKind = metadataPassKind(parameter.passKind);
+                if (!metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
+                {
+                    error = "could not encode default value for parameter '" + parameter.name +
+                        "' of namespace function '" + function.name + "': " + error;
+                    return false;
+                }
+                record.parameters.push_back(std::move(parameterRecord));
+            }
+            metadata.namespaceFunctions.push_back(std::move(record));
+        }
+        std::sort(
+            metadata.namespaceFunctions.begin(),
+            metadata.namespaceFunctions.end(),
+            [](const auto& left, const auto& right)
+            {
+                return std::tie(left.namespaceName, left.signatureKey) <
+                    std::tie(right.namespaceName, right.signatureKey);
+            });
+    }
+    if (compilation.namespaceFunctionModel() != nullptr)
+    {
+        for (const frontend::NamespaceStateSymbol& state :
+             compilation.namespaceFunctionModel()->states())
+        {
+            if (state.projectOrdinal != *rootOrdinal ||
+                state.accessibility != frontend::NamespaceFunctionAccessibility::Public ||
+                state.isPrecompiled)
+            {
+                continue;
+            }
+            LibraryMetadataNamespaceState record;
+            record.accessibility = 1U;
+            if (state.isConst) record.flags |= 1U;
+            record.initializerKind =
+                static_cast<LibraryMetadataNamespaceStateInitializerKind>(
+                    state.initializerKind);
+            record.namespaceName = state.namespaceName;
+            record.name = state.name;
+            record.declaredTypeKey = state.declaredTypeKey;
+            record.storageName = state.storageName;
+            record.accessorName = "__nsc_get_" + state.storageName;
+            if (state.initializerKind == frontend::NamespaceStateInitializerKind::Integer)
+                record.initializerBits = state.integerValue;
+            else if (state.initializerKind == frontend::NamespaceStateInitializerKind::Floating)
+                record.initializerBits = std::bit_cast<std::uint64_t>(state.floatingValue);
+            else if (state.initializerKind == frontend::NamespaceStateInitializerKind::Boolean)
+                record.initializerBits = state.booleanValue ? 1U : 0U;
+            else if (state.initializerKind == frontend::NamespaceStateInitializerKind::String)
+                record.initializerText = state.stringValue;
+            metadata.namespaceStates.push_back(std::move(record));
+        }
+        std::sort(
+            metadata.namespaceStates.begin(), metadata.namespaceStates.end(),
+            [](const auto& left, const auto& right)
+            {
+                return std::tie(left.namespaceName, left.name) <
+                    std::tie(right.namespaceName, right.name);
+            });
+    }
     std::unordered_set<std::string> templateExternalTypeKeys;
 
     for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
@@ -1216,6 +1311,16 @@ bool buildMetadataModel(
         rememberType(member.declaredTypeKey);
         for (const LibraryMetadataParameter& parameter : member.parameters) rememberType(parameter.typeKey);
     }
+
+    for (const LibraryMetadataNamespaceFunction& function :
+         metadata.namespaceFunctions)
+    {
+        rememberType(function.declaredTypeKey);
+        for (const LibraryMetadataParameter& parameter : function.parameters)
+            rememberType(parameter.typeKey);
+    }
+    for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
+        rememberType(state.declaredTypeKey);
 
     std::unordered_set<std::string> requiredSpecializationKeys;
     for (const frontend::GenericSpecializationRecord& specialization : compilation.genericModel()->specializations())
@@ -1571,6 +1676,50 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         writeStringVector(writer, exportRecord.parameterTypeKeys);
         writer.text(exportRecord.nativeMangledName);
     }
+    if (metadata.formatMinor >= 21)
+    {
+        writer.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
+        for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+        {
+            writer.u8(function.accessibility);
+            writer.u8(function.flags);
+            writer.text(function.namespaceName);
+            writer.text(function.name);
+            writer.text(function.signatureKey);
+            writer.text(function.declaredTypeKey);
+            writer.u8(static_cast<std::uint8_t>(function.declaredOwnership));
+            writer.text(function.mangledName);
+            writer.u32(static_cast<std::uint32_t>(function.parameters.size()));
+            for (const LibraryMetadataParameter& parameter : function.parameters)
+            {
+                writer.text(parameter.name);
+                writer.text(parameter.typeKey);
+                writer.u8(static_cast<std::uint8_t>(parameter.ownership));
+                writer.u8(static_cast<std::uint8_t>(parameter.passKind));
+                writer.u8(static_cast<std::uint8_t>(parameter.defaultValueKind));
+                writer.u8(parameter.defaultValueFlags);
+                writer.u64(parameter.defaultValueBits);
+                writer.text(parameter.defaultValueText);
+            }
+        }
+    }
+    if (metadata.formatMinor >= 22)
+    {
+        writer.u32(static_cast<std::uint32_t>(metadata.namespaceStates.size()));
+        for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
+        {
+            writer.u8(state.accessibility);
+            writer.u8(state.flags);
+            writer.u8(static_cast<std::uint8_t>(state.initializerKind));
+            writer.text(state.namespaceName);
+            writer.text(state.name);
+            writer.text(state.declaredTypeKey);
+            writer.text(state.storageName);
+            writer.text(state.accessorName);
+            writer.u64(state.initializerBits);
+            writer.text(state.initializerText);
+        }
+    }
     return writer.bytes();
 }
 
@@ -1823,6 +1972,114 @@ bool decodePayload(
         metadata.exports.push_back(std::move(exportRecord));
     }
 
+    metadata.namespaceFunctions.clear();
+    if (metadata.formatMinor >= 21)
+    {
+        if (!readCount(reader, count))
+        {
+            error = "invalid namespace-function count";
+            return false;
+        }
+        metadata.namespaceFunctions.reserve(count);
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            LibraryMetadataNamespaceFunction function;
+            if (!reader.u8(function.accessibility) || !reader.u8(function.flags) ||
+                function.accessibility > 1U || function.flags > 15U ||
+                !reader.text(function.namespaceName) || !reader.text(function.name) ||
+                !reader.text(function.signatureKey) || !reader.text(function.declaredTypeKey))
+            {
+                error = "truncated or invalid namespace-function metadata";
+                return false;
+            }
+            std::uint8_t ownership = 0;
+            if (!reader.u8(ownership) ||
+                ownership > static_cast<std::uint8_t>(LibraryMetadataOwnershipKind::Borrowed) ||
+                !reader.text(function.mangledName))
+            {
+                error = "truncated namespace-function identity";
+                return false;
+            }
+            function.declaredOwnership =
+                static_cast<LibraryMetadataOwnershipKind>(ownership);
+            std::uint32_t parameterCount = 0;
+            if (!readCount(reader, parameterCount))
+            {
+                error = "invalid namespace-function parameter count";
+                return false;
+            }
+            function.parameters.reserve(parameterCount);
+            for (std::uint32_t parameterIndex = 0;
+                 parameterIndex < parameterCount;
+                 ++parameterIndex)
+            {
+                LibraryMetadataParameter parameter;
+                std::uint8_t parameterOwnership = 0;
+                std::uint8_t passKind = 0;
+                std::uint8_t defaultKind = 0;
+                if (!reader.text(parameter.name) || !reader.text(parameter.typeKey) ||
+                    !reader.u8(parameterOwnership) ||
+                    parameterOwnership > static_cast<std::uint8_t>(
+                        LibraryMetadataOwnershipKind::Borrowed) ||
+                    !reader.u8(passKind) ||
+                    passKind > static_cast<std::uint8_t>(
+                        LibraryMetadataParameterPassKind::In) ||
+                    !reader.u8(defaultKind) ||
+                    defaultKind > static_cast<std::uint8_t>(
+                        LibraryMetadataDefaultValueKind::String) ||
+                    !reader.u8(parameter.defaultValueFlags) ||
+                    parameter.defaultValueFlags > 1U ||
+                    !reader.u64(parameter.defaultValueBits) ||
+                    !reader.text(parameter.defaultValueText))
+                {
+                    error = "truncated namespace-function parameter metadata";
+                    return false;
+                }
+                parameter.ownership =
+                    static_cast<LibraryMetadataOwnershipKind>(parameterOwnership);
+                parameter.passKind =
+                    static_cast<LibraryMetadataParameterPassKind>(passKind);
+                parameter.defaultValueKind =
+                    static_cast<LibraryMetadataDefaultValueKind>(defaultKind);
+                function.parameters.push_back(std::move(parameter));
+            }
+            metadata.namespaceFunctions.push_back(std::move(function));
+        }
+    }
+
+    metadata.namespaceStates.clear();
+    if (metadata.formatMinor >= 22)
+    {
+        if (!readCount(reader, count))
+        {
+            error = "invalid namespace-state count";
+            return false;
+        }
+        metadata.namespaceStates.reserve(count);
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            LibraryMetadataNamespaceState state;
+            std::uint8_t initializerKind = 0;
+            if (!reader.u8(state.accessibility) || state.accessibility > 1U ||
+                !reader.u8(state.flags) || state.flags > 1U ||
+                !reader.u8(initializerKind) ||
+                initializerKind > static_cast<std::uint8_t>(
+                    LibraryMetadataNamespaceStateInitializerKind::Null) ||
+                !reader.text(state.namespaceName) || !reader.text(state.name) ||
+                !reader.text(state.declaredTypeKey) ||
+                !reader.text(state.storageName) || !reader.text(state.accessorName) ||
+                !reader.u64(state.initializerBits) ||
+                !reader.text(state.initializerText))
+            {
+                error = "truncated or invalid namespace-state metadata";
+                return false;
+            }
+            state.initializerKind =
+                static_cast<LibraryMetadataNamespaceStateInitializerKind>(
+                    initializerKind);
+            metadata.namespaceStates.push_back(std::move(state));
+        }
+    }
     if (!reader.atEnd())
     {
         error = "metadata payload has trailing bytes";
@@ -2668,6 +2925,28 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                 if (!verifyTypeReference(parameter.typeKey, owner + " parameter '" + parameter.name + "'"))
                     return false;
         }
+        for (const LibraryMetadataNamespaceFunction& function :
+             metadata.namespaceFunctions)
+        {
+            const std::string owner = "namespace function '" +
+                function.namespaceName + "." + function.signatureKey + "'";
+            if (!verifyTypeReference(function.declaredTypeKey, owner)) return false;
+            for (const LibraryMetadataParameter& parameter : function.parameters)
+            {
+                if (!verifyTypeReference(
+                        parameter.typeKey,
+                        owner + " parameter '" + parameter.name + "'"))
+                {
+                    return false;
+                }
+            }
+        }
+        for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
+        {
+            const std::string owner = "namespace state '" +
+                state.namespaceName + "." + state.name + "'";
+            if (!verifyTypeReference(state.declaredTypeKey, owner)) return false;
+        }
         for (const LibraryMetadataGenericSpecialization& specialization : metadata.genericSpecializations)
         {
             const std::string owner = "generic specialization '" + specialization.specializationKey + "'";
@@ -2682,6 +2961,39 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             if (!verifyTypeReference(exportRecord.returnTypeKey, owner)) return false;
             for (const std::string& parameterTypeKey : exportRecord.parameterTypeKeys)
                 if (!verifyTypeReference(parameterTypeKey, owner)) return false;
+        }
+    }
+    std::unordered_set<std::string> namespaceFunctionKeys;
+    for (const LibraryMetadataNamespaceFunction& function :
+         metadata.namespaceFunctions)
+    {
+        const std::string key = function.namespaceName + "" +
+            function.signatureKey;
+        if (function.namespaceName.empty() || function.name.empty() ||
+            function.signatureKey.empty() || function.declaredTypeKey.empty() ||
+            function.mangledName.empty() ||
+            !namespaceFunctionKeys.insert(key).second)
+        {
+            error = function.mangledName.empty()
+                ? "metadata namespace function has no physical identity"
+                : "metadata contains an incomplete or duplicate namespace function '" +
+                    function.namespaceName + "." + function.signatureKey + "'";
+            return false;
+        }
+    }
+    std::unordered_set<std::string> namespaceStateKeys;
+    for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
+    {
+        const std::string key = state.namespaceName + std::string(1, static_cast<char>(31)) +
+            state.name;
+        if (state.accessibility != 1U || state.namespaceName.empty() ||
+            state.name.empty() || state.declaredTypeKey.empty() ||
+            state.storageName.empty() || state.accessorName.empty() ||
+            !namespaceStateKeys.insert(key).second)
+        {
+            error = "metadata contains an incomplete or duplicate namespace state '" +
+                state.namespaceName + "." + state.name + "'";
+            return false;
         }
     }
     std::unordered_set<std::string> exportNames;

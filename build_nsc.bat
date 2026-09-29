@@ -10,7 +10,7 @@ rem     build_nsc.bat --check    no construye: dice si hace falta y sale 0 (al d
 rem
 rem QUE CONSTRUYE, Y QUE NO. Solo el objetivo `nsc` y las bibliotecas de las que depende. NO
 rem los ~40 ejecutables de prueba que ctest necesita, que es donde se va la mayor parte del
-rem tiempo de un build completo. Despues instala en C:\native-sharp, que es lo que copia el
+rem tiempo de un build completo. Despues instala en C:\native-sharp-3.0, que es lo que copia el
 rem `nsc.exe` y el arbol `lib\` -- barato, porque no compila nada.
 rem
 rem Para tocar el compilador y probar UN caso a mano, esto es lo que hace falta y nada mas.
@@ -34,7 +34,7 @@ rem ============================================================================
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "BUILDDIR=%ROOT%\build-clang"
-set "PREFIX=C:\native-sharp"
+set "PREFIX=C:\native-sharp-3.0"
 set "LLVMROOT=C:\clang-llvm"
 set "LLVM=%LLVMROOT:\=/%"
 

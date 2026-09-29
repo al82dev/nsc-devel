@@ -715,11 +715,13 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::FieldLoad: return "field-load";
         case ProjectOopMirNodeKind::BitFieldLoad: return "bit-field-load";
         case ProjectOopMirNodeKind::StaticFieldLoad: return "static-field-load";
+        case ProjectOopMirNodeKind::NamespaceStateLoad: return "namespace-state-load";
         case ProjectOopMirNodeKind::ParameterAddress: return "parameter-address";
         case ProjectOopMirNodeKind::LocalAddress: return "local-address";
         case ProjectOopMirNodeKind::FieldAddress: return "field-address";
         case ProjectOopMirNodeKind::BitFieldAddress: return "bit-field-address";
         case ProjectOopMirNodeKind::StaticFieldAddress: return "static-field-address";
+        case ProjectOopMirNodeKind::NamespaceStateAddress: return "namespace-state-address";
         case ProjectOopMirNodeKind::IntegerConstant: return "integer-constant";
         case ProjectOopMirNodeKind::FloatingConstant: return "floating-constant";
         case ProjectOopMirNodeKind::BooleanConstant: return "boolean-constant";
@@ -904,6 +906,7 @@ bool ProjectOopMirModel::build(
     const ProjectInterfaceModel& interfaceModel,
     const ProjectDestructionModel& destructionModel,
     const ProjectOopHirModel& hirModel,
+    const ProjectNamespaceFunctionModel& namespaceFunctionModel,
     std::string& error,
     std::size_t workerCount)
 {
@@ -950,6 +953,14 @@ bool ProjectOopMirModel::build(
             layout.fields});
     }
     functionByMember_.resize(memberModel.members().size());
+    for (const ProjectOopHirFunction& function : hirModel.functions())
+    {
+        if (function.namespaceFunctionOrdinal.has_value() &&
+            *function.namespaceFunctionOrdinal >= functionByNamespaceFunction_.size())
+        {
+            functionByNamespaceFunction_.resize(*function.namespaceFunctionOrdinal + 1U);
+        }
+    }
     dispatchTableByType_.resize(nameLookup.namedTypes().size());
 
     for (const ClassVirtualTable& sourceTable : virtualDispatchModel.classTables())
@@ -1167,6 +1178,7 @@ bool ProjectOopMirModel::build(
                                    std::string& functionError) {
         ProjectOopMirFunction function;
         function.memberOrdinal = source.memberOrdinal;
+        function.namespaceFunctionOrdinal = source.namespaceFunctionOrdinal;
         function.declaringTypeOrdinal = source.declaringTypeOrdinal;
         function.constructor = source.constructor;
         function.destructor = source.destructor;
@@ -1195,6 +1207,7 @@ bool ProjectOopMirModel::build(
         function.capturesThisCell = source.capturesThisCell;
         function.genericSpecializationKey = source.genericSpecializationKey;
         function.mangledName = source.mangledName;
+        function.debugDisplayName = source.debugDisplayName;
         function.returnTypeKey = source.returnTypeKey;
         function.returnOwnership = source.returnOwnership;
         function.parameterNames = source.parameterNames;
@@ -1289,8 +1302,14 @@ bool ProjectOopMirModel::build(
             return false;
         }
         ProjectOopMirFunction function = std::move(*loweredFunctions[index]);
-        if (!function.isLambda && !function.isSyntheticImplicitConstructor)
+        if (function.namespaceFunctionOrdinal.has_value())
+        {
+            functionByNamespaceFunction_[*function.namespaceFunctionOrdinal] = functions_.size();
+        }
+        else if (!function.isLambda && !function.isSyntheticImplicitConstructor)
+        {
             functionByMember_[function.memberOrdinal] = functions_.size();
+        }
         functions_.push_back(std::move(function));
     }
 
@@ -1401,6 +1420,51 @@ bool ProjectOopMirModel::build(
         }
     }
 
+    const std::size_t namespaceStateMemberBase = memberModel.members().size();
+    for (std::size_t stateOrdinal = 0;
+         stateOrdinal < namespaceFunctionModel.states().size(); ++stateOrdinal)
+    {
+        const NamespaceStateSymbol& state = namespaceFunctionModel.states()[stateOrdinal];
+        ProjectOopMirStaticField staticField{
+            namespaceStateMemberBase + stateOrdinal,
+            nameLookup.namedTypes().size(),
+            state.name,
+            state.declaredTypeKey,
+            state.isConst,
+            false,
+            state.isConst,
+            state.isPrecompiled,
+            {},
+            state.storageName,
+            "__nsc_get_" + state.storageName};
+        staticField.namespaceStateOrdinal = stateOrdinal;
+        switch (state.initializerKind)
+        {
+            case NamespaceStateInitializerKind::Integer:
+                staticField.hasConstantInitializer = true;
+                staticField.constantIntegerValue = state.integerValue;
+                break;
+            case NamespaceStateInitializerKind::Floating:
+                staticField.hasConstantInitializer = true;
+                staticField.constantFloatingValue = state.floatingValue;
+                break;
+            case NamespaceStateInitializerKind::Boolean:
+                staticField.hasConstantInitializer = true;
+                staticField.constantBooleanValue = state.booleanValue;
+                break;
+            case NamespaceStateInitializerKind::String:
+                staticField.hasConstantInitializer = true;
+                staticField.constantStringValue = state.stringValue;
+                break;
+            case NamespaceStateInitializerKind::Null:
+                staticField.hasConstantInitializer = true;
+                break;
+            case NamespaceStateInitializerKind::Zero:
+                if (state.isConst) staticField.hasConstantInitializer = true;
+                break;
+        }
+        staticFields_.push_back(std::move(staticField));
+    }
     const auto recordGenericSpecialization = [&](std::string_view key) -> std::size_t {
         const auto found = std::find_if(genericSpecializations_.begin(), genericSpecializations_.end(),
             [key](const ProjectOopMirGenericSpecialization& specialization) {
@@ -1556,6 +1620,52 @@ const ProjectOopMirFunction* ProjectOopMirModel::functionForMember(std::size_t m
     return &functions_[*functionByMember_[memberOrdinal]];
 }
 
+const ProjectOopMirFunction* ProjectOopMirModel::functionForNamespaceFunction(
+    std::size_t functionOrdinal) const noexcept
+{
+    if (functionOrdinal >= functionByNamespaceFunction_.size() ||
+        !functionByNamespaceFunction_[functionOrdinal].has_value())
+    {
+        return nullptr;
+    }
+    return &functions_[*functionByNamespaceFunction_[functionOrdinal]];
+}
+const ProjectOopMirFunction* ProjectOopMirModel::executableEntryPoint(
+    const ProjectNamespaceFunctionModel& namespaceFunctionModel,
+    bool& ambiguous) const noexcept
+{
+    ambiguous = false;
+    const ProjectOopMirFunction* result = nullptr;
+    for (const ProjectOopMirFunction& function : functions_)
+    {
+        bool candidate = false;
+        if (function.namespaceFunctionOrdinal.has_value())
+        {
+            if (*function.namespaceFunctionOrdinal >= namespaceFunctionModel.functions().size())
+                continue;
+            const NamespaceFunctionSymbol& symbol =
+                namespaceFunctionModel.functions()[*function.namespaceFunctionOrdinal];
+            candidate = symbol.name == "Main" && symbol.parameters.empty() &&
+                symbol.declaredTypeKey == "builtin:int" && !symbol.isExternC;
+        }
+        else if (!function.isLambda && !function.constructor && !function.destructor &&
+                 memberModel_ != nullptr && function.memberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
+            candidate = member.kind == ClassMemberKind::Method && member.name == "Main" &&
+                member.isStatic && member.parameters.empty() &&
+                member.declaredTypeKey == "builtin:int";
+        }
+        if (!candidate) continue;
+        if (result != nullptr)
+        {
+            ambiguous = true;
+            return nullptr;
+        }
+        result = &function;
+    }
+    return result;
+}
 bool ProjectOopMirModel::isBuilt() const noexcept
 {
     return built_;
@@ -1577,6 +1687,8 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->debugDisplayName = node->debugDisplayName;
     result->operation = node->operation;
     result->memberOrdinal = node->memberOrdinal;
+    result->namespaceFunctionOrdinal = node->namespaceFunctionOrdinal;
+    result->namespaceStateOrdinal = node->namespaceStateOrdinal;
     result->secondaryMemberOrdinal = node->secondaryMemberOrdinal;
     result->localOrdinal = node->localOrdinal;
     result->parameterOrdinal = node->parameterOrdinal;
@@ -2362,6 +2474,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->kind = ProjectOopMirNodeKind::StaticFieldAddress;
             break;
 
+        case ProjectOopHirNodeKind::NamespaceStateValue:
+            result->kind = ProjectOopMirNodeKind::NamespaceStateLoad;
+            break;
+        case ProjectOopHirNodeKind::NamespaceStateAddress:
+            result->kind = ProjectOopMirNodeKind::NamespaceStateAddress;
+            break;
         case ProjectOopHirNodeKind::FieldValue:
         case ProjectOopHirNodeKind::FieldAddress:
         {
@@ -2459,12 +2577,26 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
 
         case ProjectOopHirNodeKind::StaticCall:
         {
-            if (!node->memberOrdinal.has_value() || hirModel_ == nullptr)
+            if (hirModel_ == nullptr)
             {
-                error = "Stage 37 static call has no selected target method";
+                error = "Stage 37 static call has no HIR model";
                 return nullptr;
             }
-            const ProjectOopHirFunction* target = hirModel_->functionForMember(*node->memberOrdinal);
+            const ProjectOopHirFunction* target = nullptr;
+            if (node->namespaceFunctionOrdinal.has_value())
+            {
+                target = hirModel_->functionForNamespaceFunction(
+                    *node->namespaceFunctionOrdinal);
+            }
+            else if (node->memberOrdinal.has_value())
+            {
+                target = hirModel_->functionForMember(*node->memberOrdinal);
+            }
+            else
+            {
+                error = "Stage 37 static call has no selected target";
+                return nullptr;
+            }
             if (target == nullptr || !target->isStatic)
             {
                 error = "Stage 37 static call target is missing or is not static";
@@ -2474,7 +2606,6 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->calleeName = target->mangledName;
             break;
         }
-
         case ProjectOopHirNodeKind::TemporaryAddress:
             result->kind = ProjectOopMirNodeKind::TemporaryAddress;
             break;
@@ -2550,6 +2681,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                 }
                 result->calleeName = constructor->mangledName;
                 result->memberOrdinal = node->memberOrdinal;
+    result->namespaceFunctionOrdinal = node->namespaceFunctionOrdinal;
             }
             break;
         }
@@ -2600,6 +2732,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                 }
                 result->calleeName = constructor->mangledName;
                 result->memberOrdinal = node->memberOrdinal;
+    result->namespaceFunctionOrdinal = node->namespaceFunctionOrdinal;
             }
             break;
         }

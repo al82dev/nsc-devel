@@ -7,7 +7,7 @@ rem
 rem     test_nsc.bat            limpia todo y corre la bateria contra el nsc ya instalado
 rem     test_nsc.bat quick      lo mismo, en el modo rapido de run_windows_checklist.bat
 rem
-rem QUE USA COMO COMPILADOR: `C:\native-sharp\bin\nsc.exe`, el que ya esta instalado. Este
+rem QUE USA COMO COMPILADOR: `C:\native-sharp-3.0\bin\nsc.exe`, el que ya esta instalado. Este
 rem fichero NO lo compila, NO lo instala y NO lo sustituye. Para eso esta build_nsc.bat.
 rem Lo comprueba antes de medir nada: si hay fuentes mas nuevas que ese ejecutable, avisa
 rem --sin abortar-- de que la corrida entera va a hablar de un compilador viejo.
@@ -22,7 +22,7 @@ rem
 rem   * los ejecutables de ctest -- programas de C++ que se compilan con clang-cl, con el
 rem     objetivo `pruebas`, que EXCLUYE `nsc`;
 rem   * las fixtures y los ejemplos -- programas de NativeSharp que se compilan con el
-rem     `nsc.exe` de C:\native-sharp, o sea el que ya estaba instalado.
+rem     `nsc.exe` de C:\native-sharp-3.0, o sea el que ya estaba instalado.
 rem
 rem No se llama a `cmake --install`, asi que ese `nsc.exe` sigue siendo byte a byte el mismo
 rem durante toda la corrida.
@@ -44,7 +44,7 @@ set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 cd /d "%ROOT%"
 set "BUILDDIR=%ROOT%\build-clang"
-if not defined NS_ROOT set "NS_ROOT=C:\native-sharp"
+if not defined NS_ROOT set "NS_ROOT=C:\native-sharp-3.0"
 if not defined NSC_LLVM_ROOT set "NSC_LLVM_ROOT=C:\clang-llvm"
 set "PREFIX=%NS_ROOT%"
 set "LLVMROOT=%NSC_LLVM_ROOT%"

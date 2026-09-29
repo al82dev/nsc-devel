@@ -165,7 +165,15 @@ enum class TokenKind
     PipeEqual,
     CaretEqual,
     LessLessEqual,
-    GreaterGreaterEqual
+    GreaterGreaterEqual,
+
+    // NativeSharp 3.0 T01 tokens are appended so the numeric identity of every 2.x token stays
+    // stable for serialized diagnostics and syntax caches.
+    InterpolatedStringLiteral,
+    QuestionQuestion,
+    QuestionQuestionEqual,
+    QuestionDot,
+    DotDot
 };
 
 std::string_view tokenKindName(TokenKind kind) noexcept;

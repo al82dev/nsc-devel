@@ -7,6 +7,7 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
+#include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
@@ -45,9 +46,14 @@ struct PrecompiledSyntaxModule final
 class ProjectCompilation final
 {
 public:
+    using SourceBufferProvider =
+        std::function<std::optional<std::string>(const std::filesystem::path&)>;
+
     void setCompilationJobs(std::size_t jobs) noexcept;
     void setProjectLoadOptions(compilation::ProjectLoadOptions options);
     void setCancellationCheck(std::function<bool()> check);
+    // Called concurrently by syntax workers. Returning nullopt falls back to the file on disk.
+    void setSourceBufferProvider(SourceBufferProvider provider);
     void setPhaseTimingSink(
         std::function<void(std::string_view, std::chrono::nanoseconds)> sink);
     void setProgressSink(std::function<void(std::string_view)> sink);
@@ -94,6 +100,7 @@ public:
     const ProjectGenericModel* genericModel() const noexcept;
     const ProjectGenericConstraintModel* genericConstraintModel() const noexcept;
     const ProjectMemberModel* memberModel() const noexcept;
+    const ProjectNamespaceFunctionModel* namespaceFunctionModel() const noexcept;
     const ProjectInheritanceModel* inheritanceModel() const noexcept;
     const ProjectInterfaceModel* interfaceModel() const noexcept;
     const ProjectMethodBodyModel* methodBodyModel() const noexcept;
@@ -116,6 +123,7 @@ private:
     std::unique_ptr<ProjectNameLookup> nameLookup_;
     std::unique_ptr<ProjectGenericModel> genericModel_;
     std::unique_ptr<ProjectMemberModel> memberModel_;
+    std::unique_ptr<ProjectNamespaceFunctionModel> namespaceFunctionModel_;
     std::unique_ptr<ProjectInheritanceModel> inheritanceModel_;
     std::unique_ptr<ProjectInterfaceModel> interfaceModel_;
     // NSC-LIMIT-007. Va entre las interfaces y los cuerpos, que es el unico sitio donde se puede:
@@ -130,6 +138,7 @@ private:
     std::unique_ptr<ProjectOopHirModel> oopHirModel_;
     std::unique_ptr<ProjectOopMirModel> oopMirModel_;
     std::function<bool()> cancellationCheck_;
+    SourceBufferProvider sourceBufferProvider_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;
     std::function<void(std::string_view)> progressSink_;
     compilation::ProjectLoadOptions projectLoadOptions_;

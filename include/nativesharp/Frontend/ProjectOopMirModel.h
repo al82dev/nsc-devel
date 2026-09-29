@@ -22,7 +22,8 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 11;
+// MINOR 14: namespace state has explicit load/address nodes and stable storage identity.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 14;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -105,11 +106,13 @@ enum class ProjectOopMirNodeKind
     // unit so the backend can perform one masked read-modify-write.
     BitFieldLoad,
     StaticFieldLoad,
+    NamespaceStateLoad,
     ParameterAddress,
     LocalAddress,
     FieldAddress,
     BitFieldAddress,
     StaticFieldAddress,
+    NamespaceStateAddress,
     IntegerConstant,
     FloatingConstant,
     BooleanConstant,
@@ -335,6 +338,8 @@ struct ProjectOopMirNode final
     std::string debugDisplayName;
     lexer::TokenKind operation = lexer::TokenKind::Invalid;
     std::optional<std::size_t> memberOrdinal;
+    std::optional<std::size_t> namespaceFunctionOrdinal;
+    std::optional<std::size_t> namespaceStateOrdinal;
     // Stage 54.4 "Condition Variables" -- mirrors ProjectOopHirNode::secondaryMemberOrdinal (see
     // its comment there). Set only on a CoreMonitorWait node.
     std::optional<std::size_t> secondaryMemberOrdinal;
@@ -542,6 +547,7 @@ struct ProjectOopMirStaticField final
     // representation -- so `ProjectTypeConversion::isIntegral(typeKey)` returns false for it.
     // This flag lets the LLVM lowerer take the integral constant-materialization path anyway.
     bool isEnumConstant = false;
+    std::optional<std::size_t> namespaceStateOrdinal = std::nullopt;
 };
 
 
@@ -649,6 +655,7 @@ struct ProjectOopMirDispatchTable final
 struct ProjectOopMirFunction final
 {
     std::size_t memberOrdinal = 0;
+    std::optional<std::size_t> namespaceFunctionOrdinal;
     std::size_t declaringTypeOrdinal = 0;
     bool constructor = false;
     bool destructor = false;
@@ -675,6 +682,7 @@ struct ProjectOopMirFunction final
     bool capturesThisCell = false;
     std::string genericSpecializationKey;
     std::string mangledName;
+    std::string debugDisplayName;
     std::string returnTypeKey;
     sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
     std::vector<std::string> parameterNames;
@@ -724,6 +732,7 @@ public:
         const ProjectInterfaceModel& interfaceModel,
         const ProjectDestructionModel& destructionModel,
         const ProjectOopHirModel& hirModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel,
         std::string& error,
         std::size_t workerCount = 1);
 
@@ -744,6 +753,10 @@ public:
         std::uint64_t& stableInterfaceTypeId,
         std::size_t& slot) const noexcept;
     const ProjectOopMirFunction* functionForMember(std::size_t memberOrdinal) const noexcept;
+    const ProjectOopMirFunction* functionForNamespaceFunction(
+        std::size_t functionOrdinal) const noexcept;    const ProjectOopMirFunction* executableEntryPoint(
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel,
+        bool& ambiguous) const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -772,6 +785,7 @@ private:
     std::vector<ProjectOopMirStructLayout> structLayouts_;
     std::vector<ProjectOopMirClassLayout> classLayouts_;
     std::vector<std::optional<std::size_t>> functionByMember_;
+    std::vector<std::optional<std::size_t>> functionByNamespaceFunction_;
     std::vector<ProjectOopMirDispatchTable> dispatchTables_;
     std::vector<std::optional<std::size_t>> dispatchTableByType_;
     std::vector<ProjectOopMirGenericSpecialization> genericSpecializations_;

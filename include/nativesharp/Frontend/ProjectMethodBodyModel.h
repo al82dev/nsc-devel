@@ -7,6 +7,7 @@
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
@@ -18,6 +19,7 @@
 #include <utility>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -152,6 +154,7 @@ enum class MethodNameBindingKind
     ExplicitBaseField,
     ExplicitBaseMethodGroup,
     StaticField,
+    NamespaceState,
     StaticMethodGroup,
     ImplicitEvent,
     ExplicitThisEvent,
@@ -1218,6 +1221,24 @@ struct MethodCallBinding final
     std::string resultTypeKey;
 };
 
+struct NamespaceFunctionCallBinding final
+{
+    MethodCallResolutionKind resolution = MethodCallResolutionKind::NoViableCandidate;
+    const ast::AstNode* syntax = nullptr;
+    std::size_t callerCallableOrdinal = 0;
+    std::size_t scopeOrdinal = 0;
+    std::string writtenName;
+    std::vector<std::size_t> candidateFunctionOrdinals;
+    std::vector<MethodCallCandidate> evaluatedCandidates;
+    std::vector<std::size_t> viableCandidateFunctionOrdinals;
+    std::optional<std::size_t> selectedFunctionOrdinal;
+    std::vector<ProjectImplicitConversion> selectedConversions;
+    std::vector<std::size_t> selectedArgumentParameterOrdinals;
+    std::vector<const ast::AstNode*> selectedDefaultArguments;
+    std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
+    std::string resultTypeKey;
+};
+
 class ProjectMethodBodyModel final
 {
 public:
@@ -1229,6 +1250,7 @@ public:
     bool build(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel,
         const ProjectInheritanceModel& inheritanceModel,
         const ProjectInterfaceModel& interfaceModel,
         diagnostics::DiagnosticEngine& diagnostics,
@@ -1264,10 +1286,14 @@ public:
     std::span<const MethodDelegateBinding> delegateBindings() const noexcept;
     std::span<const MethodEventBinding> eventBindings() const noexcept;
     std::span<const MethodCallBinding> calls() const noexcept;
+    std::span<const NamespaceFunctionCallBinding> namespaceFunctionCalls() const noexcept;
+    const NamespaceFunctionCallBinding* namespaceFunctionCall(
+        const ast::AstNode* syntax) const noexcept;
     // NSC-LIMIT-018. A generic specialization exposes all member signatures. Executables analyze
     // bodies reached from real source; libraries additionally analyze every public/protected body
     // in their exported closed types. HIR uses this exact set so an unbound body is never lowered.
     bool callableBodyAnalyzed(std::size_t memberOrdinal) const noexcept;
+    bool namespaceFunctionBodyAnalyzed(std::size_t functionOrdinal) const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -1576,6 +1602,12 @@ private:
         bool allowMethodGroup,
         bool allowEvent,
         bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeNamespaceState(
+        const ast::AstNode* expression,
+        const NamespaceStateReferenceBinding& reference,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     ExpressionResult analyzeMember(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
@@ -1587,6 +1619,12 @@ private:
     ExpressionResult analyzeCall(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeNamespaceFunctionCall(
+        const ast::AstNode* expression,
+        const NamespaceFunctionReferenceBinding& reference,
+        std::size_t callerCallableOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
     ExpressionResult analyzeUnary(
@@ -1853,6 +1891,9 @@ private:
 
     const ProjectNameLookup* nameLookup_ = nullptr;
     const ProjectMemberModel* memberModel_ = nullptr;
+    const ProjectNamespaceFunctionModel* namespaceFunctionModel_ = nullptr;
+    std::size_t namespaceCallableBase_ = 0;
+    std::vector<ClassMemberSymbol> namespaceCallableAdapters_;
     const ProjectInheritanceModel* inheritanceModel_ = nullptr;
     const ProjectInterfaceModel* interfaceModel_ = nullptr;
     const ProjectGenericConstraintModel* genericConstraintModel_ = nullptr;
@@ -1910,6 +1951,8 @@ private:
     std::size_t currentCatchDepth_ = 0;
     std::vector<MethodEventBinding> eventBindings_;
     std::vector<MethodCallBinding> calls_;
+    std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
+    std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;
     bool built_ = false;
 };
 

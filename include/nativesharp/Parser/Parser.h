@@ -5,6 +5,7 @@
 #include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Lexer/Token.h"
+#include "nativesharp/Language/LanguageEdition.h"
 
 #include <cstddef>
 #include <span>
@@ -21,7 +22,8 @@ public:
         std::span<const lexer::Token> tokens,
         ast::AstArena& arena,
         diagnostics::DiagnosticEngine& diagnostics,
-        std::span<const std::string> knownTypeNames = {});
+        std::span<const std::string> knownTypeNames = {},
+        language::LanguageEdition languageEdition = language::LanguageEdition::V2);
 
     ast::AstNode* parseCompilationUnit();
 
@@ -248,6 +250,7 @@ private:
     ast::AstNode* parseLambdaExpression();
     bool looksLikeLambdaExpression() const noexcept;
     ast::AstNode* parseConditionalExpression();
+    ast::AstNode* parseNullCoalescingExpression();
     ast::AstNode* parseLogicalOrExpression();
     ast::AstNode* parseLogicalAndExpression();
     ast::AstNode* parseBitwiseOrExpression();
@@ -261,6 +264,8 @@ private:
     ast::AstNode* parseUnaryExpression();
     ast::AstNode* parsePostfixExpression();
     ast::AstNode* parsePrimaryExpression();
+    ast::AstNode* parseWithExpression(ast::AstNode* source);
+    bool requireEdition3(SourceRange range, std::string_view feature);
 
     ast::AstNode* parseBinaryLevel(
         ast::AstNode* (Parser::*nextLevel)(),
@@ -277,5 +282,6 @@ private:
     std::size_t index_ = 0;
     std::size_t pendingGenericGreater_ = 0;
     std::unordered_set<std::string> knownTypeNames_;
+    language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };
 }

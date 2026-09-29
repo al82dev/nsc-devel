@@ -55,8 +55,10 @@ namespace nativesharp::interop
 // MINOR 3 (2026-09-06): cada parametro conserva su valor predeterminado literal.
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
+// MINOR 21 (2026-09-27): public namespace functions preserve signature and physical identity.
+// MINOR 22 (2026-09-27): public namespace state preserves shared storage and initializers.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 20;
+inline constexpr std::uint16_t kMetadataFormatMinor = 22;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing
@@ -222,6 +224,43 @@ struct LibraryMetadataMember final
     std::string inlineSourceText;
 };
 
+struct LibraryMetadataNamespaceFunction final
+{
+    std::uint8_t accessibility = 0;
+    std::uint8_t flags = 0;
+    std::string namespaceName;
+    std::string name;
+    std::string signatureKey;
+    std::string declaredTypeKey;
+    LibraryMetadataOwnershipKind declaredOwnership = LibraryMetadataOwnershipKind::None;
+    std::string mangledName;
+    std::vector<LibraryMetadataParameter> parameters;
+};
+
+enum class LibraryMetadataNamespaceStateInitializerKind : std::uint8_t
+{
+    Zero = 0,
+    Integer = 1,
+    Floating = 2,
+    Boolean = 3,
+    String = 4,
+    Null = 5
+};
+
+struct LibraryMetadataNamespaceState final
+{
+    std::uint8_t accessibility = 0;
+    std::uint8_t flags = 0;
+    LibraryMetadataNamespaceStateInitializerKind initializerKind =
+        LibraryMetadataNamespaceStateInitializerKind::Zero;
+    std::string namespaceName;
+    std::string name;
+    std::string declaredTypeKey;
+    std::string storageName;
+    std::string accessorName;
+    std::uint64_t initializerBits = 0;
+    std::string initializerText;
+};
 struct LibraryMetadataGenericTemplate final
 {
     std::uint8_t kind = 0;
@@ -310,6 +349,8 @@ struct LibraryMetadata final
     std::array<std::uint8_t, 32> abiFingerprint{};
     std::vector<LibraryMetadataType> types;
     std::vector<LibraryMetadataMember> members;
+    std::vector<LibraryMetadataNamespaceFunction> namespaceFunctions;
+    std::vector<LibraryMetadataNamespaceState> namespaceStates;
     std::vector<LibraryMetadataGenericTemplate> genericTemplates;
     std::vector<LibraryMetadataGenericSpecialization> genericSpecializations;
     // NSMETA 1.12: exact nominal types used by this module but owned by another

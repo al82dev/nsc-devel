@@ -48,7 +48,7 @@ pushd "%~dp0"
 set "MODO=%~1"
 if "%MODO%"=="" set "MODO=todo"
 
-if not defined NS_ROOT set "NS_ROOT=C:\native-sharp"
+if not defined NS_ROOT set "NS_ROOT=C:\native-sharp-3.0"
 set "NSLINK=%NSLINK_EXE%"
 if not defined NSLINK set "NSLINK=%NS_ROOT%\bin\nslink.exe"
 

@@ -153,7 +153,7 @@ bool ProjectOopCodePartition::build(
     for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
     {
         functionsByName[functions[ordinal].mangledName].push_back(ordinal);
-        if (!functions[ordinal].isLambda)
+        if (!functions[ordinal].isLambda && !functions[ordinal].namespaceFunctionOrdinal.has_value())
             functionByMember.emplace(functions[ordinal].memberOrdinal, ordinal);
     }
     const auto addMember = [&](std::optional<std::size_t> member, auto& dependencies)

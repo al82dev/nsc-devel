@@ -20,6 +20,10 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
     output << indent << projectOopMirNodeKindName(node->kind);
     if (!node->typeKey.empty()) output << " type=" << node->typeKey;
     if (node->memberOrdinal.has_value()) output << " member=#" << *node->memberOrdinal;
+    if (node->namespaceFunctionOrdinal.has_value())
+        output << " namespace-function=#" << *node->namespaceFunctionOrdinal;
+    if (node->namespaceStateOrdinal.has_value())
+        output << " namespace-state=#" << *node->namespaceStateOrdinal;
     if (node->localOrdinal.has_value()) output << " local=#" << *node->localOrdinal;
     if (node->mirRegionOrdinal.has_value()) output << " mir-region=#" << *node->mirRegionOrdinal;
     if (node->exceptionTargetRegionOrdinal.has_value()) output << " exception-target=#" << *node->exceptionTargetRegionOrdinal;
@@ -150,7 +154,10 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
     }
     for (const ProjectOopMirFunction& function : model.functions())
     {
-        output << "function #" << function.memberOrdinal << ' ' << function.mangledName
+        output << "function #" << function.memberOrdinal;
+        if (function.namespaceFunctionOrdinal.has_value())
+            output << " namespace-function=#" << *function.namespaceFunctionOrdinal;
+        output << ' ' << function.mangledName
                << (function.isLambda ? " lambda" : "")
                << " inlining=" << inliningPolicyName(function.inliningPolicy)
                << " noheap=" << (function.isNoHeap ? "true" : "false")
@@ -221,8 +228,10 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
     for (const ProjectOopMirStaticField& field : model.staticFields())
     {
         output << "static-field member=#" << field.memberOrdinal
-               << " type=#" << field.declaringTypeOrdinal
-               << " name=" << field.name
+               << " type=#" << field.declaringTypeOrdinal;
+        if (field.namespaceStateOrdinal.has_value())
+            output << " namespace-state=#" << *field.namespaceStateOrdinal;
+        output << " name=" << field.name
                << " value-type=" << field.typeKey
                << " readonly=" << (field.isReadonly ? "true" : "false")
                << " volatile=" << (field.isVolatile ? "true" : "false")

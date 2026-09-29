@@ -143,7 +143,8 @@ bool ProjectGraph::addPrecompiledProjects(
             std::move(emptySources),
             std::move(peerMetadata),
             std::vector<LibraryReference>{},
-            std::vector<SdkManifest>{});
+            std::vector<SdkManifest>{},
+            projects_.back().languageEdition());
     }
     for (const Project& project : projects_)
     {
@@ -169,7 +170,8 @@ bool ProjectGraph::addPrecompiledProjects(
             std::vector<LibraryReference>(
                 project.libraryReferences().begin(), project.libraryReferences().end()),
             std::vector<SdkManifest>(
-                project.sdkReferences().begin(), project.sdkReferences().end()));
+                project.sdkReferences().begin(), project.sdkReferences().end()),
+            project.languageEdition());
     }
     projects_ = std::move(expanded);
     return true;

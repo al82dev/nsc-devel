@@ -35,6 +35,7 @@ struct ProjectDescriptor final
 {
     std::optional<std::string> name;
     std::optional<ProjectOutputKind> outputKind;
+    std::optional<language::LanguageEdition> languageEdition;
     ProjectBuildSettings buildSettings;
     std::vector<SourceIncludeRule> includes;
     std::vector<GlobPattern> removes;
@@ -283,6 +284,20 @@ bool parsePropertyGroup(
             }
             descriptor.buildSettings.optimizationLevel =
                 static_cast<unsigned>(value[1] - '0');
+        }
+        else if (property.name == "Language")
+        {
+            if (descriptor.languageEdition.has_value())
+            {
+                error = "project property 'Language' is declared more than once";
+                return false;
+            }
+            descriptor.languageEdition = language::parseLanguageEdition(value);
+            if (!descriptor.languageEdition.has_value())
+            {
+                error = "Language must be '2' or '3'";
+                return false;
+            }
         }
         else if (property.name == "OutputPath")
         {
@@ -894,6 +909,7 @@ std::optional<Project> ProjectLoader::load(
         std::move(sourceSet),
         std::move(projectReferences),
         std::move(libraryReferences),
-        std::move(sdkReferences));
+        std::move(sdkReferences),
+        descriptor.languageEdition.value_or(language::LanguageEdition::V2));
 }
 }

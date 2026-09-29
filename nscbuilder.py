@@ -19,8 +19,9 @@ Los productos de construcción permanecen físicamente separados:
     <repo>\\build-test-nslink\\      CTest para la pasada NSLink
     <repo>\\_nscbuilder\\work\\tests\\ programas generados por nsc
 
-No usa una base de datos. Cada corrida deja metadata.json, console.log,
-report.md y logs separados por etapa y por caso.
+No usa una base de datos. Cada corrida deja summary.json, metadata.json, console.log,
+report.md y logs separados por etapa y por caso. La interfaz reconstruye el historial de las
+corridas anteriores sin modificar su evidencia.
 """
 
 from __future__ import annotations
@@ -164,9 +165,9 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_BUILD = ROOT / "build-clang"
 DEFAULT_TEST_BUILD_LLD = ROOT / "build-test-lldlinker"
 DEFAULT_TEST_BUILD_NSLINK = ROOT / "build-test-nslink"
-DEFAULT_PREFIX = Path(r"C:\native-sharp")
+DEFAULT_PREFIX = Path(r"C:\native-sharp-3.0")
 DEFAULT_LLVM = Path(r"C:\clang-llvm")
-DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
+DEFAULT_NSLINK = Path(r"C:\native-sharp-3.0\bin\nslink.exe")
 HISTORY_ROOT = ROOT / "_nscbuilder" / "history"
 DEFAULT_TEST_WORK_ROOT = ROOT / "_nscbuilder" / "work" / "tests"
 DEFAULT_TEMP_ROOT = ROOT / "_nscbuilder" / "temp"
@@ -809,6 +810,93 @@ def structured_run_report(metadata: dict) -> dict:
         "total_seconds": float(metadata.get("total_seconds", 0.0)),
         "problems": problems,
     }
+
+
+def run_history_summary(metadata: dict, run_dir: Path) -> dict:
+    """Crea el indice compacto e inmutable de una corrida terminada."""
+    plan_value = metadata.get("plan", {})
+    plan = plan_value if isinstance(plan_value, dict) else {}
+    stages_value = metadata.get("stages", [])
+    stages = stages_value if isinstance(stages_value, list) else []
+
+    def stage_seconds(prefixes: tuple[str, ...]) -> float:
+        total = 0.0
+        for stage in stages:
+            if not isinstance(stage, dict):
+                continue
+            name = str(stage.get("name", ""))
+            if name.startswith(prefixes):
+                try:
+                    total += float(stage.get("seconds", 0.0))
+                except (TypeError, ValueError):
+                    continue
+        return round(total, 3)
+
+    linkers_value = plan.get("linkers", [])
+    optimizations_value = plan.get("optimizations", [])
+    return {
+        "schema": "nativesharp-nscbuilder-history",
+        "version": 1,
+        "id": str(metadata.get("id", run_dir.name)),
+        "started_at": str(metadata.get("started_at", "")),
+        "finished_at": metadata.get("finished_at"),
+        "status": str(metadata.get("status", "unknown")),
+        "operation": str(plan.get("operation", "")),
+        "total_seconds": float(metadata.get("total_seconds", 0.0)),
+        "build_seconds": stage_seconds(
+            ("Limpiar ", "Configurar ", "Construir", "Instalar", "Sincronizar ")
+        ),
+        "test_seconds": stage_seconds(("CTest ", "Fixtures ", "Bug triage ")),
+        "certification_seconds": stage_seconds(("Certificar ",)),
+        "failed": int(metadata.get("failed", 0)),
+        "build_mode": str(plan.get("build_mode", "")),
+        "test_build_mode": str(plan.get("test_build_mode", "")),
+        "linkers": [str(value) for value in linkers_value]
+            if isinstance(linkers_value, list) else [],
+        "optimizations": [str(value) for value in optimizations_value]
+            if isinstance(optimizations_value, list) else [],
+        "run_dir": str(run_dir.resolve()),
+        "report": str((run_dir / "report.md").resolve()),
+    }
+
+
+def load_run_history(history_root: Path) -> list[dict]:
+    """Lee el historial nuevo y migra en memoria las corridas antiguas, sin reescribirlas."""
+    if not history_root.is_dir():
+        return []
+    entries: list[dict] = []
+    for run_dir in history_root.iterdir():
+        if not run_dir.is_dir():
+            continue
+        summary_path = run_dir / "summary.json"
+        metadata_path = run_dir / "metadata.json"
+        try:
+            if summary_path.is_file():
+                value = json.loads(summary_path.read_text(encoding="utf-8", errors="replace"))
+                if (
+                    not isinstance(value, dict) or
+                    value.get("schema") != "nativesharp-nscbuilder-history" or
+                    value.get("version") != 1
+                ):
+                    continue
+                entry = value
+            elif metadata_path.is_file():
+                metadata = json.loads(
+                    metadata_path.read_text(encoding="utf-8", errors="replace")
+                )
+                if not isinstance(metadata, dict):
+                    continue
+                entry = run_history_summary(metadata, run_dir)
+            else:
+                continue
+        except (OSError, ValueError, TypeError):
+            continue
+        entries.append(entry)
+    entries.sort(
+        key=lambda item: (str(item.get("started_at", "")), str(item.get("id", ""))),
+        reverse=True,
+    )
+    return entries
 
 
 def project_inputs(project: Path) -> list[Path]:
@@ -2970,6 +3058,15 @@ class PipelineWorker(QObject):
             )
             self._save_metadata()
             self._write_report()
+            try:
+                write_json(
+                    self.run_dir / "summary.json",
+                    run_history_summary(self.metadata, self.run_dir),
+                )
+            except OSError as exc:
+                # El reporte canónico ya quedó escrito. Un índice auxiliar no debe convertir una
+                # corrida válida en fallo, pero sí quedar visible para poder reparar el disco.
+                self._emit(f"No se pudo escribir el resumen del historial: {exc}", "warn")
             self._emit(f"Corrida {status.upper()} en {elapsed:.2f} s", "success" if status == "passed" else "error")
             self.finished.emit(
                 {
@@ -3072,6 +3169,7 @@ class MainWindow(QMainWindow):
         self._load_settings()
         self._populate_cases()
         QTimer.singleShot(0, self.refresh_ctests)
+        QTimer.singleShot(0, self.refresh_history)
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -3367,6 +3465,9 @@ class MainWindow(QMainWindow):
             self.channel_optimization_tabs[channel] = channel_tabs
             self.channel_outer_indices[channel] = outer_index
             self.stage_tables[channel] = stage_table
+        self.history_outer_index = self.output_channel_tabs.addTab(
+            self._create_history_page(), "Historial"
+        )
         right_layout.addWidget(self.output_channel_tabs, 3)
         self.console_dock = self._create_dock(
             "Salida y resultados",
@@ -3437,6 +3538,124 @@ class MainWindow(QMainWindow):
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         return table
+
+    def _create_history_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        controls = QHBoxLayout()
+        explanation = QLabel(
+            "Cada fila es una corrida conservada. Preparación incluye configurar, construir, "
+            "instalar y sincronizar; Pruebas incluye CTest, fixtures y bug triage. "
+            "Doble clic abre el reporte."
+        )
+        explanation.setWordWrap(True)
+        explanation.setObjectName("muted")
+        controls.addWidget(explanation, 1)
+        refresh = QPushButton("Actualizar historial")
+        refresh.clicked.connect(self.refresh_history)
+        controls.addWidget(refresh)
+        layout.addLayout(controls)
+
+        self.history_table = QTableWidget(0, 11)
+        self.history_table.setHorizontalHeaderLabels(
+            [
+                "Corrida", "Inicio", "Estado", "Operación", "Total", "Preparación",
+                "Pruebas", "Fallos", "Modo", "Enlazadores", "Reporte",
+            ]
+        )
+        self.history_table.verticalHeader().setVisible(False)
+        self.history_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.history_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.history_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.history_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        for column in range(1, 11):
+            self.history_table.horizontalHeader().setSectionResizeMode(
+                column, QHeaderView.ResizeMode.ResizeToContents
+            )
+        self.history_table.itemDoubleClicked.connect(self.open_history_report)
+        layout.addWidget(self.history_table, 1)
+        return page
+
+    @staticmethod
+    def _history_duration(value: object) -> str:
+        try:
+            seconds = max(0.0, float(value))
+        except (TypeError, ValueError):
+            seconds = 0.0
+        hours, remainder = divmod(int(round(seconds)), 3600)
+        minutes, whole_seconds = divmod(remainder, 60)
+        if hours:
+            return f"{hours:d} h {minutes:02d} min {whole_seconds:02d} s"
+        if minutes:
+            return f"{minutes:d} min {whole_seconds:02d} s"
+        return f"{seconds:.2f} s"
+
+    @Slot()
+    def refresh_history(self) -> None:
+        entries = load_run_history(HISTORY_ROOT)
+        self.history_table.setRowCount(0)
+        status_names = {
+            "passed": "correcta",
+            "failed": "fallida",
+            "cancelled": "cancelada",
+            "running": "en curso",
+        }
+        operation_names = {
+            "baseline": "baseline",
+            "compiler": "compilador",
+            "install": "instalación",
+            "tests": "pruebas",
+            "unit": "unitarias",
+            "harness": "arnés",
+        }
+        for entry in entries:
+            row = self.history_table.rowCount()
+            self.history_table.insertRow(row)
+            build_mode = str(entry.get("build_mode", ""))
+            test_mode = str(entry.get("test_build_mode", ""))
+            modes = [value for value in (build_mode, test_mode) if value and value != "skip"]
+            mode = " / ".join(dict.fromkeys(modes)) or "—"
+            linkers_value = entry.get("linkers", [])
+            linkers = ", ".join(str(value) for value in linkers_value) \
+                if isinstance(linkers_value, list) else ""
+            status = str(entry.get("status", "unknown"))
+            operation = str(entry.get("operation", ""))
+            values = (
+                str(entry.get("id", "")),
+                str(entry.get("started_at", "")),
+                status_names.get(status, status),
+                operation_names.get(operation, operation or "—"),
+                self._history_duration(entry.get("total_seconds", 0.0)),
+                self._history_duration(entry.get("build_seconds", 0.0)),
+                self._history_duration(entry.get("test_seconds", 0.0)),
+                str(entry.get("failed", 0)),
+                mode,
+                linkers or "—",
+                "report.md",
+            )
+            report = str(entry.get("report", ""))
+            run_dir = str(entry.get("run_dir", ""))
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setData(Qt.ItemDataRole.UserRole, report)
+                item.setData(Qt.ItemDataRole.UserRole + 1, run_dir)
+                item.setToolTip(f"Doble clic para abrir {report or run_dir}")
+                self.history_table.setItem(row, column, item)
+        self.output_channel_tabs.setTabText(
+            self.history_outer_index, f"Historial ({len(entries)})"
+        )
+
+    @Slot(QTableWidgetItem)
+    def open_history_report(self, item: QTableWidgetItem) -> None:
+        report = Path(str(item.data(Qt.ItemDataRole.UserRole) or ""))
+        run_dir = Path(str(item.data(Qt.ItemDataRole.UserRole + 1) or ""))
+        destination = report if report.is_file() else run_dir
+        if destination.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(destination)))
+            return
+        QMessageBox.warning(self, APP_NAME, f"La evidencia ya no existe:\n{destination}")
 
     def _create_dock(
         self, title: str, widget: QWidget, area: Qt.DockWidgetArea, object_name: str
@@ -4278,7 +4497,9 @@ class MainWindow(QMainWindow):
         certified_layout = QVBoxLayout(certified)
         certified_note = QLabel(
             "Usa las rutas de la pestana Compilador. La matriz no es configurable: un baseline "
-            "parcial no es un baseline."
+            "parcial no es un baseline. La preparación es incremental y conserva los tres "
+            "árboles de build; las pruebas sí se ejecutan completas porque una certificación no "
+            "puede reutilizar resultados anteriores."
         )
         certified_note.setWordWrap(True)
         certified_layout.addWidget(certified_note)
@@ -4766,6 +4987,8 @@ class MainWindow(QMainWindow):
     @Slot()
     def clear_current_console(self) -> None:
         index = self.output_channel_tabs.currentIndex()
+        if index == self.history_outer_index:
+            return
         channel = next(
             (
                 name
@@ -4920,6 +5143,7 @@ class MainWindow(QMainWindow):
         )
         if summary.get("operation") == "tests":
             QTimer.singleShot(0, self.refresh_ctests)
+        QTimer.singleShot(0, self.refresh_history)
 
     @Slot(dict)
     def on_cleanup_finished(self, summary: dict) -> None:

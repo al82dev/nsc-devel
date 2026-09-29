@@ -35,6 +35,10 @@ void DiagnosticEngine::report(
     {
         ++warningCount_;
     }
+    else if (severity == DiagnosticSeverity::Lint)
+    {
+        ++lintCount_;
+    }
 }
 
 void DiagnosticEngine::report(
@@ -59,6 +63,42 @@ void DiagnosticEngine::report(
     {
         ++warningCount_;
     }
+    else if (severity == DiagnosticSeverity::Lint)
+    {
+        ++lintCount_;
+    }
+}
+
+void DiagnosticEngine::reportStructured(
+    DiagnosticId id,
+    DiagnosticSeverity severity,
+    SourceRange primaryRange,
+    std::string message,
+    std::vector<DiagnosticLabel> secondaryLabels,
+    std::vector<std::string> notes)
+{
+    if (suppress(severity)) return;
+    diagnostics_.emplace_back(
+        id,
+        severity,
+        primaryRange.begin(),
+        primaryRange,
+        std::move(message),
+        std::move(secondaryLabels),
+        std::move(notes));
+    if (severity == DiagnosticSeverity::Error)
+    {
+        ++errorCount_;
+        errorLimitReached_ = errorCount_ >= errorLimit_;
+    }
+    else if (severity == DiagnosticSeverity::Warning)
+    {
+        ++warningCount_;
+    }
+    else if (severity == DiagnosticSeverity::Lint)
+    {
+        ++lintCount_;
+    }
 }
 
 const std::vector<Diagnostic>& DiagnosticEngine::diagnostics() const noexcept
@@ -76,8 +116,26 @@ std::size_t DiagnosticEngine::warningCount() const noexcept
     return warningCount_;
 }
 
+std::size_t DiagnosticEngine::lintCount() const noexcept
+{
+    return lintCount_;
+}
+
 void DiagnosticEngine::append(const Diagnostic& diagnostic)
 {
+    if (!diagnostic.secondaryLabels().empty() || !diagnostic.notes().empty())
+    {
+        const SourceRange primary = diagnostic.range().value_or(
+            SourceRange(diagnostic.location(), diagnostic.location()));
+        reportStructured(
+            diagnostic.id(),
+            diagnostic.severity(),
+            primary,
+            diagnostic.message(),
+            diagnostic.secondaryLabels(),
+            diagnostic.notes());
+        return;
+    }
     if (diagnostic.range().has_value())
     {
         report(
@@ -116,7 +174,8 @@ void DiagnosticEngine::mergeDeterministically(std::span<const DiagnosticEngine> 
         {
             case DiagnosticSeverity::Error: return 0;
             case DiagnosticSeverity::Warning: return 1;
-            case DiagnosticSeverity::Note: return 2;
+            case DiagnosticSeverity::Lint: return 2;
+            case DiagnosticSeverity::Note: return 3;
         }
         return 3;
     };
@@ -177,6 +236,7 @@ void DiagnosticEngine::clear()
     diagnostics_.clear();
     errorCount_ = 0;
     warningCount_ = 0;
+    lintCount_ = 0;
     suppressedDiagnosticCount_ = 0;
     errorLimitReached_ = false;
 }
