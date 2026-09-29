@@ -788,6 +788,15 @@ int main(int argc, char** argv)
         "tests/cc1/c55_ns3_calls_initializers/c55_ns3_calls_initializers.nsproj",
         "cc1-c55-ns3-calls-initializers", 42);
 
+    // NativeSharp 3.0 T01-F03/F04/F06/F07. Null coalescing and null-coalescing assignment lower
+    // their primary/address once and keep the fallback lazy; `with` evaluates its source once
+    // before textual field updates; ^ indexes from the already-read length; ?. evaluates one
+    // receiver; and fully-static interpolation folds into the ordinary literal path.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c56_ns3_null_with/c56_ns3_null_with.nsproj",
+        "cc1-c56-ns3-null-with", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,
@@ -872,6 +881,26 @@ int main(int argc, char** argv)
             "selector '" + gSelectedFixture + "' names a registered fixture");
         return tests.result();
     }
+
+    // T01 deliberately rejects shapes for which 3.0 does not yet have a sound carrier/protocol.
+    // These checks prevent a later parser/backend change from silently turning the rejection into
+    // an allocating array/string slice, an Optional<T> ABI guess, or an owning aggregate copy.
+    checkRejected(
+        tests, root, "ns3-t01-runtime-interpolation-needs-handler",
+        R"(namespace reject { public class Program { public static int Main() { int value = 42; string text = $"value={value}"; return 0; } } })",
+        "runtime holes require an explicit formatting handler", "3");
+    checkRejected(
+        tests, root, "ns3-t01-value-null-conditional-needs-optional",
+        R"(namespace reject { public class Box { public int Value; } public class Program { public static int Main() { Box box = null; int value = box?.Value; return value; } } })",
+        "Optional<T> carrier", "3");
+    checkRejected(
+        tests, root, "ns3-t01-heap-array-range-needs-view",
+        R"(namespace reject { public class Program { public static int Main() { int[] source = new int[4]; int[] result = source[1..^1]; delete[] source; return 0; } } })",
+        "Span<T>/ReadOnlySpan<T> Length/Slice view", "3");
+    checkRejected(
+        tests, root, "ns3-t01-owning-with-needs-clone",
+        R"(namespace reject { public struct Box { public owned string Text; } public class Program { public static int Main() { Box source = { Text = "a" }; Box copy = source with { Text = "b" }; return 0; } } })",
+        "explicit clone/copy strategy", "3");
 
     // =====================================================================================
     // NSC-LIMIT-010 y NSC-LIMIT-004 -- LOS RECHAZOS.

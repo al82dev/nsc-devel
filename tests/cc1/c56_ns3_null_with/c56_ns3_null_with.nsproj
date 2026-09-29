@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>c56_ns3_null_with</Name>
+    <Language>3</Language>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

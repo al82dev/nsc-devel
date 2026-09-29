@@ -7416,6 +7416,10 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::Conditional:
                 return lowerConditional(node, error);
+            case frontend::ProjectOopMirNodeKind::NullCoalescing:
+                return lowerNullCoalescing(node, error);
+            case frontend::ProjectOopMirNodeKind::NullCoalescingStore:
+                return lowerNullCoalescingStore(node, error);
             case frontend::ProjectOopMirNodeKind::BorrowValue:
                 if (node->children.size() != 1 || node->children.front() == nullptr)
                     return failValue(error, "Stage 50.8 borrow value must wrap exactly one physical reference value");
@@ -7445,6 +7449,8 @@ private:
                 if (node->volatileAccess) LLVMSetVolatile(load, 1);
                 return load;
             }
+            case frontend::ProjectOopMirNodeKind::NullConditionalFieldLoad:
+                return lowerNullConditionalField(node, error);
             case frontend::ProjectOopMirNodeKind::BitFieldLoad:
             {
                 LLVMValueRef address = fieldAddress(node, error);
@@ -11372,6 +11378,13 @@ private:
         LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
         if (index == nullptr) return nullptr;
         LLVMValueRef length = LLVMBuildLoad2(builder_, LLVMInt64TypeInContext(context_), object, "native.index.length");
+        if (node->booleanValue)
+        {
+            // `^distance`: compute against the already-loaded receiver length. Unsigned
+            // underflow for distance > length deliberately remains out of range below; ^0
+            // becomes exactly length and is likewise invalid for element access.
+            index = LLVMBuildSub(builder_, length, index, "native.index.fromend");
+        }
         LLVMValueRef inRange = LLVMBuildICmp(builder_, LLVMIntULT, index, length, "native.index.inrange");
         if (isSignedInteger(node->children[1]->typeKey))
         {
@@ -11825,6 +11838,113 @@ private:
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "cond");
         LLVMValueRef values[] = {whenTrue, whenFalse};
         LLVMBasicBlockRef blocks[] = {trueExit, falseExit};
+        LLVMAddIncoming(phi, values, blocks, 2);
+        return phi;
+    }
+
+    // T01-F03 `left ?? right`. The left value is both the condition input and one incoming phi
+    // value, so it is physically lowered once. The fallback has its own block and therefore keeps
+    // calls, moves and traps lazy even at O0.
+    LLVMValueRef lowerNullCoalescing(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 2)
+            return failValue(error, "null-coalescing MIR requires left and fallback values");
+        LLVMValueRef left = lowerExpression(node->children[0].get(), error);
+        if (left == nullptr) return nullptr;
+        LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef hasValue = LLVMBuildICmp(
+            builder_, LLVMIntNE, left, LLVMConstNull(pointerType), "coalesce.hasvalue");
+        LLVMBasicBlockRef leftBlock = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef fallbackBlock = appendBlock("coalesce.fallback");
+        LLVMBasicBlockRef endBlock = appendBlock("coalesce.end");
+        LLVMBuildCondBr(builder_, hasValue, endBlock, fallbackBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, fallbackBlock);
+        LLVMValueRef fallback = lowerExpression(node->children[1].get(), error);
+        if (fallback == nullptr) return nullptr;
+        LLVMBasicBlockRef fallbackExit = LLVMGetInsertBlock(builder_);
+        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        LLVMTypeRef resultType = llvmType(node->typeKey, error);
+        if (resultType == nullptr) return nullptr;
+        LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "coalesce");
+        LLVMValueRef values[] = {left, fallback};
+        LLVMBasicBlockRef blocks[] = {leftBlock, fallbackExit};
+        LLVMAddIncoming(phi, values, blocks, 2);
+        return phi;
+    }
+
+    // T01-F03 `place ??= fallback`. Address, current value and fallback are each evaluated once;
+    // the store exists only on the null edge. A null slot owns nothing, so no replacement cleanup
+    // is necessary here (unlike an ordinary owning store of a non-null displaced value).
+    LLVMValueRef lowerNullCoalescingStore(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 2)
+            return failValue(error, "null-coalescing store MIR requires address and fallback");
+        LLVMValueRef address = lowerExpression(node->children[0].get(), error);
+        if (address == nullptr) return nullptr;
+        LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef current = LLVMBuildLoad2(builder_, pointerType, address, "coalesce.current");
+        if (node->children[0]->volatileAccess) LLVMSetVolatile(current, 1);
+        LLVMValueRef hasValue = LLVMBuildICmp(
+            builder_, LLVMIntNE, current, LLVMConstNull(pointerType), "coalesce.store.hasvalue");
+        LLVMBasicBlockRef currentBlock = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef fallbackBlock = appendBlock("coalesce.store.fallback");
+        LLVMBasicBlockRef endBlock = appendBlock("coalesce.store.end");
+        LLVMBuildCondBr(builder_, hasValue, endBlock, fallbackBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, fallbackBlock);
+        LLVMValueRef fallback = lowerExpression(node->children[1].get(), error);
+        if (fallback == nullptr) return nullptr;
+        LLVMValueRef store = LLVMBuildStore(builder_, fallback, address);
+        if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+        LLVMBasicBlockRef fallbackExit = LLVMGetInsertBlock(builder_);
+        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        LLVMValueRef phi = LLVMBuildPhi(builder_, pointerType, "coalesce.store");
+        LLVMValueRef values[] = {current, fallback};
+        LLVMBasicBlockRef blocks[] = {currentBlock, fallbackExit};
+        LLVMAddIncoming(phi, values, blocks, 2);
+        return phi;
+    }
+
+    LLVMValueRef lowerNullConditionalField(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 1)
+            return failValue(error, "null-conditional field MIR requires one receiver");
+        LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
+        if (receiver == nullptr) return nullptr;
+        LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef hasReceiver = LLVMBuildICmp(
+            builder_, LLVMIntNE, receiver, LLVMConstNull(pointerType), "nullcond.hasreceiver");
+        LLVMBasicBlockRef nullBlock = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef valueBlock = appendBlock("nullcond.value");
+        LLVMBasicBlockRef endBlock = appendBlock("nullcond.end");
+        LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        LLVMValueRef offset = LLVMConstInt(
+            LLVMInt64TypeInContext(context_), node->immediate, 0);
+        LLVMValueRef indices[] = {offset};
+        LLVMValueRef address = LLVMBuildGEP2(
+            builder_, LLVMInt8TypeInContext(context_), receiver, indices, 1,
+            "nullcond.field.addr");
+        LLVMTypeRef resultType = llvmType(node->typeKey, error);
+        if (resultType == nullptr) return nullptr;
+        LLVMValueRef value = LLVMBuildLoad2(builder_, resultType, address, "nullcond.field");
+        if (node->volatileAccess) LLVMSetVolatile(value, 1);
+        LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
+        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcond");
+        LLVMValueRef values[] = {LLVMConstNull(resultType), value};
+        LLVMBasicBlockRef blocks[] = {nullBlock, valueExit};
         LLVMAddIncoming(phi, values, blocks, 2);
         return phi;
     }

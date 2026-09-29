@@ -26,7 +26,8 @@ namespace nativesharp::frontend
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 14: namespace state has explicit load/address nodes and stable storage identity.
 // MINOR 15: typed params and generalized aggregate spreads have explicit lowering nodes.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 15;
+// MINOR 16: null-coalescing value/store control flow is explicit and single-evaluation.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 16;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -111,6 +112,7 @@ enum class ProjectOopMirNodeKind
     ParameterValue,
     LocalValue,
     FieldLoad,
+    NullConditionalFieldLoad,
     // Item 329. A bit field has no standalone address. BitFieldAddress is a logical lvalue
     // descriptor consumed only by Store/CompoundStore; it identifies the containing allocation
     // unit so the backend can perform one masked read-modify-write.
@@ -319,6 +321,8 @@ enum class ProjectOopMirNodeKind
     Unary,
     Binary,
     Conditional,
+    NullCoalescing,
+    NullCoalescingStore,
     Store,
     // IDs 79 y 81 -- ver ProjectOopHirNodeKind::CompoundStore, misma forma. `immediate` lleva el
     // paso en bytes SOLO cuando el destino es un puntero (`elementTypeKey` no vacio en el HIR);

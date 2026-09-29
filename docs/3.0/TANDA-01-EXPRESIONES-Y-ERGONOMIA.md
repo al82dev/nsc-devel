@@ -1,8 +1,11 @@
 # Tanda 01 — Expresiones y ergonomía / Expressions and Ergonomics
 
 > **Actualización 2026-09-29:** `IMPLEMENTING`. F01, F02 y el slice trivial seguro de F05 ya
-> atraviesan binding, HIR, MIR, LLVM y NSMETA 1.24 mediante la tanda operativa 05. F03, F04, F06,
-> F07, tooling y el cleanup no trivial de F05 permanecen pendientes. Véase
+> atraviesan binding, HIR, MIR, LLVM y NSMETA 1.24 mediante la tanda operativa 05. La tanda
+> operativa 06 conecta el vertical ABI-seguro de F03/F04/F06/F07: null-aware de carriers pointer,
+> índice `^`, interpolación totalmente constante y `with` trivial. Optional/value `?.`, slicing
+> por views, holes runtime, owning `with`, tooling y cleanup no trivial permanecen asignados a sus
+> dependencias posteriores. Véase
 > [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
 
 ## Resultado / Outcome

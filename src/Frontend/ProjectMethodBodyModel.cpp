@@ -11,9 +11,12 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
+#include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <cctype>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -1827,6 +1830,13 @@ const MethodAggregateInitializerBinding* ProjectMethodBodyModel::aggregateInitia
     const auto found = aggregateInitializerBindingBySyntax_.find(syntax);
     return found == aggregateInitializerBindingBySyntax_.end()
         ? nullptr : &aggregateInitializerBindings_[found->second];
+}
+
+const std::string* ProjectMethodBodyModel::staticInterpolationValue(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto found = staticInterpolationValues_.find(syntax);
+    return found == staticInterpolationValues_.end() ? nullptr : &found->second;
 }
 
 std::span<const MethodRuntimeTypeBinding> ProjectMethodBodyModel::runtimeTypeBindings() const noexcept
@@ -5502,6 +5512,105 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 "builtin:char",
                 false, std::nullopt, std::nullopt});
             break;
+        case ast::AstNodeKind::InterpolatedStringExpression:
+        {
+            // T01-F06 first allocation-free handler: every hole is a compile-time scalar and the
+            // complete answer is interned exactly like a source string literal. Runtime holes are
+            // rejected instead of silently selecting String.Concat (which would allocate heap in
+            // a `noheap` context). Later handler protocols may widen this without changing the
+            // representation of this fully-static form.
+            std::vector<language::InterpolationPart> parts;
+            std::string parseError;
+            if (!language::parseStaticInterpolation(expression->text(), parts, parseError))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidStringLiteral,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    std::move(parseError));
+                break;
+            }
+            bool valid = true;
+            std::string rendered;
+            for (const language::InterpolationPart& part : parts)
+            {
+                if (part.kind == language::InterpolationPartKind::Literal)
+                {
+                    rendered += part.text;
+                    continue;
+                }
+                if (part.text == "true" || part.text == "false")
+                {
+                    if (!part.format.empty()) valid = false;
+                    else rendered += part.text;
+                    continue;
+                }
+
+                bool negative = false;
+                std::string_view digits = part.text;
+                if (!digits.empty() && digits.front() == '-')
+                {
+                    negative = true;
+                    digits.remove_prefix(1);
+                }
+                std::uint64_t value = 0;
+                const auto parsed = std::from_chars(
+                    digits.data(), digits.data() + digits.size(), value, 10);
+                const bool integer = !digits.empty() && parsed.ec == std::errc{} &&
+                    parsed.ptr == digits.data() + digits.size();
+                char mode = 'D';
+                std::size_t width = 0;
+                bool formatValid = part.format.empty();
+                if (!part.format.empty() &&
+                    (part.format.front() == 'D' || part.format.front() == 'd' ||
+                     part.format.front() == 'X' || part.format.front() == 'x'))
+                {
+                    mode = part.format.front();
+                    std::string_view widthText(part.format);
+                    widthText.remove_prefix(1);
+                    formatValid = widthText.empty();
+                    if (!widthText.empty())
+                    {
+                        const auto widthResult = std::from_chars(
+                            widthText.data(), widthText.data() + widthText.size(), width, 10);
+                        formatValid = widthResult.ec == std::errc{} &&
+                            widthResult.ptr == widthText.data() + widthText.size() && width <= 64U;
+                    }
+                }
+                if (!integer || !formatValid ||
+                    (negative && (mode == 'X' || mode == 'x')))
+                {
+                    valid = false;
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidStringLiteral,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "static interpolation hole '" + part.text +
+                            "' must be a bool or integer literal with constant D/d/X/x format; "
+                            "runtime holes require an explicit formatting handler");
+                    continue;
+                }
+                char buffer[96] = {};
+                const int base = (mode == 'X' || mode == 'x') ? 16 : 10;
+                const auto converted = std::to_chars(buffer, buffer + sizeof(buffer), value, base);
+                std::string text(buffer, converted.ptr);
+                if (mode == 'X')
+                {
+                    for (char& ch : text)
+                    {
+                        ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+                    }
+                }
+                if (text.size() < width) text.insert(0, width - text.size(), '0');
+                if (negative) text.insert(text.begin(), '-');
+                rendered += text;
+            }
+            if (!valid) break;
+            staticInterpolationValues_[expression] = std::move(rendered);
+            result.typeKey = "string-literal";
+            result.valid = true;
+            break;
+        }
         case ast::AstNodeKind::BooleanLiteralExpression:
             result.typeKey = "builtin:bool";
             result.valid = true;
@@ -5828,6 +5937,54 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.ownershipTransfer = true;
             break;
         }
+        case ast::AstNodeKind::NullConditionalMemberExpression:
+        {
+            result = analyzeMember(
+                expression, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                allowMethodGroup, false, false);
+            if (!result.valid) break;
+            const std::optional<std::size_t> receiverOrdinal =
+                namedTypeOrdinalForTypeKey(result.receiverTypeKey);
+            const bool nullableReceiver = receiverOrdinal.has_value() && inheritanceModel_ != nullptr &&
+                (inheritanceModel_->isClass(*receiverOrdinal) ||
+                 (interfaceModel_ != nullptr && interfaceModel_->isInterface(*receiverOrdinal)));
+            if (!nullableReceiver)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->first() != nullptr ? expression->first()->range() : expression->range(),
+                    "the receiver of '?.' must be a class or interface reference");
+                result.valid = false;
+                break;
+            }
+            const bool nullableResult = ProjectTypeConversion::isPointer(result.typeKey) ||
+                ProjectTypeConversion::isNativeArray(result.typeKey) ||
+                result.typeKey == "builtin:string" || isAnyDelegateTypeKey(result.typeKey) ||
+                [&]
+                {
+                    const std::optional<std::size_t> ordinal =
+                        namedTypeOrdinalForTypeKey(result.typeKey);
+                    return ordinal.has_value() && inheritanceModel_ != nullptr &&
+                        (inheritanceModel_->isClass(*ordinal) ||
+                         (interfaceModel_ != nullptr && interfaceModel_->isInterface(*ordinal)));
+                }();
+            if (!result.assignmentMemberOrdinal.has_value() || !nullableResult)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "this '?.' access requires a nullable instance field result; value members "
+                    "require the Optional<T> carrier and property/method access requires a "
+                    "captured conditional-call lowering");
+                result.valid = false;
+                break;
+            }
+            result.assignable = false;
+            result.addressable = false;
+            break;
+        }
         case ast::AstNodeKind::MemberExpression:
             result = analyzeMember(
                 expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup, allowEvent,
@@ -5852,6 +6009,166 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         case ast::AstNodeKind::BinaryExpression:
             result = analyzeBinary(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
             break;
+        case ast::AstNodeKind::NullCoalescingExpression:
+        {
+            // T01-F03. The left operand is unconditional; the right operand is a real branch.
+            // Keeping the branch in the ownership/definite-assignment model matters just as much
+            // as keeping it in LLVM: a move or assignment on the fallback edge did not happen on
+            // the non-null edge.
+            const ExpressionResult left = analyzeExpression(
+                expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            const auto nullCarrier = [&](std::string_view typeKey)
+            {
+                if (ProjectTypeConversion::isPointer(typeKey) ||
+                    ProjectTypeConversion::isNativeArray(typeKey) ||
+                    typeKey == "builtin:string" || isAnyDelegateTypeKey(typeKey))
+                {
+                    return true;
+                }
+                const std::optional<std::size_t> ordinal = referenceTypeOrdinalForTypeKey(typeKey);
+                return ordinal.has_value() && inheritanceModel_ != nullptr &&
+                    (inheritanceModel_->isClass(*ordinal) ||
+                     (interfaceModel_ != nullptr && interfaceModel_->isInterface(*ordinal)));
+            };
+            if (left.valid && !nullCarrier(left.typeKey))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->first() != nullptr ? expression->first()->range() : expression->range(),
+                    "left operand of '?' '?' must be a pointer, reference, delegate, native array, "
+                    "native string, or a supported Optional<T> carrier");
+            }
+
+            const OwnershipFlowSnapshot branchEntry = captureOwnershipFlow();
+            ExpressionResult right;
+            const OwnershipFlowSnapshot rightState = analyzeBranchState(
+                branchEntry,
+                [&]
+                {
+                    right = analyzeExpression(
+                        expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                });
+            commitBranchJoin(branchEntry, rightState);
+            if (!left.valid || !right.valid || !nullCarrier(left.typeKey)) break;
+
+            const ProjectImplicitConversion conversion = classifyImplicit(
+                right.typeKey, left.typeKey, right.integerConstant);
+            if (!conversion.exists())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->second() != nullptr ? expression->second()->range() : expression->range(),
+                    "right operand of '?' '?' with type '" + right.typeKey +
+                        "' is not implicitly convertible to '" + left.typeKey + "'");
+                break;
+            }
+            result.typeKey = left.typeKey;
+            result.valid = true;
+            result.assignable = false;
+            break;
+        }
+        case ast::AstNodeKind::WithExpression:
+        {
+            // T01-F07. `source with { A = x }` is an explicit whole-value copy followed by
+            // textual updates. Source is analyzed before every update and exactly once. Until
+            // T06 supplies per-field drop flags, only trivially copyable/destructible structs are
+            // admitted; accepting an owning aggregate here would turn `with` into an implicit
+            // aliasing copy and make exceptional cleanup ambiguous.
+            const ExpressionResult source = analyzeExpression(
+                expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (!source.valid) break;
+            const std::optional<std::vector<std::string>> elements =
+                aggregateElementTypeKeys(source.typeKey);
+            const std::optional<std::vector<std::string>> names =
+                aggregateElementNames(source.typeKey);
+            if (!elements.has_value() || !names.has_value() || names->size() != elements->size() ||
+                names->empty())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "a with expression requires a named struct value, not '" + source.typeKey + "'");
+                break;
+            }
+            bool valid = true;
+            if (!elementTypeHasTrivialLifetime(source.typeKey) ||
+                source.ownership == sema::OwnershipKind::Owned || source.ownershipTransfer ||
+                source.ownershipFreshOwner)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "with expression for '" + source.typeKey +
+                        "' requires a trivially copyable value; move-only or owning values need "
+                        "an explicit clone/copy strategy");
+                valid = false;
+            }
+
+            MethodAggregateInitializerBinding binding;
+            binding.syntax = expression;
+            binding.targetTypeKey = source.typeKey;
+            binding.generalized = true;
+            std::vector<bool> assigned(elements->size(), false);
+            for (const ast::AstNode* update : expression->children())
+            {
+                MethodAggregateInitializerEntryBinding entry;
+                entry.syntax = update;
+                const auto found = update != nullptr
+                    ? std::ranges::find(*names, update->argumentName()) : names->end();
+                if (update == nullptr || found == names->end())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::UnknownMember,
+                        diagnostics::DiagnosticSeverity::Error,
+                        update != nullptr ? update->range() : expression->range(),
+                        "with source '" + source.typeKey + "' has no field named '" +
+                            (update != nullptr ? update->argumentName() : std::string{}) + "'");
+                    valid = false;
+                    binding.entries.push_back(std::move(entry));
+                    continue;
+                }
+                const std::size_t target =
+                    static_cast<std::size_t>(std::distance(names->begin(), found));
+                if (assigned[target])
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::DuplicateSymbol,
+                        diagnostics::DiagnosticSeverity::Error,
+                        update->range(),
+                        "with member '" + update->argumentName() + "' is assigned more than once");
+                    valid = false;
+                }
+                assigned[target] = true;
+                entry.targetElementOrdinals.push_back(target);
+                const ExpressionResult value = analyzeExpression(
+                    update, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                if (!value.valid || !classifyImplicit(
+                        value.typeKey, (*elements)[target], value.integerConstant).exists())
+                {
+                    if (value.valid)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidConversion,
+                            diagnostics::DiagnosticSeverity::Error,
+                            update->range(),
+                            "with member '" + update->argumentName() + "' of type '" +
+                                (*elements)[target] + "' cannot be updated from '" + value.typeKey + "'");
+                    }
+                    valid = false;
+                }
+                binding.entries.push_back(std::move(entry));
+            }
+            aggregateInitializerBindingBySyntax_[expression] = aggregateInitializerBindings_.size();
+            aggregateInitializerBindings_.push_back(std::move(binding));
+            result.typeKey = source.typeKey;
+            result.valid = valid;
+            result.assignable = false;
+            break;
+        }
         case ast::AstNodeKind::ConditionalExpression:
         {
             // `condition ? whenTrue : whenFalse`.
@@ -6188,6 +6505,60 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             break;
         }
+        case ast::AstNodeKind::FromEndExpression:
+        {
+            const ExpressionResult distance = analyzeExpression(
+                expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (!distance.valid) break;
+            if (!ProjectTypeConversion::isIntegral(distance.typeKey) ||
+                distance.typeKey == "builtin:bool")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidIndex,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "a from-end index requires an integral distance");
+                break;
+            }
+            if (distance.integerConstant.has_value() && distance.integerConstant->isNegative)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::ConstantIndexOutOfBounds,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "a from-end index distance cannot be negative");
+                break;
+            }
+            result = distance;
+            result.assignable = false;
+            result.addressable = false;
+            break;
+        }
+        case ast::AstNodeKind::RangeExpression:
+        {
+            bool valid = true;
+            const auto checkEndpoint = [&](const ast::AstNode* endpoint)
+            {
+                if (endpoint == nullptr) return;
+                const ExpressionResult value = analyzeExpression(
+                    endpoint, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                if (!value.valid || !ProjectTypeConversion::isIntegral(value.typeKey) ||
+                    value.typeKey == "builtin:bool")
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidIndex,
+                        diagnostics::DiagnosticSeverity::Error,
+                        endpoint->range(),
+                        "a range endpoint requires an integral index");
+                    valid = false;
+                }
+            };
+            checkEndpoint(expression->first());
+            checkEndpoint(expression->second());
+            result.typeKey = "internal:range";
+            result.valid = valid;
+            break;
+        }
         case ast::AstNodeKind::IndexExpression:
         {
             const ExpressionResult base = analyzeExpression(
@@ -6211,6 +6582,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
             if (base.valid && ProjectTypeConversion::isNativeArray(base.typeKey))
             {
+                const ast::AstNode* singleIndex = !indexSyntaxes.empty()
+                    ? indexSyntaxes.front() : expression->second();
+                if (indices.size() == 1 && singleIndex != nullptr &&
+                    singleIndex->kind() == ast::AstNodeKind::RangeExpression)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidIndex,
+                        diagnostics::DiagnosticSeverity::Error,
+                        singleIndex->range(),
+                        "slicing a heap array cannot implicitly allocate another array; use a "
+                        "Span<T>/ReadOnlySpan<T> Length/Slice view");
+                    break;
+                }
                 if (indices.size() == 1 && indices.front().valid &&
                     ProjectTypeConversion::isIntegral(indices.front().typeKey))
                 {
@@ -6250,6 +6634,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 (ProjectTypeConversion::isNativeString(base.typeKey) ||
                  base.typeKey == "string-literal"))
             {
+                const ast::AstNode* singleIndex = !indexSyntaxes.empty()
+                    ? indexSyntaxes.front() : expression->second();
+                if (indices.size() == 1 && singleIndex != nullptr &&
+                    singleIndex->kind() == ast::AstNodeKind::RangeExpression)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidIndex,
+                        diagnostics::DiagnosticSeverity::Error,
+                        singleIndex->range(),
+                        "slicing a native string cannot allocate implicitly; use StringView.Slice");
+                    break;
+                }
                 if (indices.size() == 1 && indices.front().valid &&
                     ProjectTypeConversion::isIntegral(indices.front().typeKey))
                 {
@@ -12598,6 +12994,81 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    // T01-F03 `place ??= fallback` is not a numeric compound assignment. Analyze it here before
+    // the generic read/modify/write machinery asks compoundAssignmentBaseOperator for a numeric
+    // operator. This deliberately accepts only real addressable storage: a property/indexer would
+    // require one captured receiver shared by getter and setter, which this HIR cannot represent
+    // safely yet, so it receives a source diagnostic instead of being evaluated twice.
+    if (expression->tokenKind() == TokenKind::QuestionQuestionEqual)
+    {
+        ExpressionResult target = analyzeExpression(
+            expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+            false, false, false, false);
+        const auto nullCarrier = [&](std::string_view typeKey)
+        {
+            if (ProjectTypeConversion::isPointer(typeKey) ||
+                ProjectTypeConversion::isNativeArray(typeKey) ||
+                typeKey == "builtin:string" || isAnyDelegateTypeKey(typeKey))
+            {
+                return true;
+            }
+            const std::optional<std::size_t> ordinal = referenceTypeOrdinalForTypeKey(typeKey);
+            return ordinal.has_value() && inheritanceModel_ != nullptr &&
+                (inheritanceModel_->isClass(*ordinal) ||
+                 (interfaceModel_ != nullptr && interfaceModel_->isInterface(*ordinal)));
+        };
+        bool valid = target.valid;
+        if (valid && (!target.assignable || !target.addressable))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->first() != nullptr ? expression->first()->range() : expression->range(),
+                "left operand of '?' '?=' must be addressable storage; cache a property/indexer "
+                "receiver explicitly before using null-coalescing assignment");
+            valid = false;
+        }
+        if (valid && !nullCarrier(target.typeKey))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->first() != nullptr ? expression->first()->range() : expression->range(),
+                "left operand of '?' '?=' must have a nullable pointer/reference carrier");
+            valid = false;
+        }
+
+        const OwnershipFlowSnapshot branchEntry = captureOwnershipFlow();
+        ExpressionResult fallback;
+        const OwnershipFlowSnapshot fallbackState = analyzeBranchState(
+            branchEntry,
+            [&]
+            {
+                fallback = analyzeExpression(
+                    expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            });
+        commitBranchJoin(branchEntry, fallbackState);
+        if (!fallback.valid) valid = false;
+        if (valid)
+        {
+            const ProjectImplicitConversion conversion = classifyImplicit(
+                fallback.typeKey, target.typeKey, fallback.integerConstant);
+            if (!conversion.exists())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->second() != nullptr ? expression->second()->range() : expression->range(),
+                    "right operand of '?' '?=' with type '" + fallback.typeKey +
+                        "' is not implicitly convertible to '" + target.typeKey + "'");
+                valid = false;
+            }
+        }
+        target.valid = valid;
+        target.assignable = false;
+        return target;
+    }
+
     std::optional<std::size_t> raiiTargetLocal;
     ExpressionResult left;
     // C4 "language references": record that an `out` parameter was written to. The obligation an

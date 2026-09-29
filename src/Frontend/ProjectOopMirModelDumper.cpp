@@ -59,6 +59,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
                << " type-id=" << node->immediate;
     if (node->kind == ProjectOopMirNodeKind::FieldAddress ||
         node->kind == ProjectOopMirNodeKind::FieldLoad ||
+        node->kind == ProjectOopMirNodeKind::NullConditionalFieldLoad ||
         node->kind == ProjectOopMirNodeKind::BitFieldAddress ||
         node->kind == ProjectOopMirNodeKind::BitFieldLoad)
         output << " offset=" << node->immediate << " align=" << node->alignment;
@@ -98,7 +99,11 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
         node->kind == ProjectOopMirNodeKind::ArrayElementAddress)
         output << " element=" << node->elementTypeKey
                << " element-size=" << node->immediate
-               << " element-align=" << node->alignment;
+               << " element-align=" << node->alignment
+               << ((node->kind != ProjectOopMirNodeKind::ArrayAllocate && node->booleanValue)
+                    ? " index=from-end" : "");
+    if (node->kind == ProjectOopMirNodeKind::StringElementLoad && node->booleanValue)
+        output << " index=from-end";
     if (node->kind == ProjectOopMirNodeKind::StringLiteral)
         output << " bytes=" << node->stringValue.size();
     if (node->kind == ProjectOopMirNodeKind::InlineAssembly)

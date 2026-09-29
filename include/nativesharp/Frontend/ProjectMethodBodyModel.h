@@ -1295,6 +1295,7 @@ public:
     std::span<const MethodExpressionTypeBinding> expressionTypes() const noexcept;
     const MethodAggregateInitializerBinding* aggregateInitializerBinding(
         const ast::AstNode* syntax) const noexcept;
+    const std::string* staticInterpolationValue(const ast::AstNode* syntax) const noexcept;
     // NSC-LIMIT-010. "Este tipo tiene algo que poseer": una referencia de clase/interfaz o una
     // cadena nativa. Publico porque ProjectConstructionModel lo necesita para aplicar la MISMA
     // regla de propiedad que las llamadas ordinarias, y volver a escribirlo alli seria la segunda
@@ -1940,6 +1941,7 @@ private:
     std::vector<MethodExpressionTypeBinding> expressionTypes_;
     std::vector<MethodAggregateInitializerBinding> aggregateInitializerBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> aggregateInitializerBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, std::string> staticInterpolationValues_;
     std::vector<MethodRuntimeTypeBinding> runtimeTypeBindings_;
     std::vector<MethodCoreBinding> coreBindings_;
     std::vector<MethodVariableArrayIndexBinding> variableArrayIndexBindings_;

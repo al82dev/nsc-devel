@@ -1,0 +1,118 @@
+namespace c56ns3nullwith
+{
+    public struct Pair
+    {
+        public int X;
+        public int Y;
+    }
+
+    public class Node
+    {
+        public int Value;
+        public Node Next;
+
+        public Node(int value)
+        {
+            Value = value;
+            Next = null;
+        }
+    }
+
+    public class Program
+    {
+        private static int trace = 0;
+        private static int fallbackValue = 7;
+        private static Node probe = null;
+
+        private static int* Fallback()
+        {
+            trace = trace * 10 + 1;
+            return &fallbackValue;
+        }
+
+        private static int Mark(int value)
+        {
+            trace = trace * 10 + value;
+            return value;
+        }
+
+        private static Pair Source()
+        {
+            trace = trace * 10 + 1;
+            Pair result = { X = 20, Y = 22 };
+            return result;
+        }
+
+        private static Node Probe()
+        {
+            trace = trace * 10 + 3;
+            return probe;
+        }
+
+        public static int Main()
+        {
+            int primary = 42;
+            int* present = &primary;
+
+            trace = 0;
+            int* selected = present ?? Fallback();
+            if (*selected != 42 || trace != 0) { return 1; }
+
+            trace = 0;
+            int* missing = null;
+            selected = missing ?? Fallback();
+            if (*selected != 7 || trace != 1) { return 2; }
+
+            trace = 0;
+            present ??= Fallback();
+            if (*present != 42 || trace != 0) { return 3; }
+
+            trace = 0;
+            missing ??= Fallback();
+            if (*missing != 7 || trace != 1) { return 4; }
+
+            trace = 0;
+            Pair changed = Source() with { Y = Mark(2) };
+            if (changed.X != 20 || changed.Y != 2 || trace != 12) { return 5; }
+
+            int[] items = new int[3];
+            items[0] = 10;
+            items[1] = 20;
+            items[2] = 42;
+            if (items[^1] != 42 || items[^3] != 10)
+            {
+                delete[] items;
+                return 6;
+            }
+            delete[] items;
+
+            Node tail = new Node(42);
+            Node head = new Node(1);
+            head.Next = tail;
+            probe = head;
+            trace = 0;
+            Node next = Probe()?.Next;
+            if (next == null || next.Value != 42 || trace != 3)
+            {
+                destroy head;
+                destroy tail;
+                return 7;
+            }
+            probe = null;
+            trace = 0;
+            next = Probe()?.Next;
+            if (next != null || trace != 3)
+            {
+                destroy head;
+                destroy tail;
+                return 8;
+            }
+            destroy head;
+            destroy tail;
+
+            string formatted = $"answer={42:D4}-{255:X}-{true}";
+            if (formatted != "answer=0042-FF-true") { return 9; }
+            return 42;
+        }
+    }
+}

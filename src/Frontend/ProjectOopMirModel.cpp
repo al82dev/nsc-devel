@@ -715,6 +715,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::ParameterValue: return "parameter-value";
         case ProjectOopMirNodeKind::LocalValue: return "local-value";
         case ProjectOopMirNodeKind::FieldLoad: return "field-load";
+        case ProjectOopMirNodeKind::NullConditionalFieldLoad: return "null-conditional-field-load";
         case ProjectOopMirNodeKind::BitFieldLoad: return "bit-field-load";
         case ProjectOopMirNodeKind::StaticFieldLoad: return "static-field-load";
         case ProjectOopMirNodeKind::NamespaceStateLoad: return "namespace-state-load";
@@ -884,6 +885,8 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::Unary: return "unary";
         case ProjectOopMirNodeKind::Binary: return "binary";
         case ProjectOopMirNodeKind::Conditional: return "conditional";
+        case ProjectOopMirNodeKind::NullCoalescing: return "null-coalescing";
+        case ProjectOopMirNodeKind::NullCoalescingStore: return "null-coalescing-store";
         case ProjectOopMirNodeKind::Store: return "store";
         case ProjectOopMirNodeKind::Convert: return "convert";
         case ProjectOopMirNodeKind::RuntimeTypeTest: return "runtime-type-test";
@@ -1778,6 +1781,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::While: result->kind = ProjectOopMirNodeKind::While; break;
         case ProjectOopHirNodeKind::DoWhile: result->kind = ProjectOopMirNodeKind::DoWhile; break;
         case ProjectOopHirNodeKind::Conditional: result->kind = ProjectOopMirNodeKind::Conditional; break;
+        case ProjectOopHirNodeKind::NullCoalescing:
+            result->kind = ProjectOopMirNodeKind::NullCoalescing;
+            break;
+        case ProjectOopHirNodeKind::NullCoalescingAssignment:
+            result->kind = ProjectOopMirNodeKind::NullCoalescingStore;
+            break;
         case ProjectOopHirNodeKind::For: result->kind = ProjectOopMirNodeKind::For; break;
         case ProjectOopHirNodeKind::Switch: result->kind = ProjectOopMirNodeKind::Switch; break;
         case ProjectOopHirNodeKind::SwitchSection:
@@ -2494,6 +2503,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->kind = ProjectOopMirNodeKind::NamespaceStateAddress;
             break;
         case ProjectOopHirNodeKind::FieldValue:
+        case ProjectOopHirNodeKind::NullConditionalFieldValue:
         case ProjectOopHirNodeKind::FieldAddress:
         {
             if (!node->memberOrdinal.has_value())
@@ -2515,7 +2525,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                 error = "item 329 field layout has incomplete bit-field coordinates";
                 return nullptr;
             }
-            result->kind = node->kind == ProjectOopHirNodeKind::FieldValue
+            result->kind = node->kind == ProjectOopHirNodeKind::NullConditionalFieldValue
+                ? ProjectOopMirNodeKind::NullConditionalFieldLoad
+                : node->kind == ProjectOopHirNodeKind::FieldValue
                 ? (bitField ? ProjectOopMirNodeKind::BitFieldLoad
                             : ProjectOopMirNodeKind::FieldLoad)
                 : (bitField ? ProjectOopMirNodeKind::BitFieldAddress
@@ -2525,6 +2537,11 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->bitOffset = layout->bitOffset;
             result->bitWidth = layout->bitWidth;
             result->bitStorageSize = bitField ? layout->size : 0;
+            if (node->kind == ProjectOopHirNodeKind::NullConditionalFieldValue && bitField)
+            {
+                error = "T01-F03 null-conditional access to a bit field has no nullable value carrier";
+                return nullptr;
+            }
             break;
         }
 

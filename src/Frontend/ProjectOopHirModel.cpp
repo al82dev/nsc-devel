@@ -1004,6 +1004,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::ParameterValue: return "parameter-value";
         case ProjectOopHirNodeKind::LocalValue: return "local-value";
         case ProjectOopHirNodeKind::FieldValue: return "field-value";
+        case ProjectOopHirNodeKind::NullConditionalFieldValue: return "null-conditional-field-value";
         case ProjectOopHirNodeKind::StaticFieldValue: return "static-field-value";
         case ProjectOopHirNodeKind::NamespaceStateValue: return "namespace-state-value";
         case ProjectOopHirNodeKind::ParameterAddress: return "parameter-address";
@@ -1171,6 +1172,8 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::Unary: return "unary";
         case ProjectOopHirNodeKind::Binary: return "binary";
         case ProjectOopHirNodeKind::Conditional: return "conditional";
+        case ProjectOopHirNodeKind::NullCoalescing: return "null-coalescing";
+        case ProjectOopHirNodeKind::NullCoalescingAssignment: return "null-coalescing-assignment";
         case ProjectOopHirNodeKind::Assignment: return "assignment";
         case ProjectOopHirNodeKind::CompoundStore: return "compound-store";
         case ProjectOopHirNodeKind::Conversion: return "conversion";
@@ -3570,6 +3573,32 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             return load;
         }
 
+        case ast::AstNodeKind::NullConditionalMemberExpression:
+        {
+            if (addressContext)
+            {
+                error = "a null-conditional access produces a value, not addressable storage";
+                return nullptr;
+            }
+            const MethodNameBinding* binding = nameBinding(expression);
+            if (binding == nullptr || binding->candidateMemberOrdinals.size() != 1 ||
+                binding->kind != MethodNameBindingKind::ExplicitObjectField)
+            {
+                error = "T01-F03 null-conditional access has no unique instance-field binding";
+                return nullptr;
+            }
+            auto receiver = lowerExpression(expression->first(), memberOrdinal, false, error);
+            if (receiver == nullptr) return nullptr;
+            auto node = makeNode(
+                ProjectOopHirNodeKind::NullConditionalFieldValue, expression, resultType);
+            node->memberOrdinal = binding->candidateMemberOrdinals.front();
+            node->volatileAccess = memberModel_ != nullptr &&
+                *node->memberOrdinal < memberModel_->members().size() &&
+                memberModel_->members()[*node->memberOrdinal].isVolatile;
+            node->children.push_back(std::move(receiver));
+            return node;
+        }
+
         case ast::AstNodeKind::IdentifierExpression:
         case ast::AstNodeKind::MemberExpression:
         {
@@ -3828,6 +3857,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             return node;
         }
 
+        case ast::AstNodeKind::InterpolatedStringExpression:
+        {
+            if (addressContext)
+            {
+                error = "a static interpolated string is immutable and not addressable";
+                return nullptr;
+            }
+            const std::string* value = methodBodyModel_ != nullptr
+                ? methodBodyModel_->staticInterpolationValue(expression) : nullptr;
+            if (value == nullptr)
+            {
+                error = "T01-F06 static interpolation has no compile-time handler result";
+                return nullptr;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "string-literal");
+            node->stringValue = *value;
+            return node;
+        }
+
         case ast::AstNodeKind::BooleanLiteralExpression:
         {
             auto node = makeNode(ProjectOopHirNodeKind::BooleanConstant, expression, "builtin:bool");
@@ -3999,6 +4047,35 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 return nullptr;
             }
             node->children.push_back(std::move(operand));
+            return node;
+        }
+
+        case ast::AstNodeKind::NullCoalescingExpression:
+        {
+            if (addressContext)
+            {
+                error = "a null-coalescing expression produces a value, not addressable storage";
+                return nullptr;
+            }
+            auto left = lowerExpression(expression->first(), memberOrdinal, false, error);
+            auto right = lowerExpression(expression->second(), memberOrdinal, false, error);
+            if (left == nullptr || right == nullptr) return nullptr;
+            const MethodExpressionTypeBinding* rhsType = expressionType(expression->second());
+            const ProjectImplicitConversion conversion = classifyImplicit(
+                right->typeKey,
+                resultType,
+                rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+            if (!conversion.exists())
+            {
+                error = "T01-F03 null-coalescing RHS cannot convert from '" + right->typeKey +
+                    "' to '" + resultType + "'";
+                return nullptr;
+            }
+            if (conversion.kind != ProjectConversionKind::Identity)
+                right = wrapImplicitConversion(std::move(right), conversion, expression->second());
+            auto node = makeNode(ProjectOopHirNodeKind::NullCoalescing, expression, resultType);
+            node->children.push_back(std::move(left));
+            node->children.push_back(std::move(right));
             return node;
         }
 
@@ -4264,7 +4341,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 if (receiver == nullptr) return nullptr;
                 const ast::AstNode* indexSyntax = !expression->children().empty()
                     ? expression->children().front() : expression->second();
-                auto index = lowerExpression(indexSyntax, memberOrdinal, false, error);
+                const bool fromEnd = indexSyntax != nullptr &&
+                    indexSyntax->kind() == ast::AstNodeKind::FromEndExpression;
+                auto index = lowerExpression(
+                    fromEnd ? indexSyntax->first() : indexSyntax,
+                    memberOrdinal,
+                    false,
+                    error);
                 if (index == nullptr) return nullptr;
                 ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::StringElementValue;
                 if (core->kind == MethodCoreOperationKind::ArrayElement)
@@ -4275,6 +4358,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 auto node = makeNode(kind, expression, core->resultTypeKey);
                 node->elementTypeKey = core->elementTypeKey;
+                node->booleanValue = fromEnd;
                 node->children.push_back(std::move(receiver));
                 node->children.push_back(std::move(index));
                 return node;
@@ -4440,6 +4524,45 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
 
         case ast::AstNodeKind::AssignmentExpression:
         {
+            if (expression->tokenKind() == lexer::TokenKind::QuestionQuestionEqual)
+            {
+                if (addressContext)
+                {
+                    error = "the result of null-coalescing assignment is a value, not addressable storage";
+                    return nullptr;
+                }
+                const MethodExpressionTypeBinding* targetType = expressionType(expression->first());
+                if (targetType == nullptr)
+                {
+                    error = "T01-F03 null-coalescing assignment target has no semantic type";
+                    return nullptr;
+                }
+                auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
+                auto fallback = lowerExpression(expression->second(), memberOrdinal, false, error);
+                if (address == nullptr || fallback == nullptr) return nullptr;
+                const MethodExpressionTypeBinding* rhsType = expressionType(expression->second());
+                const ProjectImplicitConversion conversion = classifyImplicit(
+                    fallback->typeKey,
+                    targetType->typeKey,
+                    rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+                if (!conversion.exists())
+                {
+                    error = "T01-F03 null-coalescing assignment RHS cannot convert from '" +
+                        fallback->typeKey + "' to '" + targetType->typeKey + "'";
+                    return nullptr;
+                }
+                if (conversion.kind != ProjectConversionKind::Identity)
+                    fallback = wrapImplicitConversion(
+                        std::move(fallback), conversion, expression->second());
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::NullCoalescingAssignment,
+                    expression,
+                    targetType->typeKey);
+                node->children.push_back(std::move(address));
+                node->children.push_back(std::move(fallback));
+                return node;
+            }
+
             const MethodEventBinding* stage42Event = eventBinding(expression);
             if (stage42Event != nullptr &&
                 (stage42Event->kind == MethodEventOperationKind::Add ||
@@ -6301,11 +6424,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         }
 
         case ast::AstNodeKind::AggregateInitializerExpression:
+        case ast::AstNodeKind::WithExpression:
         {
             const MethodExpressionTypeBinding* targetType = expressionType(expression);
             if (targetType == nullptr)
             {
-                error = "C7 aggregate initializer has no bound target type";
+                error = "aggregate/with initializer has no bound target type";
                 return nullptr;
             }
             auto node = makeNode(
@@ -7245,6 +7369,35 @@ bool ProjectOopHirModel::appendAggregateElements(
     {
         error = "T01-F05 aggregate initializer has no semantic element mapping";
         return false;
+    }
+
+    if (syntax->kind() == ast::AstNodeKind::WithExpression)
+    {
+        if (syntax->first() == nullptr)
+        {
+            error = "T01-F07 with expression has no source value";
+            return false;
+        }
+        auto source = lowerExpression(syntax->first(), memberOrdinal, false, error);
+        if (source == nullptr) return false;
+        auto spread = makeNode(ProjectOopHirNodeKind::AggregateSpread, syntax, targetTypeKey);
+        spread->children.push_back(std::move(source));
+        for (const AggregateSlot& target : slots)
+        {
+            if (target.bitWidth.has_value())
+            {
+                error = "T01-F07 with expressions over bit fields require explicit copy semantics";
+                return false;
+            }
+            auto descriptor = makeNode(
+                ProjectOopHirNodeKind::AggregateElement, syntax, target.typeKey);
+            descriptor->integerValue = baseOffset + target.offset;
+            descriptor->secondaryIntegerValue = target.offset;
+            descriptor->bitStorageAlignment = target.storageAlignment;
+            descriptor->volatileAccess = target.volatileAccess;
+            spread->children.push_back(std::move(descriptor));
+        }
+        elements.push_back(std::move(spread));
     }
 
     for (std::size_t index = 0; index < binding->entries.size(); ++index)

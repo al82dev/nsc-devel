@@ -119,6 +119,9 @@ enum class ProjectOopHirNodeKind
     ParameterValue,
     LocalValue,
     FieldValue,
+    // T01-F03 `receiver?.field` for a nullable field carrier. The receiver child is lowered once;
+    // memberOrdinal identifies the ordinary instance field selected by semantic analysis.
+    NullConditionalFieldValue,
     StaticFieldValue,
     NamespaceStateValue,
     ParameterAddress,
@@ -386,6 +389,12 @@ enum class ProjectOopHirNodeKind
     // `c ? a : b`. children[0] condition, children[1] true branch, children[2] false branch.
     // Both branches are lazily evaluated, so this lowers to control flow, not a select.
     Conditional,
+    // NativeSharp 3.0 T01-F03. children[0] is evaluated once. children[1] is evaluated only
+    // when that pointer/reference value is null; the result is the non-null left value or RHS.
+    NullCoalescing,
+    // T01-F03 `place ??= value`. children[0] is the destination ADDRESS and children[1] the
+    // converted RHS. The backend loads/tests the address once and stores only on the null edge.
+    NullCoalescingAssignment,
     Assignment,
     // IDs 79 y 81 -- `x op= e`, `++x`, `x++`, `--x`, `x--`.
     //
