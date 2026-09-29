@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Basic/CompilationEvent.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
@@ -56,7 +57,7 @@ public:
     void setSourceBufferProvider(SourceBufferProvider provider);
     void setPhaseTimingSink(
         std::function<void(std::string_view, std::chrono::nanoseconds)> sink);
-    void setProgressSink(std::function<void(std::string_view)> sink);
+    void setProgressSink(std::function<void(const basic::CompilationEvent&)> sink);
     bool setPrecompiledModules(
         std::vector<PrecompiledSyntaxModule> modules,
         std::string& error);
@@ -140,7 +141,7 @@ private:
     std::function<bool()> cancellationCheck_;
     SourceBufferProvider sourceBufferProvider_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;
-    std::function<void(std::string_view)> progressSink_;
+    std::function<void(const basic::CompilationEvent&)> progressSink_;
     compilation::ProjectLoadOptions projectLoadOptions_;
     std::size_t compilationJobs_ = 1;
 };

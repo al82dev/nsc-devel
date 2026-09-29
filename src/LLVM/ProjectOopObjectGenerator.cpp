@@ -33,7 +33,7 @@ class CodeUnitProgress final
 {
 public:
     CodeUnitProgress(
-        const std::function<void(std::string_view)>& sink,
+        const std::function<void(const basic::CompilationEvent&)>& sink,
         std::atomic_size_t& completed,
         std::mutex& mutex,
         std::size_t total,
@@ -42,7 +42,8 @@ public:
           name_(std::move(name))
     {
         if (sink_)
-            sink_("-- NSC: compiling LLVM module " + name_);
+            sink_({basic::CompilationEventKind::WorkStarted,
+                "LLVM", name_, 0, 0, {}});
     }
 
     ~CodeUnitProgress()
@@ -50,12 +51,12 @@ public:
         if (!sink_) return;
         const std::lock_guard<std::mutex> lock(mutex_);
         const std::size_t current = completed_.fetch_add(1, std::memory_order_relaxed) + 1U;
-        sink_("[" + std::to_string(current) + "/" + std::to_string(total_) +
-            "] NSC LLVM " + name_);
+        sink_({basic::CompilationEventKind::WorkFinished,
+            "LLVM", name_, current, total_});
     }
 
 private:
-    const std::function<void(std::string_view)>& sink_;
+    const std::function<void(const basic::CompilationEvent&)>& sink_;
     std::atomic_size_t& completed_;
     std::mutex& mutex_;
     std::size_t total_;
@@ -93,7 +94,7 @@ std::optional<std::filesystem::path> createTemporaryDirectory(std::string& error
 }
 
 void ProjectOopObjectGenerator::setProgressSink(
-    std::function<void(std::string_view)> sink)
+    std::function<void(const basic::CompilationEvent&)> sink)
 {
     progressSink_ = std::move(sink);
 }
@@ -281,7 +282,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 : "NativeSharp.OOP." + partition.units()[ordinal - 1].stableKey;
         const CodeUnitProgress progress(
             progressSink_, completedModules, moduleProgressMutex,
-            moduleCount, std::move(moduleName));
+            moduleCount, moduleName);
         if (usePreLlvmCache)
         {
             bool hit = false;
@@ -294,10 +295,16 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 if (verifier.verify(result->objectFiles_[ordinal]))
                 {
                     cacheHits[ordinal] = 1;
+                    if (progressSink_)
+                        progressSink_({basic::CompilationEventKind::CacheHit,
+                            "LLVM", moduleName, 0, 0, {}});
                     return;
                 }
             }
             cacheMisses[ordinal] = 1;
+            if (progressSink_)
+                progressSink_({basic::CompilationEventKind::CacheMiss,
+                    "LLVM", moduleName, 0, 0, {}});
         }
 
         ProjectOopLlvmLowerer lowerer;

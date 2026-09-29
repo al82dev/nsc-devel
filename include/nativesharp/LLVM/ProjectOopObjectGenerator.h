@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Basic/CompilationEvent.h"
 #include "nativesharp/LLVM/DebugInformationKind.h"
 #include "nativesharp/LLVM/DebugPrefixMap.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
@@ -61,7 +62,7 @@ private:
 class ProjectOopObjectGenerator final
 {
 public:
-    void setProgressSink(std::function<void(std::string_view)> sink);
+    void setProgressSink(std::function<void(const basic::CompilationEvent&)> sink);
 
     std::unique_ptr<ProjectOopObjectBundle> generate(
         const frontend::ProjectNameLookup& nameLookup,
@@ -87,6 +88,6 @@ public:
         std::string& error) const;
 
 private:
-    std::function<void(std::string_view)> progressSink_;
+    std::function<void(const basic::CompilationEvent&)> progressSink_;
 };
 }

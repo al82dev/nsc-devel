@@ -435,6 +435,7 @@ nsc_enable_warnings(nsc_linker)
 add_library(nsc_driver STATIC
     src/Driver/BreakingChangeLedger.cpp
     src/Driver/CompilationProfile.cpp
+    src/Driver/CompilationTelemetry.cpp
     src/Driver/CompilationGraphScheduler.cpp
     src/Driver/CompilerConsole.cpp
     src/Driver/CompatibilityPolicy.cpp
@@ -3598,6 +3599,14 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_driver_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_driver_tests)
     add_test(NAME nsc.driver COMMAND nsc_driver_tests)
+
+    add_executable(nsc_compilation_telemetry_tests tests/unit/CompilationTelemetryTests.cpp)
+    target_link_libraries(nsc_compilation_telemetry_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_compilation_telemetry_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_compilation_telemetry_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_compilation_telemetry_tests)
+    add_test(NAME nsc.compilation-telemetry COMMAND nsc_compilation_telemetry_tests)
 
     add_executable(
         nsc_compiler_identity_command_tests

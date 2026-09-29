@@ -1,10 +1,13 @@
 #include "nativesharp/Driver/CrashBoundary.h"
 #include "nativesharp/Driver/CompilerConsole.h"
+#include "nativesharp/Driver/CompilationTelemetry.h"
+#include "nativesharp/Driver/DiagnosticBundle.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 #include "nativesharp/LLVM/LlvmProcessTrace.h"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -62,6 +65,23 @@ std::string jsonEscape(std::string_view value)
         }
     }
     return escaped;
+}
+
+bool publishPayload(const std::filesystem::path& path, std::string_view payload)
+{
+    std::error_code error;
+    if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), error);
+    const std::filesystem::path temporary = path.string() + ".tmp";
+    std::ofstream destination(temporary, std::ios::binary | std::ios::trunc);
+    if (!destination) return false;
+    destination << payload;
+    destination.close();
+    if (!destination) return false;
+    std::filesystem::remove(path, error);
+    error.clear();
+    std::filesystem::rename(temporary, path, error);
+    if (error) std::filesystem::remove(temporary, error);
+    return !error;
 }
 
 bool publishLog(const std::filesystem::path& path, std::string_view format,
@@ -178,6 +198,63 @@ bool requestsJsonOutput(std::span<const std::string_view> arguments)
     });
 }
 
+std::filesystem::path projectFileFromArguments(
+    std::span<const std::string_view> arguments)
+{
+    for (const std::string_view argument : arguments)
+        if (!argument.empty() && argument.front() != '-' && argument.ends_with(".nsproj"))
+            return std::filesystem::path(std::string(argument));
+    return {};
+}
+
+nativesharp::compilation::ProjectLoadOptions projectLoadOptionsFromArguments(
+    std::span<const std::string_view> arguments)
+{
+    nativesharp::compilation::ProjectLoadOptions options;
+    constexpr std::string_view option = "--library-reference-root";
+    constexpr std::string_view prefix = "--library-reference-root=";
+    for (std::size_t index = 0; index < arguments.size(); ++index)
+    {
+        const std::string_view argument = arguments[index];
+        if (argument.starts_with(prefix))
+            options.libraryReferenceRoot =
+                std::filesystem::path(std::string(argument.substr(prefix.size())));
+        else if (argument == option && index + 1U < arguments.size())
+            options.libraryReferenceRoot =
+                std::filesystem::path(std::string(arguments[index + 1U]));
+    }
+    return options;
+}
+
+bool progressFormatFromArguments(
+    std::span<const std::string_view> arguments,
+    nativesharp::driver::ProgressFormat& format)
+{
+    bool requested = false;
+    for (const std::string_view argument : arguments)
+    {
+        if (argument == "--progress")
+        {
+            requested = true;
+            continue;
+        }
+        constexpr std::string_view progressPrefix = "--progress=";
+        constexpr std::string_view formatPrefix = "--progress-format=";
+        if (argument.starts_with(progressPrefix))
+        {
+            requested = nativesharp::driver::parseProgressFormat(
+                argument.substr(progressPrefix.size()), format);
+        }
+        else if (argument.starts_with(formatPrefix) &&
+                 !nativesharp::driver::parseProgressFormat(
+                     argument.substr(formatPrefix.size()), format))
+        {
+            requested = false;
+        }
+    }
+    return requested;
+}
+
 int runCompiler(int argc, char** argv)
 {
     const auto isTraceWorkerArgument = [](const char* argument) {
@@ -204,6 +281,7 @@ int runCompiler(int argc, char** argv)
     std::filesystem::path logPath;
     std::filesystem::path errorLogPath;
     std::filesystem::path timeTracePath;
+    std::filesystem::path failureBundlePath;
     std::string logFormat = "text";
     bool quiet = false;
     bool verbose = false;
@@ -215,6 +293,11 @@ int runCompiler(int argc, char** argv)
         if (argument.starts_with("--log-on-error=")) { errorLogPath = argument.substr(15); continue; }
         if (argument.starts_with("--log-format=")) { logFormat = argument.substr(13); continue; }
         if (argument.starts_with("--time-trace=")) { timeTracePath = argument.substr(13); continue; }
+        if (argument.starts_with("--save-failure-bundle="))
+        {
+            failureBundlePath = argument.substr(22);
+            continue;
+        }
         if (argument == "--time-report") { arguments.emplace_back("--time"); continue; }
         if (argument == "--quiet") { quiet = true; continue; }
         if (argument == "--no-banner") { banner = false; continue; }
@@ -228,7 +311,9 @@ int runCompiler(int argc, char** argv)
         arguments.emplace_back("--time");
     }
     const bool explicitProgress = std::ranges::any_of(
-        arguments, [](std::string_view argument) { return argument == "--progress"; });
+        arguments, [](std::string_view argument) {
+            return argument == "--progress" || argument.starts_with("--progress=");
+        });
     const bool buildCommand = !arguments.empty() &&
         (arguments.front() == "--emit-project-oop-obj" ||
          arguments.front() == "--emit-project-oop-exe" ||
@@ -323,8 +408,41 @@ int runCompiler(int argc, char** argv)
         observedOutput << '\n';
         observedOutput.flush();
     }
+    nativesharp::driver::ProgressFormat topLevelProgressFormat =
+        nativesharp::driver::ProgressFormat::Text;
+    const bool topLevelProgress =
+        !quiet && progressFormatFromArguments(arguments, topLevelProgressFormat);
+    const std::filesystem::path projectFile = projectFileFromArguments(arguments);
+    const std::string projectDetail = projectFile.generic_string();
+    const std::string targetDetail = arguments.empty() ? std::string{} : std::string(arguments.front());
+    const auto compilationStarted = std::chrono::steady_clock::now();
+    if (topLevelProgress && !projectDetail.empty())
+        observedOutput << nativesharp::driver::renderCompilationEvent(
+            {nativesharp::basic::CompilationEventKind::WorkStarted,
+                "project", projectDetail, 0, 1, {}},
+            topLevelProgressFormat) << '\n';
+    if (topLevelProgress && !targetDetail.empty())
+        observedOutput << nativesharp::driver::renderCompilationEvent(
+            {nativesharp::basic::CompilationEventKind::WorkStarted,
+                "target", targetDetail, 0, 1, {}},
+            topLevelProgressFormat) << '\n';
     const nativesharp::driver::Driver driver;
     const nativesharp::ExitCode exitCode = driver.run(arguments, observedOutput, observedError);
+    const auto compilationElapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - compilationStarted);
+    const auto completionKind = exitCode == nativesharp::ExitCode::Success
+        ? nativesharp::basic::CompilationEventKind::WorkFinished
+        : nativesharp::basic::CompilationEventKind::Failed;
+    if (topLevelProgress && !targetDetail.empty())
+        observedOutput << nativesharp::driver::renderCompilationEvent(
+            {completionKind, "target", targetDetail,
+                exitCode == nativesharp::ExitCode::Success ? 1U : 0U, 1, compilationElapsed},
+            topLevelProgressFormat) << '\n';
+    if (topLevelProgress && !projectDetail.empty())
+        observedOutput << nativesharp::driver::renderCompilationEvent(
+            {completionKind, "project", projectDetail,
+                exitCode == nativesharp::ExitCode::Success ? 1U : 0U, 1, compilationElapsed},
+            topLevelProgressFormat) << '\n';
     observedOutput.flush();
     observedError.flush();
     const int numericExitCode = static_cast<int>(exitCode);
@@ -343,8 +461,29 @@ int runCompiler(int argc, char** argv)
         logOk = automaticLogOk && logOk;
     }
     if (!timeTracePath.empty())
-        logOk = publishLog(timeTracePath, "json", arguments, numericExitCode,
-            capturedOutput.str(), capturedError.str()) && logOk;
+        logOk = publishPayload(timeTracePath,
+            nativesharp::driver::renderCompilationTimeTraceJson(
+                capturedOutput.str(), numericExitCode)) && logOk;
+    if (numericExitCode != 0 && !failureBundlePath.empty())
+    {
+        const std::filesystem::path projectFile = projectFileFromArguments(arguments);
+        std::string bundleError;
+        const bool bundleOk = !projectFile.empty() &&
+            nativesharp::driver::writeDiagnosticBundle(
+                projectFile, failureBundlePath, exitCode,
+                capturedOutput.str(), capturedError.str(),
+                projectLoadOptionsFromArguments(arguments), arguments, bundleError);
+        if (!bundleOk)
+        {
+            if (bundleError.empty())
+                bundleError = "a failure bundle requires a .nsproj argument";
+            std::cerr << nativesharp::driver::compilerText(
+                "nsc: warning: failure bundle could not be written: ",
+                "nsc: advertencia: no se pudo escribir el paquete de fallo: ")
+                      << bundleError << '\n';
+        }
+        logOk = bundleOk && logOk;
+    }
     if (!logOk)
     {
         std::cerr << nativesharp::driver::compilerText(

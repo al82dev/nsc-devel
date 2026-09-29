@@ -4,6 +4,7 @@
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/CompilationProfile.h"
 #include "nativesharp/Driver/CompilationJobPolicy.h"
+#include "nativesharp/Driver/CompilationTelemetry.h"
 #include "nativesharp/Driver/CompilerConsole.h"
 #include "nativesharp/Driver/DiagnosticBundle.h"
 #include "nativesharp/Driver/FinalBaselineContract.h"
@@ -129,6 +130,13 @@ bool parseBoundedDecimal(
 
 struct DriverExecutionScope final
 {
+    struct PhaseTiming final
+    {
+        std::string phase;
+        std::chrono::nanoseconds elapsed{};
+        std::uint64_t peakWorkingSetBytes = 0;
+    };
+
     DriverExecutionScope(std::ostream& destination, std::ostream& diagnosticDestination)
         : output(destination), error(diagnosticDestination),
           started(std::chrono::steady_clock::now()) {}
@@ -145,27 +153,30 @@ struct DriverExecutionScope final
             }
         }
         if (!reportTiming) return;
-        for (const auto& [phase, elapsed] : phaseTimings)
+        for (const PhaseTiming& timing : phaseTimings)
         {
-            output << "timing phase=" << phase << " us="
-                   << std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count()
-                   << '\n';
+            output << "timing phase=" << timing.phase << " us="
+                   << std::chrono::duration_cast<std::chrono::microseconds>(
+                          timing.elapsed).count()
+                   << " peak_working_set_bytes=" << timing.peakWorkingSetBytes << '\n';
         }
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started).count();
-        output << "timing total_ms=" << elapsed << '\n';
+        output << "timing total_ms=" << elapsed << " peak_working_set_bytes="
+               << currentProcessPeakWorkingSetBytes() << '\n';
     }
-    void writeProgress(std::string_view message)
+    void writeProgress(const basic::CompilationEvent& event)
     {
         if (!reportProgress) return;
         const std::lock_guard<std::mutex> lock(progressMutex);
-        output << message << '\n';
+        output << renderCompilationEvent(event, progressFormat) << '\n';
         output.flush();
     }
     void recordPhase(std::string_view phase, std::chrono::nanoseconds elapsed)
     {
         if (!reportTiming) return;
-        phaseTimings.emplace_back(std::string(phase), elapsed);
+        phaseTimings.push_back(
+            {std::string(phase), elapsed, currentProcessPeakWorkingSetBytes()});
     }
     bool expired() const noexcept
     {
@@ -176,11 +187,12 @@ struct DriverExecutionScope final
     std::chrono::steady_clock::time_point started;
     std::mutex progressMutex;
     std::optional<std::chrono::steady_clock::time_point> deadline;
-    std::vector<std::pair<std::string, std::chrono::nanoseconds>> phaseTimings;
+    std::vector<PhaseTiming> phaseTimings;
     llvm_backend::LlvmOptimizationBudgetTracker o2Budget;
     compilation::ProjectLoadOptions projectLoadOptions;
     bool reportTiming = false;
     bool reportProgress = false;
+    ProgressFormat progressFormat = ProgressFormat::Text;
 };
 
 thread_local DriverExecutionScope* activeExecutionScope = nullptr;
@@ -206,7 +218,9 @@ public:
                                      : std::chrono::steady_clock::time_point{})
     {
         if (scope_ != nullptr)
-            scope_->writeProgress("-- NSC: " + std::string(phase_));
+            scope_->writeProgress(
+                {basic::CompilationEventKind::PhaseStarted,
+                    phase_, {}, 0, 0, {}});
     }
 
     ~DriverPhaseTimer()
@@ -215,10 +229,8 @@ public:
         const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - started_);
         scope_->recordPhase(phase_, elapsed);
-        scope_->writeProgress("-- NSC: " + std::string(phase_) + std::string(compilerText(
-            " finished (", " finalizada (")) +
-            std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()) +
-            " ms)");
+        scope_->writeProgress({basic::CompilationEventKind::PhaseFinished,
+            phase_, {}, 0, 0, elapsed});
     }
 
 private:
@@ -253,8 +265,8 @@ void configureProjectExecution(frontend::ProjectCompilation& compilation)
     if (activeExecutionScope != nullptr && activeExecutionScope->reportProgress)
     {
         DriverExecutionScope* const scope = activeExecutionScope;
-        compilation.setProgressSink([scope](std::string_view message) {
-            scope->writeProgress(message);
+        compilation.setProgressSink([scope](const basic::CompilationEvent& event) {
+            scope->writeProgress(event);
         });
     }
 }
@@ -2581,8 +2593,8 @@ void configureObjectGeneratorProgress(llvm_backend::ProjectOopObjectGenerator& g
 {
     if (activeExecutionScope == nullptr || !activeExecutionScope->reportProgress) return;
     DriverExecutionScope* const scope = activeExecutionScope;
-    generator.setProgressSink([scope](std::string_view message) {
-        scope->writeProgress(message);
+    generator.setProgressSink([scope](const basic::CompilationEvent& event) {
+        scope->writeProgress(event);
     });
 }
 
@@ -3132,6 +3144,37 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         if (argument == "--progress")
         {
             executionScope.reportProgress = true;
+            continue;
+        }
+        if (argument.starts_with("--progress="))
+        {
+            executionScope.reportProgress = true;
+            const std::string_view value =
+                argument.substr(std::string_view("--progress=").size());
+            if (!parseProgressFormat(value, executionScope.progressFormat))
+            {
+                error << "nsc: error: " << compilerText(
+                    "unsupported progress format '",
+                    "formato de progreso no compatible '")
+                      << value << compilerText("'; expected text or json\n",
+                                               "'; se esperaba text o json\n");
+                return ExitCode::CommandLineError;
+            }
+            continue;
+        }
+        if (argument.starts_with("--progress-format="))
+        {
+            const std::string_view value =
+                argument.substr(std::string_view("--progress-format=").size());
+            if (!parseProgressFormat(value, executionScope.progressFormat))
+            {
+                error << "nsc: error: " << compilerText(
+                    "unsupported progress format '",
+                    "formato de progreso no compatible '")
+                      << value << compilerText("'; expected text or json\n",
+                                               "'; se esperaba text o json\n");
+                return ExitCode::CommandLineError;
+            }
             continue;
         }
         if (argument == "--llvm-pass-trace")
@@ -4305,10 +4348,13 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         std::ostringstream capturedError;
         const ExitCode result = runProject(
             "--verify-project-oop-llvm", args[1], capturedOutput, capturedError);
+        const std::array<std::string_view, 2> bundleArguments = {
+            "--verify-project-oop-llvm", "-O0"};
         std::string bundleError;
         if (!writeDiagnosticBundle(std::filesystem::path(std::string(args[1])),
                 std::filesystem::path(std::string(args[2])), result,
-                capturedOutput.str(), capturedError.str(), activeProjectLoadOptions(), bundleError))
+                capturedOutput.str(), capturedError.str(), activeProjectLoadOptions(),
+                bundleArguments, bundleError))
         {
             error << "nsc: error: " << bundleError << '\n';
             return ExitCode::CompilationError;
@@ -4587,10 +4633,13 @@ void Driver::printHelp(std::ostream &output)
                << "--time muestra tiempos por fase y tiempo total; --timeout-ms=N solicita cancelación cooperativa.\n"
                << "Los comandos de construcción muestran progreso de fases, fuentes y módulos LLVM de forma predeterminada; "
                   "--progress lo habilita en comandos de diagnóstico.\n"
+               << "--progress=json emite un evento JSON estable por línea; --progress-format=text|json "
+                  "selecciona el renderer.\n"
                << "--quiet suprime la salida normal y el progreso automático; --verbose agrega tiempos.\n"
                << "--language en|es selecciona los mensajes legibles; --no-banner suprime el banner de compilación.\n"
                << "--log=<archivo> registra salida, errores, argumentos y estado; los fallos crean error.log, error1.log, ... "
                   "salvo que se use --no-error-log.\n"
+               << "--save-failure-bundle=<archivo.nsdiag> conserva identidad, entradas y diagnóstico después de un fallo.\n"
                << "--o2-budget-ms=N establece el presupuesto consultivo de LLVM O2 sin cambiar el artefacto ni el código de salida.\n"
                << "--llvm-pass-trace habilita la traza completa y costosa de pases LLVM.\n"
                << "-j N limita los trabajos; --reserve-cores=N conserva capacidad del equipo.\n"
@@ -4615,6 +4664,8 @@ void Driver::printHelp(std::ostream &output)
               "--timeout-ms=N requests cooperative cancellation at safe project phase boundaries.\n"
            << "project build commands stream CMake-style phase, source and LLVM-module progress "
               "by default; --progress enables the same stream on diagnostic commands.\n"
+           << "--progress=json emits one stable JSON event per line; "
+              "--progress-format=text|json selects the renderer.\n"
            << "--quiet suppresses normal stdout and automatic progress; --verbose adds timing. "
               "--time-report is an alias for --time and --time-trace=<file> writes a JSON trace.\n"
            << "--language en|es selects human-readable console messages; --no-banner suppresses "
@@ -4623,6 +4674,8 @@ void Driver::printHelp(std::ostream &output)
               "--log-format=text|json selects its schema and --log-on-error=<file> publishes only "
               "after failure. Failures otherwise create error.log, error1.log, ... in the working "
               "directory; --no-error-log disables this. Logs are written transactionally.\n"
+           << "--save-failure-bundle=<file.nsdiag> transactionally preserves compiler identity, "
+              "input fingerprints and diagnostics after a failure.\n"
            << "--o2-budget-ms=N sets the advisory cumulative LLVM O2 budget; exceeding it warns "
               "without changing the artifact or exit code.\n"
            << "--llvm-pass-trace enables the expensive full LLVM pass log and verify-each "

@@ -4,6 +4,7 @@
 #include "nativesharp/Compilation/ProjectLoader.h"
 
 #include <filesystem>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -16,5 +17,6 @@ bool writeDiagnosticBundle(
     std::string_view standardOutput,
     std::string_view standardError,
     const compilation::ProjectLoadOptions& projectLoadOptions,
+    std::span<const std::string_view> arguments,
     std::string& error);
 }

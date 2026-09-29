@@ -45,7 +45,8 @@ void ProjectCompilation::setPhaseTimingSink(
     phaseTimingSink_ = std::move(sink);
 }
 
-void ProjectCompilation::setProgressSink(std::function<void(std::string_view)> sink)
+void ProjectCompilation::setProgressSink(
+    std::function<void(const basic::CompilationEvent&)> sink)
 {
     progressSink_ = std::move(sink);
 }
@@ -66,17 +67,15 @@ class ProjectPhaseTimer final
 public:
     ProjectPhaseTimer(
         const std::function<void(std::string_view, std::chrono::nanoseconds)>& timingSink,
-        const std::function<void(std::string_view)>& progressSink,
+        const std::function<void(const basic::CompilationEvent&)>& progressSink,
         std::string_view phase)
         : timingSink_(timingSink), progressSink_(progressSink), phase_(phase),
           started_(timingSink || progressSink ? std::chrono::steady_clock::now()
                                               : std::chrono::steady_clock::time_point{})
     {
         if (progressSink_)
-        {
-            const std::string message = "-- NSC: " + std::string(phase_);
-            progressSink_(message);
-        }
+            progressSink_({basic::CompilationEventKind::PhaseStarted,
+                phase_, {}, 0, 0, {}});
     }
 
     ~ProjectPhaseTimer()
@@ -87,34 +86,28 @@ public:
                 std::chrono::steady_clock::now() - started_);
         if (timingSink_) timingSink_(phase_, elapsed);
         if (progressSink_)
-        {
-            const std::string message = "-- NSC: " + std::string(phase_) +
-                " finished (" +
-                std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
-                    elapsed).count()) + " ms)";
-            progressSink_(message);
-        }
+            progressSink_({basic::CompilationEventKind::PhaseFinished,
+                phase_, {}, 0, 0, elapsed});
     }
 
 private:
     const std::function<void(std::string_view, std::chrono::nanoseconds)>& timingSink_;
-    const std::function<void(std::string_view)>& progressSink_;
+    const std::function<void(const basic::CompilationEvent&)>& progressSink_;
     std::string_view phase_;
     std::chrono::steady_clock::time_point started_;
 };
 
 void reportSourceProgress(
-    const std::function<void(std::string_view)>& sink,
+    const std::function<void(const basic::CompilationEvent&)>& sink,
     std::string_view phase,
     const std::filesystem::path& path,
     std::size_t completed,
     std::size_t total)
 {
     if (!sink) return;
-    const std::string message = "[" + std::to_string(completed) + "/" +
-        std::to_string(total) + "] NSC " + std::string(phase) + " " +
-        path.generic_string();
-    sink(message);
+    const std::string detail = path.generic_string();
+    sink({basic::CompilationEventKind::WorkFinished,
+        phase, detail, completed, total, {}});
 }
 
 bool waitForSyntaxWorkers(
