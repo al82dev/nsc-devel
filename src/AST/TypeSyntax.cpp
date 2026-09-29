@@ -47,6 +47,18 @@ void TypeSyntax::prependModifiers(const std::vector<TypeModifierSyntax>& modifie
 void TypeSyntax::addTypeArgument(TypeSyntax* typeArgument) { typeArguments_.push_back(typeArgument); }
 const std::vector<TypeSyntax*>& TypeSyntax::typeArguments() const noexcept { return typeArguments_; }
 void TypeSyntax::clearTypeArguments() noexcept { typeArguments_.clear(); }
+bool TypeSyntax::isTuple() const noexcept { return isTuple_; }
+void TypeSyntax::setTuple(bool value) noexcept { isTuple_ = value; }
+void TypeSyntax::addTupleElement(TypeSyntax* type, std::string name)
+{
+    isTuple_ = true;
+    typeArguments_.push_back(type);
+    tupleElementNames_.push_back(std::move(name));
+}
+const std::vector<std::string>& TypeSyntax::tupleElementNames() const noexcept
+{
+    return tupleElementNames_;
+}
 void TypeSyntax::addModifier(TypeModifierSyntax modifier) { modifiers_.push_back(modifier); }
 const std::vector<TypeModifierSyntax>& TypeSyntax::modifiers() const noexcept { return modifiers_; }
 std::optional<std::size_t> TypeSyntax::originProjectOrdinal() const noexcept { return originProjectOrdinal_; }

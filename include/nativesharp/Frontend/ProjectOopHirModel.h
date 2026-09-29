@@ -107,6 +107,11 @@ enum class ProjectOopHirNodeKind
     // C7: one element of the above. integerValue is its byte offset from the start of the
     // aggregate, typeKey its type, and its single child the value to store there.
     AggregateElement,
+    // T02-F03. children[0] is the tuple source; remaining children are element descriptors.
+    // The source is materialized before any destination address is evaluated, making swaps and
+    // aliasing deterministic. A descriptor carries source offset/type and one target address.
+    TupleDeconstruct,
+    TupleDeconstructElement,
     // C6 "struct members": the ADDRESS of a struct value that has no home -- the result of an
     // operator, a call, a conversion or a `new`. Reaching a member of one (`(a + b).x`,
     // `Cross(u, v).z`) needs an address, and a temporary has none until one is made for it.

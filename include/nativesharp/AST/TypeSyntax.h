@@ -65,6 +65,15 @@ public:
     const std::vector<TypeSyntax*>& typeArguments() const noexcept;
     void clearTypeArguments() noexcept;
 
+    // NativeSharp 3.0 structural tuple type. Tuple element names are source metadata only: the
+    // canonical identity is derived exclusively from typeArguments(), so `(int x, long y)` and
+    // `(int a, long b)` are the same type. Keeping the names here still lets diagnostics and the
+    // AST dumper reproduce what the programmer wrote.
+    bool isTuple() const noexcept;
+    void setTuple(bool value = true) noexcept;
+    void addTupleElement(TypeSyntax* type, std::string name = {});
+    const std::vector<std::string>& tupleElementNames() const noexcept;
+
     void addModifier(TypeModifierSyntax modifier);
     const std::vector<TypeModifierSyntax>& modifiers() const noexcept;
 
@@ -113,6 +122,8 @@ private:
     std::string baseName_;
     OwnershipQualifierSyntaxKind ownershipQualifier_ = OwnershipQualifierSyntaxKind::None;
     std::vector<TypeSyntax*> typeArguments_;
+    bool isTuple_ = false;
+    std::vector<std::string> tupleElementNames_;
     std::vector<TypeModifierSyntax> modifiers_;
     std::optional<std::size_t> originProjectOrdinal_;
     std::optional<std::string> originNamespace_;

@@ -2,7 +2,9 @@
 
 #include "nativesharp/Frontend/BuiltinIntegerTypes.h"
 
+#include <algorithm>
 #include <array>
+#include <charconv>
 #include <limits>
 #include <span>
 #include <string>
@@ -309,6 +311,27 @@ ProjectImplicitConversion ProjectTypeConversion::classifyImplicit(
         return makeConversion(ProjectConversionKind::Identity, 0, sourceTypeKey, targetTypeKey);
     }
 
+    const std::optional<std::vector<std::string>> sourceTuple =
+        tupleElementTypeKeys(sourceTypeKey);
+    const std::optional<std::vector<std::string>> targetTuple =
+        tupleElementTypeKeys(targetTypeKey);
+    if (sourceTuple.has_value() || targetTuple.has_value())
+    {
+        if (!sourceTuple.has_value() || !targetTuple.has_value() ||
+            sourceTuple->size() != targetTuple->size())
+            return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+        int rank = 0;
+        for (std::size_t index = 0; index < sourceTuple->size(); ++index)
+        {
+            const ProjectImplicitConversion element = classifyImplicit(
+                (*sourceTuple)[index], (*targetTuple)[index]);
+            if (!element.exists())
+                return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+            rank = std::max(rank, element.rank);
+        }
+        return makeConversion(ProjectConversionKind::Tuple, rank + 1, sourceTypeKey, targetTypeKey);
+    }
+
     if (isIntegralPromotion(sourceTypeKey, targetTypeKey))
     {
         return makeConversion(ProjectConversionKind::IntegralPromotion, 1, sourceTypeKey, targetTypeKey);
@@ -577,6 +600,52 @@ std::optional<std::string> ProjectTypeConversion::nativeArrayElementType(std::st
     return std::string(typeKey.substr(0, typeKey.size() - 2));
 }
 
+bool ProjectTypeConversion::isTuple(std::string_view typeKey) noexcept
+{
+    return typeKey.starts_with("tuple:(") && typeKey.ends_with(')');
+}
+
+std::string ProjectTypeConversion::tupleTypeKey(std::span<const std::string> elementTypeKeys)
+{
+    std::string result = "tuple:(";
+    for (std::size_t index = 0; index < elementTypeKeys.size(); ++index)
+    {
+        if (index != 0) result.push_back(',');
+        result += std::to_string(elementTypeKeys[index].size());
+        result.push_back(':');
+        result += elementTypeKeys[index];
+    }
+    result.push_back(')');
+    return result;
+}
+
+std::optional<std::vector<std::string>> ProjectTypeConversion::tupleElementTypeKeys(
+    std::string_view typeKey)
+{
+    if (!isTuple(typeKey)) return std::nullopt;
+    std::vector<std::string> result;
+    std::size_t cursor = 7; // immediately after "tuple:("
+    const std::size_t close = typeKey.size() - 1;
+    while (cursor < close)
+    {
+        std::size_t length = 0;
+        const char* first = typeKey.data() + cursor;
+        const char* last = typeKey.data() + close;
+        const auto parsed = std::from_chars(first, last, length);
+        if (parsed.ec != std::errc{} || parsed.ptr == first || parsed.ptr == last ||
+            *parsed.ptr != ':') return std::nullopt;
+        cursor = static_cast<std::size_t>(parsed.ptr - typeKey.data()) + 1;
+        if (length == 0 || cursor + length > close) return std::nullopt;
+        result.emplace_back(typeKey.substr(cursor, length));
+        cursor += length;
+        if (cursor == close) break;
+        if (typeKey[cursor] != ',') return std::nullopt;
+        ++cursor;
+    }
+    return result.size() >= 2 ? std::optional<std::vector<std::string>>(std::move(result))
+                              : std::nullopt;
+}
+
 const char* projectConversionKindName(ProjectConversionKind kind) noexcept
 {
     switch (kind)
@@ -586,6 +655,7 @@ const char* projectConversionKindName(ProjectConversionKind kind) noexcept
         case ProjectConversionKind::IntegralPromotion: return "integral-promotion";
         case ProjectConversionKind::ConstantInteger: return "constant-integer";
         case ProjectConversionKind::Numeric: return "numeric";
+        case ProjectConversionKind::Tuple: return "tuple";
         case ProjectConversionKind::NullPointer: return "null-pointer";
         case ProjectConversionKind::NullReference: return "null-reference";
         case ProjectConversionKind::ReferenceUpcast: return "reference-upcast";

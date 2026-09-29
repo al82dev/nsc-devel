@@ -27,7 +27,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 14: namespace state has explicit load/address nodes and stable storage identity.
 // MINOR 15: typed params and generalized aggregate spreads have explicit lowering nodes.
 // MINOR 16: null-coalescing value/store control flow is explicit and single-evaluation.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 16;
+// MINOR 17: tuple layouts plus alias-safe deconstruction stores are explicit.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 17;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -104,6 +105,8 @@ enum class ProjectOopMirNodeKind
     AggregateSpreadStore,
     // C7 -- see ProjectOopHirNodeKind::AggregateElement. `immediate` is the byte offset.
     AggregateElementStore,
+    TupleDeconstruct,
+    TupleDeconstructElementStore,
     // C6 -- see ProjectOopHirNodeKind::TemporaryAddress.
     TemporaryAddress,
     AddressValue,

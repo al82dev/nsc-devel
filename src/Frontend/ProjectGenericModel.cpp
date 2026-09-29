@@ -952,6 +952,9 @@ bool ProjectGenericModel::processTypeSyntax(
     {
         if (!processTypeSyntax(unit, argument, namespaceName, scope, diagnostics)) return false;
     }
+    // A tuple is structural, not an invocation of a generic type named "$tuple". Its element
+    // types were still processed above so closed generic elements are materialized normally.
+    if (syntax->isTuple()) return true;
 
     TemplateState* state = resolveTypeTemplate(
         unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());
@@ -2019,8 +2022,21 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     else
     {
         result = arena.make<ast::TypeSyntax>(source->range(), source->baseTokenKind(), source->baseName());
-        for (const ast::TypeSyntax* argument : source->typeArguments())
-            result->addTypeArgument(cloneType(arena, argument, substitutions));
+        if (source->isTuple())
+        {
+            for (std::size_t index = 0; index < source->typeArguments().size(); ++index)
+            {
+                const std::string name = index < source->tupleElementNames().size()
+                    ? source->tupleElementNames()[index] : std::string{};
+                result->addTupleElement(
+                    cloneType(arena, source->typeArguments()[index], substitutions), name);
+            }
+        }
+        else
+        {
+            for (const ast::TypeSyntax* argument : source->typeArguments())
+                result->addTypeArgument(cloneType(arena, argument, substitutions));
+        }
         // Stage 52 fix: this plain (non-substituted) re-clone still needs to carry forward the
         // origin tags the SOURCE node already carries. This branch is exactly what runs when
         // cloneType is called recursively on a substitution's own target a second time (see the
@@ -2237,8 +2253,19 @@ ast::AstNode* ProjectGenericModel::cloneNode(
 std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) const
 {
     if (syntax == nullptr) return "<missing>";
-    std::string result = syntax->baseName();
-    if (!syntax->typeArguments().empty())
+    std::string result;
+    if (syntax->isTuple())
+    {
+        result.push_back('(');
+        for (std::size_t index = 0; index < syntax->typeArguments().size(); ++index)
+        {
+            if (index != 0) result.push_back(',');
+            result += typeSpelling(syntax->typeArguments()[index]);
+        }
+        result.push_back(')');
+    }
+    else result = syntax->baseName();
+    if (!syntax->isTuple() && !syntax->typeArguments().empty())
     {
         result.push_back('<');
         for (std::size_t index = 0; index < syntax->typeArguments().size(); ++index)

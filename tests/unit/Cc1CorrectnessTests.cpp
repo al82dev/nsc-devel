@@ -797,6 +797,15 @@ int main(int argc, char** argv)
         "tests/cc1/c56_ns3_null_with/c56_ns3_null_with.nsproj",
         "cc1-c56-ns3-null-with", 42);
 
+    // NativeSharp 3.0 T02-F01/F02/F03. Structural tuple names do not affect identity; nested
+    // layouts use the canonical Win64 direct/sret classification; literals convert element by
+    // element; assignment deconstruction snapshots the source before aliasing targets; and
+    // `var (a, _)` creates inferred locals without copying or re-evaluating the source.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c57_ns3_tuples/c57_ns3_tuples.nsproj",
+        "cc1-c57-ns3-tuples", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,

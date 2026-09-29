@@ -996,6 +996,8 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::AggregateInitializer: return "aggregate-initializer";
         case ProjectOopHirNodeKind::AggregateSpread: return "aggregate-spread";
         case ProjectOopHirNodeKind::AggregateElement: return "aggregate-element";
+        case ProjectOopHirNodeKind::TupleDeconstruct: return "tuple-deconstruct";
+        case ProjectOopHirNodeKind::TupleDeconstructElement: return "tuple-deconstruct-element";
         case ProjectOopHirNodeKind::ParameterPack: return "parameter-pack";
         case ProjectOopHirNodeKind::TemporaryAddress: return "temporary-address";
         case ProjectOopHirNodeKind::AddressValue: return "address-value";
@@ -2574,6 +2576,64 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                 node->children.push_back(std::move(initializer));
             }
             return node;
+        }
+
+        case ast::AstNodeKind::DeconstructionDeclarationStatement:
+        {
+            if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+            {
+                error = "T02-F03 deconstruction declaration requires value layouts";
+                return nullptr;
+            }
+            auto source = lowerExpression(statement->first(), memberOrdinal, false, error);
+            if (source == nullptr) return nullptr;
+            const std::optional<std::vector<std::string>> elements =
+                ProjectTypeConversion::tupleElementTypeKeys(source->typeKey);
+            const std::optional<language::AggregateLayout> layout =
+                objectLayoutModel_->tupleLayoutForTypeKey(*nameLookup_, source->typeKey);
+            if (!elements.has_value() || !layout.has_value() ||
+                elements->size() != statement->children().size() ||
+                layout->offsets.size() != elements->size())
+            {
+                error = "T02-F03 deconstruction declaration lost its tuple shape or layout";
+                return nullptr;
+            }
+            auto block = makeNode(ProjectOopHirNodeKind::Block, statement, "builtin:void");
+            auto deconstruct = makeNode(
+                ProjectOopHirNodeKind::TupleDeconstruct, statement, source->typeKey);
+            deconstruct->children.push_back(std::move(source));
+            for (std::size_t index = 0; index < statement->children().size(); ++index)
+            {
+                const ast::AstNode* binding = statement->children()[index];
+                if (binding == nullptr || binding->text() == "_") continue;
+                const MethodLocalSymbol* local = localSymbol(binding);
+                if (local == nullptr)
+                {
+                    error = "T02-F03 deconstruction binding has no local symbol";
+                    return nullptr;
+                }
+                const std::size_t localOrdinal = static_cast<std::size_t>(
+                    local - methodBodyModel_->locals().data());
+                auto declaration = makeNode(
+                    ProjectOopHirNodeKind::LocalDeclaration, binding, local->typeKey);
+                declaration->stringValue = local->name;
+                declaration->localOrdinal = localOrdinal;
+                block->children.push_back(std::move(declaration));
+
+                auto address = makeNode(
+                    ProjectOopHirNodeKind::LocalAddress, binding, local->typeKey);
+                address->localOrdinal = localOrdinal;
+                auto element = makeNode(
+                    ProjectOopHirNodeKind::TupleDeconstructElement, binding, local->typeKey);
+                element->elementTypeKey = (*elements)[index];
+                element->integerValue = static_cast<std::uint64_t>(layout->offsets[index]);
+                element->conversion = ProjectTypeConversion::classifyImplicit(
+                    (*elements)[index], local->typeKey);
+                element->children.push_back(std::move(address));
+                deconstruct->children.push_back(std::move(element));
+            }
+            block->children.push_back(std::move(deconstruct));
+            return block;
         }
 
         case ast::AstNodeKind::ExpressionStatement:
@@ -4563,6 +4623,70 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 return node;
             }
 
+            if (expression->tokenKind() == lexer::TokenKind::Equal &&
+                expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::TupleExpression)
+            {
+                if (addressContext)
+                {
+                    error = "tuple deconstruction result is a value, not addressable storage";
+                    return nullptr;
+                }
+                auto source = lowerExpression(expression->second(), memberOrdinal, false, error);
+                if (source == nullptr) return nullptr;
+                const std::optional<std::vector<std::string>> sourceElements =
+                    ProjectTypeConversion::tupleElementTypeKeys(source->typeKey);
+                if (!sourceElements.has_value() || objectLayoutModel_ == nullptr ||
+                    nameLookup_ == nullptr)
+                {
+                    error = "T02-F03 deconstruction source has no tuple layout";
+                    return nullptr;
+                }
+                const std::optional<language::AggregateLayout> layout =
+                    objectLayoutModel_->tupleLayoutForTypeKey(*nameLookup_, source->typeKey);
+                if (!layout.has_value() || layout->offsets.size() != sourceElements->size() ||
+                    expression->first()->children().size() != sourceElements->size())
+                {
+                    error = "T02-F03 deconstruction tuple shape disagrees with its physical layout";
+                    return nullptr;
+                }
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::TupleDeconstruct, expression, source->typeKey);
+                node->children.push_back(std::move(source));
+                for (std::size_t index = 0; index < sourceElements->size(); ++index)
+                {
+                    const ast::AstNode* targetSyntax = expression->first()->children()[index];
+                    if (targetSyntax != nullptr &&
+                        targetSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
+                        targetSyntax->text() == "_") continue;
+                    const MethodExpressionTypeBinding* targetType = expressionType(targetSyntax);
+                    if (targetType == nullptr)
+                    {
+                        error = "T02-F03 deconstruction target has no semantic type";
+                        return nullptr;
+                    }
+                    auto address = lowerExpression(targetSyntax, memberOrdinal, true, error);
+                    if (address == nullptr) return nullptr;
+                    const ProjectImplicitConversion conversion = classifyImplicit(
+                        (*sourceElements)[index], targetType->typeKey, std::nullopt);
+                    if (!conversion.exists())
+                    {
+                        error = "T02-F03 deconstruction lost its validated element conversion";
+                        return nullptr;
+                    }
+                    auto element = makeNode(
+                        ProjectOopHirNodeKind::TupleDeconstructElement,
+                        targetSyntax,
+                        targetType->typeKey);
+                    element->elementTypeKey = (*sourceElements)[index];
+                    element->integerValue = static_cast<std::uint64_t>(layout->offsets[index]);
+                    element->conversion = conversion;
+                    element->children.push_back(std::move(address));
+                    node->children.push_back(std::move(element));
+                }
+                return node;
+            }
+
             const MethodEventBinding* stage42Event = eventBinding(expression);
             if (stage42Event != nullptr &&
                 (stage42Event->kind == MethodEventOperationKind::Add ||
@@ -6423,6 +6547,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             return wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
         }
 
+        case ast::AstNodeKind::TupleExpression:
         case ast::AstNodeKind::AggregateInitializerExpression:
         case ast::AstNodeKind::WithExpression:
         {
@@ -7302,7 +7427,38 @@ bool ProjectOopHirModel::appendAggregateElements(
         bool volatileAccess = false;
     };
     std::vector<AggregateSlot> slots;
-    if (const std::optional<std::string> elementTypeKey =
+    if (const std::optional<std::vector<std::string>> tupleElements =
+            ProjectTypeConversion::tupleElementTypeKeys(targetTypeKey);
+        tupleElements.has_value())
+    {
+        if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+        {
+            error = "tuple initializer requires the object layout model";
+            return false;
+        }
+        const std::optional<language::AggregateLayout> layout =
+            objectLayoutModel_->tupleLayoutForTypeKey(*nameLookup_, targetTypeKey);
+        if (!layout.has_value() || layout->offsets.size() != tupleElements->size())
+        {
+            error = "tuple initializer has no structural layout for '" + targetTypeKey + "'";
+            return false;
+        }
+        for (std::size_t index = 0; index < tupleElements->size(); ++index)
+        {
+            const std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
+                objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, (*tupleElements)[index]);
+            if (!elementLayout.has_value())
+            {
+                error = "tuple initializer cannot size element " + std::to_string(index);
+                return false;
+            }
+            slots.push_back(AggregateSlot{
+                (*tupleElements)[index],
+                static_cast<std::uint64_t>(layout->offsets[index]),
+                std::nullopt, std::nullopt, 0, elementLayout->second, false});
+        }
+    }
+    else if (const std::optional<std::string> elementTypeKey =
             ProjectMemberModel::fixedArrayElementTypeKey(targetTypeKey);
         elementTypeKey.has_value())
     {
@@ -7585,6 +7741,7 @@ bool ProjectOopHirModel::appendAggregateLeaves(
 
 bool ProjectOopHirModel::isStructValueType(std::string_view typeKey) const noexcept
 {
+    if (ProjectTypeConversion::isTuple(typeKey)) return true;
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
     const std::string_view key = typeKey.substr(5);
     for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())

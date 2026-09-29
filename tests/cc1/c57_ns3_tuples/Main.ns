@@ -1,0 +1,76 @@
+namespace c57ns3tuples
+{
+    public class Program
+    {
+        private static int trace = 0;
+
+        private static int Mark(int value)
+        {
+            trace = trace * 10 + value;
+            return value;
+        }
+
+        private static (int left, int right) DirectPair()
+        {
+            return (Mark(1), Mark(2));
+        }
+
+        private static (int first, long second) IndirectPair()
+        {
+            return (Mark(4), Mark(2));
+        }
+
+        private static (int, (int, long)) Nested()
+        {
+            return (Mark(3), (Mark(4), Mark(5)));
+        }
+
+        private static int ConsumeDirect((int, int) value)
+        {
+            var (left, right) = value;
+            return left * 10 + right;
+        }
+
+        private static int ConsumeIndirect((int, long) value)
+        {
+            var (left, right) = value;
+            if (right != 2) { return 0; }
+            return left * 10 + 2;
+        }
+
+        public static int Main()
+        {
+            trace = 0;
+            (int a, int b) direct = DirectPair();
+            if (trace != 12) { return 1; }
+
+            trace = 0;
+            (int a, long b) indirect = IndirectPair();
+            if (trace != 42) { return 2; }
+
+            trace = 0;
+            (long a, long b) converted = (Mark(4), Mark(2));
+            if (trace != 42) { return 3; }
+
+            trace = 0;
+            (int, (int, long)) nested = Nested();
+            if (trace != 345) { return 4; }
+
+            int left = 4;
+            int right = 2;
+            (left, right) = (right, left);
+            if (left != 2 || right != 4) { return 5; }
+
+            trace = 0;
+            (left, _) = (Mark(7), Mark(8));
+            if (left != 7 || right != 4 || trace != 78) { return 6; }
+
+            trace = 0;
+            var (declared, _) = (Mark(4), Mark(2));
+            if (declared != 4 || trace != 42) { return 7; }
+            if (ConsumeDirect((4, 2)) != 42) { return 8; }
+            if (ConsumeIndirect((4, 2)) != 42) { return 9; }
+            return 42;
+        }
+    }
+}

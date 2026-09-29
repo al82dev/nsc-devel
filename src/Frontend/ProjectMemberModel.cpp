@@ -1,4 +1,6 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
+
+#include "nativesharp/Language/AggregateSemantics.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
@@ -800,7 +802,20 @@ std::string ProjectMemberModel::canonicalTypeKey(
     }
 
     std::string result;
-    if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
+    if (syntax->isTuple())
+    {
+        std::vector<language::TupleElement> elements;
+        elements.reserve(syntax->typeArguments().size());
+        for (std::size_t index = 0; index < syntax->typeArguments().size(); ++index)
+        {
+            elements.push_back(language::TupleElement{
+                canonicalTypeKey(syntax->typeArguments()[index], nameLookup),
+                index < syntax->tupleElementNames().size()
+                    ? syntax->tupleElementNames()[index] : std::string{}});
+        }
+        result = language::tupleIdentity(elements);
+    }
+    else if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         result = "builtin:" + syntax->baseName();
     }

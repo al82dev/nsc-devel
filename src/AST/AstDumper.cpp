@@ -110,8 +110,21 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
     {
         output << ownershipQualifierSyntaxKindName(typeSyntax->ownershipQualifier()) << ' ';
     }
-    output << typeSyntax->baseName();
-    if (!typeSyntax->typeArguments().empty())
+    if (typeSyntax->isTuple())
+    {
+        output << '(';
+        for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)
+        {
+            if (index != 0) output << ',';
+            dumpType(typeSyntax->typeArguments()[index], output);
+            if (index < typeSyntax->tupleElementNames().size() &&
+                !typeSyntax->tupleElementNames()[index].empty())
+                output << ' ' << typeSyntax->tupleElementNames()[index];
+        }
+        output << ')';
+    }
+    else output << typeSyntax->baseName();
+    if (!typeSyntax->isTuple() && !typeSyntax->typeArguments().empty())
     {
         output << '<';
         for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)

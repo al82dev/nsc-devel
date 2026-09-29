@@ -1308,7 +1308,7 @@ void ProjectNameLookup::bindTypeSyntax(
     binding.writtenName = writtenName;
     binding.enclosingTypeOrdinals = environment.enclosingTypeOrdinals;
 
-    if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
+    if (syntax->isTuple() || lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         binding.kind = TypeNameBindingKind::Builtin;
     }

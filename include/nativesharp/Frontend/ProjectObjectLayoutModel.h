@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Language/AggregateSemantics.h"
 #include "nativesharp/Target/TargetDataLayout.h"
 
 #include <cstddef>
@@ -121,6 +122,9 @@ public:
     // project does not know. Shared by the MIR model and the OOP HIR model so a stride and an
     // offset can never be computed by two different rules.
     std::optional<std::pair<std::uint64_t, std::uint64_t>> valueLayoutForTypeKey(
+        const ProjectNameLookup& nameLookup,
+        std::string_view typeKey) const;
+    std::optional<language::AggregateLayout> tupleLayoutForTypeKey(
         const ProjectNameLookup& nameLookup,
         std::string_view typeKey) const;
     bool isBuilt() const noexcept;

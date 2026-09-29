@@ -1,7 +1,8 @@
 # Tanda 02 — Tuplas, deconstrucción y registros
 
-> **Reclasificación 2026-09-29:** `IMPLEMENTING`. Tuple/spread poseen sintaxis parcial y un helper
-> aislado; no existe todavía el corte vertical hasta ABI/NSMETA/debugger. Véase
+> **Reclasificación 2026-09-29 (tanda operativa 07):** `IMPLEMENTING`. F01–F03 ya poseen corte
+> vertical parser→semántica→HIR→MIR→LLVM y ABI Win64, con fixture NativeSharp O0. T02 permanece
+> abierto por F04–F06, metadata pública de nombres, ownership/drop y tooling. Véase
 > [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
 
 ## Resultado
@@ -21,6 +22,21 @@ por edición y conserva nodos explícitos en el AST.
 - `record` permanece contextual: sólo `record struct` lo consume, requiere edición 3 y se almacena
   como marcador del mismo `StructDeclaration`. No introduce identidad de objeto ni wrapper ABI.
 - Se añadió una prueba unitaria exclusiva de T02; no se ejecuta el baseline general.
+
+### Integración productiva F01–F03
+
+- `TypeSyntax` representa tuplas estructurales anidadas y conserva nombres sólo como metadata de
+  fuente; la clave canónica usa longitudes y tipos, nunca nombres.
+- Parser, name lookup, genéricos y member model aceptan tipos tupla en firmas, parámetros y locals.
+- `ProjectObjectLayoutModel` calcula offsets/alineación recursivos y MIR publica layouts sintéticos
+  deterministas con clasificación Win64 direct/indirect.
+- Los literales infieren una clave estructural, preservan evaluación izquierda→derecha y reutilizan
+  la inicialización in-place de agregados.
+- Las conversiones de tupla son elemento por elemento, incluyendo anidamiento, y LLVM materializa
+  cada elemento una vez.
+- La deconstrucción soporta asignación, swap/aliasing, descartes y declaración `var (a, _)`; la
+  fuente completa se materializa antes de evaluar cualquier destino.
+- MIR schema 1.17 hace explícitos `tuple-deconstruct` y `tuple-deconstruct-element-store`.
 
 ## Archivos nuevos y razón
 
@@ -42,12 +58,12 @@ alteran identidad/ABI, el layout y retorno están fijados para Windows x64, los 
 expresarse en bindings sin copias implícitas, y un record no sintetiza igualdad, hash, impresión ni
 clone salvo opt-in. Esto evita que azúcar de superficie esconda asignaciones o identidad runtime.
 
-## Límite consciente
+## Límite consciente vigente
 
-Esta tanda fija sintaxis, AST y contratos semánticos. La materialización completa en OOP/MIR/LLVM,
-incluidos drops parciales y `Deconstruct` nominal, se integra y se prueba en T15, donde todas las
-características 3.0 cruzan conjuntamente el pipeline. No se declara codegen completo antes de esa
-integración.
+F01–F03 ya no son helpers aislados: compilan y ejecutan hasta PE x64. No se afirma todavía el gate
+T02 completo. `Deconstruct` nominal, ownership/move-only, partial drops y drop flags dependen de
+T06 (tandas 13–14); nombres públicos en NSMETA y consumo precompilado se cierran en integración;
+debugger/LSP corresponden a la tanda 29. Records, promoted fields y spreads siguen en la tanda 08.
 
 ## Validación dirigida
 
@@ -55,6 +71,10 @@ integración.
 - Construcción y ejecución directa de `nsc_ns3_t02_aggregate_tests`.
 - Restauración de `NSC_BUILD_TESTS=OFF` al cerrar.
 - Sin baseline general y sin CTest amplio.
+- Fixture `c57_ns3_tuples` O0: exit 42 con retornos/parámetros directos e indirectos, conversión,
+  nesting, swap, discard y declaración inferida.
+- Dumps HIR/MIR: layouts 8/16/12/24 bytes, ABI Win64 direct/sret y schema 1.17.
+- Negativa dirigida: aridad, fuente no-tupla y binding duplicado reciben diagnósticos causales.
 
 ---
 

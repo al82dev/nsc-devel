@@ -9401,6 +9401,59 @@ private:
                 return lowerUnary(node, error);
             case frontend::ProjectOopMirNodeKind::Binary:
                 return lowerBinary(node, error);
+            case frontend::ProjectOopMirNodeKind::TupleDeconstruct:
+            {
+                if (node->children.empty())
+                    return failValue(error, "tuple deconstruction has no source value");
+                const frontend::ProjectOopMirStructLayout* sourceLayout = structLayout(node->typeKey);
+                LLVMTypeRef sourceCarrier = llvmType(node->typeKey, error);
+                if (sourceLayout == nullptr || sourceCarrier == nullptr)
+                    return failValue(error, "tuple deconstruction source has no physical carrier");
+                LLVMValueRef sourceValue = lowerExpression(node->children.front().get(), error);
+                if (sourceValue == nullptr) return nullptr;
+                LLVMValueRef sourceSlot = entryBlockAlloca(
+                    sourceCarrier,
+                    static_cast<unsigned>(sourceLayout->alignment),
+                    "tuple.deconstruct.source");
+                LLVMValueRef sourceStore = LLVMBuildStore(builder_, sourceValue, sourceSlot);
+                if (sourceLayout->alignment > 1U)
+                    LLVMSetAlignment(sourceStore, static_cast<unsigned>(sourceLayout->alignment));
+                for (std::size_t index = 1; index < node->children.size(); ++index)
+                {
+                    const frontend::ProjectOopMirNode* element = node->children[index].get();
+                    if (element == nullptr ||
+                        element->kind != frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore ||
+                        element->children.size() != 1U)
+                        return failValue(error, "tuple deconstruction has a malformed target descriptor");
+                    LLVMTypeRef sourceType = llvmType(element->elementTypeKey, error);
+                    if (sourceType == nullptr) return nullptr;
+                    LLVMValueRef sourceAddress = byteOffset(
+                        sourceSlot, element->immediate, "tuple.deconstruct.element.source");
+                    LLVMValueRef value = LLVMBuildLoad2(
+                        builder_, sourceType, sourceAddress, "tuple.deconstruct.element.value");
+                    const auto sourceField = std::ranges::find_if(
+                        sourceLayout->fields,
+                        [&](const frontend::ObjectFieldLayout& field)
+                        {
+                            return field.offset == element->immediate &&
+                                field.typeKey == element->elementTypeKey;
+                        });
+                    if (sourceField != sourceLayout->fields.end() && sourceField->alignment > 1U)
+                        LLVMSetAlignment(value, static_cast<unsigned>(sourceField->alignment));
+                    value = convert(value, element->elementTypeKey, element->typeKey, error);
+                    if (value == nullptr) return nullptr;
+                    LLVMValueRef targetAddress = lowerExpression(element->children.front().get(), error);
+                    if (targetAddress == nullptr) return nullptr;
+                    LLVMValueRef store = LLVMBuildStore(builder_, value, targetAddress);
+                    const frontend::ProjectOopMirStructLayout* targetStruct =
+                        structLayout(element->typeKey);
+                    if (targetStruct != nullptr && targetStruct->alignment > 1U)
+                        LLVMSetAlignment(store, static_cast<unsigned>(targetStruct->alignment));
+                }
+                return sourceValue;
+            }
+            case frontend::ProjectOopMirNodeKind::TupleDeconstructElementStore:
+                return failValue(error, "tuple deconstruction element descriptor escaped its parent");
             case frontend::ProjectOopMirNodeKind::Store:
             {
                 if (node->children.size() != 2) return failValue(error, "store MIR requires target and value");
@@ -13346,6 +13399,57 @@ private:
         if (source == target || source == "builtin:null") return value;
         LLVMTypeRef destination = llvmType(target, error);
         if (destination == nullptr) return nullptr;
+        const std::optional<std::vector<std::string>> sourceTuple =
+            frontend::ProjectTypeConversion::tupleElementTypeKeys(source);
+        const std::optional<std::vector<std::string>> targetTuple =
+            frontend::ProjectTypeConversion::tupleElementTypeKeys(target);
+        if (sourceTuple.has_value() || targetTuple.has_value())
+        {
+            const frontend::ProjectOopMirStructLayout* sourceLayout = structLayout(source);
+            const frontend::ProjectOopMirStructLayout* targetLayout = structLayout(target);
+            if (!sourceTuple.has_value() || !targetTuple.has_value() ||
+                sourceTuple->size() != targetTuple->size() || sourceLayout == nullptr ||
+                targetLayout == nullptr || sourceLayout->fields.size() != sourceTuple->size() ||
+                targetLayout->fields.size() != targetTuple->size())
+                return failValue(error, "malformed structural tuple conversion");
+            std::string ignored;
+            LLVMTypeRef sourceCarrier = llvmType(source, ignored);
+            if (sourceCarrier == nullptr)
+                return failValue(error, "tuple source has no LLVM carrier");
+            LLVMValueRef sourceSlot = entryBlockAlloca(
+                sourceCarrier, static_cast<unsigned>(sourceLayout->alignment), "tuple.convert.source");
+            LLVMValueRef sourceStore = LLVMBuildStore(builder_, value, sourceSlot);
+            if (sourceLayout->alignment > 1U)
+                LLVMSetAlignment(sourceStore, static_cast<unsigned>(sourceLayout->alignment));
+            LLVMValueRef targetSlot = entryBlockAlloca(
+                destination, static_cast<unsigned>(targetLayout->alignment), "tuple.convert.target");
+            LLVMValueRef targetZero = LLVMBuildStore(builder_, LLVMConstNull(destination), targetSlot);
+            if (targetLayout->alignment > 1U)
+                LLVMSetAlignment(targetZero, static_cast<unsigned>(targetLayout->alignment));
+            for (std::size_t index = 0; index < sourceTuple->size(); ++index)
+            {
+                LLVMTypeRef sourceType = llvmType((*sourceTuple)[index], error);
+                if (sourceType == nullptr) return nullptr;
+                LLVMValueRef sourceAddress = byteOffset(
+                    sourceSlot, sourceLayout->fields[index].offset, "tuple.convert.source.element");
+                LLVMValueRef element = LLVMBuildLoad2(
+                    builder_, sourceType, sourceAddress, "tuple.convert.element");
+                if (sourceLayout->fields[index].alignment > 1U)
+                    LLVMSetAlignment(element, static_cast<unsigned>(sourceLayout->fields[index].alignment));
+                element = convert(element, (*sourceTuple)[index], (*targetTuple)[index], error);
+                if (element == nullptr) return nullptr;
+                LLVMValueRef targetAddress = byteOffset(
+                    targetSlot, targetLayout->fields[index].offset, "tuple.convert.target.element");
+                LLVMValueRef store = LLVMBuildStore(builder_, element, targetAddress);
+                if (targetLayout->fields[index].alignment > 1U)
+                    LLVMSetAlignment(store, static_cast<unsigned>(targetLayout->fields[index].alignment));
+            }
+            LLVMValueRef converted = LLVMBuildLoad2(
+                builder_, destination, targetSlot, "tuple.convert.value");
+            if (targetLayout->alignment > 1U)
+                LLVMSetAlignment(converted, static_cast<unsigned>(targetLayout->alignment));
+            return converted;
+        }
         // UN ENUM SE CONVIERTE COMO SU TIPO SUBYACENTE. `integerWidth()` e `isSignedInteger()` solo
         // saben de claves "builtin:", asi que la clave de un enum tiene que traer su ancho y su
         // signo de la declaracion. Antes esto decia "32 bits y con signo" sin preguntar, y con un
@@ -13467,7 +13571,8 @@ private:
             }
             return LLVMArrayType2(elementType, static_cast<unsigned>(*count));
         }
-        if (typeKey.starts_with("type:"))
+        if (typeKey.starts_with("type:") ||
+            frontend::ProjectTypeConversion::isTuple(typeKey))
         {
             // El ancho del enum es el de su TIPO SUBYACENTE, no siempre 32. La regla esta en
             // include/nativesharp/Frontend/EnumUnderlyingType.h y la comparten el modelo de layout
@@ -13769,7 +13874,7 @@ private:
     // through a leading sret pointer.
     bool isIndirectStructTypeKey(std::string_view typeKey) const noexcept
     {
-        if (!typeKey.starts_with("type:") || isEnumTypeKey(typeKey)) return false;
+        if (isEnumTypeKey(typeKey)) return false;
         const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
         if (layout == nullptr) return false;
         return layout->abiPassing == frontend::ProjectOopMirAbiPassing::Indirect;

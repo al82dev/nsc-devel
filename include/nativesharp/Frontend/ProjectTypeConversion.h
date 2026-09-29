@@ -5,6 +5,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <span>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -15,6 +17,7 @@ enum class ProjectConversionKind
     IntegralPromotion,
     ConstantInteger,
     Numeric,
+    Tuple,
     NullPointer,
     NullReference,
     ReferenceUpcast,
@@ -70,6 +73,9 @@ public:
     static bool isNativeArray(std::string_view typeKey) noexcept;
     static bool isNativeCoreReference(std::string_view typeKey) noexcept;
     static std::optional<std::string> nativeArrayElementType(std::string_view typeKey);
+    static bool isTuple(std::string_view typeKey) noexcept;
+    static std::string tupleTypeKey(std::span<const std::string> elementTypeKeys);
+    static std::optional<std::vector<std::string>> tupleElementTypeKeys(std::string_view typeKey);
 };
 
 const char* projectConversionKindName(ProjectConversionKind kind) noexcept;

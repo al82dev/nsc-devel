@@ -194,6 +194,10 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
     if (typeKey == "builtin:long" || typeKey == "builtin:ulong" || typeKey == "builtin:nint" ||
         typeKey == "builtin:nuint" || typeKey == "builtin:double" || typeKey == "builtin:string" ||
         ProjectTypeConversion::isNativeArray(typeKey) || typeKey.ends_with("*")) return {{8, 8}};
+    if (const std::optional<language::AggregateLayout> tuple =
+            tupleLayoutForTypeKey(nameLookup, typeKey);
+        tuple.has_value())
+        return {{tuple->size, tuple->alignment}};
     // C2.1 "fixed arrays": inline storage, so its size is the element stride times the count --
     // not a pointer. This is what lets a `float[4]` FIELD be measured the same way a `float[4]`
     // local is.
@@ -249,6 +253,27 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
         return {{8, 8}};
     }
     return std::nullopt;
+}
+
+std::optional<language::AggregateLayout> ProjectObjectLayoutModel::tupleLayoutForTypeKey(
+    const ProjectNameLookup& nameLookup,
+    std::string_view typeKey) const
+{
+    const std::optional<std::vector<std::string>> elements =
+        ProjectTypeConversion::tupleElementTypeKeys(typeKey);
+    if (!elements.has_value()) return std::nullopt;
+    std::vector<language::AggregateFieldLayout> fields;
+    fields.reserve(elements->size());
+    for (const std::string& element : *elements)
+    {
+        const std::optional<std::pair<std::uint64_t, std::uint64_t>> layout =
+            valueLayoutForTypeKey(nameLookup, element);
+        if (!layout.has_value()) return std::nullopt;
+        fields.push_back(language::AggregateFieldLayout{
+            static_cast<std::size_t>(layout->first),
+            static_cast<std::size_t>(layout->second)});
+    }
+    return language::computeWindowsX64AggregateLayout(fields);
 }
 
 bool ProjectObjectLayoutModel::isBuilt() const noexcept
@@ -348,6 +373,25 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutBaseType(
     if (syntax == nullptr)
     {
         return std::nullopt;
+    }
+    if (syntax->isTuple())
+    {
+        if (nameLookup_ == nullptr || memberModel_ == nullptr) return std::nullopt;
+        const std::string key = memberModel_->canonicalTypeKey(syntax, *nameLookup_);
+        const std::optional<language::AggregateLayout> layout =
+            tupleLayoutForTypeKey(*nameLookup_, key);
+        if (!layout.has_value())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                useRange,
+                "tuple field layout could not be computed for '" + key + "'");
+            return std::nullopt;
+        }
+        return TypeLayout{
+            static_cast<std::uint64_t>(layout->size),
+            static_cast<std::uint64_t>(layout->alignment)};
     }
     if (const std::optional<BuiltinLayoutKind> builtin = builtinLayoutKind(syntax->baseTokenKind()); builtin.has_value())
     {

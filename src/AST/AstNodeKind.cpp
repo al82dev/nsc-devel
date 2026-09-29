@@ -98,6 +98,7 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(InterpolatedStringExpression);
         NS_AST_KIND(WithExpression);
         NS_AST_KIND(TupleExpression);
+        NS_AST_KIND(DeconstructionDeclarationStatement);
 #undef NS_AST_KIND
     }
 

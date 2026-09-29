@@ -136,7 +136,10 @@ enum class AstNodeKind
 
     // NativeSharp 3.0 T02. A tuple remains a structural aggregate; assignment decides whether
     // this syntax is a value literal or a deconstruction target.
-    TupleExpression
+    TupleExpression,
+    // NativeSharp 3.0 T02-F03. `var (a, _, b) = tuple;`: first() is the source expression and
+    // children are identifier bindings/discards in textual order.
+    DeconstructionDeclarationStatement
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

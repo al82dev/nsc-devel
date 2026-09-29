@@ -294,6 +294,12 @@ bool Parser::canStartType(const lexer::Token& token) const noexcept
 
 bool Parser::canStartTypeAt(std::size_t tokenIndex) const noexcept
 {
+    std::size_t afterType = tokenIndex;
+    return scanTypeAt(tokenIndex, afterType);
+}
+
+bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const noexcept
+{
     if (tokenIndex >= tokens_.size())
     {
         return false;
@@ -309,14 +315,63 @@ bool Parser::canStartTypeAt(std::size_t tokenIndex) const noexcept
         }
     }
 
-    const lexer::Token& token = tokens_[tokenIndex];
-    if (lexer::isBuiltinTypeKeyword(token.kind()))
+    if (tokens_[tokenIndex].kind() == TokenKind::LeftParen)
     {
-        return true;
+        std::size_t cursor = tokenIndex + 1;
+        std::size_t elementCount = 0;
+        bool sawComma = false;
+        while (cursor < tokens_.size())
+        {
+            std::size_t afterElement = cursor;
+            if (!scanTypeAt(cursor, afterElement)) return false;
+            cursor = afterElement;
+            if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier &&
+                cursor + 1 < tokens_.size() &&
+                (tokens_[cursor + 1].kind() == TokenKind::Comma ||
+                 tokens_[cursor + 1].kind() == TokenKind::RightParen))
+            {
+                ++cursor;
+            }
+            ++elementCount;
+            if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Comma)
+            {
+                sawComma = true;
+                ++cursor;
+                continue;
+            }
+            if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::RightParen)
+                return false;
+            ++cursor;
+            if (!sawComma || elementCount < 2) return false;
+            while (cursor < tokens_.size())
+            {
+                if (tokens_[cursor].kind() == TokenKind::Star)
+                {
+                    ++cursor;
+                    continue;
+                }
+                if (tokens_[cursor].kind() != TokenKind::LeftBracket) break;
+                int depth = 1;
+                ++cursor;
+                while (cursor < tokens_.size() && depth != 0)
+                {
+                    if (tokens_[cursor].kind() == TokenKind::LeftBracket) ++depth;
+                    else if (tokens_[cursor].kind() == TokenKind::RightBracket) --depth;
+                    else if (tokens_[cursor].kind() == TokenKind::EndOfFile) return false;
+                    ++cursor;
+                }
+                if (depth != 0) return false;
+            }
+            afterType = cursor;
+            return true;
+        }
+        return false;
     }
+    const lexer::Token& token = tokens_[tokenIndex];
+    const bool builtin = lexer::isBuiltinTypeKeyword(token.kind());
     if (token.kind() != TokenKind::Identifier)
     {
-        return false;
+        if (!builtin) return false;
     }
 
     std::string candidate(token.lexeme());
@@ -344,11 +399,48 @@ bool Parser::canStartTypeAt(std::size_t tokenIndex) const noexcept
         cursor += 2;
     }
 
-    if (qualified)
+    if (!builtin && qualified)
     {
-        return moduleQualified || knownTypeNames_.contains(candidate);
+        if (!moduleQualified && !knownTypeNames_.contains(candidate)) return false;
     }
-    return knownTypeNames_.contains(candidate);
+    else if (!builtin && !knownTypeNames_.contains(candidate)) return false;
+
+    if (!builtin && cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Less)
+    {
+        int depth = 0;
+        do
+        {
+            const TokenKind kind = tokens_[cursor].kind();
+            if (kind == TokenKind::Less) ++depth;
+            else if (kind == TokenKind::Greater) --depth;
+            else if (kind == TokenKind::GreaterGreater) depth -= 2;
+            else if (kind == TokenKind::EndOfFile) return false;
+            ++cursor;
+        }
+        while (cursor < tokens_.size() && depth > 0);
+        if (depth != 0) return false;
+    }
+    while (cursor < tokens_.size())
+    {
+        if (tokens_[cursor].kind() == TokenKind::Star)
+        {
+            ++cursor;
+            continue;
+        }
+        if (tokens_[cursor].kind() != TokenKind::LeftBracket) break;
+        int depth = 1;
+        ++cursor;
+        while (cursor < tokens_.size() && depth != 0)
+        {
+            if (tokens_[cursor].kind() == TokenKind::LeftBracket) ++depth;
+            else if (tokens_[cursor].kind() == TokenKind::RightBracket) --depth;
+            else if (tokens_[cursor].kind() == TokenKind::EndOfFile) return false;
+            ++cursor;
+        }
+        if (depth != 0) return false;
+    }
+    afterType = cursor;
+    return true;
 }
 
 // NSC-LIMIT-013. Un nombre que TAMBIEN es tipo no convierte por si solo una
@@ -368,111 +460,9 @@ bool Parser::looksLikeVariableDeclaration() const noexcept
     {
         ++cursor;
     }
-    if (!canStartTypeAt(cursor))
-    {
-        return false;
-    }
-
-    if (lexer::isOwnershipQualifierKeyword(tokens_[cursor].kind()))
-    {
-        ++cursor;
-    }
-    if (cursor >= tokens_.size())
-    {
-        return false;
-    }
-
-    // Nombre builtin o nombre calificado.
-    if (tokens_[cursor].kind() == TokenKind::Identifier)
-    {
-        ++cursor;
-        if (cursor + 2 < tokens_.size() &&
-            tokens_[cursor].kind() == TokenKind::Colon &&
-            tokens_[cursor + 1].kind() == TokenKind::Colon &&
-            tokens_[cursor + 2].kind() == TokenKind::Identifier)
-        {
-            cursor += 3;
-        }
-        while (cursor + 1 < tokens_.size() &&
-               tokens_[cursor].kind() == TokenKind::Dot &&
-               tokens_[cursor + 1].kind() == TokenKind::Identifier)
-        {
-            cursor += 2;
-        }
-    }
-    else
-    {
-        ++cursor;
-    }
-
-    // Argumentos genericos, incluidos cierres `>>` de tipos anidados.
-    if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Less)
-    {
-        int depth = 0;
-        do
-        {
-            const TokenKind kind = tokens_[cursor].kind();
-            if (kind == TokenKind::Less)
-            {
-                ++depth;
-            }
-            else if (kind == TokenKind::Greater)
-            {
-                --depth;
-            }
-            else if (kind == TokenKind::GreaterGreater)
-            {
-                depth -= 2;
-            }
-            else if (kind == TokenKind::EndOfFile)
-            {
-                return false;
-            }
-            ++cursor;
-        }
-        while (cursor < tokens_.size() && depth > 0);
-        if (depth != 0)
-        {
-            return false;
-        }
-    }
-
-    // Modificadores de tipo que pueden aparecer antes del nombre de variable.
-    while (cursor < tokens_.size())
-    {
-        if (tokens_[cursor].kind() == TokenKind::Star)
-        {
-            ++cursor;
-            continue;
-        }
-        if (tokens_[cursor].kind() == TokenKind::LeftBracket)
-        {
-            int depth = 1;
-            ++cursor;
-            while (cursor < tokens_.size() && depth != 0)
-            {
-                if (tokens_[cursor].kind() == TokenKind::LeftBracket)
-                {
-                    ++depth;
-                }
-                else if (tokens_[cursor].kind() == TokenKind::RightBracket)
-                {
-                    --depth;
-                }
-                else if (tokens_[cursor].kind() == TokenKind::EndOfFile)
-                {
-                    return false;
-                }
-                ++cursor;
-            }
-            if (depth != 0)
-            {
-                return false;
-            }
-            continue;
-        }
-        break;
-    }
+    std::size_t afterType = cursor;
+    if (!scanTypeAt(cursor, afterType)) return false;
+    cursor = afterType;
 
     return cursor < tokens_.size() &&
         tokens_[cursor].kind() == TokenKind::Identifier;
@@ -624,6 +614,41 @@ ast::TypeSyntax* Parser::parseType()
                 "an ownership-qualified type accepts exactly one qualifier");
             return nullptr;
         }
+    }
+
+    if (at(TokenKind::LeftParen))
+    {
+        const SourceRange open = consume().range();
+        ast::TypeSyntax* tuple = arena_.make<ast::TypeSyntax>(open, TokenKind::Invalid, "$tuple");
+        tuple->setOwnershipQualifier(ownershipQualifier);
+        if (ownershipQualifier != ast::OwnershipQualifierSyntaxKind::None)
+            qualifierRange = join(qualifierRange, open);
+        while (true)
+        {
+            ast::TypeSyntax* elementType = parseType();
+            if (elementType == nullptr) return nullptr;
+            std::string elementName;
+            if (at(TokenKind::Identifier) &&
+                (peek().kind() == TokenKind::Comma || peek().kind() == TokenKind::RightParen))
+                elementName = std::string(consume().lexeme());
+            tuple->addTupleElement(elementType, std::move(elementName));
+            if (!consumeIf(TokenKind::Comma)) break;
+        }
+        const SourceRange close = current().range();
+        if (!expect(TokenKind::RightParen, "')' after tuple type")) return nullptr;
+        if (tuple->typeArguments().size() < 2)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                join(open, close),
+                "a tuple type requires at least two elements");
+            return nullptr;
+        }
+        tuple->setRange(join(
+            ownershipQualifier == ast::OwnershipQualifierSyntaxKind::None ? open : qualifierRange,
+            close));
+        return tuple;
     }
 
     if (!lexer::isBuiltinTypeKeyword(current().kind()) && !at(TokenKind::Identifier))
@@ -1008,7 +1033,7 @@ bool Parser::parseTypeArgumentList(std::vector<ast::TypeSyntax*>& arguments)
     if (!consumeIf(TokenKind::Less)) return false;
     while (true)
     {
-        if (!canStartType(current()) && !at(TokenKind::Identifier))
+        if (!canStartTypeAt(index_) && !at(TokenKind::Identifier))
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedType,
@@ -2404,7 +2429,7 @@ ast::AstNode* Parser::parseInterfaceMember()
     // A generic parameter is intentionally not a globally known type name. As in class members,
     // accept an identifier-shaped type here and let name lookup decide whether it names this
     // interface's parameter or is genuinely unknown.
-    if (!canStartType(current()) && !at(TokenKind::Identifier))
+    if (!canStartTypeAt(index_) && !at(TokenKind::Identifier))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -3459,7 +3484,7 @@ ast::AstNode* Parser::parseClassMember(
     const bool isReferenceReturn = atContextualKeyword("ref") && canStartTypeAt(index_ + 1);
     if (isReferenceReturn) consume();
 
-    if (!canStartType(current()) && !at(TokenKind::Identifier))
+    if (!canStartTypeAt(index_) && !at(TokenKind::Identifier))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -5298,6 +5323,44 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::KwThrow)) return parseThrowStatement();
     if (at(TokenKind::KwUsing)) return parseUsingStatement();
     if (at(TokenKind::KwStaticAssert)) return parseStaticAssertStatement();
+
+    if (at(TokenKind::KwVar) && peek().kind() == TokenKind::LeftParen)
+    {
+        const std::size_t beginIndex = index_;
+        const SourceRange featureRange = consume().range();
+        requireEdition3(featureRange, "tuple deconstruction declarations");
+        expect(TokenKind::LeftParen, "'(' after 'var'");
+        ast::AstNode* declaration = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::DeconstructionDeclarationStatement, featureRange);
+        while (true)
+        {
+            if (!at(TokenKind::Identifier))
+            {
+                expect(TokenKind::Identifier, "deconstruction binding name or '_'");
+                break;
+            }
+            const lexer::Token& name = consume();
+            ast::AstNode* binding = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::IdentifierExpression, name.range());
+            binding->setText(std::string(name.lexeme()));
+            declaration->addChild(binding);
+            if (!consumeIf(TokenKind::Comma)) break;
+        }
+        expect(TokenKind::RightParen, "')' after deconstruction bindings");
+        expect(TokenKind::Equal, "'=' after deconstruction bindings");
+        declaration->setFirst(parseAssignmentExpression());
+        expect(TokenKind::Semicolon, "';'");
+        declaration->setRange(tokenRangeFrom(beginIndex));
+        if (declaration->children().size() < 2)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                declaration->range(),
+                "tuple deconstruction declaration requires at least two bindings");
+        }
+        return declaration;
+    }
 
     // ID 131, la otra mitad. Al principio de una sentencia, `Caja<int>` puede empezar DOS cosas:
     // una declaracion (`Caja<int> c = ...`) o una expresion (`Caja<int>.Cuenta = 5;`). Las
@@ -7868,7 +7931,8 @@ void Parser::synchronizeGlobal()
         }
         if (at(TokenKind::RightBrace) || at(TokenKind::KwStruct) || at(TokenKind::KwEnum) ||
             at(TokenKind::KwNamespace) || at(TokenKind::KwUsing) || at(TokenKind::KwExtern) ||
-            at(TokenKind::KwPublic) || at(TokenKind::KwInternal) || at(TokenKind::KwConst) || canStartType(current()))
+            at(TokenKind::KwPublic) || at(TokenKind::KwInternal) || at(TokenKind::KwConst) ||
+            canStartTypeAt(index_))
         {
             return;
         }

@@ -671,6 +671,9 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::AggregateInitialize: return "aggregate-initialize";
         case ProjectOopMirNodeKind::AggregateSpreadStore: return "aggregate-spread-store";
         case ProjectOopMirNodeKind::AggregateElementStore: return "aggregate-element-store";
+        case ProjectOopMirNodeKind::TupleDeconstruct: return "tuple-deconstruct";
+        case ProjectOopMirNodeKind::TupleDeconstructElementStore:
+            return "tuple-deconstruct-element-store";
         case ProjectOopMirNodeKind::ParameterPack: return "parameter-pack";
         case ProjectOopMirNodeKind::ExpressionStatement: return "expression-statement";
         case ProjectOopMirNodeKind::InlineAssembly: return "inline-assembly";
@@ -942,6 +945,81 @@ bool ProjectOopMirModel::build(
             layout.typeOrdinal, layout.typeKey, layout.size, layout.alignment,
             layout.isUnion, layout.pack, layout.minimumAlignment,
             layout.hasExplicitFieldOffsets, abiPassingForSize(layout.size), layout.fields});
+    }
+    // Structural tuples do not have named-type ordinals, but from MIR onward they obey the same
+    // Win64 value-carrier and ABI rules as declared structs. Discover every tuple key used by
+    // HIR (including nested element tuples), sort the keys for reproducible dumps, and publish
+    // synthetic physical layouts in the ordinary struct-layout catalogue.
+    std::vector<std::string> tupleKeys;
+    const auto collectTypeKey = [&](const auto& self, std::string_view key) -> void
+    {
+        const std::optional<std::vector<std::string>> elements =
+            ProjectTypeConversion::tupleElementTypeKeys(key);
+        if (!elements.has_value()) return;
+        tupleKeys.emplace_back(key);
+        for (const std::string& element : *elements) self(self, element);
+    };
+    const auto collectNode = [&](const auto& self, const ProjectOopHirNode* node) -> void
+    {
+        if (node == nullptr) return;
+        collectTypeKey(collectTypeKey, node->typeKey);
+        collectTypeKey(collectTypeKey, node->elementTypeKey);
+        for (const std::string& key : node->argumentTypeKeys) collectTypeKey(collectTypeKey, key);
+        for (const auto& child : node->children) self(self, child.get());
+    };
+    for (const ProjectOopHirFunction& function : hirModel.functions())
+    {
+        collectTypeKey(collectTypeKey, function.returnTypeKey);
+        for (const std::string& key : function.parameterTypeKeys) collectTypeKey(collectTypeKey, key);
+        for (const std::string& key : function.captureTypeKeys) collectTypeKey(collectTypeKey, key);
+        collectNode(collectNode, function.body.get());
+    }
+    std::ranges::sort(tupleKeys);
+    tupleKeys.erase(std::unique(tupleKeys.begin(), tupleKeys.end()), tupleKeys.end());
+    for (const std::string& key : tupleKeys)
+    {
+        const std::optional<std::vector<std::string>> elements =
+            ProjectTypeConversion::tupleElementTypeKeys(key);
+        const std::optional<language::AggregateLayout> layout =
+            objectLayoutModel.tupleLayoutForTypeKey(nameLookup, key);
+        if (!elements.has_value() || !layout.has_value() ||
+            elements->size() != layout->offsets.size())
+        {
+            error = "NativeSharp 3.0 tuple has no deterministic physical layout: " + key;
+            return false;
+        }
+        std::vector<ObjectFieldLayout> fields;
+        fields.reserve(elements->size());
+        for (std::size_t index = 0; index < elements->size(); ++index)
+        {
+            const auto elementLayout = objectLayoutModel.valueLayoutForTypeKey(
+                nameLookup, (*elements)[index]);
+            if (!elementLayout.has_value())
+            {
+                error = "NativeSharp 3.0 tuple element has no physical layout: " +
+                    (*elements)[index];
+                return false;
+            }
+            fields.push_back(ObjectFieldLayout{
+                index,
+                static_cast<std::uint64_t>(layout->offsets[index]),
+                elementLayout->first,
+                elementLayout->second,
+                (*elements)[index],
+                std::nullopt,
+                std::nullopt});
+        }
+        structLayouts_.push_back(ProjectOopMirStructLayout{
+            (std::numeric_limits<std::size_t>::max)(),
+            key,
+            static_cast<std::uint64_t>(layout->size),
+            static_cast<std::uint64_t>(layout->alignment),
+            false,
+            0,
+            0,
+            false,
+            abiPassingForSize(layout->size),
+            std::move(fields)});
     }
     for (const ClassObjectLayout& layout : objectLayoutModel.classLayouts())
     {
@@ -2442,6 +2520,13 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::Unary: result->kind = ProjectOopMirNodeKind::Unary; break;
         case ProjectOopHirNodeKind::Binary: result->kind = ProjectOopMirNodeKind::Binary; break;
         case ProjectOopHirNodeKind::Assignment: result->kind = ProjectOopMirNodeKind::Store; break;
+        case ProjectOopHirNodeKind::TupleDeconstruct:
+            result->kind = ProjectOopMirNodeKind::TupleDeconstruct;
+            break;
+        case ProjectOopHirNodeKind::TupleDeconstructElement:
+            result->kind = ProjectOopMirNodeKind::TupleDeconstructElementStore;
+            result->immediate = node->integerValue;
+            break;
         // IDs 79 y 81. Un destino numerico no necesita paso; un destino puntero si, y lo resuelve
         // el MISMO elementLayout que ya usan PointerArithmetic, el stride de un arreglo y sizeof.
         case ProjectOopHirNodeKind::CompoundStore:

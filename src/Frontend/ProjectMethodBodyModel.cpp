@@ -1079,6 +1079,7 @@ bool ProjectMethodBodyModel::typeKeyHasDefinedDefaultStorage(std::string_view ty
     {
         return true;
     }
+    if (ProjectTypeConversion::isTuple(typeKey)) return true;
     if (!typeKey.starts_with("type:") || nameLookup_ == nullptr)
     {
         return false;
@@ -1098,6 +1099,7 @@ bool ProjectMethodBodyModel::typeKeyHasDefinedDefaultStorage(std::string_view ty
 // justo debajo, pero mirando la CLASE de la declaracion en vez de su texto auxiliar.
 bool ProjectMethodBodyModel::typeKeyIsStruct(std::string_view typeKey) const noexcept
 {
+    if (ProjectTypeConversion::isTuple(typeKey)) return true;
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
     const std::string_view identity = typeKey.substr(5);
     for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
@@ -1491,6 +1493,9 @@ void ProjectMethodBodyModel::checkDefiniteAssignment(
 std::optional<std::vector<std::string>> ProjectMethodBodyModel::aggregateElementTypeKeys(
     std::string_view typeKey) const
 {
+    if (const std::optional<std::vector<std::string>> tuple =
+            ProjectTypeConversion::tupleElementTypeKeys(typeKey);
+        tuple.has_value()) return tuple;
     if (const std::optional<std::string> element =
             ProjectMemberModel::fixedArrayElementTypeKey(typeKey);
         element.has_value())
@@ -1530,6 +1535,16 @@ std::optional<std::vector<std::string>> ProjectMethodBodyModel::aggregateElement
 std::optional<std::vector<std::string>> ProjectMethodBodyModel::aggregateElementNames(
     std::string_view typeKey) const
 {
+    if (const std::optional<std::vector<std::string>> tuple =
+            ProjectTypeConversion::tupleElementTypeKeys(typeKey);
+        tuple.has_value())
+    {
+        std::vector<std::string> names;
+        names.reserve(tuple->size());
+        for (std::size_t index = 0; index < tuple->size(); ++index)
+            names.push_back("Item" + std::to_string(index + 1));
+        return names;
+    }
     if (const std::optional<std::string> element =
             ProjectMemberModel::fixedArrayElementTypeKey(typeKey);
         element.has_value())
@@ -2364,6 +2379,112 @@ void ProjectMethodBodyModel::analyzeStatement(
         case ast::AstNodeKind::VariableDeclarationStatement:
             analyzeVariable(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
             break;
+        case ast::AstNodeKind::DeconstructionDeclarationStatement:
+        {
+            const ExpressionResult source = analyzeExpression(
+                statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            const std::optional<std::vector<std::string>> elements =
+                ProjectTypeConversion::tupleElementTypeKeys(source.typeKey);
+            if (!source.valid) break;
+            if (!elements.has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->first() != nullptr ? statement->first()->range() : statement->range(),
+                    "a deconstruction declaration requires a tuple value");
+                break;
+            }
+            if (elements->size() != statement->children().size())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidArgumentCount,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->range(),
+                    "deconstruction declaration has " +
+                        std::to_string(statement->children().size()) +
+                        " binding(s), but the tuple has " + std::to_string(elements->size()));
+                break;
+            }
+            if (!elementTypeHasTrivialLifetime(source.typeKey))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->range(),
+                    "deconstruction declaration of owning or move-only elements requires "
+                    "per-element move bindings and drop flags");
+                break;
+            }
+            std::unordered_set<std::string> declaredHere;
+            for (std::size_t index = 0; index < statement->children().size(); ++index)
+            {
+                const ast::AstNode* binding = statement->children()[index];
+                if (binding == nullptr || binding->text() == "_") continue;
+                if (!declaredHere.insert(binding->text()).second)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::DuplicateSymbol,
+                        diagnostics::DiagnosticSeverity::Error,
+                        binding->range(),
+                        "duplicate deconstruction binding '" + binding->text() + "'");
+                    continue;
+                }
+                const std::optional<ScopeName> sameScope =
+                    lookupScopeNameInScope(scopeOrdinal, binding->text());
+                if (sameScope.has_value())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::DuplicateSymbol,
+                        diagnostics::DiagnosticSeverity::Error,
+                        binding->range(),
+                        "duplicate local/parameter name '" + binding->text() +
+                            "' in the same method scope");
+                    reportPrevious(sameScope->range, diagnostics, "previous declaration is here");
+                    continue;
+                }
+                MethodLocalSymbol local;
+                local.methodMemberOrdinal = methodMemberOrdinal;
+                local.scopeOrdinal = scopeOrdinal;
+                local.declarationOrdinal = scopes_[scopeOrdinal].localOrdinals.size();
+                if (const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+                    method != nullptr) local.fileId = method->fileId;
+                local.range = binding->range();
+                local.syntax = binding;
+                local.name = binding->text();
+                local.typeKey = (*elements)[index];
+                local.lambdaOrdinal = currentLambdaOrdinal_;
+                if (const std::optional<ScopeName> outer =
+                        lookupScopeName(scopeOrdinal, binding->text());
+                    outer.has_value())
+                {
+                    MethodShadowingKind kind = outer->kind == ScopeNameKind::Parameter
+                        ? MethodShadowingKind::LocalShadowsParameter
+                        : MethodShadowingKind::LocalShadowsLocal;
+                    shadowingEvents_.push_back(MethodShadowingEvent{
+                        kind, methodMemberOrdinal, scopeOrdinal, binding->text(), binding->range()});
+                }
+                else if (!memberCandidates(methodMemberOrdinal, binding->text()).empty())
+                {
+                    shadowingEvents_.push_back(MethodShadowingEvent{
+                        MethodShadowingKind::LocalShadowsMember,
+                        methodMemberOrdinal,
+                        scopeOrdinal,
+                        binding->text(),
+                        binding->range()});
+                }
+                const std::size_t localOrdinal = locals_.size();
+                locals_.push_back(std::move(local));
+                scopes_[scopeOrdinal].localOrdinals.push_back(localOrdinal);
+                scopeNames_[scopeOrdinal].push_back(ScopeName{
+                    ScopeNameKind::Local,
+                    binding->text(),
+                    localOrdinal,
+                    binding->range()});
+                assignedLocals_.insert(localOrdinal);
+            }
+            break;
+        }
         case ast::AstNodeKind::IfStatement:
         {
             const ExpressionResult condition = analyzeExpression(
@@ -6066,6 +6187,42 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             result.typeKey = left.typeKey;
             result.valid = true;
+            result.assignable = false;
+            break;
+        }
+        case ast::AstNodeKind::TupleExpression:
+        {
+            if (expression->children().size() < 2)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "a tuple literal requires at least two elements");
+                break;
+            }
+            std::vector<std::string> elementTypeKeys;
+            elementTypeKeys.reserve(expression->children().size());
+            MethodAggregateInitializerBinding binding;
+            binding.syntax = expression;
+            bool valid = true;
+            for (std::size_t index = 0; index < expression->children().size(); ++index)
+            {
+                const ast::AstNode* element = expression->children()[index];
+                const ExpressionResult value = analyzeExpression(
+                    element, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                valid = valid && value.valid;
+                elementTypeKeys.push_back(value.valid ? value.typeKey : std::string("<error>"));
+                MethodAggregateInitializerEntryBinding entry;
+                entry.syntax = element;
+                entry.targetElementOrdinals.push_back(index);
+                binding.entries.push_back(std::move(entry));
+            }
+            binding.targetTypeKey = ProjectTypeConversion::tupleTypeKey(elementTypeKeys);
+            aggregateInitializerBindingBySyntax_[expression] = aggregateInitializerBindings_.size();
+            aggregateInitializerBindings_.push_back(std::move(binding));
+            result.typeKey = ProjectTypeConversion::tupleTypeKey(elementTypeKeys);
+            result.valid = valid;
             result.assignable = false;
             break;
         }
@@ -13069,6 +13226,94 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         return target;
     }
 
+    // NativeSharp 3.0 T02-F03. Evaluate the complete tuple source first, then validate targets
+    // from left to right. HIR materializes that source once before taking any destination
+    // address, which makes `(a, b) = (b, a)` alias-safe and preserves source side effects.
+    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::TupleExpression)
+    {
+        const ExpressionResult source = analyzeExpression(
+            expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        const std::optional<std::vector<std::string>> sourceElements =
+            ProjectTypeConversion::tupleElementTypeKeys(source.typeKey);
+        bool valid = source.valid;
+        if (!sourceElements.has_value())
+        {
+            if (source.valid)
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->second() != nullptr ? expression->second()->range() : expression->range(),
+                    "tuple deconstruction requires a tuple value on the right-hand side");
+            valid = false;
+        }
+        else if (sourceElements->size() != expression->first()->children().size())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidArgumentCount,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->first()->range(),
+                "tuple deconstruction target has " +
+                    std::to_string(expression->first()->children().size()) +
+                    " element(s), but the source has " + std::to_string(sourceElements->size()));
+            valid = false;
+        }
+        if (sourceElements.has_value() && !elementTypeHasTrivialLifetime(source.typeKey))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "tuple deconstruction of owning or move-only elements requires explicit move "
+                "bindings and per-element drop flags");
+            valid = false;
+        }
+        for (std::size_t index = 0; index < expression->first()->children().size(); ++index)
+        {
+            const ast::AstNode* target = expression->first()->children()[index];
+            if (target != nullptr && target->kind() == ast::AstNodeKind::IdentifierExpression &&
+                target->text() == "_") continue;
+            const ast::AstNode* previousWriteTarget = definiteAssignmentWriteTarget_;
+            markAssignmentTarget(target, scopeOrdinal);
+            const ExpressionResult targetResult = analyzeExpression(
+                target, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                false, true, false, true);
+            definiteAssignmentWriteTarget_ = previousWriteTarget;
+            if (!targetResult.valid || !targetResult.assignable || !targetResult.addressable)
+            {
+                if (targetResult.valid)
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                        diagnostics::DiagnosticSeverity::Error,
+                        target != nullptr ? target->range() : expression->first()->range(),
+                        "tuple deconstruction target must be addressable storage or '_'");
+                valid = false;
+                continue;
+            }
+            if (sourceElements.has_value() && index < sourceElements->size())
+            {
+                const ProjectImplicitConversion conversion = classifyImplicit(
+                    (*sourceElements)[index], targetResult.typeKey, std::nullopt);
+                if (!conversion.exists())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        target->range(),
+                        "tuple element " + std::to_string(index) + " of type '" +
+                            (*sourceElements)[index] + "' cannot convert to target type '" +
+                            targetResult.typeKey + "'");
+                    valid = false;
+                }
+            }
+        }
+        ExpressionResult result = source;
+        result.valid = valid;
+        result.assignable = false;
+        result.addressable = false;
+        return result;
+    }
+
     std::optional<std::size_t> raiiTargetLocal;
     ExpressionResult left;
     // C4 "language references": record that an `out` parameter was written to. The obligation an
@@ -15575,6 +15820,15 @@ bool ProjectMethodBodyModel::isEnumTypeKey(std::string_view typeKey) const noexc
 // las referencias son punteros y no poseen nada por si mismas.
 bool ProjectMethodBodyModel::elementTypeHasTrivialLifetime(std::string_view typeKey) const noexcept
 {
+    if (const std::optional<std::vector<std::string>> tuple =
+            ProjectTypeConversion::tupleElementTypeKeys(typeKey);
+        tuple.has_value())
+    {
+        return std::ranges::all_of(*tuple, [&](const std::string& element)
+        {
+            return elementTypeHasTrivialLifetime(element);
+        });
+    }
     if (memberModel_ == nullptr || nameLookup_ == nullptr) return true;
     if (!typeKey.starts_with("type:")) return true;
 
