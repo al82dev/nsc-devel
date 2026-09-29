@@ -131,6 +131,7 @@ add_library(nsc_compilation STATIC
     src/Language/LanguageEdition.cpp
     src/Language/ExpressionErgonomics.cpp
     src/Language/GenericSemantics.cpp
+    src/Language/IterationSemantics.cpp
     src/Language/OwnershipSemantics.cpp
     src/Language/SumTypeSemantics.cpp
     src/Language/TraitSemantics.cpp
@@ -776,6 +777,14 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_ns3_t08_callable_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_ns3_t08_callable_tests)
     add_test(NAME nsc.ns3.t08.callables COMMAND nsc_ns3_t08_callable_tests)
+
+    add_executable(
+        nsc_ns3_t09_iteration_tests
+        tests/unit/NativeSharp3T09IterationTests.cpp)
+    target_link_libraries(nsc_ns3_t09_iteration_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_ns3_t09_iteration_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_t09_iteration_tests)
+    add_test(NAME nsc.ns3.t09.iteration COMMAND nsc_ns3_t09_iteration_tests)
 
     add_test(
         NAME nsc.ns3.t00.conformance-harness
