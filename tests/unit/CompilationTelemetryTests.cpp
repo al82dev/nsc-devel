@@ -60,12 +60,15 @@ int main()
         "compiler output\n"
         "timing phase=syntax-read us=120 peak_working_set_bytes=4096\n"
         "timing phase=syntax-parse us=340 peak_working_set_bytes=8192\n"
-        "timing total_ms=2 peak_working_set_bytes=8192\n",
+        "timing total_ms=2 peak_working_set_bytes=8192\n"
+        "timing project_descriptor_file_reads=2 project_descriptor_cache_hits=1\n",
         0);
     tests.expect(trace.find("\"schema\": \"nativesharp-time-trace\"") != std::string::npos &&
             trace.find("\"exit_code\": 0") != std::string::npos &&
             trace.find("\"total_ms\": 2") != std::string::npos &&
             trace.find("\"peak_working_set_bytes\": 8192") != std::string::npos &&
+            trace.find("\"project_descriptor_file_reads\": 2") != std::string::npos &&
+            trace.find("\"project_descriptor_cache_hits\": 1") != std::string::npos &&
             trace.find("{\"name\": \"syntax-read\", \"duration_us\": 120, "
                        "\"peak_working_set_bytes\": 4096}") !=
                 std::string::npos &&
@@ -104,6 +107,7 @@ int main()
             !std::filesystem::exists(bundlePath.string() + ".tmp"),
         "failure bundle survives an invalid project, fingerprints the root, redacts secrets, "
         "and publishes transactionally");
+    bundle.close();
     std::filesystem::remove_all(fixtureDirectory, filesystemError);
 
     return tests.result();

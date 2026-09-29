@@ -164,6 +164,12 @@ struct DriverExecutionScope final
             std::chrono::steady_clock::now() - started).count();
         output << "timing total_ms=" << elapsed << " peak_working_set_bytes="
                << currentProcessPeakWorkingSetBytes() << '\n';
+        const compilation::ProjectLoaderStatistics projectStatistics =
+            projectLoader.statistics();
+        output << "timing project_descriptor_file_reads="
+               << projectStatistics.descriptorFileReads
+               << " project_descriptor_cache_hits="
+               << projectStatistics.descriptorCacheHits << '\n';
     }
     void writeProgress(const basic::CompilationEvent& event)
     {
@@ -189,6 +195,7 @@ struct DriverExecutionScope final
     std::optional<std::chrono::steady_clock::time_point> deadline;
     std::vector<PhaseTiming> phaseTimings;
     llvm_backend::LlvmOptimizationBudgetTracker o2Budget;
+    compilation::ProjectLoader projectLoader;
     compilation::ProjectLoadOptions projectLoadOptions;
     bool reportTiming = false;
     bool reportProgress = false;
@@ -203,6 +210,14 @@ const compilation::ProjectLoadOptions& activeProjectLoadOptions() noexcept
     return activeExecutionScope != nullptr
         ? activeExecutionScope->projectLoadOptions
         : defaults;
+}
+
+compilation::ProjectLoader& activeProjectLoader() noexcept
+{
+    static thread_local compilation::ProjectLoader fallback;
+    return activeExecutionScope != nullptr
+        ? activeExecutionScope->projectLoader
+        : fallback;
 }
 
 class DriverPhaseTimer final
@@ -2495,11 +2510,15 @@ bool configurePrecompiledModules(
     const std::filesystem::path &projectFile, frontend::ProjectCompilation &compilation, std::string &error)
 {
     const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
+    compilation::ProjectLoader& projectLoader = activeProjectLoader();
+    const compilation::ProjectLoadOptions loadOptions = activeProjectLoadOptions();
     compilation::ProjectGraphLoader loader(
         jobs != nullptr ? jobs->effectiveJobs() : 1,
-        {},
-        activeProjectLoadOptions());
-    std::optional<compilation::ProjectGraph> graph = loader.load(projectFile, error);
+        [&projectLoader, loadOptions](const std::filesystem::path& path, std::string& loadError) {
+            return projectLoader.load(path, loadOptions, loadError);
+        });
+    std::optional<compilation::ProjectGraph> graph = measureDriverPhase(
+        "project-graph", [&] { return loader.load(projectFile, error); });
     if (!graph.has_value()) return false;
 
     interop::LibraryMetadataCodec codec;
@@ -2525,6 +2544,10 @@ bool configurePrecompiledModules(
     for (LoadedPrecompiledMetadata &entry : loaded)
     {
             interop::LibraryMetadata &metadata = entry.metadata;
+            std::unordered_set<std::string_view> concreteMemberNames;
+            concreteMemberNames.reserve(metadata.members.size());
+            for (const interop::LibraryMetadataMember& member : metadata.members)
+                concreteMemberNames.insert(member.name);
             std::string publicSource;
             if (!buildPrecompiledPublicSource(metadata, publicSource, error))
             {
@@ -2565,9 +2588,8 @@ bool configurePrecompiledModules(
                         constexpr std::uint8_t kGenericMethodKind = 3U;
                         if (specialization.kind == kGenericMethodKind)
                         {
-                            hasConcreteDeclaration = std::ranges::any_of(
-                                metadata.members,
-                                [&](const auto &member) { return member.name == specialization.specializedName; });
+                            hasConcreteDeclaration =
+                                concreteMemberNames.contains(specialization.specializedName);
                         }
                         else if (const std::optional<std::string> typeKey =
                                      metadataSpecializedTypeKey(specialization);
@@ -3655,10 +3677,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     };
     if (normalizedArguments.size() >= 2U && isProjectBuildAction(normalizedArguments[0]))
     {
-        compilation::ProjectLoader projectLoader;
         std::string settingsError;
         const std::optional<compilation::ProjectBuildSettings> projectSettings =
-            projectLoader.loadBuildSettings(
+            executionScope.projectLoader.loadBuildSettings(
                 std::filesystem::path(std::string(normalizedArguments[1])), settingsError);
         if (!projectSettings.has_value())
         {
@@ -5043,9 +5064,8 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
 {
     if (action == "--check-project" || action == "--dump-project")
     {
-        compilation::ProjectLoader loader;
         std::string loadError;
-        const std::optional<compilation::Project> project = loader.load(
+        const std::optional<compilation::Project> project = activeProjectLoader().load(
             std::filesystem::path(path), activeProjectLoadOptions(), loadError);
         if (!project.has_value())
         {
@@ -5070,10 +5090,14 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
     if (action == "--check-project-graph" || action == "--dump-project-graph")
     {
         const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
+        compilation::ProjectLoader& projectLoader = activeProjectLoader();
+        const compilation::ProjectLoadOptions loadOptions = activeProjectLoadOptions();
         compilation::ProjectGraphLoader loader(
             jobs != nullptr ? jobs->effectiveJobs() : 1,
-            {},
-            activeProjectLoadOptions());
+            [&projectLoader, loadOptions](
+                const std::filesystem::path& projectPath, std::string& loadError) {
+                return projectLoader.load(projectPath, loadOptions, loadError);
+            });
         std::string loadError;
         const std::optional<compilation::ProjectGraph> graph = loader.load(std::filesystem::path(path), loadError);
         if (!graph.has_value())

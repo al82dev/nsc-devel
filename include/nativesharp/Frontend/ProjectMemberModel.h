@@ -364,6 +364,7 @@ private:
         std::size_t,
         TransparentStringHash,
         std::equal_to<>> typeOrdinalByKey_;
+    mutable std::vector<std::optional<bool>> transitiveOwnershipCache_;
     std::unordered_map<const ast::AstNode*, std::size_t> memberBySyntax_;
     bool built_ = false;
 };

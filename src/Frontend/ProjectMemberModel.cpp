@@ -3,6 +3,7 @@
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
+#include "nativesharp/Frontend/PrecompiledMemberIdentityIndex.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
@@ -305,6 +306,7 @@ bool ProjectMemberModel::build(
     membersByType_.resize(nameLookup.namedTypes().size());
     promotedMembersByType_.resize(nameLookup.namedTypes().size());
     membersByName_.resize(nameLookup.namedTypes().size());
+    transitiveOwnershipCache_.assign(nameLookup.namedTypes().size(), std::nullopt);
     typeOrdinalByKey_.reserve(nameLookup.namedTypes().size());
     for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
     {
@@ -629,6 +631,8 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
         return value;
     };
 
+    const PrecompiledMemberIdentityIndex identityIndex(identities);
+
     for (ClassMemberSymbol& member : members_)
     {
         if (!member.isPrecompiled || member.isImportedC || member.isAbstract ||
@@ -645,30 +649,21 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
         const std::string declaringTypeKey = canonicalize(
             "type:" + nameLookup_->namedTypes()[member.declaringTypeOrdinal].identity.key());
         const std::string signatureKey = canonicalize(member.signatureKey);
-        const PrecompiledMemberIdentity* match = nullptr;
-        for (const PrecompiledMemberIdentity& identity : identities)
-        {
-            if (identity.mangledName.empty() || identity.kind != member.kind ||
-                identity.declaringTypeKey != declaringTypeKey || identity.name != member.name ||
-                identity.signatureKey != signatureKey)
-            {
-                continue;
-            }
-            if (match != nullptr)
-            {
-                error = "precompiled callable '" + declaringTypeKey + "." + signatureKey +
-                    "' has more than one published physical identity";
-                return false;
-            }
-            match = &identity;
-        }
-        if (match == nullptr)
+        const PrecompiledMemberIdentityMatch match = identityIndex.find(
+            member.kind, declaringTypeKey, member.name, signatureKey);
+        if (match.kind == PrecompiledMemberIdentityMatchKind::Missing)
         {
             error = "precompiled callable '" + declaringTypeKey + "." + signatureKey +
                 "' has no physical identity in NSMETA";
             return false;
         }
-        member.precompiledMangledName = match->mangledName;
+        if (match.kind == PrecompiledMemberIdentityMatchKind::Ambiguous)
+        {
+            error = "precompiled callable '" + declaringTypeKey + "." + signatureKey +
+                "' has more than one published physical identity";
+            return false;
+        }
+        member.precompiledMangledName = match.identity->mangledName;
     }
     return true;
 }
@@ -697,7 +692,6 @@ bool ProjectMemberModel::typeTransitivelyOwnsStorage(std::string_view typeKey) c
 {
     if (nameLookup_ == nullptr) return false;
 
-    std::vector<std::optional<bool>> memo(nameLookup_->namedTypes().size());
     std::unordered_set<std::size_t> visiting;
     std::function<bool(std::string_view)> owns = [&](std::string_view candidate) -> bool
     {
@@ -708,7 +702,8 @@ bool ProjectMemberModel::typeTransitivelyOwnsStorage(std::string_view typeKey) c
         if (!ordinal.has_value() ||
             nameLookup_->namedTypes()[*ordinal].kind != NamedTypeDeclarationKind::Struct)
             return false;
-        if (memo[*ordinal].has_value()) return *memo[*ordinal];
+        if (transitiveOwnershipCache_[*ordinal].has_value())
+            return *transitiveOwnershipCache_[*ordinal];
         // Recursive by-value aggregates receive their own incomplete-type diagnostic in layout.
         // Treat the cycle as non-owning here so this safety query does not invent a second cause.
         if (!visiting.insert(*ordinal).second) return false;
@@ -726,7 +721,7 @@ bool ProjectMemberModel::typeTransitivelyOwnsStorage(std::string_view typeKey) c
             }
         }
         visiting.erase(*ordinal);
-        memo[*ordinal] = result;
+        transitiveOwnershipCache_[*ordinal] = result;
         return result;
     };
     return owns(typeKey);

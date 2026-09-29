@@ -8,15 +8,15 @@
 #include <cctype>
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <optional>
 #include <string_view>
 #include <system_error>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace nativesharp::compilation
-{
-namespace
 {
 struct SourceIncludeRule final
 {
@@ -43,6 +43,17 @@ struct ProjectDescriptor final
     std::vector<LibraryReferenceDescriptor> libraryReferences;
     std::vector<std::string> sdkReferences;
 };
+
+class ProjectLoaderCache final
+{
+public:
+    mutable std::mutex mutex;
+    std::unordered_map<std::string, ProjectDescriptor> descriptors;
+    ProjectLoaderStatistics statistics;
+};
+
+namespace
+{
 
 bool parsePositiveDecimal(std::string_view value, std::size_t maximum, std::size_t& result)
 {
@@ -555,6 +566,7 @@ bool loadDescriptorFile(
     const std::filesystem::path& projectFile,
     std::filesystem::path& canonicalProject,
     ProjectDescriptor& descriptor,
+    ProjectLoaderCache& cache,
     std::string& error)
 {
     error.clear();
@@ -569,6 +581,18 @@ bool loadDescriptorFile(
     {
         error = "NativeSharp project file must use the canonical .nsproj extension";
         return false;
+    }
+
+    const std::string descriptorKey = pathKey(canonicalProject);
+    {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        const auto found = cache.descriptors.find(descriptorKey);
+        if (found != cache.descriptors.end())
+        {
+            descriptor = found->second;
+            ++cache.statistics.descriptorCacheHits;
+            return true;
+        }
     }
 
     std::ifstream stream(canonicalProject, std::ios::binary);
@@ -602,6 +626,16 @@ bool loadDescriptorFile(
         error = canonicalProject.string() + ": " + error;
         return false;
     }
+    {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        const auto [found, inserted] = cache.descriptors.emplace(descriptorKey, descriptor);
+        ++cache.statistics.descriptorFileReads;
+        if (!inserted)
+        {
+            descriptor = found->second;
+            ++cache.statistics.descriptorCacheHits;
+        }
+    }
     return true;
 }
 
@@ -613,13 +647,18 @@ std::filesystem::path resolveProjectPath(
 }
 }
 
+ProjectLoader::ProjectLoader()
+    : cache_(std::make_shared<ProjectLoaderCache>())
+{
+}
+
 std::optional<ProjectBuildSettings> ProjectLoader::loadBuildSettings(
     const std::filesystem::path& projectFile,
     std::string& error) const
 {
     std::filesystem::path canonicalProject;
     ProjectDescriptor descriptor;
-    if (!loadDescriptorFile(projectFile, canonicalProject, descriptor, error))
+    if (!loadDescriptorFile(projectFile, canonicalProject, descriptor, *cache_, error))
     {
         return std::nullopt;
     }
@@ -651,7 +690,7 @@ std::optional<Project> ProjectLoader::load(
 {
     std::filesystem::path canonicalProject;
     ProjectDescriptor descriptor;
-    if (!loadDescriptorFile(projectFile, canonicalProject, descriptor, error))
+    if (!loadDescriptorFile(projectFile, canonicalProject, descriptor, *cache_, error))
     {
         return std::nullopt;
     }
@@ -911,5 +950,11 @@ std::optional<Project> ProjectLoader::load(
         std::move(libraryReferences),
         std::move(sdkReferences),
         descriptor.languageEdition.value_or(language::LanguageEdition::V2));
+}
+
+ProjectLoaderStatistics ProjectLoader::statistics() const
+{
+    const std::lock_guard<std::mutex> lock(cache_->mutex);
+    return cache_->statistics;
 }
 }

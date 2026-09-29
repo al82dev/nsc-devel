@@ -147,6 +147,8 @@ std::string renderCompilationTimeTraceJson(std::string_view timingOutput, int ex
     std::vector<Phase> phases;
     long long totalMilliseconds = 0;
     long long peakWorkingSetBytes = 0;
+    long long projectDescriptorFileReads = 0;
+    long long projectDescriptorCacheHits = 0;
     std::size_t position = 0;
     while (position <= timingOutput.size())
     {
@@ -156,6 +158,8 @@ std::string renderCompilationTimeTraceJson(std::string_view timingOutput, int ex
                                                     : end - position);
         constexpr std::string_view phasePrefix = "timing phase=";
         constexpr std::string_view totalPrefix = "timing total_ms=";
+        constexpr std::string_view projectReadsPrefix =
+            "timing project_descriptor_file_reads=";
         if (line.starts_with(phasePrefix))
         {
             constexpr std::string_view memoryMarker = " peak_working_set_bytes=";
@@ -194,6 +198,20 @@ std::string renderCompilationTimeTraceJson(std::string_view timingOutput, int ex
                 parseUnsigned(line.substr(memorySeparator + memoryMarker.size()),
                     peakWorkingSetBytes);
         }
+        else if (line.starts_with(projectReadsPrefix))
+        {
+            constexpr std::string_view cacheMarker = " project_descriptor_cache_hits=";
+            const std::size_t cacheSeparator = line.find(cacheMarker);
+            const std::size_t readsEnd = cacheSeparator == std::string_view::npos
+                ? line.size()
+                : cacheSeparator;
+            parseUnsigned(
+                line.substr(projectReadsPrefix.size(), readsEnd - projectReadsPrefix.size()),
+                projectDescriptorFileReads);
+            if (cacheSeparator != std::string_view::npos)
+                parseUnsigned(line.substr(cacheSeparator + cacheMarker.size()),
+                    projectDescriptorCacheHits);
+        }
         if (end == std::string_view::npos) break;
         position = end + 1U;
     }
@@ -204,6 +222,10 @@ std::string renderCompilationTimeTraceJson(std::string_view timingOutput, int ex
            << "  \"exit_code\": " << exitCode << ",\n"
            << "  \"total_ms\": " << totalMilliseconds << ",\n"
            << "  \"peak_working_set_bytes\": " << peakWorkingSetBytes << ",\n"
+           << "  \"project_descriptor_file_reads\": "
+           << projectDescriptorFileReads << ",\n"
+           << "  \"project_descriptor_cache_hits\": "
+           << projectDescriptorCacheHits << ",\n"
            << "  \"phases\": [";
     for (std::size_t index = 0; index < phases.size(); ++index)
     {

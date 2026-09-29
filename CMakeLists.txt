@@ -274,6 +274,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectGenericModelDumper.cpp
     src/Frontend/ProjectNameLookup.cpp
     src/Frontend/ProjectNameLookupDumper.cpp
+    src/Frontend/PrecompiledMemberIdentityIndex.cpp
     src/Frontend/ProjectMemberModel.cpp
     src/Frontend/ProjectNamespaceFunctionModel.cpp
     src/Frontend/ProjectMemberModelDumper.cpp
@@ -3607,6 +3608,24 @@ if(NSC_BUILD_TESTS)
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_compilation_telemetry_tests)
     add_test(NAME nsc.compilation-telemetry COMMAND nsc_compilation_telemetry_tests)
+
+    add_executable(nsc_project_load_session_tests tests/unit/ProjectLoadSessionTests.cpp)
+    target_link_libraries(nsc_project_load_session_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_project_load_session_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_project_load_session_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_project_load_session_tests)
+    add_test(NAME nsc.project-load-session COMMAND nsc_project_load_session_tests)
+
+    add_executable(
+        nsc_precompiled_member_identity_index_tests
+        tests/unit/PrecompiledMemberIdentityIndexTests.cpp)
+    target_link_libraries(nsc_precompiled_member_identity_index_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_precompiled_member_identity_index_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_precompiled_member_identity_index_tests)
+    add_test(
+        NAME nsc.precompiled-member-identity-index
+        COMMAND nsc_precompiled_member_identity_index_tests)
 
     add_executable(
         nsc_compiler_identity_command_tests

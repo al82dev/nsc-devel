@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -28,9 +29,19 @@ struct ProjectBuildSettings final
     std::optional<std::size_t> compilerJobs;
 };
 
+struct ProjectLoaderStatistics final
+{
+    std::size_t descriptorFileReads = 0;
+    std::size_t descriptorCacheHits = 0;
+};
+
+class ProjectLoaderCache;
+
 class ProjectLoader final
 {
 public:
+    ProjectLoader();
+
     std::optional<ProjectBuildSettings> loadBuildSettings(
         const std::filesystem::path& projectFile,
         std::string& error) const;
@@ -39,5 +50,9 @@ public:
         const std::filesystem::path& projectFile,
         const ProjectLoadOptions& options,
         std::string& error) const;
+    ProjectLoaderStatistics statistics() const;
+
+private:
+    std::shared_ptr<ProjectLoaderCache> cache_;
 };
 }

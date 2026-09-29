@@ -14,6 +14,8 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -560,16 +562,20 @@ bool ProjectCompilation::compileProjectMembers(
 
     std::vector<PrecompiledMemberIdentity> precompiledMembers;
     std::vector<std::pair<std::string, std::string>> specializationTypeAliases;
+    std::unordered_map<std::string_view, const GenericSpecializationRecord*>
+        localSpecializationsByKey;
+    localSpecializationsByKey.reserve(genericModel_->specializations().size());
+    for (const GenericSpecializationRecord& specialization : genericModel_->specializations())
+        localSpecializationsByKey.emplace(
+            specialization.specializationKey, &specialization);
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
         precompiledMembers.insert(precompiledMembers.end(), module.members.begin(), module.members.end());
         for (const PrecompiledGenericSpecialization& imported : module.genericSpecializations)
         {
             if (imported.kind == GenericTemplateKind::Method) continue;
-            const auto local = std::ranges::find_if(genericModel_->specializations(), [&](const auto& candidate) {
-                return candidate.specializationKey == imported.specializationKey;
-            });
-            if (local == genericModel_->specializations().end()) continue;
+            const auto local = localSpecializationsByKey.find(imported.specializationKey);
+            if (local == localSpecializationsByKey.end()) continue;
 
             const auto typeKey = [](std::string_view templateKey, std::string_view specializedName) {
                 const std::size_t moduleSeparator = templateKey.find("::");
@@ -583,7 +589,8 @@ bool ProjectCompilation::compileProjectMembers(
                 return "type:" + std::string(templateKey.substr(0, terminalBegin)) +
                     std::string(specializedName);
             };
-            const std::string localTypeKey = typeKey(local->templateKey, local->specializedName);
+            const std::string localTypeKey =
+                typeKey(local->second->templateKey, local->second->specializedName);
             const std::string publishedTypeKey = typeKey(imported.templateKey, imported.specializedName);
             if (!localTypeKey.empty() && !publishedTypeKey.empty())
                 specializationTypeAliases.emplace_back(localTypeKey, publishedTypeKey);
