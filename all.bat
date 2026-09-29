@@ -102,7 +102,7 @@ rem      variable antes de buscar lld-link en el PATH. Si alguien llamo a `nslin
 rem      esta ventana, sin limpiarla la pasada oficial enlazaria con NSLink SIN DECIRLO. No es
 rem      hipotetico: paso, y se vio como cinco pruebas en rojo y "0 regresiones" a la vez.
 rem
-rem  10. EL PREFIJO DE INSTALACION ES UNO SOLO (C:\native-sharp). Las dos pasadas instalan ahi,
+rem  10. EL PREFIJO DE INSTALACION ES UNO SOLO (C:\native-sharp-3.0). Las dos pasadas instalan ahi,
 rem      asi que al terminar queda el nsc.exe de la pasada 2. Es correcto: salen de las mismas
 rem      fuentes. Lo que NO se comparte es lo que se mide, que son los dos arboles y los dos
 rem      directorios de logs.
@@ -118,7 +118,7 @@ pushd "%~dp0"
 if defined NSC_LLD_LINK echo [all.bat] NSC_LLD_LINK venia puesta ^(%NSC_LLD_LINK%^) -- se ignora: cada pasada fija la suya.
 if defined NSC_KEEP_LINK_TEMPS echo [all.bat] NSC_KEEP_LINK_TEMPS venia puesta -- se ignora.
 
-if not defined NS_ROOT set "NS_ROOT=C:\native-sharp"
+if not defined NS_ROOT set "NS_ROOT=C:\native-sharp-3.0"
 set "NSLINK=%NSLINK_EXE%"
 if not defined NSLINK set "NSLINK=%NS_ROOT%\bin\nslink.exe"
 

@@ -24,7 +24,7 @@ if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "LOGDIR=%ROOT%\_logs"
 set "OUT=%LOGDIR%\ENTORNO.txt"
 set "LLVMROOT=C:\clang-llvm"
-set "PREFIX=C:\native-sharp"
+set "PREFIX=C:\native-sharp-3.0"
 set "BUILDDIR=%ROOT%\build-clang"
 
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"
@@ -49,7 +49,7 @@ echo.
 echo === 2/4  Cualquier otra ruta absoluta ============================================
 >> "%OUT%" echo ==================================================================
 >> "%OUT%" echo 2. Otras rutas absolutas. Lo esperado y correcto es ver SOLO
->> "%OUT%" echo    C:\clang-llvm y C:\native-sharp, que son toolchain y prefijo de
+>> "%OUT%" echo    C:\clang-llvm y C:\native-sharp-3.0, que son toolchain y prefijo de
 >> "%OUT%" echo    instalacion y no viven en el repo. Cualquier otra cosa es un hallazgo.
 >> "%OUT%" echo ==================================================================
 call :scan "d:\"

@@ -5,7 +5,7 @@ REM ---------------------------------------------------------------------------
 REM NativeSharp -- bug triage.
 REM
 REM Builds and runs the reproducers in tests\bug_triage\ against the nsc
-REM currently installed in C:\native-sharp, and reports which reported bugs are
+REM currently installed in C:\native-sharp-3.0, and reports which reported bugs are
 REM still alive. Several were reported against compilers older than C1, C6, C7
 REM and C8, so some may already be dead.
 REM
@@ -36,7 +36,7 @@ set "BINDIR=%LOGDIR%\bin_triage"
 set "REPORT=%LOGDIR%\TRIAGE.txt"
 set "TLOG=%LOGDIR%\10_triage.log"
 set "BT=%ROOT%\tests\bug_triage"
-if not defined NS_ROOT set "NS_ROOT=C:\native-sharp"
+if not defined NS_ROOT set "NS_ROOT=C:\native-sharp-3.0"
 if not defined NSC_EXE set "NSC_EXE=%NS_ROOT%\bin\nsc.exe"
 
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"

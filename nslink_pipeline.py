@@ -30,7 +30,7 @@ COMO SUSTITUYE EL ENLAZADOR, sin recompilar el compilador
 --------------------------------------------------------
 `LldLinker::discover()` (src/Linker/LldLinker.cpp) lee `NSC_LLD_LINK` ANTES de buscar `lld-link`
 en el PATH -- su propio error lo dice: "set NSC_LLD_LINK to its executable path". Apuntarlo a
-`nslink.exe` basta. Es lo que hace `C:\\native-sharp\\bin\\nslink-env.bat`, puesto aqui por
+`nslink.exe` basta. Es lo que hace `C:\\native-sharp-3.0\\bin\\nslink-env.bat`, puesto aqui por
 trabajo en vez de en la sesion para que la corrida no dependa de que alguien llamo al .bat.
 
 QUE SE LE ENTREGA A NSLink, Y POR QUE ESO Y NO UN LOG
@@ -72,9 +72,9 @@ USO
 
 Rutas, por si no estan en su sitio por omision:
 
-    set NSC_EXE=C:\\native-sharp\\bin\\nsc.exe
-    set NSLINK_EXE=C:\\native-sharp\\bin\\nslink.exe
-    set NSLINK_SDK=C:\\native-sharp\\sdk\\win64
+    set NSC_EXE=C:\\native-sharp-3.0\\bin\\nsc.exe
+    set NSLINK_EXE=C:\\native-sharp-3.0\\bin\\nslink.exe
+    set NSLINK_SDK=C:\\native-sharp-3.0\\sdk\\win64
     set NSLINK_DEVEL=A:\\nslink-devel
 
 QUE DEJA
@@ -120,7 +120,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_NATIVE_SHARP_ROOT = Path(os.environ.get("NS_ROOT", r"C:\native-sharp"))
+DEFAULT_NATIVE_SHARP_ROOT = Path(os.environ.get("NS_ROOT", r"C:\native-sharp-3.0"))
 
 # Artefactos crudos, en ESTE repo. No es el directorio de la corrida oficial a proposito:
 # report.py construye el veredicto desde ahi y el checklist lo borra entero al arrancar.

@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 
-if not defined NS_ROOT set "NS_ROOT=C:\native-sharp"
+if not defined NS_ROOT set "NS_ROOT=C:\native-sharp-3.0"
 if not defined NSC_EXE set "NSC_EXE=%NS_ROOT%\bin\nsc.exe"
 if not defined NS_LIB_ROOT set "NS_LIB_ROOT=%NS_ROOT%\lib"
 
@@ -10,8 +10,8 @@ if not exist "%NSC_EXE%" (
     echo         %NSC_EXE%
     echo.
     echo Expected default layout:
-    echo   C:\native-sharp\bin\nsc.exe
-    echo   C:\native-sharp\lib\...
+    echo   C:\native-sharp-3.0\bin\nsc.exe
+    echo   C:\native-sharp-3.0\lib\...
     echo.
     echo You may override it before building:
     echo   set NS_ROOT=D:\path\to\native-sharp

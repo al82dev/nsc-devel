@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 
 if "%~1"=="" (
-    set "NSC=C:\native-sharp\nsc.exe"
+    set "NSC=C:\native-sharp-3.0\nsc.exe"
 ) else (
     set "NSC=%~1"
 )

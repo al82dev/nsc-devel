@@ -559,7 +559,7 @@ foreach(_nsc_install_path IN LISTS NSC_INSTALLATION_EXPECTED_PATHS)
 endforeach()
 
 # "--deploy": instala el compilador ya construido en la ruta de instalacion elegida (p. ej.
-# C:\native-sharp), junto con el arbol lib/ ENTERO -- las bibliotecas .ns
+# C:\native-sharp-3.0), junto con el arbol lib/ ENTERO -- las bibliotecas .ns
 # (NativeSharp.Core/NativeSharp.Core.Threading/NativeSharp.Core.Collections.Generic/
 # NativeSharp.Core.IO/NativeSharp.Core.Diagnostics) que la distribucion oficial todavia consume
 # via ProjectReference. Desde 1.0, nsc tambien produce y consume bibliotecas precompiladas mediante
@@ -571,12 +571,12 @@ endforeach()
 #
 # Uso, DESPUES de un build normal (cmake -B build -S . ... && cmake --build build --config
 # Release -j):
-#   cmake --install build --config Release --prefix C:\native-sharp
+#   cmake --install build --config Release --prefix C:\native-sharp-3.0
 #
 # Deja <prefix>\bin\nsc.exe y <prefix>\lib\NativeSharp.Core\..., <prefix>\lib\
 # NativeSharp.Core.Threading\..., etc. -- exactamente la forma que ya esperan como fallback fijo
-# los build.bat de examples/tutorial_NN_*/ (buscan nsc.exe bajo C:\native-sharp\<build-dir>\bin\
-# o C:\native-sharp\nsc.exe si no lo encuentran relativo al propio proyecto).
+# los build.bat de examples/tutorial_NN_*/ (buscan nsc.exe bajo C:\native-sharp-3.0\<build-dir>\bin\
+# o C:\native-sharp-3.0\nsc.exe si no lo encuentran relativo al propio proyecto).
 #
 # RPATH (solo relevante en Linux/macOS -- PE/COFF de Windows no tiene concepto de RPATH, MSVC
 # resuelve DLLs por orden de busqueda/PATH, asi que este bloque entero es un no-op ahi): por
@@ -622,7 +622,7 @@ endif()
 # Los 117 tests de mas abajo invocaban el OBJETIVO `nsc`, y CMake resuelve un objetivo al
 # binario del ARBOL DE BUILD: build-clang/bin/nsc.exe. Eso ata la bateria a un artefacto
 # intermedio en vez de al que se entrega. `cmake --install` copia ese binario a
-# C:/native-sharp/bin, y entre los dos caben una instalacion que fallo, un install que se
+# C:/native-sharp-3.0/bin, y entre los dos caben una instalacion que fallo, un install que se
 # salto, o un arbol de build rehecho despues. Lo que se mide tiene que ser lo instalado,
 # porque es lo que un proyecto de fuera va a usar.
 #
@@ -653,13 +653,13 @@ endif()
 # build. La variable es de cache: `-DNSC_TEST_COMPILER=<ruta>` manda sobre las dos ramas.
 # =====================================================================================
 set(NSC_TEST_COMPILER "" CACHE FILEPATH
-    "Ejecutable nsc que mide ctest (vacio = C:/native-sharp/bin/nsc.exe en Windows)")
+    "Ejecutable nsc que mide ctest (vacio = C:/native-sharp-3.0/bin/nsc.exe en Windows)")
 set(NSC_BOOTSTRAP_LOCK "${CMAKE_CURRENT_SOURCE_DIR}/selfhost/bootstrap/bootstrap.lock" CACHE FILEPATH
     "Lock físico del bootstrap; nscbuilder usa una copia inmutable por corrida")
 set(_nsc_test_compiler_es_ruta TRUE)
 if(NSC_TEST_COMPILER STREQUAL "")
     if(WIN32)
-        set(NSC_TEST_COMPILER "C:/native-sharp/bin/nsc.exe")
+        set(NSC_TEST_COMPILER "C:/native-sharp-3.0/bin/nsc.exe")
     else()
         set(NSC_TEST_COMPILER "$<TARGET_FILE:nsc>")
         set(_nsc_test_compiler_es_ruta FALSE)
@@ -674,7 +674,7 @@ if(_nsc_test_compiler_es_ruta AND NOT EXISTS "${NSC_TEST_COMPILER}")
     message(WARNING
         "NSC_TEST_COMPILER todavia no existe: ${NSC_TEST_COMPILER} -- los tests que lo "
         "invocan saldran `Not Run` hasta que se instale "
-        "(cmake --install <build> --prefix C:/native-sharp)")
+        "(cmake --install <build> --prefix C:/native-sharp-3.0)")
 endif()
 
 set(NSC_TEST_NSASM "" CACHE FILEPATH

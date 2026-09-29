@@ -1320,7 +1320,7 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     std::optional<std::string> linkerPath;
     if (linker == "NSLink")
     {
-        const fs::path installed = "C:/native-sharp/bin/nslink.exe";
+        const fs::path installed = "C:/native-sharp-3.0/bin/nslink.exe";
         if (fs::is_regular_file(installed)) linkerPath = installed.string();
     }
     else

@@ -44,7 +44,7 @@ import sys
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent
-PREFIJO = Path(r"C:\native-sharp")
+PREFIJO = Path(r"C:\native-sharp-3.0")
 ARBOL = RAIZ / "build-clang"
 
 # DOS PREGUNTAS DISTINTAS, Y HAY QUE PODER HACER LAS DOS.

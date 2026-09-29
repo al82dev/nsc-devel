@@ -16,7 +16,7 @@ rem ============================================================================
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "BUILDDIR=%ROOT%\build-clang"
-set "PREFIX=C:\native-sharp"
+set "PREFIX=C:\native-sharp-3.0"
 set "LLVMROOT=C:\clang-llvm"
 set "LLVM=%LLVMROOT:\=/%"
 rem --- Preflight del toolchain ------------------------------------------------------

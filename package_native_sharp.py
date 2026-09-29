@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 
-DEFAULT_PREFIX = Path(r"C:\native-sharp")
+DEFAULT_PREFIX = Path(r"C:\native-sharp-3.0")
 DEFAULT_SEVEN_ZIP = Path(r"A:\7z\7z.exe")
 DEFAULT_OUTPUT = Path("A:\\")
 
