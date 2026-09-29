@@ -112,6 +112,9 @@ public:
         std::string& error);
     bool closeDocument(const std::filesystem::path& path) noexcept;
     std::optional<DocumentSnapshot> document(const std::filesystem::path& path) const;
+    std::optional<LanguageTextEdit> formatDocument(
+        const std::filesystem::path& path,
+        DocumentFormattingOptions options = {}) const;
     std::size_t documentCount() const noexcept;
     AnalysisSnapshot analyzeProject(
         const std::filesystem::path& project,

@@ -14,6 +14,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -131,6 +132,91 @@ bool validRenameIdentifier(std::string_view name)
         "operator", "implicit", "explicit", "is", "as", "delegate", "event", "raii", "move",
         "owned", "borrowed", "var", "foreach", "in"};
     return !keywords.contains(name);
+}
+
+std::string indentation(std::uint32_t depth, DocumentFormattingOptions options)
+{
+    if (options.insertSpaces)
+        return std::string(static_cast<std::size_t>(depth) * options.tabSize, ' ');
+    return std::string(depth, '\t');
+}
+
+struct LineBraceSummary final
+{
+    std::uint32_t opens = 0;
+    std::uint32_t closes = 0;
+    bool beginsWithClose = false;
+};
+
+LineBraceSummary summarizeBraces(std::string_view line, bool& blockComment)
+{
+    LineBraceSummary result;
+    bool stringLiteral = false;
+    bool characterLiteral = false;
+    bool escaped = false;
+    bool sawToken = false;
+    for (std::size_t index = 0; index < line.size(); ++index)
+    {
+        const char value = line[index];
+        const char next = index + 1 < line.size() ? line[index + 1] : '\0';
+        if (blockComment)
+        {
+            if (value == '*' && next == '/') { blockComment = false; ++index; }
+            continue;
+        }
+        if (stringLiteral || characterLiteral)
+        {
+            if (escaped) { escaped = false; continue; }
+            if (value == '\\') { escaped = true; continue; }
+            if (stringLiteral && value == '"') stringLiteral = false;
+            if (characterLiteral && value == '\'') characterLiteral = false;
+            continue;
+        }
+        if (value == '/' && next == '/') break;
+        if (value == '/' && next == '*') { blockComment = true; ++index; continue; }
+        if (value == '"') { stringLiteral = true; sawToken = true; continue; }
+        if (value == '\'') { characterLiteral = true; sawToken = true; continue; }
+        if (std::isspace(static_cast<unsigned char>(value)) != 0) continue;
+        if (!sawToken) result.beginsWithClose = value == '}';
+        sawToken = true;
+        if (value == '{') ++result.opens;
+        if (value == '}') ++result.closes;
+    }
+    return result;
+}
+
+std::string formatDocumentText(std::string_view text, DocumentFormattingOptions options)
+{
+    options.tabSize = std::clamp(options.tabSize, 1U, 16U);
+    const std::string_view newline = text.find("\r\n") != std::string_view::npos ? "\r\n" : "\n";
+    std::string result;
+    result.reserve(text.size());
+    std::uint32_t depth = 0;
+    bool blockComment = false;
+    std::size_t offset = 0;
+    while (offset < text.size())
+    {
+        const std::size_t end = text.find('\n', offset);
+        const bool hasNewline = end != std::string_view::npos;
+        std::string_view line = text.substr(offset, (hasNewline ? end : text.size()) - offset);
+        if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+        while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) line.remove_suffix(1);
+        const std::size_t first = line.find_first_not_of(" \t");
+        if (first != std::string_view::npos)
+        {
+            const std::string_view content = line.substr(first);
+            bool scanBlockComment = blockComment;
+            const LineBraceSummary summary = summarizeBraces(content, scanBlockComment);
+            const std::uint32_t lineDepth = summary.beginsWithClose && depth > 0 ? depth - 1 : depth;
+            result += indentation(lineDepth, options);
+            result.append(content);
+            blockComment = scanBlockComment;
+            depth = summary.closes > depth + summary.opens ? 0 : depth + summary.opens - summary.closes;
+        }
+        if (hasNewline) result.append(newline);
+        offset = hasNewline ? end + 1 : text.size();
+    }
+    return result;
 }
 
 LanguageSymbolKind typeSymbolKind(frontend::NamedTypeDeclarationKind kind) noexcept
@@ -892,6 +978,19 @@ std::optional<DocumentSnapshot> LanguageService::document(
     const auto found = implementation_->documents.find(keyedPath->first);
     if (found == implementation_->documents.end()) return std::nullopt;
     return DocumentSnapshot{found->second.path, found->second.text, found->second.version};
+}
+
+std::optional<LanguageTextEdit> LanguageService::formatDocument(
+    const std::filesystem::path& path,
+    DocumentFormattingOptions options) const
+{
+    const auto snapshot = document(path);
+    if (!snapshot.has_value()) return std::nullopt;
+    std::string formatted = formatDocumentText(snapshot->text, options);
+    if (formatted == snapshot->text) return std::nullopt;
+    const auto end = utf16PositionForOffset(snapshot->text, snapshot->text.size());
+    if (!end.has_value()) return std::nullopt;
+    return LanguageTextEdit{LanguageLocation{snapshot->path, TextRange{{0, 0}, *end}}, std::move(formatted)};
 }
 
 std::size_t LanguageService::documentCount() const noexcept

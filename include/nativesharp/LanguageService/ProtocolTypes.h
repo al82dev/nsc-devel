@@ -105,6 +105,12 @@ struct LanguageTextEdit final
     std::string newText;
 };
 
+struct DocumentFormattingOptions final
+{
+    std::uint32_t tabSize = 4;
+    bool insertSpaces = true;
+};
+
 struct RenameResult final
 {
     bool allowed = false;
