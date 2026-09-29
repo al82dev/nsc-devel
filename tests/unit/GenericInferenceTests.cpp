@@ -70,9 +70,12 @@ public class Box<T>
     public Box(T value) { Value = value; }
 }
 
+public class Item { }
+
 public class Program
 {
     public static T Identity<T>(T value) { return value; }
+    public static T Make<T>() { return default(T); }
     public static T First<T>(T[] values) { return values[0]; }
     public static T Unbox<T>(Box<T> value) { return value.Value; }
     public static T Named<T>(int ignored, T value) { return value; }
@@ -90,6 +93,8 @@ public class Program
     {
         int local = 40;
         int fromLocal = Identity(local);
+        int fromExpected = Make();
+        Item nullFromExpected = Identity(null);
         long fromLiteral = Identity(2L);
         int nested = Identity(Identity(1));
         int named = Named(value: 3, ignored: 0);
@@ -168,19 +173,14 @@ public class Program
     };
 
     expectReject(
-        "ReturnOnly",
-        "class Program { static T Make<T>() { return default(T); } "
-        "static int Run() { return Make(); } }",
-        "cannot be inferred");
-    expectReject(
         "ConflictingRepeatedParameter",
         "class Program { static T Same<T>(T left, T right) { return left; } "
         "static int Run() { return Same(1, 2L); } }",
         "cannot be inferred");
     expectReject(
-        "NullHasNoInferenceType",
-        "class Item { } class Program { static T Identity<T>(T value) { return value; } "
-        "static Item Run() { return Identity(null); } }",
+        "NoExpectedType",
+        "class Program { static T Make<T>() { return default(T); } "
+        "static void Run() { var value = Make(); } }",
         "cannot be inferred");
 
     std::filesystem::remove_all(root, ignored);

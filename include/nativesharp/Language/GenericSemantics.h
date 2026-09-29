@@ -63,10 +63,15 @@ public:
     bool enter(std::string identity, std::string& error);
     void leave() noexcept;
     std::size_t count() const noexcept { return count_; }
+    std::size_t maximumDepth() const noexcept { return maximumDepth_; }
+    std::size_t maximumCount() const noexcept { return maximumCount_; }
+    std::size_t maximumObservedDepth() const noexcept { return maximumObservedDepth_; }
+    std::span<const std::string> activeStack() const noexcept { return stack_; }
 private:
     std::size_t maximumDepth_;
     std::size_t maximumCount_;
     std::size_t count_ = 0;
+    std::size_t maximumObservedDepth_ = 0;
     std::vector<std::string> stack_;
 };
 }

@@ -1,6 +1,7 @@
 #include "nativesharp/Language/GenericSemantics.h"
 
 #include <algorithm>
+#include <sstream>
 #include <unordered_set>
 
 namespace nativesharp::language
@@ -109,18 +110,42 @@ InstantiationBudget::InstantiationBudget(
 bool InstantiationBudget::enter(std::string identity, std::string& error)
 {
     error.clear();
-    if (stack_.size() >= maximumDepth_ || count_ >= maximumCount_)
+    const auto causalChain = [&]()
     {
-        error = "generic instantiation resource limit exceeded";
+        std::ostringstream stream;
+        constexpr std::size_t kMaximumReportedFrames = 12;
+        const std::size_t begin = stack_.size() > kMaximumReportedFrames
+            ? stack_.size() - kMaximumReportedFrames : 0;
+        if (begin != 0) stream << "... -> ";
+        for (std::size_t index = begin; index < stack_.size(); ++index)
+        {
+            if (index != begin) stream << " -> ";
+            stream << stack_[index];
+        }
+        if (!stack_.empty()) stream << " -> ";
+        stream << identity;
+        return stream.str();
+    };
+    if (stack_.size() >= maximumDepth_)
+    {
+        error = "generic instantiation depth limit (" + std::to_string(maximumDepth_) +
+            ") exceeded; causal chain: " + causalChain();
+        return false;
+    }
+    if (count_ >= maximumCount_)
+    {
+        error = "generic instantiation count limit (" + std::to_string(maximumCount_) +
+            ") exceeded; causal chain: " + causalChain();
         return false;
     }
     if (std::ranges::find(stack_, identity) != stack_.end())
     {
-        error = "recursive generic instantiation: " + identity;
+        error = "recursive generic instantiation; causal chain: " + causalChain();
         return false;
     }
     stack_.push_back(std::move(identity));
     ++count_;
+    maximumObservedDepth_ = std::max(maximumObservedDepth_, stack_.size());
     return true;
 }
 

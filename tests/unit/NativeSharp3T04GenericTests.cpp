@@ -44,10 +44,21 @@ int main()
         "specialization selection requires a demonstrable strict subset ordering");
     InstantiationBudget budget(2, 3);
     tests.expect(budget.enter("A<int>", error) && budget.enter("B<int>", error) &&
-            !budget.enter("C<int>", error),
-        "generic instantiation depth has a deterministic budget");
+            !budget.enter("C<int>", error) &&
+            error.find("depth limit (2)") != std::string::npos &&
+            error.find("A<int> -> B<int> -> C<int>") != std::string::npos &&
+            budget.maximumObservedDepth() == 2,
+        "generic instantiation depth has a deterministic budget and causal chain");
     budget.leave();
-    tests.expect(!budget.enter("A<int>", error),
+    tests.expect(!budget.enter("A<int>", error) &&
+            error.find("recursive generic instantiation") != std::string::npos,
         "direct or indirect recursive instantiation reports a compact stable cause");
+    budget.leave();
+    tests.expect(budget.enter("C<int>", error),
+        "a specialization inside the count budget is accepted");
+    budget.leave();
+    tests.expect(!budget.enter("D<int>", error) &&
+            error.find("count limit (3)") != std::string::npos,
+        "generic instantiation count has an independent deterministic budget");
     return tests.result();
 }

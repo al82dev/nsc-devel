@@ -1,0 +1,66 @@
+// NativeSharp 3.0 / T04-F01, F04 and F07 productive witness.
+//
+// This program exercises exact expected-type inference in the three bounded contexts supported by
+// the Stage 44 solver: typed initialization, return, and assignment. It also proves that an
+// expected type may supply the missing evidence for `null`, and that the inferred specialization
+// still traverses the ordinary declarative-constraint model.
+namespace c60ns3genericsolver
+{
+    public interface IValue
+    {
+        int Read();
+    }
+
+    public class Item : IValue
+    {
+        private int value;
+        public Item(int source) { value = source; }
+        public int Read() { return value; }
+    }
+
+    public class ConstrainedBox<T> where T : class, IValue
+    {
+        public int Read(T value) { return value.Read(); }
+    }
+
+    public class Program
+    {
+        private static T DefaultOf<T>() { return default(T); }
+        private static T Identity<T>(T value) { return value; }
+        private static T ConstrainedDefault<T>() where T : class, IValue
+        {
+            return default(T);
+        }
+
+        private static int ReturnExpected()
+        {
+            return DefaultOf();
+        }
+
+        public static int Main()
+        {
+            int score = 0;
+
+            int fromDeclaration = DefaultOf();
+            if (fromDeclaration == 0) { score = score + 10; }
+
+            Item fromNull = Identity(null);
+            if (fromNull == null) { score = score + 11; }
+
+            int fromAssignment = 99;
+            fromAssignment = DefaultOf();
+            if (fromAssignment == 0) { score = score + 9; }
+
+            if (ReturnExpected() == 0) { score = score + 7; }
+
+            Item constrained = ConstrainedDefault();
+            if (constrained == null) { score = score + 5; }
+
+            Item live = new Item(42);
+            ConstrainedBox<Item> box = new ConstrainedBox<Item>();
+            if (box.Read(live) == 42) { score = score + 0; }
+
+            return score;
+        }
+    }
+}

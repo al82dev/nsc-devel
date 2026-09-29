@@ -653,6 +653,16 @@ const GenericSpecializationRecord* ProjectGenericModel::specializationForTypeKey
     return found == specializations_.end() ? nullptr : &*found;
 }
 
+GenericInstantiationReport ProjectGenericModel::instantiationReport() const noexcept
+{
+    return GenericInstantiationReport{
+        instantiationBudget_.count(),
+        instantiationCacheHitCount_,
+        instantiationBudget_.maximumObservedDepth(),
+        instantiationBudget_.maximumDepth(),
+        instantiationBudget_.maximumCount()};
+}
+
 bool ProjectGenericModel::isBuilt() const noexcept
 {
     return built_;
@@ -839,6 +849,18 @@ void ProjectGenericModel::processNode(
         }
     }
 
+    // A concrete callable contributes the expected type for direct return expressions. Capture
+    // it before processTypeSyntax replaces closed generic source spellings with physical names.
+    // Open templates are skipped below and their concrete clones establish their own scope.
+    if ((node->kind() == ast::AstNodeKind::MethodDeclaration ||
+         node->kind() == ast::AstNodeKind::FunctionDeclaration) &&
+        node->typeSyntax() != nullptr)
+    {
+        bool conflict = false;
+        currentScope.expectedReturnType =
+            cloneAliasType(unit.arena(), node->typeSyntax(), {}, conflict);
+    }
+
     // Parameters and fields are visible throughout their containing method/type regardless of
     // textual order.  Snapshot their source spelling before processTypeSyntax replaces closed
     // generic uses with generated physical names; inference needs the original structure.
@@ -874,6 +896,18 @@ void ProjectGenericModel::processNode(
     }
     if (templateNode || insideTemplate) return;
 
+    // The declaration type is contextual evidence for its initializer. Keep the readable,
+    // structural spelling before materialization rewrites this node in place.
+    ast::TypeSyntax* declarationExpectedType = nullptr;
+    if (node->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
+        node->typeSyntax() != nullptr &&
+        node->typeSyntax()->baseTokenKind() != lexer::TokenKind::KwVar)
+    {
+        bool conflict = false;
+        declarationExpectedType =
+            cloneAliasType(unit.arena(), node->typeSyntax(), {}, conflict);
+    }
+
     if (node->typeSyntax() != nullptr)
     {
         processTypeSyntax(unit, node->typeSyntax(), currentNamespace, currentScope, diagnostics);
@@ -894,6 +928,35 @@ void ProjectGenericModel::processNode(
         {
             processTypeSyntax(unit, syntax, currentNamespace, currentScope, diagnostics);
         }
+    }
+
+    // Bidirectional inference is deliberately bounded to contexts with one exact expected type.
+    // It does not search arbitrary conversions and therefore cannot turn overload resolution into
+    // an exponential solver. The ordinary semantic model still validates the final conversion.
+    ast::AstNode* contextualCall = nullptr;
+    const ast::TypeSyntax* contextualType = nullptr;
+    if (node->kind() == ast::AstNodeKind::VariableDeclarationStatement)
+    {
+        contextualCall = node->first();
+        contextualType = declarationExpectedType;
+    }
+    else if (node->kind() == ast::AstNodeKind::ReturnStatement)
+    {
+        contextualCall = node->first();
+        contextualType = currentScope.expectedReturnType;
+    }
+    else if (node->kind() == ast::AstNodeKind::AssignmentExpression)
+    {
+        contextualCall = node->second();
+        contextualType = inferExpressionType(unit, node->first(), currentScope);
+    }
+    if (contextualCall != nullptr && contextualType != nullptr &&
+        contextualCall->kind() == ast::AstNodeKind::CallExpression &&
+        contextualCall->typeSyntaxes().empty())
+    {
+        inferGenericCall(
+            unit, contextualCall, currentNamespace, ownerName, currentScope, diagnostics,
+            contextualType);
     }
     const auto processChild = [&](ast::AstNode* child)
     {
@@ -1253,7 +1316,8 @@ bool ProjectGenericModel::inferGenericCall(
     const std::string& namespaceName,
     const std::string& ownerName,
     const GenericLookupScope& scope,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ast::TypeSyntax* expectedType)
 {
     if (call == nullptr || call->kind() != ast::AstNodeKind::CallExpression ||
         !call->typeSyntaxes().empty()) return true;
@@ -1287,7 +1351,7 @@ bool ProjectGenericModel::inferGenericCall(
     {
         if (argument == nullptr || argument->kind() != ast::AstNodeKind::CallExpression ||
             !argument->typeSyntaxes().empty()) continue;
-        inferGenericCall(unit, argument, namespaceName, ownerName, scope, diagnostics);
+        inferGenericCall(unit, argument, namespaceName, ownerName, scope, diagnostics, nullptr);
         if (!argument->typeSyntaxes().empty())
             processGenericCall(unit, argument, namespaceName, ownerName, scope, diagnostics);
     }
@@ -1376,9 +1440,17 @@ bool ProjectGenericModel::inferGenericCall(
         {
             ast::TypeSyntax* actual = inferExpressionType(unit, call->children()[index], scope);
             const ast::TypeSyntax* pattern = parameters[*mapping[index]]->typeSyntax();
-            viable = inferTypeArguments(
-                unit, pattern, actual, genericParameters, inferred);
+            // `null`, an unresolved member, or another expression without a local type supplies no
+            // evidence. It is not a contradiction: an exact expected result may still infer T.
+            if (actual != nullptr)
+            {
+                viable = inferTypeArguments(
+                    unit, pattern, actual, genericParameters, inferred);
+            }
         }
+        if (viable && expectedType != nullptr && candidate->syntax->typeSyntax() != nullptr)
+            viable = inferTypeArguments(
+                unit, candidate->syntax->typeSyntax(), expectedType, genericParameters, inferred);
         if (!viable || inferred.size() != candidate->record.parameters.size()) continue;
         Inference success;
         success.candidate = candidate;
@@ -1397,7 +1469,8 @@ bool ProjectGenericModel::inferGenericCall(
             diagnostics::DiagnosticSeverity::Error,
             call->range(),
             "type arguments for generic method '" + methodName +
-                "' cannot be inferred from the local call arguments; write them explicitly");
+                "' cannot be inferred from the local call arguments or exact expected type; "
+                "write them explicitly");
         return false;
     }
     const std::size_t bestSpecificity = std::ranges::max_element(
@@ -1826,7 +1899,28 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     const std::string key = keyBuilder.str();
     if (const auto found = specializationByKey_.find(key); found != specializationByKey_.end())
     {
+        ++instantiationCacheHitCount_;
         return specializations_[found->second].specializedName;
+    }
+
+    if (state.unit == nullptr || state.parent == nullptr || state.syntax == nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            state.syntax != nullptr ? state.syntax->range() : SourceRange{},
+            "Stage 44 generic type template has no materialization parent");
+        return {};
+    }
+    std::string budgetError;
+    if (!instantiationBudget_.enter(key, budgetError))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            currentInstantiationRange_,
+            budgetError);
+        return {};
     }
 
     std::string specializedName = state.record.name + "__g" + std::to_string(arguments.size());
@@ -1852,16 +1946,6 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
     for (std::size_t index = 0; index < state.record.parameters.size(); ++index)
         substitutions.emplace(state.record.parameters[index], arguments[index]);
-
-    if (state.unit == nullptr || state.parent == nullptr || state.syntax == nullptr)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidType,
-            diagnostics::DiagnosticSeverity::Error,
-            state.syntax != nullptr ? state.syntax->range() : SourceRange{},
-            "Stage 44 generic type template has no materialization parent");
-        return {};
-    }
 
     ast::AstNode* clone = cloneNode(
         state.unit->arena(), state.syntax, substitutions, specializedName, state.record.name);
@@ -1890,6 +1974,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     currentInstantiationNamespace_ = callerNamespace;
     currentInstantiationRange_ = callerRange;
     currentOverloadGroup_ = callerOverloadGroup;
+    instantiationBudget_.leave();
     return specializedName;
 }
 
@@ -1924,7 +2009,30 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     keyBuilder << '>';
     const std::string key = keyBuilder.str();
     if (const auto found = specializationByKey_.find(key); found != specializationByKey_.end())
+    {
+        ++instantiationCacheHitCount_;
         return specializations_[found->second].specializedName;
+    }
+
+    if (state.unit == nullptr || state.parent == nullptr || state.syntax == nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            state.syntax != nullptr ? state.syntax->range() : SourceRange{},
+            "Stage 44 generic method template has no materialization parent");
+        return {};
+    }
+    std::string budgetError;
+    if (!instantiationBudget_.enter(key, budgetError))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error,
+            currentInstantiationRange_,
+            budgetError);
+        return {};
+    }
 
     // ID 132, segunda mitad. `sharedName` no esta vacio cuando VARIAS plantillas comparten nombre
     // y aridad generica: todas se especializan con EL MISMO nombre, y a partir de ahi dejan de ser
@@ -1969,16 +2077,6 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     for (std::size_t index = 0; index < state.record.parameters.size(); ++index)
         substitutions.emplace(state.record.parameters[index], arguments[index]);
 
-    if (state.unit == nullptr || state.parent == nullptr || state.syntax == nullptr)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidType,
-            diagnostics::DiagnosticSeverity::Error,
-            state.syntax != nullptr ? state.syntax->range() : SourceRange{},
-            "Stage 44 generic method template has no materialization parent");
-        return {};
-    }
-
     ast::AstNode* clone = cloneNode(state.unit->arena(), state.syntax, substitutions, "", "");
     clone->setText(specializedName);
     clone->clearGenericParameters();
@@ -1992,6 +2090,7 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     currentInstantiationNamespace_ = callerNamespace;
     currentInstantiationRange_ = callerRange;
     currentOverloadGroup_ = callerOverloadGroup;
+    instantiationBudget_.leave();
     return specializedName;
 }
 

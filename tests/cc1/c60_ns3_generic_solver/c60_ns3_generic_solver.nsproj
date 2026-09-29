@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>c60_ns3_generic_solver</Name>
+    <Language>3</Language>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

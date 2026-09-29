@@ -824,6 +824,15 @@ int main(int argc, char** argv)
         "tests/cc1/c59_ns3_variants/c59_ns3_variants.nsproj",
         "cc1-c59-ns3-variants", 42);
 
+    // NativeSharp 3.0 T04-F01/F04/F07 productive slice. Exact expected types infer generic calls
+    // in typed initializers, returns and assignments (including null); inferred arguments still
+    // traverse declarative constraints; the same materializer publishes deterministic budget and
+    // cache statistics. Resource-limit negatives are kept as directed probes, not this fixture.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c60_ns3_generic_solver/c60_ns3_generic_solver.nsproj",
+        "cc1-c60-ns3-generic-solver", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,

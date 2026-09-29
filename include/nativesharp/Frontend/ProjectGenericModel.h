@@ -6,6 +6,7 @@
 #include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
+#include "nativesharp/Language/GenericSemantics.h"
 
 #include <cstddef>
 #include <optional>
@@ -132,9 +133,21 @@ struct PrecompiledGenericSpecialization final
     bool hasConcreteDeclaration = false;
 };
 
+struct GenericInstantiationReport final
+{
+    std::size_t materializedCount = 0;
+    std::size_t cacheHitCount = 0;
+    std::size_t maximumObservedDepth = 0;
+    std::size_t maximumDepth = 0;
+    std::size_t maximumCount = 0;
+};
+
 class ProjectGenericModel final
 {
 public:
+    static constexpr std::size_t DefaultMaximumInstantiationDepth = 64;
+    static constexpr std::size_t DefaultMaximumInstantiationCount = 16384;
+
     bool build(
         const compilation::ProjectGraph& graph,
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
@@ -145,6 +158,7 @@ public:
     std::span<const GenericSpecializationRecord> specializations() const noexcept;
     const GenericSpecializationRecord* specializationForTypeKey(
         std::string_view typeKey) const noexcept;
+    GenericInstantiationReport instantiationReport() const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -242,6 +256,9 @@ private:
         // Item 277. Types written on parameters, fields, and preceding locals are sufficient for
         // local generic inference without running a second semantic pipeline before Stage 44.
         std::unordered_map<std::string, const ast::TypeSyntax*> valueTypes;
+        // Return type before closed generic spellings are rewritten. It provides expected-type
+        // evidence to a direct generic call in a return statement.
+        const ast::TypeSyntax* expectedReturnType = nullptr;
     };
 
     bool expandAliasesInNode(
@@ -294,7 +311,8 @@ private:
         const std::string& namespaceName,
         const std::string& ownerName,
         const GenericLookupScope& scope,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ast::TypeSyntax* expectedType = nullptr);
 
     ast::TypeSyntax* inferExpressionType(
         ProjectSyntaxUnit& unit,
@@ -437,6 +455,9 @@ private:
     // NSC-LIMIT-007. El grupo de sobrecargas que se esta materializando, o 0 fuera de uno.
     std::size_t currentOverloadGroup_ = 0;
     std::size_t nextOverloadGroup_ = 0;
+    language::InstantiationBudget instantiationBudget_{
+        DefaultMaximumInstantiationDepth, DefaultMaximumInstantiationCount};
+    std::size_t instantiationCacheHitCount_ = 0;
 };
 
 const char* genericTemplateKindName(GenericTemplateKind kind) noexcept;

@@ -9,8 +9,14 @@ namespace nativesharp::frontend
 std::string ProjectGenericModelDumper::dump(const ProjectGenericModel& model)
 {
     std::ostringstream output;
+    const GenericInstantiationReport report = model.instantiationReport();
     output << "project.generics templates=" << model.templates().size()
-           << " specializations=" << model.specializations().size() << '\n';
+           << " specializations=" << model.specializations().size()
+           << " materialized=" << report.materializedCount
+           << " cache-hits=" << report.cacheHitCount
+           << " maximum-depth=" << report.maximumObservedDepth
+           << " depth-limit=" << report.maximumDepth
+           << " count-limit=" << report.maximumCount << '\n';
     for (const GenericTemplateRecord& record : model.templates())
     {
         output << "template " << genericTemplateKindName(record.kind)
