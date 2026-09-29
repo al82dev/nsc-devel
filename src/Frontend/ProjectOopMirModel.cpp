@@ -1531,6 +1531,16 @@ bool ProjectOopMirModel::build(
     return true;
 }
 
+void ProjectOopMirModel::setLanguageEdition(language::LanguageEdition edition) noexcept
+{
+    languageEdition_ = edition;
+}
+
+language::LanguageEdition ProjectOopMirModel::languageEdition() const noexcept
+{
+    return languageEdition_;
+}
+
 std::span<const ProjectOopMirFunction> ProjectOopMirModel::functions() const noexcept
 {
     return functions_;

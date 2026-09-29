@@ -1,8 +1,8 @@
 # NativeSharp 3.0 — Tanda 00: Constitución del lenguaje
 
-> **Reclasificación 2026-09-29:** `IMPLEMENTING`. La edición está conectada al frontend, pero stages,
-> effects y conformidad todavía no gobiernan el pipeline completo. Véase
-> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+> **Reclasificación 2026-09-29:** `TARGETED-GREEN`, pendiente del baseline integral de Alberto. La conexión
+> productiva de edición, etapas, categorías, efectos, NSMETA, cache, LSP y conformidad se cerró en
+> [TANDA-04-CONSTITUCION-EJECUTABLE-T00.md](TANDA-04-CONSTITUCION-EJECUTABLE-T00.md).
 
 Estado técnico: implementación de T00. Plataforma normativa: Windows x64. Política de pruebas: `-O0` para productos NativeSharp. Esta tanda no introduce sintaxis 3.0; fija los contratos que las tandas siguientes deben respetar.
 
@@ -128,9 +128,10 @@ Las características 3.0 ya no tendrán que inventar por separado su versión de
 
 ## Validación de cierre
 
-- `nsc_ns3_t00_constitution_tests`: compilado y aprobado, 26/26 checks.
+- `nsc_ns3_t00_constitution_tests`: compilado y aprobado, 31/31 checks.
 - `tools/ns3_conformance.py --self-test`: aprobado, 5/5 checks.
+- dos manifests normativos ejecutados contra el `nsc.exe` O0 construido: 2/2.
 - target `nsc`: compilado correctamente.
-- `nsc --version`: identidad pública `3.0.0` comprobada.
-- `NSC_BUILD_TESTS` se restauró a `OFF` después de construir la prueba dirigida.
+- identidad pública `3.0.0` comprobada.
+- `NSC_BUILD_TESTS` se restauró a `OFF` después de las pruebas dirigidas.
 - No se ejecutó baseline general ni CTest completo.

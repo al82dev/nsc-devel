@@ -68,6 +68,28 @@ bool ProjectGraph::addPrecompiledProjects(
     std::unordered_map<std::string, std::size_t> descriptorByPath;
     for (const PrecompiledProjectDescriptor& descriptor : descriptors)
     {
+        const std::string ownerKey = foldedPath(descriptor.ownerProjectFile);
+        const auto owner = std::ranges::find_if(projects_, [&](const Project& project) {
+            return foldedPath(project.projectFile()) == ownerKey;
+        });
+        if (owner == projects_.end())
+        {
+            error = "precompiled metadata '" + descriptor.metadataPath.generic_string() +
+                "' names an unknown owner project '" +
+                descriptor.ownerProjectFile.generic_string() + "'";
+            return false;
+        }
+        if (owner->languageEdition() != descriptor.languageEdition)
+        {
+            error = "NS3001: project '" + owner->moduleName() +
+                "' uses language edition " +
+                std::string(language::languageEditionName(owner->languageEdition())) +
+                " but imports precompiled module '" + descriptor.moduleName +
+                "' using language edition " +
+                std::string(language::languageEditionName(descriptor.languageEdition)) +
+                "; mixed editions are not allowed inside one module graph";
+            return false;
+        }
         const std::string metadataKey = foldedPath(descriptor.metadataPath);
         const auto existing = descriptorByPath.find(metadataKey);
         if (existing != descriptorByPath.end())
@@ -144,7 +166,7 @@ bool ProjectGraph::addPrecompiledProjects(
             std::move(peerMetadata),
             std::vector<LibraryReference>{},
             std::vector<SdkManifest>{},
-            projects_.back().languageEdition());
+            descriptor.languageEdition);
     }
     for (const Project& project : projects_)
     {

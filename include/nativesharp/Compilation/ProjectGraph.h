@@ -14,6 +14,7 @@ struct PrecompiledProjectDescriptor final
     std::filesystem::path ownerProjectFile;
     std::filesystem::path metadataPath;
     std::string moduleName;
+    language::LanguageEdition languageEdition = language::LanguageEdition::V2;
 };
 
 class ProjectGraph final

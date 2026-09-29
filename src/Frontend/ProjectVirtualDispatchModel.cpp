@@ -209,7 +209,7 @@ bool ProjectVirtualDispatchModel::buildClass(
                     diagnostics::DiagnosticId::InvalidOverride,
                     diagnostics::DiagnosticSeverity::Error,
                     method.range,
-                    "override method '" + method.signatureKey +
+                    "NS3030: override method '" + method.signatureKey +
                         "' cannot drop the inherited noheap contract");
                 ok = false;
                 continue;

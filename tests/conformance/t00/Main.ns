@@ -1,0 +1,4 @@
+public int Answer()
+{
+    return 42;
+}

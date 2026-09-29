@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Language/LanguageEdition.h"
+
 #include "nativesharp/Frontend/InliningPolicy.h"
 
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
@@ -724,6 +726,8 @@ struct ProjectOopMirInterfaceBinding final
 class ProjectOopMirModel final
 {
 public:
+    void setLanguageEdition(language::LanguageEdition edition) noexcept;
+    language::LanguageEdition languageEdition() const noexcept;
     bool build(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
@@ -791,6 +795,7 @@ private:
     std::vector<ProjectOopMirGenericSpecialization> genericSpecializations_;
     std::vector<ProjectOopMirInterfaceBinding> interfaceBindings_;
     bool built_ = false;
+    language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };
 
 const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept;

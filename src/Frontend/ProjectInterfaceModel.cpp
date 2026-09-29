@@ -394,7 +394,7 @@ bool ProjectInterfaceModel::visitInterface(
                     diagnostics::DiagnosticId::InvalidOverride,
                     diagnostics::DiagnosticSeverity::Error,
                     method.range,
-                    "interface method '" + method.signatureKey +
+                    "NS3030: interface method '" + method.signatureKey +
                         "' cannot drop the inherited noheap contract");
                 ok = false;
             }
@@ -509,7 +509,7 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
                         diagnostics::DiagnosticId::InvalidOverride,
                         diagnostics::DiagnosticSeverity::Error,
                         memberModel_->members()[*implementation].range,
-                        "method '" + memberModel_->members()[*implementation].signatureKey +
+                        "NS3030: method '" + memberModel_->members()[*implementation].signatureKey +
                             "' cannot implement noheap interface contract '" +
                             interfaceMethod.signatureKey + "' without noheap");
                     ok = false;

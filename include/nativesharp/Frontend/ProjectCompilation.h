@@ -15,6 +15,7 @@
 #include "nativesharp/Frontend/ProjectVirtualDispatchModel.h"
 #include "nativesharp/Frontend/ProjectDestructionModel.h"
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
+#include "nativesharp/Frontend/CompilationStage.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
@@ -42,6 +43,7 @@ struct PrecompiledSyntaxModule final
     std::string templateSourceText;
     std::vector<PrecompiledMemberIdentity> members;
     std::vector<PrecompiledGenericSpecialization> genericSpecializations;
+    language::LanguageEdition languageEdition = language::LanguageEdition::V2;
 };
 
 class ProjectCompilation final
@@ -91,6 +93,8 @@ public:
     bool compileProjectObjectLayouts(const std::filesystem::path& projectFile, std::string& loadError);
     bool compileProjectOopHir(const std::filesystem::path& projectFile, std::string& loadError);
     bool compileProjectOopMir(const std::filesystem::path& projectFile, std::string& loadError);
+    bool completeCodeGeneration(std::string& error);
+    std::span<const CompilationStage> completedStages() const noexcept;
 
     const compilation::ProjectGraph* projectGraph() const noexcept;
     const source::SourceManager& sourceManager() const noexcept;
@@ -115,6 +119,7 @@ public:
 private:
     bool cancellationRequested(std::string& loadError, std::string_view nextPhase) const;
     bool compileSyntaxCore(const std::filesystem::path& projectFile, std::string& loadError);
+    bool enterStage(CompilationStage stage, std::string& error);
 
     std::optional<compilation::ProjectGraph> projectGraph_;
     std::vector<PrecompiledSyntaxModule> precompiledModules_;
@@ -144,5 +149,6 @@ private:
     std::function<void(const basic::CompilationEvent&)> progressSink_;
     compilation::ProjectLoadOptions projectLoadOptions_;
     std::size_t compilationJobs_ = 1;
+    CompilationStageTracker stageTracker_;
 };
 }

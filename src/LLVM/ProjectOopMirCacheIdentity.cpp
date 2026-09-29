@@ -318,7 +318,8 @@ std::string projectOopMirCacheIdentity(
     std::span<const std::size_t> declarationOrdinals)
 {
     IdentityWriter output;
-    output.text("NativeSharp.ProjectOopMirCacheIdentity.v1");
+    output.text("NativeSharp.ProjectOopMirCacheIdentity.v2");
+    output.text(language::languageEditionFingerprint(model.languageEdition()));
     writeCommonModel(output, model);
     output.scalar(declarationOrdinals.size());
     for (const std::size_t ordinal : declarationOrdinals)

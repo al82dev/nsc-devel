@@ -5,6 +5,8 @@
 #include "nativesharp/Diagnostics/DiagnosticRenderer.h"
 #include "nativesharp/Frontend/CompilationStage.h"
 #include "nativesharp/Frontend/FrontendCompilation.h"
+#include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Sema/EffectContext.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
@@ -12,6 +14,7 @@
 
 #include "../support/TestContext.h"
 
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -102,6 +105,29 @@ int main()
     tests.expect(compilation::ProjectGraphLoader().load(compatibleRoot, error).has_value(),
         "project graph accepts one explicit edition");
 
+    auto mixedMetadataGraph = compilation::ProjectGraphLoader().load(edition3Project, error);
+    const std::array mixedMetadata = {
+        compilation::PrecompiledProjectDescriptor{
+            edition3Project,
+            root / "LegacyEdition2.nsmeta",
+            "LegacyEdition2",
+            LanguageEdition::V2}};
+    tests.expect(mixedMetadataGraph.has_value() &&
+            !mixedMetadataGraph->addPrecompiledProjects(mixedMetadata, error) &&
+            error.find("NS3001") != std::string::npos,
+        "project graph rejects precompiled metadata from another edition with stable NS3001");
+    auto alignedMetadataGraph = compilation::ProjectGraphLoader().load(edition3Project, error);
+    const std::array alignedMetadata = {
+        compilation::PrecompiledProjectDescriptor{
+            edition3Project,
+            root / "Edition3.nsmeta",
+            "Edition3Metadata",
+            LanguageEdition::V3}};
+    tests.expect(alignedMetadataGraph.has_value() &&
+            alignedMetadataGraph->addPrecompiledProjects(alignedMetadata, error) &&
+            alignedMetadataGraph->projects().front().languageEdition() == LanguageEdition::V3,
+        "precompiled project nodes preserve their published language edition");
+
     frontend::FrontendCompilation frontend2(LanguageEdition::V2);
     frontend::FrontendCompilation frontend3(LanguageEdition::V3);
     tests.expect(frontend2.compileBuffer("same-v2.ns", "int Answer() { return 42; }", false),
@@ -111,6 +137,39 @@ int main()
     tests.expect(frontend2.languageEdition() == LanguageEdition::V2 &&
             frontend3.languageEdition() == LanguageEdition::V3,
         "frontend compilation unit retains its edition");
+
+    frontend::ProjectCompilation productivePipeline;
+    productivePipeline.setCompilationJobs(2);
+    error.clear();
+    const bool productiveMir = productivePipeline.compileProjectOopMir(edition3Project, error);
+    constexpr std::array productiveStages = {
+        frontend::CompilationStage::Parse,
+        frontend::CompilationStage::Binding,
+        frontend::CompilationStage::TypeChecking,
+        frontend::CompilationStage::Comptime,
+        frontend::CompilationStage::Mir,
+        frontend::CompilationStage::Monomorphization,
+    };
+    tests.expect(productiveMir &&
+            std::ranges::equal(productivePipeline.completedStages(), productiveStages),
+        "the production project pipeline records every frontend stage in normative order: " + error);
+    error.clear();
+    tests.expect(productiveMir && productivePipeline.completeCodeGeneration(error) &&
+            productivePipeline.completedStages().size() == productiveStages.size() + 1U,
+        "the production codegen boundary completes the normative stage sequence: " + error);
+
+    interop::LibraryMetadataCodec metadataCodec;
+    interop::LibraryMetadata writtenMetadata;
+    const std::filesystem::path metadataPath = root / "Edition3.nsmeta";
+    error.clear();
+    const bool metadataWritten = productiveMir && metadataCodec.write(
+        productivePipeline, metadataPath, writtenMetadata, error);
+    interop::LibraryMetadata decodedMetadata;
+    const bool metadataRead = metadataWritten &&
+        metadataCodec.read(metadataPath, decodedMetadata, error);
+    tests.expect(metadataRead && writtenMetadata.languageEdition == 3U &&
+            decodedMetadata.languageEdition == 3U,
+        "NSMETA round-trip preserves language edition 3: " + error);
 
     frontend::CompilationStageTracker stages;
     tests.expect(!stages.enter(frontend::CompilationStage::Binding, error) &&

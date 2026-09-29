@@ -50,7 +50,7 @@ void SemanticDumper::dumpNode(
         if (expression != nullptr)
         {
             output << " : " << expression->type->displayName();
-            output << (expression->category == ValueCategory::LValue ? " lvalue" : " rvalue");
+            output << " " << valueCategoryName(expression->category);
             if (expression->modifiable)
             {
                 output << " modifiable";

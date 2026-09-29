@@ -2,6 +2,8 @@
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 
+#include "nativesharp/Sema/EffectContext.h"
+
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
@@ -1627,7 +1629,7 @@ bool ProjectOopHirModel::buildImpl(
                 if (!initializerBinding->selectedEntryConstructorMemberOrdinal.has_value() ||
                     *initializerBinding->selectedEntryConstructorMemberOrdinal >= memberModel.members().size())
                 {
-                    error = "noheap constructor '" + member.signatureKey +
+                    error = "NS3030: noheap constructor '" + member.signatureKey +
                         "' cannot call an implicit constructor without a noheap contract";
                     return false;
                 }
@@ -1635,7 +1637,7 @@ bool ProjectOopHirModel::buildImpl(
                     *initializerBinding->selectedEntryConstructorMemberOrdinal];
                 if (!selectedConstructor.isNoHeap)
                 {
-                    error = "noheap constructor '" + member.signatureKey +
+                    error = "NS3030: noheap constructor '" + member.signatureKey +
                         "' cannot call non-noheap constructor '" +
                         selectedConstructor.signatureKey + "'";
                     return false;
@@ -1843,7 +1845,7 @@ bool ProjectOopHirModel::buildImpl(
             if (const ProjectOopHirNode* allocation =
                     firstUnpromotedObjectConstruction(function.body.get()))
             {
-                error = "noheap callable '" + member.name +
+                error = "NS3030: noheap callable '" + member.name +
                     "' cannot contain direct heap allocation '" +
                     std::string(projectOopHirNodeKindName(allocation->kind)) + "'";
                 return false;
@@ -3121,6 +3123,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
 {
     std::unique_ptr<ProjectOopHirNode> lowered =
         lowerExpressionImpl(expression, memberOrdinal, addressContext, error);
+    const ClassMemberSymbol* activeMember = memberModel_ != nullptr &&
+            memberOrdinal < memberModel_->members().size()
+        ? &memberModel_->members()[memberOrdinal]
+        : nullptr;
+    const sema::EffectContext effects(activeMember != nullptr && activeMember->isNoHeap
+        ? sema::EffectSet(sema::Effect::NoHeap)
+        : sema::EffectSet{});
     const auto directlyAllocatesHeap = [](ProjectOopHirNodeKind kind) noexcept
     {
         switch (kind)
@@ -3138,20 +3147,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 return false;
         }
     };
-    if (lowered != nullptr && memberModel_ != nullptr &&
-        memberOrdinal < memberModel_->members().size() &&
-        memberModel_->members()[memberOrdinal].isNoHeap && directlyAllocatesHeap(lowered->kind))
+    if (lowered != nullptr && effects.allows(sema::Effect::NoHeap) &&
+        directlyAllocatesHeap(lowered->kind))
     {
-        error = "noheap callable '" + memberModel_->members()[memberOrdinal].name +
+        error = "NS3030: noheap callable '" + activeMember->name +
             "' cannot contain direct heap allocation '" +
             std::string(projectOopHirNodeKindName(lowered->kind)) + "'";
         lowered.reset();
     }
-    if (lowered != nullptr && memberModel_ != nullptr &&
-        memberOrdinal < memberModel_->members().size() &&
-        memberModel_->members()[memberOrdinal].isNoHeap)
+    if (lowered != nullptr && effects.allows(sema::Effect::NoHeap))
     {
-        const ClassMemberSymbol& caller = memberModel_->members()[memberOrdinal];
+        const ClassMemberSymbol& caller = *activeMember;
         const MethodCallBinding* call = callBinding(expression);
         if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
             call->selectedMemberOrdinal.has_value() &&
@@ -3160,7 +3166,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             const ClassMemberSymbol& callee = memberModel_->members()[*call->selectedMemberOrdinal];
             if (!callee.isNoHeap)
             {
-                error = "noheap callable '" + caller.signatureKey +
+                error = "NS3030: noheap callable '" + caller.signatureKey +
                     "' cannot call non-noheap callable '" + callee.signatureKey + "'";
                 lowered.reset();
             }
@@ -3169,7 +3175,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             (lowered->kind == ProjectOopHirNodeKind::DelegateInvoke ||
              lowered->kind == ProjectOopHirNodeKind::EventInvoke))
         {
-            error = "noheap callable '" + caller.signatureKey +
+            error = "NS3030: noheap callable '" + caller.signatureKey +
                 "' cannot invoke an indirect target without a noheap contract";
             lowered.reset();
         }
@@ -3181,7 +3187,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             if (binding == nullptr || !binding->selectedConstructorMemberOrdinal.has_value() ||
                 *binding->selectedConstructorMemberOrdinal >= memberModel_->members().size())
             {
-                error = "noheap callable '" + caller.signatureKey +
+                error = "NS3030: noheap callable '" + caller.signatureKey +
                     "' cannot invoke an implicit constructor without a noheap contract";
                 lowered.reset();
             }
@@ -3191,7 +3197,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     *binding->selectedConstructorMemberOrdinal];
                 if (!constructor.isNoHeap)
                 {
-                    error = "noheap callable '" + caller.signatureKey +
+                    error = "NS3030: noheap callable '" + caller.signatureKey +
                         "' cannot call non-noheap constructor '" +
                         constructor.signatureKey + "'";
                     lowered.reset();

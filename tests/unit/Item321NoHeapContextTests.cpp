@@ -58,10 +58,12 @@ void expectAllocationReject(nativesharp::tests::TestContext& tests,
     std::string error;
     tests.expect(runDriver(arguments, output, error) != nativesharp::ExitCode::Success,
                  std::string(name) + " is rejected in a noheap method");
-    tests.expect(error.find("noheap callable 'Work' cannot contain direct heap allocation '") !=
+    tests.expect(error.find("NS3030") != std::string::npos &&
+                     error.find("noheap callable 'Work' cannot contain direct heap allocation '") !=
                          std::string::npos &&
                      error.find(allocationKind) != std::string::npos,
-                 std::string(name) + " names its direct heap operation (" + error + ")");
+                 std::string(name) + " reports NS3030 and names its direct heap operation (" +
+                     error + ")");
 }
 } // namespace
 

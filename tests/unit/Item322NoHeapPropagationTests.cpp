@@ -59,8 +59,9 @@ void expectReject(
     std::string error;
     tests.expect(runDriver(arguments, output, error) != nativesharp::ExitCode::Success,
         std::string(name) + " is rejected");
-    tests.expect(error.find(diagnostic) != std::string::npos,
-        std::string(name) + " reports its noheap propagation rule (" + error + ")");
+    tests.expect(error.find("NS3030") != std::string::npos &&
+            error.find(diagnostic) != std::string::npos,
+        std::string(name) + " reports NS3030 and its noheap propagation rule (" + error + ")");
 }
 }
 

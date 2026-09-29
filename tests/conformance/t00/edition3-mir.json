@@ -1,0 +1,16 @@
+{
+  "schema": "nativesharp.conformance.v1",
+  "id": "t00.edition3.production-pipeline",
+  "kind": "normative",
+  "edition": "3",
+  "target": "windows-x64",
+  "inputs": ["Edition3.nsproj", "Main.ns"],
+  "command": ["{compiler}", "--check-project-oop-mir", "{case_dir}/Edition3.nsproj", "-O0"],
+  "expected": {
+    "exitCode": 0,
+    "diagnostics": [],
+    "stdoutContains": ["project OOP MIR check: ok"]
+  },
+  "timeoutSeconds": 30,
+  "repeat": 1
+}

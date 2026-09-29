@@ -355,7 +355,12 @@ HirNode* HirBuilder::lowerExpression(ast::AstNode* node, bool loadLValue)
         return nullptr;
     }
 
-    if (info->category == sema::ValueCategory::LValue)
+    if (!sema::isUsableValueCategory(info->category))
+    {
+        return fail("NS3020: moved-from expression reached HIR lowering");
+    }
+
+    if (sema::isPlaceCategory(info->category))
     {
         HirNode* address = lowerAddress(node);
         if (address == nullptr || !loadLValue)
@@ -540,7 +545,7 @@ HirNode* HirBuilder::lowerExpression(ast::AstNode* node, bool loadLValue)
         case ast::AstNodeKind::MemberExpression:
         case ast::AstNodeKind::PointerMemberExpression:
         {
-            if (info->category == sema::ValueCategory::RValue)
+            if (!sema::isPlaceCategory(info->category))
             {
                 HirNode* base = lowerExpression(node->first());
                 if (base == nullptr || info->symbol == nullptr)

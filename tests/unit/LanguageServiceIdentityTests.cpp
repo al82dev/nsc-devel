@@ -25,8 +25,12 @@ int main()
     nativesharp::language_service::LanguageService service;
     const auto identity = service.identity();
 
-    expect(identity.compilerRelease == "2.0.0", "compiler release is published");
+    expect(identity.compilerRelease == "3.0.0", "compiler release is published");
     expect(identity.languageVersion == "2.0.0", "language version is published");
+    expect(
+        identity.defaultLanguageEdition == nativesharp::language::LanguageEdition::V2,
+        "default language edition is published");
+    expect(identity.supportedLanguageEditions == "2,3", "supported language editions are published");
     expect(identity.compilerStage == "70", "compiler stage is published");
     expect(identity.target == "x86_64-pc-windows-msvc", "Windows x64 target is published");
     expect(

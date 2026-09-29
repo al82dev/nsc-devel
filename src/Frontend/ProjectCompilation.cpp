@@ -519,7 +519,8 @@ bool ProjectCompilation::compileProjectNames(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "names");
     nameLookup_ = std::make_unique<ProjectNameLookup>();
-    return nameLookup_->build(*projectGraph_, units_, diagnostics_, compilationJobs_);
+    if (!nameLookup_->build(*projectGraph_, units_, diagnostics_, compilationJobs_)) return false;
+    return enterStage(CompilationStage::Binding, loadError);
 }
 
 bool ProjectCompilation::compileProjectGenerics(
@@ -680,9 +681,11 @@ bool ProjectCompilation::compileProjectMethodBodies(
     {
         publicSurfaceProjectOrdinal = projectGraph_->projects().size() - 1U;
     }
-    return methodBodyModel_->build(
+    if (!methodBodyModel_->build(
         *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_, diagnostics_,
-        genericConstraintModel_.get(), publicSurfaceProjectOrdinal);
+        genericConstraintModel_.get(), publicSurfaceProjectOrdinal)) return false;
+    if (!enterStage(CompilationStage::TypeChecking, loadError)) return false;
+    return enterStage(CompilationStage::Comptime, loadError);
 }
 
 bool ProjectCompilation::compileProjectInterfaces(
@@ -821,9 +824,14 @@ bool ProjectCompilation::compileProjectOopMir(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-mir");
     oopMirModel_ = std::make_unique<ProjectOopMirModel>();
-    return oopMirModel_->build(
+    if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr)
+        oopMirModel_->setLanguageEdition(projectGraph_->rootProject()->languageEdition());
+    if (!oopMirModel_->build(
         *nameLookup_, *memberModel_, *objectLayoutModel_, *virtualDispatchModel_, *interfaceModel_,
-        *destructionModel_, *oopHirModel_, *namespaceFunctionModel_, loadError, compilationJobs_);
+        *destructionModel_, *oopHirModel_, *namespaceFunctionModel_, loadError, compilationJobs_))
+        return false;
+    if (!enterStage(CompilationStage::Mir, loadError)) return false;
+    return enterStage(CompilationStage::Monomorphization, loadError);
 }
 
 bool ProjectCompilation::compileSyntaxCore(
@@ -861,7 +869,10 @@ bool ProjectCompilation::compileSyntaxCore(
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
         precompiledDescriptors.push_back({
-            module.ownerProjectFile, module.metadataPath, module.moduleName});
+            module.ownerProjectFile,
+            module.metadataPath,
+            module.moduleName,
+            module.languageEdition});
     }
     if (!projectGraph_->addPrecompiledProjects(precompiledDescriptors, loadError))
     {
@@ -1098,8 +1109,24 @@ bool ProjectCompilation::compileSyntaxCore(
             syntaxOk = units_[index]->isSyntaxValid() && syntaxOk;
         }
         diagnostics_.mergeDeterministically(localDiagnostics);
-        return syntaxOk && !diagnostics_.hasErrors();
+        if (!syntaxOk || diagnostics_.hasErrors()) return false;
+        return enterStage(CompilationStage::Parse, loadError);
     }
+}
+
+bool ProjectCompilation::enterStage(CompilationStage stage, std::string& error)
+{
+    return stageTracker_.enter(stage, error);
+}
+
+bool ProjectCompilation::completeCodeGeneration(std::string& error)
+{
+    return enterStage(CompilationStage::Codegen, error);
+}
+
+std::span<const CompilationStage> ProjectCompilation::completedStages() const noexcept
+{
+    return stageTracker_.completed();
 }
 
 const compilation::ProjectGraph* ProjectCompilation::projectGraph() const noexcept

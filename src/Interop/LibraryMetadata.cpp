@@ -668,6 +668,8 @@ bool buildMetadataModel(
     metadata.producerVersion = std::string(kCompilerVersion);
     metadata.moduleName = compilation.projectGraph()->rootProject()->moduleName();
     metadata.targetTriple = std::string(kTargetTriple);
+    metadata.languageEdition = static_cast<std::uint8_t>(
+        compilation.projectGraph()->rootProject()->languageEdition());
 
     const auto types = compilation.nameLookup()->namedTypes();
     const auto members = compilation.memberModel()->members();
@@ -1514,6 +1516,7 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
     writer.text(metadata.producerVersion);
     writer.text(metadata.moduleName);
     writer.text(metadata.targetTriple);
+    if (metadata.formatMinor >= 23) writer.u8(metadata.languageEdition);
     if (metadata.formatMinor >= 8)
     {
         writer.u16(metadata.nativeAbiMajor);
@@ -1727,6 +1730,7 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
 {
     LibraryMetadata projected = metadata;
     projected.producerVersion.clear();
+    projected.languageEdition = 0;
     return encodePayload(projected);
 }
 
@@ -1744,6 +1748,11 @@ bool decodePayload(
     if (!reader.text(metadata.producerVersion) || !reader.text(metadata.moduleName) || !reader.text(metadata.targetTriple))
     {
         error = "truncated metadata identity payload";
+        return false;
+    }
+    if (metadata.formatMinor >= 23 && !reader.u8(metadata.languageEdition))
+    {
+        error = "truncated metadata language edition";
         return false;
     }
     if (metadata.formatMinor >= 8 &&
@@ -2274,6 +2283,17 @@ bool LibraryMetadataCodec::writeModelImpl(
         return false;
     }
     if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;
+    if (metadata.formatMinor >= 23 && metadata.languageEdition != 2U &&
+        metadata.languageEdition != 3U)
+    {
+        error = "metadata language edition must be 2 or 3";
+        return false;
+    }
+    if (metadata.formatMinor < 23 && metadata.languageEdition != 2U)
+    {
+        error = "NativeSharp metadata before 1.23 cannot represent language edition 3";
+        return false;
+    }
 
     // A down-level file must preserve the semantics of that historical minor, not merely omit
     // the bytes introduced later. NSMETA <= 1.10 contained public templates only; retaining a
@@ -2546,6 +2566,12 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         return false;
     }
     if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;
+    if (metadata.formatMinor >= 23 && metadata.languageEdition != 2U &&
+        metadata.languageEdition != 3U)
+    {
+        error = "metadata language edition must be 2 or 3";
+        return false;
+    }
     if (metadata.formatMinor >= 8 && metadata.moduleName.empty())
     {
         error = "metadata module identity is empty";

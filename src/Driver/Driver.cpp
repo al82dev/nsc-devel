@@ -2605,7 +2605,8 @@ bool configurePrecompiledModules(
                             hasConcreteDeclaration});
                     }
                     return result;
-                }()});
+                }(),
+                static_cast<language::LanguageEdition>(metadata.languageEdition)});
     }
     if (!compilation.setPrecompiledModules(std::move(modules), error)) return false;
     return compilation.setPreloadedProjectGraph(std::move(*graph), error);
@@ -5608,6 +5609,11 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
         error << "nsc: error: Stage 44 emitted invalid COFF object: " << verifier.error() << '\n';
         return ExitCode::CompilationError;
     }
+    if (!compilation.completeCodeGeneration(loadError))
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     output << "project OOP object emission: ok (machine=0x" << std::hex << verifier.info().machine << std::dec
            << ", sections=" << verifier.info().sectionCount << ")\n"
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
@@ -5754,6 +5760,11 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
                 codeGenerationError);
         });
     if (objectBundle == nullptr)
+    {
+        error << "nsc: error: " << codeGenerationError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!compilation.completeCodeGeneration(codeGenerationError))
     {
         error << "nsc: error: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;
@@ -5906,6 +5917,11 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
                 codeGenerationError);
         });
     if (objectBundle == nullptr)
+    {
+        error << "nsc: error: " << codeGenerationError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!compilation.completeCodeGeneration(codeGenerationError))
     {
         error << "nsc: error: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;
@@ -6195,6 +6211,11 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
                 codeGenerationError);
         });
     if (objectBundle == nullptr)
+    {
+        error << "nsc: error: " << codeGenerationError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!compilation.completeCodeGeneration(codeGenerationError))
     {
         error << "nsc: error: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;

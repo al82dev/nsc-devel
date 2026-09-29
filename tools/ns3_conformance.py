@@ -84,7 +84,13 @@ def load_manifest(path: Path) -> dict[str, Any]:
     for field in ("stdout", "stderr", "mirFile", "abiFile"):
         if field in expected and not isinstance(expected[field], str):
             raise ManifestError(f"NS3099: 'expected.{field}' must be a string")
-    for field in ("diagnostics", "mirContains", "abiContains"):
+    for field in (
+        "diagnostics",
+        "stdoutContains",
+        "stderrContains",
+        "mirContains",
+        "abiContains",
+    ):
         if field in expected:
             _string_list(expected[field], f"expected.{field}")
     timeout = data.get("timeoutSeconds", 30.0)
@@ -98,11 +104,22 @@ def load_manifest(path: Path) -> dict[str, Any]:
     return data
 
 
-def _expand(token: str, case_dir: Path) -> str:
-    return token.replace("{python}", sys.executable).replace("{case_dir}", str(case_dir))
+def _expand(token: str, case_dir: Path, compiler: Path | None) -> str:
+    if "{compiler}" in token and compiler is None:
+        raise ManifestError("NS3099: manifest requires --compiler for '{compiler}'")
+    return (
+        token.replace("{python}", sys.executable)
+        .replace("{case_dir}", str(case_dir))
+        .replace("{compiler}", str(compiler) if compiler is not None else "")
+    )
 
 
-def _observe(manifest: dict[str, Any], manifest_path: Path, case_dir: Path) -> Observation:
+def _observe(
+    manifest: dict[str, Any],
+    manifest_path: Path,
+    case_dir: Path,
+    compiler: Path | None,
+) -> Observation:
     for relative in manifest.get("inputs", []):
         source = (manifest_path.parent / relative).resolve()
         if not source.is_file():
@@ -111,7 +128,7 @@ def _observe(manifest: dict[str, Any], manifest_path: Path, case_dir: Path) -> O
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
 
-    command = [_expand(token, case_dir) for token in manifest["command"]]
+    command = [_expand(token, case_dir, compiler) for token in manifest["command"]]
     environment = os.environ.copy()
     environment["NATIVESHARP_LANGUAGE_EDITION"] = manifest["edition"]
     environment["NATIVESHARP_CONFORMANCE_CASE"] = manifest["id"]
@@ -142,6 +159,12 @@ def _matches(expected: dict[str, Any], observed: Observation) -> str | None:
         return "stdout differs"
     if "stderr" in expected and observed.stderr != expected["stderr"]:
         return "stderr differs"
+    for text in expected.get("stdoutContains", []):
+        if text not in observed.stdout:
+            return f"stdout does not contain {text!r}"
+    for text in expected.get("stderrContains", []):
+        if text not in observed.stderr:
+            return f"stderr does not contain {text!r}"
     expected_diagnostics = tuple(expected.get("diagnostics", []))
     if observed.diagnostics != expected_diagnostics:
         return f"diagnostics {observed.diagnostics!r}, expected {expected_diagnostics!r}"
@@ -154,7 +177,11 @@ def _matches(expected: dict[str, Any], observed: Observation) -> str | None:
     return None
 
 
-def run_case(path: Path, work_root: Path | None = None) -> CaseResult:
+def run_case(
+    path: Path,
+    work_root: Path | None = None,
+    compiler: Path | None = None,
+) -> CaseResult:
     try:
         manifest = load_manifest(path)
     except ManifestError as error:
@@ -163,7 +190,7 @@ def run_case(path: Path, work_root: Path | None = None) -> CaseResult:
     try:
         for _ in range(manifest.get("repeat", 1)):
             with tempfile.TemporaryDirectory(prefix=f"ns3-{manifest['id']}-", dir=work_root) as temporary:
-                observations.append(_observe(manifest, path, Path(temporary)))
+                observations.append(_observe(manifest, path, Path(temporary), compiler))
     except subprocess.TimeoutExpired:
         return CaseResult(manifest["id"], "timeout", "case exceeded timeoutSeconds")
     except (ManifestError, OSError) as error:
@@ -215,15 +242,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="NativeSharp 3.0 conformance harness")
     parser.add_argument("manifests", nargs="*", type=Path)
     parser.add_argument("--work-root", type=Path)
+    parser.add_argument("--compiler", type=Path)
     parser.add_argument("--self-test", action="store_true")
     arguments = parser.parse_args()
     if arguments.self_test:
         return self_test()
     if not arguments.manifests:
         parser.error("provide at least one manifest or --self-test")
+    compiler = arguments.compiler.resolve() if arguments.compiler is not None else None
+    if compiler is not None and not compiler.is_file():
+        print(f"INVALID: compiler does not exist: {compiler}", file=sys.stderr)
+        return 1
+    if arguments.work_root is not None:
+        arguments.work_root.mkdir(parents=True, exist_ok=True)
     failed = False
     for manifest in arguments.manifests:
-        result = run_case(manifest, arguments.work_root)
+        result = run_case(manifest, arguments.work_root, compiler)
         print(f"{result.status.upper()}: {result.case_id}" + (f": {result.message}" if result.message else ""))
         failed = failed or result.status != "passed"
     return 1 if failed else 0

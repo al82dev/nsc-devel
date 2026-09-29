@@ -713,7 +713,7 @@ if(NSC_BUILD_TESTS)
         tests/unit/NativeSharp3T00ConstitutionTests.cpp)
     target_link_libraries(
         nsc_ns3_t00_constitution_tests
-        PRIVATE nsc_frontend nsc_compilation nsc_target)
+        PRIVATE nsc_driver nsc_frontend nsc_compilation nsc_target)
     target_compile_features(nsc_ns3_t00_constitution_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_ns3_t00_constitution_tests)
     add_test(NAME nsc.ns3.t00.constitution COMMAND nsc_ns3_t00_constitution_tests)
@@ -864,6 +864,15 @@ if(NSC_BUILD_TESTS)
         NAME nsc.ns3.t00.conformance-harness
         COMMAND "${Python3_EXECUTABLE}" -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/ns3_conformance.py" --self-test)
+
+    add_test(
+        NAME nsc.ns3.t00.conformance-compiler
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/ns3_conformance.py"
+            --compiler "$<TARGET_FILE:nsc>"
+            --work-root "${CMAKE_CURRENT_BINARY_DIR}/ns3-conformance-t00"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/t00/edition3-project.json"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/t00/edition3-mir.json")
 
     add_test(
         NAME nsc.selfhost.bootstrap-infrastructure

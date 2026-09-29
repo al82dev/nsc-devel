@@ -22,6 +22,8 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 23 (2026-09-29): el productor publica la edición de lenguaje 2/3 para que un consumidor
+// precompilado no mezcle silenciosamente reglas de frontend.
 // MINOR 19 (2026-09-15): las declaraciones C variadicas conservan el marcador `...` para que
 // LibraryReference reconstruya la misma firma importada.
 // MINOR 18 (2026-09-15): los bitfields conservan unidad, offset de bit y ancho para reproducir
@@ -58,7 +60,7 @@ namespace nativesharp::interop
 // MINOR 21 (2026-09-27): public namespace functions preserve signature and physical identity.
 // MINOR 22 (2026-09-27): public namespace state preserves shared storage and initializers.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 22;
+inline constexpr std::uint16_t kMetadataFormatMinor = 23;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing
@@ -336,6 +338,7 @@ struct LibraryMetadata final
     std::string producerVersion;
     std::string moduleName;
     std::string targetTriple;
+    std::uint8_t languageEdition = 2;
     // NSMETA 1.8. Version del CONTRATO descrito, independiente de formatMajor/formatMinor.
     std::uint16_t nativeAbiMajor = kNativeAbiMajor;
     std::uint16_t nativeAbiMinor = kNativeAbiMinor;
