@@ -131,6 +131,7 @@ add_library(nsc_compilation STATIC
     src/Language/ErrorSemantics.cpp
     src/Language/LanguageEdition.cpp
     src/Language/MetaprogrammingSemantics.cpp
+    src/Language/ModuleSemantics.cpp
     src/Language/ExpressionErgonomics.cpp
     src/Language/GenericSemantics.cpp
     src/Language/IterationSemantics.cpp
@@ -803,6 +804,14 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_ns3_t11_metaprogramming_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_ns3_t11_metaprogramming_tests)
     add_test(NAME nsc.ns3.t11.metaprogramming COMMAND nsc_ns3_t11_metaprogramming_tests)
+
+    add_executable(
+        nsc_ns3_t12_module_tests
+        tests/unit/NativeSharp3T12ModuleTests.cpp)
+    target_link_libraries(nsc_ns3_t12_module_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_ns3_t12_module_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_t12_module_tests)
+    add_test(NAME nsc.ns3.t12.modules COMMAND nsc_ns3_t12_module_tests)
 
     add_test(
         NAME nsc.ns3.t00.conformance-harness
