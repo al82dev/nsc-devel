@@ -683,7 +683,8 @@ bool ProjectCompilation::compileProjectMethodBodies(
         publicSurfaceProjectOrdinal = projectGraph_->projects().size() - 1U;
     }
     if (!methodBodyModel_->build(
-        *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_, diagnostics_,
+        *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_,
+        genericModel_.get(), diagnostics_,
         genericConstraintModel_.get(), publicSurfaceProjectOrdinal)) return false;
     if (!enterStage(CompilationStage::TypeChecking, loadError)) return false;
     return enterStage(CompilationStage::Comptime, loadError);

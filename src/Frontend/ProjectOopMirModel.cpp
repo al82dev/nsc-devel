@@ -177,9 +177,12 @@ std::string genericSpecializationKeyForType(
     constexpr std::string_view kSpecializationPrefix = "stage44-specialization:";
     const NamedTypeDeclaration& type = nameLookup.namedTypes()[typeOrdinal];
     const auto keyForSyntax = [&](const ast::AstNode* syntax) -> std::string {
-        return syntax != nullptr && syntax->auxiliaryText().starts_with(kSpecializationPrefix)
-            ? syntax->auxiliaryText().substr(kSpecializationPrefix.size())
-            : std::string{};
+        if (syntax == nullptr || !syntax->auxiliaryText().starts_with(kSpecializationPrefix))
+            return {};
+        std::string key = syntax->auxiliaryText().substr(kSpecializationPrefix.size());
+        if (const std::size_t metadata = key.find(";nsc-meta:"); metadata != std::string::npos)
+            key.resize(metadata);
+        return key;
     };
     if (std::string key = keyForSyntax(type.syntax); !key.empty()) return key;
     for (const NamedTypeDeclarationPart& part : type.parts)
@@ -2764,8 +2767,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                 const auto leafLayout = elementLayout(node->typeKey);
                 if (leafLayout.has_value())
                 {
+                    // Root-member descriptors have no value child, while initializer elements
+                    // do. Both still need the scalar byte width in secondaryImmediate because
+                    // the LLVM equality/hash reader consumes that field. Keep bitStorageSize as
+                    // well for childless descriptors used by the aggregate metadata path.
+                    result->secondaryImmediate = leafLayout->first;
                     if (node->children.empty()) result->bitStorageSize = leafLayout->first;
-                    else result->secondaryImmediate = leafLayout->first;
                 }
             }
             break;

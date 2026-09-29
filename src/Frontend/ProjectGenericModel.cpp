@@ -1867,7 +1867,15 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         state.unit->arena(), state.syntax, substitutions, specializedName, state.record.name);
     clone->setText(specializedName);
     clone->clearGenericParameters();
-    clone->setAuxiliaryText("stage44-specialization:" + key);
+    // Keep the specialization prefix first because downstream demand/debug readers use it as the
+    // discriminator. Source aggregate metadata follows a reserved delimiter: a comma cannot be
+    // used because it is valid inside a multi-argument specialization key. Record derives,
+    // layout, union and borrowed-view policy belong to the template and must survive
+    // monomorphization.
+    std::string specializationMetadata = "stage44-specialization:" + key;
+    if (!state.syntax->auxiliaryText().empty())
+        specializationMetadata += ";nsc-meta:" + state.syntax->auxiliaryText();
+    clone->setAuxiliaryText(std::move(specializationMetadata));
     state.parent->addChild(clone);
     specializations_[ordinal].specializedSyntax = clone;
 

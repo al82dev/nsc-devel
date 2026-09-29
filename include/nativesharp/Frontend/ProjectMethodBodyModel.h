@@ -31,6 +31,7 @@ class DiagnosticEngine;
 namespace nativesharp::frontend
 {
 class ProjectGenericConstraintModel;
+class ProjectGenericModel;
 
 enum class MethodScopeKind
 {
@@ -625,6 +626,9 @@ enum class MethodCoreOperationKind
     StructToString,
     StructEquals,
     StructHashCode,
+    // NativeSharp 3.0 T02-F04. A record Clone is a plain value copy: no allocation, runtime
+    // identity, or hidden layout state.
+    StructClone,
     // ID 129. `ToString()` sobre un ENUM devuelve el NOMBRE del enumerador, no su numero.
     //
     // POR QUE ES DEL COMPILADOR Y NO DE String.ns, que es lo que este ID lleva anotado desde el
@@ -1284,6 +1288,7 @@ public:
         const ProjectNamespaceFunctionModel& namespaceFunctionModel,
         const ProjectInheritanceModel& inheritanceModel,
         const ProjectInterfaceModel& interfaceModel,
+        const ProjectGenericModel* genericModel,
         diagnostics::DiagnosticEngine& diagnostics,
         const ProjectGenericConstraintModel* genericConstraintModel = nullptr,
         std::optional<std::size_t> publicSurfaceProjectOrdinal = std::nullopt);
@@ -1840,6 +1845,9 @@ private:
     // tambien cubre los arreglos de tamanio fijo, y un `int[4] == int[4]` no es lo que este ID
     // define. La pregunta aqui es exactamente la que hace el camino de `Struct.Equals`.
     bool typeKeyIsStruct(std::string_view typeKey) const noexcept;
+    bool aggregateAllowsSynthesizedMember(
+        std::string_view typeKey,
+        std::string_view memberName) const noexcept;
     // SHR-013 "vistas y tiempo de vida". Las tres preguntas de un tipo vista, separadas porque
     // NO son la misma:
     //   * aggregateIsBorrowedView -- el tipo se declaro `borrowed struct`.
@@ -1932,6 +1940,7 @@ private:
     std::vector<ClassMemberSymbol> namespaceCallableAdapters_;
     const ProjectInheritanceModel* inheritanceModel_ = nullptr;
     const ProjectInterfaceModel* interfaceModel_ = nullptr;
+    const ProjectGenericModel* genericModel_ = nullptr;
     const ProjectGenericConstraintModel* genericConstraintModel_ = nullptr;
     std::vector<MethodScope> scopes_;
     std::vector<std::vector<ScopeName>> scopeNames_;

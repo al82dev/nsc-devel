@@ -1,8 +1,9 @@
 # Tanda 02 — Tuplas, deconstrucción y registros
 
-> **Reclasificación 2026-09-29 (tanda operativa 07):** `IMPLEMENTING`. F01–F03 ya poseen corte
-> vertical parser→semántica→HIR→MIR→LLVM y ABI Win64, con fixture NativeSharp O0. T02 permanece
-> abierto por F04–F06, metadata pública de nombres, ownership/drop y tooling. Véase
+> **Reclasificación 2026-09-29 (tanda operativa 08):** `IMPLEMENTING`. F01–F05 y el corte
+> trivial/ABI-seguro de F06 ya poseen vertical parser→semántica→HIR→MIR→LLVM con fixtures O0.
+> T02 permanece abierto por `Deconstruct` nominal, ownership/partial-drop, metadata pública y
+> tooling. Véase
 > [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
 
 ## Resultado
@@ -38,6 +39,17 @@ por edición y conserva nodos explícitos en el AST.
   fuente completa se materializa antes de evaluar cualquier destino.
 - MIR schema 1.17 hace explícitos `tuple-deconstruct` y `tuple-deconstruct-element-store`.
 
+### Integración productiva F04–F06 ABI-segura
+
+- `record struct` conserva exactamente layout/ABI de struct y sólo expone Equality, Hash, Print o
+  Clone mediante `derive(...)` explícito; los structs 2.x conservan compatibilidad.
+- La lista primaria de struct/record se desazucara a campos físicos y constructor ordinario, con
+  accesibilidad, readonly, defaults, orden textual, colisiones y nombres depurables.
+- Records genéricos conservan sus derives y metadata de agregado después de Stage 44.
+- Spreads same-type de lifetime trivial evalúan la fuente una vez y aplican reemplazos explícitos
+  mediante los nodos HIR/MIR productivos de agregados.
+- La igualdad/hash de hojas escalares transporta el ancho MIR correcto hasta LLVM.
+
 ## Archivos nuevos y razón
 
 - `include/nativesharp/Language/AggregateSemantics.h`: API normativa y comprobable de agregados.
@@ -60,10 +72,10 @@ clone salvo opt-in. Esto evita que azúcar de superficie esconda asignaciones o 
 
 ## Límite consciente vigente
 
-F01–F03 ya no son helpers aislados: compilan y ejecutan hasta PE x64. No se afirma todavía el gate
-T02 completo. `Deconstruct` nominal, ownership/move-only, partial drops y drop flags dependen de
-T06 (tandas 13–14); nombres públicos en NSMETA y consumo precompilado se cierran en integración;
-debugger/LSP corresponden a la tanda 29. Records, promoted fields y spreads siguen en la tanda 08.
+F01–F05 y el spread trivial ya no son helpers aislados: compilan y ejecutan hasta PE x64. No se
+afirma todavía el gate T02 completo. `Deconstruct` nominal, ownership/move-only, partial moves,
+drops y drop flags dependen de las tandas 13–14; nombres públicos/derives en NSMETA y consumo
+precompilado se cierran en integración; debugger/LSP corresponden a la tanda 29.
 
 ## Validación dirigida
 
@@ -75,6 +87,10 @@ debugger/LSP corresponden a la tanda 29. Records, promoted fields y spreads sigu
   nesting, swap, discard y declaración inferida.
 - Dumps HIR/MIR: layouts 8/16/12/24 bytes, ABI Win64 direct/sret y schema 1.17.
 - Negativa dirigida: aridad, fuente no-tupla y binding duplicado reciben diagnósticos causales.
+- Fixture `c58_ns3_records` O0: exit 42 con derives parciales/completos, primary constructors,
+  defaults, readonly, genéricos, visibility y spread con fuente única.
+- Negativas T08: derives ausentes/inválidos/duplicados, primary duplicado, ownership diferido y
+  colisión con miembro escrito.
 
 ---
 
@@ -105,6 +121,6 @@ copies, and records acquire generated behavior only through an explicit derive.
 
 ## Deliberate boundary
 
-This batch freezes syntax, AST, and semantic contracts. Full OOP/MIR/LLVM materialization, including
-partial drops and nominal `Deconstruct`, belongs to T15's end-to-end integration and is not claimed
-as complete code generation here.
+Tuples, records, primary fields, and trivial spreads now reach executable OOP/HIR/MIR/LLVM code.
+Nominal `Deconstruct`, owning/move-only partial moves and drops, public metadata, and tooling remain
+explicit dependencies; the complete T02 gate is therefore not claimed yet.

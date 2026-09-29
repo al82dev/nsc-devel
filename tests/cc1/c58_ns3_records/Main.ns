@@ -1,0 +1,96 @@
+namespace c58ns3records
+{
+    public record struct Pair(int X, int Y) derive(Equality, Hash, Print, Clone)
+    {
+    }
+
+    public record struct CloneOnly(int Value) derive(Clone)
+    {
+    }
+
+    public readonly record struct ReadonlyValue(int Value) derive(Clone)
+    {
+    }
+
+    public record struct Defaults(int X, int Y = 2) derive(Clone)
+    {
+    }
+
+    public record struct Box<T>(T Value) derive(Clone)
+    {
+    }
+
+    public record struct Duo<T, U>(T First, U Second) derive(Clone)
+    {
+    }
+
+    public struct Promoted(public int Visible, private int Hidden)
+    {
+        public int Sum()
+        {
+            return Visible + Hidden;
+        }
+    }
+
+    public class Program
+    {
+        public record struct Nested(int Value) derive(Clone)
+        {
+        }
+
+        private static int trace = 0;
+
+        private static int Mark(int value)
+        {
+            trace = trace * 10 + value;
+            return value;
+        }
+
+        private static Pair Source()
+        {
+            trace = trace * 10 + 3;
+            return new Pair(10, 32);
+        }
+
+        public static int Main()
+        {
+            trace = 0;
+            Pair value = new Pair(Mark(4), Mark(2));
+            if (trace != 42 || value.X != 4 || value.Y != 2) { return 1; }
+
+            Pair clone = value.Clone();
+            if (!(value == clone) || value != clone) { return 2; }
+            if (!value.Equals(clone)) { return 3; }
+            if (value.GetHashCode() != clone.GetHashCode()) { return 4; }
+            if (value.ToString() != "Pair") { return 5; }
+
+            trace = 0;
+            Pair spread = { X = Mark(2), ..Source() };
+            if (trace != 23 || spread.X != 2 || spread.Y != 32) { return 6; }
+
+            CloneOnly only = new CloneOnly(42);
+            CloneOnly onlyClone = only.Clone();
+            if (onlyClone.Value != 42) { return 7; }
+
+            ReadonlyValue immutable = new ReadonlyValue(42);
+            if (immutable.Clone().Value != 42) { return 8; }
+
+            Promoted promoted = new Promoted(20, 22);
+            if (promoted.Visible != 20 || promoted.Sum() != 42) { return 9; }
+
+            Defaults defaults = new Defaults(40);
+            if (defaults.X + defaults.Y != 42) { return 10; }
+
+            Box<int> generic = new Box<int>(42);
+            if (generic.Clone().Value != 42) { return 11; }
+
+            Duo<int, int> duo = new Duo<int, int>(20, 22);
+            Duo<int, int> duoClone = duo.Clone();
+            if (duoClone.First + duoClone.Second != 42) { return 12; }
+
+            Nested nested = new Nested(42);
+            if (nested.Clone().Value != 42) { return 13; }
+            return 42;
+        }
+    }
+}

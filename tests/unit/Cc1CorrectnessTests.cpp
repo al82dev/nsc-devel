@@ -806,6 +806,15 @@ int main(int argc, char** argv)
         "tests/cc1/c57_ns3_tuples/c57_ns3_tuples.nsproj",
         "cc1-c57-ns3-tuples", 42);
 
+    // NativeSharp 3.0 T02-F04/F05/F06. Records retain struct layout and expose only explicitly
+    // derived operations; primary parameters desugar to named physical fields plus an ordinary
+    // constructor; readonly records preserve readonly fields; aggregate spread evaluates its
+    // source exactly once before applying explicit replacements.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c58_ns3_records/c58_ns3_records.nsproj",
+        "cc1-c58-ns3-records", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,

@@ -1577,7 +1577,8 @@ ast::AstNode* Parser::parseGlobalDeclaration()
              peek().kind() == TokenKind::KwInternal || peek().kind() == TokenKind::KwBorrowed ||
              (peek().kind() == TokenKind::Identifier &&
               (peek().lexeme() == "pack" || peek().lexeme() == "align" ||
-               peek().lexeme() == "size" || peek().lexeme() == "union")));
+               peek().lexeme() == "size" || peek().lexeme() == "union" ||
+               peek().lexeme() == "record")));
         if (readonlyTypeModifier)
         {
             const lexer::Token& modifier = consume();
@@ -1764,14 +1765,8 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         }
         declaration = parseStructDeclaration(
             at(TokenKind::KwStruct) ? StructLayoutForm::Struct : StructLayoutForm::Union,
-            isBorrowedView && at(TokenKind::KwStruct));
-        if (declaration != nullptr && isRecordStruct)
-        {
-            std::string markers = declaration->auxiliaryText();
-            markers += (markers.empty() ? "" : ",");
-            markers += "record";
-            declaration->setAuxiliaryText(std::move(markers));
-        }
+            isBorrowedView && at(TokenKind::KwStruct),
+            isRecordStruct);
     }
     else if (at(TokenKind::KwEnum))
     {
@@ -1942,6 +1937,16 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             else
             {
                 declaration->addModifier(TokenKind::KwReadonly);
+                for (ast::AstNode* member : declaration->children())
+                {
+                    if (member != nullptr &&
+                        member->kind() == ast::AstNodeKind::FieldDeclaration &&
+                        member->auxiliaryText() == "promoted-primary-field" &&
+                        !member->hasModifier(TokenKind::KwReadonly))
+                    {
+                        member->addModifier(TokenKind::KwReadonly);
+                    }
+                }
             }
         }
         // C2.2: pack/align describe how an aggregate's FIELDS are placed, so they mean nothing on
@@ -2044,7 +2049,10 @@ ast::AstNode* Parser::parseDelegateDeclaration()
     return node;
 }
 
-ast::AstNode* Parser::parseStructDeclaration(StructLayoutForm form, bool isBorrowedView)
+ast::AstNode* Parser::parseStructDeclaration(
+    StructLayoutForm form,
+    bool isBorrowedView,
+    bool isRecordStruct)
 {
     const std::size_t beginIndex = index_;
     consume();
@@ -2078,10 +2086,236 @@ ast::AstNode* Parser::parseStructDeclaration(StructLayoutForm form, bool isBorro
         markers += "borrowedview";
         node->setAuxiliaryText(std::move(markers));
     }
+    if (isRecordStruct)
+    {
+        std::string markers = node->auxiliaryText();
+        markers += (markers.empty() ? "" : ",");
+        markers += "record";
+        node->setAuxiliaryText(std::move(markers));
+    }
     parseGenericParameterList(node);
+
+    // NativeSharp 3.0 T02-F05. A primary struct/record parameter list is deliberately
+    // desugared here, before name binding, into the ordinary fields and constructor that every
+    // later compiler stage already understands. There is no hidden capture and no alternate ABI:
+    // the generated fields are the physical layout, and the generated constructor is an ordinary
+    // constructor whose body assigns those fields in textual order.
+    if (form == StructLayoutForm::Struct && at(TokenKind::LeftParen))
+    {
+        const SourceRange primaryBegin = current().range();
+        requireEdition3(primaryBegin, "primary struct parameters");
+        consume();
+        std::vector<ast::AstNode*> parameters;
+        std::unordered_set<std::string> names;
+        if (!at(TokenKind::RightParen))
+        {
+            while (true)
+            {
+                TokenKind accessibility = TokenKind::Invalid;
+                bool readonlyField = false;
+                while (isAccessibilityToken(current().kind()) || at(TokenKind::KwReadonly))
+                {
+                    const lexer::Token& modifier = consume();
+                    if (modifier.kind() == TokenKind::KwReadonly)
+                    {
+                        if (readonlyField)
+                        {
+                            diagnostics_.report(
+                                diagnostics::DiagnosticId::ExpectedDeclaration,
+                                diagnostics::DiagnosticSeverity::Error,
+                                modifier.range(),
+                                "duplicate readonly modifier on promoted field");
+                        }
+                        readonlyField = true;
+                    }
+                    else if (accessibility != TokenKind::Invalid)
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::ExpectedDeclaration,
+                            diagnostics::DiagnosticSeverity::Error,
+                            modifier.range(),
+                            "conflicting accessibility modifiers on promoted field");
+                    }
+                    else
+                    {
+                        accessibility = modifier.kind();
+                    }
+                }
+
+                ast::AstNode* parameter = parseParameter();
+                if (parameter != nullptr)
+                {
+                    if (!names.insert(parameter->text()).second)
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::ExpectedDeclaration,
+                            diagnostics::DiagnosticSeverity::Error,
+                            parameter->range(),
+                            "duplicate promoted field '" + parameter->text() + "'");
+                    }
+                    if (!parameter->auxiliaryText().empty())
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::ExpectedDeclaration,
+                            diagnostics::DiagnosticSeverity::Error,
+                            parameter->range(),
+                            "a promoted parameter cannot be params, ref, out, or in");
+                    }
+                    if (parameter->typeSyntax() != nullptr &&
+                        parameter->typeSyntax()->ownershipQualifier() !=
+                            ast::OwnershipQualifierSyntaxKind::None)
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::ExpectedDeclaration,
+                            diagnostics::DiagnosticSeverity::Error,
+                            parameter->range(),
+                            "owned and borrowed promoted parameters require the T13 ownership "
+                            "and partial-drop contract; declare the field and constructor explicitly");
+                    }
+
+                    const TokenKind fieldAccessibility = accessibility == TokenKind::Invalid
+                        ? (isRecordStruct ? TokenKind::KwPublic : TokenKind::KwPrivate)
+                        : accessibility;
+                    if (fieldAccessibility == TokenKind::KwProtected)
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::ExpectedDeclaration,
+                            diagnostics::DiagnosticSeverity::Error,
+                            parameter->range(),
+                            "a promoted struct field cannot be protected because structs are not inheritable");
+                    }
+                    ast::AstNode* field = arena_.make<ast::AstNode>(
+                        ast::AstNodeKind::FieldDeclaration, parameter->range());
+                    field->setText(parameter->text());
+                    field->setTypeSyntax(parameter->typeSyntax());
+                    field->setAuxiliaryText("promoted-primary-field");
+                    field->setTokenKind(fieldAccessibility);
+                    field->addModifier(fieldAccessibility);
+                    if (readonlyField) field->addModifier(TokenKind::KwReadonly);
+                    node->addChild(field);
+                    parameters.push_back(parameter);
+                }
+                if (!consumeIf(TokenKind::Comma)) break;
+            }
+        }
+        expect(TokenKind::RightParen, "')'");
+
+        ast::AstNode* constructor = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::ConstructorDeclaration,
+            SourceRange(name.range().begin(), tokens_[index_ - 1].range().end()));
+        constructor->setText(structName);
+        constructor->setAuxiliaryText("promoted-primary-constructor");
+        constructor->setTokenKind(TokenKind::KwPublic);
+        constructor->addModifier(TokenKind::KwPublic);
+        ast::AstNode* body = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, constructor->range());
+        for (ast::AstNode* parameter : parameters)
+        {
+            constructor->addChild(parameter);
+            ast::AstNode* receiver = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::ThisExpression, parameter->range());
+            ast::AstNode* field = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::MemberExpression, parameter->range());
+            field->setText(parameter->text());
+            field->setFirst(receiver);
+            ast::AstNode* value = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::IdentifierExpression, parameter->range());
+            value->setText(parameter->text());
+            ast::AstNode* assignment = makeAssignmentExpression(field, value);
+            body->addChild(makeExpressionStatement(assignment));
+        }
+        constructor->setFirst(body);
+        node->addChild(constructor);
+
+        std::string markers = node->auxiliaryText();
+        markers += (markers.empty() ? "" : ",");
+        markers += "primary-fields=" + std::to_string(parameters.size());
+        node->setAuxiliaryText(std::move(markers));
+    }
+
+    bool sawRecordDeriveClause = false;
+    const auto parseRecordDerives = [&]()
+    {
+        if (!atContextualKeyword("derive") || peek().kind() != TokenKind::LeftParen) return;
+        const lexer::Token& deriveKeyword = consume();
+        requireEdition3(deriveKeyword.range(), "record derives");
+        const bool duplicateClause = sawRecordDeriveClause;
+        if (duplicateClause)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                deriveKeyword.range(),
+                "duplicate derive(...) clause on record struct");
+        }
+        sawRecordDeriveClause = true;
+        if (!isRecordStruct)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                deriveKeyword.range(),
+                "derive(...) is valid only on a record struct");
+        }
+        consume();
+        std::unordered_set<std::string> derives;
+        if (!at(TokenKind::RightParen))
+        {
+            while (true)
+            {
+                if (!at(TokenKind::Identifier))
+                {
+                    expect(TokenKind::Identifier, "record derive name");
+                    break;
+                }
+                const lexer::Token& derive = consume();
+                const std::string deriveName(derive.lexeme());
+                if (deriveName != "Equality" && deriveName != "Hash" &&
+                    deriveName != "Print" && deriveName != "Clone")
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        derive.range(),
+                        "unknown record derive '" + deriveName +
+                            "'; expected Equality, Hash, Print, or Clone");
+                }
+                else if (!derives.insert(deriveName).second)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        derive.range(),
+                        "duplicate record derive '" + deriveName + "'");
+                }
+                if (!consumeIf(TokenKind::Comma)) break;
+            }
+        }
+        expect(TokenKind::RightParen, "')'");
+        if (isRecordStruct && !duplicateClause && !derives.empty())
+        {
+            static constexpr std::array<std::string_view, 4> order = {
+                "Equality", "Hash", "Print", "Clone"};
+            std::string marker = "derive=";
+            bool first = true;
+            for (const std::string_view derive : order)
+            {
+                if (!derives.contains(std::string(derive))) continue;
+                if (!first) marker += '|';
+                marker += derive;
+                first = false;
+            }
+            std::string markers = node->auxiliaryText();
+            markers += (markers.empty() ? "" : ",");
+            markers += marker;
+            node->setAuxiliaryText(std::move(markers));
+        }
+    };
+    parseRecordDerives();
     // NSC-LIMIT-007: un struct no declara bases en este lenguaje, asi que la clausula va aqui,
     // entre los parametros genericos y el cuerpo.
     parseGenericConstraintClauses(node);
+    parseRecordDerives();
 
     return parseStructBody(node, structName, beginIndex);
 }
@@ -2494,7 +2728,8 @@ bool Parser::atNestedTypeDeclaration() const noexcept
 {
     return at(TokenKind::KwClass) || at(TokenKind::KwStruct) || at(TokenKind::KwInterface) ||
         at(TokenKind::KwEnum) || at(TokenKind::KwDelegate) ||
-        (atContextualKeyword("union") && peek().kind() == TokenKind::Identifier);
+        (atContextualKeyword("union") && peek().kind() == TokenKind::Identifier) ||
+        (atContextualKeyword("record") && peek().kind() == TokenKind::KwStruct);
 }
 
 ast::AstNode* Parser::parseNestedTypeDeclaration(
@@ -2514,11 +2749,14 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
             std::string("'") + modifierName + "' is not valid on a nested type declaration: " + reason);
     };
     const bool nestedClass = at(TokenKind::KwClass);
+    const bool nestedRecordStruct =
+        atContextualKeyword("record") && peek().kind() == TokenKind::KwStruct;
+    const bool nestedStruct = at(TokenKind::KwStruct) || nestedRecordStruct;
     if (modifiers.isPartial && !nestedClass)
         refuse("partial", "only nested classes can be split into materialization parts");
     if (modifiers.isStatic && !nestedClass)
         refuse("static", "only a nested class can be static");
-    const bool nestedReadonlyStruct = modifiers.isReadonly && at(TokenKind::KwStruct);
+    const bool nestedReadonlyStruct = modifiers.isReadonly && nestedStruct;
     if (modifiers.isReadonly && !nestedReadonlyStruct)
         refuse("readonly", "only a non-union struct can be readonly");
     if (modifiers.isConst) refuse("const", "a type is not a value");
@@ -2555,11 +2793,17 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     {
         declaration = parseInterfaceDeclaration(false);
     }
-    else if (at(TokenKind::KwStruct) || atContextualKeyword("union"))
+    else if (nestedStruct || atContextualKeyword("union"))
     {
+        if (nestedRecordStruct)
+        {
+            const lexer::Token& record = consume();
+            requireEdition3(record.range(), "record struct declarations");
+        }
         declaration = parseStructDeclaration(
             at(TokenKind::KwStruct) ? StructLayoutForm::Struct : StructLayoutForm::Union,
-            modifiers.isBorrowedView && at(TokenKind::KwStruct));
+            modifiers.isBorrowedView && at(TokenKind::KwStruct),
+            nestedRecordStruct);
     }
     else if (at(TokenKind::KwEnum))
     {
@@ -2603,6 +2847,15 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     if (nestedReadonlyStruct)
     {
         declaration->addModifier(TokenKind::KwReadonly);
+        for (ast::AstNode* member : declaration->children())
+        {
+            if (member != nullptr && member->kind() == ast::AstNodeKind::FieldDeclaration &&
+                member->auxiliaryText() == "promoted-primary-field" &&
+                !member->hasModifier(TokenKind::KwReadonly))
+            {
+                member->addModifier(TokenKind::KwReadonly);
+            }
+        }
     }
     if (modifiers.layoutPack.has_value() || modifiers.layoutAlign.has_value() ||
         modifiers.layoutSize.has_value())

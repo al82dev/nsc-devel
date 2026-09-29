@@ -1016,6 +1016,8 @@ private:
 
         std::string display =
             named.syntax->auxiliaryText().substr(specializationPrefix.size());
+        if (const std::size_t metadata = display.find(";nsc-meta:"); metadata != std::string::npos)
+            display.resize(metadata);
         // A specialization key starts with the project/module identity.  CodeView already scopes
         // this compile unit to that module, so publish the NativeSharp namespace/type spelling.
         if (const std::size_t module = display.find("::"); module != std::string::npos)

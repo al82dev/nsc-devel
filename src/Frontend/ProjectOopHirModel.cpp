@@ -406,6 +406,7 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::StructToString:
     case MethodCoreOperationKind::StructEquals:
     case MethodCoreOperationKind::StructHashCode:
+    case MethodCoreOperationKind::StructClone:
     // ID 129. No pasa por el bloque de "llamada de tipo string": no toma operandos de cadena y no
     // se convierte en un nodo HIR unico, sino en una cadena de condicionales. Se baja antes, en
     // el mismo sitio que StructToString.
@@ -1553,15 +1554,24 @@ bool ProjectOopHirModel::buildImpl(
         function.isExportedC = member.isExportedC;
         function.cAbiName = member.cAbiName;
         constexpr std::string_view kSpecializationPrefix = "stage44-specialization:";
+        const auto specializationKey = [&](const ast::AstNode* syntax) -> std::string
+        {
+            if (syntax == nullptr || !syntax->auxiliaryText().starts_with(kSpecializationPrefix))
+                return {};
+            std::string key = syntax->auxiliaryText().substr(kSpecializationPrefix.size());
+            if (const std::size_t metadata = key.find(";nsc-meta:"); metadata != std::string::npos)
+                key.resize(metadata);
+            return key;
+        };
         if (member.syntax != nullptr && member.syntax->auxiliaryText().starts_with(kSpecializationPrefix))
         {
-            function.genericSpecializationKey = member.syntax->auxiliaryText().substr(kSpecializationPrefix.size());
+            function.genericSpecializationKey = specializationKey(member.syntax);
         }
         else
         {
             const ast::AstNode* declaringSyntax = nameLookup.namedTypes()[member.declaringTypeOrdinal].syntax;
             if (declaringSyntax != nullptr && declaringSyntax->auxiliaryText().starts_with(kSpecializationPrefix))
-                function.genericSpecializationKey = declaringSyntax->auxiliaryText().substr(kSpecializationPrefix.size());
+                function.genericSpecializationKey = specializationKey(declaringSyntax);
         }
         function.mangledName = mangleCallable(nameLookup.namedTypes()[member.declaringTypeOrdinal], member);
         function.returnTypeKey = (function.constructor || function.destructor)
@@ -5742,6 +5752,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 auto node = makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "builtin:string");
                 node->stringValue = shortTypeName(core->elementTypeKey);
                 return node;
+            }
+            if (core != nullptr && core->kind == MethodCoreOperationKind::StructClone)
+            {
+                if (addressContext || !expression->children().empty())
+                {
+                    error = "NativeSharp 3.0 record Clone() received an invalid operand count";
+                    return nullptr;
+                }
+                const ast::AstNode* receiverSyntax = expression->first() != nullptr
+                    ? expression->first()->first() : nullptr;
+                if (receiverSyntax == nullptr)
+                {
+                    error = "NativeSharp 3.0 record Clone() has no receiver";
+                    return nullptr;
+                }
+                return lowerExpression(receiverSyntax, memberOrdinal, false, error);
             }
             if (core != nullptr &&
                 (core->kind == MethodCoreOperationKind::StructEquals ||

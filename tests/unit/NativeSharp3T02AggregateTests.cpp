@@ -98,7 +98,7 @@ int main()
         "aggregate spread accepts one source and unique explicit replacements");
 
     constexpr std::string_view source = R"ns(
-record struct Pair { public int X; public int Y; }
+record struct Pair(int X, int Y) derive(Equality, Hash, Print, Clone) { }
 int Demo(int a, int b)
 {
     (x: a, y: b);
@@ -118,8 +118,11 @@ int Demo(int a, int b)
             tree.find("SpreadElementExpression") != std::string::npos,
         "tuple and spread syntax survive in explicit AST nodes");
     tests.expect(tree.find("StructDeclaration \"Pair\"") != std::string::npos &&
-            tree.find("aux=\"record\"") != std::string::npos,
-        "record struct remains a value aggregate with an explicit semantic marker");
+            tree.find("record,primary-fields=2,derive=Equality|Hash|Print|Clone") !=
+                std::string::npos &&
+            tree.find("FieldDeclaration \"X\"") != std::string::npos &&
+            tree.find("ConstructorDeclaration \"Pair\"") != std::string::npos,
+        "record primary parameters desugar to fields and a constructor with explicit derives");
 
     Parsed edition2;
     parse(edition2, std::string(source), language::LanguageEdition::V2);

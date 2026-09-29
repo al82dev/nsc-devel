@@ -73,7 +73,8 @@ private:
     };
     ast::AstNode* parseStructDeclaration(
         StructLayoutForm form = StructLayoutForm::Struct,
-        bool isBorrowedView = false);
+        bool isBorrowedView = false,
+        bool isRecordStruct = false);
     ast::AstNode* parseStructBody(
         ast::AstNode* declaration,
         std::string_view structName,

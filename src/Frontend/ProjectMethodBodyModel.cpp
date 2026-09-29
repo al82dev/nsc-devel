@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
+#include "nativesharp/Frontend/ProjectGenericModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 
@@ -525,11 +526,13 @@ bool ProjectMethodBodyModel::build(
     const ProjectNamespaceFunctionModel& namespaceFunctionModel,
     const ProjectInheritanceModel& inheritanceModel,
     const ProjectInterfaceModel& interfaceModel,
+    const ProjectGenericModel* genericModel,
     diagnostics::DiagnosticEngine& diagnostics,
     const ProjectGenericConstraintModel* genericConstraintModel,
     std::optional<std::size_t> publicSurfaceProjectOrdinal)
 {
     genericConstraintModel_ = genericConstraintModel;
+    genericModel_ = genericModel;
     if (built_)
     {
         return !diagnostics.hasErrors();
@@ -1122,6 +1125,92 @@ bool ProjectMethodBodyModel::aggregateIsUnion(std::string_view typeKey) const no
         return type.syntax->auxiliaryText().find("union") != std::string::npos;
     }
     return false;
+}
+
+bool ProjectMethodBodyModel::aggregateAllowsSynthesizedMember(
+    std::string_view typeKey,
+    std::string_view memberName) const noexcept
+{
+    // Ordinary 2.x structs and structural tuples retain their existing root members. Only a
+    // NativeSharp 3.0 record changes to explicit opt-ins. The declaration marker survives generic
+    // specialization but never enters the value layout.
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:"))
+    {
+        return memberName != "Clone";
+    }
+    const std::string_view identity = typeKey.substr(5);
+    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    {
+        if (type.identity.key() != identity || type.syntax == nullptr) continue;
+        const std::string* metadata = &type.syntax->auxiliaryText();
+        // Stage 44 replaces a closed generic declaration's auxiliary text with its canonical
+        // specialization key. The specialization catalog retains the originating template AST;
+        // derive policy belongs to that source declaration and must be read from there.
+        constexpr std::string_view metadataDelimiter = ";nsc-meta:";
+        const auto sourceMetadata = [&](const std::string& value) -> std::string_view
+        {
+            const std::size_t delimiter = value.find(metadataDelimiter);
+            return delimiter == std::string::npos
+                ? std::string_view(value)
+                : std::string_view(value).substr(delimiter + metadataDelimiter.size());
+        };
+        const auto hasMarker = [](std::string_view list, std::string_view marker) noexcept
+        {
+            std::size_t cursor = 0;
+            while (cursor <= list.size())
+            {
+                const std::size_t separator = list.find(',', cursor);
+                const std::string_view item = list.substr(
+                    cursor, separator == std::string_view::npos ? std::string_view::npos
+                                                                : separator - cursor);
+                if (item == marker) return true;
+                if (separator == std::string_view::npos) break;
+                cursor = separator + 1;
+            }
+            return false;
+        };
+        if (!hasMarker(sourceMetadata(*metadata), "record") && genericModel_ != nullptr)
+        {
+            if (const GenericSpecializationRecord* specialization =
+                    genericModel_->specializationForTypeKey(typeKey);
+                specialization != nullptr && specialization->templateSyntax != nullptr)
+            {
+                metadata = &specialization->templateSyntax->auxiliaryText();
+            }
+        }
+        const std::string_view recordMetadata = sourceMetadata(*metadata);
+        if (!hasMarker(recordMetadata, "record"))
+        {
+            return memberName != "Clone";
+        }
+        const std::string_view derive = memberName == "Equals" ? "Equality"
+            : memberName == "GetHashCode" ? "Hash"
+            : memberName == "ToString" ? "Print"
+            : memberName == "Clone" ? "Clone" : std::string_view{};
+        if (derive.empty()) return false;
+
+        // The parser emits one canonical ordered marker: derive=Equality|Hash|Print|Clone.
+        // Compare complete list elements so `Hash` can never match a future longer derive name.
+        const std::size_t marker = recordMetadata.find("derive=");
+        if (marker == std::string::npos) return false;
+        const std::size_t begin = marker + std::string_view("derive=").size();
+        const std::size_t end = recordMetadata.find(',', begin);
+        const std::string_view list = recordMetadata.substr(
+            begin, (end == std::string::npos ? recordMetadata.size() : end) - begin);
+        std::size_t cursor = 0;
+        while (cursor <= list.size())
+        {
+            const std::size_t separator = list.find('|', cursor);
+            const std::string_view item = list.substr(
+                cursor, separator == std::string_view::npos ? std::string_view::npos
+                                                            : separator - cursor);
+            if (item == derive) return true;
+            if (separator == std::string_view::npos) break;
+            cursor = separator + 1;
+        }
+        return false;
+    }
+    return memberName != "Clone";
 }
 
 // SHR-013: la marca `borrowedview` que el parser escribio en el texto auxiliar de la
@@ -8960,7 +9049,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
 
     if (!typeReceiver && receiverIsStruct && !inaccessibleFound &&
         (expression->text() == "ToString" || expression->text() == "Equals" ||
-         expression->text() == "GetHashCode"))
+         expression->text() == "GetHashCode" || expression->text() == "Clone") &&
+        aggregateAllowsSynthesizedMember(receiver.typeKey, expression->text()))
     {
         result.methodGroup = true;
         result.methodCandidates.clear();
@@ -9374,6 +9464,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             structKind = MethodCoreOperationKind::StructEquals;
             resultTypeKey = "builtin:bool";
             expectedArity = 1;
+        }
+        else if (memberName == "Clone")
+        {
+            structKind = MethodCoreOperationKind::StructClone;
+            resultTypeKey = structTypeKey;
         }
         if (!structKind.has_value()) return {};
         if (expression->children().size() != expectedArity)
@@ -12838,6 +12933,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
                     "over its fields; declare your own comparison if you need one");
             return result;
         }
+        if (!aggregateAllowsSynthesizedMember(left.typeKey, "Equals"))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "record '" + left.typeKey +
+                    "' does not derive Equality; add derive(Equality) or declare operator ==");
+            return result;
+        }
         if (aggregateIsUnion(left.typeKey))
         {
             // La misma razon que rechaza `union.Equals(...)`: solo un miembro esta vivo y nada en
@@ -16242,6 +16347,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::EnumToString: return "enum-to-string";
         case MethodCoreOperationKind::StructEquals: return "struct-equals";
         case MethodCoreOperationKind::StructHashCode: return "struct-hash-code";
+        case MethodCoreOperationKind::StructClone: return "struct-clone";
         case MethodCoreOperationKind::ObjectTypeName: return "object-type-name";
         case MethodCoreOperationKind::ObjectReferenceHash: return "object-reference-hash";
         case MethodCoreOperationKind::SizeofConstant: return "sizeof-constant";
