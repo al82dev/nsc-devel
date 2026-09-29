@@ -1,5 +1,9 @@
 # NativeSharp 3.0 — Tanda 00: Constitución del lenguaje
 
+> **Reclasificación 2026-09-29:** `IMPLEMENTING`. La edición está conectada al frontend, pero stages,
+> effects y conformidad todavía no gobiernan el pipeline completo. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 Estado técnico: implementación de T00. Plataforma normativa: Windows x64. Política de pruebas: `-O0` para productos NativeSharp. Esta tanda no introduce sintaxis 3.0; fija los contratos que las tandas siguientes deben respetar.
 
 La identidad pública del compilador de esta rama es `3.0.0`; NativeSharp 2.0 permanece congelado en su rama y distribución independientes.

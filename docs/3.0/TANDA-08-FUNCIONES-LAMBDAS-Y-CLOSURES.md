@@ -1,5 +1,9 @@
 # Tanda 08 — Funciones, lambdas y closures / Functions, lambdas, and closures
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. La representación contractual no está
+> conectada con tipos función, capture analysis, lowering, metadata o debugger. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se fijó identidad completa de tipos función, conversión de lambdas sin captura, environments

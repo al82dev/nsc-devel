@@ -1,5 +1,9 @@
 # Tanda 09 — Iteración, ranges y consultas / Iteration, ranges, and queries
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. El helper actual no implementa foreach,
+> ranges, comprehensions ni generators dentro del compilador. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se definió el protocolo foreach 3.0, ranges perezosos, builders de comprehensions, préstamos de

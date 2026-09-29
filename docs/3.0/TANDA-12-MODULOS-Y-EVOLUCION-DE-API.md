@@ -1,5 +1,9 @@
 # Tanda 12 — Módulos, nombres y evolución de API / Modules, names, and API evolution
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. El helper no gobierna graph, lookup,
+> visibility, imports, NSMETA ni API diff productivos. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se fijaron identidad de módulo para Windows, ciclos resolubles, imports, visibilidad, reexports,

@@ -1,5 +1,9 @@
 # Tanda 07 — Errores y control de flujo / Errors and control flow
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. El helper no implementa syntax, effects,
+> MIR EH, funclets Win64, metadata ni debugger. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se definieron `Result`/`?`, `throws E`, catches tipados, `never`, loops con valor y perfiles de

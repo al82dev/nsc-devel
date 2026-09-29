@@ -1,5 +1,9 @@
 # Tanda 05 — Traits, interfaces estáticas y despacho / Traits and dispatch
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. Los contratos existen como helper y
+> prueba aislada; faltan lookup, dispatch, ABI, metadata y tooling productivos. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se fijaron contratos de traits sin layout, coherence global, tipos asociados, `some Trait`,

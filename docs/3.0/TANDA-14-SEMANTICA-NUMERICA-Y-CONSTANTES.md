@@ -1,5 +1,9 @@
 # Tanda 14 — Semántica numérica y constantes / Numeric and constant semantics
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. Las reglas aisladas no gobiernan types,
+> consteval, MIR, LLVM flags ni equivalencia runtime. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se fijaron literales tipados, overflow checked/wrapping/saturating/unchecked, conversiones sin

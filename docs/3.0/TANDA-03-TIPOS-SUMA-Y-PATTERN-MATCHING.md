@@ -1,5 +1,9 @@
 # Tanda 03 — Tipos suma y pattern matching
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. El módulo actual es un prototipo C++
+> aislado; no constituye una feature integrada de NativeSharp. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se estableció el contrato cerrado de `variant` y patrones para NativeSharp 3.0: tag mínimo,

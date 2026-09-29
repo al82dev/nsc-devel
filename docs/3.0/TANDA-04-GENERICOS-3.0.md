@@ -1,5 +1,9 @@
 # Tanda 04 — Genéricos 3.0 / Generics 3.0
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. El helper actual no está conectado al
+> solver, monomorfización ni NSMETA productivos. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se añadió un núcleo determinista para constraints, const generics, packs, inferencia

@@ -1,5 +1,9 @@
 # Tanda 02 — Tuplas, deconstrucción y registros
 
+> **Reclasificación 2026-09-29:** `IMPLEMENTING`. Tuple/spread poseen sintaxis parcial y un helper
+> aislado; no existe todavía el corte vertical hasta ABI/NSMETA/debugger. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado
 
 Esta tanda establece el modelo estructural de agregados de NativeSharp 3.0: identidad de tuplas,

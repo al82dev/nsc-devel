@@ -1,5 +1,9 @@
 # Tanda 16 — Compatibilidad y migración / Compatibility and migration
 
+> **Reclasificación 2026-09-29:** `DESIGNED`. No existen todavía migrador, fix-its productivos ni
+> matriz ejecutada de artefactos 2.x/3.0. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se definió consumo de módulos 2.x, catálogo MIG3xxx, fix-its seguros, matriz source/ABI, guía

@@ -1,5 +1,9 @@
 # Tanda 17 — Congelamiento y promoción / Freeze and promotion
 
+> **Reclasificación 2026-09-29:** `DESIGNED`. El helper fail-closed no congela ni promueve el
+> producto; faltan suite candidata, RC, baseline de Alberto y evidencia real. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se implementó el contrato final de freeze: revisiones independientes de sintaxis, semántica,

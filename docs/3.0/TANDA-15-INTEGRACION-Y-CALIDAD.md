@@ -1,5 +1,9 @@
 # Tanda 15 — Integración del lenguaje y calidad / Language integration and quality
 
+> **Reclasificación 2026-09-29:** `DESIGNED`. La prueba actual compone helpers C++; no compila un
+> corpus NativeSharp ni valida artefactos, tooling o costos reales. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se añadió un gate integrado para matriz de interacciones, corpus testigo, presupuestos, calidad

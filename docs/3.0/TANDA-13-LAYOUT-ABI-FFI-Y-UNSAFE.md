@@ -1,5 +1,9 @@
 # Tanda 13 — Layout, ABI, FFI y unsafe / Layout, ABI, FFI, and unsafe
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. Los asserts locales no sustituyen el
+> layout/call classifier, metadata, hosts C ni ABI cross-module. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se fijaron representaciones, bitfields, garantías de puntero, calling conventions, catálogo

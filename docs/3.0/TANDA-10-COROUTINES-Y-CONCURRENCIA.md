@@ -1,5 +1,9 @@
 # Tanda 10 — Coroutines y concurrencia estructurada / Coroutines and structured concurrency
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. Faltan syntax/lowering de async, frames,
+> ownership, atomics productivos, metadata y logical debug stacks. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se definieron futures lazy, storage elegido por caller, borrows a través de await, máquina de

@@ -1,5 +1,9 @@
 # Tanda 06 — Ownership, préstamos y destrucción / Ownership, borrows, and destruction
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. La máquina de estados aislada no es un
+> borrow checker integrado con CFG/MIR, cleanup, metadata y DLL. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se formalizó copy/move, moves parciales, drop flags, préstamos divididos, lifetimes, cleanup,

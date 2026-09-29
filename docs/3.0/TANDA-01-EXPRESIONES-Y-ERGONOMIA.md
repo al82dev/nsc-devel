@@ -1,5 +1,9 @@
 # Tanda 01 — Expresiones y ergonomía / Expressions and Ergonomics
 
+> **Reclasificación 2026-09-29:** `IMPLEMENTING`. Existe superficie lexer/parser/AST, pero falta
+> binding, HIR, MIR, backend, metadata y tooling completos. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 Esta tanda establece la superficie sintáctica y el contrato normativo compartido para las siete

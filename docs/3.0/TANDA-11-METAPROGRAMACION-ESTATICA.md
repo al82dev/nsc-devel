@@ -1,5 +1,9 @@
 # Tanda 11 — Metaprogramación estática / Static metaprogramming
 
+> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. Capabilities y budgets sólo existen como
+> contrato aislado; faltan evaluator, macros, derive, sandbox y source mapping. Véase
+> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+
 ## Resultado / Outcome
 
 ES: Se fijaron introspección tipada, atributos, derive, nombres higiénicos, capacidades herméticas,
