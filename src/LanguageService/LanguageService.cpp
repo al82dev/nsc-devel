@@ -185,8 +185,63 @@ LineBraceSummary summarizeBraces(std::string_view line, bool& blockComment)
     return result;
 }
 
+bool containsInlineAssembly(std::string_view text)
+{
+    bool blockComment = false;
+    bool lineComment = false;
+    bool stringLiteral = false;
+    bool characterLiteral = false;
+    bool escaped = false;
+    for (std::size_t index = 0; index < text.size(); ++index)
+    {
+        const char value = text[index];
+        const char next = index + 1 < text.size() ? text[index + 1] : '\0';
+        if (lineComment)
+        {
+            if (value == '\n') lineComment = false;
+            continue;
+        }
+        if (blockComment)
+        {
+            if (value == '*' && next == '/') { blockComment = false; ++index; }
+            continue;
+        }
+        if (stringLiteral || characterLiteral)
+        {
+            if (escaped) { escaped = false; continue; }
+            if (value == '\\') { escaped = true; continue; }
+            if (stringLiteral && value == '"') stringLiteral = false;
+            if (characterLiteral && value == '\'') characterLiteral = false;
+            continue;
+        }
+        if (value == '/' && next == '/') { lineComment = true; ++index; continue; }
+        if (value == '/' && next == '*') { blockComment = true; ++index; continue; }
+        if (value == '"') { stringLiteral = true; continue; }
+        if (value == '\'') { characterLiteral = true; continue; }
+        const unsigned char byte = static_cast<unsigned char>(value);
+        if (std::isalpha(byte) == 0 && value != '_') continue;
+        std::size_t end = index + 1;
+        while (end < text.size())
+        {
+            const unsigned char part = static_cast<unsigned char>(text[end]);
+            if (std::isalnum(part) == 0 && text[end] != '_') break;
+            ++end;
+        }
+        if (text.substr(index, end - index) == "asm")
+        {
+            std::size_t brace = end;
+            while (brace < text.size() && std::isspace(static_cast<unsigned char>(text[brace])) != 0)
+                ++brace;
+            if (brace < text.size() && text[brace] == '{') return true;
+        }
+        index = end - 1;
+    }
+    return false;
+}
+
 std::string formatDocumentText(std::string_view text, DocumentFormattingOptions options)
 {
+    if (containsInlineAssembly(text)) return std::string(text);
     options.tabSize = std::clamp(options.tabSize, 1U, 16U);
     const std::string_view newline = text.find("\r\n") != std::string_view::npos ? "\r\n" : "\n";
     std::string result;

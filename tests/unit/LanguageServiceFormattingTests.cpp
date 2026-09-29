@@ -52,6 +52,18 @@ int main()
     expect(edit.has_value() && edit->location.range.end == TextPosition{9, 0},
         "full-document edit uses a UTF-16 end position");
 
+    const std::filesystem::path assemblyPath = "A:/formatting/Assembly.ns";
+    const std::string assemblySource =
+        "void Raw() {\n"
+        "    asm {\n"
+        "mov rax, {input}\n"
+        "    }\n"
+        "}\n";
+    expect(service.openDocument(assemblyPath, assemblySource, 1, error),
+        "inline assembly document opens for formatting");
+    expect(!service.formatDocument(assemblyPath).has_value(),
+        "formatter preserves inline assembly documents byte for byte");
+
     if (failures == 0) std::cout << "PASS: NativeSharp document formatting\n";
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
