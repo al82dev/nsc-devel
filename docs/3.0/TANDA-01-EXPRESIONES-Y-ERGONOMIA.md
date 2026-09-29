@@ -1,7 +1,8 @@
 # Tanda 01 — Expresiones y ergonomía / Expressions and Ergonomics
 
-> **Reclasificación 2026-09-29:** `IMPLEMENTING`. Existe superficie lexer/parser/AST, pero falta
-> binding, HIR, MIR, backend, metadata y tooling completos. Véase
+> **Actualización 2026-09-29:** `IMPLEMENTING`. F01, F02 y el slice trivial seguro de F05 ya
+> atraviesan binding, HIR, MIR, LLVM y NSMETA 1.24 mediante la tanda operativa 05. F03, F04, F06,
+> F07, tooling y el cleanup no trivial de F05 permanecen pendientes. Véase
 > [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
 
 ## Resultado / Outcome

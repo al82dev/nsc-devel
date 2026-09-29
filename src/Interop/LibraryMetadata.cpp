@@ -1031,6 +1031,7 @@ bool buildMetadataModel(
             parameterRecord.typeKey = parameter.typeKey;
             parameterRecord.ownership = metadataOwnership(parameter.ownership);
             parameterRecord.passKind = metadataPassKind(parameter.passKind);
+            parameterRecord.isParameterPack = parameter.isParameterPack;
             if (!metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
             {
                 error = "could not encode default value for parameter '" + parameter.name +
@@ -1116,6 +1117,7 @@ bool buildMetadataModel(
                 parameterRecord.typeKey = parameter.typeKey;
                 parameterRecord.ownership = metadataOwnership(parameter.ownership);
                 parameterRecord.passKind = metadataPassKind(parameter.passKind);
+                parameterRecord.isParameterPack = parameter.isParameterPack;
                 if (!metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
                 {
                     error = "could not encode default value for parameter '" + parameter.name +
@@ -1606,6 +1608,10 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
             {
                 writer.u8(static_cast<std::uint8_t>(parameter.passKind));
             }
+            if (metadata.formatMinor >= 24)
+            {
+                writer.u8(parameter.isParameterPack ? 1U : 0U);
+            }
             if (metadata.formatMinor >= 3)
             {
                 writer.u8(static_cast<std::uint8_t>(parameter.defaultValueKind));
@@ -1699,6 +1705,8 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
                 writer.text(parameter.typeKey);
                 writer.u8(static_cast<std::uint8_t>(parameter.ownership));
                 writer.u8(static_cast<std::uint8_t>(parameter.passKind));
+                if (metadata.formatMinor >= 24)
+                    writer.u8(parameter.isParameterPack ? 1U : 0U);
                 writer.u8(static_cast<std::uint8_t>(parameter.defaultValueKind));
                 writer.u8(parameter.defaultValueFlags);
                 writer.u64(parameter.defaultValueBits);
@@ -1861,6 +1869,16 @@ bool decodePayload(
                     return false;
                 }
                 parameter.passKind = static_cast<LibraryMetadataParameterPassKind>(passKind);
+            }
+            if (metadata.formatMinor >= 24)
+            {
+                std::uint8_t parameterPack = 0;
+                if (!reader.u8(parameterPack) || parameterPack > 1U)
+                {
+                    error = "truncated or invalid metadata parameter-pack flag";
+                    return false;
+                }
+                parameter.isParameterPack = parameterPack != 0U;
             }
             if (metadata.formatMinor >= 3)
             {
@@ -2025,6 +2043,7 @@ bool decodePayload(
                 LibraryMetadataParameter parameter;
                 std::uint8_t parameterOwnership = 0;
                 std::uint8_t passKind = 0;
+                std::uint8_t parameterPack = 0;
                 std::uint8_t defaultKind = 0;
                 if (!reader.text(parameter.name) || !reader.text(parameter.typeKey) ||
                     !reader.u8(parameterOwnership) ||
@@ -2033,6 +2052,8 @@ bool decodePayload(
                     !reader.u8(passKind) ||
                     passKind > static_cast<std::uint8_t>(
                         LibraryMetadataParameterPassKind::In) ||
+                    (metadata.formatMinor >= 24 &&
+                     (!reader.u8(parameterPack) || parameterPack > 1U)) ||
                     !reader.u8(defaultKind) ||
                     defaultKind > static_cast<std::uint8_t>(
                         LibraryMetadataDefaultValueKind::String) ||
@@ -2048,6 +2069,7 @@ bool decodePayload(
                     static_cast<LibraryMetadataOwnershipKind>(parameterOwnership);
                 parameter.passKind =
                     static_cast<LibraryMetadataParameterPassKind>(passKind);
+                parameter.isParameterPack = parameterPack != 0U;
                 parameter.defaultValueKind =
                     static_cast<LibraryMetadataDefaultValueKind>(defaultKind);
                 function.parameters.push_back(std::move(parameter));
@@ -2379,6 +2401,25 @@ bool LibraryMetadataCodec::writeModelImpl(
                 error = "NativeSharp metadata before 1.20 cannot represent vectorcall delegates";
                 return false;
             }
+        }
+    }
+    if (metadata.formatMinor < 24)
+    {
+        const auto hasParameterPack = [](const auto& callable)
+        {
+            return std::ranges::any_of(
+                callable.parameters,
+                [](const LibraryMetadataParameter& parameter)
+                {
+                    return parameter.isParameterPack;
+                });
+        };
+        if (std::ranges::any_of(metadata.members, hasParameterPack) ||
+            std::ranges::any_of(metadata.namespaceFunctions, hasParameterPack))
+        {
+            error = "NativeSharp metadata before 1.24 cannot represent a params "
+                "ReadOnlySpan<T> declaration";
+            return false;
         }
     }
 
@@ -3137,6 +3178,42 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                     "' carries variadic outside an imported C method with fixed parameters";
                 return false;
             }
+        }
+    }
+    if (metadata.formatMinor >= 24)
+    {
+        const auto verifyParameterPacks = [&](const auto& callable, std::string_view owner) -> bool
+        {
+            for (std::size_t index = 0; index < callable.parameters.size(); ++index)
+            {
+                const LibraryMetadataParameter& parameter = callable.parameters[index];
+                if (!parameter.isParameterPack) continue;
+                if (index + 1U != callable.parameters.size() ||
+                    parameter.passKind != LibraryMetadataParameterPassKind::Value ||
+                    parameter.defaultValueKind != LibraryMetadataDefaultValueKind::None ||
+                    parameter.typeKey.find("ReadOnlySpan__g1__") == std::string::npos)
+                {
+                    error = "metadata " + std::string(owner) + " parameter '" + parameter.name +
+                        "' carries an invalid params ReadOnlySpan<T> contract";
+                    return false;
+                }
+            }
+            return true;
+        };
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            if (!verifyParameterPacks(
+                    member,
+                    "member '" + member.declaringTypeKey + "." + member.signatureKey + "'"))
+                return false;
+        }
+        for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+        {
+            if (!verifyParameterPacks(
+                    function,
+                    "namespace function '" + function.namespaceName + "." +
+                        function.signatureKey + "'"))
+                return false;
         }
     }
     return true;

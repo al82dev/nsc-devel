@@ -994,7 +994,9 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::ValueConstruction: return "value-construction";
         case ProjectOopHirNodeKind::PlacementConstruction: return "placement-construction";
         case ProjectOopHirNodeKind::AggregateInitializer: return "aggregate-initializer";
+        case ProjectOopHirNodeKind::AggregateSpread: return "aggregate-spread";
         case ProjectOopHirNodeKind::AggregateElement: return "aggregate-element";
+        case ProjectOopHirNodeKind::ParameterPack: return "parameter-pack";
         case ProjectOopHirNodeKind::TemporaryAddress: return "temporary-address";
         case ProjectOopHirNodeKind::AddressValue: return "address-value";
         case ProjectOopHirNodeKind::BorrowValue: return "borrow-value";
@@ -1664,6 +1666,15 @@ bool ProjectOopHirModel::buildImpl(
                 if (initializerBinding->resolution == ConstructorInitializerResolutionKind::ResolvedExplicit &&
                     initializerBinding->initializerSyntax != nullptr)
                 {
+                    if (!initializerBinding->selectedEntryConstructorMemberOrdinal.has_value() ||
+                        *initializerBinding->selectedEntryConstructorMemberOrdinal >= memberModel.members().size())
+                    {
+                        error = "NSC-LIMIT-020 selected constructor initializer has no callable metadata";
+                        return false;
+                    }
+                    const ClassMemberSymbol& selectedConstructor = memberModel.members()[
+                        *initializerBinding->selectedEntryConstructorMemberOrdinal];
+                    ProjectOopHirNode* expandedPack = nullptr;
                     for (std::size_t index = 0; index < initializerBinding->initializerSyntax->children().size(); ++index)
                     {
                         const ast::AstNode* argumentSyntax = initializerBinding->initializerSyntax->children()[index];
@@ -1678,6 +1689,44 @@ bool ProjectOopHirModel::buildImpl(
                             argument = wrapImplicitConversion(
                                 std::move(argument), initializerBinding->selectedConversions[index], argumentSyntax);
                         }
+                        if (index >= initializerBinding->selectedArgumentParameterOrdinals.size())
+                        {
+                            error = "named constructor initializer argument has no parameter ordinal";
+                            return false;
+                        }
+                        const std::size_t parameterIndex =
+                            initializerBinding->selectedArgumentParameterOrdinals[index];
+                        const bool packElement =
+                            index < initializerBinding->selectedParameterPackElements.size() &&
+                            initializerBinding->selectedParameterPackElements[index];
+                        if (packElement)
+                        {
+                            if (parameterIndex >= selectedConstructor.parameters.size())
+                            {
+                                error = "T01-F02 constructor initializer pack has no parameter";
+                                return false;
+                            }
+                            const std::string& elementType =
+                                selectedConstructor.parameters[parameterIndex].parameterPackElementTypeKey;
+                            if (elementType.empty())
+                            {
+                                error = "T01-F02 constructor initializer pack lost its element type";
+                                return false;
+                            }
+                            if (expandedPack == nullptr)
+                            {
+                                auto pack = makeNode(
+                                    ProjectOopHirNodeKind::ParameterPack,
+                                    argumentSyntax,
+                                    selectedConstructor.parameters[parameterIndex].typeKey);
+                                pack->elementTypeKey = elementType;
+                                expandedPack = pack.get();
+                                initializerCall->children.push_back(std::move(pack));
+                                initializerCall->argumentParameterOrdinals.push_back(parameterIndex);
+                            }
+                            expandedPack->children.push_back(std::move(argument));
+                            continue;
+                        }
                         if (std::ranges::find(
                                 initializerBinding->selectedFullExpressionBorrowArgumentOrdinals,
                                 index) != initializerBinding->selectedFullExpressionBorrowArgumentOrdinals.end())
@@ -1686,24 +1735,10 @@ bool ProjectOopHirModel::buildImpl(
                                 std::move(argument), argumentSyntax, initializerHasOwnedTemporary);
                         }
                         initializerCall->children.push_back(std::move(argument));
-                        if (index >= initializerBinding->selectedArgumentParameterOrdinals.size())
-                        {
-                            error = "named constructor initializer argument has no parameter ordinal";
-                            return false;
-                        }
-                        initializerCall->argumentParameterOrdinals.push_back(
-                            initializerBinding->selectedArgumentParameterOrdinals[index]);
+                        initializerCall->argumentParameterOrdinals.push_back(parameterIndex);
                     }
                     if (!initializerBinding->selectedDefaultArguments.empty())
                     {
-                        if (!initializerBinding->selectedEntryConstructorMemberOrdinal.has_value() ||
-                            *initializerBinding->selectedEntryConstructorMemberOrdinal >= memberModel.members().size())
-                        {
-                            error = "NSC-LIMIT-020 selected constructor initializer has no callable metadata";
-                            return false;
-                        }
-                        const ClassMemberSymbol& selectedConstructor = memberModel.members()[
-                            *initializerBinding->selectedEntryConstructorMemberOrdinal];
                         for (std::size_t index = 0;
                              index < initializerBinding->selectedDefaultArguments.size(); ++index)
                         {
@@ -1727,6 +1762,32 @@ bool ProjectOopHirModel::buildImpl(
                             initializerCall->children.push_back(std::move(argument));
                             initializerCall->argumentParameterOrdinals.push_back(parameterIndex);
                         }
+                    }
+                    if (initializerBinding->selectedSynthesizesEmptyParameterPack)
+                    {
+                        if (!initializerBinding->selectedParameterPackOrdinal.has_value() ||
+                            *initializerBinding->selectedParameterPackOrdinal >=
+                                selectedConstructor.parameters.size())
+                        {
+                            error = "T01-F02 empty constructor initializer pack has no parameter";
+                            return false;
+                        }
+                        const std::size_t parameterIndex =
+                            *initializerBinding->selectedParameterPackOrdinal;
+                        const std::string& elementType =
+                            selectedConstructor.parameters[parameterIndex].parameterPackElementTypeKey;
+                        if (elementType.empty())
+                        {
+                            error = "T01-F02 empty constructor initializer pack lost its element type";
+                            return false;
+                        }
+                        auto pack = makeNode(
+                            ProjectOopHirNodeKind::ParameterPack,
+                            initializerBinding->initializerSyntax,
+                            selectedConstructor.parameters[parameterIndex].typeKey);
+                        pack->elementTypeKey = elementType;
+                        initializerCall->children.push_back(std::move(pack));
+                        initializerCall->argumentParameterOrdinals.push_back(parameterIndex);
                     }
                 }
                 prefix.push_back(wrapFullExpressionCleanup(
@@ -4714,6 +4775,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     (memberModel_ != nullptr ? memberModel_->members().size() : 0) +
                     functionOrdinal;
                 bool hasOwnedTemporary = false;
+                ProjectOopHirNode* expandedPack = nullptr;
                 for (std::size_t index = 0; index < expression->children().size(); ++index)
                 {
                     const ast::AstNode* argumentSyntax = expression->children()[index];
@@ -4740,6 +4802,34 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                             std::move(argument),
                             namespaceCall->selectedConversions[index],
                             argumentSyntax);
+                    }
+                    const bool packElement =
+                        index < namespaceCall->selectedParameterPackElements.size() &&
+                        namespaceCall->selectedParameterPackElements[index];
+                    if (packElement)
+                    {
+                        const std::string& elementType =
+                            target.parameters[parameterOrdinal].parameterPackElementTypeKey;
+                        if (elementType.empty())
+                        {
+                            error = "T01-F02 namespace parameter pack lost its element type";
+                            return nullptr;
+                        }
+                        if (expandedPack == nullptr)
+                        {
+                            auto pack = makeNode(
+                                ProjectOopHirNodeKind::ParameterPack,
+                                argumentSyntax,
+                                target.parameters[parameterOrdinal].typeKey);
+                            pack->elementTypeKey = elementType;
+                            expandedPack = pack.get();
+                            node->children.push_back(std::move(pack));
+                            node->argumentParameterOrdinals.push_back(parameterOrdinal);
+                            node->argumentTypeKeys.push_back(
+                                target.parameters[parameterOrdinal].typeKey);
+                        }
+                        expandedPack->children.push_back(std::move(argument));
+                        continue;
                     }
                     argument = wrapCallArgumentBorrow(
                         std::move(argument),
@@ -4778,6 +4868,32 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     node->argumentParameterOrdinals.push_back(parameterOrdinal);
                     node->argumentTypeKeys.push_back(
                         target.parameters[parameterOrdinal].typeKey);
+                }
+                if (namespaceCall->selectedSynthesizesEmptyParameterPack)
+                {
+                    if (!namespaceCall->selectedParameterPackOrdinal.has_value() ||
+                        *namespaceCall->selectedParameterPackOrdinal >= target.parameters.size())
+                    {
+                        error = "T01-F02 empty namespace parameter pack has no parameter";
+                        return nullptr;
+                    }
+                    const std::size_t parameterOrdinal =
+                        *namespaceCall->selectedParameterPackOrdinal;
+                    const std::string& elementType =
+                        target.parameters[parameterOrdinal].parameterPackElementTypeKey;
+                    if (elementType.empty())
+                    {
+                        error = "T01-F02 empty namespace parameter pack lost its element type";
+                        return nullptr;
+                    }
+                    auto pack = makeNode(
+                        ProjectOopHirNodeKind::ParameterPack,
+                        expression,
+                        target.parameters[parameterOrdinal].typeKey);
+                    pack->elementTypeKey = elementType;
+                    node->children.push_back(std::move(pack));
+                    node->argumentParameterOrdinals.push_back(parameterOrdinal);
+                    node->argumentTypeKeys.push_back(target.parameters[parameterOrdinal].typeKey);
                 }
                 node->argumentCount = node->children.size();
                 node->referenceResult = target.isReferenceReturn;
@@ -5692,7 +5808,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 node->children.push_back(std::move(receiver));
             }
+            if (memberModel_ == nullptr ||
+                selectedMemberOrdinal >= memberModel_->members().size())
+            {
+                error = "NSC-LIMIT-020 selected call has no callable metadata";
+                return nullptr;
+            }
+            const ClassMemberSymbol& selectedMember =
+                memberModel_->members()[selectedMemberOrdinal];
             bool hasOwnedTemporary = false;
+            ProjectOopHirNode* expandedPack = nullptr;
             for (std::size_t index = 0; index < expression->children().size(); ++index)
             {
                 auto argument = lowerExpression(expression->children()[index], memberOrdinal, false, error);
@@ -5715,6 +5840,37 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         std::move(argument), binding->selectedConversions[selectedIndex], expression->children()[index]);
                 }
                 const ast::AstNode* argumentSyntax = expression->children()[index];
+                const bool packElement =
+                    selectedIndex < binding->selectedParameterPackElements.size() &&
+                    binding->selectedParameterPackElements[selectedIndex];
+                if (packElement)
+                {
+                    if (parameterIndex >= selectedMember.parameters.size())
+                    {
+                        error = "T01-F02 method parameter pack has no selected parameter";
+                        return nullptr;
+                    }
+                    const std::string& elementType =
+                        selectedMember.parameters[parameterIndex].parameterPackElementTypeKey;
+                    if (elementType.empty())
+                    {
+                        error = "T01-F02 method parameter pack lost its element type";
+                        return nullptr;
+                    }
+                    if (expandedPack == nullptr)
+                    {
+                        auto pack = makeNode(
+                            ProjectOopHirNodeKind::ParameterPack,
+                            argumentSyntax,
+                            selectedMember.parameters[parameterIndex].typeKey);
+                        pack->elementTypeKey = elementType;
+                        expandedPack = pack.get();
+                        node->children.push_back(std::move(pack));
+                        node->argumentParameterOrdinals.push_back(parameterIndex);
+                    }
+                    expandedPack->children.push_back(std::move(argument));
+                    continue;
+                }
                 if (memberModel_ != nullptr && selectedMemberOrdinal < memberModel_->members().size() &&
                     parameterIndex < memberModel_->members()[selectedMemberOrdinal].parameters.size())
                 {
@@ -5725,14 +5881,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->children.push_back(std::move(argument));
                 node->argumentParameterOrdinals.push_back(parameterIndex);
             }
-            if (memberModel_ == nullptr ||
-                selectedMemberOrdinal >= memberModel_->members().size())
-            {
-                error = "NSC-LIMIT-020 selected call has no callable metadata";
-                return nullptr;
-            }
-            const ClassMemberSymbol& selectedMember =
-                memberModel_->members()[selectedMemberOrdinal];
             for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
             {
                 if (index >= binding->selectedDefaultArgumentParameterOrdinals.size())
@@ -5753,6 +5901,30 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     error);
                 if (argument == nullptr) return nullptr;
                 node->children.push_back(std::move(argument));
+                node->argumentParameterOrdinals.push_back(parameterIndex);
+            }
+            if (binding->selectedSynthesizesEmptyParameterPack)
+            {
+                if (!binding->selectedParameterPackOrdinal.has_value() ||
+                    *binding->selectedParameterPackOrdinal >= selectedMember.parameters.size())
+                {
+                    error = "T01-F02 empty method parameter pack has no parameter";
+                    return nullptr;
+                }
+                const std::size_t parameterIndex = *binding->selectedParameterPackOrdinal;
+                const std::string& elementType =
+                    selectedMember.parameters[parameterIndex].parameterPackElementTypeKey;
+                if (elementType.empty())
+                {
+                    error = "T01-F02 empty method parameter pack lost its element type";
+                    return nullptr;
+                }
+                auto pack = makeNode(
+                    ProjectOopHirNodeKind::ParameterPack,
+                    expression,
+                    selectedMember.parameters[parameterIndex].typeKey);
+                pack->elementTypeKey = elementType;
+                node->children.push_back(std::move(pack));
                 node->argumentParameterOrdinals.push_back(parameterIndex);
             }
             if (addressContext && !selectedMember.isReferenceReturn)
@@ -5962,9 +6134,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             node->memberOrdinal = binding->selectedConstructorMemberOrdinal.has_value()
                 ? binding->selectedConstructorMemberOrdinal
                 : binding->implicitDefaultBaseConstructorMemberOrdinal;
-            node->argumentCount =
-                expression->children().size() + binding->selectedDefaultArguments.size();
+            node->argumentCount = 0;
             bool hasOwnedTemporary = false;
+            ProjectOopHirNode* expandedPack = nullptr;
             if (placement)
             {
                 auto storage = lowerExpression(expression->first(), memberOrdinal, false, error);
@@ -5984,6 +6156,52 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     argument = wrapImplicitConversion(
                         std::move(argument), binding->selectedConversions[index], expression->children()[index]);
                 }
+                if (index >= binding->selectedArgumentParameterOrdinals.size())
+                {
+                    error = "named construction argument has no selected parameter ordinal";
+                    return nullptr;
+                }
+                const std::size_t parameterIndex =
+                    binding->selectedArgumentParameterOrdinals[index];
+                const bool packElement =
+                    index < binding->selectedParameterPackElements.size() &&
+                    binding->selectedParameterPackElements[index];
+                if (packElement)
+                {
+                    if (!binding->selectedConstructorMemberOrdinal.has_value() ||
+                        *binding->selectedConstructorMemberOrdinal >= memberModel_->members().size())
+                    {
+                        error = "T01-F02 construction parameter pack has no constructor metadata";
+                        return nullptr;
+                    }
+                    const ClassMemberSymbol& constructor =
+                        memberModel_->members()[*binding->selectedConstructorMemberOrdinal];
+                    if (parameterIndex >= constructor.parameters.size())
+                    {
+                        error = "T01-F02 construction parameter pack has no parameter";
+                        return nullptr;
+                    }
+                    const std::string& elementType =
+                        constructor.parameters[parameterIndex].parameterPackElementTypeKey;
+                    if (elementType.empty())
+                    {
+                        error = "T01-F02 construction parameter pack lost its element type";
+                        return nullptr;
+                    }
+                    if (expandedPack == nullptr)
+                    {
+                        auto pack = makeNode(
+                            ProjectOopHirNodeKind::ParameterPack,
+                            expression->children()[index],
+                            constructor.parameters[parameterIndex].typeKey);
+                        pack->elementTypeKey = elementType;
+                        expandedPack = pack.get();
+                        node->children.push_back(std::move(pack));
+                        node->argumentParameterOrdinals.push_back(parameterIndex);
+                    }
+                    expandedPack->children.push_back(std::move(argument));
+                    continue;
+                }
                 if (std::ranges::find(
                         binding->selectedFullExpressionBorrowArgumentOrdinals,
                         index) != binding->selectedFullExpressionBorrowArgumentOrdinals.end())
@@ -5992,13 +6210,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         std::move(argument), expression->children()[index], hasOwnedTemporary);
                 }
                 node->children.push_back(std::move(argument));
-                if (index >= binding->selectedArgumentParameterOrdinals.size())
-                {
-                    error = "named construction argument has no selected parameter ordinal";
-                    return nullptr;
-                }
-                node->argumentParameterOrdinals.push_back(
-                    binding->selectedArgumentParameterOrdinals[index]);
+                node->argumentParameterOrdinals.push_back(parameterIndex);
             }
             if (!binding->selectedDefaultArguments.empty())
             {
@@ -6033,6 +6245,39 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     node->argumentParameterOrdinals.push_back(parameterIndex);
                 }
             }
+            if (binding->selectedSynthesizesEmptyParameterPack)
+            {
+                if (!binding->selectedConstructorMemberOrdinal.has_value() ||
+                    *binding->selectedConstructorMemberOrdinal >= memberModel_->members().size() ||
+                    !binding->selectedParameterPackOrdinal.has_value())
+                {
+                    error = "T01-F02 empty construction parameter pack has no constructor metadata";
+                    return nullptr;
+                }
+                const ClassMemberSymbol& constructor =
+                    memberModel_->members()[*binding->selectedConstructorMemberOrdinal];
+                const std::size_t parameterIndex = *binding->selectedParameterPackOrdinal;
+                if (parameterIndex >= constructor.parameters.size())
+                {
+                    error = "T01-F02 empty construction parameter pack has no parameter";
+                    return nullptr;
+                }
+                const std::string& elementType =
+                    constructor.parameters[parameterIndex].parameterPackElementTypeKey;
+                if (elementType.empty())
+                {
+                    error = "T01-F02 empty construction parameter pack lost its element type";
+                    return nullptr;
+                }
+                auto pack = makeNode(
+                    ProjectOopHirNodeKind::ParameterPack,
+                    expression,
+                    constructor.parameters[parameterIndex].typeKey);
+                pack->elementTypeKey = elementType;
+                node->children.push_back(std::move(pack));
+                node->argumentParameterOrdinals.push_back(parameterIndex);
+            }
+            node->argumentCount = node->argumentParameterOrdinals.size();
             if (binding->selectedImplicitDefault)
             {
                 for (const std::size_t typeOrdinal : implicitInitializerTypes(
@@ -6994,16 +7239,66 @@ bool ProjectOopHirModel::appendAggregateElements(
         }
     }
 
-    if (syntax->children().size() > slots.size())
+    const MethodAggregateInitializerBinding* binding = methodBodyModel_ != nullptr
+        ? methodBodyModel_->aggregateInitializerBinding(syntax) : nullptr;
+    if (binding == nullptr || binding->entries.size() != syntax->children().size())
     {
-        error = "C7 aggregate initializer has more values than '" + targetTypeKey + "' has elements";
+        error = "T01-F05 aggregate initializer has no semantic element mapping";
         return false;
     }
 
-    for (std::size_t index = 0; index < syntax->children().size(); ++index)
+    for (std::size_t index = 0; index < binding->entries.size(); ++index)
     {
-        const ast::AstNode* element = syntax->children()[index];
-        const AggregateSlot& target = slots[index];
+        const MethodAggregateInitializerEntryBinding& entry = binding->entries[index];
+        const ast::AstNode* element = entry.syntax;
+        if (entry.spread)
+        {
+            if (element == nullptr || element->kind() != ast::AstNodeKind::SpreadElementExpression ||
+                element->first() == nullptr)
+            {
+                error = "T01-F05 aggregate spread has no source expression";
+                return false;
+            }
+            auto source = lowerExpression(element->first(), memberOrdinal, false, error);
+            if (source == nullptr) return false;
+            auto spread = makeNode(ProjectOopHirNodeKind::AggregateSpread, element, targetTypeKey);
+            spread->children.push_back(std::move(source));
+            for (const std::size_t targetOrdinal : entry.targetElementOrdinals)
+            {
+                if (targetOrdinal >= slots.size())
+                {
+                    error = "T01-F05 aggregate spread target is out of range";
+                    return false;
+                }
+                const AggregateSlot& target = slots[targetOrdinal];
+                auto descriptor = makeNode(
+                    ProjectOopHirNodeKind::AggregateElement,
+                    element,
+                    target.typeKey);
+                descriptor->integerValue = baseOffset + target.offset;
+                descriptor->secondaryIntegerValue = target.offset;
+                descriptor->bitOffset = target.bitOffset;
+                descriptor->bitWidth = target.bitWidth;
+                descriptor->bitStorageSize = target.storageSize;
+                descriptor->bitStorageAlignment = target.storageAlignment;
+                descriptor->volatileAccess = target.volatileAccess;
+                if (target.bitWidth.has_value())
+                {
+                    error = "T01-F05 spread initialization of bit fields requires explicit named values";
+                    return false;
+                }
+                spread->children.push_back(std::move(descriptor));
+            }
+            elements.push_back(std::move(spread));
+            continue;
+        }
+        if (entry.targetElementOrdinals.size() != 1U ||
+            entry.targetElementOrdinals.front() >= slots.size())
+        {
+            error = "T01-F05 aggregate value has no unique target element";
+            return false;
+        }
+        const AggregateSlot& target = slots[entry.targetElementOrdinals.front()];
         const std::string& slotTypeKey = target.typeKey;
         const std::uint64_t slotOffset = baseOffset + target.offset;
         if (element->kind() == ast::AstNodeKind::AggregateInitializerExpression)

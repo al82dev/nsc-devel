@@ -2186,6 +2186,106 @@ namespace Foundation.Binary
         "LibraryReference public source resolves store generics by their NSMETA module identity (" +
             error + ")");
 }
+
+void testTypedParameterPackRoundTrip(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const auto producer = root / "TypedParameterPackProducer";
+    writeFile(producer / "TypedParameterPackProducer.nsproj",
+        "<Project><PropertyGroup><Name>TypedParameterPackProducer</Name>"
+        "<OutputType>StaticLibrary</OutputType><Language>3</Language></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    writeFile(producer / "Api.ns", R"NS(
+namespace TypedPacks
+{
+    public borrowed struct ReadOnlySpan<T>
+    {
+        public T* start;
+        public int count;
+    }
+
+    public static class Api
+    {
+        public static int Sum(params ReadOnlySpan<int> values)
+        {
+            int result = 0;
+            int index = 0;
+            while (index < values.count)
+            {
+                result = result + values.start[index];
+                index = index + 1;
+            }
+            return result;
+        }
+    }
+}
+)NS");
+
+    std::string output;
+    std::string error;
+    const std::string producerProject =
+        (producer / "TypedParameterPackProducer.nsproj").string();
+    const std::string producerLibrary =
+        (producer / "TypedParameterPackProducer.lib").string();
+    const std::array<std::string_view, 5> producerArgs = {
+        "-O0", "--emit-project-oop-lib", producerProject, "-o", producerLibrary};
+    tests.expect(runDriver(producerArgs, output, error) == ExitCode::Success,
+        "language 3 producer emits an O0 library with a typed parameter pack (" + error + ")");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    error.clear();
+    const bool read = codec.read(
+        producer / "TypedParameterPackProducer.nsmeta", metadata, error);
+    const auto member = std::ranges::find_if(
+        metadata.members, [](const LibraryMetadataMember& candidate) {
+            return candidate.name == "Sum";
+        });
+    tests.expect(read && metadata.formatMinor >= 24U && metadata.languageEdition == 3U &&
+                     member != metadata.members.end() && member->parameters.size() == 1U &&
+                     member->parameters.front().isParameterPack,
+        "NSMETA 1.24 preserves language edition and params on the public signature (" +
+            error + ")");
+
+    LibraryMetadata downlevel = metadata;
+    downlevel.formatMinor = 23U;
+    error.clear();
+    tests.expect(
+        !codec.writeModel(
+            downlevel, producer / "TypedParameterPackProducer-1.23.nsmeta", error) &&
+            error.find("before 1.24 cannot represent a params") != std::string::npos,
+        "NSMETA 1.23 rejects rather than silently erases a typed parameter-pack contract (" +
+            error + ")");
+
+    const auto consumer = root / "TypedParameterPackConsumer";
+    writeFile(consumer / "TypedParameterPackConsumer.nsproj",
+        "<Project><PropertyGroup><Name>TypedParameterPackConsumer</Name>"
+        "<Language>3</Language></PropertyGroup><ItemGroup>"
+        "<Compile Include=\"**/*.ns\" />"
+        "<LibraryReference Include=\"" + producerLibrary + "\" Metadata=\"" +
+        (producer / "TypedParameterPackProducer.nsmeta").generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(consumer / "Program.ns", R"NS(
+using TypedPacks;
+class Program
+{
+    public static int Main()
+    {
+        return Api.Sum(20, 22);
+    }
+}
+)NS");
+
+    const std::string consumerProject =
+        (consumer / "TypedParameterPackConsumer.nsproj").string();
+    const std::array<std::string_view, 2> consumerArgs = {
+        "--check-project-oop-hir", consumerProject};
+    output.clear();
+    error.clear();
+    tests.expect(runDriver(consumerArgs, output, error) == ExitCode::Success,
+        "LibraryReference rehydrates params and accepts an expanded typed pack (" + error + ")");
+}
 }
 
 int main()
@@ -2213,6 +2313,7 @@ int main()
     testPrivateStaticFieldIsNotPublished(tests, root);
     testPublicInterfaceSignaturesMatchDllExports(tests, root);
     testPrecompiledStoreGenericKeepsModuleQualifier(tests, root);
+    testTypedParameterPackRoundTrip(tests, root);
     testPublicReferenceArraysMatchDllExports(tests, root);
     testDelegateAggregateSignaturesPublishCompleteDllContract(tests, root);
 

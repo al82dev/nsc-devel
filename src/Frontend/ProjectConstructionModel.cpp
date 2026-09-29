@@ -17,6 +17,10 @@ struct NamedConstructorArgumentMap final
     bool valid = false;
     std::vector<std::size_t> explicitParameterOrdinals;
     std::vector<std::size_t> defaultedParameterOrdinals;
+    std::vector<bool> parameterPackElements;
+    std::optional<std::size_t> parameterPackOrdinal;
+    bool usesExpandedParameterPack = false;
+    bool synthesizesEmptyParameterPack = false;
 };
 
 NamedConstructorArgumentMap mapConstructorArguments(
@@ -24,14 +28,20 @@ NamedConstructorArgumentMap mapConstructorArguments(
     const ClassMemberSymbol& constructor)
 {
     NamedConstructorArgumentMap result;
+    if (!constructor.parameters.empty() && constructor.parameters.back().isParameterPack)
+        result.parameterPackOrdinal = constructor.parameters.size() - 1U;
     std::vector<bool> assigned(constructor.parameters.size(), false);
     std::size_t nextPositional = 0;
+    bool reachedExpandedParameterPack = false;
+    bool assignedParameterPackDirectly = false;
     for (const ast::AstNode* argument : arguments)
     {
         if (argument == nullptr) return result;
         std::optional<std::size_t> parameterOrdinal;
+        bool parameterPackElement = false;
         if (!argument->argumentName().empty())
         {
+            if (reachedExpandedParameterPack) return result;
             for (std::size_t index = 0; index < constructor.parameters.size(); ++index)
             {
                 if (constructor.parameters[index].name == argument->argumentName())
@@ -40,19 +50,43 @@ NamedConstructorArgumentMap mapConstructorArguments(
                     break;
                 }
             }
+            if (parameterOrdinal == result.parameterPackOrdinal)
+            {
+                if (assignedParameterPackDirectly) return result;
+                assignedParameterPackDirectly = true;
+            }
         }
         else
         {
             while (nextPositional < assigned.size() && assigned[nextPositional]) ++nextPositional;
-            if (nextPositional < assigned.size()) parameterOrdinal = nextPositional;
+            if (nextPositional < assigned.size())
+            {
+                parameterOrdinal = nextPositional;
+                if (parameterOrdinal == result.parameterPackOrdinal)
+                {
+                    if (assignedParameterPackDirectly) return result;
+                    parameterPackElement = true;
+                    reachedExpandedParameterPack = true;
+                }
+            }
         }
-        if (!parameterOrdinal.has_value() || assigned[*parameterOrdinal]) return result;
-        assigned[*parameterOrdinal] = true;
+        if (!parameterOrdinal.has_value() ||
+            (assigned[*parameterOrdinal] && !parameterPackElement)) return result;
+        if (!parameterPackElement) assigned[*parameterOrdinal] = true;
         result.explicitParameterOrdinals.push_back(*parameterOrdinal);
+        result.parameterPackElements.push_back(parameterPackElement);
+        result.usesExpandedParameterPack =
+            result.usesExpandedParameterPack || parameterPackElement;
         while (nextPositional < assigned.size() && assigned[nextPositional]) ++nextPositional;
     }
     for (std::size_t index = 0; index < constructor.parameters.size(); ++index)
     {
+        if (index == result.parameterPackOrdinal)
+        {
+            result.synthesizesEmptyParameterPack =
+                !result.usesExpandedParameterPack && !assignedParameterPackDirectly;
+            continue;
+        }
         if (assigned[index]) continue;
         if (constructor.parameters[index].defaultValueSyntax == nullptr) return result;
         result.defaultedParameterOrdinals.push_back(index);
@@ -654,14 +688,45 @@ void ProjectConstructionModel::bindConstructorInitializer(
         candidate.viable = true;
         candidate.argumentParameterOrdinals = argumentMapping.explicitParameterOrdinals;
         candidate.defaultedParameterOrdinals = argumentMapping.defaultedParameterOrdinals;
+        candidate.parameterPackElements = argumentMapping.parameterPackElements;
+        candidate.parameterPackOrdinal = argumentMapping.parameterPackOrdinal;
+        candidate.usesExpandedParameterPack = argumentMapping.usesExpandedParameterPack;
+        candidate.synthesizesEmptyParameterPack = argumentMapping.synthesizesEmptyParameterPack;
+        if (candidate.usesExpandedParameterPack &&
+            std::ranges::count(candidate.parameterPackElements, true) == 1 &&
+            candidate.parameterPackOrdinal.has_value())
+        {
+            const auto element = std::ranges::find(candidate.parameterPackElements, true);
+            const std::size_t argumentOrdinal = static_cast<std::size_t>(
+                std::distance(candidate.parameterPackElements.begin(), element));
+            const MethodParameterSymbol& pack =
+                candidateSymbol.parameters[*candidate.parameterPackOrdinal];
+            if (conversions.classifyImplicit(
+                    argumentTypes[argumentOrdinal].typeKey,
+                    pack.typeKey,
+                    argumentTypes[argumentOrdinal].integerConstant).exists())
+            {
+                candidate.parameterPackElements[argumentOrdinal] = false;
+                candidate.usesExpandedParameterPack = false;
+            }
+        }
         candidate.defaultedParameterCount = argumentMapping.defaultedParameterOrdinals.size();
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < argumentTypes.size(); ++argumentOrdinal)
         {
             const std::size_t parameterOrdinal =
                 candidate.argumentParameterOrdinals[argumentOrdinal];
+            const bool packElement = argumentOrdinal < candidate.parameterPackElements.size() &&
+                candidate.parameterPackElements[argumentOrdinal];
+            const MethodParameterSymbol& parameter = candidateSymbol.parameters[parameterOrdinal];
+            std::string conversionTarget = parameter.typeKey;
+            if (packElement)
+            {
+                if (parameter.parameterPackElementTypeKey.empty()) candidate.viable = false;
+                else conversionTarget = parameter.parameterPackElementTypeKey;
+            }
             ProjectImplicitConversion conversion = conversions.classifyImplicit(
                 argumentTypes[argumentOrdinal].typeKey,
-                candidateSymbol.parameters[parameterOrdinal].typeKey,
+                conversionTarget,
                 argumentTypes[argumentOrdinal].integerConstant);
             if (!conversion.exists())
             {
@@ -675,10 +740,17 @@ void ProjectConstructionModel::bindConstructorInitializer(
             // tipo. El veredicto se calcula igualmente para que `ownershipFits` tenga exactamente
             // un elemento por argumento --el diagnostico indexa por posicion-- pero solo tumba al
             // candidato cuando la fisica ya lo habia aceptado.
-            const MethodParameterSymbol& parameter = candidateSymbol.parameters[parameterOrdinal];
-            const bool literalBorrow = isStringLiteralBorrow(parameter, argumentTypes[argumentOrdinal]);
-            const bool freshBorrow = isFreshOwnedStringBorrow(parameter, argumentTypes[argumentOrdinal]);
-            const OwnershipArgumentFit fit = literalBorrow || freshBorrow
+            const bool literalBorrow = !packElement &&
+                isStringLiteralBorrow(parameter, argumentTypes[argumentOrdinal]);
+            const bool freshBorrow = !packElement &&
+                isFreshOwnedStringBorrow(parameter, argumentTypes[argumentOrdinal]);
+            const OwnershipArgumentFit fit = packElement
+                ? (argumentTypes[argumentOrdinal].ownership == sema::OwnershipKind::None &&
+                   !argumentTypes[argumentOrdinal].ownershipTransfer &&
+                   !argumentTypes[argumentOrdinal].ownershipFreshOwner
+                       ? OwnershipArgumentFit::Ok
+                       : OwnershipArgumentFit::UnqualifiedRejectsOwnership)
+                : literalBorrow || freshBorrow
                 ? OwnershipArgumentFit::Ok
                 : classifyOwnershipArgument(
                 methodBodyModel_->typeKeyIsOwnable(parameter.typeKey),
@@ -795,6 +867,11 @@ void ProjectConstructionModel::bindConstructorInitializer(
             binding.selectedEntryConstructorMemberOrdinal = selected.memberOrdinal;
             binding.selectedConversions = selected.conversions;
             binding.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
+            binding.selectedParameterPackElements = selected.parameterPackElements;
+            binding.selectedParameterPackOrdinal = selected.parameterPackOrdinal;
+            binding.selectedUsesExpandedParameterPack = selected.usesExpandedParameterPack;
+            binding.selectedSynthesizesEmptyParameterPack =
+                selected.synthesizesEmptyParameterPack;
             const ClassMemberSymbol& selectedSymbol =
                 memberModel_->members()[*selected.memberOrdinal];
             for (const std::size_t parameterOrdinal : selected.defaultedParameterOrdinals)
@@ -1084,14 +1161,45 @@ void ProjectConstructionModel::bindConstruction(
         candidate.viable = true;
         candidate.argumentParameterOrdinals = argumentMapping.explicitParameterOrdinals;
         candidate.defaultedParameterOrdinals = argumentMapping.defaultedParameterOrdinals;
+        candidate.parameterPackElements = argumentMapping.parameterPackElements;
+        candidate.parameterPackOrdinal = argumentMapping.parameterPackOrdinal;
+        candidate.usesExpandedParameterPack = argumentMapping.usesExpandedParameterPack;
+        candidate.synthesizesEmptyParameterPack = argumentMapping.synthesizesEmptyParameterPack;
+        if (candidate.usesExpandedParameterPack &&
+            std::ranges::count(candidate.parameterPackElements, true) == 1 &&
+            candidate.parameterPackOrdinal.has_value())
+        {
+            const auto element = std::ranges::find(candidate.parameterPackElements, true);
+            const std::size_t argumentOrdinal = static_cast<std::size_t>(
+                std::distance(candidate.parameterPackElements.begin(), element));
+            const MethodParameterSymbol& pack =
+                constructor.parameters[*candidate.parameterPackOrdinal];
+            if (conversions.classifyImplicit(
+                    argumentTypes[argumentOrdinal].typeKey,
+                    pack.typeKey,
+                    argumentTypes[argumentOrdinal].integerConstant).exists())
+            {
+                candidate.parameterPackElements[argumentOrdinal] = false;
+                candidate.usesExpandedParameterPack = false;
+            }
+        }
         candidate.defaultedParameterCount = argumentMapping.defaultedParameterOrdinals.size();
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < argumentTypes.size(); ++argumentOrdinal)
         {
             const std::size_t parameterOrdinal =
                 candidate.argumentParameterOrdinals[argumentOrdinal];
+            const bool packElement = argumentOrdinal < candidate.parameterPackElements.size() &&
+                candidate.parameterPackElements[argumentOrdinal];
+            const MethodParameterSymbol& parameter = constructor.parameters[parameterOrdinal];
+            std::string conversionTarget = parameter.typeKey;
+            if (packElement)
+            {
+                if (parameter.parameterPackElementTypeKey.empty()) candidate.viable = false;
+                else conversionTarget = parameter.parameterPackElementTypeKey;
+            }
             ProjectImplicitConversion conversion = conversions.classifyImplicit(
                 argumentTypes[argumentOrdinal].typeKey,
-                constructor.parameters[parameterOrdinal].typeKey,
+                conversionTarget,
                 argumentTypes[argumentOrdinal].integerConstant);
             if (!conversion.exists())
             {
@@ -1105,10 +1213,17 @@ void ProjectConstructionModel::bindConstruction(
             // tipo. El veredicto se calcula igualmente para que `ownershipFits` tenga exactamente
             // un elemento por argumento --el diagnostico indexa por posicion-- pero solo tumba al
             // candidato cuando la fisica ya lo habia aceptado.
-            const MethodParameterSymbol& parameter = constructor.parameters[parameterOrdinal];
-            const bool literalBorrow = isStringLiteralBorrow(parameter, argumentTypes[argumentOrdinal]);
-            const bool freshBorrow = isFreshOwnedStringBorrow(parameter, argumentTypes[argumentOrdinal]);
-            const OwnershipArgumentFit fit = literalBorrow || freshBorrow
+            const bool literalBorrow = !packElement &&
+                isStringLiteralBorrow(parameter, argumentTypes[argumentOrdinal]);
+            const bool freshBorrow = !packElement &&
+                isFreshOwnedStringBorrow(parameter, argumentTypes[argumentOrdinal]);
+            const OwnershipArgumentFit fit = packElement
+                ? (argumentTypes[argumentOrdinal].ownership == sema::OwnershipKind::None &&
+                   !argumentTypes[argumentOrdinal].ownershipTransfer &&
+                   !argumentTypes[argumentOrdinal].ownershipFreshOwner
+                       ? OwnershipArgumentFit::Ok
+                       : OwnershipArgumentFit::UnqualifiedRejectsOwnership)
+                : literalBorrow || freshBorrow
                 ? OwnershipArgumentFit::Ok
                 : classifyOwnershipArgument(
                 methodBodyModel_->typeKeyIsOwnable(parameter.typeKey),
@@ -1259,6 +1374,10 @@ void ProjectConstructionModel::bindConstruction(
     binding.selectedConstructorMemberOrdinal = selected.memberOrdinal;
     binding.selectedConversions = selected.conversions;
     binding.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
+    binding.selectedParameterPackElements = selected.parameterPackElements;
+    binding.selectedParameterPackOrdinal = selected.parameterPackOrdinal;
+    binding.selectedUsesExpandedParameterPack = selected.usesExpandedParameterPack;
+    binding.selectedSynthesizesEmptyParameterPack = selected.synthesizesEmptyParameterPack;
     const ClassMemberSymbol& selectedSymbol = memberModel_->members()[*selected.memberOrdinal];
     for (const std::size_t parameterOrdinal : selected.defaultedParameterOrdinals)
     {
@@ -1459,6 +1578,11 @@ bool ProjectConstructionModel::betterCandidate(
     if (!strictlyBetter && left.defaultedParameterCount != right.defaultedParameterCount)
     {
         return left.defaultedParameterCount < right.defaultedParameterCount;
+    }
+    if (!strictlyBetter &&
+        left.usesExpandedParameterPack != right.usesExpandedParameterPack)
+    {
+        return !left.usesExpandedParameterPack;
     }
     return strictlyBetter;
 }

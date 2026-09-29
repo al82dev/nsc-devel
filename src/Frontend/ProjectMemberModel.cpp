@@ -1,5 +1,5 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
-#include "nativesharp/Language/ExpressionErgonomics.h"
+#include "nativesharp/Frontend/ProjectGenericModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
@@ -295,7 +295,8 @@ bool isInvalidVoidObjectType(const ast::TypeSyntax* type) noexcept
 bool ProjectMemberModel::build(
     const ProjectNameLookup& nameLookup,
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ProjectGenericModel* genericModel)
 {
     if (built_)
     {
@@ -303,6 +304,7 @@ bool ProjectMemberModel::build(
     }
 
     nameLookup_ = &nameLookup;
+    genericModel_ = genericModel;
     membersByType_.resize(nameLookup.namedTypes().size());
     promotedMembersByType_.resize(nameLookup.namedTypes().size());
     membersByName_.resize(nameLookup.namedTypes().size());
@@ -849,6 +851,51 @@ std::string ProjectMemberModel::canonicalTypeKey(
         }
     }
     return result;
+}
+
+std::string ProjectMemberModel::canonicalGenericArgumentKey(
+    std::string_view spelling,
+    const ProjectNameLookup& nameLookup)
+{
+    if (spelling.starts_with("builtin:") || spelling.starts_with("type:"))
+        return std::string(spelling);
+
+    constexpr std::pair<std::string_view, std::string_view> builtins[] = {
+        {"void", "builtin:void"}, {"bool", "builtin:bool"},
+        {"sbyte", "builtin:sbyte"}, {"byte", "builtin:byte"},
+        {"char", "builtin:char"}, {"short", "builtin:short"},
+        {"ushort", "builtin:ushort"}, {"int", "builtin:int"},
+        {"uint", "builtin:uint"}, {"long", "builtin:long"},
+        {"ulong", "builtin:ulong"}, {"nint", "builtin:nint"},
+        {"nuint", "builtin:nuint"}, {"half", "builtin:half"},
+        {"float", "builtin:float"}, {"double", "builtin:double"},
+        {"string", "builtin:string"}};
+    for (const auto& [name, key] : builtins)
+        if (spelling == name) return std::string(key);
+
+    for (const std::string_view suffix : {std::string_view("[]"), std::string_view("*")})
+    {
+        if (!spelling.ends_with(suffix)) continue;
+        const std::string base = canonicalGenericArgumentKey(
+            spelling.substr(0, spelling.size() - suffix.size()), nameLookup);
+        return base.starts_with("unresolved:") ? base : base + std::string(suffix);
+    }
+
+    const NamedTypeDeclaration* shortMatch = nullptr;
+    bool ambiguousShortMatch = false;
+    for (const NamedTypeDeclaration& type : nameLookup.namedTypes())
+    {
+        if (type.identity.key() == spelling || type.identity.fullyQualifiedName() == spelling)
+            return "type:" + type.identity.key();
+        if (type.identity.name() == spelling)
+        {
+            if (shortMatch != nullptr) ambiguousShortMatch = true;
+            else shortMatch = &type;
+        }
+    }
+    return shortMatch != nullptr && !ambiguousShortMatch
+        ? "type:" + shortMatch->identity.key()
+        : "unresolved:" + std::string(spelling);
 }
 
 // C2.1 "fixed arrays". Moved here from ProjectObjectLayoutModel (which now delegates) so the
@@ -1504,13 +1551,37 @@ bool ProjectMemberModel::collectTypeMembers(
                     if (parameter.isParameterPack)
                     {
                         sawParameterPack = true;
-                        if (!language::isTypedParameterPackType(parameter.typeKey))
+                        const bool validPackSyntax = parameter.typeSyntax != nullptr &&
+                            (parameter.typeSyntax->baseName() == "ReadOnlySpan" ||
+                             parameter.typeSyntax->baseName().ends_with(".ReadOnlySpan")) &&
+                            parameter.typeSyntax->typeArguments().size() == 1U;
+                        if (validPackSyntax)
+                        {
+                            parameter.parameterPackElementTypeKey = canonicalTypeKey(
+                                parameter.typeSyntax->typeArguments().front(), nameLookup);
+                        }
+                        else if (genericModel_ != nullptr)
+                        {
+                            const GenericSpecializationRecord* specialization =
+                                genericModel_->specializationForTypeKey(parameter.typeKey);
+                            if (specialization != nullptr &&
+                                specialization->templateKey.find("ReadOnlySpan`1") !=
+                                    std::string::npos &&
+                                specialization->typeArguments.size() == 1U)
+                            {
+                                parameter.parameterPackElementTypeKey =
+                                    canonicalGenericArgumentKey(
+                                        specialization->typeArguments.front(), nameLookup);
+                            }
+                        }
+                        if (parameter.parameterPackElementTypeKey.empty())
                         {
                             diagnostics.report(
                                 diagnostics::DiagnosticId::InvalidType,
                                 diagnostics::DiagnosticSeverity::Error,
                                 parameter.range,
-                                "params requires ReadOnlySpan<T>; implicit heap arrays are forbidden");
+                                "params requires ReadOnlySpan<T>; implicit heap arrays are forbidden (resolved '" +
+                                    parameter.typeKey + "')");
                         }
                         if (parameter.defaultValueSyntax != nullptr)
                         {

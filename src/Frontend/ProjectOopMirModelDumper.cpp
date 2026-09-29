@@ -71,6 +71,20 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
         output << " bit-storage=" << node->bitStorageSize
                << " bit-offset=" << node->bitOffset.value_or(0)
                << " bit-width=" << *node->bitWidth;
+    if (node->kind == ProjectOopMirNodeKind::AggregateElementStore && !node->bitWidth.has_value())
+        output << " offset=" << node->immediate << " bytes=" << node->bitStorageSize;
+    if (node->kind == ProjectOopMirNodeKind::AggregateSpreadStore)
+        output << " targets=" << (node->children.empty() ? 0U : node->children.size() - 1U)
+               << " source-evaluations=1";
+    if (node->kind == ProjectOopMirNodeKind::ParameterPack)
+        output << " element=" << node->elementTypeKey
+               << " elements=" << node->children.size()
+               << " element-size=" << node->immediate
+               << " element-align=" << node->alignment
+               << " span-size=" << node->secondaryImmediate
+               << " data-offset=" << node->integerValue
+               << " length-offset=" << node->bitStorageSize
+               << " storage=stack";
     if (node->kind == ProjectOopMirNodeKind::AllocateAndConstruct)
         output << " bytes=" << node->immediate << " align=" << node->alignment
                << " zero=" << (node->zeroInitialize ? "true" : "false")

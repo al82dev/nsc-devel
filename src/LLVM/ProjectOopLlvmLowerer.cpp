@@ -6287,9 +6287,23 @@ private:
                 }
                 if (!node->children.empty() && node->children.front() != nullptr)
                 {
+                    LLVMValueRef address =
+                        node->localOrdinal.has_value() ? localStorage_[*node->localOrdinal] : nullptr;
+                    if (address == nullptr)
+                        return fail(error, "Stage 34 local initialization has no storage");
+                    if (node->children.front()->kind ==
+                        frontend::ProjectOopMirNodeKind::AggregateInitialize)
+                    {
+                        // T01-F05: a declared aggregate already owns its final stack slot. Fill
+                        // that slot directly instead of constructing an aggregate.init temporary,
+                        // loading it, and storing the carrier a second time. The helper keeps the
+                        // same textual evaluation order and zero-initialization contract used by
+                        // aggregate expressions in non-place contexts.
+                        return initializeAggregateIntoSlot(
+                            node->children.front().get(), address, error);
+                    }
                     LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                    LLVMValueRef address = node->localOrdinal.has_value() ? localStorage_[*node->localOrdinal] : nullptr;
-                    if (value == nullptr || address == nullptr) return fail(error, "Stage 34 local initialization failed");
+                    if (value == nullptr) return fail(error, "Stage 34 local initialization failed");
                     LLVMBuildStore(builder_, value, address);
                     return true;
                 }
@@ -9549,8 +9563,13 @@ private:
                 return lowerValueConstruction(node, error);
             case frontend::ProjectOopMirNodeKind::PlacementConstruct:
                 return lowerPlacementConstruction(node, error);
+            case frontend::ProjectOopMirNodeKind::ParameterPack:
+                return lowerParameterPack(node, error);
             case frontend::ProjectOopMirNodeKind::AggregateInitialize:
                 return lowerAggregateInitializer(node, error);
+            case frontend::ProjectOopMirNodeKind::AggregateSpreadStore:
+                return failValue(
+                    error, "T01-F05 aggregate spread must be lowered by its owning initializer");
             case frontend::ProjectOopMirNodeKind::AggregateElementStore:
                 return failValue(
                     error, "C7 aggregate element store must be lowered by its owning initializer");
@@ -12446,25 +12465,84 @@ private:
         return loaded;
     }
 
-    // C7 "aggregate initializer": `V v = {1, 2};`. Same shape as lowerValueConstruction above --
-    // reserve the storage, give it a defined starting state, write into it, then hand back the
-    // value the way this type's ABI hands values back. The only difference is what does the
-    // writing: element stores at fixed byte offsets instead of a constructor call.
-    //
-    // The zeroing is not redundant with the one emitDefaultLocalStorage does: this builds a
-    // TEMPORARY, and a partial initializer leaves the elements it does not mention untouched, so
-    // this is what makes `{1}` on a four-element array mean "1, 0, 0, 0" rather than "1, garbage".
-    LLVMValueRef lowerAggregateInitializer(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef lowerParameterPack(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error)
     {
-        if (node->immediate == 0 || node->alignment == 0)
+        if (node == nullptr || node->immediate == 0 || node->alignment == 0 ||
+            node->secondaryImmediate == 0)
         {
-            return failValue(error, "C7 aggregate initializer has no value layout");
+            return failValue(error, "T01-F02 parameter pack has incomplete layout data");
         }
-        LLVMTypeRef carrier = llvmType(node->typeKey, error);
-        if (carrier == nullptr) return nullptr;
-        LLVMValueRef slot = entryBlockAlloca(
-            carrier, static_cast<unsigned>(node->alignment), "aggregate.init");
-        if (slot == nullptr) return failValue(error, "C7 aggregate initializer could not reserve storage");
+        LLVMTypeRef spanType = llvmType(node->typeKey, error);
+        LLVMTypeRef elementType = llvmType(node->elementTypeKey, error);
+        if (spanType == nullptr || elementType == nullptr) return nullptr;
+
+        const unsigned spanAlignment = structAlignmentFor(node->typeKey);
+        LLVMValueRef spanSlot = entryBlockAlloca(spanType, spanAlignment, "params.span");
+        if (spanSlot == nullptr)
+            return failValue(error, "T01-F02 could not reserve parameter-pack span storage");
+
+        LLVMValueRef memsetArgs[] = {
+            spanSlot,
+            LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+            LLVMConstInt(LLVMInt64TypeInContext(context_), node->secondaryImmediate, 0),
+            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArgs, 4, "");
+
+        LLVMTypeRef ptrType = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef elementStorage = LLVMConstNull(ptrType);
+        if (!node->children.empty())
+        {
+            LLVMTypeRef arrayType = LLVMArrayType2(elementType, node->children.size());
+            elementStorage = entryBlockAlloca(
+                arrayType, static_cast<unsigned>(node->alignment), "params.elements");
+            if (elementStorage == nullptr)
+                return failValue(error, "T01-F02 could not reserve parameter-pack elements");
+
+            for (std::size_t index = 0; index < node->children.size(); ++index)
+            {
+                LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMValueRef indices[] = {
+                    LLVMConstInt(LLVMInt32TypeInContext(context_), 0, 0),
+                    LLVMConstInt(LLVMInt64TypeInContext(context_), index, 0)};
+                LLVMValueRef address = LLVMBuildGEP2(
+                    builder_, arrayType, elementStorage, indices, 2, "params.element.addr");
+                LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+                if (node->alignment > 1U)
+                    LLVMSetAlignment(store, static_cast<unsigned>(node->alignment));
+            }
+        }
+
+        LLVMValueRef pointerAddress = byteOffset(
+            spanSlot, node->integerValue, "params.span.pointer.addr");
+        LLVMValueRef pointerStore = LLVMBuildStore(builder_, elementStorage, pointerAddress);
+        LLVMSetAlignment(pointerStore, static_cast<unsigned>(sizeof(void*)));
+        LLVMValueRef countAddress = byteOffset(
+            spanSlot, node->bitStorageSize, "params.span.count.addr");
+        LLVMValueRef countStore = LLVMBuildStore(
+            builder_,
+            LLVMConstInt(LLVMInt32TypeInContext(context_), node->children.size(), 0),
+            countAddress);
+        LLVMSetAlignment(countStore, 4U);
+
+        LLVMValueRef result = LLVMBuildLoad2(builder_, spanType, spanSlot, "params.span.value");
+        if (spanAlignment > 1U) LLVMSetAlignment(result, spanAlignment);
+        return result;
+    }
+
+    bool initializeAggregateIntoSlot(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef slot,
+        std::string& error)
+    {
+        if (node == nullptr ||
+            node->kind != frontend::ProjectOopMirNodeKind::AggregateInitialize ||
+            slot == nullptr || node->immediate == 0 || node->alignment == 0)
+        {
+            return fail(error, "C7 aggregate initializer has no destination or value layout");
+        }
 
         LLVMValueRef memsetArgs[] = {
             slot,
@@ -12475,25 +12553,60 @@ private:
 
         for (const auto& child : node->children)
         {
+            if (child != nullptr &&
+                child->kind == frontend::ProjectOopMirNodeKind::AggregateSpreadStore)
+            {
+                if (child->children.empty())
+                    return fail(error, "T01-F05 aggregate spread has no source value");
+                LLVMValueRef sourceValue = lowerExpression(child->children.front().get(), error);
+                if (sourceValue == nullptr) return false;
+                LLVMTypeRef sourceType = llvmType(child->typeKey, error);
+                if (sourceType == nullptr) return false;
+                LLVMValueRef sourceSlot = entryBlockAlloca(
+                    sourceType, structAlignmentFor(child->typeKey), "aggregate.spread.source");
+                LLVMBuildStore(builder_, sourceValue, sourceSlot);
+                for (std::size_t index = 1; index < child->children.size(); ++index)
+                {
+                    const frontend::ProjectOopMirNode* descriptor = child->children[index].get();
+                    if (descriptor == nullptr ||
+                        descriptor->kind != frontend::ProjectOopMirNodeKind::AggregateElementStore ||
+                        !descriptor->children.empty() || descriptor->bitStorageSize == 0)
+                    {
+                        return fail(error, "T01-F05 aggregate spread has a malformed field descriptor");
+                    }
+                    LLVMValueRef destination = byteOffset(
+                        slot, descriptor->immediate, "aggregate.spread.destination");
+                    LLVMValueRef source = byteOffset(
+                        sourceSlot, descriptor->secondaryImmediate, "aggregate.spread.source.field");
+                    LLVMValueRef copyArgs[] = {
+                        destination,
+                        source,
+                        LLVMConstInt(
+                            LLVMInt64TypeInContext(context_), descriptor->bitStorageSize, 0),
+                        LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+                    buildNoUnwindCall(memcpyFunctionType_, memcpyFunction_, copyArgs, 4, "");
+                }
+                continue;
+            }
             if (child == nullptr ||
                 child->kind != frontend::ProjectOopMirNodeKind::AggregateElementStore ||
                 child->children.size() != 1)
             {
-                return failValue(error, "C7 aggregate initializer has a malformed element");
+                return fail(error, "C7 aggregate initializer has a malformed element");
             }
             LLVMValueRef value = lowerExpression(child->children.front().get(), error);
-            if (value == nullptr) return nullptr;
+            if (value == nullptr) return false;
             LLVMValueRef address = byteOffset(slot, child->immediate, "aggregate.element.addr");
             if (child->bitWidth.has_value())
             {
                 LLVMTypeRef storageType = bitFieldStorageType(child.get(), error);
-                if (storageType == nullptr) return nullptr;
+                if (storageType == nullptr) return false;
                 LLVMValueRef previous = LLVMBuildLoad2(
                     builder_, storageType, address, "aggregate.bitfield.storage.load");
                 LLVMSetAlignment(previous, static_cast<unsigned>(child->alignment));
                 if (child->volatileAccess) LLVMSetVolatile(previous, 1);
                 LLVMValueRef merged = insertBitField(child.get(), previous, value, error);
-                if (merged == nullptr) return nullptr;
+                if (merged == nullptr) return false;
                 LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
                 LLVMSetAlignment(store, static_cast<unsigned>(child->alignment));
                 if (child->volatileAccess) LLVMSetVolatile(store, 1);
@@ -12505,6 +12618,26 @@ private:
             const unsigned elementAlignment = structAlignmentFor(child->typeKey);
             if (elementAlignment > 1U) LLVMSetAlignment(store, elementAlignment);
         }
+
+        return true;
+    }
+
+    // C7/T01-F05 aggregate expression. Locals bypass this temporary and call
+    // initializeAggregateIntoSlot with their final storage from lowerStatement. A temporary is
+    // still required when the aggregate is itself an argument, return value, or subexpression.
+    LLVMValueRef lowerAggregateInitializer(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->immediate == 0 || node->alignment == 0)
+        {
+            return failValue(error, "C7 aggregate initializer has no value layout");
+        }
+        LLVMTypeRef carrier = llvmType(node->typeKey, error);
+        if (carrier == nullptr) return nullptr;
+        LLVMValueRef slot = entryBlockAlloca(
+            carrier, static_cast<unsigned>(node->alignment), "aggregate.init");
+        if (slot == nullptr)
+            return failValue(error, "C7 aggregate initializer could not reserve storage");
+        if (!initializeAggregateIntoSlot(node, slot, error)) return nullptr;
 
         // Always the loaded carrier, never the slot pointer -- see the note in
         // lowerValueConstruction for the bug that short-circuit causes.

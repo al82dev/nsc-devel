@@ -182,12 +182,14 @@ void checkRejected(
     const std::filesystem::path& root,
     std::string_view label,
     std::string_view body,
-    std::string_view expectedFragment)
+    std::string_view expectedFragment,
+    std::string_view languageEdition = "2")
 {
     const auto directory = root / "reject" / std::string(label);
     writeFile(
         directory / "reject.nsproj",
-        "<Project><PropertyGroup><Name>reject</Name></PropertyGroup>"
+        "<Project><PropertyGroup><Name>reject</Name><Language>" +
+        std::string(languageEdition) + "</Language></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(directory / "Main.ns", body);
 
@@ -778,6 +780,14 @@ int main(int argc, char** argv)
         "tests/cc1/c54_constructor_get_only_enum_zero/c54_constructor_get_only_enum_zero.nsproj",
         "cc1-c54-constructor-get-only-enum-zero", 42);
 
+    // NativeSharp 3.0 T01-F01/F02/F05. Named calls retain textual evaluation order; typed params
+    // materialize zero/one/many elements in stack-only ReadOnlySpan storage; generalized struct
+    // initializers map names deterministically and evaluate one same-type spread exactly once.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c55_ns3_calls_initializers/c55_ns3_calls_initializers.nsproj",
+        "cc1-c55-ns3-calls-initializers", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,
@@ -870,6 +880,27 @@ int main(int argc, char** argv)
     // deben compilar. Sin ellos, las fixtures de arriba solo demuestran que lo legal pasa, y una
     // regla que acepta todo tambien lo hace.
     // =====================================================================================
+
+    // T01-F05. Generalized initializers must not partially construct an owner-bearing value and
+    // then leak an earlier field when a later expression fails. Value-type drop flags arrive with
+    // T06; until then the product contract is an explicit, stable rejection rather than silent
+    // resource loss.
+    checkRejected(
+        tests, root, "cc1-t01-f05-nontrivial-generalized-initializer",
+        R"NS(
+class Resource { }
+struct OwnerAggregate { public owned Resource Value; }
+class Program
+{
+    public static int Main()
+    {
+        OwnerAggregate invalid = { Value = null };
+        return 0;
+    }
+}
+)NS",
+        "requires a trivially destructible target",
+        "3");
 
     // Copiar un owner a un parametro `owned` sin `move`. La resolucion de constructores no miraba
     // propiedad en absoluto, asi que esto COMPILABA antes de NSC-LIMIT-010 -- y producia dos

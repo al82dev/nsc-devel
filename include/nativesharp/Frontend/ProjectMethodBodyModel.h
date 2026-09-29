@@ -273,6 +273,23 @@ struct MethodExpressionTypeBinding final
     sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
 };
 
+struct MethodAggregateInitializerEntryBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    bool spread = false;
+    // A value entry has exactly one target. A spread owns every still-unwritten target and is
+    // evaluated exactly once at its textual position.
+    std::vector<std::size_t> targetElementOrdinals;
+};
+
+struct MethodAggregateInitializerBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    std::string targetTypeKey;
+    bool generalized = false;
+    std::vector<MethodAggregateInitializerEntryBinding> entries;
+};
+
 enum class MethodRuntimeTypeOperationKind
 {
     TypeTest,
@@ -1189,6 +1206,12 @@ struct MethodCallCandidate final
     // callable's parameter ordinal.
     std::vector<std::size_t> argumentParameterOrdinals;
     std::vector<std::size_t> defaultedParameterOrdinals;
+    // NativeSharp 3.0 T01-F02. One bit per explicit source argument. A true bit means the
+    // argument is an element of the final params ReadOnlySpan<T>, not a prebuilt span.
+    std::vector<bool> parameterPackElements;
+    std::optional<std::size_t> parameterPackOrdinal;
+    bool usesExpandedParameterPack = false;
+    bool synthesizesEmptyParameterPack = false;
     std::size_t defaultedParameterCount = 0;
     bool isVariadicCandidate = false;
     std::optional<std::size_t> invalidVariadicArgumentOrdinal;
@@ -1216,6 +1239,10 @@ struct MethodCallBinding final
     std::optional<std::size_t> selectedMemberOrdinal;
     std::vector<ProjectImplicitConversion> selectedConversions;
     std::vector<std::size_t> selectedArgumentParameterOrdinals;
+    std::vector<bool> selectedParameterPackElements;
+    std::optional<std::size_t> selectedParameterPackOrdinal;
+    bool selectedUsesExpandedParameterPack = false;
+    bool selectedSynthesizesEmptyParameterPack = false;
     std::vector<const ast::AstNode*> selectedDefaultArguments;
     std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
     std::string resultTypeKey;
@@ -1234,6 +1261,10 @@ struct NamespaceFunctionCallBinding final
     std::optional<std::size_t> selectedFunctionOrdinal;
     std::vector<ProjectImplicitConversion> selectedConversions;
     std::vector<std::size_t> selectedArgumentParameterOrdinals;
+    std::vector<bool> selectedParameterPackElements;
+    std::optional<std::size_t> selectedParameterPackOrdinal;
+    bool selectedUsesExpandedParameterPack = false;
+    bool selectedSynthesizesEmptyParameterPack = false;
     std::vector<const ast::AstNode*> selectedDefaultArguments;
     std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
     std::string resultTypeKey;
@@ -1262,6 +1293,8 @@ public:
     std::span<const MethodNameBinding> nameBindings() const noexcept;
     std::span<const MethodShadowingEvent> shadowingEvents() const noexcept;
     std::span<const MethodExpressionTypeBinding> expressionTypes() const noexcept;
+    const MethodAggregateInitializerBinding* aggregateInitializerBinding(
+        const ast::AstNode* syntax) const noexcept;
     // NSC-LIMIT-010. "Este tipo tiene algo que poseer": una referencia de clase/interfaz o una
     // cadena nativa. Publico porque ProjectConstructionModel lo necesita para aplicar la MISMA
     // regla de propiedad que las llamadas ordinarias, y volver a escribirlo alli seria la segunda
@@ -1842,6 +1875,8 @@ private:
     // rather than by call: the lowerer needs offsets, which live in the layout model.
     std::optional<std::vector<std::string>> aggregateElementTypeKeys(
         std::string_view typeKey) const;
+    std::optional<std::vector<std::string>> aggregateElementNames(
+        std::string_view typeKey) const;
     ExpressionResult bindAggregateInitializer(
         const ast::AstNode* syntax,
         const std::string& targetTypeKey,
@@ -1903,6 +1938,8 @@ private:
     std::vector<MethodNameBinding> nameBindings_;
     std::vector<MethodShadowingEvent> shadowingEvents_;
     std::vector<MethodExpressionTypeBinding> expressionTypes_;
+    std::vector<MethodAggregateInitializerBinding> aggregateInitializerBindings_;
+    std::unordered_map<const ast::AstNode*, std::size_t> aggregateInitializerBindingBySyntax_;
     std::vector<MethodRuntimeTypeBinding> runtimeTypeBindings_;
     std::vector<MethodCoreBinding> coreBindings_;
     std::vector<MethodVariableArrayIndexBinding> variableArrayIndexBindings_;

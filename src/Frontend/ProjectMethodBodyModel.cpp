@@ -180,6 +180,10 @@ struct NamedArgumentMap final
     bool valid = false;
     std::vector<std::size_t> explicitParameterOrdinals;
     std::vector<std::size_t> defaultedParameterOrdinals;
+    std::vector<bool> parameterPackElements;
+    std::optional<std::size_t> parameterPackOrdinal;
+    bool usesExpandedParameterPack = false;
+    bool synthesizesEmptyParameterPack = false;
 };
 
 NamedArgumentMap mapArgumentsToParameters(
@@ -189,6 +193,11 @@ NamedArgumentMap mapArgumentsToParameters(
 {
     NamedArgumentMap result;
     if (reservedLeadingParameters > candidate.parameters.size()) return result;
+    if (!candidate.parameters.empty() && candidate.parameters.back().isParameterPack)
+    {
+        result.parameterPackOrdinal = candidate.parameters.size() - 1U;
+        if (*result.parameterPackOrdinal < reservedLeadingParameters) return {};
+    }
 
     // Positional calls are overwhelmingly the common case, especially in generated numeric
     // libraries. Reject impossible arities before allocating the per-candidate assignment map.
@@ -199,27 +208,43 @@ NamedArgumentMap mapArgumentsToParameters(
     });
     if (!hasNamedArguments)
     {
-        const std::size_t fixedAvailable = candidate.parameters.size() - reservedLeadingParameters;
-        if (arguments.size() > fixedAvailable && !candidate.isVariadic) return result;
+        const std::size_t fixedEnd = result.parameterPackOrdinal.value_or(candidate.parameters.size());
+        const std::size_t fixedAvailable = fixedEnd - reservedLeadingParameters;
+        if (arguments.size() > fixedAvailable && !result.parameterPackOrdinal.has_value() &&
+            !candidate.isVariadic) return result;
 
         const std::size_t fixedArguments = std::min(arguments.size(), fixedAvailable);
         result.explicitParameterOrdinals.reserve(arguments.size());
+        result.parameterPackElements.reserve(arguments.size());
         for (std::size_t index = 0; index < fixedArguments; ++index)
         {
             if (arguments[index] == nullptr) return {};
             result.explicitParameterOrdinals.push_back(reservedLeadingParameters + index);
+            result.parameterPackElements.push_back(false);
         }
         for (std::size_t index = fixedArguments; index < arguments.size(); ++index)
         {
             if (arguments[index] == nullptr) return {};
-            result.explicitParameterOrdinals.push_back(candidate.parameters.size() + index - fixedArguments);
+            if (result.parameterPackOrdinal.has_value())
+            {
+                result.explicitParameterOrdinals.push_back(*result.parameterPackOrdinal);
+                result.parameterPackElements.push_back(true);
+                result.usesExpandedParameterPack = true;
+            }
+            else
+            {
+                result.explicitParameterOrdinals.push_back(
+                    candidate.parameters.size() + index - fixedArguments);
+                result.parameterPackElements.push_back(false);
+            }
         }
-        for (std::size_t index = reservedLeadingParameters + fixedArguments;
-             index < candidate.parameters.size(); ++index)
+        for (std::size_t index = reservedLeadingParameters + fixedArguments; index < fixedEnd; ++index)
         {
             if (candidate.parameters[index].defaultValueSyntax == nullptr) return {};
             result.defaultedParameterOrdinals.push_back(index);
         }
+        result.synthesizesEmptyParameterPack =
+            result.parameterPackOrdinal.has_value() && !result.usesExpandedParameterPack;
         result.valid = true;
         return result;
     }
@@ -230,16 +255,19 @@ NamedArgumentMap mapArgumentsToParameters(
     std::size_t nextPositional = reservedLeadingParameters;
     std::size_t variadicOrdinal = 0;
     bool reachedVariadicArguments = false;
+    bool reachedExpandedParameterPack = false;
+    bool assignedParameterPackDirectly = false;
     for (const ast::AstNode* argument : arguments)
     {
         if (argument == nullptr) return result;
         std::optional<std::size_t> parameterOrdinal;
+        bool parameterPackElement = false;
         if (!argument->argumentName().empty())
         {
             // The ellipsis has neither a name nor a parameter symbol. Once a positional
             // argument has crossed the fixed prefix, a later named argument would otherwise
             // make the physical C argument order ambiguous.
-            if (reachedVariadicArguments) return result;
+            if (reachedVariadicArguments || reachedExpandedParameterPack) return result;
             for (std::size_t index = reservedLeadingParameters; index < candidate.parameters.size(); ++index)
             {
                 if (candidate.parameters[index].name == argument->argumentName())
@@ -248,11 +276,25 @@ NamedArgumentMap mapArgumentsToParameters(
                     break;
                 }
             }
+            if (parameterOrdinal == result.parameterPackOrdinal)
+            {
+                if (assignedParameterPackDirectly) return result;
+                assignedParameterPackDirectly = true;
+            }
         }
         else
         {
             while (nextPositional < assigned.size() && assigned[nextPositional]) ++nextPositional;
-            if (nextPositional < assigned.size()) parameterOrdinal = nextPositional;
+            if (nextPositional < assigned.size())
+            {
+                parameterOrdinal = nextPositional;
+                if (parameterOrdinal == result.parameterPackOrdinal)
+                {
+                    if (assignedParameterPackDirectly) return result;
+                    parameterPackElement = true;
+                    reachedExpandedParameterPack = true;
+                }
+            }
             else if (candidate.isVariadic)
             {
                 parameterOrdinal = candidate.parameters.size() + variadicOrdinal++;
@@ -262,15 +304,24 @@ NamedArgumentMap mapArgumentsToParameters(
         if (!parameterOrdinal.has_value()) return result;
         if (*parameterOrdinal < assigned.size())
         {
-            if (assigned[*parameterOrdinal]) return result;
-            assigned[*parameterOrdinal] = true;
+            if (assigned[*parameterOrdinal] && !parameterPackElement) return result;
+            if (!parameterPackElement) assigned[*parameterOrdinal] = true;
         }
         result.explicitParameterOrdinals.push_back(*parameterOrdinal);
+        result.parameterPackElements.push_back(parameterPackElement);
+        result.usesExpandedParameterPack =
+            result.usesExpandedParameterPack || parameterPackElement;
         while (nextPositional < assigned.size() && assigned[nextPositional]) ++nextPositional;
     }
 
     for (std::size_t index = reservedLeadingParameters; index < candidate.parameters.size(); ++index)
     {
+        if (index == result.parameterPackOrdinal)
+        {
+            result.synthesizesEmptyParameterPack =
+                !result.usesExpandedParameterPack && !assignedParameterPackDirectly;
+            continue;
+        }
         if (assigned[index]) continue;
         if (candidate.parameters[index].defaultValueSyntax == nullptr) return result;
         result.defaultedParameterOrdinals.push_back(index);
@@ -1473,6 +1524,41 @@ std::optional<std::vector<std::string>> ProjectMethodBodyModel::aggregateElement
     return elements;
 }
 
+std::optional<std::vector<std::string>> ProjectMethodBodyModel::aggregateElementNames(
+    std::string_view typeKey) const
+{
+    if (const std::optional<std::string> element =
+            ProjectMemberModel::fixedArrayElementTypeKey(typeKey);
+        element.has_value())
+    {
+        const std::optional<std::uint64_t> count = ProjectMemberModel::fixedArrayCount(typeKey);
+        if (!count.has_value()) return std::nullopt;
+        return std::vector<std::string>(static_cast<std::size_t>(*count));
+    }
+    if (nameLookup_ == nullptr || memberModel_ == nullptr || inheritanceModel_ == nullptr ||
+        !typeKey.starts_with("type:"))
+        return std::nullopt;
+    const std::optional<std::size_t> typeOrdinal = inheritanceModel_->typeOrdinalForTypeKey(typeKey);
+    if (!typeOrdinal.has_value()) return std::nullopt;
+    bool isUnion = false;
+    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    {
+        if (type.identity.key() != typeKey.substr(5) || type.syntax == nullptr) continue;
+        isUnion = type.syntax->auxiliaryText().find("union") != std::string::npos;
+        break;
+    }
+    std::vector<std::string> names;
+    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
+    {
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Field || member.isStatic || member.isConst ||
+            member.isUnnamedBitField) continue;
+        names.push_back(member.name);
+        if (isUnion) break;
+    }
+    return names;
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateInitializer(
     const ast::AstNode* syntax,
     const std::string& targetTypeKey,
@@ -1482,6 +1568,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
 {
     ExpressionResult result;
     const std::optional<std::vector<std::string>> elements = aggregateElementTypeKeys(targetTypeKey);
+    const std::optional<std::vector<std::string>> names = aggregateElementNames(targetTypeKey);
     if (!elements.has_value())
     {
         diagnostics.report(
@@ -1492,31 +1579,170 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
                 targetTypeKey + "'");
         return result;
     }
-    if (syntax->children().size() > elements->size())
+    if (!names.has_value() || names->size() != elements->size())
     {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "aggregate initializer could not enumerate the elements of '" + targetTypeKey + "'");
+        return result;
+    }
+
+    MethodAggregateInitializerBinding binding;
+    binding.syntax = syntax;
+    binding.targetTypeKey = targetTypeKey;
+    binding.generalized = std::ranges::any_of(syntax->children(), [](const ast::AstNode* element)
+    {
+        return element != nullptr &&
+            (!element->argumentName().empty() ||
+             element->kind() == ast::AstNodeKind::SpreadElementExpression);
+    });
+
+    bool valid = true;
+    if (binding.generalized && !elementTypeHasTrivialLifetime(targetTypeKey))
+    {
+        // T01-F05 must never silently leak a field that was initialized before a later element
+        // throws. NativeSharp's current value-type lifetime model cannot yet register per-field
+        // drop flags, so accept generalized initialization only where failure has nothing to
+        // destroy. Constructors remain the explicit, cleanup-aware path for owning aggregates.
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             syntax->range(),
-            "aggregate initializer for '" + targetTypeKey + "' has " +
-                std::to_string(syntax->children().size()) + " values but the type takes " +
-                std::to_string(elements->size()));
-        return result;
+            "generalized initializer for '" + targetTypeKey +
+                "' requires a trivially destructible target; use a constructor when fields own "
+                "resources or the type declares a destructor");
+        valid = false;
     }
-
-    // Fewer values than elements is legal and means exactly what it means in C: everything the
-    // list does not reach keeps the zero the backend already wrote. `{}` is therefore the
-    // explicit spelling of "all zero".
-    bool valid = true;
+    std::vector<bool> reservedByName(elements->size(), false);
+    std::vector<std::optional<std::size_t>> namedTargets(syntax->children().size());
     for (std::size_t index = 0; index < syntax->children().size(); ++index)
     {
         const ast::AstNode* element = syntax->children()[index];
-        const std::string& elementTypeKey = (*elements)[index];
+        if (element == nullptr || element->argumentName().empty()) continue;
+        const auto found = std::ranges::find(*names, element->argumentName());
+        if (found == names->end())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::UnknownMember,
+                diagnostics::DiagnosticSeverity::Error,
+                element->range(),
+                "aggregate '" + targetTypeKey + "' has no initializable member named '" +
+                    element->argumentName() + "'");
+            valid = false;
+            continue;
+        }
+        const std::size_t target = static_cast<std::size_t>(std::distance(names->begin(), found));
+        if (reservedByName[target])
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::DuplicateSymbol,
+                diagnostics::DiagnosticSeverity::Error,
+                element->range(),
+                "initializer member '" + element->argumentName() + "' is assigned more than once");
+            valid = false;
+            continue;
+        }
+        reservedByName[target] = true;
+        namedTargets[index] = target;
+    }
+
+    std::vector<bool> assigned(elements->size(), false);
+    std::size_t nextPositional = 0;
+    std::optional<std::size_t> spreadEntry;
+    for (std::size_t index = 0; index < syntax->children().size(); ++index)
+    {
+        const ast::AstNode* element = syntax->children()[index];
+        if (element == nullptr)
+        {
+            valid = false;
+            continue;
+        }
+        MethodAggregateInitializerEntryBinding entry;
+        entry.syntax = element;
+        if (element->kind() == ast::AstNodeKind::SpreadElementExpression)
+        {
+            entry.spread = true;
+            if (spreadEntry.has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::DuplicateSymbol,
+                    diagnostics::DiagnosticSeverity::Error,
+                    element->range(),
+                    "an aggregate initializer may contain only one spread entry");
+                valid = false;
+            }
+            if (!elementTypeHasTrivialLifetime(targetTypeKey))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    element->range(),
+                    "spread initialization of '" + targetTypeKey +
+                        "' requires a trivially copyable value; move-only fields require explicit construction");
+                valid = false;
+            }
+            const ast::AstNode* source = element->first();
+            const ExpressionResult sourceResult = analyzeExpression(
+                source, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (!sourceResult.valid || sourceResult.typeKey != targetTypeKey)
+            {
+                if (sourceResult.valid)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        source != nullptr ? source->range() : element->range(),
+                        "spread source for '" + targetTypeKey + "' must have the same type, not '" +
+                            sourceResult.typeKey + "'");
+                }
+                valid = false;
+            }
+            if (!spreadEntry.has_value()) spreadEntry = binding.entries.size();
+            binding.entries.push_back(std::move(entry));
+            continue;
+        }
+
+        std::optional<std::size_t> target = namedTargets[index];
+        if (!target.has_value())
+        {
+            while (nextPositional < elements->size() &&
+                   (assigned[nextPositional] || reservedByName[nextPositional]))
+                ++nextPositional;
+            if (nextPositional < elements->size()) target = nextPositional++;
+        }
+        if (!target.has_value())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                element->range(),
+                "aggregate initializer for '" + targetTypeKey + "' has more values than elements");
+            valid = false;
+            binding.entries.push_back(std::move(entry));
+            continue;
+        }
+        if (assigned[*target])
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::DuplicateSymbol,
+                diagnostics::DiagnosticSeverity::Error,
+                element->range(),
+                "aggregate element " + std::to_string(*target) + " is assigned more than once");
+            valid = false;
+            binding.entries.push_back(std::move(entry));
+            continue;
+        }
+        assigned[*target] = true;
+        entry.targetElementOrdinals.push_back(*target);
+        const std::string& elementTypeKey = (*elements)[*target];
         if (element->kind() == ast::AstNodeKind::AggregateInitializerExpression)
         {
             const ExpressionResult nested = bindAggregateInitializer(
                 element, elementTypeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
             valid = valid && nested.valid;
+            binding.entries.push_back(std::move(entry));
             continue;
         }
         const ExpressionResult value = analyzeExpression(
@@ -1534,12 +1760,36 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
                 diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error,
                 element->range(),
-                "cannot initialize element " + std::to_string(index) + " of '" + targetTypeKey +
+                "cannot initialize element " + std::to_string(*target) + " of '" + targetTypeKey +
                     "' of type '" + elementTypeKey + "' from '" + value.typeKey + "'");
             valid = false;
         }
+        binding.entries.push_back(std::move(entry));
     }
 
+    std::vector<std::size_t> missing;
+    for (std::size_t index = 0; index < assigned.size(); ++index)
+        if (!assigned[index]) missing.push_back(index);
+    if (spreadEntry.has_value() && *spreadEntry < binding.entries.size())
+    {
+        binding.entries[*spreadEntry].targetElementOrdinals = missing;
+        for (const std::size_t index : missing) assigned[index] = true;
+        missing.clear();
+    }
+    if (binding.generalized && !missing.empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "generalized initializer for '" + targetTypeKey + "' leaves " +
+                std::to_string(missing.size()) +
+                " member(s) uninitialized; name every member or provide one spread source");
+        valid = false;
+    }
+
+    aggregateInitializerBindingBySyntax_[syntax] = aggregateInitializerBindings_.size();
+    aggregateInitializerBindings_.push_back(std::move(binding));
     result.typeKey = targetTypeKey;
     result.valid = valid;
     recordExpressionType(syntax, methodMemberOrdinal, scopeOrdinal, result);
@@ -1569,6 +1819,14 @@ std::span<const MethodShadowingEvent> ProjectMethodBodyModel::shadowingEvents() 
 std::span<const MethodExpressionTypeBinding> ProjectMethodBodyModel::expressionTypes() const noexcept
 {
     return expressionTypes_;
+}
+
+const MethodAggregateInitializerBinding* ProjectMethodBodyModel::aggregateInitializerBinding(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto found = aggregateInitializerBindingBySyntax_.find(syntax);
+    return found == aggregateInitializerBindingBySyntax_.end()
+        ? nullptr : &aggregateInitializerBindings_[found->second];
 }
 
 std::span<const MethodRuntimeTypeBinding> ProjectMethodBodyModel::runtimeTypeBindings() const noexcept
@@ -8251,6 +8509,27 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         evaluated.viable = true;
         evaluated.argumentParameterOrdinals = mapping.explicitParameterOrdinals;
         evaluated.defaultedParameterOrdinals = mapping.defaultedParameterOrdinals;
+        evaluated.parameterPackElements = mapping.parameterPackElements;
+        evaluated.parameterPackOrdinal = mapping.parameterPackOrdinal;
+        evaluated.usesExpandedParameterPack = mapping.usesExpandedParameterPack;
+        evaluated.synthesizesEmptyParameterPack = mapping.synthesizesEmptyParameterPack;
+        if (evaluated.usesExpandedParameterPack &&
+            std::ranges::count(evaluated.parameterPackElements, true) == 1 &&
+            evaluated.parameterPackOrdinal.has_value())
+        {
+            const auto packElement = std::ranges::find(evaluated.parameterPackElements, true);
+            const std::size_t argumentOrdinal = static_cast<std::size_t>(
+                std::distance(evaluated.parameterPackElements.begin(), packElement));
+            const MethodParameterSymbol& pack = candidate.parameters[*evaluated.parameterPackOrdinal];
+            if (classifyImplicit(
+                    arguments[argumentOrdinal].typeKey,
+                    pack.typeKey,
+                    arguments[argumentOrdinal].integerConstant).exists())
+            {
+                evaluated.parameterPackElements[argumentOrdinal] = false;
+                evaluated.usesExpandedParameterPack = false;
+            }
+        }
         evaluated.defaultedParameterCount = mapping.defaultedParameterOrdinals.size();
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < arguments.size(); ++argumentOrdinal)
         {
@@ -8271,17 +8550,40 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             else
             {
                 const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
+                std::string conversionTarget = parameter.typeKey;
+                const bool packElement = argumentOrdinal < evaluated.parameterPackElements.size() &&
+                    evaluated.parameterPackElements[argumentOrdinal];
+                if (packElement)
+                {
+                    if (parameter.parameterPackElementTypeKey.empty())
+                    {
+                        evaluated.viable = false;
+                    }
+                    else
+                    {
+                        conversionTarget = parameter.parameterPackElementTypeKey;
+                    }
+                }
                 conversion = classifyImplicit(
                     arguments[argumentOrdinal].typeKey,
-                    parameter.typeKey,
+                    conversionTarget,
                     arguments[argumentOrdinal].integerConstant);
                 if (!conversion.exists() || parameter.passKind != arguments[argumentOrdinal].argumentPassKind)
                 {
                     evaluated.viable = false;
                 }
+                else if (packElement &&
+                    (arguments[argumentOrdinal].ownership != sema::OwnershipKind::None ||
+                     arguments[argumentOrdinal].ownershipTransfer ||
+                     arguments[argumentOrdinal].ownershipFreshOwner))
+                {
+                    // The temporary span owns no elements and cannot extend an owner lifetime.
+                    // Move-only and ownership-qualified values must be passed in a prebuilt span.
+                    evaluated.viable = false;
+                }
                 else if (classifyOwnershipArgument(
-                             typeKeyIsOwnable(parameter.typeKey),
-                             parameter.ownership,
+                             packElement ? false : typeKeyIsOwnable(parameter.typeKey),
+                             packElement ? sema::OwnershipKind::None : parameter.ownership,
                              arguments[argumentOrdinal].ownership,
                              arguments[argumentOrdinal].ownershipTransfer,
                              arguments[argumentOrdinal].ownershipFreshOwner) != OwnershipArgumentFit::Ok)
@@ -8365,6 +8667,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     call.selectedFunctionOrdinal = functionOrdinal;
     call.selectedConversions = selected.conversions;
     call.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
+    call.selectedParameterPackElements = selected.parameterPackElements;
+    call.selectedParameterPackOrdinal = selected.parameterPackOrdinal;
+    call.selectedUsesExpandedParameterPack = selected.usesExpandedParameterPack;
+    call.selectedSynthesizesEmptyParameterPack = selected.synthesizesEmptyParameterPack;
     for (const std::size_t parameterOrdinal : selected.defaultedParameterOrdinals)
     {
         call.selectedDefaultArguments.push_back(callable.parameters[parameterOrdinal].defaultValueSyntax);
@@ -8994,10 +9300,37 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
 
             candidateBinding.argumentParameterOrdinals = explicitMapping.explicitParameterOrdinals;
             candidateBinding.defaultedParameterOrdinals = explicitMapping.defaultedParameterOrdinals;
+            candidateBinding.parameterPackElements = explicitMapping.parameterPackElements;
+            candidateBinding.parameterPackOrdinal = explicitMapping.parameterPackOrdinal;
+            candidateBinding.usesExpandedParameterPack = explicitMapping.usesExpandedParameterPack;
+            candidateBinding.synthesizesEmptyParameterPack =
+                explicitMapping.synthesizesEmptyParameterPack;
             if (coreStringForwarding)
             {
                 candidateBinding.argumentParameterOrdinals.insert(
                     candidateBinding.argumentParameterOrdinals.begin(), 0U);
+                candidateBinding.parameterPackElements.insert(
+                    candidateBinding.parameterPackElements.begin(), false);
+            }
+
+            if (candidateBinding.usesExpandedParameterPack &&
+                std::ranges::count(candidateBinding.parameterPackElements, true) == 1 &&
+                candidateBinding.parameterPackOrdinal.has_value())
+            {
+                const auto packElement =
+                    std::ranges::find(candidateBinding.parameterPackElements, true);
+                const std::size_t argumentOrdinal = static_cast<std::size_t>(
+                    std::distance(candidateBinding.parameterPackElements.begin(), packElement));
+                const MethodParameterSymbol& pack =
+                    candidate.parameters[*candidateBinding.parameterPackOrdinal];
+                if (classifyImplicit(
+                        resolvedArguments[argumentOrdinal].typeKey,
+                        pack.typeKey,
+                        resolvedArguments[argumentOrdinal].integerConstant).exists())
+                {
+                    candidateBinding.parameterPackElements[argumentOrdinal] = false;
+                    candidateBinding.usesExpandedParameterPack = false;
+                }
             }
 
             hasMatchingArity = true;
@@ -9022,11 +9355,30 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     candidateBinding.conversions.push_back(std::move(conversion));
                     continue;
                 }
+                const bool packElement =
+                    argumentOrdinal < candidateBinding.parameterPackElements.size() &&
+                    candidateBinding.parameterPackElements[argumentOrdinal];
+                std::string conversionTarget = candidate.parameters[parameterOrdinal].typeKey;
+                if (packElement)
+                {
+                    const std::string& elementType =
+                        candidate.parameters[parameterOrdinal].parameterPackElementTypeKey;
+                    if (elementType.empty()) candidateBinding.viable = false;
+                    else conversionTarget = elementType;
+                }
                 ProjectImplicitConversion conversion = classifyImplicit(
                     resolvedArguments[argumentOrdinal].typeKey,
-                    candidate.parameters[parameterOrdinal].typeKey,
+                    conversionTarget,
                     resolvedArguments[argumentOrdinal].integerConstant);
                 if (!conversion.exists())
+                {
+                    candidateBinding.viable = false;
+                }
+                else if (packElement &&
+                    (resolvedArguments[argumentOrdinal].ownership != sema::OwnershipKind::None ||
+                     resolvedArguments[argumentOrdinal].ownershipTransfer ||
+                     resolvedArguments[argumentOrdinal].ownershipFreshOwner ||
+                     resolvedArguments[argumentOrdinal].argumentPassKind != ParameterPassKind::Value))
                 {
                     candidateBinding.viable = false;
                 }
@@ -9053,7 +9405,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     // bloque es el comentario historico de Stage 52 que explica POR QUE el orden
                     // de las comprobaciones es el que es; se conserva porque esa razon no esta en
                     // ningun otro sitio.
-                    if (!isStringLiteralBorrow(
+                    if (!packElement && !isStringLiteralBorrow(
                             candidate, parameterOrdinal, resolvedArguments[argumentOrdinal]) &&
                         !isFullExpressionBorrow(
                             candidate, parameterOrdinal, resolvedArguments[argumentOrdinal]) &&
@@ -9368,6 +9720,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     call.selectedMemberOrdinal = selected.memberOrdinal;
     call.selectedConversions = selected.conversions;
     call.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
+    call.selectedParameterPackElements = selected.parameterPackElements;
+    call.selectedParameterPackOrdinal = selected.parameterPackOrdinal;
+    call.selectedUsesExpandedParameterPack = selected.usesExpandedParameterPack;
+    call.selectedSynthesizesEmptyParameterPack = selected.synthesizesEmptyParameterPack;
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
@@ -14903,6 +15259,11 @@ bool ProjectMethodBodyModel::betterCandidate(
     if (!strictlyBetter && left.isVariadicCandidate != right.isVariadicCandidate)
     {
         return !left.isVariadicCandidate;
+    }
+    if (!strictlyBetter &&
+        left.usesExpandedParameterPack != right.usesExpandedParameterPack)
+    {
+        return !left.usesExpandedParameterPack;
     }
     return strictlyBetter;
 }

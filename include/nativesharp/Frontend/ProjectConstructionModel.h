@@ -52,6 +52,10 @@ struct ConstructorCandidateBinding final
     std::vector<ProjectImplicitConversion> conversions;
     std::vector<std::size_t> argumentParameterOrdinals;
     std::vector<std::size_t> defaultedParameterOrdinals;
+    std::vector<bool> parameterPackElements;
+    std::optional<std::size_t> parameterPackOrdinal;
+    bool usesExpandedParameterPack = false;
+    bool synthesizesEmptyParameterPack = false;
     std::size_t defaultedParameterCount = 0;
     // NSC-LIMIT-010. Viabilidad de PROPIEDAD por argumento, en paralelo a `conversions`, que solo
     // lleva la fisica. Un candidato puede ser fisicamente valido y aun asi incumplir el contrato:
@@ -103,6 +107,10 @@ struct ConstructorInitializerBinding final
     bool selectedImplicitDefault = false;
     std::vector<ProjectImplicitConversion> selectedConversions;
     std::vector<std::size_t> selectedArgumentParameterOrdinals;
+    std::vector<bool> selectedParameterPackElements;
+    std::optional<std::size_t> selectedParameterPackOrdinal;
+    bool selectedUsesExpandedParameterPack = false;
+    bool selectedSynthesizesEmptyParameterPack = false;
     std::vector<const ast::AstNode*> selectedDefaultArguments;
     std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
     // NSC-LIMIT-010: `this(...)` y `base(...)` transfieren propiedad con las mismas reglas
@@ -150,6 +158,10 @@ struct ObjectConstructionBinding final
     std::optional<std::size_t> implicitDefaultBaseConstructorMemberOrdinal;
     std::vector<ProjectImplicitConversion> selectedConversions;
     std::vector<std::size_t> selectedArgumentParameterOrdinals;
+    std::vector<bool> selectedParameterPackElements;
+    std::optional<std::size_t> selectedParameterPackOrdinal;
+    bool selectedUsesExpandedParameterPack = false;
+    bool selectedSynthesizesEmptyParameterPack = false;
     std::vector<const ast::AstNode*> selectedDefaultArguments;
     std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
     // NSC-LIMIT-010. Las transferencias del candidato ELEGIDO, copiadas aqui para que quien

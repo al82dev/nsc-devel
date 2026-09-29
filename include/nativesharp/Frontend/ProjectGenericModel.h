@@ -143,6 +143,8 @@ public:
 
     std::span<const GenericTemplateRecord> templates() const noexcept;
     std::span<const GenericSpecializationRecord> specializations() const noexcept;
+    const GenericSpecializationRecord* specializationForTypeKey(
+        std::string_view typeKey) const noexcept;
     bool isBuilt() const noexcept;
 
 private:

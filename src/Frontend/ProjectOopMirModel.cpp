@@ -669,7 +669,9 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::Block: return "block";
         case ProjectOopMirNodeKind::LocalDeclaration: return "local-declaration";
         case ProjectOopMirNodeKind::AggregateInitialize: return "aggregate-initialize";
+        case ProjectOopMirNodeKind::AggregateSpreadStore: return "aggregate-spread-store";
         case ProjectOopMirNodeKind::AggregateElementStore: return "aggregate-element-store";
+        case ProjectOopMirNodeKind::ParameterPack: return "parameter-pack";
         case ProjectOopMirNodeKind::ExpressionStatement: return "expression-statement";
         case ProjectOopMirNodeKind::InlineAssembly: return "inline-assembly";
         case ProjectOopMirNodeKind::InlineAssemblyLine: return "inline-assembly-line";
@@ -1723,6 +1725,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->switchLabels = node->switchLabels;
     result->switchHasDefault = node->switchHasDefault;
     result->integerValue = node->integerValue;
+    result->secondaryImmediate = node->secondaryIntegerValue;
     result->bitOffset = node->bitOffset;
     result->bitWidth = node->bitWidth;
     result->bitStorageSize = node->bitStorageSize;
@@ -2641,6 +2644,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->zeroInitialize = true;
             break;
         }
+        case ProjectOopHirNodeKind::AggregateSpread:
+            result->kind = ProjectOopMirNodeKind::AggregateSpreadStore;
+            break;
         case ProjectOopHirNodeKind::AggregateElement:
         {
             result->kind = ProjectOopMirNodeKind::AggregateElementStore;
@@ -2654,8 +2660,57 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             if (nameLookup_ != nullptr && objectLayoutModel_ != nullptr)
             {
                 const auto leafLayout = elementLayout(node->typeKey);
-                if (leafLayout.has_value()) result->secondaryImmediate = leafLayout->first;
+                if (leafLayout.has_value())
+                {
+                    if (node->children.empty()) result->bitStorageSize = leafLayout->first;
+                    else result->secondaryImmediate = leafLayout->first;
+                }
             }
+            break;
+        }
+        case ProjectOopHirNodeKind::ParameterPack:
+        {
+            if (nameLookup_ == nullptr || memberModel_ == nullptr || objectLayoutModel_ == nullptr)
+            {
+                error = "T01-F02 parameter pack requires name, member, and layout models";
+                return nullptr;
+            }
+            const auto element = elementLayout(node->elementTypeKey);
+            const auto span = elementLayout(node->typeKey);
+            if (!element.has_value() || element->first == 0 || !span.has_value() || span->first == 0)
+            {
+                error = "T01-F02 cannot determine parameter-pack value layouts";
+                return nullptr;
+            }
+            std::optional<std::size_t> spanTypeOrdinal;
+            if (node->typeKey.starts_with("type:"))
+            {
+                const std::string_view identity(node->typeKey.data() + 5U, node->typeKey.size() - 5U);
+                for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+                {
+                    if (nameLookup_->namedTypes()[ordinal].identity.key() == identity)
+                    {
+                        spanTypeOrdinal = ordinal;
+                        break;
+                    }
+                }
+            }
+            const StructValueLayout* spanLayout = spanTypeOrdinal.has_value()
+                ? objectLayoutModel_->structLayoutForType(*spanTypeOrdinal) : nullptr;
+            if (spanLayout == nullptr || spanLayout->fields.size() < 2U ||
+                spanLayout->fields[0].typeKey != node->elementTypeKey + "*" ||
+                spanLayout->fields[1].typeKey != "builtin:int")
+            {
+                error = "T01-F02 ReadOnlySpan<T> layout requires leading T* data and int length fields";
+                return nullptr;
+            }
+            result->kind = ProjectOopMirNodeKind::ParameterPack;
+            result->elementTypeKey = node->elementTypeKey;
+            result->immediate = element->first;
+            result->alignment = element->second;
+            result->secondaryImmediate = span->first;
+            result->integerValue = spanLayout->fields[0].offset;
+            result->bitStorageSize = spanLayout->fields[1].offset;
             break;
         }
         case ProjectOopHirNodeKind::ValueConstruction:

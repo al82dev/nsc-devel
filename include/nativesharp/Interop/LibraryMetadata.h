@@ -59,8 +59,10 @@ namespace nativesharp::interop
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 // MINOR 21 (2026-09-27): public namespace functions preserve signature and physical identity.
 // MINOR 22 (2026-09-27): public namespace state preserves shared storage and initializers.
+// MINOR 23 (2026-09-29): modules preserve their NativeSharp language edition.
+// MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 23;
+inline constexpr std::uint16_t kMetadataFormatMinor = 24;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing
@@ -191,6 +193,9 @@ struct LibraryMetadataParameter final
     std::string typeKey;
     LibraryMetadataOwnershipKind ownership = LibraryMetadataOwnershipKind::None;
     LibraryMetadataParameterPassKind passKind = LibraryMetadataParameterPassKind::Value;
+    // NSMETA 1.24. The final parameter keeps its `params ReadOnlySpan<T>` call-site contract
+    // across a LibraryReference boundary; the physical type and ABI remain unchanged.
+    bool isParameterPack = false;
     // NSMETA 1.3. `defaultValueBits` stores the integer/character magnitude, a boolean bit, or
     // the IEEE-754 bits of the parsed double literal. Strings use `defaultValueText`; null has no
     // payload. Bit 0 of `defaultValueFlags` preserves a unary minus for integer literals.

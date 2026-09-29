@@ -1,10 +1,10 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
-#include "nativesharp/Language/ExpressionErgonomics.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
+#include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 #include <algorithm>
@@ -241,7 +241,8 @@ bool ProjectNamespaceFunctionModel::build(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ProjectGenericModel* genericModel)
 {
     functions_.clear();
     states_.clear();
@@ -321,13 +322,37 @@ bool ProjectNamespaceFunctionModel::build(
             if (parameter.isParameterPack)
             {
                 sawParameterPack = true;
-                if (!language::isTypedParameterPackType(parameter.typeKey))
+                const bool validPackSyntax = parameter.typeSyntax != nullptr &&
+                    (parameter.typeSyntax->baseName() == "ReadOnlySpan" ||
+                     parameter.typeSyntax->baseName().ends_with(".ReadOnlySpan")) &&
+                    parameter.typeSyntax->typeArguments().size() == 1U;
+                if (validPackSyntax)
+                {
+                    parameter.parameterPackElementTypeKey = memberModel.canonicalTypeKey(
+                        parameter.typeSyntax->typeArguments().front(), nameLookup);
+                }
+                else if (genericModel != nullptr)
+                {
+                    const GenericSpecializationRecord* specialization =
+                        genericModel->specializationForTypeKey(parameter.typeKey);
+                    if (specialization != nullptr &&
+                        specialization->templateKey.find("ReadOnlySpan`1") !=
+                            std::string::npos &&
+                        specialization->typeArguments.size() == 1U)
+                    {
+                        parameter.parameterPackElementTypeKey =
+                            ProjectMemberModel::canonicalGenericArgumentKey(
+                                specialization->typeArguments.front(), nameLookup);
+                    }
+                }
+                if (parameter.parameterPackElementTypeKey.empty())
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidType,
                         diagnostics::DiagnosticSeverity::Error,
                         parameter.range,
-                        "params requires ReadOnlySpan<T>; implicit heap arrays are forbidden");
+                        "params requires ReadOnlySpan<T>; implicit heap arrays are forbidden (resolved '" +
+                            parameter.typeKey + "')");
                 }
                 if (parameter.defaultValueSyntax != nullptr)
                 {

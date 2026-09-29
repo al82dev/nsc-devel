@@ -25,7 +25,8 @@ namespace nativesharp::frontend
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 14: namespace state has explicit load/address nodes and stable storage identity.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 14;
+// MINOR 15: typed params and generalized aggregate spreads have explicit lowering nodes.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 15;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -90,9 +91,16 @@ enum class ProjectOopMirNodeKind
     // Item 318. First child is exact T* destination storage; the remaining prefix of
     // argumentCount children are constructor arguments. Uses no allocator.
     PlacementConstruct,
+    // NativeSharp 3.0 T01-F02. `immediate`/`alignment` are the element layout;
+    // `secondaryImmediate` is the span carrier size; integerValue/bitStorageSize are the
+    // pointer/count byte offsets. Children are converted element values in source order.
+    ParameterPack,
     // C7 -- see ProjectOopHirNodeKind::AggregateInitializer. `immediate` is the aggregate's size,
     // `alignment` its alignment; children are AggregateElementStore nodes.
     AggregateInitialize,
+    // NativeSharp 3.0 T01-F05. Mirrors AggregateSpread; descriptor children carry exact byte
+    // offsets and sizes so the backend copies only fields not explicitly initialized.
+    AggregateSpreadStore,
     // C7 -- see ProjectOopHirNodeKind::AggregateElement. `immediate` is the byte offset.
     AggregateElementStore,
     // C6 -- see ProjectOopHirNodeKind::TemporaryAddress.

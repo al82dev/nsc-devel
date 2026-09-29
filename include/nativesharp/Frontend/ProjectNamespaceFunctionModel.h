@@ -18,6 +18,7 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+class ProjectGenericModel;
 struct NamespaceFunctionPart final
 {
     NamespaceFunctionAccessibility accessibility = NamespaceFunctionAccessibility::Internal;
@@ -123,7 +124,8 @@ public:
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ProjectGenericModel* genericModel = nullptr);
 
     std::span<const NamespaceFunctionSymbol> functions() const noexcept;
     std::span<const NamespaceStateSymbol> states() const noexcept;

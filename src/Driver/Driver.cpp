@@ -1531,7 +1531,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 sourceTypeKey.pop_back();
             }
             if (!sourceTypeForMetadataKey(metadata, sourceTypeKey, parameterType, error)) return false;
-            generated << parameterPassPrefix(parameter.passKind) << ownershipPrefix(parameter.ownership)
+            generated << (parameter.isParameterPack ? "params " : "")
+                      << parameterPassPrefix(parameter.passKind) << ownershipPrefix(parameter.ownership)
                       << parameterType << ' '
                       << (parameter.name.empty() ? "arg" + std::to_string(index) : parameter.name);
             std::string defaultValue;
@@ -2306,7 +2307,13 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
         error = "generated precompiled public API has no source buffer";
         return false;
     }
-    frontend::ProjectSyntaxUnit unit(0, 0, metadata.moduleName, fileId, true);
+    frontend::ProjectSyntaxUnit unit(
+        0,
+        0,
+        metadata.moduleName,
+        fileId,
+        true,
+        static_cast<language::LanguageEdition>(metadata.languageEdition));
     std::vector<std::string> knownTypeNames;
     const auto appendKnownType = [&](const std::string &typeKey) {
         appendParserKnownTypeNames(metadata, typeKey, knownTypeNames);
@@ -2469,7 +2476,13 @@ bool verifyPrecompiledGenericTemplateSource(
     knownTypeNames.erase(
         std::unique(knownTypeNames.begin(), knownTypeNames.end()), knownTypeNames.end());
 
-    frontend::ProjectSyntaxUnit unit(0, 0, metadata.moduleName, fileId, false);
+    frontend::ProjectSyntaxUnit unit(
+        0,
+        0,
+        metadata.moduleName,
+        fileId,
+        false,
+        static_cast<language::LanguageEdition>(metadata.languageEdition));
     if (unit.lex(*file, diagnostics) && unit.parse(diagnostics, knownTypeNames)) return true;
 
     error = "generated precompiled public template surface is not valid NativeSharp source";

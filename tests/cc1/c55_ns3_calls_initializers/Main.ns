@@ -1,0 +1,125 @@
+namespace c55ns3callsinitializers
+{
+    public borrowed struct ReadOnlySpan<T>
+    {
+        public T* start;
+        public int count;
+    }
+
+    public struct Pair
+    {
+        public int X;
+        public int Y;
+    }
+
+    public struct GenericPair<T>
+    {
+        public T First;
+        public T Second;
+    }
+
+    public int SumFree(params ReadOnlySpan<int> values)
+    {
+        int result = 0;
+        int index = 0;
+        while (index < values.count)
+        {
+            result = result + values.start[index];
+            index = index + 1;
+        }
+        return result;
+    }
+
+    public struct PackBox
+    {
+        public int Total;
+
+        public PackBox(params ReadOnlySpan<int> values)
+        {
+            int index = 0;
+            while (index < values.count)
+            {
+                Total = Total + values.start[index];
+                index = index + 1;
+            }
+        }
+    }
+
+    public class Program
+    {
+        private static int trace = 0;
+
+        private static int Mark(int value)
+        {
+            trace = trace * 10 + value;
+            return value;
+        }
+
+        private static int Sum(params ReadOnlySpan<int> values)
+        {
+            int result = 0;
+            int index = 0;
+            while (index < values.count)
+            {
+                result = result + values.start[index];
+                index = index + 1;
+            }
+            return result;
+        }
+
+        private static int Encode(int first, int second = 2, int third = 3)
+        {
+            return first * 100 + second * 10 + third;
+        }
+
+        private static int Pick(int value)
+        {
+            return 42;
+        }
+
+        private static int Pick(params ReadOnlySpan<int> values)
+        {
+            return 0;
+        }
+
+        public static int Main()
+        {
+            if (Sum() != 0) { return 1; }
+            if (Sum(42) != 42) { return 2; }
+            trace = 0;
+            if (Sum(Mark(1), Mark(2), Mark(3)) != 6 || trace != 123) { return 3; }
+            if (Pick(7) != 42) { return 7; }
+            if (SumFree(20, 22) != 42) { return 11; }
+
+            PackBox box = new PackBox(20, 22);
+            if (box.Total != 42) { return 12; }
+
+            int* raw = stackalloc int[2];
+            raw[0] = 20;
+            raw[1] = 22;
+            ReadOnlySpan<int> ready = { start = raw, count = 2 };
+            if (Sum(values: ready) != 42) { return 8; }
+
+            trace = 0;
+            if (Encode(third: Mark(3), first: Mark(1), second: Mark(2)) != 123 ||
+                trace != 312) { return 4; }
+
+            Pair basis = { 10, 32 };
+            trace = 0;
+            Pair named = { Y = Mark(2), X = Mark(1) };
+            if (named.X != 1 || named.Y != 2 || trace != 21) { return 5; }
+
+            trace = 0;
+            Pair mixed = { X = Mark(10), ..basis };
+            if (mixed.X != 10 || mixed.Y != 32 || trace != 10) { return 6; }
+
+            GenericPair<int> generic = { Second = 22, First = 20 };
+            if (generic.First + generic.Second != 42) { return 9; }
+
+            int[3] seed = { 10, 20, 12 };
+            int[3] copied = { ..seed };
+            if (copied[0] + copied[1] + copied[2] != 42) { return 10; }
+            return 42;
+        }
+    }
+}

@@ -91,12 +91,19 @@ enum class ProjectOopHirNodeKind
     // Item 318. children[0] is caller-supplied T* storage, followed by argumentCount constructor
     // arguments and then synthesized field-initializer work. No allocation is performed.
     PlacementConstruction,
+    // NativeSharp 3.0 T01-F02. Materializes the expanded elements of a final
+    // params ReadOnlySpan<T> into readonly stack storage and yields the ordinary span value.
+    // children are converted T values in source order; an empty list yields {null, 0}.
+    ParameterPack,
     // C7 "aggregate initializer": `V v = {1, 2};` and `int[4] cells = {1};`. typeKey is the
     // aggregate; children are AggregateElement nodes, ALREADY FLATTENED to absolute byte offsets,
     // so nesting (`Matrix m = { {1, 0}, {0, 1} };`) is resolved here rather than in the backend.
     // Elements the source did not mention are simply absent: the storage is zeroed first, which
     // is exactly the rule C gives a partial initializer.
     AggregateInitializer,
+    // NativeSharp 3.0 T01-F05. children[0] is one same-type spread source evaluated once;
+    // children[1..] are AggregateElement descriptors for the still-unwritten target fields.
+    AggregateSpread,
     // C7: one element of the above. integerValue is its byte offset from the start of the
     // aggregate, typeKey its type, and its single child the value to store there.
     AggregateElement,
@@ -465,6 +472,9 @@ struct ProjectOopHirNode final
     // Set only on a SwitchSection node: this section carries the `default` label.
     bool switchHasDefault = false;
     std::uint64_t integerValue = 0;
+    // T01-F05 AggregateElement descriptors under AggregateSpread use this as the source-relative
+    // byte offset while integerValue remains the destination-absolute offset.
+    std::uint64_t secondaryIntegerValue = 0;
     // Item 329. AggregateElement uses these when a positional initializer targets a bit field.
     // The byte offset remains in integerValue, just like an ordinary aggregate element.
     std::optional<std::uint64_t> bitOffset;

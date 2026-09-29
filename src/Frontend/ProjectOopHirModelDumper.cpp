@@ -68,6 +68,13 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
     if (node->stackPromotedObject) output << " stack-promoted=true";
     if (node->volatileAccess) output << " volatile=true";
     if (!node->elementTypeKey.empty()) output << " element=" << node->elementTypeKey;
+    if (node->kind == ProjectOopHirNodeKind::ParameterPack)
+        output << " elements=" << node->children.size() << " storage=stack";
+    if (node->kind == ProjectOopHirNodeKind::AggregateSpread)
+        output << " targets=" << (node->children.empty() ? 0U : node->children.size() - 1U)
+               << " source-evaluations=1";
+    if (node->kind == ProjectOopHirNodeKind::AggregateElement)
+        output << " offset=" << node->integerValue;
     if (node->kind == ProjectOopHirNodeKind::StringLiteral) output << " bytes=" << node->stringValue.size();
     if (node->kind == ProjectOopHirNodeKind::InlineAssembly)
         output << " source-bytes=" << node->stringValue.size();

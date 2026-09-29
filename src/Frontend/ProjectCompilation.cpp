@@ -559,7 +559,7 @@ bool ProjectCompilation::compileProjectMembers(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "members");
     memberModel_ = std::make_unique<ProjectMemberModel>();
-    if (!memberModel_->build(*nameLookup_, units_, diagnostics_)) return false;
+    if (!memberModel_->build(*nameLookup_, units_, diagnostics_, genericModel_.get())) return false;
 
     std::vector<PrecompiledMemberIdentity> precompiledMembers;
     std::vector<std::pair<std::string, std::string>> specializationTypeAliases;
@@ -604,7 +604,8 @@ bool ProjectCompilation::compileProjectMembers(
     }
 
     namespaceFunctionModel_ = std::make_unique<ProjectNamespaceFunctionModel>();
-    return namespaceFunctionModel_->build(*nameLookup_, *memberModel_, units_, diagnostics_);
+    return namespaceFunctionModel_->build(
+        *nameLookup_, *memberModel_, units_, diagnostics_, genericModel_.get());
 }
 
 

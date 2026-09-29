@@ -639,6 +639,20 @@ std::span<const GenericSpecializationRecord> ProjectGenericModel::specialization
     return specializations_;
 }
 
+const GenericSpecializationRecord* ProjectGenericModel::specializationForTypeKey(
+    std::string_view typeKey) const noexcept
+{
+    if (typeKey.starts_with("type:")) typeKey.remove_prefix(5U);
+    const std::size_t separator = typeKey.find_last_of(".+:");
+    const std::string_view terminal = separator == std::string_view::npos
+        ? typeKey : typeKey.substr(separator + 1U);
+    const auto found = std::ranges::find_if(specializations_, [&](const auto& specialization)
+    {
+        return specialization.specializedName == terminal;
+    });
+    return found == specializations_.end() ? nullptr : &*found;
+}
+
 bool ProjectGenericModel::isBuilt() const noexcept
 {
     return built_;

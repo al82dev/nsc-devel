@@ -27,6 +27,7 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+class ProjectGenericModel;
 enum class ClassMemberKind
 {
     Field,
@@ -86,6 +87,9 @@ struct MethodParameterSymbol final
     // NativeSharp 3.0 T01. A typed pack is always the final ReadOnlySpan<T> parameter. This bit
     // changes call-site binding only; the physical ABI remains one ordinary span value.
     bool isParameterPack = false;
+    // Canonical T from ReadOnlySpan<T>. The closed span identity itself is mangled and therefore
+    // intentionally does not need to encode or be reparsed to recover its element type.
+    std::string parameterPackElementTypeKey;
     // NSC-LIMIT-020. Defaults remain attached to the declaration AST so ProjectReference calls
     // materialize the value fixed by the callee's contract, not a caller-side reparse.
     const ast::AstNode* defaultValueSyntax = nullptr;
@@ -260,7 +264,8 @@ public:
     bool build(
         const ProjectNameLookup& nameLookup,
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ProjectGenericModel* genericModel = nullptr);
     bool bindPrecompiledPhysicalNames(
         std::span<const PrecompiledMemberIdentity> identities,
         std::span<const std::pair<std::string, std::string>> typeKeyAliases,
@@ -277,6 +282,9 @@ public:
     std::string canonicalTypeKey(
         const ast::TypeSyntax* syntax,
         const ProjectNameLookup& nameLookup) const;
+    static std::string canonicalGenericArgumentKey(
+        std::string_view spelling,
+        const ProjectNameLookup& nameLookup);
 
     // True when a by-value type contains an `owned` instance field at any depth. Fixed arrays
     // are traversed through their element type. Reference-like and scalar types return false:
@@ -354,6 +362,7 @@ private:
         std::string message) const;
 
     const ProjectNameLookup* nameLookup_ = nullptr;
+    const ProjectGenericModel* genericModel_ = nullptr;
     std::vector<ClassMemberSymbol> members_;
     std::vector<MemberBodyBinding> bodyBindings_;
     std::vector<std::vector<std::size_t>> membersByType_;
