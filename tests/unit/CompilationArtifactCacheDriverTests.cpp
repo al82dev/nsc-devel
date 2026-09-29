@@ -27,8 +27,21 @@ int main()
         std::ostringstream output;
         std::ostringstream error;
         tests.expect(run({}, output, error) == ExitCode::Success &&
-                output.str().find("--artifact-cache=<absolute-directory>") != std::string::npos,
+                output.str().find("--artifact-cache=<absolute-directory>") != std::string::npos &&
+                output.str().find("--artifact-cache-max-mb=N") != std::string::npos,
             "help documents verified content-addressed object reuse");
+    }
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {
+            "--emit-project-oop-lib", "input.nsproj", "-o", "output.lib",
+            "--artifact-cache-max-mb=128"};
+        const ExitCode result = run(arguments, output, error);
+        tests.expect(result == ExitCode::CommandLineError &&
+                error.str().find("requires --artifact-cache") != std::string::npos,
+            "a cache capacity cannot silently apply without a cache root (exit " +
+                std::to_string(static_cast<int>(result)) + "): " + error.str());
     }
     {
         std::ostringstream output;

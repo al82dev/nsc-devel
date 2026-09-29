@@ -2,6 +2,8 @@
 
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 
+#include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizer.h"
@@ -15,6 +17,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string_view>
 #include <system_error>
 #include <vector>
@@ -144,6 +147,23 @@ bool createRuntimeImportLibraries(
     // gone on purpose -- see that header's HISTORY note about the five-locations sync rule
     // this component retired.
     return createWindowsImportLibraries(linker, directory, programText, externalImports, libraries, error);
+}
+
+std::string cachedFileSetIdentity(
+    std::string_view domain,
+    std::span<const std::filesystem::path> files,
+    std::string& error)
+{
+    std::string identity(domain);
+    identity += "\n";
+    for (const std::filesystem::path& file : files)
+    {
+        basic::Sha256Digest digest{};
+        std::uintmax_t size = 0;
+        if (!basic::sha256File(file, digest, size, error)) return {};
+        identity += std::to_string(size) + ":" + basic::sha256Hex(digest) + "\n";
+    }
+    return identity;
 }
 }
 
@@ -479,6 +499,10 @@ bool WindowsLibraryBuilder::buildStaticObjects(
     std::string& error)
 {
     archiveInfo_ = {};
+    staticArchiveCacheAttempted_ = false;
+    reusedStaticArchive_ = false;
+    runtimeObjectCacheAttempted_ = false;
+    reusedRuntimeObject_ = false;
     error.clear();
     if (programObjects.empty())
     {
@@ -492,9 +516,52 @@ bool WindowsLibraryBuilder::buildStaticObjects(
             !verifyObject(object, "program code unit", error)) return false;
     }
 
+    const llvm_backend::CompilationArtifactCache* const cache =
+        llvm_backend::activeCompilationArtifactCache();
+    const bool cacheEnabled = cache != nullptr && cache->enabled();
+    const std::string codeGenerationPolicy =
+        llvm_backend::codeGenerationPolicyIdentity(
+            llvm_backend::LinkTimeOptimizationMode::None);
+    const auto restoreArchive = [&](std::span<const std::filesystem::path> inputs) {
+        if (!cacheEnabled) return false;
+        std::string identity = cachedFileSetIdentity(
+            "NativeSharp.StaticArchive.v1", inputs, error);
+        if (identity.empty()) return false;
+        const std::string key = cache->inputObjectKey(identity,
+            "windows-x64-msvc-static-archive", codeGenerationPolicy,
+            optimizationLevel, llvm_backend::DebugInformationKind::None);
+        staticArchiveCacheAttempted_ = true;
+        bool hit = false;
+        if (!cache->restoreObject(key, outputPath, hit, error)) return false;
+        if (!hit) return false;
+        CoffArchiveVerifier verifier;
+        if (!verifier.verify(outputPath))
+        {
+            std::error_code ignored;
+            std::filesystem::remove(outputPath, ignored);
+            error.clear();
+            return false;
+        }
+        archiveInfo_ = verifier.info();
+        reusedStaticArchive_ = true;
+        return true;
+    };
+    const auto storeArchive = [&](std::span<const std::filesystem::path> inputs) {
+        if (!cacheEnabled) return true;
+        std::string identity = cachedFileSetIdentity(
+            "NativeSharp.StaticArchive.v1", inputs, error);
+        if (identity.empty()) return false;
+        const std::string key = cache->inputObjectKey(identity,
+            "windows-x64-msvc-static-archive", codeGenerationPolicy,
+            optimizationLevel, llvm_backend::DebugInformationKind::None);
+        return cache->storeObject(key, outputPath, error);
+    };
+
     if (!runtimeLibrary_.empty())
     {
         if (!verifyWindowsRuntimeLibrary(runtimeLibrary_, error)) return false;
+        if (restoreArchive(programObjects)) return true;
+        if (!error.empty()) return false;
         std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
         if (linker == nullptr) return false;
         if (!linker->createStaticLibrary(programObjects, outputPath, error)) return false;
@@ -507,48 +574,77 @@ bool WindowsLibraryBuilder::buildStaticObjects(
             return false;
         }
         archiveInfo_ = verifier.info();
-        return true;
-    }
-
-    std::string targetError;
-    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine =
-        llvm_backend::LlvmTargetMachine::createWindowsX64(optimizationLevel, targetError);
-    if (targetMachine == nullptr)
-    {
-        error = "could not create the Windows x64 TargetMachine: " + targetError;
-        return false;
-    }
-    runtime::WindowsRuntimeBuilder runtimeBuilder;
-    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule = runtimeBuilder.buildSupport(targetError);
-    if (runtimeModule == nullptr)
-    {
-        error = "could not construct NativeSharp static-library runtime support: " + targetError;
-        return false;
-    }
-    llvm_backend::LlvmOptimizer optimizer;
-    llvm_backend::LlvmOptimizationObservation runtimeObservation;
-    if (!optimizer.optimize(*runtimeModule, *targetMachine, optimizationLevel,
-            &runtimeObservation, targetError))
-    {
-        error = "runtime LLVM optimization failed: " + targetError;
-        return false;
+        return storeArchive(programObjects);
     }
 
     std::unique_ptr<TemporaryDirectory> temporaryDirectory = createTemporaryDirectory(error);
     if (temporaryDirectory == nullptr) return false;
     const std::filesystem::path runtimeObject = temporaryDirectory->path() / "runtime.obj";
-    if (!targetMachine->emit(*runtimeModule, runtimeObject,
-            llvm_backend::LlvmCodeGenFileType::Object, targetError))
+    const std::string runtimeKey = cacheEnabled
+        ? cache->inputObjectKey("NativeSharp.WindowsRuntimeSupport.v1",
+            "windows-x64-msvc-runtime", codeGenerationPolicy,
+            optimizationLevel, llvm_backend::DebugInformationKind::None)
+        : std::string();
+    bool runtimeHit = false;
+    if (cacheEnabled)
     {
-        error = "runtime object emission failed: " + targetError;
-        return false;
+        runtimeObjectCacheAttempted_ = true;
+        if (!cache->restoreObject(runtimeKey, runtimeObject, runtimeHit, error)) return false;
+        if (runtimeHit)
+        {
+            if (!verifyObject(runtimeObject, "cached runtime", error))
+            {
+                runtimeHit = false;
+                error.clear();
+            }
+            else
+            {
+                reusedRuntimeObject_ = true;
+            }
+        }
     }
-    if (!verifyObject(runtimeObject, "runtime", error)) return false;
+    if (!runtimeHit)
+    {
+        std::string targetError;
+        std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine =
+            llvm_backend::LlvmTargetMachine::createWindowsX64(optimizationLevel, targetError);
+        if (targetMachine == nullptr)
+        {
+            error = "could not create the Windows x64 TargetMachine: " + targetError;
+            return false;
+        }
+        runtime::WindowsRuntimeBuilder runtimeBuilder;
+        std::unique_ptr<llvm_backend::LlvmModule> runtimeModule =
+            runtimeBuilder.buildSupport(targetError);
+        if (runtimeModule == nullptr)
+        {
+            error = "could not construct NativeSharp static-library runtime support: " + targetError;
+            return false;
+        }
+        llvm_backend::LlvmOptimizer optimizer;
+        llvm_backend::LlvmOptimizationObservation runtimeObservation;
+        if (!optimizer.optimize(*runtimeModule, *targetMachine, optimizationLevel,
+                &runtimeObservation, targetError))
+        {
+            error = "runtime LLVM optimization failed: " + targetError;
+            return false;
+        }
+        if (!targetMachine->emit(*runtimeModule, runtimeObject,
+                llvm_backend::LlvmCodeGenFileType::Object, targetError))
+        {
+            error = "runtime object emission failed: " + targetError;
+            return false;
+        }
+        if (!verifyObject(runtimeObject, "runtime", error)) return false;
+        if (cacheEnabled && !cache->storeObject(runtimeKey, runtimeObject, error)) return false;
+    }
 
-    std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
-    if (linker == nullptr) return false;
     std::vector<std::filesystem::path> archiveInputs(programObjects.begin(), programObjects.end());
     archiveInputs.push_back(runtimeObject);
+    if (restoreArchive(archiveInputs)) return true;
+    if (!error.empty()) return false;
+    std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
+    if (linker == nullptr) return false;
     if (!linker->createStaticLibrary(archiveInputs, outputPath, error)) return false;
 
     CoffArchiveVerifier verifier;
@@ -560,7 +656,7 @@ bool WindowsLibraryBuilder::buildStaticObjects(
         return false;
     }
     archiveInfo_ = verifier.info();
-    return true;
+    return storeArchive(archiveInputs);
 }
 
 bool WindowsLibraryBuilder::buildDynamicObjects(
@@ -729,5 +825,25 @@ const CoffArchiveInfo& WindowsLibraryBuilder::archiveInfo() const noexcept
 const PeExecutableInfo& WindowsLibraryBuilder::dynamicLibraryInfo() const noexcept
 {
     return dynamicLibraryInfo_;
+}
+
+bool WindowsLibraryBuilder::staticArchiveCacheAttempted() const noexcept
+{
+    return staticArchiveCacheAttempted_;
+}
+
+bool WindowsLibraryBuilder::reusedStaticArchive() const noexcept
+{
+    return reusedStaticArchive_;
+}
+
+bool WindowsLibraryBuilder::runtimeObjectCacheAttempted() const noexcept
+{
+    return runtimeObjectCacheAttempted_;
+}
+
+bool WindowsLibraryBuilder::reusedRuntimeObject() const noexcept
+{
+    return reusedRuntimeObject_;
 }
 }

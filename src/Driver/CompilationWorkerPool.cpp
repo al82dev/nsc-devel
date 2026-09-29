@@ -67,10 +67,28 @@ std::size_t CompilationWorkerPool::submit(Task task)
         const std::lock_guard lock(mutex_);
         if (stopping_) throw std::logic_error("compilation worker pool is stopping");
         ordinal = nextOrdinal_++;
+        if (cancellationRequested_)
+        {
+            ++discardedTasks_;
+            return ordinal;
+        }
         queue_.push_back(QueuedTask{ordinal, std::move(task)});
     }
     workAvailable_.notify_one();
     return ordinal;
+}
+
+void CompilationWorkerPool::requestCancellation() noexcept
+{
+    {
+        const std::lock_guard lock(mutex_);
+        if (cancellationRequested_) return;
+        cancellationRequested_ = true;
+        discardedTasks_ += queue_.size();
+        queue_.clear();
+        if (activeTasks_ == 0) idle_.notify_all();
+    }
+    workAvailable_.notify_all();
 }
 
 void CompilationWorkerPool::wait()
@@ -84,6 +102,7 @@ void CompilationWorkerPool::wait()
             failure = failures_.begin()->second;
             failures_.clear();
         }
+        cancellationRequested_ = false;
     }
     if (failure != nullptr) std::rethrow_exception(failure);
 }
@@ -91,6 +110,18 @@ void CompilationWorkerPool::wait()
 std::size_t CompilationWorkerPool::workerCount() const noexcept
 {
     return workers_.size();
+}
+
+bool CompilationWorkerPool::cancellationRequested() const noexcept
+{
+    const std::lock_guard lock(mutex_);
+    return cancellationRequested_;
+}
+
+std::size_t CompilationWorkerPool::discardedTaskCount() const noexcept
+{
+    const std::lock_guard lock(mutex_);
+    return discardedTasks_;
 }
 
 void CompilationWorkerPool::workerMain(std::size_t workerIndex) noexcept
@@ -117,6 +148,12 @@ void CompilationWorkerPool::workerMain(std::size_t workerIndex) noexcept
         {
             const std::lock_guard lock(mutex_);
             failures_.emplace(task.ordinal, std::current_exception());
+            if (!cancellationRequested_)
+            {
+                cancellationRequested_ = true;
+                discardedTasks_ += queue_.size();
+                queue_.clear();
+            }
         }
         {
             const std::lock_guard lock(mutex_);

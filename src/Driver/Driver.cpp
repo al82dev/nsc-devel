@@ -3126,6 +3126,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool jobCountSeen = false;
     bool reservedCoresSeen = false;
     bool artifactCacheSeen = false;
+    bool artifactCacheMaximumSeen = false;
+    std::uintmax_t artifactCacheMaximumBytes = 0;
     bool libraryReferenceRootSeen = false;
     llvm_backend::LinkTimeOptimizationMode linkTimeOptimization =
         llvm_backend::LinkTimeOptimizationMode::None;
@@ -3456,6 +3458,32 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             artifactCache.setRoot(cachePath);
             continue;
         }
+        static constexpr std::string_view artifactCacheMaximumPrefix =
+            "--artifact-cache-max-mb=";
+        if (argument.starts_with(artifactCacheMaximumPrefix))
+        {
+            if (artifactCacheMaximumSeen)
+            {
+                error << "nsc: error: " << compilerText(
+                    "duplicate artifact-cache size limit\n",
+                    "el límite de tamaño de la caché de artefactos está repetido\n");
+                return ExitCode::CommandLineError;
+            }
+            artifactCacheMaximumSeen = true;
+            std::size_t maximumMiB = 0;
+            if (!parseBoundedDecimal(
+                    argument.substr(artifactCacheMaximumPrefix.size()),
+                    1024U * 1024U, maximumMiB))
+            {
+                error << "nsc: error: " << compilerText(
+                    "artifact-cache size limit must be between 0 and 1048576 MiB\n",
+                    "el límite de la caché debe estar entre 0 y 1048576 MiB\n");
+                return ExitCode::CommandLineError;
+            }
+            artifactCacheMaximumBytes =
+                static_cast<std::uintmax_t>(maximumMiB) * 1024U * 1024U;
+            continue;
+        }
         static constexpr std::string_view libraryReferenceRootOption = "--library-reference-root";
         static constexpr std::string_view libraryReferenceRootPrefix = "--library-reference-root=";
         if (argument == libraryReferenceRootOption || argument.starts_with(libraryReferenceRootPrefix))
@@ -3668,6 +3696,14 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         normalizedArguments.push_back(argument);
     }
 
+    if (artifactCacheMaximumSeen && !artifactCacheSeen)
+    {
+        error << "nsc: error: " << compilerText(
+            "--artifact-cache-max-mb requires --artifact-cache\n",
+            "--artifact-cache-max-mb requiere --artifact-cache\n");
+        return ExitCode::CommandLineError;
+    }
+
     const auto isProjectBuildAction = [](std::string_view action)
     {
         return action == "--emit-project-oop-obj" ||
@@ -3810,6 +3846,20 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         error << "nsc: error: --artifact-cache is supported when emitting a project OOP "
                  "executable, static library, or DLL\n";
         return ExitCode::CommandLineError;
+    }
+    if (artifactCacheMaximumSeen)
+    {
+        std::size_t evictedEntries = 0;
+        std::uintmax_t evictedBytes = 0;
+        std::string pruneError;
+        if (!artifactCache.prune(
+                artifactCacheMaximumBytes, evictedEntries, evictedBytes, pruneError))
+        {
+            error << "nsc: error: artifact-cache eviction failed: " << pruneError << '\n';
+            return ExitCode::CompilationError;
+        }
+        output << "artifact-cache-evicted-entries: " << evictedEntries << '\n'
+               << "artifact-cache-evicted-bytes: " << evictedBytes << '\n';
     }
     if (linkTimeOptimizationSeen && !linkTimeOptimizationCapableInvocation)
     {
@@ -4665,6 +4715,7 @@ void Driver::printHelp(std::ostream &output)
                << "--llvm-pass-trace habilita la traza completa y costosa de pases LLVM.\n"
                << "-j N limita los trabajos; --reserve-cores=N conserva capacidad del equipo.\n"
                << "--artifact-cache=<directorio-absoluto> habilita reutilización verificada por contenido.\n"
+               << "--artifact-cache-max-mb=N limita el almacén y expulsa primero publicaciones antiguas completas.\n"
                << "--library-reference-root <directorio-absoluto> resuelve referencias de biblioteca desde una raíz de configuración.\n"
                << "--profile=debug selecciona O0 con depuración completa; --profile=release selecciona O2 con tablas de líneas.\n"
                << "NSC_LLD_LINK selecciona el enlazador PE y NSC_LLVM_LIB selecciona el bibliotecario estático.\n"
@@ -4704,7 +4755,8 @@ void Driver::printHelp(std::ostream &output)
            << "-j N (or -jN) caps compiler jobs; --reserve-cores=N keeps host capacity free. "
               "Use --print-job-policy to inspect the effective value.\n"
            << "--artifact-cache=<absolute-directory> enables verified content-addressed reuse "
-              "for optimized project object units.\n"
+              "for project objects, runtime objects and final static archives.\n"
+           << "--artifact-cache-max-mb=N bounds the store and evicts complete oldest publications first.\n"
            << "--library-reference-root <absolute-directory> resolves relative LibraryReference "
               "Include, Metadata, and Runtime paths from one configuration-specific directory.\n"
            << "--profile=debug selects O0 with full debug information; --profile=release selects "
@@ -5913,6 +5965,14 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
            << "code-units: " << objectBundle->codeUnitCount() << '\n'
            << "artifact-cache-hits: " << objectBundle->cacheHitCount() << '\n'
            << "artifact-cache-misses: " << objectBundle->cacheMissCount() << '\n'
+           << "runtime-object-cache: "
+           << (!builder.runtimeObjectCacheAttempted()
+                   ? "disabled-or-external"
+                   : (builder.reusedRuntimeObject() ? "hit" : "miss")) << '\n'
+           << "static-archive-cache: "
+           << (!builder.staticArchiveCacheAttempted()
+                   ? "disabled"
+                   : (builder.reusedStaticArchive() ? "hit" : "miss")) << '\n'
            << "thinlto-summaries: " << objectBundle->thinLtoSummaryCount() << '\n'
            << "thinlto-index: "
            << (objectBundle->thinLtoIndexDigest().empty()

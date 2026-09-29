@@ -54,6 +54,10 @@ public:
 
     const CoffArchiveInfo& archiveInfo() const noexcept;
     const PeExecutableInfo& dynamicLibraryInfo() const noexcept;
+    bool staticArchiveCacheAttempted() const noexcept;
+    bool reusedStaticArchive() const noexcept;
+    bool runtimeObjectCacheAttempted() const noexcept;
+    bool reusedRuntimeObject() const noexcept;
 
     // Interop Foundation -- see WindowsExecutableBuilder: the project's `extern C from` imports
     // and caller-supplied extra .lib inputs for the dynamic-library link. For a static product,
@@ -71,5 +75,9 @@ private:
     std::vector<std::filesystem::path> extraLinkLibraries_;
     std::filesystem::path runtimeLibrary_;
     bool programObjectsVerified_ = false;
+    bool staticArchiveCacheAttempted_ = false;
+    bool reusedStaticArchive_ = false;
+    bool runtimeObjectCacheAttempted_ = false;
+    bool reusedRuntimeObject_ = false;
 };
 }

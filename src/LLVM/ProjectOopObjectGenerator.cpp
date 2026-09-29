@@ -229,6 +229,9 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     std::vector<std::string> moduleErrors(moduleCount);
     std::vector<std::uint8_t> cacheHits(moduleCount, 0);
     std::vector<std::uint8_t> cacheMisses(moduleCount, 0);
+    const FloatingPointState workerFloatingPointState = captureFloatingPointState();
+    const std::string codeGenerationPolicy =
+        codeGenerationPolicyIdentity(linkTimeOptimization);
     const bool usePreLlvmCache = cache != nullptr && cache->enabled() &&
         debugInformation == DebugInformationKind::None &&
         linkTimeOptimization != LinkTimeOptimizationMode::Thin;
@@ -259,7 +262,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             }
             cacheKeys[moduleOrdinal] = cache->inputObjectKey(
                 projectOopMirCacheIdentity(mirModel, definitions, declarations),
-                "windows-x64-msvc", optimizationLevel, debugInformation);
+                "windows-x64-msvc", codeGenerationPolicy,
+                optimizationLevel, debugInformation);
         }
     }
     // Textual IR used to be serialized for every code unit even though the Windows import
@@ -367,7 +371,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         {
             cacheKey = cache->objectKey(
                 moduleTexts[ordinal], targetMachine->triple(),
-                targetMachine->dataLayout(), optimizationLevel,
+                targetMachine->dataLayout(), codeGenerationPolicy, optimizationLevel,
                 debugInformation);
             bool hit = false;
             if (!cache->restoreObject(
@@ -399,16 +403,39 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             return;
     };
 
-    const FloatingPointState workerFloatingPointState = captureFloatingPointState();
     const auto initializeWorkerFloatingPoint = [workerFloatingPointState](std::size_t) {
         initializeFloatingPointStateForWorker(workerFloatingPointState);
     };
     if (usePartitions)
     {
         driver::CompilationWorkerPool workers(workerCount, initializeWorkerFloatingPoint);
+        std::atomic_bool moduleFailure = false;
         for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
-            workers.submit([&, ordinal](std::size_t) { processModule(ordinal); });
-        workers.wait();
+        {
+            workers.submit([&, ordinal](std::size_t) {
+                if (moduleFailure.load(std::memory_order_acquire)) return;
+                processModule(ordinal);
+                if (!moduleErrors[ordinal].empty())
+                {
+                    moduleFailure.store(true, std::memory_order_release);
+                    workers.requestCancellation();
+                }
+            });
+        }
+        try
+        {
+            workers.wait();
+        }
+        catch (const std::exception& exception)
+        {
+            error = "LLVM worker failed: " + std::string(exception.what());
+            return nullptr;
+        }
+        catch (...)
+        {
+            error = "LLVM worker failed with a non-standard exception";
+            return nullptr;
+        }
     }
     else
     {

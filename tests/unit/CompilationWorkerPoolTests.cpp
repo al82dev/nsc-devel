@@ -79,6 +79,33 @@ int main()
     tests.expect(reportedFirst,
         "wait reports the lowest submitted failure regardless of completion order");
 
+    CompilationWorkerPool cancelOnFailure(1);
+    std::atomic<std::size_t> uselessWork = 0;
+    cancelOnFailure.submit([](std::size_t) {
+        throw std::runtime_error("stop this wave");
+    });
+    for (std::size_t task = 0; task < 32; ++task)
+        cancelOnFailure.submit([&](std::size_t) { ++uselessWork; });
+    bool cancellationFailureReported = false;
+    try
+    {
+        cancelOnFailure.wait();
+    }
+    catch (const std::runtime_error& exception)
+    {
+        cancellationFailureReported = std::string(exception.what()) == "stop this wave";
+    }
+    tests.expect(cancellationFailureReported && uselessWork == 0 &&
+            cancelOnFailure.discardedTaskCount() == 32,
+        "the first fatal task cancels every queued unit in its wave");
+    tests.expect(!cancelOnFailure.cancellationRequested(),
+        "wait closes the cancellation epoch so the bounded pool can be reused");
+
+    cancelOnFailure.submit([&](std::size_t) { ++uselessWork; });
+    cancelOnFailure.wait();
+    tests.expect(uselessWork == 1,
+        "a canceled pool accepts a later independent wave");
+
     pool.submit([&](std::size_t) { ++completed; });
     pool.wait();
     tests.expect(completed == 5,

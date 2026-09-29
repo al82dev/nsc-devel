@@ -1,14 +1,18 @@
 #pragma once
 
 #include "nativesharp/LLVM/DebugInformationKind.h"
+#include "nativesharp/LLVM/LinkTimeOptimizationMode.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 
 #include <filesystem>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
 namespace nativesharp::llvm_backend
 {
+std::string codeGenerationPolicyIdentity(LinkTimeOptimizationMode linkTimeOptimization);
+
 class CompilationArtifactCache final
 {
 public:
@@ -22,12 +26,14 @@ public:
         std::string_view optimizedLlvm,
         std::string_view targetTriple,
         std::string_view dataLayout,
+        std::string_view codeGenerationPolicy,
         LlvmOptimizationLevel optimization,
         DebugInformationKind debugInformation) const;
 
     std::string inputObjectKey(
         std::string_view mirIdentity,
         std::string_view targetIdentity,
+        std::string_view codeGenerationPolicy,
         LlvmOptimizationLevel optimization,
         DebugInformationKind debugInformation) const;
 
@@ -40,6 +46,12 @@ public:
     bool storeObject(
         std::string_view key,
         const std::filesystem::path& source,
+        std::string& error) const;
+
+    bool prune(
+        std::uintmax_t maximumBytes,
+        std::size_t& evictedEntries,
+        std::uintmax_t& evictedBytes,
         std::string& error) const;
 
 private:

@@ -32,8 +32,11 @@ public:
     CompilationWorkerPool& operator=(const CompilationWorkerPool&) = delete;
 
     std::size_t submit(Task task);
+    void requestCancellation() noexcept;
     void wait();
     std::size_t workerCount() const noexcept;
+    bool cancellationRequested() const noexcept;
+    std::size_t discardedTaskCount() const noexcept;
 
 private:
     struct QueuedTask final
@@ -54,6 +57,8 @@ private:
     std::condition_variable idle_;
     std::size_t nextOrdinal_ = 0;
     std::size_t activeTasks_ = 0;
+    std::size_t discardedTasks_ = 0;
+    bool cancellationRequested_ = false;
     bool stopping_ = false;
 };
 

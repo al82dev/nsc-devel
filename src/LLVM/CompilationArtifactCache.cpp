@@ -2,23 +2,127 @@
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/LLVM/DebugInformationKind.h"
+#include "nativesharp/LLVM/FloatingPointMode.h"
+#include "nativesharp/LLVM/LinkTimeOptimizationMode.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 #include "nativesharp/LLVM/LlvmVersion.h"
 
+#include <algorithm>
 #include <array>
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <fstream>
+#include <mutex>
 #include <span>
 #include <system_error>
+#include <thread>
 #include <vector>
+
+#if defined(_WIN32)
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#endif
 
 namespace nativesharp::llvm_backend
 {
 namespace
 {
 thread_local const CompilationArtifactCache* activeCache = nullptr;
+std::atomic<unsigned long long> temporaryOrdinal = 0;
+
+std::filesystem::path temporarySibling(const std::filesystem::path& destination)
+{
+#if defined(_WIN32)
+    const unsigned long process = ::GetCurrentProcessId();
+#else
+    const unsigned long process = 0;
+#endif
+    return destination.string() + ".tmp." + std::to_string(process) + "." +
+        std::to_string(temporaryOrdinal.fetch_add(1, std::memory_order_relaxed));
+}
+
+bool replaceFileAtomically(
+    const std::filesystem::path& temporary,
+    const std::filesystem::path& destination,
+    std::string& error)
+{
+#if defined(_WIN32)
+    if (::MoveFileExW(temporary.c_str(), destination.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0)
+        return true;
+    const unsigned long failure = ::GetLastError();
+    std::error_code ignored;
+    std::filesystem::remove(temporary, ignored);
+    error = "cannot atomically publish artifact-cache file '" + destination.string() +
+        "' (Win32 error " + std::to_string(failure) + ")";
+    return false;
+#else
+    std::error_code filesystemError;
+    std::filesystem::rename(temporary, destination, filesystemError);
+    if (!filesystemError) return true;
+    std::filesystem::remove(temporary, filesystemError);
+    error = "cannot atomically publish artifact-cache file '" + destination.string() + "'";
+    return false;
+#endif
+}
+
+class CacheEntryLock final
+{
+public:
+    CacheEntryLock() = default;
+    CacheEntryLock(const CacheEntryLock&) = delete;
+    CacheEntryLock& operator=(const CacheEntryLock&) = delete;
+
+    ~CacheEntryLock()
+    {
+#if defined(_WIN32)
+        if (handle_ != INVALID_HANDLE_VALUE) ::CloseHandle(handle_);
+        std::error_code ignored;
+        if (!path_.empty()) std::filesystem::remove(path_, ignored);
+#endif
+    }
+
+    bool acquire(const std::filesystem::path& path, std::string& error)
+    {
+#if defined(_WIN32)
+        path_ = path;
+        constexpr unsigned attempts = 3000;
+        for (unsigned attempt = 0; attempt < attempts; ++attempt)
+        {
+            handle_ = ::CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0,
+                nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, nullptr);
+            if (handle_ != INVALID_HANDLE_VALUE) return true;
+            const unsigned long failure = ::GetLastError();
+            if (failure != ERROR_SHARING_VIOLATION && failure != ERROR_LOCK_VIOLATION)
+            {
+                error = "cannot lock artifact-cache entry '" + path.string() +
+                    "' (Win32 error " + std::to_string(failure) + ")";
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        error = "timed out waiting for artifact-cache entry '" + path.string() + "'";
+        return false;
+#else
+        lock_ = std::unique_lock(globalMutex_);
+        (void)path;
+        (void)error;
+        return true;
+#endif
+    }
+
+private:
+#if defined(_WIN32)
+    HANDLE handle_ = INVALID_HANDLE_VALUE;
+    std::filesystem::path path_;
+#else
+    inline static std::mutex globalMutex_;
+    std::unique_lock<std::mutex> lock_;
+#endif
+};
 
 bool validKey(std::string_view key) noexcept
 {
@@ -51,6 +155,28 @@ std::filesystem::path metadataPath(
     std::string_view key)
 {
     return objectDirectory(root, key) / (std::string(key) + ".meta");
+}
+
+void quarantineInvalidEntry(
+    const std::filesystem::path& root,
+    std::string_view key,
+    const std::filesystem::path& object,
+    const std::filesystem::path& metadata) noexcept
+{
+    std::error_code filesystemError;
+    const std::filesystem::path quarantine = root / "quarantine";
+    std::filesystem::create_directories(quarantine, filesystemError);
+    if (filesystemError) return;
+    const std::string suffix = std::to_string(
+        temporaryOrdinal.fetch_add(1, std::memory_order_relaxed));
+    const std::filesystem::path quarantinedMetadata =
+        quarantine / (std::string(key) + "." + suffix + ".meta");
+    const std::filesystem::path quarantinedObject =
+        quarantine / (std::string(key) + "." + suffix + ".obj");
+    filesystemError.clear();
+    std::filesystem::rename(metadata, quarantinedMetadata, filesystemError);
+    filesystemError.clear();
+    std::filesystem::rename(object, quarantinedObject, filesystemError);
 }
 
 struct CacheMetadata final
@@ -90,9 +216,7 @@ bool writeMetadataAtomically(
     std::uintmax_t size,
     std::string& error)
 {
-    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    const std::filesystem::path temporary =
-        destination.string() + ".tmp." + std::to_string(stamp);
+    const std::filesystem::path temporary = temporarySibling(destination);
     {
         std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
         if (!stream)
@@ -111,20 +235,18 @@ bool writeMetadataAtomically(
             return false;
         }
     }
-    std::error_code filesystemError;
-    std::filesystem::remove(destination, filesystemError);
-    filesystemError.clear();
-    std::filesystem::rename(temporary, destination, filesystemError);
-    if (filesystemError)
-    {
-        std::error_code ignored;
-        std::filesystem::remove(temporary, ignored);
-        error = "cannot commit artifact-cache metadata '" + destination.string() +
-            "': " + filesystemError.message();
-        return false;
-    }
-    return true;
+    return replaceFileAtomically(temporary, destination, error);
 }
+}
+
+std::string codeGenerationPolicyIdentity(LinkTimeOptimizationMode linkTimeOptimization)
+{
+    const FloatingPointState state = captureFloatingPointState();
+    return "fp-mode=" + std::string(floatingPointModeName(state.mode)) +
+        ";fma-contract=" + std::string(fmaContractPolicyName(state.fmaContractPolicy)) +
+        ";rounding=" + std::string(floatingPointRoundingModeName(state.roundingMode)) +
+        ";denormal=" + std::string(floatingPointDenormalModeName(state.denormalMode)) +
+        ";lto=" + std::string(linkTimeOptimizationModeName(linkTimeOptimization));
 }
 
 void CompilationArtifactCache::setRoot(std::filesystem::path root)
@@ -151,15 +273,17 @@ std::string CompilationArtifactCache::objectKey(
     std::string_view optimizedLlvm,
     std::string_view targetTriple,
     std::string_view dataLayout,
+    std::string_view codeGenerationPolicy,
     LlvmOptimizationLevel optimization,
     DebugInformationKind debugInformation) const
 {
     const LlvmVersion llvm = loadedLlvmVersion();
-    std::string material = "NSCOBJKEY 1\n";
+    std::string material = "NSCOBJKEY 2\n";
     material += "toolchain " + toolchainIdentity_ + "\n";
     material += "llvm " + llvmVersionString(llvm) + "\n";
     material += "target " + std::string(targetTriple) + "\n";
     material += "layout " + std::string(dataLayout) + "\n";
+    material += "codegen " + std::string(codeGenerationPolicy) + "\n";
     material += "optimization " + std::string(llvmOptimizationLevelName(optimization)) + "\n";
     material += "debug " + std::string(debugInformationKindName(debugInformation)) + "\n";
     material += "ir-size " + std::to_string(optimizedLlvm.size()) + "\n";
@@ -172,14 +296,16 @@ std::string CompilationArtifactCache::objectKey(
 std::string CompilationArtifactCache::inputObjectKey(
     std::string_view mirIdentity,
     std::string_view targetIdentity,
+    std::string_view codeGenerationPolicy,
     LlvmOptimizationLevel optimization,
     DebugInformationKind debugInformation) const
 {
     const LlvmVersion llvm = loadedLlvmVersion();
-    std::string material = "NSCOBJINPUTKEY 1\n";
+    std::string material = "NSCOBJINPUTKEY 2\n";
     material += "toolchain " + toolchainIdentity_ + "\n";
     material += "llvm " + llvmVersionString(llvm) + "\n";
     material += "target " + std::string(targetIdentity) + "\n";
+    material += "codegen " + std::string(codeGenerationPolicy) + "\n";
     material += "optimization " + std::string(llvmOptimizationLevelName(optimization)) + "\n";
     material += "debug " + std::string(debugInformationKindName(debugInformation)) + "\n";
     material += "mir-size " + std::to_string(mirIdentity.size()) + "\n";
@@ -212,13 +338,30 @@ bool CompilationArtifactCache::restoreObject(
     if (!std::filesystem::is_regular_file(cachedMetadata, filesystemError) || filesystemError)
         return true;
 
+    CacheEntryLock entryLock;
+    if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
+    filesystemError.clear();
+    if (!std::filesystem::is_regular_file(cachedObject, filesystemError) || filesystemError)
+        return true;
+    filesystemError.clear();
+    if (!std::filesystem::is_regular_file(cachedMetadata, filesystemError) || filesystemError)
+        return true;
+
     CacheMetadata metadata;
-    if (!readMetadata(cachedMetadata, metadata) || metadata.key != key) return true;
+    if (!readMetadata(cachedMetadata, metadata) || metadata.key != key)
+    {
+        quarantineInvalidEntry(root_, key, cachedObject, cachedMetadata);
+        return true;
+    }
     basic::Sha256Digest digest{};
     std::uintmax_t size = 0;
     std::string hashError;
     if (!basic::sha256File(cachedObject, digest, size, hashError)) return true;
-    if (size != metadata.size || basic::sha256Hex(digest) != metadata.digest) return true;
+    if (size != metadata.size || basic::sha256Hex(digest) != metadata.digest)
+    {
+        quarantineInvalidEntry(root_, key, cachedObject, cachedMetadata);
+        return true;
+    }
 
     std::filesystem::copy_file(
         cachedObject, destination, std::filesystem::copy_options::overwrite_existing,
@@ -259,17 +402,136 @@ bool CompilationArtifactCache::storeObject(
         return false;
     }
     const std::filesystem::path cachedObject = objectPath(root_, key);
-    std::filesystem::copy_file(
-        source, cachedObject, std::filesystem::copy_options::overwrite_existing,
-        filesystemError);
+    CacheEntryLock entryLock;
+    if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
+    const std::filesystem::path temporaryObject = temporarySibling(cachedObject);
+    std::filesystem::copy_file(source, temporaryObject,
+        std::filesystem::copy_options::overwrite_existing, filesystemError);
     if (filesystemError)
     {
-        error = "cannot store cached object '" + cachedObject.string() + "': " +
+        error = "cannot stage cached object '" + cachedObject.string() + "': " +
             filesystemError.message();
         return false;
     }
+    const std::filesystem::path cachedMetadata = metadataPath(root_, key);
+    std::filesystem::remove(cachedMetadata, filesystemError);
+    if (filesystemError)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(temporaryObject, ignored);
+        error = "cannot invalidate artifact-cache metadata '" + cachedMetadata.string() +
+            "': " + filesystemError.message();
+        return false;
+    }
+    filesystemError.clear();
+    if (!replaceFileAtomically(temporaryObject, cachedObject, error)) return false;
     return writeMetadataAtomically(
-        metadataPath(root_, key), key, basic::sha256Hex(digest), size, error);
+        cachedMetadata, key, basic::sha256Hex(digest), size, error);
+}
+
+bool CompilationArtifactCache::prune(
+    std::uintmax_t maximumBytes,
+    std::size_t& evictedEntries,
+    std::uintmax_t& evictedBytes,
+    std::string& error) const
+{
+    evictedEntries = 0;
+    evictedBytes = 0;
+    error.clear();
+    if (!enabled()) return true;
+    const std::filesystem::path objects = root_ / "objects";
+    std::error_code filesystemError;
+    const bool objectsExist = std::filesystem::is_directory(objects, filesystemError);
+    if (filesystemError)
+    {
+        if (filesystemError == std::errc::no_such_file_or_directory) return true;
+        error = "cannot inspect artifact cache for eviction: " + filesystemError.message();
+        return false;
+    }
+    if (!objectsExist) return true;
+
+    struct Entry final
+    {
+        std::string key;
+        std::filesystem::path object;
+        std::filesystem::path metadata;
+        std::filesystem::file_time_type publication;
+        std::uintmax_t size;
+    };
+    std::vector<Entry> entries;
+    std::uintmax_t totalBytes = 0;
+    std::filesystem::recursive_directory_iterator iterator(
+        objects, std::filesystem::directory_options::skip_permission_denied, filesystemError);
+    const std::filesystem::recursive_directory_iterator end;
+    while (!filesystemError && iterator != end)
+    {
+        const std::filesystem::directory_entry entry = *iterator;
+        iterator.increment(filesystemError);
+        const bool regular = entry.is_regular_file(filesystemError);
+        if (filesystemError)
+        {
+            filesystemError.clear();
+            continue;
+        }
+        if (!regular || entry.path().extension() != ".meta") continue;
+        const std::string key = entry.path().stem().string();
+        if (!validKey(key)) continue;
+        const std::filesystem::path object = objectPath(root_, key);
+        const std::uintmax_t size = std::filesystem::file_size(object, filesystemError);
+        if (filesystemError)
+        {
+            filesystemError.clear();
+            continue;
+        }
+        const auto publication = entry.last_write_time(filesystemError);
+        if (filesystemError)
+        {
+            filesystemError.clear();
+            continue;
+        }
+        entries.push_back({key, object, entry.path(), publication, size});
+        totalBytes += size;
+    }
+    if (filesystemError)
+    {
+        error = "cannot enumerate artifact cache for eviction: " + filesystemError.message();
+        return false;
+    }
+    std::ranges::sort(entries, [](const Entry& left, const Entry& right) {
+        if (left.publication != right.publication) return left.publication < right.publication;
+        return left.key < right.key;
+    });
+    for (const Entry& entry : entries)
+    {
+        if (totalBytes <= maximumBytes) break;
+        CacheEntryLock entryLock;
+        if (!entryLock.acquire(entry.object.string() + ".lock", error)) return false;
+        filesystemError.clear();
+        const std::uintmax_t currentSize = std::filesystem::file_size(entry.object, filesystemError);
+        if (filesystemError)
+        {
+            filesystemError.clear();
+            continue;
+        }
+        std::filesystem::remove(entry.metadata, filesystemError);
+        if (filesystemError)
+        {
+            error = "cannot evict artifact-cache metadata '" + entry.metadata.string() +
+                "': " + filesystemError.message();
+            return false;
+        }
+        std::filesystem::remove(entry.object, filesystemError);
+        if (filesystemError)
+        {
+            error = "cannot evict artifact-cache object '" + entry.object.string() +
+                "': " + filesystemError.message();
+            return false;
+        }
+        totalBytes = currentSize > totalBytes ? 0 : totalBytes - currentSize;
+        ++evictedEntries;
+        evictedBytes += currentSize;
+    }
+    return true;
 }
 
 CompilationArtifactCacheScope::CompilationArtifactCacheScope(
