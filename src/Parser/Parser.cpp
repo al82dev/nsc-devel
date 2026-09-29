@@ -1374,6 +1374,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     bool isStatic = false;
     bool isExportedFunction = false;
     bool isReadonlyType = false;
+    bool isRecordStruct = false;
     // C2.2 "union and explicit layout": `pack(N)` and `align(N)` are contextual-keyword layout
     // modifiers on a struct/union declaration -- the NativeSharp spellings of C's
     // `#pragma pack(N)` and `__declspec(align(N))`. They are contextual (an ordinary identifier
@@ -1523,6 +1524,24 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             {
                 accessibility = modifier.kind();
             }
+            continue;
+        }
+
+        // NativeSharp 3.0 keeps `record` contextual. Only the unambiguous `record struct`
+        // declaration shape consumes it, so a 2.x declaration named record remains compatible.
+        if (atContextualKeyword("record") && peek().kind() == TokenKind::KwStruct)
+        {
+            const lexer::Token& modifier = consume();
+            requireEdition3(modifier.range(), "record struct declarations");
+            if (isRecordStruct)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate record modifier on struct declaration");
+            }
+            isRecordStruct = true;
             continue;
         }
 
@@ -1721,6 +1740,13 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         declaration = parseStructDeclaration(
             at(TokenKind::KwStruct) ? StructLayoutForm::Struct : StructLayoutForm::Union,
             isBorrowedView && at(TokenKind::KwStruct));
+        if (declaration != nullptr && isRecordStruct)
+        {
+            std::string markers = declaration->auxiliaryText();
+            markers += (markers.empty() ? "" : ",");
+            markers += "record";
+            declaration->setAuxiliaryText(std::move(markers));
+        }
     }
     else if (at(TokenKind::KwEnum))
     {
@@ -7688,8 +7714,45 @@ ast::AstNode* Parser::parsePrimaryExpression()
         case TokenKind::KwBase: kind = ast::AstNodeKind::BaseExpression; break;
         case TokenKind::LeftParen:
         {
-            consume();
-            ast::AstNode* expression = parseExpression();
+            const SourceRange open = consume().range();
+            if (at(TokenKind::RightParen))
+            {
+                requireEdition3(open, "the unit tuple literal");
+                const SourceRange close = consume().range();
+                return arena_.make<ast::AstNode>(
+                    ast::AstNodeKind::TupleExpression, join(open, close));
+            }
+            ast::AstNode* expression = parseArgument();
+            if (consumeIf(TokenKind::Comma))
+            {
+                requireEdition3(open, "tuple literals and deconstruction targets");
+                ast::AstNode* tuple = arena_.make<ast::AstNode>(
+                    ast::AstNodeKind::TupleExpression, open);
+                tuple->addChild(expression);
+                while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile))
+                {
+                    ast::AstNode* element = nullptr;
+                    if (at(TokenKind::DotDot))
+                    {
+                        const SourceRange spread = consume().range();
+                        ast::AstNode* value = parseAssignmentExpression();
+                        element = arena_.make<ast::AstNode>(
+                            ast::AstNodeKind::SpreadElementExpression,
+                            join(spread, value != nullptr ? value->range() : spread));
+                        element->setTokenKind(TokenKind::DotDot);
+                        element->setFirst(value);
+                    }
+                    else
+                    {
+                        element = parseArgument();
+                    }
+                    if (element != nullptr) tuple->addChild(element);
+                    if (!consumeIf(TokenKind::Comma)) break;
+                }
+                expect(TokenKind::RightParen, "')' after tuple");
+                tuple->setRange(SourceRange(open.begin(), tokens_[index_ - 1].range().end()));
+                return tuple;
+            }
             expect(TokenKind::RightParen, "')'");
             if (expression != nullptr)
             {

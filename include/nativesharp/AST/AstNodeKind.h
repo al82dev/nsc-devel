@@ -132,7 +132,11 @@ enum class AstNodeKind
     FromEndExpression,
     SpreadElementExpression,
     InterpolatedStringExpression,
-    WithExpression
+    WithExpression,
+
+    // NativeSharp 3.0 T02. A tuple remains a structural aggregate; assignment decides whether
+    // this syntax is a value literal or a deconstruction target.
+    TupleExpression
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;
