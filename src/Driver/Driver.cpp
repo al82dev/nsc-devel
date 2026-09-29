@@ -3781,6 +3781,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             printVersion(output);
             return ExitCode::Success;
         }
+        if (argument == "--print-compiler-identity")
+        {
+            printCompilerIdentity(output);
+            return ExitCode::Success;
+        }
         if (argument == "--print-target")
         {
             printTarget(output);
@@ -4566,6 +4571,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-codegen [-O0|-O1|-O2|-O3]\n"
            << "  nsc --print-llvm-pipeline [-O0|-O1|-O2|-O3]\n"
            << "  nsc --print-llvm-version\n"
+           << "  nsc --print-compiler-identity\n"
            << "  nsc --print-toolchain-contract\n"
            << "  nsc --print-runtime-abi-contract\n"
            << "  nsc --print-linker\n"
@@ -4944,6 +4950,16 @@ ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
 void Driver::printVersion(std::ostream &output)
 {
     printCompilerBanner(output);
+}
+
+void Driver::printCompilerIdentity(std::ostream &output)
+{
+    output << "NSCOMPILER 1\n"
+           << "compiler_version=" << kCompilerVersion << '\n'
+           << "compiler_release=" << kCompilerReleaseVersion << '\n'
+           << "language=" << kLanguageVersion << '\n'
+           << "stage=" << kCompilerStage << '\n'
+           << "build=" << kCompilerBuildId << '\n';
 }
 
 void Driver::printTarget(std::ostream &output)

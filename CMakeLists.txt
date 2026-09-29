@@ -3423,6 +3423,14 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_driver_tests)
     add_test(NAME nsc.driver COMMAND nsc_driver_tests)
 
+    add_executable(
+        nsc_compiler_identity_command_tests
+        tests/unit/CompilerIdentityCommandTests.cpp)
+    target_link_libraries(nsc_compiler_identity_command_tests PRIVATE nsc_driver nsc_frontend nsc_target)
+    target_compile_features(nsc_compiler_identity_command_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_compiler_identity_command_tests)
+    add_test(NAME nsc.compiler-identity-command COMMAND nsc_compiler_identity_command_tests)
+
     add_executable(nsc_project_commands_tests tests/unit/ProjectCommandsTests.cpp)
     target_link_libraries(nsc_project_commands_tests PRIVATE nsc_driver nsc_frontend nsc_target)
     target_compile_features(nsc_project_commands_tests PRIVATE cxx_std_20)
