@@ -8,7 +8,8 @@ enum class DiagnosticSeverity
 {
     Note,
     Warning,
-    Error
+    Error,
+    Lint
 };
 
 constexpr std::string_view diagnosticSeverityName(DiagnosticSeverity severity) noexcept
@@ -17,6 +18,8 @@ constexpr std::string_view diagnosticSeverityName(DiagnosticSeverity severity) n
     {
         case DiagnosticSeverity::Note:
             return "note";
+        case DiagnosticSeverity::Lint:
+            return "lint";
         case DiagnosticSeverity::Warning:
             return "warning";
         case DiagnosticSeverity::Error:

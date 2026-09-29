@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     NativeSharp
-    VERSION 2.0.0
-    DESCRIPTION "NativeSharp 2.0 stable compiler"
+    VERSION 3.0.0
+    DESCRIPTION "NativeSharp 3.0 development compiler"
     LANGUAGES CXX)
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
@@ -125,6 +125,7 @@ nsc_enable_warnings(nsc_basic)
 add_dependencies(nsc_basic nsc_build_identity)
 
 add_library(nsc_compilation STATIC
+    src/Language/LanguageEdition.cpp
     src/Driver/CompilationJobPolicy.cpp
     src/Driver/CompilationWorkerPool.cpp
     src/Compilation/SimpleXmlParser.cpp
@@ -245,6 +246,7 @@ add_library(nsc_frontend STATIC
     src/Passes/OptimizationDumper.cpp
     src/Passes/PassPipelineDumper.cpp
     src/Frontend/FrontendCompilation.cpp
+    src/Frontend/CompilationStage.cpp
     src/Frontend/StageBoundaryVerifier.cpp
     src/Frontend/ComptimeEngine.cpp
     src/Frontend/ProjectSyntaxUnit.cpp
@@ -686,6 +688,21 @@ endif()
 if(NSC_BUILD_TESTS)
     enable_testing()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+    add_executable(
+        nsc_ns3_t00_constitution_tests
+        tests/unit/NativeSharp3T00ConstitutionTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t00_constitution_tests
+        PRIVATE nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_ns3_t00_constitution_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_t00_constitution_tests)
+    add_test(NAME nsc.ns3.t00.constitution COMMAND nsc_ns3_t00_constitution_tests)
+
+    add_test(
+        NAME nsc.ns3.t00.conformance-harness
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/ns3_conformance.py" --self-test)
 
     add_test(
         NAME nsc.selfhost.bootstrap-infrastructure

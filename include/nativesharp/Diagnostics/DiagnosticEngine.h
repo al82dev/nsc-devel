@@ -33,6 +33,14 @@ public:
         SourceRange range,
         std::string message);
 
+    void reportStructured(
+        DiagnosticId id,
+        DiagnosticSeverity severity,
+        SourceRange primaryRange,
+        std::string message,
+        std::vector<DiagnosticLabel> secondaryLabels,
+        std::vector<std::string> notes);
+
     void append(const Diagnostic& diagnostic);
 
     // Reduces worker-local engines by canonical diagnostic content. The result is
@@ -42,6 +50,7 @@ public:
     const std::vector<Diagnostic>& diagnostics() const noexcept;
     std::size_t errorCount() const noexcept;
     std::size_t warningCount() const noexcept;
+    std::size_t lintCount() const noexcept;
     std::size_t errorLimit() const noexcept;
     bool errorLimitReached() const noexcept;
     std::size_t suppressedDiagnosticCount() const noexcept;
@@ -55,6 +64,7 @@ private:
     std::size_t errorLimit_ = kDefaultErrorLimit;
     std::size_t errorCount_ = 0;
     std::size_t warningCount_ = 0;
+    std::size_t lintCount_ = 0;
     std::size_t suppressedDiagnosticCount_ = 0;
     bool errorLimitReached_ = false;
 };

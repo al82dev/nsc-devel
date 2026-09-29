@@ -2,6 +2,7 @@
 
 #include "nativesharp/Compilation/ProjectSourceSet.h"
 #include "nativesharp/Compilation/SdkManifest.h"
+#include "nativesharp/Language/LanguageEdition.h"
 
 #include <filesystem>
 #include <span>
@@ -37,7 +38,8 @@ public:
         ProjectSourceSet sourceSet,
         std::vector<std::filesystem::path> projectReferences,
         std::vector<LibraryReference> libraryReferences,
-        std::vector<SdkManifest> sdkReferences);
+        std::vector<SdkManifest> sdkReferences,
+        language::LanguageEdition languageEdition = language::LanguageEdition::V2);
 
     const std::filesystem::path& projectFile() const noexcept;
     const std::string& moduleName() const noexcept;
@@ -46,6 +48,7 @@ public:
     std::span<const std::filesystem::path> projectReferences() const noexcept;
     std::span<const LibraryReference> libraryReferences() const noexcept;
     std::span<const SdkManifest> sdkReferences() const noexcept;
+    language::LanguageEdition languageEdition() const noexcept;
 
 private:
     std::filesystem::path projectFile_;
@@ -55,5 +58,6 @@ private:
     std::vector<std::filesystem::path> projectReferences_;
     std::vector<LibraryReference> libraryReferences_;
     std::vector<SdkManifest> sdkReferences_;
+    language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };
 }

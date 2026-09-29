@@ -15,8 +15,9 @@
 
 namespace nativesharp::frontend
 {
-FrontendCompilation::FrontendCompilation()
-    : dataLayout_(target::TargetDataLayout::WindowsX64())
+FrontendCompilation::FrontendCompilation(language::LanguageEdition languageEdition)
+    : dataLayout_(target::TargetDataLayout::WindowsX64()),
+      languageEdition_(languageEdition)
 {
 }
 
@@ -81,6 +82,10 @@ const std::string& FrontendCompilation::optimizationError() const noexcept
 const std::vector<StageBoundary>& FrontendCompilation::verifiedStageBoundaries() const noexcept
 {
     return verifiedStageBoundaries_;
+}
+language::LanguageEdition FrontendCompilation::languageEdition() const noexcept
+{
+    return languageEdition_;
 }
 FileId FrontendCompilation::primaryFileId() const noexcept { return primaryFileId_; }
 

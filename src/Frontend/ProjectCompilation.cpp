@@ -872,6 +872,7 @@ bool ProjectCompilation::compileSyntaxCore(
         std::size_t projectOrdinal = 0;
         std::size_t sourceOrdinal = 0;
         std::string moduleName;
+        language::LanguageEdition languageEdition = language::LanguageEdition::V2;
         std::filesystem::path path;
         std::optional<std::string> buffer;
         std::optional<ComptimeResult> comptime;
@@ -890,6 +891,7 @@ bool ProjectCompilation::compileSyntaxCore(
                 projectOrdinal,
                 source.ordinal,
                 project.moduleName(),
+                project.languageEdition(),
                 source.absolutePath,
                 std::nullopt,
                 std::nullopt,
@@ -957,7 +959,9 @@ bool ProjectCompilation::compileSyntaxCore(
                 read.projectOrdinal,
                 read.sourceOrdinal,
                 std::move(read.moduleName),
-                fileId));
+                fileId,
+                false,
+                read.languageEdition));
         }
     }
 
@@ -1005,7 +1009,12 @@ bool ProjectCompilation::compileSyntaxCore(
             return false;
         }
         auto unit = std::make_unique<ProjectSyntaxUnit>(
-            *projectOrdinal, 0, module.moduleName, fileId, true);
+            *projectOrdinal,
+            0,
+            module.moduleName,
+            fileId,
+            true,
+            projectGraph_->projects()[*projectOrdinal].languageEdition());
         units_.push_back(std::move(unit));
 
         if (!module.templateSourceText.empty())
@@ -1023,7 +1032,12 @@ bool ProjectCompilation::compileSyntaxCore(
             // Deliberately NOT precompiled: these public bodies are input to the consumer's
             // ordinary generic pass, which specializes only what that consumer requests.
             auto templateUnit = std::make_unique<ProjectSyntaxUnit>(
-                *projectOrdinal, 1, module.moduleName, templateFileId, false);
+                *projectOrdinal,
+                1,
+                module.moduleName,
+                templateFileId,
+                false,
+                projectGraph_->projects()[*projectOrdinal].languageEdition());
             units_.push_back(std::move(templateUnit));
         }
         }

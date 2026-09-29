@@ -77,7 +77,14 @@ enum class DiagnosticId
     ConstantEvaluationTrap,
     MissingMain,
     InvalidMainSignature,
-    InvalidExternCSignature
+    InvalidExternCSignature,
+
+    NS3001IncompatibleLanguageEdition,
+    NS3002FeatureRequiresLanguageEdition3,
+    NS3010InvalidCompilationStage,
+    NS3020InvalidValueCategory,
+    NS3030MissingEffectContext,
+    NS3099InvalidConformanceManifest
 };
 
 // These names are the stable machine-facing diagnostic codes used by editor integrations. New
@@ -157,6 +164,12 @@ constexpr std::string_view diagnosticIdName(DiagnosticId id) noexcept
         NSC_DIAGNOSTIC_NAME(InvalidMainSignature);
         NSC_DIAGNOSTIC_NAME(InvalidExternCSignature);
 #undef NSC_DIAGNOSTIC_NAME
+        case DiagnosticId::NS3001IncompatibleLanguageEdition: return "NS3001";
+        case DiagnosticId::NS3002FeatureRequiresLanguageEdition3: return "NS3002";
+        case DiagnosticId::NS3010InvalidCompilationStage: return "NS3010";
+        case DiagnosticId::NS3020InvalidValueCategory: return "NS3020";
+        case DiagnosticId::NS3030MissingEffectContext: return "NS3030";
+        case DiagnosticId::NS3099InvalidConformanceManifest: return "NS3099";
     }
     return "UnknownDiagnostic";
 }

@@ -14,13 +14,15 @@ ProjectSyntaxUnit::ProjectSyntaxUnit(
     std::size_t sourceOrdinal,
     std::string moduleName,
     FileId fileId,
-    bool precompiled)
+    bool precompiled,
+    language::LanguageEdition languageEdition)
     : projectOrdinal_(projectOrdinal),
       sourceOrdinal_(sourceOrdinal),
       moduleName_(std::move(moduleName)),
       fileId_(fileId),
       arena_(std::make_unique<ast::AstArena>()),
-      precompiled_(precompiled)
+      precompiled_(precompiled),
+      languageEdition_(languageEdition)
 {
 }
 
@@ -115,5 +117,10 @@ bool ProjectSyntaxUnit::isSyntaxValid() const noexcept
 bool ProjectSyntaxUnit::isPrecompiled() const noexcept
 {
     return precompiled_;
+}
+
+language::LanguageEdition ProjectSyntaxUnit::languageEdition() const noexcept
+{
+    return languageEdition_;
 }
 }

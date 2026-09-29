@@ -130,6 +130,23 @@ bool visitProject(
     });
     for (const std::filesystem::path& reference : references)
     {
+        const auto dependency = projects.find(pathKey(canonicalPath(reference)));
+        if (dependency == projects.end())
+        {
+            error = "internal error: project reference was not loaded: '" +
+                reference.generic_string() + "'";
+            return false;
+        }
+        if (dependency->second.languageEdition() != project.languageEdition())
+        {
+            error = "NS3001: project '" + project.moduleName() + "' uses language edition " +
+                std::string(language::languageEditionName(project.languageEdition())) +
+                " but imports project '" + dependency->second.moduleName() +
+                "' using language edition " +
+                std::string(language::languageEditionName(dependency->second.languageEdition())) +
+                "; mixed editions are not allowed inside one module graph";
+            return false;
+        }
         if (!visitProject(reference, projects, state, error))
         {
             return false;
@@ -198,7 +215,8 @@ bool normalizeTransitiveSourceOwnership(
             std::vector<LibraryReference>(
                 project.libraryReferences().begin(), project.libraryReferences().end()),
             std::vector<SdkManifest>(
-                project.sdkReferences().begin(), project.sdkReferences().end()));
+                project.sdkReferences().begin(), project.sdkReferences().end()),
+            project.languageEdition());
     }
 
     projects = std::move(normalized);
