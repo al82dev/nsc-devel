@@ -1578,7 +1578,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
              (peek().kind() == TokenKind::Identifier &&
               (peek().lexeme() == "pack" || peek().lexeme() == "align" ||
                peek().lexeme() == "size" || peek().lexeme() == "union" ||
-               peek().lexeme() == "record")));
+               peek().lexeme() == "record" || peek().lexeme() == "variant")));
         if (readonlyTypeModifier)
         {
             const lexer::Token& modifier = consume();
@@ -1644,6 +1644,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
              peek().kind() == TokenKind::KwSealed ||
              peek().kind() == TokenKind::KwStatic ||
              (peek().kind() == TokenKind::Identifier && peek().lexeme() == "union") ||
+             (peek().kind() == TokenKind::Identifier && peek().lexeme() == "variant") ||
              (peek().kind() == TokenKind::Identifier && peek().lexeme() == "partial"));
         if (borrowedTypeModifier)
         {
@@ -1732,6 +1733,18 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                 "interfaces cannot use abstract, sealed, or static type modifiers");
         }
         declaration = parseInterfaceDeclaration(isPartial);
+    }
+    else if (atContextualKeyword("variant") && peek().kind() == TokenKind::Identifier)
+    {
+        if (isPartial || isAbstract || isSealed || isStatic || isRecordStruct)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                tokens_[declarationBeginIndex].range(),
+                "variant declarations cannot be partial, abstract, sealed, static, or record");
+        }
+        declaration = parseVariantDeclaration();
     }
     else if (at(TokenKind::KwStruct) ||
              (atContextualKeyword("union") && peek().kind() == TokenKind::Identifier))
@@ -1923,10 +1936,20 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                 declaration->range(),
                 "'borrowed' declares a view type and applies only to struct declarations");
         }
+        if (isBorrowedView && declaration->kind() == ast::AstNodeKind::StructDeclaration &&
+            declaration->auxiliaryText().find("variant") != std::string::npos)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                declaration->range(),
+                "borrowed variant declarations require the T06 active-payload lifetime contract");
+        }
         if (isReadonlyType)
         {
             if (declaration->kind() != ast::AstNodeKind::StructDeclaration ||
-                declaration->auxiliaryText().find("union") != std::string::npos)
+                declaration->auxiliaryText().find("union") != std::string::npos ||
+                declaration->auxiliaryText().find("variant") != std::string::npos)
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -1963,6 +1986,14 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                     diagnostics::DiagnosticSeverity::Error,
                     declaration->range(),
                     "pack/align/size layout modifiers apply only to struct and union declarations");
+            }
+            else if (declaration->auxiliaryText().find("variant") != std::string::npos)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    declaration->range(),
+                    "pack/align/size cannot override the canonical tagged-variant layout");
             }
             else
             {
@@ -2318,6 +2349,345 @@ ast::AstNode* Parser::parseStructDeclaration(
     parseRecordDerives();
 
     return parseStructBody(node, structName, beginIndex);
+}
+
+ast::AstNode* Parser::parseVariantDeclaration()
+{
+    struct ParsedCase final
+    {
+        std::string name;
+        SourceRange range;
+        ast::TypeSyntax* payloadType = nullptr;
+    };
+
+    const std::size_t beginIndex = index_;
+    const lexer::Token& variantKeyword = consume();
+    requireEdition3(variantKeyword.range(), "variant declaration syntax");
+    if (!at(TokenKind::Identifier))
+    {
+        expect(TokenKind::Identifier, "variant name");
+        synchronizeGlobal();
+        return nullptr;
+    }
+
+    const lexer::Token& name = consume();
+    const std::string variantName(name.lexeme());
+    knownTypeNames_.insert(variantName);
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::StructDeclaration, name.range());
+    node->setText(variantName);
+    node->setAuxiliaryText("variant");
+    parseGenericParameterList(node);
+    parseGenericConstraintClauses(node);
+
+    if (!expect(TokenKind::LeftBrace, "'{' after variant declaration"))
+    {
+        synchronizeGlobal();
+        node->setRange(tokenRangeFrom(beginIndex));
+        return node;
+    }
+
+    std::vector<ParsedCase> cases;
+    std::unordered_set<std::string> caseNames;
+    while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+    {
+        if (!at(TokenKind::Identifier))
+        {
+            expect(TokenKind::Identifier, "variant case name");
+            consume();
+            continue;
+        }
+        const lexer::Token& caseName = consume();
+        ParsedCase item{std::string(caseName.lexeme()), caseName.range(), nullptr};
+        const bool uniqueCase = caseNames.insert(item.name).second;
+        if (!uniqueCase)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                caseName.range(),
+                "duplicate variant case '" + item.name + "'");
+        }
+
+        if (consumeIf(TokenKind::LeftParen))
+        {
+            item.payloadType = parseType();
+            if (item.payloadType == nullptr)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    caseName.range(),
+                    "variant payload requires a type");
+            }
+            else
+            {
+                if (item.payloadType->baseTokenKind() == TokenKind::KwVoid &&
+                    item.payloadType->modifiers().empty())
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        item.payloadType->range(),
+                        "a variant payload cannot have type void; omit the payload instead");
+                }
+                if (item.payloadType->ownershipQualifier() !=
+                    ast::OwnershipQualifierSyntaxKind::None)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        item.payloadType->range(),
+                        "owned and borrowed variant payloads require the T06 active-payload "
+                        "drop contract; use a lifetime-trivial payload in this vertical");
+                }
+            }
+            if (at(TokenKind::Comma))
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    "a variant case has one payload type; use a tuple type for multiple values");
+                while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile)) consume();
+            }
+            expect(TokenKind::RightParen, "')' after variant payload type");
+        }
+        if (uniqueCase) cases.push_back(std::move(item));
+        if (!consumeIf(TokenKind::Comma) && !at(TokenKind::RightBrace))
+        {
+            expect(TokenKind::Comma, "',' between variant cases");
+        }
+    }
+    expect(TokenKind::RightBrace, "'}' to close variant declaration");
+
+    if (cases.empty())
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            node->range(),
+            "a variant must declare at least one case");
+        node->setRange(tokenRangeFrom(beginIndex));
+        return node;
+    }
+
+    // Every generated public member must have a unique source-level spelling. Catch collisions
+    // here so a case named `CaseTag` or an `IsX`/`X` pair cannot create an ambiguous API later.
+    std::unordered_set<std::string> generatedNames = {"CaseTag"};
+    for (const ParsedCase& item : cases)
+    {
+        const std::array<std::string, 2> names = {item.name, "Is" + item.name};
+        for (std::size_t index = 0; index < names.size(); ++index)
+        {
+            if (!generatedNames.insert(names[index]).second)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    item.range,
+                    "variant case '" + item.name +
+                        "' collides with generated member '" + names[index] + "'");
+            }
+        }
+    }
+
+    const TokenKind tagKind = cases.size() <= 0x100U
+        ? TokenKind::KwByte
+        : cases.size() <= 0x10000U ? TokenKind::KwUShort : TokenKind::KwUInt;
+    const std::string tagTypeName = tagKind == TokenKind::KwByte
+        ? "byte" : tagKind == TokenKind::KwUShort ? "ushort" : "uint";
+    const auto makeTagType = [&]()
+    {
+        return arena_.make<ast::TypeSyntax>(name.range(), tagKind, tagTypeName);
+    };
+    const auto makeSelfType = [&]()
+    {
+        ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
+            name.range(), TokenKind::Identifier, variantName);
+        for (const std::string& parameter : node->genericParameters())
+        {
+            type->addTypeArgument(arena_.make<ast::TypeSyntax>(
+                name.range(), TokenKind::Identifier, parameter));
+        }
+        return type;
+    };
+    const auto markPublic = [](ast::AstNode* member)
+    {
+        member->setTokenKind(TokenKind::KwPublic);
+        member->addModifier(TokenKind::KwPublic);
+    };
+    const auto markPrivate = [](ast::AstNode* member)
+    {
+        member->setTokenKind(TokenKind::KwPrivate);
+        member->addModifier(TokenKind::KwPrivate);
+    };
+    const auto makeBlock = [&](SourceRange range)
+    {
+        return arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
+    };
+    const auto makeReturn = [&](ast::AstNode* expression, SourceRange range)
+    {
+        ast::AstNode* statement = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::ReturnStatement, range);
+        statement->setFirst(expression);
+        return statement;
+    };
+
+    ast::AstNode* tagField = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::FieldDeclaration, name.range());
+    tagField->setText("__nsc_variant_tag");
+    tagField->setTypeSyntax(makeTagType());
+    tagField->setAuxiliaryText("variant-tag");
+    markPrivate(tagField);
+    node->addChild(tagField);
+
+    const bool hasPayload = std::ranges::any_of(
+        cases, [](const ParsedCase& item) { return item.payloadType != nullptr; });
+    // The nested payload identity is derived from the declared type name, not from file id or
+    // byte offset. Moving a declaration or adding an earlier source file must not rename an ABI
+    // carrier in NSMETA/host headers.
+    const std::string payloadTypeName = "__nsc_variant_payload_" + variantName;
+    const std::string payloadFieldName = "__nsc_variant_payload";
+    if (hasPayload)
+    {
+        ast::AstNode* payloadDeclaration = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::StructDeclaration, name.range());
+        payloadDeclaration->setText(payloadTypeName);
+        payloadDeclaration->setAuxiliaryText("union,variant-payload");
+        payloadDeclaration->setTokenKind(TokenKind::KwPrivate);
+        for (const ParsedCase& item : cases)
+        {
+            if (item.payloadType == nullptr) continue;
+            ast::AstNode* field = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::FieldDeclaration, item.range);
+            field->setText("__nsc_case_" + item.name);
+            field->setTypeSyntax(item.payloadType);
+            field->setAuxiliaryText("variant-case-payload:" + item.name);
+            markPublic(field);
+            payloadDeclaration->addChild(field);
+        }
+        node->addChild(payloadDeclaration);
+
+        ast::AstNode* payloadField = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::FieldDeclaration, name.range());
+        payloadField->setText(payloadFieldName);
+        payloadField->setTypeSyntax(arena_.make<ast::TypeSyntax>(
+            name.range(), TokenKind::Identifier, payloadTypeName));
+        payloadField->setAuxiliaryText("variant-payload-carrier");
+        markPrivate(payloadField);
+        node->addChild(payloadField);
+    }
+
+    for (std::size_t caseIndex = 0; caseIndex < cases.size(); ++caseIndex)
+    {
+        const ParsedCase& item = cases[caseIndex];
+        ast::AstNode* factory = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::MethodDeclaration, item.range);
+        factory->setText(item.name);
+        factory->setTypeSyntax(makeSelfType());
+        factory->setAuxiliaryText(
+            "variant-case-factory:" + item.name + ":" + std::to_string(caseIndex));
+        markPublic(factory);
+        factory->addModifier(TokenKind::KwStatic);
+        if (item.payloadType != nullptr)
+        {
+            ast::AstNode* parameter = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::ParameterDeclaration, item.range);
+            parameter->setText("value");
+            parameter->setTypeSyntax(item.payloadType);
+            factory->addChild(parameter);
+        }
+
+        ast::AstNode* factoryBody = makeBlock(item.range);
+        ast::AstNode* defaultValue = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::DefaultValueExpression, item.range);
+        defaultValue->setTypeSyntax(makeSelfType());
+        factoryBody->addChild(makeVariableDeclaration(
+            makeSelfType(), "__nsc_variant_result", defaultValue, false));
+        factoryBody->addChild(makeExpressionStatement(makeAssignmentExpression(
+            makeMemberExpression(
+                makeIdentifierExpression(item.range, "__nsc_variant_result"),
+                "__nsc_variant_tag"),
+            makeIntegerLiteralExpression(item.range, caseIndex))));
+        if (item.payloadType != nullptr)
+        {
+            ast::AstNode* payload = makeMemberExpression(
+                makeIdentifierExpression(item.range, "__nsc_variant_result"),
+                payloadFieldName);
+            payload = makeMemberExpression(payload, "__nsc_case_" + item.name);
+            factoryBody->addChild(makeExpressionStatement(makeAssignmentExpression(
+                payload, makeIdentifierExpression(item.range, "value"))));
+        }
+        factoryBody->addChild(makeReturn(
+            makeIdentifierExpression(item.range, "__nsc_variant_result"), item.range));
+        factory->setFirst(factoryBody);
+        node->addChild(factory);
+
+        ast::AstNode* testMethod = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::MethodDeclaration, item.range);
+        testMethod->setText("Is" + item.name);
+        testMethod->setTypeSyntax(arena_.make<ast::TypeSyntax>(
+            item.range, TokenKind::KwBool, "bool"));
+        testMethod->setAuxiliaryText(
+            "variant-case-test:" + item.name + ":" + std::to_string(caseIndex));
+        markPublic(testMethod);
+        testMethod->addModifier(TokenKind::KwReadonly);
+        ast::AstNode* testBody = makeBlock(item.range);
+        testBody->addChild(makeReturn(makeBinaryExpression(
+            TokenKind::EqualEqual,
+            makeIdentifierExpression(item.range, "__nsc_variant_tag"),
+            makeIntegerLiteralExpression(item.range, caseIndex)), item.range));
+        testMethod->setFirst(testBody);
+        node->addChild(testMethod);
+
+        if (item.payloadType != nullptr)
+        {
+            ast::AstNode* payloadMethod = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::MethodDeclaration, item.range);
+            // This member is public for cross-module pattern lowering. ProjectMethodBodyModel
+            // rejects calls to the reserved name unless this CallExpression carries the marker
+            // emitted by parseMatchStatement, so user source cannot bypass the tag test and read
+            // an inactive union arm. A source-valid spelling is required because NSMETA verifies
+            // its generated public API by reparsing it.
+            payloadMethod->setText("__nsc_variant_extract_" + item.name);
+            payloadMethod->setTypeSyntax(item.payloadType);
+            payloadMethod->setAuxiliaryText(
+                "variant-case-extract:" + item.name + ":" + std::to_string(caseIndex));
+            markPublic(payloadMethod);
+            payloadMethod->addModifier(TokenKind::KwReadonly);
+            ast::AstNode* payloadBody = makeBlock(item.range);
+            payloadBody->addChild(makeReturn(makeMemberExpression(
+                makeIdentifierExpression(item.range, payloadFieldName),
+                "__nsc_case_" + item.name), item.range));
+            payloadMethod->setFirst(payloadBody);
+            node->addChild(payloadMethod);
+        }
+    }
+
+    ast::AstNode* tagMethod = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::MethodDeclaration, name.range());
+    tagMethod->setText("CaseTag");
+    tagMethod->setTypeSyntax(makeTagType());
+    tagMethod->setAuxiliaryText("variant-case-tag");
+    markPublic(tagMethod);
+    tagMethod->addModifier(TokenKind::KwReadonly);
+    ast::AstNode* tagBody = makeBlock(name.range());
+    tagBody->addChild(makeReturn(
+        makeIdentifierExpression(name.range(), "__nsc_variant_tag"), name.range()));
+    tagMethod->setFirst(tagBody);
+    node->addChild(tagMethod);
+
+    std::string metadata = "variant,tag=" + tagTypeName + ",cases=";
+    for (std::size_t index = 0; index < cases.size(); ++index)
+    {
+        if (index != 0) metadata += '|';
+        metadata += cases[index].name;
+        if (cases[index].payloadType != nullptr) metadata += ":payload";
+    }
+    node->setAuxiliaryText(std::move(metadata));
+    node->setRange(tokenRangeFrom(beginIndex));
+    return node;
 }
 
 ast::AstNode* Parser::parseStructBody(
@@ -2729,7 +3099,8 @@ bool Parser::atNestedTypeDeclaration() const noexcept
     return at(TokenKind::KwClass) || at(TokenKind::KwStruct) || at(TokenKind::KwInterface) ||
         at(TokenKind::KwEnum) || at(TokenKind::KwDelegate) ||
         (atContextualKeyword("union") && peek().kind() == TokenKind::Identifier) ||
-        (atContextualKeyword("record") && peek().kind() == TokenKind::KwStruct);
+        (atContextualKeyword("record") && peek().kind() == TokenKind::KwStruct) ||
+        (atContextualKeyword("variant") && peek().kind() == TokenKind::Identifier);
 }
 
 ast::AstNode* Parser::parseNestedTypeDeclaration(
@@ -2792,6 +3163,10 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     else if (at(TokenKind::KwInterface))
     {
         declaration = parseInterfaceDeclaration(false);
+    }
+    else if (atContextualKeyword("variant"))
+    {
+        declaration = parseVariantDeclaration();
     }
     else if (nestedStruct || atContextualKeyword("union"))
     {
@@ -2867,6 +3242,14 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
                 diagnostics::DiagnosticSeverity::Error,
                 declaration->range(),
                 "pack/align/size layout modifiers apply only to nested struct and union declarations");
+        }
+        else if (declaration->auxiliaryText().find("variant") != std::string::npos)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                declaration->range(),
+                "pack/align/size cannot override the canonical tagged-variant layout");
         }
         else
         {
@@ -5560,6 +5943,8 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::KwFor)) return parseForStatement();
     if (at(TokenKind::KwForeach)) return parseForeachStatement();
     if (at(TokenKind::KwSwitch)) return parseSwitchStatement();
+    if (atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
+        return parseMatchStatement();
 
     if (at(TokenKind::KwBreak) || at(TokenKind::KwContinue))
     {
@@ -6547,6 +6932,216 @@ ast::AstNode* Parser::parseSwitchStatement()
     expect(TokenKind::RightBrace, "'}' to close the switch");
     node->setRange(tokenRangeFrom(beginIndex));
     return node;
+}
+
+ast::AstNode* Parser::parseMatchStatement()
+{
+    struct ParsedArm final
+    {
+        std::string caseName;
+        std::string bindingName;
+        SourceRange range;
+        ast::AstNode* body = nullptr;
+        bool wildcard = false;
+    };
+
+    const std::size_t beginIndex = index_;
+    const lexer::Token& matchKeyword = consume();
+    requireEdition3(matchKeyword.range(), "match statement syntax");
+    expect(TokenKind::LeftParen, "'(' after 'match'");
+    ast::AstNode* governing = parseExpression();
+    expect(TokenKind::RightParen, "')' after match governing expression");
+    expect(TokenKind::LeftBrace, "'{' to open match arms");
+
+    std::vector<ParsedArm> arms;
+    std::unordered_set<std::string> coveredCases;
+    bool sawWildcard = false;
+    while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+    {
+        const std::size_t armBegin = index_;
+        if (!at(TokenKind::Identifier))
+        {
+            expect(TokenKind::Identifier, "variant case name or '_'");
+            consume();
+            continue;
+        }
+        const lexer::Token& pattern = consume();
+        ParsedArm arm;
+        arm.caseName = std::string(pattern.lexeme());
+        arm.range = pattern.range();
+        arm.wildcard = arm.caseName == "_";
+        if (arm.wildcard)
+        {
+            if (sawWildcard)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    pattern.range(),
+                    "duplicate wildcard match arm");
+            }
+            sawWildcard = true;
+            if (at(TokenKind::LeftParen))
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    "the wildcard match arm cannot bind a payload");
+            }
+        }
+        else
+        {
+            if (sawWildcard)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    pattern.range(),
+                    "match arm is unreachable after the wildcard arm");
+            }
+            if (!coveredCases.insert(arm.caseName).second)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    pattern.range(),
+                    "duplicate match arm for variant case '" + arm.caseName + "'");
+            }
+        }
+
+        if (consumeIf(TokenKind::LeftParen))
+        {
+            if (!at(TokenKind::Identifier))
+            {
+                expect(TokenKind::Identifier, "payload binding name or '_'");
+            }
+            else
+            {
+                arm.bindingName = std::string(consume().lexeme());
+            }
+            if (at(TokenKind::Comma))
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    "a variant pattern binds one payload; destructure a tuple in a later pattern");
+                while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile)) consume();
+            }
+            expect(TokenKind::RightParen, "')' after variant payload binding");
+        }
+
+        if (atContextualKeyword("when"))
+        {
+            const SourceRange guard = consume().range();
+            parseExpression();
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                guard,
+                "match guards require the T03 guarded decision-tree continuation; "
+                "use an if inside the arm in this vertical");
+        }
+        expect(TokenKind::FatArrow, "'=>' after match pattern");
+        if (at(TokenKind::LeftBrace))
+        {
+            arm.body = parseBlock();
+        }
+        else
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "a match arm requires a block body");
+            arm.body = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::BlockStatement, current().range());
+            synchronizeStatement();
+        }
+        arm.range = tokenRangeFrom(armBegin);
+        arms.push_back(std::move(arm));
+        consumeIf(TokenKind::Comma);
+    }
+    expect(TokenKind::RightBrace, "'}' to close match arms");
+
+    if (arms.empty())
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            matchKeyword.range(),
+            "a match statement requires at least one arm");
+    }
+    if (!sawWildcard)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            matchKeyword.range(),
+            "a match statement requires a final wildcard arm until closed-domain "
+            "exhaustiveness is available across metadata");
+    }
+
+    // Early lowering deliberately uses only ordinary statement/expression nodes. This makes the
+    // evaluation and allocation contract visible to all existing dumps: the governing expression
+    // appears once, and every branch reads the hidden local.
+    const SourceRange matchRange = tokenRangeFrom(beginIndex);
+    ast::AstNode* lowered = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, matchRange);
+    ast::TypeSyntax* inferred = arena_.make<ast::TypeSyntax>(
+        matchKeyword.range(), TokenKind::KwVar, "var");
+    const std::string temporary =
+        "$__nsc_match_" + std::to_string(nextMatchTemporary_++);
+    lowered->addChild(makeVariableDeclaration(
+        inferred, temporary, governing, false, true));
+
+    ast::AstNode* firstDecision = nullptr;
+    ast::AstNode* previousDecision = nullptr;
+    ast::AstNode* wildcardBody = nullptr;
+    for (const ParsedArm& arm : arms)
+    {
+        if (arm.wildcard)
+        {
+            if (wildcardBody == nullptr) wildcardBody = arm.body;
+            continue;
+        }
+
+        ast::AstNode* receiver = makeIdentifierExpression(arm.range, temporary);
+        ast::AstNode* test = makeZeroArgCallExpression(
+            makeMemberExpression(receiver, "Is" + arm.caseName));
+        ast::AstNode* body = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, arm.range);
+        if (!arm.bindingName.empty() && arm.bindingName != "_")
+        {
+            ast::AstNode* extractReceiver = makeIdentifierExpression(arm.range, temporary);
+            ast::AstNode* extract = makeZeroArgCallExpression(
+                makeMemberExpression(
+                    extractReceiver, "__nsc_variant_extract_" + arm.caseName));
+            extract->setAuxiliaryText("variant-pattern-extract");
+            ast::TypeSyntax* bindingType = arena_.make<ast::TypeSyntax>(
+                arm.range, TokenKind::KwVar, "var");
+            body->addChild(makeVariableDeclaration(
+                bindingType, arm.bindingName, extract, false, true));
+        }
+        // The wrapper itself is the source arm scope. Flatten the parsed block's statements into
+        // it so the generated payload binding is visible to those statements in the current body
+        // model (which deliberately analyzes each nested block with its own local table).
+        for (ast::AstNode* statement : arm.body->children()) body->addChild(statement);
+
+        ast::AstNode* decision = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::IfStatement, arm.range);
+        decision->setFirst(test);
+        decision->setSecond(body);
+        if (firstDecision == nullptr) firstDecision = decision;
+        if (previousDecision != nullptr) previousDecision->setThird(decision);
+        previousDecision = decision;
+    }
+
+    if (previousDecision != nullptr) previousDecision->setThird(wildcardBody);
+    if (firstDecision != nullptr) lowered->addChild(firstDecision);
+    else if (wildcardBody != nullptr) lowered->addChild(wildcardBody);
+    return lowered;
 }
 
 ast::AstNode* Parser::parseForStatement()

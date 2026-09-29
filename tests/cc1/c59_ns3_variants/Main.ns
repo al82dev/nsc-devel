@@ -1,0 +1,103 @@
+namespace c59ns3variants
+{
+    public variant Result<T, E>
+    {
+        Ok(T),
+        Error(E)
+    }
+
+    public variant Signal
+    {
+        Idle,
+        Value(int)
+    }
+
+    public variant Packed
+    {
+        None,
+        Pair((int, int))
+    }
+
+    public variant Wide
+    {
+        Small(byte),
+        Large(long)
+    }
+
+    public class Program
+    {
+        public variant Nested
+        {
+            Empty,
+            Number(int)
+        }
+
+        private static int trace = 0;
+
+        private static Result<int, int> Source(int value)
+        {
+            trace = trace * 10 + value;
+            return Result<int, int>.Ok(value);
+        }
+
+        private static Signal NestedSource(int value)
+        {
+            trace = trace * 10 + value;
+            return Signal.Value(value);
+        }
+
+        public static int Main()
+        {
+            int answer = 0;
+            match (Source(4))
+            {
+                Ok(value) =>
+                {
+                    match (NestedSource(2))
+                    {
+                        Value(inner) => { answer = value * 10 + inner; },
+                        Idle => { answer = 1; },
+                        _ => { answer = 2; }
+                    }
+                },
+                Error(error) => { answer = error; },
+                _ => { answer = 3; }
+            }
+
+            if (trace != 42) { return 4; }
+            if (!Result<int, int>.Error(7).IsError()) { return 5; }
+            if (!Signal.Idle().IsIdle() || Signal.Idle().CaseTag() != 0) { return 6; }
+            if (!Signal.Value(9).IsValue() || Signal.Value(9).CaseTag() != 1) { return 7; }
+
+            match (Packed.Pair((20, 22)))
+            {
+                Pair(pair) =>
+                {
+                    var (left, right) = pair;
+                    if (left + right != 42) { return 8; }
+                },
+                None => { return 9; },
+                _ => { return 10; }
+            }
+
+            Wide wide = Wide.Large(42L);
+            if (!wide.IsLarge() || wide.CaseTag() != 1) { return 11; }
+
+            match (Nested.Number(42))
+            {
+                Number(number) => { if (number != 42) { return 13; } },
+                Empty => { return 14; },
+                _ => { return 15; }
+            }
+
+            // A wildcard-only match is a valid total decision and still evaluates its source once.
+            trace = 0;
+            match (Source(6))
+            {
+                _ => { trace = trace * 10 + 1; }
+            }
+            if (trace != 61) { return 12; }
+            return answer;
+        }
+    }
+}

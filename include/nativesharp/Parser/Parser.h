@@ -75,6 +75,11 @@ private:
         StructLayoutForm form = StructLayoutForm::Struct,
         bool isBorrowedView = false,
         bool isRecordStruct = false);
+    // NativeSharp 3.0 T03. A closed tagged sum is materialized as an ordinary struct whose
+    // payload carrier is an in-place union. Keeping the generated representation in the parser
+    // means name lookup, generics, layout, HIR, MIR and LLVM all consume the same productive AST
+    // shapes they already understand instead of a second, partially integrated backend path.
+    ast::AstNode* parseVariantDeclaration();
     ast::AstNode* parseStructBody(
         ast::AstNode* declaration,
         std::string_view structName,
@@ -224,6 +229,10 @@ private:
     ast::AstNode* parseWhileStatement();
     ast::AstNode* parseDoWhileStatement();
     ast::AstNode* parseSwitchStatement();
+    // T03 statement match is lowered early to one hidden governing local plus an if/else decision
+    // tree over generated case tests and guarded payload extractors. The source expression is
+    // therefore evaluated exactly once and no runtime allocation or boxing protocol is introduced.
+    ast::AstNode* parseMatchStatement();
     // True when the cursor sits on `case` or on the `default` OF A LABEL. `default` is also an
     // expression keyword (`default(T)`), so it only opens a label when a colon follows it
     // immediately -- otherwise a section that begins with `default(int)` would be misread.
@@ -283,6 +292,7 @@ private:
     diagnostics::DiagnosticEngine& diagnostics_;
     std::size_t index_ = 0;
     std::size_t pendingGenericGreater_ = 0;
+    std::size_t nextMatchTemporary_ = 0;
     std::unordered_set<std::string> knownTypeNames_;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };

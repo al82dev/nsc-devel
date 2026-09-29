@@ -815,6 +815,15 @@ int main(int argc, char** argv)
         "tests/cc1/c58_ns3_records/c58_ns3_records.nsproj",
         "cc1-c58-ns3-records", 42);
 
+    // NativeSharp 3.0 T03-F01/F02/F03 safe vertical. Tagged variants use a minimum-width tag
+    // plus one in-place union payload; generic, unit, tuple and alignment-heavy alternatives
+    // execute at O0. Statement match snapshots the governing value once, scopes payload bindings,
+    // supports nesting and requires a final wildcard until metadata-domain analysis is connected.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c59_ns3_variants/c59_ns3_variants.nsproj",
+        "cc1-c59-ns3-variants", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,

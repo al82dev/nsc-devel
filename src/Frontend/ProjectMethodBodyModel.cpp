@@ -10346,6 +10346,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+        // NativeSharp 3.0 T03. Variant payload extractors have to be public so a match in a
+        // LibraryReference consumer can call code transported through NSMETA, but they are not a
+        // user-callable API: reading an inactive union alternative would be undefined. The parser
+        // marks only the extractor call it generates after the corresponding IsCase branch.
+        if (selectedMember.name.starts_with("__nsc_variant_extract_") &&
+            expression->auxiliaryText() != "variant-pattern-extract")
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "variant payload extraction is available only inside a matching case arm");
+            call.resolution = MethodCallResolutionKind::NoViableCandidate;
+            calls_.push_back(std::move(call));
+            return result;
+        }
         if (callee.readonlyReceiver && selectedMember.declaringTypeIsStruct &&
             !selectedMember.isStatic && !selectedMember.isReadonly)
         {
