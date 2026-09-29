@@ -993,6 +993,46 @@ std::optional<LanguageTextEdit> LanguageService::formatDocument(
     return LanguageTextEdit{LanguageLocation{snapshot->path, TextRange{{0, 0}, *end}}, std::move(formatted)};
 }
 
+std::vector<LanguageCodeAction> LanguageService::codeActions(
+    const std::filesystem::path& path,
+    TextRange range,
+    std::span<const std::string> diagnosticCodes,
+    DocumentFormattingOptions options) const
+{
+    std::vector<LanguageCodeAction> result;
+    const auto snapshot = document(path);
+    if (!snapshot.has_value()) return result;
+
+    const bool unexpectedCharacter = std::ranges::find(
+        diagnosticCodes, "UnexpectedCharacter") != diagnosticCodes.end();
+    if (unexpectedCharacter)
+    {
+        const auto begin = byteOffsetForUtf16Position(snapshot->text, range.start);
+        const auto end = byteOffsetForUtf16Position(snapshot->text, range.end);
+        if (begin.has_value() && end.has_value() && *begin < *end)
+        {
+            LanguageCodeAction action;
+            action.title = "Remove unexpected character";
+            action.kind = LanguageCodeActionKind::QuickFix;
+            action.preferred = false;
+            action.diagnosticCodes.push_back("UnexpectedCharacter");
+            action.edits.push_back(LanguageTextEdit{
+                LanguageLocation{snapshot->path, range}, {}});
+            result.push_back(std::move(action));
+        }
+    }
+
+    if (auto edit = formatDocument(path, options))
+    {
+        LanguageCodeAction action;
+        action.title = "Format NativeSharp document";
+        action.kind = LanguageCodeActionKind::SourceFixAll;
+        action.edits.push_back(std::move(*edit));
+        result.push_back(std::move(action));
+    }
+    return result;
+}
+
 std::size_t LanguageService::documentCount() const noexcept
 {
     std::scoped_lock lock(implementation_->mutex);

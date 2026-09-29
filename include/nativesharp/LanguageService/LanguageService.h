@@ -115,6 +115,11 @@ public:
     std::optional<LanguageTextEdit> formatDocument(
         const std::filesystem::path& path,
         DocumentFormattingOptions options = {}) const;
+    std::vector<LanguageCodeAction> codeActions(
+        const std::filesystem::path& path,
+        TextRange range,
+        std::span<const std::string> diagnosticCodes,
+        DocumentFormattingOptions options = {}) const;
     std::size_t documentCount() const noexcept;
     AnalysisSnapshot analyzeProject(
         const std::filesystem::path& project,

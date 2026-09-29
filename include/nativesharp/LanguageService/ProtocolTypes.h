@@ -111,6 +111,21 @@ struct DocumentFormattingOptions final
     bool insertSpaces = true;
 };
 
+enum class LanguageCodeActionKind
+{
+    QuickFix,
+    SourceFixAll
+};
+
+struct LanguageCodeAction final
+{
+    std::string title;
+    LanguageCodeActionKind kind = LanguageCodeActionKind::QuickFix;
+    bool preferred = false;
+    std::vector<std::string> diagnosticCodes;
+    std::vector<LanguageTextEdit> edits;
+};
+
 struct RenameResult final
 {
     bool allowed = false;

@@ -1295,6 +1295,14 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_language_service_formatting_tests)
     add_test(NAME nsc.language-service.formatting COMMAND nsc_language_service_formatting_tests)
 
+    add_executable(
+        nsc_language_service_code_action_tests
+        tests/unit/LanguageServiceCodeActionTests.cpp)
+    target_link_libraries(nsc_language_service_code_action_tests PRIVATE nsc_language_service)
+    target_compile_features(nsc_language_service_code_action_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_service_code_action_tests)
+    add_test(NAME nsc.language-service.code-actions COMMAND nsc_language_service_code_action_tests)
+
     add_executable(nsc_target_data_layout_tests tests/unit/TargetDataLayoutTests.cpp)
     target_link_libraries(nsc_target_data_layout_tests PRIVATE nsc_target)
     target_compile_features(nsc_target_data_layout_tests PRIVATE cxx_std_20)
