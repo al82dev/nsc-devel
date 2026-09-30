@@ -2031,6 +2031,7 @@ const char* methodBorrowKindName(MethodBorrowKind kind) noexcept;
 const char* methodLocalBorrowSourceKindName(MethodLocalBorrowSourceKind kind) noexcept;
 const char* methodBorrowStateName(MethodBorrowState state) noexcept;
 const char* methodLambdaCaptureKindName(MethodLambdaCaptureKind kind) noexcept;
+const char* methodLambdaCaptureSourceKindName(MethodLambdaCaptureSourceKind kind) noexcept;
 const char* methodDelegateOperationKindName(MethodDelegateOperationKind kind) noexcept;
 const char* methodEventOperationKindName(MethodEventOperationKind kind) noexcept;
 }

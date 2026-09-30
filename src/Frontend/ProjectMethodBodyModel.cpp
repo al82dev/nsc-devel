@@ -16656,6 +16656,20 @@ const char* methodLambdaCaptureKindName(MethodLambdaCaptureKind kind) noexcept
     return "unknown";
 }
 
+const char* methodLambdaCaptureSourceKindName(MethodLambdaCaptureSourceKind kind) noexcept
+{
+    switch (kind)
+    {
+        case MethodLambdaCaptureSourceKind::OriginalLocal: return "original-local";
+        case MethodLambdaCaptureSourceKind::OriginalParameter: return "original-parameter";
+        case MethodLambdaCaptureSourceKind::OriginalThis: return "original-this";
+        case MethodLambdaCaptureSourceKind::ParentLocal: return "parent-local";
+        case MethodLambdaCaptureSourceKind::ParentParameter: return "parent-parameter";
+        case MethodLambdaCaptureSourceKind::ParentCapture: return "parent-capture";
+    }
+    return "unknown";
+}
+
 const char* methodDelegateOperationKindName(MethodDelegateOperationKind kind) noexcept
 {
     switch (kind)

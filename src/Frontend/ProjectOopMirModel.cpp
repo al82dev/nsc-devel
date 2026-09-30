@@ -1286,9 +1286,7 @@ bool ProjectOopMirModel::build(
         function.hasClosureEnvironment = source.hasClosureEnvironment;
         function.captureTypeKeys = source.captureTypeKeys;
         function.captureNames = source.captureNames;
-        function.capturedLocalOrdinals = source.capturedLocalOrdinals;
-        function.capturedParameterOrdinals = source.capturedParameterOrdinals;
-        function.capturesThisCell = source.capturesThisCell;
+        function.captureSourceKinds = source.captureSourceKinds;
         function.capturedLocalOrdinals = source.capturedLocalOrdinals;
         function.capturedParameterOrdinals = source.capturedParameterOrdinals;
         function.capturesThisCell = source.capturesThisCell;

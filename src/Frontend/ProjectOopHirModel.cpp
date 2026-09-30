@@ -2085,6 +2085,7 @@ bool ProjectOopHirModel::buildImpl(
         {
             function.captureTypeKeys.push_back(capture.typeKey);
             function.captureNames.push_back(capture.name);
+            function.captureSourceKinds.push_back(capture.sourceKind);
         }
         for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel.locals().size(); ++localOrdinal)
         {

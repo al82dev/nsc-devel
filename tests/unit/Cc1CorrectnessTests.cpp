@@ -870,6 +870,14 @@ int main(int argc, char** argv)
         "tests/cc1/c65_ns3_panic_never/c65_ns3_panic_never.nsproj",
         "cc1-c65-ns3-panic-never", 42);
 
+    // NativeSharp 3.0 T08-F02/F05. The same executable crosses all three callable-value shapes:
+    // a zero-environment extern-C lambda, a managed shared-cell closure, and a bound instance
+    // method. Directed MIR probes additionally verify the now-public closure cost/provenance.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c66_ns3_callable_values/c66_ns3_callable_values.nsproj",
+        "cc1-c66-ns3-callable-values", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,

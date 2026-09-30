@@ -1,36 +1,47 @@
 # Tanda 08 — Funciones, lambdas y closures / Functions, lambdas, and closures
 
-> **Reclasificación 2026-09-29:** `DESIGNED/IMPLEMENTING`. La representación contractual no está
-> conectada con tipos función, capture analysis, lowering, metadata o debugger. Véase
-> [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
+> **Estado físico 2026-09-29:** `IMPLEMENTING`. T08-F02 y la porción productiva de T08-F05 ya
+> atraviesan parser, semántica, HIR, MIR 1.19, LLVM, PE y ejecución. El compilador distingue
+> callbacks C sin environment, closures administradas con celdas compartidas y métodos de
+> instancia ligados. Los contratos declarativos restantes no se presentan como implementación.
 
 ## Resultado / Outcome
 
-ES: Se fijó identidad completa de tipos función, conversión de lambdas sin captura, environments
-nativos de closure, capturas copy/move/ref, traits callable, lambdas genéricas, métodos bound y
-`must_tail`. EN: Complete function identity, non-capturing conversion, native closure environments,
-copy/move/ref captures, callable traits, generic lambdas, bound methods, and `must_tail` are defined.
+ES: Las lambdas sin captura pueden cruzar como punteros C reales, las closures administradas tienen
+un environment ejecutable y los métodos ligados conservan su receptor. MIR 1.19 publica el costo y
+procedencia de cada captura. EN: Non-capturing lambdas can cross as real C function pointers,
+managed closures have an executable environment, and bound methods preserve their receiver. MIR
+1.19 publishes every capture's cost and provenance.
 
 ## Archivos / Files
 
-- Nuevos `CallableSemantics.h/.cpp`: contratos de representación, ownership y ABI.
-- Nueva `NativeSharp3T08CallableTests.cpp`: nueve comprobaciones específicas.
-- `CMakeLists.txt`: incorpora modelo y target T08 aislado.
+- `ProjectMethodBodyModel.h/.cpp` y dumper: procedencia estable de la captura.
+- `ProjectOopHirModel.h/.cpp`: la metadata HIR conserva esa procedencia.
+- `ProjectOopMirModel.h/.cpp`, dumper e identidad de caché: MIR 1.19 hace visible layout,
+  asignación, storage y origen del environment.
+- `tests/cc1/c66_ns3_callable_values`: callback C, closure capturante y método ligado ejecutables.
+- `CallableSemantics.h/.cpp` y su prueba aislada continúan siendo contratos de diseño para las
+  partes aún no conectadas.
 
 ## Mejora / Improvement
 
-Una función como valor ya no pierde calling convention, safety, nullability o efecto throws; una
-closure es un struct nativo de costo visible; las capturas move producen `FnOnce`; los borrows que
-escapan se rechazan; y una tail call obligatoria falla si ABI o cleanup la hacen imposible.
-
-Function values retain ABI/effects, closures have visible native layout, move capture implies
-`FnOnce`, escaping borrows are rejected, and required tail calls are verified rather than hinted.
+Antes el dump sólo informaba `captures=N`, por lo que una herramienta no podía explicar si una
+lambda asignaba memoria ni de dónde provenía una celda. Ahora cada lambda informa
+`closure-layout`, `closure-allocation` y, por captura, `source` y `storage`. Esa información también
+forma parte de la identidad de caché: no puede reutilizarse silenciosamente un objeto cuya ABI de
+closure ya no coincide.
 
 ## Límite / Boundary
 
-T08 congela identidad y validación. Parser, NSMETA, monomorfización y lowering integrado se conectan
-en T15. T15 owns full parser, metadata, monomorphization, and lowering integration.
+Este vertical no implementa sintaxis explícita `copy/move/ref`, `Fn/FnMut/FnOnce`, lambdas genéricas,
+identidad completa de tipos función, `must_tail`, metadata cross-module ni soporte de debugger. La
+representación actual es honesta: toda captura productiva es una referencia a celda compartida y el
+environment capturante usa heap administrado.
 
 ## Validación / Validation
 
-`nsc` O0 y `nsc_ns3_t08_callable_tests`; sin baseline ni CTest general.
+`nsc` Debug/O0; c66 con lld-link y NSLink (exit 42); dumps MIR/method-body; negativo callback C
+capturante. Sin baseline, CTest general, optimizaciones O1+ ni instalación.
+
+El expediente reproducible está en
+[TANDA-OPERATIVA-16-T08-CALLABLE-VALUES.md](TANDA-OPERATIVA-16-T08-CALLABLE-VALUES.md).

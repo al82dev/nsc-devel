@@ -440,7 +440,9 @@ void ProjectMethodBodyModelDumper::dump(
             output << "      capture[" << captureOrdinal << "] kind="
                    << methodLambdaCaptureKindName(capture.kind)
                    << " name=" << capture.name
-                   << " type=" << capture.typeKey << '\n';
+                   << " type=" << capture.typeKey
+                   << " source=" << methodLambdaCaptureSourceKindName(capture.sourceKind)
+                   << " storage=shared-cell-reference\n";
         }
     }
 

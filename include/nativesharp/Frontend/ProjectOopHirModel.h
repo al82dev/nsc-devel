@@ -582,6 +582,10 @@ struct ProjectOopHirFunction final
     bool hasClosureEnvironment = false;
     std::vector<std::string> captureTypeKeys;
     std::vector<std::string> captureNames;
+    // Every current closure slot owns a pointer to a shared heap cell. Preserve provenance so
+    // MIR dumps, cache identities and debugger consumers can distinguish direct and inherited
+    // captures without reconstructing the method-body model.
+    std::vector<MethodLambdaCaptureSourceKind> captureSourceKinds;
     std::vector<std::size_t> capturedLocalOrdinals;
     std::vector<std::size_t> capturedParameterOrdinals;
     bool capturesThisCell = false;

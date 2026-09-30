@@ -198,7 +198,13 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " return-ownership=" << sema::ownershipKindName(function.returnOwnership)
                << (function.constructor ? " constructor" : function.destructor ? " destructor" : function.isLambda ? " lambda-body" : " method");
         if (function.isLambda)
-            output << " captures=" << function.captureTypeKeys.size();
+        {
+            output << " captures=" << function.captureTypeKeys.size()
+                   << " closure-layout="
+                   << (function.hasClosureEnvironment ? "cell-pointer-slots" : "none")
+                   << " closure-allocation="
+                   << (function.hasClosureEnvironment ? "managed-heap" : "none");
+        }
         if (!function.genericSpecializationKey.empty())
             output << " generic-specialization=" << function.genericSpecializationKey;
         output << '\n';
@@ -208,6 +214,21 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                    << sema::ownershipKindName(function.parameterOwnerships[index]) << '\n';
         }
         output << "  cleanup-contract=" << function.cleanupRegions.size() << '\n';
+        for (std::size_t index = 0; index < function.captureTypeKeys.size(); ++index)
+        {
+            output << "  capture[" << index << "] name=";
+            if (index < function.captureNames.size() && !function.captureNames[index].empty())
+                output << function.captureNames[index];
+            else
+                output << "<unnamed>";
+            output << " type=" << function.captureTypeKeys[index]
+                   << " source=";
+            if (index < function.captureSourceKinds.size())
+                output << methodLambdaCaptureSourceKindName(function.captureSourceKinds[index]);
+            else
+                output << "<missing>";
+            output << " storage=shared-cell-reference\n";
+        }
         for (const ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
         {
             output << "    cleanup #" << cleanup.ordinal

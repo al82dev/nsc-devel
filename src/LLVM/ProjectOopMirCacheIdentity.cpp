@@ -167,6 +167,7 @@ void writeFunction(
     output.scalar(function.hasClosureEnvironment);
     output.texts(function.captureTypeKeys);
     output.texts(function.captureNames);
+    output.scalars(function.captureSourceKinds);
     output.scalars(function.capturedLocalOrdinals);
     output.scalars(function.capturedParameterOrdinals);
     output.scalar(function.capturesThisCell);

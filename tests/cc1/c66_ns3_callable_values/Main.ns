@@ -1,0 +1,38 @@
+// NativeSharp 3.0 / T08-F02/F05 productive callable-value vertical.
+// One program crosses the raw C callback, managed closure and bound-instance-method ABIs.
+namespace c66ns3callablevalues
+{
+    public delegate int Transform(int value);
+    public extern C delegate int CTransform(int value);
+
+    public class Box
+    {
+        public int Bias;
+
+        public int Add(int value)
+        {
+            return value + Bias;
+        }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            // A noncapturing extern-C lambda is a raw function pointer: no delegate cell and no
+            // closure environment are permitted at this boundary.
+            CTransform callback = (int value) => value + 1;
+
+            // Managed captures currently use shared heap cells. The versioned MIR dump records
+            // that cost and the capture's source instead of hiding both behind captures=1.
+            int bias = 2;
+            raii Transform closure = (int value) => value + bias;
+
+            raii Box box = new Box();
+            box.Bias = 9;
+            raii Transform bound = box.Add;
+
+            return callback(10) + closure(10) + bound(10);
+        }
+    }
+}

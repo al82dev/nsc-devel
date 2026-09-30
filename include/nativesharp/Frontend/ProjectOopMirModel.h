@@ -29,7 +29,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 16: null-coalescing value/store control flow is explicit and single-evaluation.
 // MINOR 17: tuple layouts plus alias-safe deconstruction stores are explicit.
 // MINOR 18: abort-profile panic is an explicit divergent node with builtin:never type.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 18;
+// MINOR 19: closure capture provenance and shared-cell environment layout are inspectable.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 19;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -697,6 +698,7 @@ struct ProjectOopMirFunction final
     bool hasClosureEnvironment = false;
     std::vector<std::string> captureTypeKeys;
     std::vector<std::string> captureNames;
+    std::vector<MethodLambdaCaptureSourceKind> captureSourceKinds;
     std::vector<std::size_t> capturedLocalOrdinals;
     std::vector<std::size_t> capturedParameterOrdinals;
     bool capturesThisCell = false;
