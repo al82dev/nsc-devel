@@ -54,6 +54,7 @@
 #include "nativesharp/Interop/LibraryAbiReport.h"
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Interop/LibraryCapabilityAudit.h"
 #include "nativesharp/Language/SmartPointerSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
@@ -4440,6 +4441,19 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             return verifyLibraryMetadata(args[1], output, error);
         }
+        if (action == "--audit-library-capabilities")
+        {
+            std::string report;
+            std::string auditError;
+            if (!interop::auditLibraryCapabilityDirectory(
+                    std::filesystem::path(args[1]), report, auditError))
+            {
+                error << "nsc: error: " << auditError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << report;
+            return ExitCode::Success;
+        }
         if (action == "--dump-library-abi")
         {
             return dumpLibraryAbi(args[1], output, error);
@@ -4748,6 +4762,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --emit-project-library-metadata <file.nsproj> -o "
               "<file.nsmeta>\n"
            << "  nsc --verify-library-metadata <file.nsmeta>\n"
+           << "  nsc --audit-library-capabilities <metadata-directory>\n"
            << "  nsc --dump-library-abi <file.nsmeta>\n"
            << "  nsc --api-diff <old.nsmeta> <new.nsmeta>\n"
            << "  nsc --abi-diff <old.nsmeta> <new.nsmeta>\n"

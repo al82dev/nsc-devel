@@ -456,6 +456,7 @@ add_library(nsc_driver STATIC
     src/Driver/ReleaseCandidateFreeze.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
+    src/Interop/LibraryCapabilityAudit.cpp
     src/Interop/LibraryAbiReport.cpp
     src/Interop/LibraryApiDiff.cpp
     src/Interop/LibraryMetadata.cpp
@@ -855,6 +856,16 @@ if(NSC_BUILD_TESTS)
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_ns3_t14_numeric_contract_tests)
     add_test(NAME nsc.ns3.t14.numeric-contract COMMAND nsc_ns3_t14_numeric_contract_tests)
+
+    add_executable(
+        nsc_ns3_e012_e031_library_surface_tests
+        tests/unit/NativeSharp3E012E031LibrarySurfaceTests.cpp)
+    target_link_libraries(nsc_ns3_e012_e031_library_surface_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_ns3_e012_e031_library_surface_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_ns3_e012_e031_library_surface_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_e012_e031_library_surface_tests)
+    add_test(NAME nsc.ns3.e012-e031.library-surface COMMAND nsc_ns3_e012_e031_library_surface_tests)
 
     add_executable(
         nsc_ns3_t15_integration_tests
