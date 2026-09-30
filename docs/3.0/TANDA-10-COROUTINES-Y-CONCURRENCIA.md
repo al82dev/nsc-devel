@@ -43,3 +43,11 @@ Evidencia: [TANDA-OPERATIVA-22-T10-CONCURRENCY-CONTRACT.md](TANDA-OPERATIVA-22-T
 
 Esto no agrega `async/await`: parser, effects, frames, borrow-across-await, MIR/LLVM, metadata,
 tooling y E026 permanecen abiertos.
+
+## Gate de capacidades de runtime 2026-09-29
+
+La tanda operativa 23 agregó un reporte ligado al fingerprint del ABI y un gate fail-closed para
+E032–E035. El resultado auditado es: E032 shared memory `missing`, E033 shared synchronization
+`partial`, E034 future continuations `missing` y E035 Windows time zones `partial`. Esto conserva la
+evidencia ya disponible sin confundir hooks aislados con subsistemas terminados. Evidencia:
+[TANDA-OPERATIVA-23-E032-E035-RUNTIME-CAPABILITY-GATE.md](TANDA-OPERATIVA-23-E032-E035-RUNTIME-CAPABILITY-GATE.md).

@@ -18,6 +18,7 @@
 #include "nativesharp/Driver/ToolchainContract.h"
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 #include "nativesharp/Runtime/RuntimeAbiContract.h"
+#include "nativesharp/Runtime/RuntimeCapabilityReport.h"
 #include <algorithm>
 
 #include "nativesharp/AST/AstDumper.h"
@@ -3970,6 +3971,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << language::concurrencyContractManifest();
             return ExitCode::Success;
         }
+        if (argument == "--print-runtime-capabilities")
+        {
+            output << runtime::runtimeCapabilityReport();
+            return ExitCode::Success;
+        }
         if (argument == "--print-compatibility-policy")
         {
             output << currentCompatibilityPolicy();
@@ -4042,6 +4048,17 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     if (args.size() == 2)
     {
         const std::string_view action = args[0];
+        if (action == "--check-runtime-capability")
+        {
+            std::string detail;
+            if (!runtime::runtimeCapabilityReady(args[1], detail))
+            {
+                error << "nsc: error: " << detail << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << detail << '\n';
+            return ExitCode::Success;
+        }
         if (action == "--write-toolchain-contract")
         {
             std::string contractError;
@@ -4722,6 +4739,8 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-concurrency-contract\n"
            << "  nsc --write-concurrency-contract <file.contract>\n"
            << "  nsc --verify-concurrency-contract <file.contract>\n"
+           << "  nsc --print-runtime-capabilities\n"
+           << "  nsc --check-runtime-capability <E032|E033|E034|E035>\n"
            << "  nsc --write-windows-runtime-library <file.lib>\n"
            << "  nsc --verify-windows-runtime-library <file.lib>\n"
            << "  nsc --verify-pe <file.exe>\n"
@@ -4792,6 +4811,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-runtime-abi-contract\n"
            << "  nsc --print-smart-pointer-contract\n"
            << "  nsc --print-concurrency-contract\n"
+           << "  nsc --print-runtime-capabilities\n"
            << "  nsc --print-linker\n"
            << "  nsc --dump-runtime-llvm\n"
            << "  nsc --print-target\n"
