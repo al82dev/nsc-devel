@@ -1,0 +1,44 @@
+// NativeSharp 3.0 / T07-F04/F06 productive abort-profile vertical.
+// The false path proves panic participates in ordinary control flow without executing. Directed
+// validation also compiles a temporary true-path copy and requires the stable exit code 142.
+namespace NativeSharp.Core
+{
+    // Self-contained exception root: the witness exercises typed Win64 EH without importing the
+    // full Core project, keeping this directed test small and independent of library debt.
+    public class Exception {}
+}
+
+namespace c65ns3panicnever
+{
+    public class Problem : NativeSharp.Core.Exception {}
+
+    public class Program
+    {
+        private static int Choose(bool fail)
+        {
+            if (fail)
+            {
+                panic();
+                return 7; // semantically unreachable; retained to exercise dead-code binding.
+            }
+            return 42;
+        }
+
+        private static int CatchTyped()
+        {
+            try
+            {
+                throw new Problem();
+            }
+            catch (Problem problem)
+            {
+                return 0;
+            }
+        }
+
+        public static int Main()
+        {
+            return Choose(false) + CatchTyped();
+        }
+    }
+}

@@ -457,6 +457,7 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::DebugIsDebuggerPresentRaw:
     case MethodCoreOperationKind::DebugCaptureStackFrameCountRaw:
     case MethodCoreOperationKind::EnvironmentCurrentDirectory:
+    case MethodCoreOperationKind::Panic:
         return std::nullopt;
     }
 
@@ -1189,6 +1190,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::ObjectConstruction: return "object-construction";
         case ProjectOopHirNodeKind::Deallocation: return "deallocation";
         case ProjectOopHirNodeKind::ObjectDestruction: return "object-destruction";
+        case ProjectOopHirNodeKind::Panic: return "panic";
     }
     return "unknown";
 }
@@ -4999,6 +5001,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
 
         case ast::AstNodeKind::CallExpression:
         {
+            if (const MethodCoreBinding* panic = coreBinding(expression);
+                panic != nullptr && panic->kind == MethodCoreOperationKind::Panic)
+            {
+                if (addressContext)
+                {
+                    error = "panic() is divergent and has no addressable result";
+                    return nullptr;
+                }
+                if (!expression->children().empty() || panic->resultTypeKey != "builtin:never")
+                {
+                    error = "T07 panic binding lost its zero-argument never contract";
+                    return nullptr;
+                }
+                return makeNode(ProjectOopHirNodeKind::Panic, expression, "builtin:never");
+            }
             const NamespaceFunctionCallBinding* namespaceCall =
                 namespaceFunctionCallBinding(expression);
             if (namespaceCall != nullptr)

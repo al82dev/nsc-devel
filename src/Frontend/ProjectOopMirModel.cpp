@@ -905,6 +905,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::AllocateAndConstruct: return "allocate-and-construct";
         case ProjectOopMirNodeKind::Deallocate: return "deallocate";
         case ProjectOopMirNodeKind::ObjectDestroy: return "object-destroy";
+        case ProjectOopMirNodeKind::Panic: return "panic";
     }
     return "unknown";
 }
@@ -1882,6 +1883,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::UsingRegion: result->kind = ProjectOopMirNodeKind::UsingRegion; break;
         case ProjectOopHirNodeKind::Throw: result->kind = ProjectOopMirNodeKind::Throw; break;
         case ProjectOopHirNodeKind::Rethrow: result->kind = ProjectOopMirNodeKind::Rethrow; break;
+        case ProjectOopHirNodeKind::Panic: result->kind = ProjectOopMirNodeKind::Panic; break;
         case ProjectOopHirNodeKind::CleanupContinuation:
             result->kind = ProjectOopMirNodeKind::CleanupContinuation;
             break;

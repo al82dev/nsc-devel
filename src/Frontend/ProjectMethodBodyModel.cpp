@@ -2895,8 +2895,13 @@ void ProjectMethodBodyModel::analyzeStatement(
             // diagnostic until it acquires the same physical backend path.
             break;
         case ast::AstNodeKind::ExpressionStatement:
-            analyzeExpression(statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        {
+            const ExpressionResult expression = analyzeExpression(
+                statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (expression.valid && expression.typeKey == "builtin:never")
+                ownershipFlowReachable_ = false;
             break;
+        }
         case ast::AstNodeKind::BreakStatement:
             if (analyzeLoopExit(
                     statement,
@@ -9446,6 +9451,30 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     ExpressionResult result;
+    // T07-F04/F06: compiler-owned, allocation-free abort. Abort deliberately skips lexical
+    // cleanup; the enclosing statement turns builtin:never into an unreachable flow state.
+    if (expression->auxiliaryText() == "builtin-panic")
+    {
+        if (!expression->children().empty() || !expression->typeSyntaxes().empty())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidArgumentCount,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "panic() takes no arguments or generic type arguments in the abort profile");
+            return {};
+        }
+        MethodCoreBinding binding;
+        binding.kind = MethodCoreOperationKind::Panic;
+        binding.syntax = expression;
+        binding.methodMemberOrdinal = methodMemberOrdinal;
+        binding.scopeOrdinal = scopeOrdinal;
+        binding.resultTypeKey = "builtin:never";
+        coreBindings_.push_back(std::move(binding));
+        result.typeKey = "builtin:never";
+        result.valid = true;
+        return result;
+    }
     if (namespaceFunctionModel_ != nullptr)
     {
         if (const NamespaceFunctionReferenceBinding* reference =
@@ -16506,6 +16535,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::FileWriteAllBytes: return "file-write-all-bytes";
         case MethodCoreOperationKind::EnvironmentCurrentDirectory: return "environment-current-directory";
         case MethodCoreOperationKind::ProcessRun: return "process-run";
+        case MethodCoreOperationKind::Panic: return "panic";
         case MethodCoreOperationKind::FileWriteAllText: return "file-write-all-text";
         case MethodCoreOperationKind::FileAppendAllText: return "file-append-all-text";
         case MethodCoreOperationKind::DirectoryDelete: return "directory-delete";

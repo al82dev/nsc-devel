@@ -1027,7 +1027,10 @@ enum class MethodCoreOperationKind
     //
     // Tres builtin:string entran, un builtin:int sale -- el codigo de salida del hijo, o -1 si no
     // se pudo lanzar. Es la primera operacion nucleo de tres cadenas.
-    ProcessRun
+    ProcessRun,
+    // NativeSharp 3.0 T07-F04/F06. Contextual `panic()` is an abort-profile divergent
+    // expression. It has no payload in this first physical contract, so failure never allocates.
+    Panic
 };
 
 struct MethodCoreBinding final

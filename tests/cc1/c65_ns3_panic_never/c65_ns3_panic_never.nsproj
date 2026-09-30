@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>c65_ns3_panic_never</Name>
+    <Language>3</Language>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

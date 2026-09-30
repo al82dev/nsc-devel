@@ -34,6 +34,8 @@ enum class LlvmTrapReason : std::uint32_t
     // entry point). Letting it continue would unwind foreign frames with this compiler's SEH
     // exception code -- frames whose cleanup contract this compiler knows nothing about -- so the
     // boundary stops it here. Exit code 128 + 13. See ProjectOopLlvmLowerer::callbackGuardThunk.
-    CallbackExceptionEscape = 13
+    CallbackExceptionEscape = 13,
+    // NativeSharp 3.0 T07 abort-profile panic(). Exit code is 128 + 14 = 142.
+    Panic = 14
 };
 }

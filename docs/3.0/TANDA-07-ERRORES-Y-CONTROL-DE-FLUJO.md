@@ -26,9 +26,17 @@ errors are handled or propagated, unwind cannot silently cross FFI, and panic cl
 
 ## Límite / Boundary
 
-El modelo queda estable; parser y lowering branch/early-return/MIR se conectan conjuntamente en T15.
-The model is stable; parser and branch/early-return/MIR lowering are integrated in T15.
+La tanda operativa 15 conectó una primera vertical física: `panic()` contextual de edición 3,
+tipo interno `builtin:never`, nodo HIR/MIR explícito y perfil abort Win64 estable. El catch tipado
+existente convive con esa vertical en c65. `Result/?`, typed `throws`, coerción general de `never`,
+loop expressions y panic unwind/handler permanecen abiertos; el helper por sí solo no los cierra.
+
+Operational batch 15 connected the first physical vertical: edition-3 contextual `panic()`, the
+internal `builtin:never` type, explicit HIR/MIR nodes, and a stable Win64 abort profile. Existing
+typed catch coexists with that vertical in c65. `Result/?`, typed `throws`, general never coercion,
+loop expressions, and unwind/handler panic profiles remain open; the helper does not close them.
 
 ## Validación / Validation
 
-`nsc` O0 y ejecución directa de `nsc_ns3_t07_error_tests`; sin baseline ni CTest general.
+`nsc` O0, c65 con lld-link y NSLink, probe abort con salida 142, MIR 1.18 y dos negativos
+dirigidos; sin baseline ni CTest general.

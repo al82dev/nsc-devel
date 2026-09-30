@@ -8593,6 +8593,15 @@ ast::AstNode* Parser::parsePostfixExpression()
             }
             expect(TokenKind::RightParen, "')'");
             call->setRange(SourceRange(expression->range().begin(), tokens_[index_ - 1].range().end()));
+            // T07 keeps `panic` contextual: it remains an identifier everywhere except an
+            // unqualified call head. Preserve that decision on the call so later stages never
+            // infer an intrinsic merely from a user member's spelling.
+            if (expression->kind() == ast::AstNodeKind::IdentifierExpression &&
+                expression->text() == "panic" && expression->typeSyntax() == nullptr)
+            {
+                requireEdition3(call->range(), "the panic() divergent expression");
+                call->setAuxiliaryText("builtin-panic");
+            }
             expression = call;
             continue;
         }

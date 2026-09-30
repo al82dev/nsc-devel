@@ -28,7 +28,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 15: typed params and generalized aggregate spreads have explicit lowering nodes.
 // MINOR 16: null-coalescing value/store control flow is explicit and single-evaluation.
 // MINOR 17: tuple layouts plus alias-safe deconstruction stores are explicit.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 17;
+// MINOR 18: abort-profile panic is an explicit divergent node with builtin:never type.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 18;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -341,7 +342,9 @@ enum class ProjectOopMirNodeKind
     InterfaceInstanceCall,
     AllocateAndConstruct,
     Deallocate,
-    ObjectDestroy
+    ObjectDestroy,
+    // T07 abort-profile panic: __nativesharp_trap(Panic) followed by unreachable.
+    Panic
 };
 
 struct ProjectOopMirNode final

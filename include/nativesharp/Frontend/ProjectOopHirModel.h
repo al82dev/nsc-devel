@@ -436,7 +436,9 @@ enum class ProjectOopHirNodeKind
     Deallocation,
     // Item 319. One operand; dynamicDestruction selects the class descriptor's object-only
     // entry. A non-dynamic node is a typed no-op for a destructible-free struct lifetime.
-    ObjectDestruction
+    ObjectDestruction,
+    // T07 abort-profile panic: no children, builtin:never, no normal successor.
+    Panic
 };
 
 struct ProjectOopHirNode final

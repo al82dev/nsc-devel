@@ -9640,6 +9640,24 @@ private:
                 return lowerDeallocation(node, error);
             case frontend::ProjectOopMirNodeKind::ObjectDestroy:
                 return lowerObjectDestruction(node, error);
+            case frontend::ProjectOopMirNodeKind::Panic:
+            {
+                if (!node->children.empty() || node->typeKey != "builtin:never" ||
+                    trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+                {
+                    return failValue(error, "T07 panic MIR lost its no-operand never/trap contract");
+                }
+                LLVMValueRef reason = LLVMConstInt(
+                    LLVMInt32TypeInContext(context_),
+                    static_cast<std::uint64_t>(LlvmTrapReason::Panic),
+                    0);
+                LLVMValueRef arguments[] = {reason};
+                buildNoUnwindCall(trapFunctionType_, trapFunction_, arguments, 1, "");
+                LLVMBuildUnreachable(builder_);
+                // The caller only uses this sentinel to distinguish successful lowering from an
+                // internal error. No instruction may consume it after the terminator.
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
 
             // LOS VEINTE QUE NO SON EXPRESIONES, escritos uno a uno en vez de un `default:`.
             //
