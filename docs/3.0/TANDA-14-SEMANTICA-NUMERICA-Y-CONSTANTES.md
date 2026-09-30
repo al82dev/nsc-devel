@@ -31,3 +31,14 @@ T14 freezes rules; T15 integrates diagnostics, MIR, and LLVM flag selection.
 ## Validación / Validation
 
 `nsc` O0 y `nsc_ns3_t14_numeric_tests`; sin baseline ni CTest general.
+
+## Integración productiva 2026-09-29
+
+La tanda operativa 25 reemplazó la prueba tautológica de overflow por un self-check exhaustivo int8
+y agregó `NSNUMERIC 1.0`, generado por cada build de `nsc`. El manifiesto captura el estado FP real
+del driver, tiene fingerprint SHA-256 y puede escribirse/verificarse por CLI. Evidencia:
+[TANDA-OPERATIVA-25-T14-NUMERIC-CONTRACT.md](TANDA-OPERATIVA-25-T14-NUMERIC-CONTRACT.md).
+
+El contrato declara E003–E007 `external-certification-required`; no compila ni certifica
+LinearAlgebra. Literal typing, conversiones, newtypes y políticas de overflow productivas siguen
+abiertas, por lo que T14 permanece `IMPLEMENTING`.

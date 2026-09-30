@@ -99,12 +99,27 @@ bool strongNumericImplicitlyConverts(
     return source.identity == target.identity;
 }
 
-bool constevalMatchesRuntime(
-    std::int64_t left,
-    std::int64_t right,
-    IntegerType type,
-    OverflowPolicy policy) noexcept
+bool integerSemanticsSelfCheck() noexcept
 {
-    return addInteger(left, right, type, policy) == addInteger(left, right, type, policy);
+    constexpr IntegerType type{8, true};
+    for (int left = -128; left <= 127; ++left)
+    {
+        for (int right = -128; right <= 127; ++right)
+        {
+            const int wide = left + right;
+            const bool overflow = wide < -128 || wide > 127;
+            const int wrapped = ((wide + 128) & 0xff) - 128;
+            const int saturated = wide < -128 ? -128 : (wide > 127 ? 127 : wide);
+            const auto checked = addInteger(left, right, type, OverflowPolicy::Checked);
+            const auto wrapping = addInteger(left, right, type, OverflowPolicy::Wrapping);
+            const auto unchecked = addInteger(left, right, type, OverflowPolicy::Unchecked);
+            const auto saturating = addInteger(left, right, type, OverflowPolicy::Saturating);
+            if (checked.has_value() == overflow ||
+                (checked.has_value() && *checked != wide) ||
+                wrapping != wrapped || unchecked != wrapped || saturating != saturated)
+                return false;
+        }
+    }
+    return true;
 }
 }

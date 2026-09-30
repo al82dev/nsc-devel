@@ -36,9 +36,5 @@ struct StrongNumericType final { std::string identity; NumericType representatio
 bool strongNumericHasRuntimeWrapper() noexcept;
 bool strongNumericImplicitlyConverts(const StrongNumericType& source, const StrongNumericType& target) noexcept;
 
-bool constevalMatchesRuntime(
-    std::int64_t left,
-    std::int64_t right,
-    IntegerType type,
-    OverflowPolicy policy) noexcept;
+bool integerSemanticsSelfCheck() noexcept;
 }

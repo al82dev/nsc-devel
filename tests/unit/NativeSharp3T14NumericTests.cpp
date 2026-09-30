@@ -34,8 +34,7 @@ int main()
     tests.expect(!strongNumericHasRuntimeWrapper() && strongNumericImplicitlyConverts(meters, meters) &&
             !strongNumericImplicitlyConverts(meters, seconds),
         "strong numeric newtypes are zero-overhead but never dimensionally magical");
-    tests.expect(constevalMatchesRuntime(127, 1, {8, true}, OverflowPolicy::Wrapping) &&
-            constevalMatchesRuntime(127, 1, {8, true}, OverflowPolicy::Checked),
-        "constant and runtime integer evaluation share exactly one overflow implementation");
+    tests.expect(integerSemanticsSelfCheck(),
+        "integer policies pass an independent exhaustive int8 reference check");
     return tests.result();
 }

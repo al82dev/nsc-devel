@@ -16,6 +16,7 @@
 #include "nativesharp/Driver/PromotionAct.h"
 #include "nativesharp/Driver/ReleaseCandidateFreeze.h"
 #include "nativesharp/Driver/ToolchainContract.h"
+#include "nativesharp/Driver/NumericContract.h"
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 #include "nativesharp/Runtime/RuntimeAbiContract.h"
 #include "nativesharp/Runtime/RuntimeCapabilityReport.h"
@@ -3976,6 +3977,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << runtime::runtimeCapabilityReport();
             return ExitCode::Success;
         }
+        if (argument == "--print-numeric-contract")
+        {
+            output << numericContractManifest(llvm_backend::captureFloatingPointState());
+            return ExitCode::Success;
+        }
         if (argument == "--print-compatibility-policy")
         {
             output << currentCompatibilityPolicy();
@@ -4057,6 +4063,24 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << detail << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--write-numeric-contract" || action == "--verify-numeric-contract")
+        {
+            std::string contractError;
+            const llvm_backend::FloatingPointState state =
+                llvm_backend::captureFloatingPointState();
+            const bool success = action == "--write-numeric-contract"
+                ? writeNumericContract(std::filesystem::path(args[1]), state, contractError)
+                : verifyNumericContractFile(std::filesystem::path(args[1]), state, contractError);
+            if (!success)
+            {
+                error << "nsc: error: " << contractError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << (action == "--write-numeric-contract"
+                ? "numeric contract written: " : "numeric contract verified: ")
+                   << args[1] << '\n';
             return ExitCode::Success;
         }
         if (action == "--write-toolchain-contract")
@@ -4743,6 +4767,9 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --verify-concurrency-contract <file.contract>\n"
            << "  nsc --print-runtime-capabilities\n"
            << "  nsc --check-runtime-capability <E032|E033|E034|E035>\n"
+           << "  nsc --print-numeric-contract\n"
+           << "  nsc --write-numeric-contract <file.contract>\n"
+           << "  nsc --verify-numeric-contract <file.contract>\n"
            << "  nsc --write-windows-runtime-library <file.lib>\n"
            << "  nsc --verify-windows-runtime-library <file.lib>\n"
            << "  nsc --verify-pe <file.exe>\n"
@@ -4814,6 +4841,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-smart-pointer-contract\n"
            << "  nsc --print-concurrency-contract\n"
            << "  nsc --print-runtime-capabilities\n"
+           << "  nsc --print-numeric-contract\n"
            << "  nsc --print-linker\n"
            << "  nsc --dump-runtime-llvm\n"
            << "  nsc --print-target\n"

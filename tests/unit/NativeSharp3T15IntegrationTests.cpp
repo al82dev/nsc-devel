@@ -68,7 +68,7 @@ int main()
                 {"Demo.Api", "fn(C*)", "nothrow", "repr(C)", true}}}).find("repr(C)") != std::string::npos,
         "FFI representation participates in the public API fingerprint");
     tests.expect(comptimeInputIdentity(std::array<ComptimeInput, 1>{{{"schema", "abc"}}}).find("abc") !=
-            std::string::npos && constevalMatchesRuntime(127, 1, {8, true}, OverflowPolicy::Wrapping),
+            std::string::npos && integerSemanticsSelfCheck(),
         "metaprogram inputs and numeric consteval remain reproducible in the integrated contract");
     return tests.result();
 }

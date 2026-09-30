@@ -449,6 +449,7 @@ add_library(nsc_driver STATIC
     src/Driver/InstallationVerifier.cpp
     src/Driver/MigrationBaseline.cpp
     src/Driver/MigrationGuide.cpp
+    src/Driver/NumericContract.cpp
     src/Driver/PackageLifecycle.cpp
     src/Driver/ProjectCommands.cpp
     src/Driver/PromotionAct.cpp
@@ -505,6 +506,8 @@ set(NSC_RUNTIME_ABI_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpRuntime.abi")
 set(NSC_CONCURRENCY_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpConcurrency.contract")
+set(NSC_NUMERIC_CONTRACT
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpNumeric.contract")
 set(NSC_WINDOWS_RUNTIME_LIBRARY
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp.Runtime.Win32.lib")
 add_custom_command(TARGET nsc POST_BUILD
@@ -520,6 +523,7 @@ add_custom_command(TARGET nsc POST_BUILD
     COMMAND $<TARGET_FILE:nsc> --write-promotion-act "${NSC_PROMOTION_ACT}"
     COMMAND $<TARGET_FILE:nsc> --write-runtime-abi-contract "${NSC_RUNTIME_ABI_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-concurrency-contract "${NSC_CONCURRENCY_CONTRACT}"
+    COMMAND $<TARGET_FILE:nsc> --write-numeric-contract "${NSC_NUMERIC_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-windows-runtime-library "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
                "${NSC_COMPATIBILITY_POLICY}"
@@ -532,6 +536,7 @@ add_custom_command(TARGET nsc POST_BUILD
                "${NSC_PROMOTION_ACT}"
                "${NSC_RUNTIME_ABI_CONTRACT}"
                "${NSC_CONCURRENCY_CONTRACT}"
+               "${NSC_NUMERIC_CONTRACT}"
                "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     COMMENT "Generando contrato reproducible del toolchain NativeSharp"
     VERBATIM)
@@ -560,6 +565,7 @@ set(NSC_INSTALLATION_EXPECTED_PATHS
     "lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib"
     "share/nativesharp/runtime/NativeSharpRuntime.abi"
     "share/nativesharp/runtime/NativeSharpConcurrency.contract"
+    "share/nativesharp/runtime/NativeSharpNumeric.contract"
     "share/nativesharp/toolchain/NativeSharpInstallation.files"
     "share/nativesharp/toolchain/NativeSharpCompatibility.policy"
     "share/nativesharp/toolchain/NativeSharp2Migration.baseline"
@@ -638,6 +644,7 @@ install(FILES "${NSC_FINAL_BASELINE_CONTRACT}" DESTINATION share/nativesharp/too
 install(FILES "${NSC_PROMOTION_ACT}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_RUNTIME_ABI_CONTRACT}" DESTINATION share/nativesharp/runtime)
 install(FILES "${NSC_CONCURRENCY_CONTRACT}" DESTINATION share/nativesharp/runtime)
+install(FILES "${NSC_NUMERIC_CONTRACT}" DESTINATION share/nativesharp/runtime)
 install(FILES "${NSC_WINDOWS_RUNTIME_LIBRARY}" DESTINATION lib/nativesharp/runtime)
 install(FILES "${NSC_INSTALLATION_FILE_LIST}" DESTINATION share/nativesharp/toolchain)
 if(WIN32)
@@ -838,6 +845,16 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_ns3_t14_numeric_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_ns3_t14_numeric_tests)
     add_test(NAME nsc.ns3.t14.numeric COMMAND nsc_ns3_t14_numeric_tests)
+
+    add_executable(
+        nsc_ns3_t14_numeric_contract_tests
+        tests/unit/NativeSharp3T14NumericContractTests.cpp)
+    target_link_libraries(nsc_ns3_t14_numeric_contract_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_ns3_t14_numeric_contract_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_ns3_t14_numeric_contract_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t14_numeric_contract_tests)
+    add_test(NAME nsc.ns3.t14.numeric-contract COMMAND nsc_ns3_t14_numeric_contract_tests)
 
     add_executable(
         nsc_ns3_t15_integration_tests
