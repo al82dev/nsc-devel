@@ -1,13 +1,16 @@
 #include "nativesharp/Language/ModuleSemantics.h"
+#include "nativesharp/Interop/LibraryApiDiff.h"
 
 #include "../support/TestContext.h"
 
+#include <algorithm>
 #include <array>
 
 int main()
 {
     nativesharp::tests::TestContext tests;
     using namespace nativesharp::language;
+    using namespace nativesharp::interop;
     tests.expect(canonicalWindowsModuleIdentity("Demo", "Math\\Vectors") ==
             canonicalWindowsModuleIdentity("demo", "math/vectors"),
         "module identity is deterministic under Windows case/path rules");
@@ -49,5 +52,94 @@ int main()
         {"B", "fn()", "noheap", "", true}}};
     tests.expect(publicApiFingerprintInput(api) == publicApiFingerprintInput(reordered),
         "public API fingerprint ignores private symbols and declaration order");
+
+    const auto metadata = []
+    {
+        LibraryMetadata value;
+        value.moduleName = "Demo.Module";
+        value.targetTriple = "x86_64-pc-windows-msvc";
+        value.languageEdition = 3;
+        LibraryMetadataType type;
+        type.kind = LibraryMetadataTypeKind::Struct;
+        type.accessibility = 3;
+        type.identityKey = "Demo.Module::Api.Value";
+        type.fullyQualifiedName = "Api.Value";
+        type.size = 8;
+        type.alignment = 8;
+        value.types.push_back(type);
+        LibraryMetadataMember member;
+        member.kind = 2;
+        member.accessibility = 3;
+        member.declaringTypeKey = "type:Demo.Module::Api.Value";
+        member.name = "Read";
+        member.signatureKey = "Read(builtin:int)";
+        member.declaredTypeKey = "builtin:int";
+        member.mangledName = "__nsc_demo_read";
+        LibraryMetadataParameter parameter;
+        parameter.name = "index";
+        parameter.typeKey = "builtin:int";
+        member.parameters.push_back(parameter);
+        value.members.push_back(member);
+        return value;
+    };
+
+    LibraryMetadata oldApi = metadata();
+    LibraryMetadata orderedApi = oldApi;
+    LibraryMetadataMember orderWitness = orderedApi.members.front();
+    orderWitness.name = "OrderWitness";
+    orderWitness.signatureKey = "OrderWitness()";
+    orderWitness.mangledName = "__nsc_demo_order_witness";
+    orderWitness.parameters.clear();
+    orderedApi.members.push_back(orderWitness);
+    LibraryMetadata reorderedApi = orderedApi;
+    std::ranges::reverse(reorderedApi.types);
+    std::ranges::reverse(reorderedApi.members);
+    tests.expect(
+        LibraryApiDiffer::sourceFingerprint(orderedApi) ==
+            LibraryApiDiffer::sourceFingerprint(reorderedApi) &&
+        LibraryApiDiffer::abiSurfaceFingerprint(orderedApi) ==
+            LibraryApiDiffer::abiSurfaceFingerprint(reorderedApi),
+        "product API fingerprints ignore metadata record order");
+
+    LibraryMetadata additiveApi = oldApi;
+    LibraryMetadataMember added = additiveApi.members.front();
+    added.name = "Write";
+    added.signatureKey = "Write(builtin:int)";
+    added.mangledName = "__nsc_demo_write";
+    additiveApi.members.push_back(added);
+    const LibraryApiDiffReport additive = LibraryApiDiffer::compare(oldApi, additiveApi);
+    tests.expect(additive.sourceCompatible && additive.abiCompatible &&
+            LibraryApiDiffer::classification(additive) == "additive",
+        "adding a non-virtual public callable is source/ABI compatible and explainably additive");
+
+    LibraryMetadata ownershipApi = oldApi;
+    ownershipApi.members.front().parameters.front().ownership =
+        LibraryMetadataOwnershipKind::Owned;
+    const LibraryApiDiffReport ownership = LibraryApiDiffer::compare(oldApi, ownershipApi);
+    tests.expect(!ownership.sourceCompatible && ownership.abiCompatible &&
+            LibraryApiDiffer::classification(ownership) == "source-breaking",
+        "ownership changes are source-semantic breaks without inventing a physical ABI change");
+
+    LibraryMetadata layoutApi = oldApi;
+    layoutApi.types.front().size = 16;
+    const LibraryApiDiffReport layout = LibraryApiDiffer::compare(oldApi, layoutApi);
+    tests.expect(layout.sourceCompatible && !layout.abiCompatible &&
+            LibraryApiDiffer::classification(layout) == "abi-breaking",
+        "layout-only changes are classified separately from source compatibility");
+
+    LibraryMetadata removedApi = oldApi;
+    removedApi.members.clear();
+    const LibraryApiDiffReport removed = LibraryApiDiffer::compare(oldApi, removedApi);
+    tests.expect(!removed.sourceCompatible && !removed.abiCompatible &&
+            LibraryApiDiffer::classification(removed) == "source-and-abi-breaking",
+        "removing a published callable breaks both source and ABI contracts");
+
+    LibraryMetadata canonicalModuleApi = oldApi;
+    canonicalModuleApi.moduleName = "demo\\module";
+    oldApi.moduleName = "DEMO/module";
+    const LibraryApiDiffReport canonicalModuleReport =
+        LibraryApiDiffer::compare(oldApi, canonicalModuleApi);
+    tests.expect(canonicalModuleReport.changes.empty(),
+        "API diff canonicalizes Windows module case and path separators");
     return tests.result();
 }

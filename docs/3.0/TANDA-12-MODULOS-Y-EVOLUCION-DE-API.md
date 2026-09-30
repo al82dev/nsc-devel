@@ -4,6 +4,13 @@
 > visibility, imports, NSMETA ni API diff productivos. Véase
 > [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
 
+> **Integración operativa 18:** `nsc --api-diff old.nsmeta new.nsmeta` conecta una porción real de
+> F06. Calcula huellas SHA-256 separadas de fuente/ABI y clasifica cambios estructurales como
+> idénticos, aditivos o breaking por dominio. Ownership/defaults/named arguments pertenecen a la
+> superficie fuente; layouts/dispatch/exports, a la ABI. F01–F05, F07 completo, persistencia del
+> schema e incremental consumers permanecen abiertos. Véase
+> [TANDA-OPERATIVA-18-T12-API-DIFF.md](TANDA-OPERATIVA-18-T12-API-DIFF.md).
+
 ## Resultado / Outcome
 
 ES: Se fijaron identidad de módulo para Windows, ciclos resolubles, imports, visibilidad, reexports,

@@ -92,6 +92,11 @@ private:
         std::string_view inputPath,
         std::ostream& output,
         std::ostream& error);
+    static ExitCode diffLibraryApi(
+        std::string_view oldMetadataPath,
+        std::string_view newMetadataPath,
+        std::ostream& output,
+        std::ostream& error);
     static ExitCode verifyLibraryArtifacts(std::string_view metadataPath, std::string_view libraryPath,
                                            std::string_view runtimePath, std::string_view pdbPath,
                                            std::ostream& output, std::ostream& error);

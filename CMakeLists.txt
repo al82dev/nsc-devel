@@ -453,6 +453,7 @@ add_library(nsc_driver STATIC
     src/Driver/ReleaseCandidateFreeze.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
+    src/Interop/LibraryApiDiff.cpp
     src/Interop/LibraryMetadata.cpp
     src/Interop/LibraryMetadataMerger.cpp)
 
@@ -815,7 +816,7 @@ if(NSC_BUILD_TESTS)
     add_executable(
         nsc_ns3_t12_module_tests
         tests/unit/NativeSharp3T12ModuleTests.cpp)
-    target_link_libraries(nsc_ns3_t12_module_tests PRIVATE nsc_compilation)
+    target_link_libraries(nsc_ns3_t12_module_tests PRIVATE nsc_driver)
     target_compile_features(nsc_ns3_t12_module_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_ns3_t12_module_tests)
     add_test(NAME nsc.ns3.t12.modules COMMAND nsc_ns3_t12_module_tests)

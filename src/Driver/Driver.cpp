@@ -49,6 +49,7 @@
 #include "nativesharp/HIR/HirDumper.h"
 #include "nativesharp/HIR/HirVerifier.h"
 #include "nativesharp/Interop/CHeaderGenerator.h"
+#include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
@@ -4373,6 +4374,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         return verifyLibraryArtifacts(args[1], args[2], {}, {}, output, error);
     }
 
+    if (args.size() == 3 && args[0] == "--api-diff")
+    {
+        return diffLibraryApi(args[1], args[2], output, error);
+    }
+
     if (args.size() == 3 && args[0] == "--verify-installation-manifest")
     {
         std::string manifestError;
@@ -4629,6 +4635,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --emit-project-library-metadata <file.nsproj> -o "
               "<file.nsmeta>\n"
            << "  nsc --verify-library-metadata <file.nsmeta>\n"
+           << "  nsc --api-diff <old.nsmeta> <new.nsmeta>\n"
            << "  nsc --verify-library-artifacts <file.nsmeta> <file.lib> "
               "[file.dll [file.pdb]]\n"
            << "  nsc --write-diagnostic-bundle <file.nsproj> <file.nsdiag>\n"
@@ -6505,6 +6512,55 @@ ExitCode Driver::verifyLibraryMetadata(std::string_view inputPath, std::ostream 
            << "abi-fingerprint: " << interop::LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint) << '\n';
     printMetadataAbiContract(metadata, output);
     return ExitCode::Success;
+}
+
+ExitCode Driver::diffLibraryApi(
+    std::string_view oldMetadataPath,
+    std::string_view newMetadataPath,
+    std::ostream& output,
+    std::ostream& error)
+{
+    interop::LibraryMetadataCodec codec;
+    interop::LibraryMetadata oldMetadata;
+    interop::LibraryMetadata newMetadata;
+    std::string metadataError;
+    if (!codec.read(std::filesystem::path(oldMetadataPath), oldMetadata, metadataError) ||
+        !codec.verifyCurrentCompiler(oldMetadata, metadataError))
+    {
+        error << "nsc: error: invalid old NativeSharp library metadata: " << metadataError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!codec.read(std::filesystem::path(newMetadataPath), newMetadata, metadataError) ||
+        !codec.verifyCurrentCompiler(newMetadata, metadataError))
+    {
+        error << "nsc: error: invalid new NativeSharp library metadata: " << metadataError << '\n';
+        return ExitCode::CompilationError;
+    }
+
+    const interop::LibraryApiDiffReport report =
+        interop::LibraryApiDiffer::compare(oldMetadata, newMetadata);
+    output << "NativeSharp API diff v1\n"
+           << "old-module: " << oldMetadata.moduleName << '\n'
+           << "new-module: " << newMetadata.moduleName << '\n'
+           << "old-source-fingerprint: " << report.oldSourceFingerprint << '\n'
+           << "new-source-fingerprint: " << report.newSourceFingerprint << '\n'
+           << "old-abi-surface-fingerprint: " << report.oldAbiSurfaceFingerprint << '\n'
+           << "new-abi-surface-fingerprint: " << report.newAbiSurfaceFingerprint << '\n'
+           << "old-metadata-abi-fingerprint: "
+           << interop::LibraryMetadataCodec::fingerprintHex(oldMetadata.abiFingerprint) << '\n'
+           << "new-metadata-abi-fingerprint: "
+           << interop::LibraryMetadataCodec::fingerprintHex(newMetadata.abiFingerprint) << '\n'
+           << "source-compatible: " << (report.sourceCompatible ? "yes" : "no") << '\n'
+           << "abi-compatible: " << (report.abiCompatible ? "yes" : "no") << '\n'
+           << "classification: " << interop::LibraryApiDiffer::classification(report) << '\n'
+           << "changes: " << report.changes.size() << '\n';
+    for (const interop::LibraryApiChange& change : report.changes)
+    {
+        output << "  [" << interop::LibraryApiDiffer::impactName(change.impact) << "] "
+               << change.domain << ' ' << change.identity << ": " << change.detail << '\n';
+    }
+    return report.sourceCompatible && report.abiCompatible
+        ? ExitCode::Success : ExitCode::CompilationError;
 }
 
 ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath,
