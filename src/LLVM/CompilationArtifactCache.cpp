@@ -278,13 +278,16 @@ std::string CompilationArtifactCache::objectKey(
     DebugInformationKind debugInformation) const
 {
     const LlvmVersion llvm = loadedLlvmVersion();
-    std::string material = "NSCOBJKEY 2\n";
+    std::string material = "NSCOBJKEY 3\n";
     material += "toolchain " + toolchainIdentity_ + "\n";
     material += "llvm " + llvmVersionString(llvm) + "\n";
     material += "target " + std::string(targetTriple) + "\n";
     material += "layout " + std::string(dataLayout) + "\n";
     material += "codegen " + std::string(codeGenerationPolicy) + "\n";
     material += "optimization " + std::string(llvmOptimizationLevelName(optimization)) + "\n";
+    material += "pipeline " + std::string(llvmOptimizationPipelineName(optimization)) + "\n";
+    material += "pipeline-version " +
+        std::to_string(llvmOptimizationPipelineVersion(optimization)) + "\n";
     material += "debug " + std::string(debugInformationKindName(debugInformation)) + "\n";
     material += "ir-size " + std::to_string(optimizedLlvm.size()) + "\n";
     material.append(optimizedLlvm);
@@ -301,12 +304,15 @@ std::string CompilationArtifactCache::inputObjectKey(
     DebugInformationKind debugInformation) const
 {
     const LlvmVersion llvm = loadedLlvmVersion();
-    std::string material = "NSCOBJINPUTKEY 2\n";
+    std::string material = "NSCOBJINPUTKEY 3\n";
     material += "toolchain " + toolchainIdentity_ + "\n";
     material += "llvm " + llvmVersionString(llvm) + "\n";
     material += "target " + std::string(targetIdentity) + "\n";
     material += "codegen " + std::string(codeGenerationPolicy) + "\n";
     material += "optimization " + std::string(llvmOptimizationLevelName(optimization)) + "\n";
+    material += "pipeline " + std::string(llvmOptimizationPipelineName(optimization)) + "\n";
+    material += "pipeline-version " +
+        std::to_string(llvmOptimizationPipelineVersion(optimization)) + "\n";
     material += "debug " + std::string(debugInformationKindName(debugInformation)) + "\n";
     material += "mir-size " + std::to_string(mirIdentity.size()) + "\n";
     material.append(mirIdentity);

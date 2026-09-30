@@ -47,6 +47,7 @@
 #include "nativesharp/Frontend/ProjectObjectLayoutModelDumper.h"
 #include "nativesharp/Frontend/ProjectOopHirModelDumper.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
+#include "nativesharp/Frontend/ProjectCostExplorer.h"
 #include "nativesharp/Frontend/ProjectVirtualDispatchModelDumper.h"
 #include "nativesharp/HIR/HirDumper.h"
 #include "nativesharp/HIR/HirVerifier.h"
@@ -3940,6 +3941,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             printLlvmPipeline(optimizationLevel, output);
             return ExitCode::Success;
         }
+        if (argument == "--print-optimization-contract")
+        {
+            output << llvm_backend::llvmOptimizationContractManifest();
+            return ExitCode::Success;
+        }
         if (argument == "--print-llvm-version")
         {
             const llvm_backend::LlvmVersion version = llvm_backend::loadedLlvmVersion();
@@ -4474,6 +4480,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             action == "--check-project-layouts" || action == "--dump-project-layouts" ||
             action == "--check-project-oop-hir" || action == "--dump-project-oop-hir" ||
             action == "--check-project-oop-mir" || action == "--dump-project-oop-mir" ||
+            action == "--explain-project-costs" || action == "--explain-project-costs-json" ||
             action == "--verify-project-oop-llvm" || action == "--dump-project-oop-llvm")
         {
             return runProject(action, args[1], output, error);
@@ -4708,6 +4715,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc add package <id> [--version <version>] [--source <directory>] [file.nsproj]\n"
            << "  nsc remove package <id> [file.nsproj]\n"
            << "  nsc list package [file.nsproj]\n"
+           << "  nsc explain <build|cache|optimization|costs|overload|trait|effect|api|abi|session|packages|debug-allocator> [file.nsproj]\n"
            << "  Add --output-format=json to project commands for machine-readable output.\n\n"
            << "  nsc --check-project <file.nsproj>\n"
            << "  nsc --dump-project <file.nsproj>\n"
@@ -4741,6 +4749,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --dump-project-oop-hir <file.nsproj>\n"
            << "  nsc --check-project-oop-mir <file.nsproj>\n"
            << "  nsc --dump-project-oop-mir <file.nsproj>\n"
+           << "  nsc --explain-project-costs <file.nsproj>\n"
            << "  nsc --verify-project-oop-llvm <file.nsproj>\n"
            << "  nsc --dump-project-oop-llvm <file.nsproj>\n"
            << "  nsc --emit-project-oop-obj <file.nsproj> [-O0|-O1|-O2|-O3] -o "
@@ -4783,6 +4792,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-runtime-capabilities\n"
            << "  nsc --check-runtime-capability <E032|E033|E034|E035>\n"
            << "  nsc --print-numeric-contract\n"
+           << "  nsc --print-optimization-contract\n"
            << "  nsc --write-numeric-contract <file.contract>\n"
            << "  nsc --verify-numeric-contract <file.contract>\n"
            << "  nsc --write-windows-runtime-library <file.lib>\n"
@@ -5348,8 +5358,9 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
         return ExitCode::CompilationError;
     }
     const bool oopLlvmAction = action == "--verify-project-oop-llvm" || action == "--dump-project-oop-llvm";
-    const bool oopMirAction =
-        oopLlvmAction || action == "--check-project-oop-mir" || action == "--dump-project-oop-mir";
+    const bool oopMirAction = oopLlvmAction || action == "--check-project-oop-mir" ||
+        action == "--dump-project-oop-mir" || action == "--explain-project-costs" ||
+        action == "--explain-project-costs-json";
     const bool oopHirAction = oopMirAction || action == "--check-project-oop-hir" || action == "--dump-project-oop-hir";
     const bool layoutAction = oopHirAction || action == "--check-project-layouts" || action == "--dump-project-layouts";
     const bool constructionAction =
@@ -5499,6 +5510,16 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
     if (action == "--dump-project-oop-mir" && projectCompilation.oopMirModel() != nullptr)
     {
         output << frontend::ProjectOopMirModelDumper::dump(*projectCompilation.oopMirModel());
+    }
+
+    if ((action == "--explain-project-costs" || action == "--explain-project-costs-json") &&
+        projectCompilation.oopMirModel() != nullptr)
+    {
+        const frontend::ProjectCostReport costs = frontend::exploreProjectCosts(
+            projectCompilation.oopMirModel()->functions());
+        output << (action == "--explain-project-costs-json"
+            ? frontend::projectCostReportJson(costs)
+            : frontend::projectCostReportText(costs));
     }
 
     std::unique_ptr<llvm_backend::LlvmModule> oopLlvmModule;

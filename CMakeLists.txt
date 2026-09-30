@@ -300,6 +300,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectOopHirModel.cpp
     src/Frontend/ProjectOopHirModelDumper.cpp
     src/Frontend/ProjectOopMirModel.cpp
+    src/Frontend/ProjectCostExplorer.cpp
     src/Frontend/ProjectOopMirModelDumper.cpp
     src/Frontend/ProjectCompilation.cpp
     src/Frontend/ProjectCompilationDumper.cpp)
@@ -875,6 +876,14 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_ns3_e036_e044_scientific_surface_tests)
     add_test(NAME nsc.ns3.e036-e044.scientific-surface
         COMMAND nsc_ns3_e036_e044_scientific_surface_tests)
+
+    add_executable(
+        nsc_ns3_p08_p10_explain_tests
+        tests/unit/NativeSharp3P08P10ExplainTests.cpp)
+    target_link_libraries(nsc_ns3_p08_p10_explain_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_ns3_p08_p10_explain_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_p08_p10_explain_tests)
+    add_test(NAME nsc.ns3.p08-p10.explain COMMAND nsc_ns3_p08_p10_explain_tests)
 
     add_executable(
         nsc_ns3_t15_integration_tests

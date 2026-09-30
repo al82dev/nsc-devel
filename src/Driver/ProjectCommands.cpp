@@ -6,6 +6,7 @@
 #include "nativesharp/Compilation/ProjectLoader.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
@@ -1561,12 +1562,91 @@ ExitCode runPackage(std::span<const std::string_view> raw, std::ostream& output,
     return result.success(output, command == "add" ? "Package request saved: " + id : "Package request removed: " + id,
                           "\"package\":\"" + jsonEscape(id) + "\"");
 }
+
+struct ExplainTopic final
+{
+    std::string_view status;
+    std::string_view present;
+    std::string_view missing;
+};
+
+std::optional<ExplainTopic> explainTopic(std::string_view topic)
+{
+    if (topic == "build") return ExplainTopic{"available", "project defaults, progress, diagnostics, cache", "long-lived build server"};
+    if (topic == "cache") return ExplainTopic{"available", "content-addressed objects, quarantine, eviction, pipeline identity", "cross-process daemon ownership"};
+    if (topic == "overload") return ExplainTopic{"partial", "deterministic semantic diagnostics", "ranked candidate causal chain"};
+    if (topic == "trait") return ExplainTopic{"partial", "static and dynamic interface MIR", "complete coherence causal chain"};
+    if (topic == "effect") return ExplainTopic{"partial", "MIR ownership, cleanup, allocation and synchronization sites", "general effect type system"};
+    if (topic == "api") return ExplainTopic{"available", "nsc --api-diff over NSMETA fingerprints", "source migration fix-its"};
+    if (topic == "abi") return ExplainTopic{"available", "nsc --abi-diff and structural ABI report", "final cross-toolchain certification"};
+    if (topic == "session") return ExplainTopic{"partial", "one project descriptor session per invocation, bounded scheduler, cancellation hooks", "persistent isolated compiler server"};
+    if (topic == "packages") return ExplainTopic{"partial", "new, restore, deterministic lock, build, run, clean, add, remove, list", "test, pack, publish registry workflow"};
+    if (topic == "debug-allocator") return ExplainTopic{"missing", "MIR allocation and drop visibility", "guarded allocator, leak, UAF and double-drop runtime"};
+    return std::nullopt;
+}
+
+ExitCode runExplain(std::span<const std::string_view> raw, std::ostream& output,
+                    std::ostream& error, const DriverExecutor& executor)
+{
+    CommonArguments parsed = stripOutputFormat(raw);
+    CommandOutput result{parsed.json, "explain", {}};
+    if (parsed.values.size() < 2U)
+        return result.failure(error, "usage: nsc explain <topic> [file.nsproj]");
+    const std::string_view topic = parsed.values[1];
+    if (topic == "optimization")
+    {
+        if (parsed.values.size() != 2U)
+            return result.failure(error, "usage: nsc explain optimization");
+        if (parsed.json)
+            return result.failure(error, "optimization contract is a versioned text manifest; omit --output-format=json");
+        constexpr std::array<std::string_view, 1> nested = {"--print-optimization-contract"};
+        return executor(nested, output, error);
+    }
+    if (topic == "costs")
+    {
+        if (parsed.values.size() > 3U)
+            return result.failure(error, "usage: nsc explain costs [file.nsproj]");
+        std::optional<fs::path> requested;
+        if (parsed.values.size() == 3U) requested = fs::path(parsed.values[2]);
+        fs::path project;
+        std::string message;
+        if (!inferProject(requested, project, message)) return result.failure(error, message);
+        const std::string action = parsed.json ? "--explain-project-costs-json" : "--explain-project-costs";
+        const std::string projectText = project.string();
+        const std::array<std::string_view, 2> nested = {action, projectText};
+        return executor(nested, output, error);
+    }
+    if (parsed.values.size() != 2U)
+        return result.failure(error, "topic '" + std::string(topic) + "' does not accept a project argument");
+    const std::optional<ExplainTopic> description = explainTopic(topic);
+    if (!description.has_value())
+        return result.failure(error,
+            "unknown explain topic '" + std::string(topic) +
+            "'; expected build, cache, optimization, costs, overload, trait, effect, api, abi, session, packages, or debug-allocator");
+    if (parsed.json)
+    {
+        output << "{\"schema\":\"NSEXPLAIN 1.0\",\"topic\":\"" << jsonEscape(topic)
+               << "\",\"status\":\"" << description->status
+               << "\",\"present\":\"" << jsonEscape(description->present)
+               << "\",\"missing\":\"" << jsonEscape(description->missing) << "\"}\n";
+    }
+    else
+    {
+        output << "NSEXPLAIN 1.0\n"
+               << "topic=" << topic << '\n'
+               << "status=" << description->status << '\n'
+               << "present=" << description->present << '\n'
+               << "missing=" << description->missing << '\n';
+    }
+    return ExitCode::Success;
+}
 } // namespace
 
 bool isProjectCommand(std::string_view command) noexcept
 {
     return command == "new" || command == "restore" || command == "build" || command == "run" ||
-           command == "clean" || command == "add" || command == "remove" || command == "list";
+           command == "clean" || command == "add" || command == "remove" || command == "list" ||
+           command == "explain";
 }
 
 ExitCode runProjectCommand(std::span<const std::string_view> arguments, std::ostream& output,
@@ -1578,6 +1658,7 @@ ExitCode runProjectCommand(std::span<const std::string_view> arguments, std::ost
     if (arguments.front() == "build") return runBuild(arguments, output, error, executor);
     if (arguments.front() == "run") return runRun(arguments, output, error, executor);
     if (arguments.front() == "clean") return runClean(arguments, output, error);
+    if (arguments.front() == "explain") return runExplain(arguments, output, error, executor);
     return runPackage(arguments, output, error);
 }
 } // namespace nativesharp::driver
