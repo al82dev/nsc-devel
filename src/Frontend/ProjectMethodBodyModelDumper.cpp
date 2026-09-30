@@ -165,6 +165,14 @@ void ProjectMethodBodyModelDumper::dump(
         {
             output << " source-parameter=" << *binding.sourceParameterOrdinal;
         }
+        if (binding.partialSourceOwnerLocalOrdinal.has_value())
+        {
+            output << " partial-owner-local=" << *binding.partialSourceOwnerLocalOrdinal;
+        }
+        if (binding.partialSourceOwnerParameterOrdinal.has_value())
+        {
+            output << " partial-owner-parameter=" << *binding.partialSourceOwnerParameterOrdinal;
+        }
         output << " type=" << binding.typeKey << '\n';
     }
 

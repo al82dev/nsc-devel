@@ -847,6 +847,14 @@ int main(int argc, char** argv)
         "tests/cc1/c62_ns3_traits_dispatch/c62_ns3_traits_dispatch.nsproj",
         "cc1-c62-ns3-traits-dispatch", 42);
 
+    // NativeSharp 3.0 T06-F01..F05. A partial move keeps the containing owner alive, empties
+    // exactly one owned field and transfers that value to a new owner; scope cleanup must destroy
+    // both payloads exactly once. Borrow-conflict variants remain directed negative probes.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c63_ns3_move_borrow_drop/c63_ns3_move_borrow_drop.nsproj",
+        "cc1-c63-ns3-move-borrow-drop", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,

@@ -1,0 +1,48 @@
+// NativeSharp 3.0 / T06-F01..F05 productive ownership vertical.
+//
+// Moving an owned field is a partial move: the containing object remains alive, the extracted
+// value obtains a new owner, and the vacated field becomes null. At scope exit exactly two
+// Payload instances must be destroyed -- the extracted left value and the still-stored right
+// value. A missing null-store would destroy left twice; a missing cleanup would count only one.
+namespace c63ns3moveborrowdrop
+{
+    public class Payload
+    {
+        public static int Drops = 0;
+        public int Value;
+
+        public Payload(int value) { Value = value; }
+
+        ~Payload()
+        {
+            Drops = Drops + 1;
+        }
+    }
+
+    public class Holder
+    {
+        public owned Payload Left;
+        public owned Payload Right;
+
+        public Holder(owned Payload left, owned Payload right)
+        {
+            Left = move(left);
+            Right = move(right);
+        }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            {
+                owned Holder holder = new Holder(new Payload(20), new Payload(22));
+                owned Payload extracted = move(holder.Left);
+                if (extracted.Value + holder.Right.Value != 42) { return 10; }
+            }
+
+            if (Payload.Drops != 2) { return 11; }
+            return 42;
+        }
+    }
+}

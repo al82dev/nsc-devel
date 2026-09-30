@@ -361,6 +361,11 @@ struct MethodMoveBinding final
     std::size_t scopeOrdinal = 0;
     std::optional<std::size_t> sourceLocalOrdinal;
     std::optional<std::size_t> sourceParameterOrdinal;
+    // A partial move keeps the containing owner alive while emptying one of its fields or
+    // elements.  Retain that root owner separately from the moved slot so semantic validation
+    // can enforce borrow exclusivity and dumps can make the decision observable.
+    std::optional<std::size_t> partialSourceOwnerLocalOrdinal;
+    std::optional<std::size_t> partialSourceOwnerParameterOrdinal;
     std::string typeKey;
     // Stage 52: move(...) also accepts a native-array element (e.g. "move(items[i])"),
     // needed by generic collections (Queue<T>.Dequeue(), Stack<T>.Pop(), ...) to extract an

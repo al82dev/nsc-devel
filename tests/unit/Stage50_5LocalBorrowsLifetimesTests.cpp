@@ -258,6 +258,60 @@ class Api
 }
 )NS", "cannot move owned parameter 'owner' while a borrowed local is alive");
 
+    expectInvalid(tests, root, "PartialFieldMoveWhileOwnerBorrowed", prefix + R"NS(
+class Holder
+{
+    public owned Resource slot;
+    public Holder(owned Resource value) { slot = move(value); }
+}
+class Api
+{
+    public static void Run()
+    {
+        raii Holder owner = new Holder(new Resource(1));
+        borrowed Holder view = owner;
+        raii Resource extracted = move(owner.slot);
+    }
+}
+)NS", "cannot partially move from owner 'owner' while a borrowed local is alive");
+
+    expectInvalid(tests, root, "PartialFieldMoveFromBorrowedOwnedParameter", prefix + R"NS(
+class Holder
+{
+    public owned Resource slot;
+    public Holder(owned Resource value) { slot = move(value); }
+}
+class Api
+{
+    public static owned Resource Take(owned Holder owner)
+    {
+        borrowed Holder view = owner;
+        return move(owner.slot);
+    }
+}
+)NS", "cannot partially move from owned parameter 'owner' while a borrowed local is alive");
+
+    expectInvalid(tests, root, "PartialElementMoveWhileOwnerBorrowed", prefix + R"NS(
+class Holder
+{
+    public owned Resource[] items;
+    public Holder()
+    {
+        items = new Resource[1];
+        items[0] = new Resource(1);
+    }
+}
+class Api
+{
+    public static void Run()
+    {
+        raii Holder owner = new Holder();
+        borrowed Holder view = owner;
+        raii Resource extracted = move(owner.items[0]);
+    }
+}
+)NS", "cannot partially move from owner 'owner' while a borrowed local is alive");
+
     expectInvalid(tests, root, "BorrowAfterOwnerMove", prefix + R"NS(
 class Api
 {

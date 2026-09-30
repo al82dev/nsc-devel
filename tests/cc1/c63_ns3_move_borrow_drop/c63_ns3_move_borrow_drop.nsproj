@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>c63_ns3_move_borrow_drop</Name>
+    <Language>3</Language>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

@@ -5837,6 +5837,64 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             break;
         case ast::AstNodeKind::MoveExpression:
         {
+            // A field/element move mutates one slot without consuming its containing owner. Find
+            // the named owner at the root of that storage expression so an outstanding borrowed
+            // view cannot observe the mutation behind the borrow checker's back.
+            const auto partialMoveRoot = [&](const ast::AstNode* storage)
+                -> std::optional<ScopeName>
+            {
+                const ast::AstNode* root = storage;
+                while (root != nullptr &&
+                       (root->kind() == ast::AstNodeKind::MemberExpression ||
+                        root->kind() == ast::AstNodeKind::IndexExpression))
+                {
+                    root = root->first();
+                }
+                if (root == nullptr || root->kind() != ast::AstNodeKind::IdentifierExpression)
+                {
+                    return std::nullopt;
+                }
+                const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, root->text());
+                if (!name.has_value()) return std::nullopt;
+                if (name->kind == ScopeNameKind::Local)
+                {
+                    return name->semanticOrdinal < locals_.size() &&
+                            locals_[name->semanticOrdinal].isRaii
+                        ? name
+                        : std::nullopt;
+                }
+                const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+                return method != nullptr && name->semanticOrdinal < method->parameters.size() &&
+                        method->parameters[name->semanticOrdinal].ownership == sema::OwnershipKind::Owned
+                    ? name
+                    : std::nullopt;
+            };
+            const auto rejectBorrowedPartialMove = [&](const std::optional<ScopeName>& root) -> bool
+            {
+                if (!root.has_value()) return false;
+                if (root->kind == ScopeNameKind::Local)
+                {
+                    if (!hasActiveBorrowOfOwnerLocal(root->semanticOrdinal, scopeOrdinal)) return false;
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "cannot partially move from owner '" + locals_[root->semanticOrdinal].name +
+                            "' while a borrowed local is alive");
+                    return true;
+                }
+                if (!hasActiveBorrowOfOwnedParameter(root->semanticOrdinal, scopeOrdinal)) return false;
+                const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "cannot partially move from owned parameter '" +
+                        method->parameters[root->semanticOrdinal].name +
+                        "' while a borrowed local is alive");
+                return true;
+            };
+
             // Stage 52: move(...) also accepts a direct native-array element access, e.g.
             // "move(items[i])". This is what lets a generic collection (Queue<T>.Dequeue(),
             // Stack<T>.Pop(), ...) extract an owned element out of its backing T[] storage and
@@ -5866,6 +5924,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             if (allowMove && expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::IndexExpression)
             {
+                const std::optional<ScopeName> partialRoot = partialMoveRoot(expression->first());
+                if (rejectBorrowedPartialMove(partialRoot)) break;
                 const ExpressionResult element = analyzeExpression(
                     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
                 // El analisis de la base se mantiene DENTRO del cortocircuito, igual que antes: si
@@ -5899,6 +5959,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 move.scopeOrdinal = scopeOrdinal;
                 move.typeKey = element.typeKey;
                 move.sourceIsArrayElement = true;
+                if (partialRoot.has_value() && partialRoot->kind == ScopeNameKind::Local)
+                {
+                    move.partialSourceOwnerLocalOrdinal = partialRoot->semanticOrdinal;
+                }
+                else if (partialRoot.has_value())
+                {
+                    move.partialSourceOwnerParameterOrdinal = partialRoot->semanticOrdinal;
+                }
                 move.elementIsReferenceLike =
                     isReferenceTypeKey(element.typeKey) || element.typeKey == "builtin:string";
                 moveBindings_.push_back(std::move(move));
@@ -5923,7 +5991,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             // uses. Like the array-element case above, static moved-from tracking is deliberately
             // NOT extended to fields: which object a field belongs to is a runtime fact, so the
             // vacated slot simply holds null and a later read sees an empty slot.
-            const auto tryOwnedFieldMoveSource = [&](const ExpressionResult& fieldSource) -> bool
+            const auto tryOwnedFieldMoveSource = [&](
+                const ExpressionResult& fieldSource,
+                const std::optional<ScopeName>& partialRoot) -> bool
             {
                 if (!fieldSource.valid || !fieldSource.assignable ||
                     !fieldSource.assignmentMemberOrdinal.has_value() || memberModel_ == nullptr ||
@@ -5943,6 +6013,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 move.scopeOrdinal = scopeOrdinal;
                 move.typeKey = fieldSource.typeKey;
                 move.sourceIsOwnedField = true;
+                if (partialRoot.has_value() && partialRoot->kind == ScopeNameKind::Local)
+                {
+                    move.partialSourceOwnerLocalOrdinal = partialRoot->semanticOrdinal;
+                }
+                else if (partialRoot.has_value())
+                {
+                    move.partialSourceOwnerParameterOrdinal = partialRoot->semanticOrdinal;
+                }
                 move.elementIsReferenceLike =
                     isReferenceTypeKey(fieldSource.typeKey) || fieldSource.typeKey == "builtin:string";
                 moveBindings_.push_back(std::move(move));
@@ -5956,9 +6034,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             if (allowMove && expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::MemberExpression)
             {
+                const std::optional<ScopeName> partialRoot = partialMoveRoot(expression->first());
+                if (rejectBorrowedPartialMove(partialRoot)) break;
                 const ExpressionResult member = analyzeExpression(
                     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-                if (tryOwnedFieldMoveSource(member)) break;
+                if (tryOwnedFieldMoveSource(member, partialRoot)) break;
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
@@ -5984,7 +6064,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 // declaring class is the container's own Take() idiom.
                 const ExpressionResult implicitField = analyzeExpression(
                     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-                if (tryOwnedFieldMoveSource(implicitField)) break;
+                if (tryOwnedFieldMoveSource(implicitField, std::nullopt)) break;
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
