@@ -840,6 +840,13 @@ int main(int argc, char** argv)
         "tests/cc1/c61_ns3_const_generics_packs/c61_ns3_const_generics_packs.nsproj",
         "cc1-c61-ns3-const-generics-packs", 42);
 
+    // NativeSharp 3.0 T05-F01: trait declarations reuse the interface ABI; a constrained generic
+    // call is statically specialized while trait-typed views retain dynamic dispatch.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c62_ns3_traits_dispatch/c62_ns3_traits_dispatch.nsproj",
+        "cc1-c62-ns3-traits-dispatch", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,

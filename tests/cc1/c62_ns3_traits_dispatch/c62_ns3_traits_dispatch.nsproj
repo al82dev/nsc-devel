@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>c62_ns3_traits_dispatch</Name>
+    <Language>3</Language>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

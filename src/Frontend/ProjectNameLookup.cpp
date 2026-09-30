@@ -1274,6 +1274,8 @@ void ProjectNameLookup::bindTypeSyntax(
             if (target == mutableSyntax) break;
             mutableSyntax->setBaseTokenKind(target->baseTokenKind());
             mutableSyntax->setBaseName(target->baseName());
+            mutableSyntax->setDynamicTrait(
+                mutableSyntax->isDynamicTrait() || target->isDynamicTrait());
             mutableSyntax->prependModifiers(target->modifiers());
         }
     }
@@ -1311,6 +1313,14 @@ void ProjectNameLookup::bindTypeSyntax(
     if (syntax->isTuple() || lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         binding.kind = TypeNameBindingKind::Builtin;
+        if (syntax->isDynamicTrait())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                syntax->range(),
+                "'dyn' requires a trait or interface type, not a builtin or tuple");
+        }
     }
     else
     {
@@ -1431,6 +1441,16 @@ void ProjectNameLookup::bindTypeSyntax(
         {
             binding.kind = TypeNameBindingKind::Resolved;
             binding.targetTypeOrdinal = binding.candidateTypeOrdinals.front();
+            if (syntax->isDynamicTrait() &&
+                namedTypes_[*binding.targetTypeOrdinal].kind != NamedTypeDeclarationKind::Interface)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    syntax->range(),
+                    "'dyn " + syntax->baseName() +
+                        "' is invalid because the target is not a trait or interface");
+            }
         }
         else
         {

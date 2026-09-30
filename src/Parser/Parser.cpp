@@ -317,6 +317,18 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
         }
     }
 
+    if (tokenIndex < tokens_.size() &&
+        tokens_[tokenIndex].kind() == TokenKind::Identifier &&
+        tokens_[tokenIndex].lexeme() == "dyn")
+    {
+        std::size_t afterDynamicType = tokenIndex + 1U;
+        if (scanTypeAt(tokenIndex + 1U, afterDynamicType))
+        {
+            afterType = afterDynamicType;
+            return true;
+        }
+    }
+
     if (tokens_[tokenIndex].kind() == TokenKind::LeftParen)
     {
         std::size_t cursor = tokenIndex + 1;
@@ -618,11 +630,29 @@ ast::TypeSyntax* Parser::parseType()
         }
     }
 
+    bool dynamicTrait = false;
+    SourceRange dynamicRange = current().range();
+    if (atContextualKeyword("dyn") && canStartTypeAt(index_ + 1U))
+    {
+        const lexer::Token& qualifier = consume();
+        dynamicRange = qualifier.range();
+        requireEdition3(dynamicRange, "dynamic trait object types");
+        dynamicTrait = true;
+    }
+
     if (at(TokenKind::LeftParen))
     {
         const SourceRange open = consume().range();
         ast::TypeSyntax* tuple = arena_.make<ast::TypeSyntax>(open, TokenKind::Invalid, "$tuple");
         tuple->setOwnershipQualifier(ownershipQualifier);
+        if (dynamicTrait)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                dynamicRange,
+                "'dyn' requires a named trait or interface type");
+        }
         if (ownershipQualifier != ast::OwnershipQualifierSyntaxKind::None)
             qualifierRange = join(qualifierRange, open);
         while (true)
@@ -685,10 +715,12 @@ ast::TypeSyntax* Parser::parseType()
     ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
         completeRange, baseKind, std::move(baseName));
     type->setOwnershipQualifier(ownershipQualifier);
+    type->setDynamicTrait(dynamicTrait);
     if (ownershipQualifier != ast::OwnershipQualifierSyntaxKind::None)
     {
         completeRange = join(qualifierRange, completeRange);
     }
+    if (dynamicTrait) completeRange = join(dynamicRange, completeRange);
 
     if (baseKind == TokenKind::Identifier && at(TokenKind::Less))
     {
@@ -1834,6 +1866,20 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                 "interfaces cannot use abstract, sealed, or static type modifiers");
         }
         declaration = parseInterfaceDeclaration(isPartial);
+    }
+    else if (atContextualKeyword("trait") && peek().kind() == TokenKind::Identifier)
+    {
+        const SourceRange feature = current().range();
+        requireEdition3(feature, "trait declarations");
+        if (isAbstract || isSealed || isStatic)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                tokens_[declarationBeginIndex].range(),
+                "traits cannot use abstract, sealed, or static type modifiers");
+        }
+        declaration = parseInterfaceDeclaration(isPartial, true);
     }
     else if (atContextualKeyword("variant") && peek().kind() == TokenKind::Identifier)
     {
@@ -3008,10 +3054,10 @@ ast::AstNode* Parser::parseClassDeclaration(
     return node;
 }
 
-ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial)
+ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial, bool isTrait)
 {
     const std::size_t beginIndex = index_;
-    consume(); // interface
+    consume(); // interface / contextual trait
 
     if (!at(TokenKind::Identifier))
     {
@@ -3026,6 +3072,7 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial)
         ast::AstNodeKind::InterfaceDeclaration, name.range());
     node->setText(std::string(name.lexeme()));
     node->setFlag(isPartial);
+    if (isTrait) node->setAuxiliaryText("ns3-trait");
     parseGenericParameterList(node);
 
     if (consumeIf(TokenKind::Colon))
@@ -3067,6 +3114,16 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial)
         const std::size_t before = index_;
         if (ast::AstNode* member = parseInterfaceMember(); member != nullptr)
         {
+            if (isTrait && member->kind() == ast::AstNodeKind::MethodDeclaration &&
+                !member->genericParameters().empty())
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    member->range(),
+                    "generic trait methods are not object-safe in the current T05 vertical; "
+                    "move the type parameter to the trait declaration");
+            }
             node->addChild(member);
         }
         if (index_ == before)

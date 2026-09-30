@@ -110,6 +110,7 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
     {
         output << ownershipQualifierSyntaxKindName(typeSyntax->ownershipQualifier()) << ' ';
     }
+    if (typeSyntax->isDynamicTrait()) output << "dyn ";
     if (typeSyntax->isTuple())
     {
         output << '(';

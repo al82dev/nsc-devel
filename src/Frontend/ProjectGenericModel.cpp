@@ -499,6 +499,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
             modifier.kind, modifier.arrayCount, modifier.range});
     }
     result->setPackExpansion(source->isPackExpansion());
+    result->setDynamicTrait(source->isDynamicTrait());
     return result;
 }
 
@@ -590,6 +591,7 @@ bool ProjectGenericModel::expandTypeAliases(
 
     syntax->setBaseTokenKind(expanded->baseTokenKind());
     syntax->setBaseName(expanded->baseName());
+    syntax->setDynamicTrait(syntax->isDynamicTrait() || expanded->isDynamicTrait());
     if (writtenOwnership == ast::OwnershipQualifierSyntaxKind::None)
         syntax->setOwnershipQualifier(targetOwnership);
     const std::vector<ast::TypeSyntax*> expandedArguments(
@@ -2476,6 +2478,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     // argument requires an owned parameter". Carry it over unconditionally, exactly like the
     // pointer/array modifiers just above.
     result->setOwnershipQualifier(source->ownershipQualifier());
+    result->setDynamicTrait(source->isDynamicTrait());
     result->setPackExpansion(source->isPackExpansion());
     // Stage 52 fix: only stamp the TEMPLATE's own range for the non-substituted branch (the
     // clone still represents source text written at that template position, e.g. `T[]`'s own

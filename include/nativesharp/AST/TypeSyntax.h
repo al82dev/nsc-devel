@@ -61,6 +61,12 @@ public:
     OwnershipQualifierSyntaxKind ownershipQualifier() const noexcept;
     void setOwnershipQualifier(OwnershipQualifierSyntaxKind qualifier) noexcept;
 
+    // NativeSharp 3.0 source-level cost marker. `dyn Trait` intentionally shares the canonical
+    // interface type/ABI, but retaining the spelling lets name lookup reject non-interface
+    // targets and diagnostics/dumps keep dynamic dispatch explicit.
+    bool isDynamicTrait() const noexcept;
+    void setDynamicTrait(bool value = true) noexcept;
+
     void addTypeArgument(TypeSyntax* typeArgument);
     const std::vector<TypeSyntax*>& typeArguments() const noexcept;
     void clearTypeArguments() noexcept;
@@ -124,6 +130,7 @@ private:
     lexer::TokenKind baseTokenKind_;
     std::string baseName_;
     OwnershipQualifierSyntaxKind ownershipQualifier_ = OwnershipQualifierSyntaxKind::None;
+    bool isDynamicTrait_ = false;
     std::vector<TypeSyntax*> typeArguments_;
     bool isTuple_ = false;
     std::vector<std::string> tupleElementNames_;

@@ -33,6 +33,8 @@ void TypeSyntax::setOwnershipQualifier(OwnershipQualifierSyntaxKind qualifier) n
 {
     ownershipQualifier_ = qualifier;
 }
+bool TypeSyntax::isDynamicTrait() const noexcept { return isDynamicTrait_; }
+void TypeSyntax::setDynamicTrait(bool value) noexcept { isDynamicTrait_ = value; }
 
 void TypeSyntax::setBaseTokenKind(lexer::TokenKind kind) noexcept
 {

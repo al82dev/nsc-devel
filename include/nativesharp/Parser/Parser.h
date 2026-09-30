@@ -89,7 +89,7 @@ private:
         bool isAbstract,
         bool isSealed,
         bool isStatic = false);
-    ast::AstNode* parseInterfaceDeclaration(bool isPartial);
+    ast::AstNode* parseInterfaceDeclaration(bool isPartial, bool isTrait = false);
     ast::AstNode* parseDelegateDeclaration();
     ast::AstNode* parseInterfaceMember();
     ast::AstNode* parseClassMember(
