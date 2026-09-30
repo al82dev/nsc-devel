@@ -1,0 +1,55 @@
+// NativeSharp 3.0 / T04-F02 and F03 productive witness.
+//
+// Values participate in specialization identity and array layout without a runtime dictionary.
+// A trailing type pack accepts zero, one or many types, can be counted in a specialized body,
+// and can be forwarded explicitly into another generic argument list with `Ts...`.
+namespace c61ns3constgenericspacks
+{
+    public struct Buffer<T, const int N>
+    {
+        public T[N] Data;
+        public int Count() { return N; }
+    }
+
+    public struct Types<pack Ts>
+    {
+        public int Count() { return packcount(Ts); }
+    }
+
+    public struct Forward<pack Ts>
+    {
+        public Types<Ts...> Value;
+        public int Count() { return Value.Count(); }
+    }
+
+    public struct Feature<const bool Enabled>
+    {
+        public int Score()
+        {
+            if (Enabled) { return 5; }
+            return 0;
+        }
+    }
+
+    public class Program
+    {
+        private static int Number<const int N>() { return N; }
+        private static int TypeCount<pack Ts>() { return packcount(Ts); }
+
+        public static int Main()
+        {
+            Buffer<int, 4> value;
+            value.Data[0] = 38;
+            Buffer<int, 4u> canonicalTwin;
+            Buffer<int, 8> larger;
+            Types<> empty;
+            Types<int, long> pair;
+            Forward<int, long> forwarded;
+            Feature<true> feature;
+
+            return value.Data[0] + value.Count() + canonicalTwin.Count() + larger.Count() +
+                empty.Count() + pair.Count() + forwarded.Count() + feature.Score() +
+                Number<7>() + TypeCount<>() + TypeCount<int, long>() - 30;
+        }
+    }
+}

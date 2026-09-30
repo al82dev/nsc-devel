@@ -59,6 +59,9 @@ const std::vector<std::string>& TypeSyntax::tupleElementNames() const noexcept
 {
     return tupleElementNames_;
 }
+
+bool TypeSyntax::isPackExpansion() const noexcept { return isPackExpansion_; }
+void TypeSyntax::setPackExpansion(bool value) noexcept { isPackExpansion_ = value; }
 void TypeSyntax::addModifier(TypeModifierSyntax modifier) { modifiers_.push_back(modifier); }
 const std::vector<TypeModifierSyntax>& TypeSyntax::modifiers() const noexcept { return modifiers_; }
 std::optional<std::size_t> TypeSyntax::originProjectOrdinal() const noexcept { return originProjectOrdinal_; }

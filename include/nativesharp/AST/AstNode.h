@@ -12,6 +12,22 @@ namespace nativesharp::ast
 {
 class TypeSyntax;
 
+enum class GenericParameterSyntaxKind
+{
+    Type,
+    Constant,
+    TypePack,
+    ConstantPack
+};
+
+struct GenericParameterSyntax
+{
+    std::string name;
+    GenericParameterSyntaxKind kind = GenericParameterSyntaxKind::Type;
+    TypeSyntax* constantType = nullptr;
+    SourceRange range;
+};
+
 // NSC-LIMIT-007. Una clausula `where T : class, Base, IFoo` tal como se escribio.
 //
 // SE GUARDA SIN RESOLVER, y esa es la decision: los tipos quedan como `TypeSyntax*`, no como
@@ -79,7 +95,9 @@ public:
     void clearTypeSyntaxes() noexcept;
 
     void addGenericParameter(std::string name);
+    void addGenericParameter(GenericParameterSyntax parameter);
     const std::vector<std::string>& genericParameters() const noexcept;
+    const std::vector<GenericParameterSyntax>& genericParameterSyntaxes() const noexcept;
     void clearGenericParameters() noexcept;
 
     // NSC-LIMIT-007. Las clausulas `where` de esta declaracion, en el orden escrito.
@@ -128,6 +146,7 @@ private:
     TypeSyntax* typeSyntax_ = nullptr;
     std::vector<TypeSyntax*> typeSyntaxes_;
     std::vector<std::string> genericParameters_;
+    std::vector<GenericParameterSyntax> genericParameterSyntaxes_;
     std::vector<GenericConstraintClause> genericConstraints_;
     AstNode* first_ = nullptr;
     AstNode* second_ = nullptr;

@@ -4,6 +4,8 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
+#include "nativesharp/Language/GenericSemantics.h"
+#include "nativesharp/Frontend/IntegerLiteralTyping.h"
 #include "nativesharp/Target/TargetInfo.h"
 
 #include <algorithm>
@@ -698,6 +700,14 @@ ast::TypeSyntax* Parser::parseType()
         }
     }
 
+    if (at(TokenKind::Ellipsis))
+    {
+        const SourceRange expansion = consume().range();
+        requireEdition3(expansion, "generic pack expansion");
+        type->setPackExpansion();
+        completeRange = join(completeRange, expansion);
+    }
+
     while (true)
     {
         if (at(TokenKind::Star))
@@ -848,9 +858,42 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
     std::unordered_set<std::string> names;
     while (true)
     {
+        ast::GenericParameterSyntax syntax;
+        const std::size_t parameterBegin = index_;
+        if (at(TokenKind::KwConst))
+        {
+            const SourceRange feature = consume().range();
+            requireEdition3(feature, "const generic parameters");
+            syntax.kind = ast::GenericParameterSyntaxKind::Constant;
+            syntax.constantType = parseType();
+            if (syntax.constantType == nullptr) return false;
+            const TokenKind kind = syntax.constantType->baseTokenKind();
+            const bool supported = syntax.constantType->modifiers().empty() &&
+                syntax.constantType->typeArguments().empty() &&
+                (kind == TokenKind::KwBool || kind == TokenKind::KwByte ||
+                 kind == TokenKind::KwSByte || kind == TokenKind::KwShort ||
+                 kind == TokenKind::KwUShort || kind == TokenKind::KwInt ||
+                 kind == TokenKind::KwUInt || kind == TokenKind::KwLong ||
+                 kind == TokenKind::KwULong || kind == TokenKind::KwNInt ||
+                 kind == TokenKind::KwNUInt || kind == TokenKind::KwChar);
+            if (!supported)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    syntax.constantType->range(),
+                    "const generic parameters currently require bool, char, or an integral builtin type");
+            }
+        }
+        else if (atContextualKeyword("pack"))
+        {
+            const SourceRange feature = consume().range();
+            requireEdition3(feature, "generic type packs");
+            syntax.kind = ast::GenericParameterSyntaxKind::TypePack;
+        }
         if (!at(TokenKind::Identifier))
         {
-            expect(TokenKind::Identifier, "generic type parameter");
+            expect(TokenKind::Identifier, "generic parameter name");
             return false;
         }
         const lexer::Token& parameter = consume();
@@ -861,10 +904,24 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
                 diagnostics::DiagnosticId::DuplicateSymbol,
                 diagnostics::DiagnosticSeverity::Error,
                 parameter.range(),
-                "duplicate generic type parameter '" + name + "'");
+                "duplicate generic parameter '" + name + "'");
         }
-        declaration->addGenericParameter(name);
+        syntax.name = name;
+        syntax.range = tokenRangeFrom(parameterBegin);
+        declaration->addGenericParameter(std::move(syntax));
         if (!consumeIf(TokenKind::Comma)) break;
+    }
+    const auto& parameters = declaration->genericParameterSyntaxes();
+    for (std::size_t index = 0; index + 1U < parameters.size(); ++index)
+    {
+        if (parameters[index].kind != ast::GenericParameterSyntaxKind::TypePack &&
+            parameters[index].kind != ast::GenericParameterSyntaxKind::ConstantPack)
+            continue;
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidArgumentCount,
+            diagnostics::DiagnosticSeverity::Error,
+            parameters[index].range,
+            "a generic pack must be the final generic parameter");
     }
     return expect(TokenKind::Greater, "'>' after generic type parameter list");
 }
@@ -907,6 +964,14 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
         const std::vector<std::string>& declared = declaration->genericParameters();
         const bool known =
             std::find(declared.begin(), declared.end(), clause.parameterName) != declared.end();
+        const auto syntax = std::ranges::find_if(
+            declaration->genericParameterSyntaxes(),
+            [&](const ast::GenericParameterSyntax& item)
+            {
+                return item.name == clause.parameterName;
+            });
+        const bool constraintCapable = syntax == declaration->genericParameterSyntaxes().end() ||
+            syntax->kind == ast::GenericParameterSyntaxKind::Type;
         if (!known)
         {
             diagnostics_.report(
@@ -915,6 +980,16 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
                 parameter.range(),
                 "'" + clause.parameterName +
                     "' is not a generic type parameter of this declaration");
+            ok = false;
+        }
+        else if (!constraintCapable)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                parameter.range(),
+                "a 'where' clause currently applies only to an ordinary generic type parameter; '" +
+                    clause.parameterName + "' is a const generic or type pack");
             ok = false;
         }
         else if (!constrained.insert(clause.parameterName).second)
@@ -1031,8 +1106,34 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
 bool Parser::parseTypeArgumentList(std::vector<ast::TypeSyntax*>& arguments)
 {
     if (!consumeIf(TokenKind::Less)) return false;
+    if (consumeGenericGreater()) return true;
     while (true)
     {
+        if (at(TokenKind::IntegerLiteral))
+        {
+            const lexer::Token& literal = consume();
+            requireEdition3(literal.range(), "const generic arguments");
+            const auto* value = std::get_if<std::uint64_t>(&literal.value());
+            const std::uint64_t normalized = value == nullptr ? 0 : *value;
+            const std::string typeKey(frontend::builtins::integerLiteralTypeKey(
+                literal.lexeme(), normalized, false));
+            arguments.push_back(arena_.make<ast::TypeSyntax>(
+                literal.range(), TokenKind::Invalid,
+                language::constGenericArgumentMarker(typeKey, std::to_string(normalized))));
+            if (!consumeIf(TokenKind::Comma)) break;
+            continue;
+        }
+        if (at(TokenKind::KwTrue) || at(TokenKind::KwFalse))
+        {
+            const lexer::Token& literal = consume();
+            requireEdition3(literal.range(), "const generic arguments");
+            arguments.push_back(arena_.make<ast::TypeSyntax>(
+                literal.range(), TokenKind::Invalid,
+                language::constGenericArgumentMarker(
+                    "builtin:bool", literal.kind() == TokenKind::KwTrue ? "true" : "false")));
+            if (!consumeIf(TokenKind::Comma)) break;
+            continue;
+        }
         if (!canStartTypeAt(index_) && !at(TokenKind::Identifier))
         {
             diagnostics_.report(
@@ -8393,8 +8494,10 @@ ast::AstNode* Parser::parsePostfixExpression()
     while (true)
     {
         std::vector<ast::TypeSyntax*> genericCallArguments;
+        bool hasExplicitGenericArguments = false;
         if (looksLikeGenericCallTypeArguments())
         {
+            hasExplicitGenericArguments = true;
             parseTypeArgumentList(genericCallArguments);
         }
 
@@ -8402,6 +8505,10 @@ ast::AstNode* Parser::parsePostfixExpression()
         {
             ast::AstNode* call = arena_.make<ast::AstNode>(ast::AstNodeKind::CallExpression, expression->range());
             call->setFirst(expression);
+            // Empty type packs make `F<>()` meaningful and different from inference in `F()`.
+            // CallExpression does not otherwise use flag(), so preserve that syntactic fact
+            // without manufacturing a sentinel TypeSyntax that could leak into ABI identity.
+            call->setFlag(hasExplicitGenericArguments);
             for (ast::TypeSyntax* argument : genericCallArguments) call->addTypeSyntax(argument);
             if (!at(TokenKind::RightParen))
             {

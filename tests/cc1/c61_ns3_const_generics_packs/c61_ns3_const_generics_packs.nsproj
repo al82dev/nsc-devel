@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>c61_ns3_const_generics_packs</Name>
+    <Language>3</Language>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

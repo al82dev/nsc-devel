@@ -39,9 +39,27 @@ void AstNode::addTypeSyntax(TypeSyntax* typeSyntax)
 }
 const std::vector<TypeSyntax*>& AstNode::typeSyntaxes() const noexcept { return typeSyntaxes_; }
 void AstNode::clearTypeSyntaxes() noexcept { typeSyntaxes_.clear(); }
-void AstNode::addGenericParameter(std::string name) { genericParameters_.push_back(std::move(name)); }
+void AstNode::addGenericParameter(std::string name)
+{
+    GenericParameterSyntax parameter;
+    parameter.name = std::move(name);
+    addGenericParameter(std::move(parameter));
+}
+void AstNode::addGenericParameter(GenericParameterSyntax parameter)
+{
+    genericParameters_.push_back(parameter.name);
+    genericParameterSyntaxes_.push_back(std::move(parameter));
+}
 const std::vector<std::string>& AstNode::genericParameters() const noexcept { return genericParameters_; }
-void AstNode::clearGenericParameters() noexcept { genericParameters_.clear(); }
+const std::vector<GenericParameterSyntax>& AstNode::genericParameterSyntaxes() const noexcept
+{
+    return genericParameterSyntaxes_;
+}
+void AstNode::clearGenericParameters() noexcept
+{
+    genericParameters_.clear();
+    genericParameterSyntaxes_.clear();
+}
 void AstNode::addGenericConstraint(GenericConstraintClause clause) { genericConstraints_.push_back(std::move(clause)); }
 const std::vector<GenericConstraintClause>& AstNode::genericConstraints() const noexcept { return genericConstraints_; }
 void AstNode::clearGenericConstraints() noexcept { genericConstraints_.clear(); }

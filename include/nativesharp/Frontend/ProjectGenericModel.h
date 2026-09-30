@@ -65,6 +65,7 @@ struct GenericTemplateRecord final
     // anidado. Es lo que hace que dos `Inner<T>` bajo contenedores distintos no compartan clave.
     std::string qualifiedTypeName;
     std::vector<std::string> parameters;
+    std::vector<ast::GenericParameterSyntax> parameterSyntaxes;
     // NSC-LIMIT-007. Las clausulas `where` DE LA PLANTILLA, copiadas del AST sin resolver. Se
     // guardan aqui y no se validan al recolectar porque cuando esta fase corre --la segunda de
     // toda la cadena-- todavia no existen el name lookup, la herencia ni las interfaces. Quien
@@ -147,6 +148,7 @@ class ProjectGenericModel final
 public:
     static constexpr std::size_t DefaultMaximumInstantiationDepth = 64;
     static constexpr std::size_t DefaultMaximumInstantiationCount = 16384;
+    static constexpr std::size_t DefaultMaximumPackExpansionCount = 1024;
 
     bool build(
         const compilation::ProjectGraph& graph,
@@ -326,6 +328,12 @@ private:
         const std::unordered_set<std::string>& parameters,
         std::unordered_map<std::string, ast::TypeSyntax*>& inferred);
 
+    bool normalizeGenericArguments(
+        const GenericTemplateRecord& record,
+        std::span<ast::TypeSyntax* const> arguments,
+        SourceRange range,
+        diagnostics::DiagnosticEngine& diagnostics);
+
     TemplateState* resolveTypeTemplate(
         const ProjectSyntaxUnit& unit,
         std::string_view namespaceName,
@@ -458,6 +466,9 @@ private:
     language::InstantiationBudget instantiationBudget_{
         DefaultMaximumInstantiationDepth, DefaultMaximumInstantiationCount};
     std::size_t instantiationCacheHitCount_ = 0;
+    // Active only while cloneNode/cloneType expands one specialization. A trailing type pack maps
+    // to zero or more arguments; the map is saved/restored around recursive materialization.
+    std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>> activePackSubstitutions_;
 };
 
 const char* genericTemplateKindName(GenericTemplateKind kind) noexcept;

@@ -8,7 +8,9 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <charconv>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -212,6 +214,43 @@ std::string stableHashSuffix(std::string_view text)
     std::ostringstream stream;
     stream << std::hex << std::setfill('0') << std::setw(16) << hash;
     return stream.str();
+}
+
+bool decodeConstGenericArgument(
+    const ast::TypeSyntax* syntax,
+    std::string& typeKey,
+    std::string& value) noexcept
+{
+    return syntax != nullptr && syntax->typeArguments().empty() && syntax->modifiers().empty() &&
+        language::parseConstGenericArgumentMarker(syntax->baseName(), typeKey, value);
+}
+
+std::string constGenericParameterTypeKey(const ast::GenericParameterSyntax& parameter)
+{
+    if (parameter.constantType == nullptr) return {};
+    return "builtin:" + parameter.constantType->baseName();
+}
+
+std::optional<std::size_t> trailingTypePackIndex(const GenericTemplateRecord& record) noexcept
+{
+    if (record.parameterSyntaxes.empty()) return std::nullopt;
+    const std::size_t index = record.parameterSyntaxes.size() - 1U;
+    return record.parameterSyntaxes[index].kind == ast::GenericParameterSyntaxKind::TypePack
+        ? std::optional<std::size_t>(index) : std::nullopt;
+}
+
+bool genericArityAccepts(const GenericTemplateRecord& record, std::size_t arity) noexcept
+{
+    if (const auto pack = trailingTypePackIndex(record); pack.has_value())
+        return arity >= *pack;
+    return arity == record.parameters.size();
+}
+
+std::string genericAritySpelling(const GenericTemplateRecord& record)
+{
+    if (const auto pack = trailingTypePackIndex(record); pack.has_value())
+        return std::to_string(*pack) + "+pack";
+    return std::to_string(record.parameters.size());
 }
 }
 
@@ -459,6 +498,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
         result->addModifier(ast::TypeModifierSyntax{
             modifier.kind, modifier.arrayCount, modifier.range});
     }
+    result->setPackExpansion(source->isPackExpansion());
     return result;
 }
 
@@ -470,6 +510,9 @@ bool ProjectGenericModel::expandTypeAliases(
     std::vector<std::string>& expansionStack)
 {
     if (syntax == nullptr) return true;
+    std::string constantType;
+    std::string constantValue;
+    if (decodeConstGenericArgument(syntax, constantType, constantValue)) return true;
     bool ok = true;
     for (ast::TypeSyntax* argument : syntax->typeArguments())
         ok = expandTypeAliases(unit, argument, scope, diagnostics, expansionStack) && ok;
@@ -576,8 +619,10 @@ bool ProjectGenericModel::expandAliasesInNode(
         currentNamespace = namespaceAppend(namespaceName, node->text());
 
     GenericLookupScope currentScope = scope;
-    for (const std::string& parameter : node->genericParameters())
-        currentScope.typeParameters.insert(parameter);
+    for (const ast::GenericParameterSyntax& parameter : node->genericParameterSyntaxes())
+        if (parameter.kind == ast::GenericParameterSyntaxKind::Type ||
+            parameter.kind == ast::GenericParameterSyntaxKind::TypePack)
+            currentScope.typeParameters.insert(parameter.name);
     for (const ast::AstNode* child : node->children())
     {
         if (child == nullptr || child->kind() != ast::AstNodeKind::UsingAliasDirective) continue;
@@ -595,8 +640,10 @@ bool ProjectGenericModel::expandAliasesInNode(
             (child->genericParameters().empty() && !child->auxiliaryText().empty()))
             continue;
         GenericLookupScope aliasScope = currentScope;
-        for (const std::string& parameter : child->genericParameters())
-            aliasScope.typeParameters.insert(parameter);
+        for (const ast::GenericParameterSyntax& parameter : child->genericParameterSyntaxes())
+            if (parameter.kind == ast::GenericParameterSyntaxKind::Type ||
+                parameter.kind == ast::GenericParameterSyntaxKind::TypePack)
+                aliasScope.typeParameters.insert(parameter.name);
         std::vector<std::string> stack{child->text()};
         ok = expandTypeAliases(
                  unit, child->typeSyntax(), aliasScope, diagnostics, stack) && ok;
@@ -727,6 +774,7 @@ void ProjectGenericModel::collectTemplates(
         record.name = node->text();
         record.ownerName = ownerName;
         record.parameters = node->genericParameters();
+        record.parameterSyntaxes = node->genericParameterSyntaxes();
         record.constraints = node->genericConstraints();
         // NSC-LIMIT-009: `ns.A+Inner`1`, no `ns.Inner`1`. Hoy el parser rechaza un tipo anidado
         // generico, de modo que esta cadena esta siempre vacia; se escribe igualmente porque el
@@ -734,7 +782,7 @@ void ProjectGenericModel::collectTemplates(
         record.qualifiedTypeName = appendOwner(ownerName, record.name);
         record.canonicalKey = record.moduleName + "::" +
             qualifiedName(currentNamespace, record.qualifiedTypeName) +
-            "`" + std::to_string(record.parameters.size());
+            "`" + genericAritySpelling(record);
         templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
     }
 
@@ -760,6 +808,7 @@ void ProjectGenericModel::collectTemplates(
         record.ownerName = ownerName;
         record.name = node->text();
         record.parameters = node->genericParameters();
+        record.parameterSyntaxes = node->genericParameterSyntaxes();
         record.constraints = node->genericConstraints();
         record.qualifiedTypeName = ownerName;
         const std::string callableScope = ownerName.empty()
@@ -767,7 +816,7 @@ void ProjectGenericModel::collectTemplates(
             : qualifiedName(currentNamespace, ownerName);
         record.canonicalKey = record.moduleName + "::" +
             (callableScope.empty() ? std::string{} : callableScope + ".") +
-            record.name + "``" + std::to_string(record.parameters.size());
+            record.name + "``" + genericAritySpelling(record);
         templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
     }
 
@@ -913,12 +962,14 @@ void ProjectGenericModel::processNode(
         processTypeSyntax(unit, node->typeSyntax(), currentNamespace, currentScope, diagnostics);
     }
 
-    if (node->kind() == ast::AstNodeKind::CallExpression && node->typeSyntaxes().empty())
+    if (node->kind() == ast::AstNodeKind::CallExpression &&
+        node->typeSyntaxes().empty() && !node->flag())
     {
         inferGenericCall(
             unit, node, currentNamespace, ownerName, currentScope, diagnostics);
     }
-    if (node->kind() == ast::AstNodeKind::CallExpression && !node->typeSyntaxes().empty())
+    if (node->kind() == ast::AstNodeKind::CallExpression &&
+        (!node->typeSyntaxes().empty() || node->flag()))
     {
         processGenericCall(unit, node, currentNamespace, ownerName, currentScope, diagnostics);
     }
@@ -952,7 +1003,7 @@ void ProjectGenericModel::processNode(
     }
     if (contextualCall != nullptr && contextualType != nullptr &&
         contextualCall->kind() == ast::AstNodeKind::CallExpression &&
-        contextualCall->typeSyntaxes().empty())
+        contextualCall->typeSyntaxes().empty() && !contextualCall->flag())
     {
         inferGenericCall(
             unit, contextualCall, currentNamespace, ownerName, currentScope, diagnostics,
@@ -1011,6 +1062,18 @@ bool ProjectGenericModel::processTypeSyntax(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (syntax == nullptr) return true;
+    std::string constType;
+    std::string constValue;
+    if (decodeConstGenericArgument(syntax, constType, constValue)) return true;
+    if (syntax->isPackExpansion())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "generic pack expansion is valid only for a declared type pack inside a generic argument list");
+        return false;
+    }
     for (ast::TypeSyntax* argument : syntax->typeArguments())
     {
         if (!processTypeSyntax(unit, argument, namespaceName, scope, diagnostics)) return false;
@@ -1051,17 +1114,23 @@ bool ProjectGenericModel::processTypeSyntax(
         return true;
     }
 
-    if (syntax->typeArguments().size() != state->record.parameters.size())
+    if (!genericArityAccepts(state->record, syntax->typeArguments().size()))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidArgumentCount,
             diagnostics::DiagnosticSeverity::Error,
             syntax->range(),
             "generic type '" + state->record.name + "' expects " +
-                std::to_string(state->record.parameters.size()) + " type argument(s) but received " +
+                (trailingTypePackIndex(state->record).has_value()
+                    ? "at least " + std::to_string(*trailingTypePackIndex(state->record))
+                    : std::to_string(state->record.parameters.size())) +
+                " type argument(s) but received " +
                 std::to_string(syntax->typeArguments().size()));
         return false;
     }
+    if (!normalizeGenericArguments(
+            state->record, syntax->typeArguments(), syntax->range(), diagnostics))
+        return false;
 
     currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
     currentInstantiationNamespace_ = namespaceName;
@@ -1310,6 +1379,158 @@ bool ProjectGenericModel::inferTypeArguments(
     return true;
 }
 
+bool ProjectGenericModel::normalizeGenericArguments(
+    const GenericTemplateRecord& record,
+    std::span<ast::TypeSyntax* const> arguments,
+    SourceRange range,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const std::optional<std::size_t> packIndex = trailingTypePackIndex(record);
+    if (packIndex.has_value())
+    {
+        const std::array<std::size_t, 1> lengths{
+            arguments.size() - *packIndex};
+        std::string packError;
+        if (!language::validatePackExpansion(
+                lengths, DefaultMaximumPackExpansionCount, packError))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidArgumentCount,
+                diagnostics::DiagnosticSeverity::Error,
+                range,
+                packError + " (limit " +
+                    std::to_string(DefaultMaximumPackExpansionCount) + ")");
+            return false;
+        }
+    }
+    for (std::size_t index = 0; index < arguments.size(); ++index)
+    {
+        const std::size_t parameterIndex =
+            packIndex.has_value() && index >= *packIndex ? *packIndex : index;
+        const ast::GenericParameterSyntaxKind kind =
+            parameterIndex < record.parameterSyntaxes.size()
+            ? record.parameterSyntaxes[parameterIndex].kind
+            : ast::GenericParameterSyntaxKind::Type;
+        std::string argumentType;
+        std::string argumentValue;
+        const bool constant = decodeConstGenericArgument(
+            arguments[index], argumentType, argumentValue);
+        if (kind == ast::GenericParameterSyntaxKind::Type)
+        {
+            if (!constant) continue;
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                arguments[index]->range(),
+                "generic type parameter '" + record.parameters[parameterIndex] +
+                    "' requires a type argument, not a compile-time value");
+            return false;
+        }
+        if (kind == ast::GenericParameterSyntaxKind::TypePack)
+        {
+            if (!constant) continue;
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                arguments[index]->range(),
+                "generic type pack '" + record.parameters[parameterIndex] +
+                    "' cannot contain a compile-time value argument");
+            return false;
+        }
+        if (kind == ast::GenericParameterSyntaxKind::ConstantPack)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                range,
+                "generic pack materialization requires pack expansion support");
+            return false;
+        }
+        if (!constant)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                arguments[index] != nullptr ? arguments[index]->range() : range,
+                "const generic parameter '" + record.parameters[parameterIndex] +
+                    "' requires a compile-time value argument");
+            return false;
+        }
+
+        const ast::GenericParameterSyntax& parameter = record.parameterSyntaxes[parameterIndex];
+        const std::string expectedType = constGenericParameterTypeKey(parameter);
+        if (expectedType == "builtin:bool")
+        {
+            if (argumentType != "builtin:bool" ||
+                (argumentValue != "true" && argumentValue != "false"))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    arguments[index]->range(),
+                    "const generic parameter '" + record.parameters[parameterIndex] +
+                        "' requires a boolean value");
+                return false;
+            }
+            continue;
+        }
+        if (argumentType == "builtin:bool")
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                arguments[index]->range(),
+                "const generic parameter '" + record.parameters[parameterIndex] +
+                    "' requires an integral value");
+            return false;
+        }
+
+        std::uint64_t value = 0;
+        const auto parsed = std::from_chars(
+            argumentValue.data(), argumentValue.data() + argumentValue.size(), value);
+        if (parsed.ec != std::errc{} || parsed.ptr != argumentValue.data() + argumentValue.size())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                arguments[index]->range(),
+                "const generic argument is not a normalized integral value");
+            return false;
+        }
+        const lexer::TokenKind expectedKind = parameter.constantType != nullptr
+            ? parameter.constantType->baseTokenKind() : lexer::TokenKind::Invalid;
+        std::uint64_t maximum = (std::numeric_limits<std::uint64_t>::max)();
+        switch (expectedKind)
+        {
+            case lexer::TokenKind::KwSByte: maximum = 0x7fU; break;
+            case lexer::TokenKind::KwByte: maximum = 0xffU; break;
+            case lexer::TokenKind::KwShort: maximum = 0x7fffU; break;
+            case lexer::TokenKind::KwUShort:
+            case lexer::TokenKind::KwChar: maximum = 0xffffU; break;
+            case lexer::TokenKind::KwInt: maximum = 0x7fffffffU; break;
+            case lexer::TokenKind::KwUInt: maximum = 0xffffffffULL; break;
+            case lexer::TokenKind::KwLong:
+            case lexer::TokenKind::KwNInt: maximum = 0x7fffffffffffffffULL; break;
+            default: break;
+        }
+        if (value > maximum)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                arguments[index]->range(),
+                "const generic argument '" + argumentValue + "' does not fit parameter type '" +
+                    (parameter.constantType != nullptr ? parameter.constantType->baseName() : "<missing>") + "'");
+            return false;
+        }
+        // The declaration type, not the literal suffix, participates in identity. Therefore
+        // `Vector<int, 4>` and `Vector<int, 4u>` share the same specialization when N is uint.
+        arguments[index]->setBaseName(language::constGenericArgumentMarker(
+            expectedType, std::to_string(value)));
+    }
+    return true;
+}
+
 bool ProjectGenericModel::inferGenericCall(
     ProjectSyntaxUnit& unit,
     ast::AstNode* call,
@@ -1350,7 +1571,7 @@ bool ProjectGenericModel::inferGenericCall(
     for (ast::AstNode* argument : call->children())
     {
         if (argument == nullptr || argument->kind() != ast::AstNodeKind::CallExpression ||
-            !argument->typeSyntaxes().empty()) continue;
+            (!argument->typeSyntaxes().empty() || argument->flag())) continue;
         inferGenericCall(unit, argument, namespaceName, ownerName, scope, diagnostics, nullptr);
         if (!argument->typeSyntaxes().empty())
             processGenericCall(unit, argument, namespaceName, ownerName, scope, diagnostics);
@@ -1606,7 +1827,13 @@ bool ProjectGenericModel::processGenericCall(
         currentOverloadGroup_ = ++nextOverloadGroup_;
         for (TemplateState* candidate : shared)
         {
-            if (call->typeSyntaxes().size() != candidate->record.parameters.size()) continue;
+            if (!genericArityAccepts(candidate->record, call->typeSyntaxes().size())) continue;
+            if (!normalizeGenericArguments(
+                    candidate->record, call->typeSyntaxes(), call->range(), diagnostics))
+            {
+                currentOverloadGroup_ = 0;
+                return false;
+            }
             if (ensureMethodSpecialization(
                     *candidate, call->typeSyntaxes(), diagnostics, sharedName).empty())
             {
@@ -1617,6 +1844,7 @@ bool ProjectGenericModel::processGenericCall(
         currentOverloadGroup_ = 0;
         if (callee != nullptr) callee->setText(sharedName);
         call->clearTypeSyntaxes();
+        call->setFlag(false);
         return true;
     }
 
@@ -1641,17 +1869,23 @@ bool ProjectGenericModel::processGenericCall(
                     "<...>' has no visible Stage 44 generic method template");
         return false;
     }
-    if (call->typeSyntaxes().size() != state->record.parameters.size())
+    if (!genericArityAccepts(state->record, call->typeSyntaxes().size()))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidArgumentCount,
             diagnostics::DiagnosticSeverity::Error,
             call->range(),
             "generic method '" + methodName + "' expects " +
-                std::to_string(state->record.parameters.size()) + " type argument(s) but received " +
+                (trailingTypePackIndex(state->record).has_value()
+                    ? "at least " + std::to_string(*trailingTypePackIndex(state->record))
+                    : std::to_string(state->record.parameters.size())) +
+                " type argument(s) but received " +
                 std::to_string(call->typeSyntaxes().size()));
         return false;
     }
+    if (!normalizeGenericArguments(
+            state->record, call->typeSyntaxes(), call->range(), diagnostics))
+        return false;
 
     currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
     currentInstantiationNamespace_ = namespaceName;
@@ -1661,6 +1895,7 @@ bool ProjectGenericModel::processGenericCall(
     if (specialized.empty()) return false;
     if (callee != nullptr) callee->setText(specialized);
     call->clearTypeSyntaxes();
+    call->setFlag(false);
     return true;
 }
 
@@ -1683,7 +1918,7 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
             if (state.record.kind == GenericTemplateKind::Method ||
                 state.record.moduleName != requestedModule ||
                 (arity != std::numeric_limits<std::size_t>::max() &&
-                 state.record.parameters.size() != arity))
+                 !genericArityAccepts(state.record, arity)))
                 continue;
             const std::string candidate =
                 qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName);
@@ -1700,7 +1935,8 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
     {
         if (state.record.kind == GenericTemplateKind::Method ||
             !templateVisible(unit.projectOrdinal(), state.record)) continue;
-        if (arity != std::numeric_limits<std::size_t>::max() && state.record.parameters.size() != arity) continue;
+        if (arity != std::numeric_limits<std::size_t>::max() &&
+            !genericArityAccepts(state.record, arity)) continue;
         const std::string candidate =
             qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName);
         if (writtenName.find('.') != std::string_view::npos)
@@ -1750,7 +1986,7 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::templatesN
         if (state.record.kind != GenericTemplateKind::Method) return false;
         if (!templateVisible(unit.projectOrdinal(), state.record)) return false;
         if (state.record.name != methodName) return false;
-        if (arity != sinFiltro && state.record.parameters.size() != arity) return false;
+        if (arity != sinFiltro && !genericArityAccepts(state.record, arity)) return false;
         if (argumentCount != sinFiltro && valueParameterCount(state.syntax) != argumentCount)
             return false;
         return true;
@@ -1846,7 +2082,7 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
     {
         if (state.record.kind != GenericTemplateKind::Method) return false;
         if (!templateVisible(unit.projectOrdinal(), state.record)) return false;
-        if (arity != sinFiltro && state.record.parameters.size() != arity) return false;
+        if (arity != sinFiltro && !genericArityAccepts(state.record, arity)) return false;
         if (state.record.name != methodName) return false;
         if (exigirArgumentos && argumentCount != sinFiltro &&
             valueParameterCount(state.syntax) != argumentCount)
@@ -1877,6 +2113,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     const std::string callerNamespace = currentInstantiationNamespace_;
     const SourceRange callerRange = currentInstantiationRange_;
     const std::size_t callerOverloadGroup = currentOverloadGroup_;
+    const auto callerPackSubstitutions = activePackSubstitutions_;
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
@@ -1944,11 +2181,21 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         currentOverloadGroup_});
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
-    for (std::size_t index = 0; index < state.record.parameters.size(); ++index)
+    const std::size_t fixedParameterCount = trailingTypePackIndex(state.record).value_or(
+        state.record.parameters.size());
+    for (std::size_t index = 0; index < fixedParameterCount; ++index)
         substitutions.emplace(state.record.parameters[index], arguments[index]);
+    activePackSubstitutions_.clear();
+    if (const auto pack = trailingTypePackIndex(state.record); pack.has_value())
+    {
+        auto& values = activePackSubstitutions_[state.record.parameters[*pack]];
+        for (std::size_t index = *pack; index < arguments.size(); ++index)
+            values.push_back(arguments[index]);
+    }
 
     ast::AstNode* clone = cloneNode(
         state.unit->arena(), state.syntax, substitutions, specializedName, state.record.name);
+    activePackSubstitutions_ = callerPackSubstitutions;
     clone->setText(specializedName);
     clone->clearGenericParameters();
     // Keep the specialization prefix first because downstream demand/debug readers use it as the
@@ -1974,6 +2221,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     currentInstantiationNamespace_ = callerNamespace;
     currentInstantiationRange_ = callerRange;
     currentOverloadGroup_ = callerOverloadGroup;
+    activePackSubstitutions_ = callerPackSubstitutions;
     instantiationBudget_.leave();
     return specializedName;
 }
@@ -1988,6 +2236,7 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     const std::string callerNamespace = currentInstantiationNamespace_;
     const SourceRange callerRange = currentInstantiationRange_;
     const std::size_t callerOverloadGroup = currentOverloadGroup_;
+    const auto callerPackSubstitutions = activePackSubstitutions_;
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
@@ -2074,10 +2323,20 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
         currentOverloadGroup_});
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
-    for (std::size_t index = 0; index < state.record.parameters.size(); ++index)
+    const std::size_t fixedParameterCount = trailingTypePackIndex(state.record).value_or(
+        state.record.parameters.size());
+    for (std::size_t index = 0; index < fixedParameterCount; ++index)
         substitutions.emplace(state.record.parameters[index], arguments[index]);
+    activePackSubstitutions_.clear();
+    if (const auto pack = trailingTypePackIndex(state.record); pack.has_value())
+    {
+        auto& values = activePackSubstitutions_[state.record.parameters[*pack]];
+        for (std::size_t index = *pack; index < arguments.size(); ++index)
+            values.push_back(arguments[index]);
+    }
 
     ast::AstNode* clone = cloneNode(state.unit->arena(), state.syntax, substitutions, "", "");
+    activePackSubstitutions_ = callerPackSubstitutions;
     clone->setText(specializedName);
     clone->clearGenericParameters();
     clone->setAuxiliaryText("stage44-specialization:" + key);
@@ -2090,6 +2349,7 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     currentInstantiationNamespace_ = callerNamespace;
     currentInstantiationRange_ = callerRange;
     currentOverloadGroup_ = callerOverloadGroup;
+    activePackSubstitutions_ = callerPackSubstitutions;
     instantiationBudget_.leave();
     return specializedName;
 }
@@ -2142,7 +2402,19 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
         else
         {
             for (const ast::TypeSyntax* argument : source->typeArguments())
+            {
+                if (argument != nullptr && argument->isPackExpansion())
+                {
+                    const auto pack = activePackSubstitutions_.find(argument->baseName());
+                    if (pack != activePackSubstitutions_.end())
+                    {
+                        for (const ast::TypeSyntax* item : pack->second)
+                            result->addTypeArgument(cloneType(arena, item, substitutions));
+                        continue;
+                    }
+                }
                 result->addTypeArgument(cloneType(arena, argument, substitutions));
+            }
         }
         // Stage 52 fix: this plain (non-substituted) re-clone still needs to carry forward the
         // origin tags the SOURCE node already carries. This branch is exactly what runs when
@@ -2204,6 +2476,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     // argument requires an owned parameter". Carry it over unconditionally, exactly like the
     // pointer/array modifiers just above.
     result->setOwnershipQualifier(source->ownershipQualifier());
+    result->setPackExpansion(source->isPackExpansion());
     // Stage 52 fix: only stamp the TEMPLATE's own range for the non-substituted branch (the
     // clone still represents source text written at that template position, e.g. `T[]`'s own
     // array-modifier range). For a substituted leaf, `result` already carries the real argument's
@@ -2259,6 +2532,51 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     std::string_view originalContainingTypeName)
 {
     if (source == nullptr) return nullptr;
+    if (source->kind() == ast::AstNodeKind::CallExpression &&
+        source->first() != nullptr &&
+        source->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        source->first()->text() == "packcount" && source->children().size() == 1U &&
+        source->children().front() != nullptr &&
+        source->children().front()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto pack = activePackSubstitutions_.find(source->children().front()->text());
+        if (pack != activePackSubstitutions_.end())
+        {
+            ast::AstNode* literal = arena.make<ast::AstNode>(
+                ast::AstNodeKind::IntegerLiteralExpression, source->range());
+            literal->setTokenKind(lexer::TokenKind::IntegerLiteral);
+            literal->setIntegerValue(pack->second.size());
+            literal->setText(std::to_string(pack->second.size()));
+            return literal;
+        }
+    }
+    if (source->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto substitution = substitutions.find(source->text());
+        std::string constType;
+        std::string constValue;
+        if (substitution != substitutions.end() &&
+            decodeConstGenericArgument(substitution->second, constType, constValue))
+        {
+            const bool boolean = constType == "builtin:bool";
+            ast::AstNode* literal = arena.make<ast::AstNode>(
+                boolean ? ast::AstNodeKind::BooleanLiteralExpression
+                        : ast::AstNodeKind::IntegerLiteralExpression,
+                source->range());
+            literal->setText(constValue);
+            literal->setTokenKind(boolean
+                ? (constValue == "true" ? lexer::TokenKind::KwTrue : lexer::TokenKind::KwFalse)
+                : lexer::TokenKind::IntegerLiteral);
+            if (!boolean)
+            {
+                std::uint64_t value = 0;
+                std::from_chars(
+                    constValue.data(), constValue.data() + constValue.size(), value);
+                literal->setIntegerValue(value);
+            }
+            return literal;
+        }
+    }
     const bool layoutQueryOfSubstitutedParameter =
         (source->kind() == ast::AstNodeKind::SizeofExpression ||
          source->kind() == ast::AstNodeKind::AlignofExpression) &&
@@ -2296,7 +2614,12 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     // exclusive inline/forceinline/noinline policy must reach every explicit or inferred clone;
     // ProjectMemberModel will consume the copied token into the single InliningPolicy field.
     for (const lexer::TokenKind modifier : source->modifiers()) result->addModifier(modifier);
-    for (const std::string& parameter : source->genericParameters()) result->addGenericParameter(parameter);
+    for (const ast::GenericParameterSyntax& parameter : source->genericParameterSyntaxes())
+    {
+        ast::GenericParameterSyntax copy = parameter;
+        copy.constantType = cloneType(arena, parameter.constantType, substitutions);
+        result->addGenericParameter(std::move(copy));
+    }
     // NSC-LIMIT-007. Las clausulas se clonan con la sustitucion aplicada a sus tipos, igual que
     // cualquier otro TypeSyntax del nodo. Copiar los punteros originales dejaria la
     // especializacion apuntando a sintaxis de la PLANTILLA -- viva, pero de otro arbol, y con `T`
@@ -2360,6 +2683,10 @@ ast::AstNode* ProjectGenericModel::cloneNode(
 std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) const
 {
     if (syntax == nullptr) return "<missing>";
+    std::string constType;
+    std::string constValue;
+    if (decodeConstGenericArgument(syntax, constType, constValue))
+        return "const(" + constType + "=" + constValue + ")";
     std::string result;
     if (syntax->isTuple())
     {
@@ -2389,11 +2716,16 @@ std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) con
         else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray) result += "[*]";
         else result += "[fixed]";
     }
+    if (syntax->isPackExpansion()) result += "...";
     return result;
 }
 
 std::string ProjectGenericModel::typeSpecializationIdentity(const ast::TypeSyntax* syntax) const
 {
+    std::string constType;
+    std::string constValue;
+    if (decodeConstGenericArgument(syntax, constType, constValue))
+        return "const:" + constType + "=" + constValue;
     if (syntax != nullptr)
     {
         if (const auto resolved = resolvedTypeIdentityBySyntax_.find(syntax);

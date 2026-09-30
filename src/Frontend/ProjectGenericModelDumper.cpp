@@ -16,7 +16,9 @@ std::string ProjectGenericModelDumper::dump(const ProjectGenericModel& model)
            << " cache-hits=" << report.cacheHitCount
            << " maximum-depth=" << report.maximumObservedDepth
            << " depth-limit=" << report.maximumDepth
-           << " count-limit=" << report.maximumCount << '\n';
+           << " count-limit=" << report.maximumCount
+           << " pack-expansion-limit="
+           << ProjectGenericModel::DefaultMaximumPackExpansionCount << '\n';
     for (const GenericTemplateRecord& record : model.templates())
     {
         output << "template " << genericTemplateKindName(record.kind)

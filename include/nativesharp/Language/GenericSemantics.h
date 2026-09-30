@@ -30,6 +30,13 @@ struct ConstGenericValue final
 };
 
 bool validateConstGeneric(const ConstGenericValue& value, std::string& error);
+std::string constGenericArgumentMarker(
+    std::string_view typeKey,
+    std::string_view normalizedValue);
+bool parseConstGenericArgumentMarker(
+    std::string_view marker,
+    std::string& typeKey,
+    std::string& normalizedValue) noexcept;
 std::string genericInstantiationIdentity(
     std::string_view definition,
     std::span<const std::string> typeArguments,

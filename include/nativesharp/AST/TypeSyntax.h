@@ -74,6 +74,9 @@ public:
     void addTupleElement(TypeSyntax* type, std::string name = {});
     const std::vector<std::string>& tupleElementNames() const noexcept;
 
+    bool isPackExpansion() const noexcept;
+    void setPackExpansion(bool value = true) noexcept;
+
     void addModifier(TypeModifierSyntax modifier);
     const std::vector<TypeModifierSyntax>& modifiers() const noexcept;
 
@@ -124,6 +127,7 @@ private:
     std::vector<TypeSyntax*> typeArguments_;
     bool isTuple_ = false;
     std::vector<std::string> tupleElementNames_;
+    bool isPackExpansion_ = false;
     std::vector<TypeModifierSyntax> modifiers_;
     std::optional<std::size_t> originProjectOrdinal_;
     std::optional<std::string> originNamespace_;

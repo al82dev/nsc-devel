@@ -1,25 +1,29 @@
 # Tanda 04 — Genéricos 3.0 / Generics 3.0
 
-> **Estado 2026-09-29:** `IMPLEMENTING`. La tanda operativa 10 conectó F01/F04/F07 al modelo
-> productivo para constraints existentes, inferencia por tipo esperado exacto y presupuestos de
-> monomorfización. F02/F03/F05/F06 y la superficie completa de templates continúan en la tanda 11.
+> **Estado 2026-09-29:** `IMPLEMENTING`. Las tandas operativas 10–11 conectaron F01/F04/F07 y una
+> vertical productiva F02/F03: const bool/enteros builtin, layout dependiente, type packs finales,
+> `packcount`, forwarding y rehidratación `.nsmeta`. Opaque aliases, especialización controlada,
+> expresiones const generales, value packs/folds/indexado y la inferencia contextual profunda
+> continúan abiertos.
 
 ## Resultado / Outcome
 
-ES: El compilador productivo ya combina constraints declarativos con inferencia desde argumentos y
-desde un tipo esperado exacto en inicializadores, retornos y asignaciones. La materialización usa
-límites independientes de profundidad y cantidad, publica estadísticas deterministas y falla con
-cadena causal. EN: The productive compiler now combines declarative constraints with inference from
-arguments and exact expected types in initializers, returns, and assignments. Materialization has
-independent depth/count limits, deterministic statistics, and causal failure chains.
+ES: El compilador productivo combina constraints e inferencia exacta con const generics y type
+packs AOT. Valores const afectan layout/identidad; packs vacíos o múltiples se cuentan y reenvían;
+todo cruza `.nsmeta` sin diccionario runtime. La materialización usa límites independientes de
+profundidad, cantidad y expansión. EN: The productive compiler combines constraints and exact
+inference with AOT const generics and type packs. Const values affect layout/identity; empty or
+multiple packs can be counted and forwarded; all of it crosses `.nsmeta` without runtime
+dictionaries. Materialization has independent depth, count, and expansion limits.
 
 ## Cambios y archivos / Changes and files
 
 - `ProjectGenericModel` consume el presupuesto de `GenericSemantics` en cada especialización nueva.
 - El dump de genéricos informa materializaciones, cache hits, profundidad máxima y ambos límites.
 - `c60_ns3_generic_solver` prueba el camino NativeSharp→MIR→LLVM→PE x64 O0 y devuelve 42.
-- Los helpers de const generics, packs, aliases opacos y especialización continúan siendo contrato
-  aislado hasta su conexión productiva en la tanda 11.
+- `c61_ns3_const_generics_packs` prueba valores const, layouts, packs y forwarding hasta PE O0.
+- El source template público de const/packs se rehidrata desde `.nsmeta` en un consumidor separado.
+- Los helpers de aliases opacos y especialización continúan siendo contrato aislado.
 
 ## Mejora / Improvement
 
@@ -34,12 +38,13 @@ with a stable diagnostic at depth 64. Exact repeats reuse the cache and appear i
 
 ## Límite / Boundary
 
-ES/EN: La inferencia contextual de esta entrega es exacta y directa; lambdas, tuplas contextuales,
-method groups y propagación contextual anidada permanecen abiertas. Const generics, packs, opaque
-aliases y partial specialization siguen en la tanda 11. NSMETA ya transporta constraints/templates
-2.x, pero su superficie 3.0 completa todavía no está certificada.
+ES/EN: La inferencia contextual sigue siendo exacta/directa. Const generics se limitan por ahora a
+literales bool/enteros builtin; packs, a un type pack final con count/forwarding. Enums/structural,
+const expressions, value packs/index/folds, lambdas/tuplas/method groups, opaque aliases y
+especialización controlada continúan abiertas. NSMETA transporta la vertical productiva, no toda la
+superficie futura 3.0.
 
 ## Validación / Validation
 
-Compilación Debug/O0 de `nsc`; `c60` emitido y ejecutado con exit 42; dos dumps genéricos idénticos;
-cuatro rechazos dirigidos para falta de evidencia, conflicto, constraint y profundidad. Sin baseline.
+Compilación Debug/O0 de `nsc`; `c60` y `c61` emitidos/ejecutados con exit 42; dumps deterministas;
+layouts 16/32; productor `.lib/.nsmeta` → consumidor exit 42; rechazos dirigidos. Sin baseline.

@@ -833,6 +833,13 @@ int main(int argc, char** argv)
         "tests/cc1/c60_ns3_generic_solver/c60_ns3_generic_solver.nsproj",
         "cc1-c60-ns3-generic-solver", 42);
 
+    // NativeSharp 3.0 T04-F02/F03: const values reach layout and method bodies; a trailing type
+    // pack accepts empty/multiple lists, reports its length, and forwards with `Ts...`.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c61_ns3_const_generics_packs/c61_ns3_const_generics_packs.nsproj",
+        "cc1-c61-ns3-const-generics-packs", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,
