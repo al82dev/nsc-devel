@@ -453,6 +453,7 @@ add_library(nsc_driver STATIC
     src/Driver/ReleaseCandidateFreeze.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
+    src/Interop/LibraryAbiReport.cpp
     src/Interop/LibraryApiDiff.cpp
     src/Interop/LibraryMetadata.cpp
     src/Interop/LibraryMetadataMerger.cpp)
@@ -641,62 +642,29 @@ endif()
 # =====================================================================================
 # NSC_TEST_COMPILER -- EL COMPILADOR QUE MIDE CTEST.
 #
-# Los 117 tests de mas abajo invocaban el OBJETIVO `nsc`, y CMake resuelve un objetivo al
-# binario del ARBOL DE BUILD: build-clang/bin/nsc.exe. Eso ata la bateria a un artefacto
-# intermedio en vez de al que se entrega. `cmake --install` copia ese binario a
-# C:/native-sharp-3.0/bin, y entre los dos caben una instalacion que fallo, un install que se
-# salto, o un arbol de build rehecho despues. Lo que se mide tiene que ser lo instalado,
-# porque es lo que un proyecto de fuera va a usar.
+# El valor por defecto es el objetivo `nsc` del mismo arbol de build. De esta forma cada
+# prueba dirigida y el baseline final, cuando Alberto lo autorice, miden exactamente el
+# compilador que acaba de generarse y no una instalacion anterior en C:. El generator
+# expression se resuelve al ejecutable correcto para la configuracion activa.
 #
-# EL 2026-09-04 ESO SALIO A LA SUPERFICIE. test_nsc.bat construye el objetivo `pruebas`,
-# que EXCLUYE `nsc` a proposito -- para no cambiar el compilador que se esta midiendo. Sin
-# `build-clang/bin/nsc.exe`, esos tests salieron `***Not Run` con "Could not find executable
-# A:/nsc-devel/build-clang/bin/nsc.exe". El defecto no era el fichero ausente: era que la
-# bateria apuntaba al sitio equivocado desde el principio, y solo se vio cuando el sitio
-# equivocado quedo vacio.
-#
-# ES UNA RUTA Y NO UN OBJETIVO, Y ESO ES DELIBERADO. Mientras se escriba el nombre del
-# objetivo, CMake tiene que resolverlo al arbol de build por definicion: no existe forma de
-# que `COMMAND nsc` signifique "el instalado". Escribir la ruta rompe ese vinculo, que es
-# justo lo que se quiere -- ctest ya no depende de construir nada y mide el fichero que hay.
-#
-# LA CONTRAPARTIDA, DICHA ENTERA: ctest deja de garantizar que ese fichero este al dia. Esa
-# garantia se mueve a quien lanza la corrida, y hay dos sitios que la dan:
-#
-#   * all.bat instala en el paso 1, justo antes de ctest, asi que ahi es fresco por
-#     construccion;
-#   * test_nsc.bat no instala --es su promesa-- y por eso compara la fecha del ejecutable
-#     con la de las fuentes (build_al_dia.py --solo-nsc) y avisa antes de medir nada.
-#
-# Y dentro de la propia bateria queda `nsc.version`, el primero de los 117: comprueba
-# version y stage contra un regex, asi que un compilador de otra stage se pone rojo ahi.
-#
-# FUERA DE WINDOWS no existe C:/, asi que el valor por defecto vuelve a ser el del arbol de
-# build. La variable es de cache: `-DNSC_TEST_COMPILER=<ruta>` manda sobre las dos ramas.
+# Una corrida de certificacion que necesite medir deliberadamente otro artefacto puede pasar
+# `-DNSC_TEST_COMPILER=<ruta>`. Ese override es explicito y se valida al configurar; nunca se
+# selecciona una instalacion externa de forma silenciosa.
 # =====================================================================================
 set(NSC_TEST_COMPILER "" CACHE FILEPATH
-    "Ejecutable nsc que mide ctest (vacio = C:/native-sharp-3.0/bin/nsc.exe en Windows)")
+    "Ejecutable nsc que mide ctest (vacio = objetivo nsc del arbol de build)")
 set(NSC_BOOTSTRAP_LOCK "${CMAKE_CURRENT_SOURCE_DIR}/selfhost/bootstrap/bootstrap.lock" CACHE FILEPATH
     "Lock físico del bootstrap; nscbuilder usa una copia inmutable por corrida")
 set(_nsc_test_compiler_es_ruta TRUE)
 if(NSC_TEST_COMPILER STREQUAL "")
-    if(WIN32)
-        set(NSC_TEST_COMPILER "C:/native-sharp-3.0/bin/nsc.exe")
-    else()
-        set(NSC_TEST_COMPILER "$<TARGET_FILE:nsc>")
-        set(_nsc_test_compiler_es_ruta FALSE)
-    endif()
+    set(NSC_TEST_COMPILER "$<TARGET_FILE:nsc>")
+    set(_nsc_test_compiler_es_ruta FALSE)
 endif()
 message(STATUS "ctest mide el compilador: ${NSC_TEST_COMPILER}")
 if(_nsc_test_compiler_es_ruta AND NOT EXISTS "${NSC_TEST_COMPILER}")
-    # NO es FATAL_ERROR, y la razon es el huevo y la gallina: en un arbol recien clonado el
-    # configure ocurre ANTES del primer install, asi que parar aqui haria imposible la
-    # primera construccion. Se avisa; si sigue faltando cuando ctest corra, lo repetira el
-    # propio ctest, y ahora nombrando la ruta correcta.
     message(WARNING
         "NSC_TEST_COMPILER todavia no existe: ${NSC_TEST_COMPILER} -- los tests que lo "
-        "invocan saldran `Not Run` hasta que se instale "
-        "(cmake --install <build> --prefix C:/native-sharp-3.0)")
+        "invocan saldran `Not Run`; construya o corrija el override explicito")
 endif()
 
 set(NSC_TEST_NSASM "" CACHE FILEPATH
@@ -824,7 +792,7 @@ if(NSC_BUILD_TESTS)
     add_executable(
         nsc_ns3_t13_abi_tests
         tests/unit/NativeSharp3T13AbiTests.cpp)
-    target_link_libraries(nsc_ns3_t13_abi_tests PRIVATE nsc_compilation)
+    target_link_libraries(nsc_ns3_t13_abi_tests PRIVATE nsc_driver)
     target_compile_features(nsc_ns3_t13_abi_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_ns3_t13_abi_tests)
     add_test(NAME nsc.ns3.t13.abi COMMAND nsc_ns3_t13_abi_tests)
