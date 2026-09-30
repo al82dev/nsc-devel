@@ -855,6 +855,13 @@ int main(int argc, char** argv)
         "tests/cc1/c63_ns3_move_borrow_drop/c63_ns3_move_borrow_drop.nsproj",
         "cc1-c63-ns3-move-borrow-drop", 42);
 
+    // NativeSharp 3.0 T06-F06 vertical. `pin raii` owners remain borrowable but cannot be moved
+    // or replaced; lexical cleanup still invokes their destructor exactly once.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c64_ns3_pin_drop_boundary/c64_ns3_pin_drop_boundary.nsproj",
+        "cc1-c64-ns3-pin-drop-boundary", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,
@@ -959,6 +966,26 @@ int main(int argc, char** argv)
         tests, root, "ns3-t01-owning-with-needs-clone",
         R"(namespace reject { public struct Box { public owned string Text; } public class Program { public static int Main() { Box source = { Text = "a" }; Box copy = source with { Text = "b" }; return 0; } } })",
         "explicit clone/copy strategy", "3");
+
+    // T06-F06: pin is an edition-3 ownership commitment. The owner remains borrowable and its
+    // ordinary lexical cleanup stays active, but neither ownership transfer nor replacement may
+    // relocate it after construction.
+    checkRejected(
+        tests, root, "ns3-t06-pin-requires-edition3",
+        R"(class Payload { } class Program { public static int Main() { pin raii Payload stable = new Payload(); return 0; } })",
+        "pin raii locals requires <Language>3</Language>", "2");
+    checkRejected(
+        tests, root, "ns3-t06-pinned-owner-cannot-move",
+        R"(class Payload { } class Program { public static int Main() { pin raii Payload stable = new Payload(); owned Payload moved = move(stable); return 0; } })",
+        "cannot move pinned owner 'stable'", "3");
+    checkRejected(
+        tests, root, "ns3-t06-pinned-owner-cannot-be-replaced",
+        R"(class Payload { } class Program { public static int Main() { pin raii Payload stable = new Payload(); owned Payload replacement = new Payload(); stable = move(replacement); return 0; } })",
+        "cannot replace pinned owner 'stable'", "3");
+    checkRejected(
+        tests, root, "ns3-t06-pinned-projection-cannot-move",
+        R"(class Payload { } class Holder { public owned Payload Slot; public Holder(owned Payload value) { Slot = move(value); } } class Program { public static int Main() { pin raii Holder stable = new Holder(new Payload()); owned Payload moved = move(stable.Slot); return 0; } })",
+        "cannot partially move from pinned owner 'stable'", "3");
 
     // =====================================================================================
     // NSC-LIMIT-010 y NSC-LIMIT-004 -- LOS RECHAZOS.

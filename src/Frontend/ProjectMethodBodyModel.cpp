@@ -3537,6 +3537,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     }
 
     const bool isReferenceLocal = variable->auxiliaryText() == "local:ref";
+    const bool isPinnedLocal = variable->auxiliaryText() == "local:pinned";
     const bool isForeachEnumerator =
         variable->auxiliaryText() == "local:foreach-enumerator";
 
@@ -4193,6 +4194,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         }
     }
     local.isRaii = isRaii;
+    local.isPinned = isPinnedLocal;
     local.ownership = isBorrowed ? sema::OwnershipKind::Borrowed : sema::OwnershipKind::None;
     local.objectLifetimeOwnership = pendingObjectLifetimeOwnership;
     local.storageOwnership = pendingStorageOwnership;
@@ -5869,11 +5871,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     ? name
                     : std::nullopt;
             };
-            const auto rejectBorrowedPartialMove = [&](const std::optional<ScopeName>& root) -> bool
+            const auto rejectInvalidPartialMove = [&](const std::optional<ScopeName>& root) -> bool
             {
                 if (!root.has_value()) return false;
                 if (root->kind == ScopeNameKind::Local)
                 {
+                    if (locals_[root->semanticOrdinal].isPinned)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "cannot partially move from pinned owner '" +
+                                locals_[root->semanticOrdinal].name +
+                                "'; pinned projections are not movable");
+                        return true;
+                    }
                     if (!hasActiveBorrowOfOwnerLocal(root->semanticOrdinal, scopeOrdinal)) return false;
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
@@ -5925,7 +5938,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 expression->first()->kind() == ast::AstNodeKind::IndexExpression)
             {
                 const std::optional<ScopeName> partialRoot = partialMoveRoot(expression->first());
-                if (rejectBorrowedPartialMove(partialRoot)) break;
+                if (rejectInvalidPartialMove(partialRoot)) break;
                 const ExpressionResult element = analyzeExpression(
                     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
                 // El analisis de la base se mantiene DENTRO del cortocircuito, igual que antes: si
@@ -6035,7 +6048,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 expression->first()->kind() == ast::AstNodeKind::MemberExpression)
             {
                 const std::optional<ScopeName> partialRoot = partialMoveRoot(expression->first());
-                if (rejectBorrowedPartialMove(partialRoot)) break;
+                if (rejectInvalidPartialMove(partialRoot)) break;
                 const ExpressionResult member = analyzeExpression(
                     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
                 if (tryOwnedFieldMoveSource(member, partialRoot)) break;
@@ -6085,6 +6098,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     break;
                 }
                 const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
+                if (local.isPinned)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "cannot move pinned owner '" + local.name +
+                            "'; it must remain at a stable address until lexical destruction");
+                    break;
+                }
                 if (movedRaiiLocals_.contains(source->semanticOrdinal))
                 {
                     diagnostics.report(
@@ -13846,6 +13869,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         result.typeKey = "builtin:void";
         result.valid = true;
         return result;
+    }
+
+    if (raiiTargetLocal.has_value() &&
+        locals_[*raiiTargetLocal].isPinned)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->first()->range(),
+            "cannot replace pinned owner '" + locals_[*raiiTargetLocal].name +
+                "'; it must remain at a stable address until lexical destruction");
+        return {};
     }
 
     if (raiiTargetLocal.has_value() &&

@@ -29,9 +29,9 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 | T06-F03 | Exclusividad conservadora del owner completo, incluidas proyecciones field/index | Reborrow mutable y préstamos divididos demostrablemente disjuntos para fields/índices/slices |
 | T06-F04 | Lifetimes léxicos inferidos de borrowed locals y procedencia local/parámetro | Sintaxis nombrada, outlives/subtyping, returns prestados y metadata cross-module |
 | T06-F05 | Destructor y cleanup LIFO existentes para owners locales y parámetros en salidas estructuradas | `defer`, panic/propagation T07, fallos parciales y destructor que falla |
-| T06-F06 | Sólo helper histórico | Pinning productivo se aborda en tanda operativa 14 |
+| T06-F06 | Vertical `pin raii T` edition 3: owner prestable, inamovible, irreemplazable y con cleanup léxico | Proyección pinned de campos, stack/in-place self-reference, async y FFI completos |
 | T06-F07 | Escape checks locales existentes; helper `escape-v1` aislado | Summary público/NSMETA, closures/globals/threads y cadena causal en tanda 14 |
-| T06-F08 | Destruction thunks y metadata 2.x existentes parcialmente | Drop glue genérico/indirecto y witness cross-DLL en tanda 14 |
+| T06-F08 | Descriptor/drop entry del productor cruza NSMETA/DLL, validación fail-closed y witness O0 exactamente una vez | Glue genérico de arrays/variants y summaries de layout/destrucción indirecta |
 
 ## Invariantes de la vertical
 
@@ -53,5 +53,8 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 - Negativos dirigidos rechazan field desde owner local prestado, field desde parámetro `owned`
   prestado y elemento de array desde owner prestado con diagnóstico causal.
 
-El gate T06 completo no se declara verde: todavía requiere la tanda 14, interacción con T07,
-metadata/DLL, matriz CFG exhaustiva, debugger y baseline final ejecutado por Alberto.
+El gate T06 completo no se declara verde: todavía requiere las extensiones abiertas, interacción
+con T07, matriz CFG/DLL exhaustiva, debugger y baseline final ejecutado por Alberto.
+
+La tanda operativa 14 cerró una vertical de F06 y la frontera DLL de F08, pero no F07 ni el glue
+genérico completo. El gate T06 sigue abierto por las deudas de ambas tandas operativas.

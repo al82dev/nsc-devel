@@ -119,6 +119,10 @@ struct MethodLocalSymbol final
     // usa para una pregunta concreta --¿el divisor es cero?-- y no para tipar nada.
     std::optional<std::int64_t> constantIntegerValue;
     bool isRaii = false;
+    // NativeSharp 3.0 T06-F06. A `pin raii` owner keeps its ownership slot and object identity
+    // fixed until lexical cleanup. It may be borrowed and destroyed in place, but never moved or
+    // replaced after initialization.
+    bool isPinned = false;
     sema::OwnershipKind ownership = sema::OwnershipKind::None;
     // Item 320. A placement result owns object destruction while borrowing supplied bytes.
     sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;

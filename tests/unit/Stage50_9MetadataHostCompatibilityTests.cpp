@@ -218,6 +218,17 @@ void testOwnershipRoundTrip(TestContext& tests, const std::filesystem::path& roo
         take->signatureKey != plain->signatureKey && view->signatureKey != plain->signatureKey &&
             take->signatureKey != view->signatureKey,
         "NativeSharp semantic member signatures remain ownership-distinct");
+
+    tests.expect(!metadata.dispatchTables.empty(),
+        "ownership-aware class metadata publishes a destruction dispatch contract");
+    if (!metadata.dispatchTables.empty())
+    {
+        metadata.dispatchTables.front().destructionEntryName.clear();
+        error.clear();
+        tests.expect(!codec.verifyCurrentCompiler(metadata, error) &&
+                error.find("does not provide its producer-owned destruction entry") != std::string::npos,
+            "current NSMETA fails closed when cross-module drop glue is missing");
+    }
 }
 
 void testSemanticFingerprintSensitivity(TestContext& tests, const std::filesystem::path& root)

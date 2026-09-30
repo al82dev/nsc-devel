@@ -2702,6 +2702,12 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                     "' does not provide its class-descriptor accessor";
                 return false;
             }
+            if (dispatch.destructionEntryName.empty())
+            {
+                error = "metadata dispatch contract for '" + dispatch.typeKey +
+                    "' does not provide its producer-owned destruction entry";
+                return false;
+            }
             if (dispatch.slotSignatures.size() != dispatch.slotCalleeNames.size())
             {
                 error = "metadata dispatch contract for '" + dispatch.typeKey + "' has " +

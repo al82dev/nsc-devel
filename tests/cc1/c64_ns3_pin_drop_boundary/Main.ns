@@ -1,0 +1,28 @@
+// NativeSharp 3.0 / T06-F06 productive pinning vertical.
+// `pin raii` retains the ordinary lexical cleanup contract but forbids every ownership transfer
+// or replacement after construction. Borrowing remains valid because it cannot relocate the owner.
+namespace c64ns3pindropboundary
+{
+    public class Payload
+    {
+        public static int Drops = 0;
+        public int Value;
+        public Payload(int value) { Value = value; }
+        ~Payload() { Drops = Drops + 1; }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            int observed = 0;
+            {
+                pin raii Payload stable = new Payload(42);
+                borrowed Payload view = stable;
+                observed = view.Value;
+            }
+            if (Payload.Drops != 1) { return 10; }
+            return observed;
+        }
+    }
+}
