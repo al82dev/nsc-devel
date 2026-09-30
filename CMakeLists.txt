@@ -502,6 +502,8 @@ set(NSC_PROMOTION_ACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Promotion.act")
 set(NSC_RUNTIME_ABI_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpRuntime.abi")
+set(NSC_CONCURRENCY_CONTRACT
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpConcurrency.contract")
 set(NSC_WINDOWS_RUNTIME_LIBRARY
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp.Runtime.Win32.lib")
 add_custom_command(TARGET nsc POST_BUILD
@@ -516,6 +518,7 @@ add_custom_command(TARGET nsc POST_BUILD
     COMMAND $<TARGET_FILE:nsc> --write-final-baseline-contract "${NSC_FINAL_BASELINE_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-promotion-act "${NSC_PROMOTION_ACT}"
     COMMAND $<TARGET_FILE:nsc> --write-runtime-abi-contract "${NSC_RUNTIME_ABI_CONTRACT}"
+    COMMAND $<TARGET_FILE:nsc> --write-concurrency-contract "${NSC_CONCURRENCY_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-windows-runtime-library "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
                "${NSC_COMPATIBILITY_POLICY}"
@@ -527,6 +530,7 @@ add_custom_command(TARGET nsc POST_BUILD
                "${NSC_FINAL_BASELINE_CONTRACT}"
                "${NSC_PROMOTION_ACT}"
                "${NSC_RUNTIME_ABI_CONTRACT}"
+               "${NSC_CONCURRENCY_CONTRACT}"
                "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     COMMENT "Generando contrato reproducible del toolchain NativeSharp"
     VERBATIM)
@@ -554,6 +558,7 @@ set(NSC_INSTALLATION_EXPECTED_PATHS
     "bin/nsc.exe"
     "lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib"
     "share/nativesharp/runtime/NativeSharpRuntime.abi"
+    "share/nativesharp/runtime/NativeSharpConcurrency.contract"
     "share/nativesharp/toolchain/NativeSharpInstallation.files"
     "share/nativesharp/toolchain/NativeSharpCompatibility.policy"
     "share/nativesharp/toolchain/NativeSharp2Migration.baseline"
@@ -631,6 +636,7 @@ install(FILES "${NSC_FINAL_COMPATIBILITY_MATRIX}" DESTINATION share/nativesharp/
 install(FILES "${NSC_FINAL_BASELINE_CONTRACT}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_PROMOTION_ACT}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_RUNTIME_ABI_CONTRACT}" DESTINATION share/nativesharp/runtime)
+install(FILES "${NSC_CONCURRENCY_CONTRACT}" DESTINATION share/nativesharp/runtime)
 install(FILES "${NSC_WINDOWS_RUNTIME_LIBRARY}" DESTINATION lib/nativesharp/runtime)
 install(FILES "${NSC_INSTALLATION_FILE_LIST}" DESTINATION share/nativesharp/toolchain)
 if(WIN32)

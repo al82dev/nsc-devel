@@ -3,8 +3,9 @@
 #include "../support/TestContext.h"
 
 #include <array>
+#include <filesystem>
 
-int main()
+int main(int argc, char** argv)
 {
     nativesharp::tests::TestContext tests;
     using namespace nativesharp::language;
@@ -48,5 +49,20 @@ int main()
             !validMemoryOrder(AtomicOperation::Store, MemoryOrder::Acquire) &&
             !volatileProvidesSynchronization(),
         "atomic orderings are operation-specific and volatile is never synchronization");
+
+    const std::string manifest = concurrencyContractManifest();
+    tests.expect(manifest.find("scheduler=explicit-job-system-only") != std::string::npos &&
+            manifest.find("implicit-heap=no") != std::string::npos &&
+            manifest.find("volatile-synchronization=no") != std::string::npos,
+        "versioned concurrency policy forbids hidden scheduler, heap, and volatile synchronization");
+    tests.expect(concurrencyContractFingerprintHex().size() == 16,
+        "concurrency architecture has a stable policy fingerprint");
+    const std::filesystem::path executable = argc > 0 ? std::filesystem::path(argv[0]) : std::filesystem::path{};
+    const std::filesystem::path contract = executable.parent_path() / "t10-concurrency.contract";
+    tests.expect(writeConcurrencyContract(contract, error) &&
+            verifyConcurrencyContractFile(contract, error),
+        "versioned concurrency contract round-trips through the compiler-owned format");
+    std::error_code cleanupError;
+    std::filesystem::remove(contract, cleanupError);
     return tests.result();
 }

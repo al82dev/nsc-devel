@@ -53,6 +53,7 @@
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/SmartPointerSemantics.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/FloatingPointMode.h"
@@ -3964,6 +3965,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << language::smartPointerContractManifest();
             return ExitCode::Success;
         }
+        if (argument == "--print-concurrency-contract")
+        {
+            output << language::concurrencyContractManifest();
+            return ExitCode::Success;
+        }
         if (argument == "--print-compatibility-policy")
         {
             output << currentCompatibilityPolicy();
@@ -4094,6 +4100,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << "smart pointer contract verified: " << source.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--write-concurrency-contract")
+        {
+            std::string contractError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!language::writeConcurrencyContract(destination, contractError))
+            {
+                error << "nsc: error: " << contractError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "concurrency contract written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-concurrency-contract")
+        {
+            std::string contractError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!language::verifyConcurrencyContractFile(source, contractError))
+            {
+                error << "nsc: error: " << contractError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "concurrency contract verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
         if (action == "--write-windows-runtime-library")
@@ -4689,6 +4719,9 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-smart-pointer-contract\n"
            << "  nsc --write-smart-pointer-contract <file.contract>\n"
            << "  nsc --verify-smart-pointer-contract <file.contract>\n"
+           << "  nsc --print-concurrency-contract\n"
+           << "  nsc --write-concurrency-contract <file.contract>\n"
+           << "  nsc --verify-concurrency-contract <file.contract>\n"
            << "  nsc --write-windows-runtime-library <file.lib>\n"
            << "  nsc --verify-windows-runtime-library <file.lib>\n"
            << "  nsc --verify-pe <file.exe>\n"
@@ -4758,6 +4791,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-toolchain-contract\n"
            << "  nsc --print-runtime-abi-contract\n"
            << "  nsc --print-smart-pointer-contract\n"
+           << "  nsc --print-concurrency-contract\n"
            << "  nsc --print-linker\n"
            << "  nsc --dump-runtime-llvm\n"
            << "  nsc --print-target\n"
