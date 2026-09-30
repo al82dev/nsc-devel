@@ -31,3 +31,13 @@ conectan en T15. Full syntax and persistence integration belongs to T15.
 ## Validación / Validation
 
 `nsc` O0 y `nsc_ns3_t11_metaprogramming_tests`; sin baseline ni CTest general.
+
+## Integración productiva 2026-09-29
+
+La tanda operativa 24 conserva por unidad fuente la evidencia generada por el `ComptimeEngine` real
+y agrega `nsc --dump-project-comptime`. El manifiesto `NSCOMPTIME 1.0` publica evaluaciones, pasos,
+cache hits/misses, dependencias y digest SHA-256 con rutas relativas al proyecto. Evidencia:
+[TANDA-OPERATIVA-24-T11-COMPTIME-MANIFEST.md](TANDA-OPERATIVA-24-T11-COMPTIME-MANIFEST.md).
+
+Esto no conecta todavía introspection/attributes/derive/macros ni autoriza filesystem, env, clock,
+random o FFI. T11 permanece `IMPLEMENTING`; E008–E011 requieren trabajo de libraries separado.

@@ -1,0 +1,9 @@
+namespace NS3T11Comptime
+{
+    public int Answer()
+    {
+        int left = #run(20 + 1);
+        int right = #run(20 + 1);
+        return left + right;
+    }
+}

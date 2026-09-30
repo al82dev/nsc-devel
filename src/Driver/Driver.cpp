@@ -4422,7 +4422,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         }
         if (action == "--check-project" || action == "--dump-project" || action == "--check-project-graph" ||
             action == "--dump-project-graph" || action == "--check-project-syntax" ||
-            action == "--dump-project-compilation" || action == "--check-project-generics" ||
+            action == "--dump-project-compilation" || action == "--dump-project-comptime" ||
+            action == "--check-project-generics" ||
             action == "--dump-project-generics" || action == "--check-project-names" ||
             action == "--dump-project-names" || action == "--check-project-members" ||
             action == "--dump-project-members" || action == "--check-project-inheritance" ||
@@ -4676,6 +4677,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --dump-project-graph <file.nsproj>\n"
            << "  nsc --check-project-syntax <file.nsproj>\n"
            << "  nsc --dump-project-compilation <file.nsproj>\n"
+           << "  nsc --dump-project-comptime <file.nsproj>\n"
            << "  nsc --check-project-generics <file.nsproj>\n"
            << "  nsc --dump-project-generics <file.nsproj>\n"
            << "  nsc --check-project-names <file.nsproj>\n"
@@ -5359,6 +5361,12 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
     {
         frontend::ProjectCompilationDumper dumper;
         dumper.dump(projectCompilation, output);
+    }
+
+    if (action == "--dump-project-comptime")
+    {
+        frontend::ProjectCompilationDumper dumper;
+        dumper.dumpComptime(projectCompilation, output);
     }
 
     if (action == "--dump-project-generics" && projectCompilation.genericModel() != nullptr)

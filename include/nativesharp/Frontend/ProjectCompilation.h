@@ -16,6 +16,7 @@
 #include "nativesharp/Frontend/ProjectDestructionModel.h"
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
 #include "nativesharp/Frontend/CompilationStage.h"
+#include "nativesharp/Frontend/ComptimeEngine.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
@@ -44,6 +45,20 @@ struct PrecompiledSyntaxModule final
     std::vector<PrecompiledMemberIdentity> members;
     std::vector<PrecompiledGenericSpecialization> genericSpecializations;
     language::LanguageEdition languageEdition = language::LanguageEdition::V2;
+};
+
+struct ProjectComptimeRecord final
+{
+    std::size_t projectOrdinal = 0;
+    std::size_t sourceOrdinal = 0;
+    std::string moduleName;
+    std::string relativeSourcePath;
+    std::size_t evaluationCount = 0;
+    std::size_t executedSteps = 0;
+    std::size_t cacheHits = 0;
+    std::size_t cacheMisses = 0;
+    std::string reproducibilityDigest;
+    std::vector<ComptimeDependency> dependencies;
 };
 
 class ProjectCompilation final
@@ -101,6 +116,7 @@ public:
     diagnostics::DiagnosticEngine& diagnostics() noexcept;
     const diagnostics::DiagnosticEngine& diagnostics() const noexcept;
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units() const noexcept;
+    std::span<const ProjectComptimeRecord> comptimeRecords() const noexcept;
     const ProjectNameLookup* nameLookup() const noexcept;
     const ProjectGenericModel* genericModel() const noexcept;
     const ProjectGenericConstraintModel* genericConstraintModel() const noexcept;
@@ -126,6 +142,7 @@ private:
     source::SourceManager sourceManager_;
     diagnostics::DiagnosticEngine diagnostics_;
     std::vector<std::unique_ptr<ProjectSyntaxUnit>> units_;
+    std::vector<ProjectComptimeRecord> comptimeRecords_;
     std::unique_ptr<ProjectNameLookup> nameLookup_;
     std::unique_ptr<ProjectGenericModel> genericModel_;
     std::unique_ptr<ProjectMemberModel> memberModel_;

@@ -38,4 +38,46 @@ void ProjectCompilationDumper::dump(
         }
     }
 }
+
+void ProjectCompilationDumper::dumpComptime(
+    const ProjectCompilation& compilation,
+    std::ostream& output) const
+{
+    std::size_t evaluations = 0;
+    std::size_t executedSteps = 0;
+    std::size_t cacheHits = 0;
+    std::size_t cacheMisses = 0;
+    for (const ProjectComptimeRecord& record : compilation.comptimeRecords())
+    {
+        evaluations += record.evaluationCount;
+        executedSteps += record.executedSteps;
+        cacheHits += record.cacheHits;
+        cacheMisses += record.cacheMisses;
+    }
+
+    output << "NSCOMPTIME 1.0\n"
+           << "files: " << compilation.comptimeRecords().size() << '\n'
+           << "evaluations: " << evaluations << '\n'
+           << "executed-steps: " << executedSteps << '\n'
+           << "cache-hits: " << cacheHits << '\n'
+           << "cache-misses: " << cacheMisses << '\n';
+    for (const ProjectComptimeRecord& record : compilation.comptimeRecords())
+    {
+        output << "file project=" << record.projectOrdinal
+               << " source=" << record.sourceOrdinal
+               << " module=" << record.moduleName
+               << " path=" << record.relativeSourcePath << '\n'
+               << "  evaluations=" << record.evaluationCount
+               << " steps=" << record.executedSteps
+               << " cache-hits=" << record.cacheHits
+               << " cache-misses=" << record.cacheMisses << '\n'
+               << "  reproducibility-digest=" << record.reproducibilityDigest << '\n';
+        for (const ComptimeDependency& dependency : record.dependencies)
+        {
+            output << "  dependency kind=" << dependency.kind
+                   << " identity=" << dependency.identity
+                   << " digest=" << dependency.digest << '\n';
+        }
+    }
+}
 }

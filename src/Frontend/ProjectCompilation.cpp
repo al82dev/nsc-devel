@@ -891,6 +891,7 @@ bool ProjectCompilation::compileSyntaxCore(
         std::optional<ComptimeResult> comptime;
         std::string error;
     };
+    comptimeRecords_.clear();
     driver::CompilationWorkerPool syntaxWorkers(compilationJobs_);
     std::vector<SourceRead> sourceReads;
     for (std::size_t projectOrdinal = 0;
@@ -966,6 +967,22 @@ bool ProjectCompilation::compileSyntaxCore(
                     (read.comptime.has_value() ? read.comptime->error : "comptime produced no result");
                 return false;
             }
+            const compilation::Project& owner = projectGraph_->projects()[read.projectOrdinal];
+            std::error_code relativeError;
+            std::filesystem::path relativePath = std::filesystem::relative(
+                read.path, owner.projectFile().parent_path(), relativeError);
+            if (relativeError) relativePath = read.path.filename();
+            comptimeRecords_.push_back({
+                read.projectOrdinal,
+                read.sourceOrdinal,
+                read.moduleName,
+                relativePath.generic_string(),
+                read.comptime->evaluations.size(),
+                read.comptime->executedSteps,
+                read.comptime->cacheHits,
+                read.comptime->cacheMisses,
+                read.comptime->reproducibilityDigest,
+                read.comptime->dependencies});
             const FileId fileId = sourceManager_.addBuffer(
                 read.path, std::move(read.comptime->source));
             units_.push_back(std::make_unique<ProjectSyntaxUnit>(
@@ -1154,6 +1171,11 @@ const diagnostics::DiagnosticEngine& ProjectCompilation::diagnostics() const noe
 std::span<const std::unique_ptr<ProjectSyntaxUnit>> ProjectCompilation::units() const noexcept
 {
     return units_;
+}
+
+std::span<const ProjectComptimeRecord> ProjectCompilation::comptimeRecords() const noexcept
+{
+    return comptimeRecords_;
 }
 
 const ProjectNameLookup* ProjectCompilation::nameLookup() const noexcept
