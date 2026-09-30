@@ -868,6 +868,15 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.e012-e031.library-surface COMMAND nsc_ns3_e012_e031_library_surface_tests)
 
     add_executable(
+        nsc_ns3_e036_e044_scientific_surface_tests
+        tests/unit/NativeSharp3E036E044ScientificSurfaceTests.cpp)
+    target_link_libraries(nsc_ns3_e036_e044_scientific_surface_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_ns3_e036_e044_scientific_surface_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_e036_e044_scientific_surface_tests)
+    add_test(NAME nsc.ns3.e036-e044.scientific-surface
+        COMMAND nsc_ns3_e036_e044_scientific_surface_tests)
+
+    add_executable(
         nsc_ns3_t15_integration_tests
         tests/unit/NativeSharp3T15IntegrationTests.cpp)
     target_link_libraries(nsc_ns3_t15_integration_tests PRIVATE nsc_compilation)

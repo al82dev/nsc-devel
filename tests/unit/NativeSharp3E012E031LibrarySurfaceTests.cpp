@@ -29,7 +29,8 @@ int main()
 
     const auto surfaces = auditLibraryCapabilitySurfaces(
         std::span<const LibraryMetadata>(&model, 1));
-    tests.expect(surfaces.size() == 10, "audit has one explicit surface for every scoped E id");
+    tests.expect(surfaces.size() == 19,
+        "audit preserves the original surfaces and includes the scientific tranche");
     tests.expect(surfaces[1].id == "E013" && surfaces[1].missing.empty() &&
             surfaces[1].present == std::vector<std::string>{"FixedList"},
         "bounded-container surface is present only from real NSMETA type evidence");

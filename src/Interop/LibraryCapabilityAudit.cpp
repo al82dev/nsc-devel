@@ -44,8 +44,20 @@ constexpr std::array<std::string_view, 1> e028 = {"TextWriter"};
 constexpr std::array<std::string_view, 2> e029 = {"UnicodeData", "UnicodeNormalizer"};
 constexpr std::array<std::string_view, 2> e030 = {"GraphemeEnumerator", "UnicodeDisplayWidth"};
 constexpr std::array<std::string_view, 2> e031 = {"RegexMatcher", "UnicodeRegexData"};
+constexpr std::array<std::string_view, 3> e036 = {"CooMatrix", "CsrMatrix", "CscMatrix"};
+constexpr std::array<std::string_view, 4> e037 = {
+    "SparseOperations", "IterativeSolver", "Preconditioner", "ConvergenceReport"};
+constexpr std::array<std::string_view, 2> e038 = {"Complex", "ComplexMath"};
+constexpr std::array<std::string_view, 3> e039 = {"BigInteger", "BigFloat", "PrecisionLimits"};
+constexpr std::array<std::string_view, 3> e040 = {"Dimension", "Quantity", "UnitConverter"};
+constexpr std::array<std::string_view, 2> e041 = {"IntervalSet", "IntervalMap"};
+constexpr std::array<std::string_view, 3> e042 = {"OdeSolver", "ControlledEuler", "RungeKutta"};
+constexpr std::array<std::string_view, 3> e043 = {
+    "FourierTransform", "FastFourierTransform", "Convolution"};
+constexpr std::array<std::string_view, 2> e044 = {
+    "VectorizationBenchmark", "ScalarKernelFallback"};
 
-constexpr std::array<Requirement, 10> requirements = {{
+constexpr std::array<Requirement, 19> requirements = {{
     {"E012", "bounded-text", e012},
     {"E013", "bounded-containers", e013},
     {"E014", "string-interning", e014},
@@ -56,6 +68,15 @@ constexpr std::array<Requirement, 10> requirements = {{
     {"E029", "versioned-unicode", e029},
     {"E030", "graphemes-and-display-width", e030},
     {"E031", "unicode-regex", e031},
+    {"E036", "sparse-storage", e036},
+    {"E037", "sparse-solvers", e037},
+    {"E038", "complex-numbers", e038},
+    {"E039", "arbitrary-precision", e039},
+    {"E040", "units-and-dimensions", e040},
+    {"E041", "interval-sets-and-maps", e041},
+    {"E042", "ordinary-differential-equations", e042},
+    {"E043", "fourier-transforms", e043},
+    {"E044", "measured-vectorization", e044},
 }};
 }
 
