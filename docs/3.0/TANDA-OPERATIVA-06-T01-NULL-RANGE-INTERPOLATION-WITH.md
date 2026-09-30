@@ -145,7 +145,7 @@ oculto o duplicar efectos. Las dependencias se registran al final de este docume
 
 | Pendiente | Tanda dueña | Motivo |
 |---|---:|---|
-| `Optional<T>` en `??` y resultado valor de `?.` | 17 | necesita carrier Runtime y operaciones públicas, no offsets privados |
+| resultado valor de `?.` | 17 | `Optional<T> ??` ya usa el protocolo público; falta producir el carrier desde acceso condicional |
 | properties/métodos/cadenas de `?.` | 17 | necesita conditional-call + `Optional<T>` estable |
 | protocolo general `Length/Slice` y ranges prestados | 21 | depende de iterators/ranges y views con lifetime comprobable |
 | holes runtime y formatting handler stack/noheap | 26 | depende del subsystem de formatting y AST de holes reales |

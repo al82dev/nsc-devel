@@ -470,6 +470,19 @@ void ProjectMethodBodyModelDumper::dump(
                << " result=" << binding.resultTypeKey << '\n';
     }
 
+    output << "optional-carrier-bindings=" << model.optionalCarrierBindings().size() << "\n";
+    for (std::size_t ordinal = 0; ordinal < model.optionalCarrierBindings().size(); ++ordinal)
+    {
+        const MethodOptionalCarrierBinding& binding = model.optionalCarrierBindings()[ordinal];
+        output << "  [" << ordinal << "] caller=" << binding.methodMemberOrdinal
+               << " scope=" << binding.scopeOrdinal
+               << " carrier=" << binding.carrierTypeKey
+               << " value=" << binding.valueTypeKey
+               << " has-value=#" << binding.hasValueMemberOrdinal
+               << " unchecked-value=#" << binding.uncheckedValueMemberOrdinal
+               << " access=public-protocol\n";
+    }
+
     output << "runtime-type-bindings=" << model.runtimeTypeBindings().size() << "\n";
     for (std::size_t ordinal = 0; ordinal < model.runtimeTypeBindings().size(); ++ordinal)
     {

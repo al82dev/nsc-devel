@@ -3,7 +3,8 @@
 > **Actualización 2026-09-29:** `IMPLEMENTING`. F01, F02 y el slice trivial seguro de F05 ya
 > atraviesan binding, HIR, MIR, LLVM y NSMETA 1.24 mediante la tanda operativa 05. La tanda
 > operativa 06 conecta el vertical ABI-seguro de F03/F04/F06/F07: null-aware de carriers pointer,
-> índice `^`, interpolación totalmente constante y `with` trivial. Optional/value `?.`, slicing
+> índice `^`, interpolación totalmente constante y `with` trivial. La tanda operativa 17 conecta
+> `NativeSharp.Core.Optional<T> ?? fallback` mediante su protocolo público. Value `?.`, slicing
 > por views, holes runtime, owning `with`, tooling y cleanup no trivial permanecen asignados a sus
 > dependencias posteriores. Véase
 > [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).

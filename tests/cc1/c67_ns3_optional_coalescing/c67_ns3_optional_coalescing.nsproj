@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>c67_ns3_optional_coalescing</Name>
+    <Language>3</Language>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

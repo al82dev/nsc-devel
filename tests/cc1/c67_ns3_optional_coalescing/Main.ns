@@ -1,0 +1,102 @@
+// NativeSharp 3.0 / Tanda 17: public Optional<T> carrier protocol for lazy `??`.
+namespace NativeSharp.Core
+{
+    public struct Optional<T>
+    {
+        private T value;
+        private bool present;
+
+        public Optional(T item)
+        {
+            value = item;
+            present = true;
+        }
+
+        public bool HasValue()
+        {
+            return present;
+        }
+
+        public T UncheckedValue()
+        {
+            return value;
+        }
+    }
+}
+
+namespace c67ns3optionalcoalescing
+{
+    using NativeSharp.Core;
+
+    public struct LargeValue
+    {
+        public long first;
+        public long second;
+        public long third;
+
+        public LargeValue(long a, long b, long c)
+        {
+            first = a;
+            second = b;
+            third = c;
+        }
+
+        public long Total()
+        {
+            return first + second + third;
+        }
+    }
+
+    public class Program
+    {
+        private static int sourceCalls;
+        private static int fallbackCalls;
+        private static int largeFallbackCalls;
+
+        private static Optional<int> Source(bool present, int value)
+        {
+            sourceCalls = sourceCalls + 1;
+            if (present)
+            {
+                return new Optional<int>(value);
+            }
+            return new Optional<int>();
+        }
+
+        private static int Fallback(int value)
+        {
+            fallbackCalls = fallbackCalls + 1;
+            return value;
+        }
+
+        private static Optional<LargeValue> SourceLarge(bool present, long value)
+        {
+            if (present)
+            {
+                return new Optional<LargeValue>(new LargeValue(value, value + 1, value + 2));
+            }
+            return new Optional<LargeValue>();
+        }
+
+        private static LargeValue FallbackLarge(long value)
+        {
+            largeFallbackCalls = largeFallbackCalls + 1;
+            return new LargeValue(value, value + 1, value + 2);
+        }
+
+        public static int Main()
+        {
+            int present = Source(true, 40) ?? Fallback(99);
+            int absent = Source(false, 0) ?? Fallback(2);
+            LargeValue presentLarge = SourceLarge(true, 1) ?? FallbackLarge(20);
+            LargeValue absentLarge = SourceLarge(false, 0) ?? FallbackLarge(4);
+
+            if (sourceCalls != 2) { return 1; }
+            if (fallbackCalls != 1) { return 2; }
+            if (largeFallbackCalls != 1) { return 3; }
+            if (presentLarge.Total() != 6) { return 4; }
+            if (absentLarge.Total() != 15) { return 5; }
+            return present + absent;
+        }
+    }
+}

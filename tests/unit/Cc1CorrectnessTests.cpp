@@ -878,6 +878,13 @@ int main(int argc, char** argv)
         "tests/cc1/c66_ns3_callable_values/c66_ns3_callable_values.nsproj",
         "cc1-c66-ns3-callable-values", 42);
 
+    // NativeSharp 3.0 E017 carrier bridge. Optional<T> coalescing calls the public
+    // HasValue/UncheckedValue protocol, evaluates the carrier once and keeps fallback lazy.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c67_ns3_optional_coalescing/c67_ns3_optional_coalescing.nsproj",
+        "cc1-c67-ns3-optional-coalescing", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,

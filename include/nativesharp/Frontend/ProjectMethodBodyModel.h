@@ -1206,6 +1206,19 @@ struct MethodEventBinding final
     std::vector<ProjectImplicitConversion> argumentConversions;
 };
 
+// E017 carrier bridge. `??` recognizes only the public NativeSharp.Core.Optional<T> protocol;
+// lowering calls these methods and never reaches into the carrier's private fields or offsets.
+struct MethodOptionalCarrierBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    std::size_t methodMemberOrdinal = 0;
+    std::size_t scopeOrdinal = 0;
+    std::string carrierTypeKey;
+    std::string valueTypeKey;
+    std::size_t hasValueMemberOrdinal = 0;
+    std::size_t uncheckedValueMemberOrdinal = 0;
+};
+
 enum class MethodCallResolutionKind
 {
     Resolved,
@@ -1336,6 +1349,7 @@ public:
     std::span<const MethodLambdaValueBinding> lambdaValueBindings() const noexcept;
     std::span<const MethodDelegateBinding> delegateBindings() const noexcept;
     std::span<const MethodEventBinding> eventBindings() const noexcept;
+    std::span<const MethodOptionalCarrierBinding> optionalCarrierBindings() const noexcept;
     std::span<const MethodCallBinding> calls() const noexcept;
     std::span<const NamespaceFunctionCallBinding> namespaceFunctionCalls() const noexcept;
     const NamespaceFunctionCallBinding* namespaceFunctionCall(
@@ -1917,6 +1931,8 @@ private:
     // type is rejected here with a diagnostic instead of reaching the backend.
     bool isExternCDelegateTypeKey(std::string_view typeKey) const noexcept;
     bool isAnyDelegateTypeKey(std::string_view typeKey) const noexcept;
+    std::optional<MethodOptionalCarrierBinding> resolveOptionalCarrier(
+        std::string_view typeKey) const;
     // True only for a "type:" key that actually names an enum. Structs, classes and delegates
     // share that prefix, so the prefix alone answers nothing. Mirrors the identical predicate the
     // LLVM lowerer keeps for mapping an enum key to i32.
@@ -2010,6 +2026,7 @@ private:
     std::string currentLambdaReturnTypeKey_;
     std::size_t currentCatchDepth_ = 0;
     std::vector<MethodEventBinding> eventBindings_;
+    std::vector<MethodOptionalCarrierBinding> optionalCarrierBindings_;
     std::vector<MethodCallBinding> calls_;
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
     std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;

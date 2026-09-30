@@ -124,6 +124,7 @@ void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
     output.scalar(node->argumentCount);
     output.scalars(node->argumentParameterOrdinals);
     output.text(node->calleeName);
+    output.text(node->secondaryCalleeName);
     output.texts(node->argumentTypeKeys);
     output.scalar(node->children.size());
     for (const auto& child : node->children) writeNode(output, child.get());

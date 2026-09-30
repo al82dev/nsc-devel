@@ -892,6 +892,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::Binary: return "binary";
         case ProjectOopMirNodeKind::Conditional: return "conditional";
         case ProjectOopMirNodeKind::NullCoalescing: return "null-coalescing";
+        case ProjectOopMirNodeKind::OptionalCoalescing: return "optional-coalescing";
         case ProjectOopMirNodeKind::NullCoalescingStore: return "null-coalescing-store";
         case ProjectOopMirNodeKind::Store: return "store";
         case ProjectOopMirNodeKind::Convert: return "convert";
@@ -1864,6 +1865,28 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::NullCoalescing:
             result->kind = ProjectOopMirNodeKind::NullCoalescing;
             break;
+        case ProjectOopHirNodeKind::OptionalCoalescing:
+        {
+            if (!node->memberOrdinal.has_value() ||
+                !node->secondaryMemberOrdinal.has_value() || hirModel_ == nullptr)
+            {
+                error = "E017 Optional coalescing lost its public protocol member identities";
+                return nullptr;
+            }
+            const ProjectOopHirFunction* hasValue =
+                hirModel_->functionForMember(*node->memberOrdinal);
+            const ProjectOopHirFunction* uncheckedValue =
+                hirModel_->functionForMember(*node->secondaryMemberOrdinal);
+            if (hasValue == nullptr || uncheckedValue == nullptr)
+            {
+                error = "E017 Optional coalescing protocol methods have no HIR callables";
+                return nullptr;
+            }
+            result->kind = ProjectOopMirNodeKind::OptionalCoalescing;
+            result->calleeName = hasValue->mangledName;
+            result->secondaryCalleeName = uncheckedValue->mangledName;
+            break;
+        }
         case ProjectOopHirNodeKind::NullCoalescingAssignment:
             result->kind = ProjectOopMirNodeKind::NullCoalescingStore;
             break;

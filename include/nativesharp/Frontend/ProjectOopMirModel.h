@@ -30,7 +30,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 17: tuple layouts plus alias-safe deconstruction stores are explicit.
 // MINOR 18: abort-profile panic is an explicit divergent node with builtin:never type.
 // MINOR 19: closure capture provenance and shared-cell environment layout are inspectable.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 19;
+// MINOR 20: Optional<T> coalescing preserves its public HasValue/UncheckedValue protocol calls.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 20;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -327,6 +328,7 @@ enum class ProjectOopMirNodeKind
     Binary,
     Conditional,
     NullCoalescing,
+    OptionalCoalescing,
     NullCoalescingStore,
     Store,
     // IDs 79 y 81 -- ver ProjectOopHirNodeKind::CompoundStore, misma forma. `immediate` lleva el
@@ -434,6 +436,7 @@ struct ProjectOopMirNode final
     std::size_t argumentCount = 0;
     std::vector<std::size_t> argumentParameterOrdinals;
     std::string calleeName;
+    std::string secondaryCalleeName;
     std::vector<std::string> argumentTypeKeys;
     std::vector<std::unique_ptr<ProjectOopMirNode>> children;
 };

@@ -133,6 +133,8 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
     if (node->kind == ProjectOopMirNodeKind::LambdaCreate)
         output << " lambda=#" << node->immediate;
     if (!node->calleeName.empty()) output << " callee=" << node->calleeName;
+    if (!node->secondaryCalleeName.empty())
+        output << " secondary-callee=" << node->secondaryCalleeName;
     if (node->operation != lexer::TokenKind::Invalid) output << " op=" << lexer::tokenKindName(node->operation);
     if (node->conversionKind.has_value()) output << " conversion=" << projectConversionKindName(*node->conversionKind);
     if (node->kind == ProjectOopMirNodeKind::Deallocate)

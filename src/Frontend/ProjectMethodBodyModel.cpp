@@ -699,6 +699,7 @@ bool ProjectMethodBodyModel::build(
     std::size_t workCursor = 0;
     std::size_t callDemandCursor = 0;
     std::size_t delegateDemandCursor = 0;
+    std::size_t optionalDemandCursor = 0;
     while (workCursor < callableWorklist.size())
     {
         const std::size_t waveEnd = callableWorklist.size();
@@ -835,6 +836,20 @@ bool ProjectMethodBodyModel::build(
             }
             if (demandedGenericMethods.insert(*binding.selectedMemberOrdinal).second)
                 newlyDemanded.push_back(*binding.selectedMemberOrdinal);
+        }
+        for (; optionalDemandCursor < optionalCarrierBindings_.size(); ++optionalDemandCursor)
+        {
+            const MethodOptionalCarrierBinding& binding =
+                optionalCarrierBindings_[optionalDemandCursor];
+            for (const std::size_t target :
+                 {binding.hasValueMemberOrdinal, binding.uncheckedValueMemberOrdinal})
+            {
+                if (isDeferredGenericMethod(target) &&
+                    demandedGenericMethods.insert(target).second)
+                {
+                    newlyDemanded.push_back(target);
+                }
+            }
         }
         std::ranges::sort(newlyDemanded);
         newlyDemanded.erase(std::unique(newlyDemanded.begin(), newlyDemanded.end()), newlyDemanded.end());
@@ -2034,6 +2049,12 @@ std::span<const MethodDelegateBinding> ProjectMethodBodyModel::delegateBindings(
 std::span<const MethodEventBinding> ProjectMethodBodyModel::eventBindings() const noexcept
 {
     return eventBindings_;
+}
+
+std::span<const MethodOptionalCarrierBinding>
+ProjectMethodBodyModel::optionalCarrierBindings() const noexcept
+{
+    return optionalCarrierBindings_;
 }
 
 std::span<const MethodCallBinding> ProjectMethodBodyModel::calls() const noexcept
@@ -6335,6 +6356,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             // the non-null edge.
             const ExpressionResult left = analyzeExpression(
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            std::optional<MethodOptionalCarrierBinding> optionalCarrier;
             const auto nullCarrier = [&](std::string_view typeKey)
             {
                 if (ProjectTypeConversion::isPointer(typeKey) ||
@@ -6343,12 +6365,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 {
                     return true;
                 }
+                optionalCarrier = resolveOptionalCarrier(typeKey);
+                if (optionalCarrier.has_value()) return true;
                 const std::optional<std::size_t> ordinal = referenceTypeOrdinalForTypeKey(typeKey);
                 return ordinal.has_value() && inheritanceModel_ != nullptr &&
                     (inheritanceModel_->isClass(*ordinal) ||
                      (interfaceModel_ != nullptr && interfaceModel_->isInterface(*ordinal)));
             };
-            if (left.valid && !nullCarrier(left.typeKey))
+            const bool leftIsCarrier = left.valid && nullCarrier(left.typeKey);
+            if (left.valid && !leftIsCarrier)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
@@ -6368,10 +6393,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
                 });
             commitBranchJoin(branchEntry, rightState);
-            if (!left.valid || !right.valid || !nullCarrier(left.typeKey)) break;
+            if (!left.valid || !right.valid || !leftIsCarrier) break;
 
+            const std::string resultType = optionalCarrier.has_value()
+                ? optionalCarrier->valueTypeKey : left.typeKey;
             const ProjectImplicitConversion conversion = classifyImplicit(
-                right.typeKey, left.typeKey, right.integerConstant);
+                right.typeKey, resultType, right.integerConstant);
             if (!conversion.exists())
             {
                 diagnostics.report(
@@ -6379,10 +6406,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     diagnostics::DiagnosticSeverity::Error,
                     expression->second() != nullptr ? expression->second()->range() : expression->range(),
                     "right operand of '?' '?' with type '" + right.typeKey +
-                        "' is not implicitly convertible to '" + left.typeKey + "'");
+                        "' is not implicitly convertible to '" + resultType + "'");
                 break;
             }
-            result.typeKey = left.typeKey;
+            if (optionalCarrier.has_value())
+            {
+                optionalCarrier->syntax = expression;
+                optionalCarrier->methodMemberOrdinal = methodMemberOrdinal;
+                optionalCarrier->scopeOrdinal = scopeOrdinal;
+                optionalCarrierBindings_.push_back(std::move(*optionalCarrier));
+            }
+            result.typeKey = resultType;
             result.valid = true;
             result.assignable = false;
             break;
@@ -16057,6 +16091,77 @@ bool ProjectMethodBodyModel::isAnyDelegateTypeKey(std::string_view typeKey) cons
         return type.kind == NamedTypeDeclarationKind::Delegate;
     }
     return false;
+}
+
+std::optional<MethodOptionalCarrierBinding>
+ProjectMethodBodyModel::resolveOptionalCarrier(std::string_view typeKey) const
+{
+    if (genericModel_ == nullptr || memberModel_ == nullptr || nameLookup_ == nullptr)
+        return std::nullopt;
+
+    const GenericSpecializationRecord* specialization =
+        genericModel_->specializationForTypeKey(typeKey);
+    if (specialization == nullptr || specialization->kind != GenericTemplateKind::Struct ||
+        specialization->typeArguments.size() != 1U)
+    {
+        return std::nullopt;
+    }
+
+    const std::span<const GenericTemplateRecord> templates = genericModel_->templates();
+    const auto source = std::ranges::find_if(templates, [&](const GenericTemplateRecord& candidate)
+    {
+        return candidate.canonicalKey == specialization->templateKey;
+    });
+    if (source == templates.end() || source->namespaceName != "NativeSharp.Core" ||
+        !source->ownerName.empty() || source->name != "Optional" ||
+        source->parameters.size() != 1U)
+    {
+        return std::nullopt;
+    }
+
+    const std::optional<std::size_t> typeOrdinal =
+        accessorReceiverTypeOrdinalForTypeKey(typeKey);
+    if (!typeOrdinal.has_value()) return std::nullopt;
+
+    const std::string valueTypeKey = ProjectMemberModel::canonicalGenericArgumentKey(
+        specialization->typeArguments.front(), *nameLookup_);
+    if (valueTypeKey.starts_with("unresolved:")) return std::nullopt;
+
+    std::optional<std::size_t> hasValueMemberOrdinal;
+    std::optional<std::size_t> uncheckedValueMemberOrdinal;
+    const std::span<const ClassMemberSymbol> members = memberModel_->members();
+    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+    {
+        const ClassMemberSymbol& member = members[ordinal];
+        if (member.declaringTypeOrdinal != *typeOrdinal ||
+            member.kind != ClassMemberKind::Method || member.isStatic ||
+            member.accessibility != ClassMemberAccessibility::Public ||
+            !member.parameters.empty())
+        {
+            continue;
+        }
+
+        if (member.name == "HasValue" && member.declaredTypeKey == "builtin:bool")
+        {
+            if (hasValueMemberOrdinal.has_value()) return std::nullopt;
+            hasValueMemberOrdinal = ordinal;
+        }
+        else if (member.name == "UncheckedValue" && member.declaredTypeKey == valueTypeKey)
+        {
+            if (uncheckedValueMemberOrdinal.has_value()) return std::nullopt;
+            uncheckedValueMemberOrdinal = ordinal;
+        }
+    }
+
+    if (!hasValueMemberOrdinal.has_value() || !uncheckedValueMemberOrdinal.has_value())
+        return std::nullopt;
+
+    MethodOptionalCarrierBinding binding;
+    binding.carrierTypeKey = std::string(typeKey);
+    binding.valueTypeKey = valueTypeKey;
+    binding.hasValueMemberOrdinal = *hasValueMemberOrdinal;
+    binding.uncheckedValueMemberOrdinal = *uncheckedValueMemberOrdinal;
+    return binding;
 }
 
 bool ProjectMethodBodyModel::isEnumTypeKey(std::string_view typeKey) const noexcept

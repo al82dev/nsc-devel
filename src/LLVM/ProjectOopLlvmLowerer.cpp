@@ -7420,6 +7420,8 @@ private:
                 return lowerConditional(node, error);
             case frontend::ProjectOopMirNodeKind::NullCoalescing:
                 return lowerNullCoalescing(node, error);
+            case frontend::ProjectOopMirNodeKind::OptionalCoalescing:
+                return lowerOptionalCoalescing(node, error);
             case frontend::ProjectOopMirNodeKind::NullCoalescingStore:
                 return lowerNullCoalescingStore(node, error);
             case frontend::ProjectOopMirNodeKind::BorrowValue:
@@ -11945,6 +11947,92 @@ private:
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "coalesce");
         LLVMValueRef values[] = {left, fallback};
         LLVMBasicBlockRef blocks[] = {leftBlock, fallbackExit};
+        LLVMAddIncoming(phi, values, blocks, 2);
+        return phi;
+    }
+
+    // E017 `Optional<T> ?? fallback`. The compiler consumes the carrier exclusively through its
+    // public HasValue()/UncheckedValue() protocol. The carrier is spilled once so both instance
+    // calls observe the same value; no private field offset or layout convention is baked here.
+    LLVMValueRef lowerOptionalCoalescing(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 2 || node->elementTypeKey.empty() ||
+            node->calleeName.empty() || node->secondaryCalleeName.empty())
+        {
+            return failValue(error, "Optional coalescing MIR requires carrier, fallback and protocol calls");
+        }
+        const auto hasValueTarget = functions_.find(node->calleeName);
+        const auto uncheckedValueTarget = functions_.find(node->secondaryCalleeName);
+        if (hasValueTarget == functions_.end() || uncheckedValueTarget == functions_.end())
+        {
+            return failValue(error, "Optional coalescing protocol target was not declared");
+        }
+
+        LLVMValueRef carrier = lowerExpression(node->children[0].get(), error);
+        if (carrier == nullptr) return nullptr;
+        LLVMTypeRef carrierType = llvmType(node->elementTypeKey, error);
+        if (carrierType == nullptr) return nullptr;
+        LLVMValueRef carrierSlot = entryBlockAlloca(
+            carrierType, structAlignmentFor(node->elementTypeKey), "optional.carrier");
+        LLVMBuildStore(builder_, carrier, carrierSlot);
+
+        LLVMValueRef hasValueArguments[] = {carrierSlot};
+        LLVMValueRef hasValue = buildPotentiallyThrowingCall(
+            hasValueTarget->second.functionType, hasValueTarget->second.function,
+            hasValueArguments, 1, "optional.hasvalue", error);
+        if (hasValue == nullptr) return nullptr;
+
+        LLVMBasicBlockRef valueBlock = appendBlock("optional.value");
+        LLVMBasicBlockRef fallbackBlock = appendBlock("optional.fallback");
+        LLVMBasicBlockRef endBlock = appendBlock("optional.end");
+        LLVMBuildCondBr(builder_, hasValue, valueBlock, fallbackBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        LLVMValueRef presentValue = nullptr;
+        if (isIndirectStructTypeKey(node->typeKey))
+        {
+            LLVMTypeRef valueType = llvmType(node->typeKey, error);
+            if (valueType == nullptr) return nullptr;
+            LLVMValueRef valueSlot = entryBlockAlloca(
+                valueType, structAlignmentFor(node->typeKey), "optional.value.sret");
+            LLVMValueRef arguments[] = {carrierSlot, valueSlot};
+            LLVMValueRef call = buildPotentiallyThrowingCall(
+                uncheckedValueTarget->second.functionType,
+                uncheckedValueTarget->second.function,
+                arguments, 2, "", error);
+            if (call == nullptr) return nullptr;
+            applySretAttributes(
+                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddCallSiteAttribute(call, index, attribute); },
+                1U, node->typeKey);
+            presentValue = LLVMBuildLoad2(
+                builder_, valueType, valueSlot, "optional.value.result");
+        }
+        else
+        {
+            LLVMValueRef arguments[] = {carrierSlot};
+            presentValue = buildPotentiallyThrowingCall(
+                uncheckedValueTarget->second.functionType,
+                uncheckedValueTarget->second.function,
+                arguments, 1, "optional.value.result", error);
+            if (presentValue == nullptr) return nullptr;
+        }
+        LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
+        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, fallbackBlock);
+        LLVMValueRef fallback = lowerExpression(node->children[1].get(), error);
+        if (fallback == nullptr) return nullptr;
+        LLVMBasicBlockRef fallbackExit = LLVMGetInsertBlock(builder_);
+        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        LLVMTypeRef resultType = llvmType(node->typeKey, error);
+        if (resultType == nullptr) return nullptr;
+        LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "optional.coalesce");
+        LLVMValueRef values[] = {presentValue, fallback};
+        LLVMBasicBlockRef blocks[] = {valueExit, fallbackExit};
         LLVMAddIncoming(phi, values, blocks, 2);
         return phi;
     }

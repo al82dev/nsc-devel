@@ -397,6 +397,9 @@ enum class ProjectOopHirNodeKind
     // NativeSharp 3.0 T01-F03. children[0] is evaluated once. children[1] is evaluated only
     // when that pointer/reference value is null; the result is the non-null left value or RHS.
     NullCoalescing,
+    // E017 `Optional<T> ?? fallback`. The carrier is evaluated once; memberOrdinal names
+    // HasValue(), secondaryMemberOrdinal names UncheckedValue(), and the fallback stays lazy.
+    OptionalCoalescing,
     // T01-F03 `place ??= value`. children[0] is the destination ADDRESS and children[1] the
     // converted RHS. The backend loads/tests the address once and stores only on the null edge.
     NullCoalescingAssignment,
@@ -753,6 +756,8 @@ private:
     std::optional<std::size_t> currentLambdaThisCapture() const noexcept;
     const MethodEventBinding* eventBinding(const ast::AstNode* syntax) const noexcept;
     const MethodCoreBinding* coreBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodOptionalCarrierBinding* optionalCarrierBinding(
+        const ast::AstNode* syntax) const noexcept;
     const MethodExceptionBinding* exceptionBinding(const ast::AstNode* syntax) const noexcept;
     const MethodCleanupRegion* cleanupRegion(const ast::AstNode* syntax) const noexcept;
     const MethodUsingBinding* usingBinding(const ast::AstNode* syntax) const noexcept;
@@ -814,6 +819,8 @@ private:
     std::unordered_map<const ast::AstNode*, const MethodLambdaValueBinding*> lambdaValueBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodEventBinding*> eventBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodCoreBinding*> coreBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodOptionalCarrierBinding*>
+        optionalCarrierBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodExceptionBinding*> exceptionBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodCleanupRegion*> cleanupRegionBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodUsingBinding*> usingBindingBySyntax_;

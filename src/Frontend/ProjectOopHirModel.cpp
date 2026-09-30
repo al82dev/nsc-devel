@@ -1177,6 +1177,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::Binary: return "binary";
         case ProjectOopHirNodeKind::Conditional: return "conditional";
         case ProjectOopHirNodeKind::NullCoalescing: return "null-coalescing";
+        case ProjectOopHirNodeKind::OptionalCoalescing: return "optional-coalescing";
         case ProjectOopHirNodeKind::NullCoalescingAssignment: return "null-coalescing-assignment";
         case ProjectOopHirNodeKind::Assignment: return "assignment";
         case ProjectOopHirNodeKind::CompoundStore: return "compound-store";
@@ -1299,6 +1300,7 @@ bool ProjectOopHirModel::buildImpl(
         indexBySyntax(lambdaValueBindingBySyntax_, methodBodyModel.lambdaValueBindings());
         indexBySyntax(eventBindingBySyntax_, methodBodyModel.eventBindings());
         indexBySyntax(coreBindingBySyntax_, methodBodyModel.coreBindings());
+        indexBySyntax(optionalCarrierBindingBySyntax_, methodBodyModel.optionalCarrierBindings());
         indexBySyntax(exceptionBindingBySyntax_, methodBodyModel.exceptionBindings());
         indexBySyntax(cleanupRegionBySyntax_, methodBodyModel.cleanupRegions());
         indexBySyntax(usingBindingBySyntax_, methodBodyModel.usingBindings());
@@ -4146,7 +4148,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             }
             if (conversion.kind != ProjectConversionKind::Identity)
                 right = wrapImplicitConversion(std::move(right), conversion, expression->second());
-            auto node = makeNode(ProjectOopHirNodeKind::NullCoalescing, expression, resultType);
+            const MethodOptionalCarrierBinding* optional = optionalCarrierBinding(expression);
+            auto node = makeNode(
+                optional != nullptr ? ProjectOopHirNodeKind::OptionalCoalescing
+                                    : ProjectOopHirNodeKind::NullCoalescing,
+                expression, resultType);
+            if (optional != nullptr)
+            {
+                node->elementTypeKey = optional->carrierTypeKey;
+                node->memberOrdinal = optional->hasValueMemberOrdinal;
+                node->secondaryMemberOrdinal = optional->uncheckedValueMemberOrdinal;
+            }
             node->children.push_back(std::move(left));
             node->children.push_back(std::move(right));
             return node;
@@ -7373,6 +7385,15 @@ const MethodEventBinding* ProjectOopHirModel::eventBinding(const ast::AstNode* s
 const MethodCoreBinding* ProjectOopHirModel::coreBinding(const ast::AstNode* syntax) const noexcept
 {
     const auto& index = lookupSource_ == nullptr ? coreBindingBySyntax_ : lookupSource_->coreBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
+}
+
+const MethodOptionalCarrierBinding* ProjectOopHirModel::optionalCarrierBinding(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto& index = lookupSource_ == nullptr
+        ? optionalCarrierBindingBySyntax_ : lookupSource_->optionalCarrierBindingBySyntax_;
     const auto found = index.find(syntax);
     return found == index.end() ? nullptr : found->second;
 }
