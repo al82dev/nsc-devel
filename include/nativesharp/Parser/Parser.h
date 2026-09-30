@@ -262,6 +262,7 @@ private:
     bool looksLikeLambdaExpression() const noexcept;
     ast::AstNode* parseConditionalExpression();
     ast::AstNode* parseNullCoalescingExpression();
+    ast::AstNode* parseRangeExpression();
     ast::AstNode* parseLogicalOrExpression();
     ast::AstNode* parseLogicalAndExpression();
     ast::AstNode* parseBitwiseOrExpression();

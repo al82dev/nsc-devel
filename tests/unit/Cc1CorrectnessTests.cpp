@@ -885,6 +885,14 @@ int main(int argc, char** argv)
         "tests/cc1/c67_ns3_optional_coalescing/c67_ns3_optional_coalescing.nsproj",
         "cc1-c67-ns3-optional-coalescing", 42);
 
+    // NativeSharp 3.0 T09/E021 vertical. A bounded integer range is lowered to an ordinary
+    // storage-free for loop; endpoints execute once, continue reaches the increment block and
+    // the exclusive end is never visited.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c68_ns3_integer_range/c68_ns3_integer_range.nsproj",
+        "cc1-c68-ns3-integer-range", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,
@@ -989,6 +997,17 @@ int main(int argc, char** argv)
         tests, root, "ns3-t01-owning-with-needs-clone",
         R"(namespace reject { public struct Box { public owned string Text; } public class Program { public static int Main() { Box source = { Text = "a" }; Box copy = source with { Text = "b" }; return 0; } } })",
         "explicit clone/copy strategy", "3");
+
+    // T09/E021 integer range boundaries. An unbounded iteration cannot terminate, and `^` only
+    // has meaning relative to a receiver whose Length is known.
+    checkRejected(
+        tests, root, "ns3-t09-open-integer-range-needs-end",
+        R"(class Program { public static int Main() { foreach (int value in 1..) { return value; } return 0; } })",
+        "foreach integer range requires a finite end endpoint", "3");
+    checkRejected(
+        tests, root, "ns3-t09-from-end-range-needs-receiver",
+        R"(class Program { public static int Main() { foreach (int value in ^1..4) { return value; } return 0; } })",
+        "a from-end endpoint requires a sized receiver", "3");
 
     // T06-F06: pin is an edition-3 ownership commitment. The owner remains borrowable and its
     // ordinary lexical cleanup stays active, but neither ownership transfer nor replacement may

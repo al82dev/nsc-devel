@@ -1,0 +1,38 @@
+namespace NativeSharp.Cc1.C68
+{
+    public class Program
+    {
+        private static int beginCalls;
+        private static int endCalls;
+
+        private static int Begin()
+        {
+            beginCalls = beginCalls + 1;
+            return 2;
+        }
+
+        private static int End()
+        {
+            endCalls = endCalls + 1;
+            return 8;
+        }
+
+        public static int Main()
+        {
+            int sum = 0;
+            foreach (int value in Begin()..End())
+            {
+                if (value == 4)
+                {
+                    continue;
+                }
+                sum = sum + value;
+            }
+            if (beginCalls != 1 || endCalls != 1)
+            {
+                return 1;
+            }
+            return sum + 19;
+        }
+    }
+}

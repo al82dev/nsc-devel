@@ -7576,6 +7576,75 @@ ast::AstNode* Parser::parseForeachStatement()
         return arena_.make<ast::TypeSyntax>(range, TokenKind::KwVar, std::string("var"));
     };
 
+    // A bounded integer RangeExpression is a storage-free foreach source. Lower it immediately
+    // to ordinary locals plus a ForStatement so HIR/MIR/LLVM reuse the already verified loop,
+    // integer arithmetic, break and continue paths. Both endpoints are bound before the loop and
+    // therefore evaluated exactly once from left to right. The cursor remains compiler-owned;
+    // the user-visible element is a fresh const local on every iteration.
+    if (collection != nullptr && collection->kind() == ast::AstNodeKind::RangeExpression)
+    {
+        ast::AstNode* begin = collection->first();
+        ast::AstNode* end = collection->second();
+        if (begin == nullptr)
+            begin = makeIntegerLiteralExpression(range, 0);
+        if (end == nullptr)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidIndex,
+                diagnostics::DiagnosticSeverity::Error,
+                collection->range(),
+                "foreach integer range requires a finite end endpoint");
+            end = makeIntegerLiteralExpression(range, 0);
+        }
+        if (begin->kind() == ast::AstNodeKind::FromEndExpression ||
+            end->kind() == ast::AstNodeKind::FromEndExpression)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidIndex,
+                diagnostics::DiagnosticSeverity::Error,
+                collection->range(),
+                "a from-end endpoint requires a sized receiver and cannot bound a foreach integer range");
+        }
+
+        ast::AstNode* beginDecl = makeVariableDeclaration(
+            varMarker(), "$__foreach_range_begin", begin, false, true);
+        ast::AstNode* endDecl = makeVariableDeclaration(
+            varMarker(), "$__foreach_range_end", end, false, true);
+        ast::AstNode* cursorDecl = makeVariableDeclaration(
+            varMarker(), "$__foreach_range_cursor",
+            makeIdentifierExpression(range, "$__foreach_range_begin"), false);
+        ast::AstNode* condition = makeBinaryExpression(
+            TokenKind::Less,
+            makeIdentifierExpression(range, "$__foreach_range_cursor"),
+            makeIdentifierExpression(range, "$__foreach_range_end"));
+        ast::AstNode* increment = makeAssignmentExpression(
+            makeIdentifierExpression(range, "$__foreach_range_cursor"),
+            makeBinaryExpression(
+                TokenKind::Plus,
+                makeIdentifierExpression(range, "$__foreach_range_cursor"),
+                makeIntegerLiteralExpression(range, 1)));
+        ast::AstNode* elementDecl = makeVariableDeclaration(
+            elementType,
+            elementName,
+            makeIdentifierExpression(range, "$__foreach_range_cursor"),
+            elementIsRaii,
+            /*isConst=*/true);
+        ast::AstNode* forBody = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
+        forBody->addChild(elementDecl);
+        forBody->addChild(body);
+        ast::AstNode* loop = arena_.make<ast::AstNode>(ast::AstNodeKind::ForStatement, range);
+        loop->setFirst(cursorDecl);
+        loop->setSecond(condition);
+        loop->setThird(increment);
+        loop->addChild(forBody);
+        ast::AstNode* lowered = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
+        lowered->setAuxiliaryText("foreach:integer-range-exclusive");
+        lowered->addChild(beginDecl);
+        lowered->addChild(endDecl);
+        lowered->addChild(loop);
+        return lowered;
+    }
+
     // first(): `var $__foreach_source = <collection>;` -- evaluates the collection expression
     // exactly once, regardless of which candidate below ends up chosen. Whether this ends up
     // `raii` is decided by ProjectMethodBodyModel::analyzeForeach (P0.2, see above) using the
@@ -7971,7 +8040,7 @@ ast::AstNode* Parser::parseConditionalExpression()
 
 ast::AstNode* Parser::parseNullCoalescingExpression()
 {
-    ast::AstNode* left = parseLogicalOrExpression();
+    ast::AstNode* left = parseRangeExpression();
     if (!at(TokenKind::QuestionQuestion)) return left;
     const SourceRange operation = consume().range();
     requireEdition3(operation, "the null-coalescing operator '?' '?'");
@@ -7983,6 +8052,34 @@ ast::AstNode* Parser::parseNullCoalescingExpression()
     node->setFirst(left);
     node->setSecond(right);
     return node;
+}
+
+// Edition 3 integer ranges are ordinary expressions as well as index operands. Keeping the
+// operator below null-coalescing but above logical-or lets `foreach (... in begin..end)` reach the
+// same RangeExpression node that slicing already uses. Bracket parsing continues to handle the
+// fully open `[..]` spelling; this level admits an omitted endpoint only at a delimiter so it
+// never consumes a statement or argument that follows the range.
+ast::AstNode* Parser::parseRangeExpression()
+{
+    ast::AstNode* begin = parseLogicalOrExpression();
+    if (!at(TokenKind::DotDot)) return begin;
+
+    const SourceRange operation = consume().range();
+    requireEdition3(operation, "range expressions");
+    ast::AstNode* end = nullptr;
+    if (!at(TokenKind::RightParen) && !at(TokenKind::RightBracket) &&
+        !at(TokenKind::Comma) && !at(TokenKind::Semicolon))
+    {
+        end = parseLogicalOrExpression();
+    }
+    ast::AstNode* range = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::RangeExpression,
+        SourceRange(begin != nullptr ? begin->range().begin() : operation.begin(),
+            end != nullptr ? end->range().end() : operation.end()));
+    range->setTokenKind(TokenKind::DotDot);
+    range->setFirst(begin);
+    range->setSecond(end);
+    return range;
 }
 
 bool Parser::looksLikeLambdaExpression() const noexcept

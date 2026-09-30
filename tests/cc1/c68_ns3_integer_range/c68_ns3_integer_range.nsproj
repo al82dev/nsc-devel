@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <Name>C68Ns3IntegerRange</Name>
+    <OutputType>Exe</OutputType>
+    <Language>3</Language>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+  </ItemGroup>
+</Project>
