@@ -141,6 +141,7 @@ add_library(nsc_compilation STATIC
     src/Language/IntegrationQuality.cpp
     src/Language/OwnershipSemantics.cpp
     src/Language/ReleaseSemantics.cpp
+    src/Language/SmartPointerSemantics.cpp
     src/Language/SumTypeSemantics.cpp
     src/Language/TraitSemantics.cpp
     src/Driver/CompilationJobPolicy.cpp
@@ -796,6 +797,14 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_ns3_t13_abi_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_ns3_t13_abi_tests)
     add_test(NAME nsc.ns3.t13.abi COMMAND nsc_ns3_t13_abi_tests)
+
+    add_executable(
+        nsc_ns3_e046_smart_pointer_tests
+        tests/unit/NativeSharp3E046SmartPointerTests.cpp)
+    target_link_libraries(nsc_ns3_e046_smart_pointer_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_ns3_e046_smart_pointer_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_e046_smart_pointer_tests)
+    add_test(NAME nsc.ns3.e046.smart-pointer-contract COMMAND nsc_ns3_e046_smart_pointer_tests)
 
     add_executable(
         nsc_ns3_t14_numeric_tests

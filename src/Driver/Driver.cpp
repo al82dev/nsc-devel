@@ -52,6 +52,7 @@
 #include "nativesharp/Interop/LibraryAbiReport.h"
 #include "nativesharp/Interop/LibraryApiDiff.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Language/SmartPointerSemantics.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/FloatingPointMode.h"
@@ -3958,6 +3959,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << runtime::runtimeAbiContractManifest();
             return ExitCode::Success;
         }
+        if (argument == "--print-smart-pointer-contract")
+        {
+            output << language::smartPointerContractManifest();
+            return ExitCode::Success;
+        }
         if (argument == "--print-compatibility-policy")
         {
             output << currentCompatibilityPolicy();
@@ -4064,6 +4070,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << "runtime ABI contract verified: " << source.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--write-smart-pointer-contract")
+        {
+            std::string contractError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!language::writeSmartPointerContract(destination, contractError))
+            {
+                error << "nsc: error: " << contractError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "smart pointer contract written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-smart-pointer-contract")
+        {
+            std::string contractError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!language::verifySmartPointerContractFile(source, contractError))
+            {
+                error << "nsc: error: " << contractError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "smart pointer contract verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
         if (action == "--write-windows-runtime-library")
@@ -4656,6 +4686,9 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-runtime-abi-contract\n"
            << "  nsc --write-runtime-abi-contract <file.abi>\n"
            << "  nsc --verify-runtime-abi-contract <file.abi>\n"
+           << "  nsc --print-smart-pointer-contract\n"
+           << "  nsc --write-smart-pointer-contract <file.contract>\n"
+           << "  nsc --verify-smart-pointer-contract <file.contract>\n"
            << "  nsc --write-windows-runtime-library <file.lib>\n"
            << "  nsc --verify-windows-runtime-library <file.lib>\n"
            << "  nsc --verify-pe <file.exe>\n"
@@ -4724,6 +4757,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-compiler-identity\n"
            << "  nsc --print-toolchain-contract\n"
            << "  nsc --print-runtime-abi-contract\n"
+           << "  nsc --print-smart-pointer-contract\n"
            << "  nsc --print-linker\n"
            << "  nsc --dump-runtime-llvm\n"
            << "  nsc --print-target\n"
