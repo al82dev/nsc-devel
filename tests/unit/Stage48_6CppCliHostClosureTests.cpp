@@ -23,6 +23,9 @@
 #ifndef NSC_TEST_CLANGXX_EXECUTABLE
 #error "CMake must provide the configured Clang C++ host compiler"
 #endif
+#ifndef NSC_TEST_NSC_EXECUTABLE
+#error "CMake must provide the nsc executable built by this configuration"
+#endif
 
 namespace
 {
@@ -385,7 +388,9 @@ void testCppCliBuildWhenAvailable(TestContext& tests, const std::filesystem::pat
             "MSBuild/.NET SDK are unavailable; packaged Windows C++/CLI end-to-end gate remains external");
         return;
     }
-    const std::string command = "cmd /c " + quote(exampleRoot() / "build_and_run_windows_cppcli_host.cmd");
+    const std::string command = "cmd /c " +
+        quote(exampleRoot() / "build_and_run_windows_cppcli_host.cmd") + " " +
+        quote(NSC_TEST_NSC_EXECUTABLE);
     tests.expect(runCommand(command, root / "cppcli_windows_gate.log"),
         "when MSVC C++/CLI and .NET 9 are installed, the packaged Stage 48.6 end-to-end bridge gate passes");
 #else
@@ -400,7 +405,7 @@ int main()
 {
     TestContext tests;
     const std::filesystem::path root =
-        std::filesystem::temp_directory_path() / "nativesharp-stage48_6-cppcli-stage48-closure-tests";
+        nativesharp::tests::evidenceRoot("nativesharp-stage48_6-cppcli-stage48-closure-tests");
     std::error_code ec;
     std::filesystem::remove_all(root, ec);
     std::filesystem::create_directories(root, ec);
@@ -412,6 +417,5 @@ int main()
     testConsolidatedStage48Surface(tests);
     testCppCliBuildWhenAvailable(tests, root);
 
-    std::filesystem::remove_all(root, ec);
-    return tests.result();
+    return tests.resultKeeping(root);
 }

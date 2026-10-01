@@ -3151,6 +3151,7 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_stage48_6_cppcli_host_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_stage48_6_cppcli_host_tests PRIVATE
         NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_TEST_NSC_EXECUTABLE="$<TARGET_FILE:nsc>"
         NSC_TEST_CLANGXX_EXECUTABLE="${NSC_TEST_CLANGXX_EXECUTABLE}")
     nsc_enable_warnings(nsc_stage48_6_cppcli_host_tests)
     add_test(NAME nsc.stage48_6.cppcli-stage48-closure COMMAND nsc_stage48_6_cppcli_host_tests)

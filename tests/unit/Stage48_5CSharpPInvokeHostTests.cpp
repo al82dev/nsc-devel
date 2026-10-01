@@ -478,7 +478,8 @@ void testManagedCompilationWhenSdkExists(TestContext& tests, const std::filesyst
     tests.expect(managedBuild,
         "when a usable .NET 9 SDK is installed, the packaged strict C# 13 P/Invoke host compiles successfully");
     tests.expect(managedBuild &&
-            std::filesystem::is_regular_file(managed / "bin" / "Release" / "net9.0" / "Stage48_5CSharpHost.dll"),
+            std::filesystem::is_regular_file(
+                managed / "bin" / "x64" / "Release" / "net9.0" / "Stage48_5CSharpHost.dll"),
         "managed build produces the expected .NET host assembly");
 }
 }

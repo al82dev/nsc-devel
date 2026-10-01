@@ -2,10 +2,10 @@
 setlocal EnableExtensions
 
 if "%~1"=="" (
-    set "NSC=C:\native-sharp-3.0\nsc.exe"
-) else (
-    set "NSC=%~1"
+    echo error: pass the exact nsc.exe to validate as the first argument.
+    exit /b 1
 )
+set "NSC=%~1"
 
 where msbuild >nul 2>nul || (
     echo error: MSBuild is required. Run this from a Visual Studio x64 Native Tools Command Prompt.
