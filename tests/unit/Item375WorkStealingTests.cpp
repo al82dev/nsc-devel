@@ -99,12 +99,14 @@ public class Program
 )NS");
 
     std::string diagnostic;
-    tests.expect(compileAndRun(root / "WorkStealingItem375.nsproj",
-                     root / "WorkStealingO0.exe", "-O0", diagnostic),
+    bool succeeded = compileAndRun(root / "WorkStealingItem375.nsproj",
+        root / "WorkStealingO0.exe", "-O0", diagnostic);
+    tests.expect(succeeded,
         "an idle worker steals a blocked worker's backlog at O0 (" + diagnostic + ")");
     diagnostic.clear();
-    tests.expect(compileAndRun(root / "WorkStealingItem375.nsproj",
-                     root / "WorkStealingO2.exe", "-O2", diagnostic),
+    succeeded = compileAndRun(root / "WorkStealingItem375.nsproj",
+        root / "WorkStealingO2.exe", "-O2", diagnostic);
+    tests.expect(succeeded,
         "an idle worker steals a blocked worker's backlog at O2 (" + diagnostic + ")");
     const int result = tests.result();
     if (result == 0) std::filesystem::remove_all(root, filesystemError);

@@ -6794,7 +6794,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 if (operand == nullptr) return nullptr;
                 auto node = makeNode(ProjectOopHirNodeKind::Deallocation, expression, "builtin:void");
                 node->dynamicDestruction = false;
-                node->storageOwnership = sema::OwnershipKind::Owned;
+                // The array allocation is always released by delete[]. Element ownership is a
+                // separate axis carried by the operand binding. In particular, a plain T[] or
+                // borrowed T[] owns no T elements even when its containing class manually
+                // releases the backing buffer in its destructor.
+                node->storageOwnership = operandType->storageOwnership;
                 // A jagged row is itself an owning native-array reference. Carrying the slot
                 // address lets LLVM null it before recursive destruction, so an explicit row
                 // delete followed by deletion of the outer array can never double-drop it.

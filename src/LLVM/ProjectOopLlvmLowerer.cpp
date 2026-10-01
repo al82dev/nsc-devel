@@ -13855,7 +13855,11 @@ private:
         if (frontend::ProjectTypeConversion::isNativeArray(deletionType))
         {
             if (!emitNativeArrayDestroy(
-                    pointer, deletionType, "delete.array", true, error)) return nullptr;
+                    pointer,
+                    deletionType,
+                    "delete.array",
+                    node->storageOwnership == sema::OwnershipKind::Owned,
+                    error)) return nullptr;
             return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
         }
 

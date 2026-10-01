@@ -6,7 +6,9 @@ namespace NativeSharp.Core.Threading
     public class ThreadPool
     {
         private owned Thread[] workers_;
-        private owned ThreadStart[] queues_;
+        // The pool owns the queue buffer, but each slot only borrows the caller/Job delegate.
+        // The destructor releases the buffer without destroying those borrowed delegate cells.
+        private ThreadStart[] queues_;
         private owned int[] heads_;
         private owned int[] counts_;
         private owned Monitor gate_;

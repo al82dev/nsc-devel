@@ -90,12 +90,14 @@ public class Program
 )NS");
 
     std::string diagnostic;
-    tests.expect(compileAndRun(
-        root / "ThreadPoolItem371.nsproj", root / "ThreadPoolO0.exe", "-O0", diagnostic),
+    bool succeeded = compileAndRun(
+        root / "ThreadPoolItem371.nsproj", root / "ThreadPoolO0.exe", "-O0", diagnostic);
+    tests.expect(succeeded,
         "the native thread pool drains 64 jobs at O0 (" + diagnostic + ")");
     diagnostic.clear();
-    tests.expect(compileAndRun(
-        root / "ThreadPoolItem371.nsproj", root / "ThreadPoolO2.exe", "-O2", diagnostic),
+    succeeded = compileAndRun(
+        root / "ThreadPoolItem371.nsproj", root / "ThreadPoolO2.exe", "-O2", diagnostic);
+    tests.expect(succeeded,
         "the native thread pool drains 64 jobs at O2 (" + diagnostic + ")");
     const int result = tests.result();
     if (result == 0) std::filesystem::remove_all(root, filesystemError);

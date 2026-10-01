@@ -124,12 +124,14 @@ public class Program
 )NS");
 
     std::string diagnostic;
-    tests.expect(compileAndRun(root / "JobDependenciesItem373.nsproj",
-                     root / "JobDependenciesO0.exe", "-O0", diagnostic),
+    bool succeeded = compileAndRun(root / "JobDependenciesItem373.nsproj",
+        root / "JobDependenciesO0.exe", "-O0", diagnostic);
+    tests.expect(succeeded,
         "dependencies and cancellation execute correctly at O0 (" + diagnostic + ")");
     diagnostic.clear();
-    tests.expect(compileAndRun(root / "JobDependenciesItem373.nsproj",
-                     root / "JobDependenciesO2.exe", "-O2", diagnostic),
+    succeeded = compileAndRun(root / "JobDependenciesItem373.nsproj",
+        root / "JobDependenciesO2.exe", "-O2", diagnostic);
+    tests.expect(succeeded,
         "dependencies and cancellation execute correctly at O2 (" + diagnostic + ")");
     const int result = tests.result();
     if (result == 0) std::filesystem::remove_all(root, filesystemError);
