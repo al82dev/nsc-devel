@@ -168,7 +168,7 @@ DEFAULT_TEST_BUILD_NSLINK = ROOT / "build-test-nslink"
 DEFAULT_PREFIX = Path(r"C:\native-sharp")
 DEFAULT_BASELINE_PREFIX = Path(r"A:\native-sharp-3.0-baseline")
 DEFAULT_LLVM = Path(r"C:\clang-llvm")
-DEFAULT_NSLINK = DEFAULT_PREFIX / "bin" / "nslink.exe"
+DEFAULT_NSLINK = Path(r"A:\nslink-devel\build-debug\bin\nslink.exe")
 HISTORY_ROOT = ROOT / "_nscbuilder" / "history"
 DEFAULT_TEST_WORK_ROOT = ROOT / "_nscbuilder" / "work" / "tests"
 DEFAULT_TEMP_ROOT = ROOT / "_nscbuilder" / "temp"
@@ -539,6 +539,43 @@ def reset_baseline_prefix(path: Path) -> None:
     if resolved.exists():
         shutil.rmtree(resolved)
     resolved.mkdir(parents=True)
+
+
+def validate_baseline_nslink_source(source: Path, prefix: Path) -> Path:
+    """Valida que NSLink venga de una construcción en A: y no del staging que se vacía."""
+    resolved = source.resolve()
+    staging = prefix.resolve()
+    if resolved.drive.casefold() != "a:":
+        raise ValueError(
+            "NSLink para el baseline debe provenir de una construcción en A:; "
+            f"se recibió {resolved}"
+        )
+    if path_is_within(resolved, staging):
+        raise ValueError(
+            "NSLink para el baseline no puede provenir del staging que será reiniciado: "
+            f"{resolved}"
+        )
+    if not resolved.is_file():
+        raise FileNotFoundError(f"no existe el NSLink construido en A: {resolved}")
+    return resolved
+
+
+def stage_baseline_nslink(source: Path, prefix: Path) -> Path:
+    """Copia NSLink de A: al staging fijo y comprueba que el contenido sea idéntico."""
+    staging = prefix.resolve()
+    expected = DEFAULT_BASELINE_PREFIX.resolve()
+    if staging != expected:
+        raise ValueError(
+            "el destino de NSLink debe ser exactamente el staging del baseline "
+            f"{expected}; se recibió {staging}"
+        )
+    resolved_source = validate_baseline_nslink_source(source, staging)
+    destination = staging / "bin" / "nslink.exe"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(resolved_source, destination)
+    if sha256_file(resolved_source) != sha256_file(destination):
+        raise OSError(f"la copia de NSLink no coincide con su origen: {destination}")
+    return destination
 
 
 def promote_certified_baseline(source: Path, destination: Path, run_id: str) -> dict[str, str]:
@@ -1560,7 +1597,7 @@ class PipelineWorker(QObject):
         if linker == "lld-link":
             env["NSC_LLD_LINK"] = str(Path(self.plan.llvm_root) / "bin" / "lld-link.exe")
         elif linker == "NSLink":
-            env["NSC_LLD_LINK"] = self.plan.nslink_exe
+            env["NSC_LLD_LINK"] = str(self._effective_nslink_executable())
         # Enlazador y librarian son herramientas distintas. NSLink construye PE, pero no debe
         # recibir /lib ni archivos archive como si fueran objetos COFF.
         env["NSC_LLVM_LIB"] = str(Path(self.plan.llvm_root) / "bin" / "llvm-lib.exe")
@@ -1571,6 +1608,11 @@ class PipelineWorker(QObject):
             if self.plan.keep_link_temps and linker is not None:
                 env["NSC_KEEP_LINK_TEMPS"] = str(self.run_dir / linker_name / "linktemps")
         return env
+
+    def _effective_nslink_executable(self) -> Path:
+        if self.plan.operation == "baseline":
+            return Path(self.plan.prefix).resolve() / "bin" / "nslink.exe"
+        return Path(self.plan.nslink_exe).resolve()
 
     def _record_stage(
         self,
@@ -1664,6 +1706,7 @@ class PipelineWorker(QObject):
 
     def _validate_paths(self) -> list[str]:
         required: list[Path] = []
+        problems: list[str] = []
         building = self.plan.run_build and self.plan.build_mode != "skip"
         installing = self.plan.operation == "install"
         building_tests = self.plan.build_test_trees
@@ -1691,9 +1734,16 @@ class PipelineWorker(QObject):
                 required.append(Path(self.plan.prefix) / "bin" / "nsc.exe")
             if "lld-link" in self.plan.linkers:
                 required.append(Path(self.plan.llvm_root) / "bin" / "lld-link.exe")
-            if "NSLink" in self.plan.linkers:
+            if "NSLink" in self.plan.linkers and self.plan.operation != "baseline":
                 required.append(Path(self.plan.nslink_exe))
-        return [str(path) for path in required if not path.is_file()]
+        if self.plan.operation == "baseline":
+            try:
+                validate_baseline_nslink_source(
+                    Path(self.plan.nslink_exe), Path(self.plan.prefix)
+                )
+            except (OSError, ValueError) as exc:
+                problems.append(str(exc))
+        return [str(path) for path in required if not path.is_file()] + problems
 
     def _test_build_dir(self, linker: str) -> Path:
         configured = self.plan.test_build_dirs.get(linker)
@@ -1755,7 +1805,7 @@ class PipelineWorker(QObject):
             return True
         assert self.run_dir is not None
         compiler = Path(self.plan.prefix) / "bin" / "nsc.exe"
-        nslink = Path(self.plan.nslink_exe)
+        nslink = self._effective_nslink_executable()
         template = Path(self.plan.root) / "selfhost" / "bootstrap" / "bootstrap.lock"
         output = self.run_dir / "bootstrap" / "bootstrap.lock"
         try:
@@ -1818,6 +1868,36 @@ class PipelineWorker(QObject):
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text(detail + "\n", encoding="utf-8", errors="replace")
         self._record_stage(name, status, time.monotonic() - started, code, "limpieza interna", log)
+        return status == "passed"
+
+    def _stage_baseline_nslink(self) -> bool:
+        if self.plan.operation != "baseline":
+            return True
+        assert self.run_dir is not None
+        name = "Preparar NSLink del baseline"
+        self.stage_started.emit(name)
+        started = time.monotonic()
+        log = self.run_dir / "stages" / "preparar_nslink_baseline.log"
+        status = "passed"
+        code = 0
+        try:
+            destination = stage_baseline_nslink(
+                Path(self.plan.nslink_exe), Path(self.plan.prefix)
+            )
+            detail = (
+                f"NSLink preparado desde {Path(self.plan.nslink_exe).resolve()} hacia "
+                f"{destination.resolve()}\nsha256: {sha256_file(destination)}"
+            )
+            self._emit(detail, "success")
+        except (OSError, ValueError) as exc:
+            status = "failed"
+            code = 1
+            detail = f"No se pudo preparar NSLink para el baseline: {exc}"
+            self.failed += 1
+            self._emit(detail, "error")
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(detail + "\n", encoding="utf-8", errors="replace")
+        self._record_stage(name, status, time.monotonic() - started, code, "A: -> staging", log)
         return status == "passed"
 
     def _build_baseline_libraries(self) -> bool:
@@ -1928,6 +2008,8 @@ class PipelineWorker(QObject):
             ["cmake", "--install", self.plan.compiler_build_dir, "--prefix", self.plan.prefix],
             self._base_environment(),
         ):
+            return False
+        if not self._stage_baseline_nslink():
             return False
         return self._build_baseline_libraries()
 
@@ -2667,7 +2749,7 @@ class PipelineWorker(QObject):
             measurement["binaries"]["installed_nsc"] = sha256_file(installed)
         for label, path in (
             ("lld-link", Path(self.plan.llvm_root) / "bin" / "lld-link.exe"),
-            ("nslink", Path(self.plan.nslink_exe)),
+            ("nslink", self._effective_nslink_executable()),
         ):
             if path.is_file():
                 measurement["tools"][label] = sha256_file(path)
@@ -2866,7 +2948,7 @@ class PipelineWorker(QObject):
             else:
                 total += 2  # construir, instalar
             if self.plan.operation == "baseline":
-                total += 2  # vaciar el staging y construir sus bibliotecas bootstrap
+                total += 3  # vaciar staging, preparar NSLink y construir bibliotecas bootstrap
         if self._runs_test_stages() and self.plan.run_ctest:
             for linker in self.plan.linkers:
                 build = self._test_build_dir(linker)
@@ -4388,7 +4470,11 @@ class MainWindow(QMainWindow):
         self.test_llvm_path.setText(
             self.settings.value("test_llvm_path", str(DEFAULT_LLVM))
         )
-        self.nslink_path.setText(self.settings.value("nslink_path", str(DEFAULT_NSLINK)))
+        saved_nslink = str(self.settings.value("nslink_path", str(DEFAULT_NSLINK)))
+        legacy_nslink = str(DEFAULT_PREFIX / "bin" / "nslink.exe")
+        if Path(saved_nslink) == Path(legacy_nslink):
+            saved_nslink = str(DEFAULT_NSLINK)
+        self.nslink_path.setText(saved_nslink)
         old_jobs = int(self.settings.value("jobs", min(os.cpu_count() or 4, 16)))
         self.compiler_jobs.setValue(int(self.settings.value("compiler_jobs", old_jobs)))
         self.test_jobs.setValue(int(self.settings.value("test_jobs", old_jobs)))
@@ -5408,7 +5494,7 @@ def main() -> int:
     nslink_default = configured_path(
         config,
         "nslink",
-        Path(prefix_default) / "bin" / "nslink.exe",
+        DEFAULT_NSLINK,
     )
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--help", action="store_true")

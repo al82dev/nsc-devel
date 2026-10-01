@@ -118,6 +118,10 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         plan = nscbuilder.make_baseline_plan(4)
         self.assertEqual(Path(plan.prefix), Path(r"A:\native-sharp-3.0-baseline"))
         self.assertEqual(Path(plan.deploy_prefix), Path(r"C:\native-sharp"))
+        self.assertEqual(
+            Path(plan.nslink_exe),
+            Path(r"A:\nslink-devel\build-debug\bin\nslink.exe"),
+        )
         self.assertFalse(plan.sync_libraries)
         self.assertEqual(plan.optimizations, ["-O0", "-O1", "-O2", "-O3"])
         self.assertEqual(plan.linkers, ["lld-link", "NSLink"])
@@ -135,6 +139,34 @@ class BootstrapInfrastructureTests(unittest.TestCase):
             self.assertFalse((staging / "stale.txt").exists())
             with self.assertRaises(ValueError):
                 nscbuilder.reset_baseline_prefix(self.root / "another-directory")
+
+    def test_baseline_stages_nslink_from_a_and_uses_the_staged_copy(self) -> None:
+        source = self.root / "nslink-build" / "bin" / "nslink.exe"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"NSLink built on A drive")
+        staging = self.root / "native-sharp-3.0-baseline"
+        staging.mkdir()
+        plan = nscbuilder.make_baseline_plan(1, prefix=staging, nslink_exe=source)
+        worker = nscbuilder.PipelineWorker(plan, [])
+        with patch.object(nscbuilder, "DEFAULT_BASELINE_PREFIX", staging):
+            destination = nscbuilder.stage_baseline_nslink(source, staging)
+        self.assertEqual(destination, staging / "bin" / "nslink.exe")
+        self.assertEqual(destination.read_bytes(), source.read_bytes())
+        self.assertEqual(worker._effective_nslink_executable(), destination.resolve())
+        self.assertEqual(Path(worker._base_environment("NSLink")["NSC_LLD_LINK"]), destination)
+
+    def test_baseline_rejects_nslink_from_installed_c_drive(self) -> None:
+        plan = nscbuilder.make_baseline_plan(
+            1,
+            prefix=self.root / "native-sharp-3.0-baseline",
+            nslink_exe=Path(r"C:\native-sharp\bin\nslink.exe"),
+        )
+        worker = nscbuilder.PipelineWorker(plan, [])
+        problems = worker._validate_paths()
+        self.assertTrue(
+            any("debe provenir de una construcción en A:" in problem for problem in problems),
+            problems,
+        )
 
     def test_certified_promotion_flows_from_staging_to_install_without_deleting_components(self) -> None:
         staging = self.root / "staging"
