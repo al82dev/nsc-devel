@@ -14,7 +14,7 @@ int main()
     const std::string matrix = currentCompatibilityMatrix();
     tests.expect(matrix.starts_with("NSCOMPAT-MATRIX 1\n"),
         "N-1/N matrix has canonical versioned framing");
-    tests.expect(matrix.find("compiler.N=2.0.0\ncompiler.N-1=1.0.1\n") != std::string::npos,
+    tests.expect(matrix.find("compiler.N=3.0.0\ncompiler.N-1=2.0.0\n") != std::string::npos,
         "N-1/N matrix uses the explicit final compiler generations");
     for (const std::string surface : {"compiler", "nsmeta", "native-abi", "runtime-abi"})
     {

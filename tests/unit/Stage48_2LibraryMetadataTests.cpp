@@ -287,12 +287,14 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(metadata.exports.size() == 3, "three explicit Stage47 C ABI exports are persisted");
     tests.expect(LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint).size() == 64,
         "ABI fingerprint is a full 256-bit SHA-256 value");
-    tests.expect(metadata.nativeAbiMajor == 1 && metadata.nativeAbiMinor == 0 &&
-            metadata.runtimeAbiMajor == 1 && metadata.runtimeAbiMinor == 0 &&
+    tests.expect(metadata.nativeAbiMajor == nativesharp::interop::kNativeAbiMajor &&
+            metadata.nativeAbiMinor == nativesharp::interop::kNativeAbiMinor &&
+            metadata.runtimeAbiMajor == nativesharp::interop::kRuntimeAbiMajor &&
+            metadata.runtimeAbiMinor == nativesharp::interop::kRuntimeAbiMinor &&
             metadata.manglingAbiVersion == 1 && metadata.objectAbiVersion == 2 &&
             metadata.delegateAbiVersion == 1 && metadata.exceptionAbiVersion == 1 &&
             metadata.managedDelegateCellSize == 32,
-                 "NSMETA 1.8 separates its file version from the frozen "
+                 "NSMETA separates its file version from the frozen "
                  "NativeSharp/runtime ABI contract");
 
     const LibraryMetadataType* pair = findType(metadata, "::Meta.Pair");
@@ -483,7 +485,7 @@ public class Api
     tests.expect(codec.read(goldenPath, goldenDecoded, error),
         "the ABI 1.0 golden metadata model round-trips");
     const std::string goldenHex = LibraryMetadataCodec::fingerprintHex(goldenDecoded.abiFingerprint);
-    tests.expect(goldenHex == "4968fe9c9b16c2a0bb8fe9c15a9dd45492f71ac055c6b59748abaffa582c0fa9",
+    tests.expect(goldenHex == "8be0002238691562dd9a34db8e1569988cb143acd16b7eeeaab5c00013c69953",
         "ABI root contract with Object ABI 2 retains its reviewed golden fingerprint (" +
             goldenHex + ")");
 }
@@ -1157,14 +1159,16 @@ class Program
         "\" Metadata=\"" + (facade / "ExternalTypeFacade.nsmeta").generic_string() +
         "\" /></ItemGroup></Project>");
     writeFile(incomplete / "Program.ns", "class Program { public static int Main() { return 0; } }");
-    const std::string incompleteProject = (incomplete / "ExternalTypeConsumerMissingProvider.nsproj").string();
+    const std::string incompleteProject =
+        (incomplete / "ExternalTypeConsumerMissingProvider.nsproj").string();
     const std::array<std::string_view, 2> incompleteArgs = {"--check-project-oop-hir", incompleteProject};
     output.clear(); error.clear();
     tests.expect(runDriver(incompleteArgs, output, error) == ExitCode::CompilationError &&
-                     error.find("precompiled LibraryReference type closure is incomplete") != std::string::npos &&
-                     error.find("ExternalContracts.Mat4") != std::string::npos &&
-                     error.find("EventHandler__g1__") != std::string::npos,
-                 "missing provider is rejected once with the accumulated external type closure");
+                     error.find("binary closure for module 'ExternalTypeFacade'") != std::string::npos &&
+                     error.find("cannot resolve dependency 'ExternalTypeProvider'") != std::string::npos &&
+                     error.find("ExternalTypeProvider.lib + ExternalTypeProvider.nsmeta") != std::string::npos,
+                 "missing provider is rejected by the binary closure with its required artifacts named (" +
+                     error + ")");
 }
 
 void testLibraryMaterializesCompletePublicClosedGenericSurface(
@@ -1347,12 +1351,19 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
             else if (golden.producerVersion.starts_with("0.9.0"))
             {
                 // These immutable snapshots were emitted by the pre-release 0.9 producer. They
-                // remain proof that every historical NSMETA minor is readable, but 2.0 must not
-                // silently expand its certified producer window beyond released N-1 (1.0.1).
+                // remain proof that every historical NSMETA minor is readable, but 3.0 must not
+                // silently expand its certified producer window beyond released N-1 (2.0.0).
                 tests.expect(!goldenCompatible &&
                                  error.find("outside the supported producer window") != std::string::npos,
                              "archived NSMETA 1." + std::to_string(minor) +
                                  " golden is readable but its obsolete producer is rejected (" + error + ")");
+            }
+            else if (golden.producerVersion.starts_with("1.0.1"))
+            {
+                tests.expect(!goldenCompatible &&
+                                 error.find("outside the supported producer window") != std::string::npos,
+                             "archived NSMETA 1." + std::to_string(minor) +
+                                 " golden is readable but its N-2 producer is rejected (" + error + ")");
             }
             else
             {
@@ -1452,10 +1463,10 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                      error.find("native ABI expected 1.0, found 2.0") != std::string::npos,
                  "E5 names the incompatible Native ABI version and both values");
     incompatible = metadata;
-    incompatible.runtimeAbiMinor = 1;
+    incompatible.runtimeAbiMinor = static_cast<std::uint16_t>(metadata.runtimeAbiMinor + 1U);
     error.clear();
     tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
-                     error.find("runtime ABI expected 1.0, found 1.1") != std::string::npos,
+                     error.find("runtime ABI expected 1.1, found 1.2") != std::string::npos,
                  "E5 names a newer runtime contract instead of collapsing all "
                  "ABI fields into one message");
     incompatible = metadata;
@@ -1607,7 +1618,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                                      std::to_string(nativesharp::interop::kMetadataFormatMinor)) !=
                          std::string::npos &&
                      output.find("native-abi: 1.0") != std::string::npos &&
-                     output.find("runtime-abi: 1.0") != std::string::npos &&
+                     output.find("runtime-abi: 1.1") != std::string::npos &&
                      output.find("object-abi: 2") != std::string::npos &&
                      output.find("delegate-cell-size: 32") != std::string::npos,
                  "driver verification prints the complete frozen ABI contract, "

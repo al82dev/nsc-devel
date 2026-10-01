@@ -218,14 +218,16 @@ std::string currentCompatibilityMatrix()
     std::string matrix = "NSCOMPAT-MATRIX " +
         std::to_string(kCompatibilityMatrixFormatVersion) + "\n";
     matrix += "certification=final\n";
-    matrix += "compiler.N=2.0.0\n";
-    matrix += "compiler.N-1=1.0.1\n";
+    matrix += "compiler.N=" + std::string(kCompilerReleaseVersion) + "\n";
+    matrix += "compiler.N-1=" + std::string(kPreviousCompilerReleaseVersion) + "\n";
     matrix += "nsmeta.N=" + std::to_string(interop::kMetadataFormatMajor) + "." +
         std::to_string(interop::kMetadataFormatMinor) + "\n";
-    matrix += "nsmeta.N-1=1.20\n";
-    matrix += "native-abi.N=1.0\n";
+    matrix += "nsmeta.N-1=1.21\n";
+    matrix += "native-abi.N=" + std::to_string(interop::kNativeAbiMajor) + "." +
+        std::to_string(interop::kNativeAbiMinor) + "\n";
     matrix += "native-abi.N-1=1.0\n";
-    matrix += "runtime-abi.N=1.0\n";
+    matrix += "runtime-abi.N=" + std::to_string(interop::kRuntimeAbiMajor) + "." +
+        std::to_string(interop::kRuntimeAbiMinor) + "\n";
     matrix += "runtime-abi.N-1=1.0\n";
     for (const std::string_view surface : {
              std::string_view("compiler"), std::string_view("nsmeta"),

@@ -19,13 +19,13 @@ int main()
     const std::string matrix = currentCompatibilityMatrix();
     tests.expect(matrix.starts_with("NSCOMPAT-MATRIX 1\ncertification=final\n"),
         "final N-1/N matrix is explicitly certified");
-    tests.expect(matrix.find("compiler.N=2.0.0\ncompiler.N-1=1.0.1\n") != std::string::npos,
-        "compiler window is explicit 1.0.1 and 2.0.0 rather than arithmetic");
-    tests.expect(matrix.find("nsmeta.N=1.22\nnsmeta.N-1=1.20\n") != std::string::npos,
-        "the final window accepts NSMETA 1.20 producers in the NSMETA 1.22 compiler");
+    tests.expect(matrix.find("compiler.N=3.0.0\ncompiler.N-1=2.0.0\n") != std::string::npos,
+        "compiler window is explicit 2.0.0 and 3.0.0 rather than arithmetic");
+    tests.expect(matrix.find("nsmeta.N=1.25\nnsmeta.N-1=1.21\n") != std::string::npos,
+        "the 3.0 window accepts NSMETA 1.21 producers in the NSMETA 1.25 compiler");
     tests.expect(matrix.find("native-abi.N=1.0\nnative-abi.N-1=1.0\n") != std::string::npos &&
-            matrix.find("runtime-abi.N=1.0\nruntime-abi.N-1=1.0\n") != std::string::npos,
-        "native and runtime ABI 1.0 are preserved across the final window");
+            matrix.find("runtime-abi.N=1.1\nruntime-abi.N-1=1.0\n") != std::string::npos,
+        "Native ABI stays at 1.0 while Runtime ABI advances from 1.0 to 1.1");
     for (const std::string surface : {"compiler", "nsmeta", "native-abi", "runtime-abi"})
     {
         tests.expect(matrix.find("row=" + surface + "|consumer:N|producer:N-1|accept") !=
@@ -40,7 +40,7 @@ int main()
         nativesharp::tests::evidenceRoot("nativesharp_item405_final_compatibility_tests");
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
-    const std::filesystem::path path = root / "NativeSharp2Compatibility.matrix";
+    const std::filesystem::path path = root / "NativeSharp3Compatibility.matrix";
     std::string verificationError;
     tests.expect(writeCompatibilityMatrix(path, verificationError),
         "final compatibility matrix writes: " + verificationError);

@@ -48,9 +48,8 @@ constexpr std::uint32_t kWindowsX64Target = 1;
 constexpr std::uint32_t kPointerSize = 8;
 constexpr std::uint32_t kPointerAlignment = 8;
 constexpr std::string_view kTargetTriple = "x86_64-pc-windows-msvc";
-// The compatibility window is explicit rather than inferred from SemVer arithmetic. NativeSharp
-// 2.0 certifies 1.0.1 as its N-1 producer; 1.0.0 was never the preceding released producer.
-constexpr std::string_view kPreviousMetadataProducerRelease = "1.0.1";
+// The compatibility window is explicit rather than inferred from SemVer arithmetic. Its N-1
+// endpoint is shared with the public compiler compatibility matrix.
 constexpr std::size_t kHeaderSize = 100;
 constexpr std::uint64_t kMaximumPayloadSize = 128ULL * 1024ULL * 1024ULL;
 constexpr std::uint32_t kMaximumRecordCount = 1'000'000U;
@@ -3243,11 +3242,11 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     // aunque compartieran lenguaje, formato y ABI.
     const std::string_view producerRelease = compilerReleasePart(metadata.producerVersion);
     if (producerRelease != kCompilerReleaseVersion &&
-        producerRelease != kPreviousMetadataProducerRelease)
+        producerRelease != kPreviousCompilerReleaseVersion)
     {
         error = "metadata producer version '" + metadata.producerVersion +
             "' is outside the supported producer window ['" +
-            std::string(kPreviousMetadataProducerRelease) + "', '" +
+            std::string(kPreviousCompilerReleaseVersion) + "', '" +
             std::string(kCompilerReleaseVersion) + "']";
         return false;
     }

@@ -11,6 +11,7 @@ namespace nativesharp
 // generado por CMake.
 inline constexpr std::string_view kLanguageVersion = "3.0.0";
 inline constexpr std::string_view kCompilerReleaseVersion = "3.0.0";
+inline constexpr std::string_view kPreviousCompilerReleaseVersion = "2.0.0";
 inline constexpr std::string_view kCompilerStage = "70";
 extern const std::string_view kCompilerVersion;
 extern const std::string_view kCompilerBuildId;
