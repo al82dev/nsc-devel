@@ -747,6 +747,8 @@ bool ProjectMethodBodyModel::build(
         invalidLocalBorrows_.clear();
         maybeInvalidLocalBorrows_.clear();
         assignedLocals_.clear();
+        conditionFlowBySyntax_.clear();
+        inUnevaluatedOperand_ = false;
         definiteAssignmentWriteTarget_ = nullptr;
         ownershipFlowReachable_ = true;
         throwFlowStates_.clear();
@@ -1599,7 +1601,8 @@ void ProjectMethodBodyModel::checkDefiniteAssignment(
     std::size_t localOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (expression == nullptr || expression == definiteAssignmentWriteTarget_) return;
+    if (expression == nullptr || expression == definiteAssignmentWriteTarget_ ||
+        inUnevaluatedOperand_) return;
     if (!definiteAssignmentTracksLocal(localOrdinal)) return;
     if (assignedLocals_.contains(localOrdinal)) return;
     if (!reportedUnassignedReads_.insert(expression).second) return;
@@ -2660,15 +2663,23 @@ void ProjectMethodBodyModel::analyzeStatement(
             // patron, y no se acordaron. Reescribirlo aqui es lo que demuestra que la pieza
             // compartida es equivalente a la version que ya era correcta.
             const OwnershipFlowSnapshot branchEntry = captureOwnershipFlow();
+            OwnershipFlowSnapshot thenEntry = branchEntry;
+            OwnershipFlowSnapshot elseEntry = branchEntry;
+            if (const auto flow = conditionFlowBySyntax_.find(statement->first());
+                flow != conditionFlowBySyntax_.end())
+            {
+                thenEntry = flow->second.whenTrue;
+                elseEntry = flow->second.whenFalse;
+            }
             const OwnershipFlowSnapshot thenState = analyzeBranchState(
-                branchEntry,
+                thenEntry,
                 [&]
                 {
                     analyzeBlock(
                         statement->second(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
                 });
             const OwnershipFlowSnapshot elseState = analyzeBranchState(
-                branchEntry,
+                elseEntry,
                 [&]
                 {
                     if (statement->third() == nullptr) return;
@@ -6654,17 +6665,25 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
 
             const OwnershipFlowSnapshot branchEntry = captureOwnershipFlow();
+            OwnershipFlowSnapshot trueEntry = branchEntry;
+            OwnershipFlowSnapshot falseEntry = branchEntry;
+            if (const auto flow = conditionFlowBySyntax_.find(expression->first());
+                flow != conditionFlowBySyntax_.end())
+            {
+                trueEntry = flow->second.whenTrue;
+                falseEntry = flow->second.whenFalse;
+            }
             ExpressionResult whenTrue;
             ExpressionResult whenFalse;
             const OwnershipFlowSnapshot trueState = analyzeBranchState(
-                branchEntry,
+                trueEntry,
                 [&]
                 {
                     whenTrue = analyzeExpression(
                         expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
                 });
             const OwnershipFlowSnapshot falseState = analyzeBranchState(
-                branchEntry,
+                falseEntry,
                 [&]
                 {
                     whenFalse = analyzeExpression(
@@ -7411,9 +7430,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 expression->kind() == ast::AstNodeKind::AlignofExpression)
             {
                 const OwnershipFlowSnapshot beforeOperand = captureOwnershipFlow();
+                const bool previousUnevaluated = inUnevaluatedOperand_;
+                inUnevaluatedOperand_ = true;
                 const ExpressionResult operand = analyzeExpression(
                     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
                     /*allowMethodGroup=*/true);
+                inUnevaluatedOperand_ = previousUnevaluated;
                 restoreOwnershipFlow(beforeOperand);
                 if (!operand.valid && !operand.methodGroup)
                 {
@@ -12809,13 +12831,47 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
     const ast::AstNode* const previousWriteTarget = definiteAssignmentWriteTarget_;
     const bool assignsOperand = expression->tokenKind() == TokenKind::Amp &&
         expression->auxiliaryText() == "pass:out";
+    std::optional<std::size_t> rawUnassignedAddressLocal;
     if (assignsOperand)
     {
         markAssignmentTarget(expression->first(), scopeOrdinal);
     }
+    else if (expression->tokenKind() == TokenKind::Amp && expression->first() != nullptr &&
+             expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const std::optional<ScopeName> target =
+            lookupScopeName(scopeOrdinal, expression->first()->text());
+        if (target.has_value() && target->kind == ScopeNameKind::Local &&
+            definiteAssignmentTracksLocal(target->semanticOrdinal) &&
+            !assignedLocals_.contains(target->semanticOrdinal))
+        {
+            rawUnassignedAddressLocal = target->semanticOrdinal;
+            // Forming an address is not a value read. Suppress the generic read diagnostic so the
+            // source receives the actionable raw-pointer contract below; unlike `out`, this does
+            // not mark the local assigned.
+            definiteAssignmentWriteTarget_ = expression->first();
+        }
+    }
     ExpressionResult operand = analyzeExpression(
         expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
     definiteAssignmentWriteTarget_ = previousWriteTarget;
+    if (rawUnassignedAddressLocal.has_value())
+    {
+        const MethodLocalSymbol& local = locals_[*rawUnassignedAddressLocal];
+        const std::string writtenType = local.typeKey.starts_with("builtin:")
+            ? local.typeKey.substr(std::string("builtin:").size()) : local.typeKey;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "taking the address of unassigned local '" + local.name +
+                "' through a raw pointer does not establish definite assignment; "
+                "declare the callee parameter as 'out " + writtenType +
+                "' or initialize the local explicitly");
+        // The program is rejected. Avoid a second, less useful error at every later read, matching
+        // checkDefiniteAssignment's existing diagnostic-recovery policy.
+        assignedLocals_.insert(*rawUnassignedAddressLocal);
+    }
     if (!operand.valid)
     {
         return {};
@@ -12899,6 +12955,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
         }
         result.typeKey = "builtin:bool";
         result.valid = true;
+        if (const auto flow = conditionFlowBySyntax_.find(expression->first());
+            flow != conditionFlowBySyntax_.end())
+        {
+            ConditionFlowStates negated;
+            negated.whenTrue = flow->second.whenFalse;
+            negated.whenFalse = flow->second.whenTrue;
+            conditionFlowBySyntax_.insert_or_assign(expression, std::move(negated));
+        }
         return result;
     }
 
@@ -13107,14 +13171,46 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
     if (shortCircuits)
     {
         const OwnershipFlowSnapshot afterLeft = captureOwnershipFlow();
+        OwnershipFlowSnapshot leftTrue = afterLeft;
+        OwnershipFlowSnapshot leftFalse = afterLeft;
+        if (const auto flow = conditionFlowBySyntax_.find(expression->first());
+            flow != conditionFlowBySyntax_.end())
+        {
+            leftTrue = flow->second.whenTrue;
+            leftFalse = flow->second.whenFalse;
+        }
+
+        const OwnershipFlowSnapshot& rhsEntry = operation == TokenKind::AmpAmp
+            ? leftTrue : leftFalse;
         const OwnershipFlowSnapshot rhsEvaluated = analyzeBranchState(
-            afterLeft,
+            rhsEntry,
             [&]
             {
                 right = analyzeExpression(
                     expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
             });
-        commitBranchJoin(rhsEvaluated, afterLeft);
+        OwnershipFlowSnapshot rightTrue = rhsEvaluated;
+        OwnershipFlowSnapshot rightFalse = rhsEvaluated;
+        if (const auto flow = conditionFlowBySyntax_.find(expression->second());
+            flow != conditionFlowBySyntax_.end())
+        {
+            rightTrue = flow->second.whenTrue;
+            rightFalse = flow->second.whenFalse;
+        }
+
+        ConditionFlowStates conditionFlow;
+        if (operation == TokenKind::AmpAmp)
+        {
+            conditionFlow.whenTrue = rightTrue;
+            conditionFlow.whenFalse = joinOwnershipFlow(leftFalse, rightFalse);
+        }
+        else
+        {
+            conditionFlow.whenTrue = joinOwnershipFlow(leftTrue, rightTrue);
+            conditionFlow.whenFalse = rightFalse;
+        }
+        conditionFlowBySyntax_.insert_or_assign(expression, conditionFlow);
+        commitBranchJoin(conditionFlow.whenTrue, conditionFlow.whenFalse);
     }
     else
     {

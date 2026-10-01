@@ -1,0 +1,12 @@
+namespace T40Negative
+{
+    public class SizeofDoesNotAssign
+    {
+        public static int Run()
+        {
+            int value;
+            nuint measured = sizeof(value = 42);
+            return value;
+        }
+    }
+}

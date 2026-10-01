@@ -1399,6 +1399,12 @@ private:
         std::size_t localCount = 0;
     };
 
+    struct ConditionFlowStates final
+    {
+        OwnershipFlowSnapshot whenTrue;
+        OwnershipFlowSnapshot whenFalse;
+    };
+
     struct ExpressionResult final
     {
         std::string typeKey = "<error>";
@@ -2006,6 +2012,11 @@ private:
     // exactly the same control-flow discipline -- it is joined by INTERSECTION at every merge, so
     // a local assigned on only one arm of an `if` is not assigned after it.
     std::unordered_set<std::size_t> assignedLocals_;
+    // State on each truth edge of a boolean expression. A collapsed post-expression snapshot is
+    // insufficient for `if (a || Fill(out x)) return; use(x);`: the continuing false edge proves
+    // the RHS ran even though the join of true+false does not. Entries are private analysis
+    // scratch, keyed by syntax and rebuilt for each callable.
+    std::unordered_map<const ast::AstNode*, ConditionFlowStates> conditionFlowBySyntax_;
     // The identifier syntax node currently being written to rather than read from. An assignment
     // analyzes its own left-hand side through the ordinary expression path, so without this the
     // very statement that assigns a local would be reported as a read of it.
@@ -2014,6 +2025,7 @@ private:
     // unreachable-code probe in analyzeBlock does exactly that), and that must not multiply the
     // same message.
     std::unordered_set<const ast::AstNode*> reportedUnassignedReads_;
+    bool inUnevaluatedOperand_ = false;
     bool ownershipFlowReachable_ = true;
     std::vector<OwnershipFlowSnapshot> throwFlowStates_;
     std::vector<MethodSwitchBinding> switchBindings_;

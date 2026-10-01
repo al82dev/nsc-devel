@@ -1,0 +1,15 @@
+namespace T40Negative
+{
+    bool Gate(bool value) { return value; }
+    bool Set(out int value) { value = 42; return true; }
+
+    public class SkippedOut
+    {
+        public static int Run()
+        {
+            int value;
+            bool accepted = Gate(false) && Set(out value);
+            return value;
+        }
+    }
+}

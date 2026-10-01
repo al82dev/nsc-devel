@@ -1,0 +1,106 @@
+namespace T40Flow
+{
+    public struct Pair
+    {
+        public int Left;
+        public int Right;
+    }
+
+    public class Box
+    {
+        public int Value;
+        public Box(int value) { Value = value; }
+    }
+
+    bool Gate(bool value) { return value; }
+
+    bool SetInt(out int value, int desired, bool result)
+    {
+        value = desired;
+        return result;
+    }
+
+    bool SetPair(out Pair value, bool result)
+    {
+        Pair local;
+        local.Left = 20;
+        local.Right = 22;
+        value = local;
+        return result;
+    }
+
+    bool SetBox(out Box value, bool result)
+    {
+        value = new Box(42);
+        return result;
+    }
+
+    long ExtendedGcd(long first, long second, out long x, out long y)
+    {
+        if (second == 0L)
+        {
+            x = 1L;
+            y = 0L;
+            return first;
+        }
+
+        long previousX;
+        long previousY;
+        long gcd = ExtendedGcd(second, first % second, out previousX, out previousY);
+        x = previousY;
+        y = previousX - (first / second) * previousY;
+        return gcd;
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            int first;
+            int second;
+            if (Gate(false) ||
+                !SetInt(out first, 20, true) ||
+                !SetInt(out second, 22, true))
+            {
+                return 1;
+            }
+            if (first + second != 42) return 2;
+
+            int third;
+            if (Gate(true) && SetInt(out third, 42, true))
+            {
+                if (third != 42) return 3;
+            }
+            else
+            {
+                return 4;
+            }
+
+            int fourth;
+            if (Gate(false) || !SetInt(out fourth, 42, true))
+            {
+                panic();
+            }
+            if (fourth != 42) return 11;
+
+            Pair pair;
+            if (!SetPair(out pair, true)) return 5;
+            if (pair.Left + pair.Right != 42) return 6;
+
+            Box box;
+            if (!SetBox(out box, true)) return 7;
+            if (box.Value != 42) return 8;
+            delete box;
+
+            long x;
+            long y;
+            long gcd = ExtendedGcd(252L, 105L, out x, out y);
+            if (gcd != 21L || 252L * x + 105L * y != gcd) return 9;
+
+            int uninitialized;
+            nuint measured = sizeof(uninitialized);
+            if (measured != 4u) return 10;
+            return 0;
+        }
+    }
+}

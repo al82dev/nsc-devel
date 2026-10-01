@@ -1,0 +1,14 @@
+namespace T40Negative
+{
+    void Store(int* destination) { *destination = 42; }
+
+    public class RawPointerWrite
+    {
+        public static int Run()
+        {
+            int value;
+            Store(&value);
+            return value;
+        }
+    }
+}

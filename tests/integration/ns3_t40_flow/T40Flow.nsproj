@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>T40Flow</Name>
+    <Language>3</Language>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+  </ItemGroup>
+</Project>
