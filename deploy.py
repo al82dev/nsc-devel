@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_BUILD = ROOT / "build-clang"
-DEFAULT_PREFIX = Path(r"C:\native-sharp-3.0")
+DEFAULT_PREFIX = Path(r"C:\native-sharp")
 
 
 def resolved(path: str | Path) -> Path:

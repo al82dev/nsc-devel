@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 
-if not defined NS_ROOT set "NS_ROOT=C:\native-sharp-3.0"
+if not defined NS_ROOT set "NS_ROOT=C:\native-sharp"
 if not defined NSC_EXE set "NSC_EXE=%NS_ROOT%\bin\nsc.exe"
 if not defined NS_LIB_ROOT set "NS_LIB_ROOT=%NS_ROOT%\lib"
 

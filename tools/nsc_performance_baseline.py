@@ -29,7 +29,7 @@ from typing import Iterable
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_NATIVE_SHARP_ROOT = Path(os.environ.get("NS_ROOT", r"C:\native-sharp-3.0"))
+DEFAULT_NATIVE_SHARP_ROOT = Path(os.environ.get("NS_ROOT", r"C:\native-sharp"))
 DEFAULT_COMPILER = Path(os.environ.get("NSC_EXE", DEFAULT_NATIVE_SHARP_ROOT / "bin" / "nsc.exe"))
 DEFAULT_LLVM = Path(os.environ.get("NSC_LLVM_ROOT", r"C:\clang-llvm"))
 DEFAULT_NSLINK = Path(os.environ.get("NSLINK_EXE", DEFAULT_NATIVE_SHARP_ROOT / "bin" / "nslink.exe"))

@@ -36,7 +36,7 @@ set "BINDIR=%LOGDIR%\bin_triage"
 set "REPORT=%LOGDIR%\TRIAGE.txt"
 set "TLOG=%LOGDIR%\10_triage.log"
 set "BT=%ROOT%\tests\bug_triage"
-if not defined NS_ROOT set "NS_ROOT=C:\native-sharp-3.0"
+if not defined NS_ROOT set "NS_ROOT=C:\native-sharp"
 if not defined NSC_EXE set "NSC_EXE=%NS_ROOT%\bin\nsc.exe"
 
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"

@@ -116,11 +116,50 @@ class BootstrapInfrastructureTests(unittest.TestCase):
 
     def test_baseline_plan_covers_every_optimization_and_both_linkers(self) -> None:
         plan = nscbuilder.make_baseline_plan(4)
+        self.assertEqual(Path(plan.prefix), Path(r"A:\native-sharp-3.0-baseline"))
+        self.assertEqual(Path(plan.deploy_prefix), Path(r"C:\native-sharp"))
+        self.assertFalse(plan.sync_libraries)
         self.assertEqual(plan.optimizations, ["-O0", "-O1", "-O2", "-O3"])
         self.assertEqual(plan.linkers, ["lld-link", "NSLink"])
         self.assertTrue(plan.run_ctest)
         self.assertTrue(plan.run_cases)
         self.assertTrue(plan.run_triage)
+
+    def test_baseline_staging_is_reset_only_at_the_fixed_a_drive_path(self) -> None:
+        staging = self.root / "native-sharp-3.0-baseline"
+        staging.mkdir()
+        (staging / "stale.txt").write_text("stale")
+        with patch.object(nscbuilder, "DEFAULT_BASELINE_PREFIX", staging):
+            nscbuilder.reset_baseline_prefix(staging)
+            self.assertTrue(staging.is_dir())
+            self.assertFalse((staging / "stale.txt").exists())
+            with self.assertRaises(ValueError):
+                nscbuilder.reset_baseline_prefix(self.root / "another-directory")
+
+    def test_certified_promotion_flows_from_staging_to_install_without_deleting_components(self) -> None:
+        staging = self.root / "staging"
+        destination = self.root / "installed"
+        (staging / "bin").mkdir(parents=True)
+        (staging / "bin" / "nsc.exe").write_bytes(b"certified nsc")
+        (destination / "bin").mkdir(parents=True)
+        (destination / "bin" / "nslink.exe").write_bytes(b"external component")
+        with (
+            patch.object(nscbuilder, "DEFAULT_BASELINE_PREFIX", staging),
+            patch.object(nscbuilder, "DEFAULT_PREFIX", destination),
+        ):
+            result = nscbuilder.promote_certified_baseline(staging, destination, "test-run")
+        self.assertEqual((destination / "bin" / "nsc.exe").read_bytes(), b"certified nsc")
+        self.assertEqual(
+            (destination / "bin" / "nslink.exe").read_bytes(), b"external component"
+        )
+        self.assertEqual(result["source"], str(staging.resolve()))
+        self.assertEqual(result["destination"], str(destination.resolve()))
+
+    def test_library_preparation_never_copies_from_the_installed_prefix(self) -> None:
+        helper = (ROOT / "tools" / "prepare_libraries.cmd").read_text(encoding="utf-8")
+        self.assertNotIn("xcopy", helper.casefold())
+        self.assertNotIn("NS_LIB_ROOT", helper)
+        self.assertIn("Using bundled project libraries", helper)
 
     def test_cmake_configuration_explicitly_sets_or_clears_build_identity(self) -> None:
         distributable = nscbuilder.make_baseline_plan(1, build_id_override="")

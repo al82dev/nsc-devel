@@ -118,7 +118,7 @@ pushd "%~dp0"
 if defined NSC_LLD_LINK echo [all.bat] NSC_LLD_LINK venia puesta ^(%NSC_LLD_LINK%^) -- se ignora: cada pasada fija la suya.
 if defined NSC_KEEP_LINK_TEMPS echo [all.bat] NSC_KEEP_LINK_TEMPS venia puesta -- se ignora.
 
-if not defined NS_ROOT set "NS_ROOT=C:\native-sharp-3.0"
+if not defined NS_ROOT set "NS_ROOT=C:\native-sharp"
 set "NSLINK=%NSLINK_EXE%"
 if not defined NSLINK set "NSLINK=%NS_ROOT%\bin\nslink.exe"
 

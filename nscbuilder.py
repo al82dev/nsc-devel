@@ -165,9 +165,10 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_BUILD = ROOT / "build-clang"
 DEFAULT_TEST_BUILD_LLD = ROOT / "build-test-lldlinker"
 DEFAULT_TEST_BUILD_NSLINK = ROOT / "build-test-nslink"
-DEFAULT_PREFIX = Path(r"C:\native-sharp-3.0")
+DEFAULT_PREFIX = Path(r"C:\native-sharp")
+DEFAULT_BASELINE_PREFIX = Path(r"A:\native-sharp-3.0-baseline")
 DEFAULT_LLVM = Path(r"C:\clang-llvm")
-DEFAULT_NSLINK = Path(r"C:\native-sharp-3.0\bin\nslink.exe")
+DEFAULT_NSLINK = DEFAULT_PREFIX / "bin" / "nslink.exe"
 HISTORY_ROOT = ROOT / "_nscbuilder" / "history"
 DEFAULT_TEST_WORK_ROOT = ROOT / "_nscbuilder" / "work" / "tests"
 DEFAULT_TEMP_ROOT = ROOT / "_nscbuilder" / "temp"
@@ -175,6 +176,7 @@ LIBRARY_SOURCE_MARKER = b"Synced from configured NativeSharp installation\r\n"
 
 PATH_ENVIRONMENT: dict[str, tuple[str, ...]] = {
     "prefix": ("NSC_INSTALL_ROOT", "NS_ROOT"),
+    "baseline_prefix": ("NSC_BASELINE_ROOT",),
     "build_dir": ("NSC_BUILD_ROOT",),
     "test_build_lld": ("NSC_TEST_BUILD_LLD",),
     "test_build_nslink": ("NSC_TEST_BUILD_NSLINK",),
@@ -429,6 +431,7 @@ class RunPlan:
     root: str
     compiler_build_dir: str
     prefix: str
+    deploy_prefix: str
     llvm_root: str
     nslink_exe: str
     history_root: str
@@ -467,7 +470,8 @@ def make_baseline_plan(
     jobs: int,
     *,
     compiler_build_dir: str | Path = DEFAULT_BUILD,
-    prefix: str | Path = DEFAULT_PREFIX,
+    prefix: str | Path = DEFAULT_BASELINE_PREFIX,
+    deploy_prefix: str | Path = DEFAULT_PREFIX,
     llvm_root: str | Path = DEFAULT_LLVM,
     nslink_exe: str | Path = DEFAULT_NSLINK,
     test_build_lld: str | Path = DEFAULT_TEST_BUILD_LLD,
@@ -486,6 +490,7 @@ def make_baseline_plan(
         root=str(ROOT),
         compiler_build_dir=str(compiler_build_dir),
         prefix=str(prefix),
+        deploy_prefix=str(deploy_prefix),
         llvm_root=str(llvm_root),
         nslink_exe=str(nslink_exe),
         history_root=str(history_root),
@@ -508,7 +513,7 @@ def make_baseline_plan(
         optimizations=["-O0", "-O1", "-O2", "-O3"],
         jobs=jobs,
         run_build=True,
-        sync_libraries=True,
+        sync_libraries=False,
         run_ctest=True,
         run_cases=True,
         run_triage=True,
@@ -527,6 +532,43 @@ def path_is_within(path: Path, root: Path) -> bool:
         return False
 
 
+def reset_baseline_prefix(path: Path) -> None:
+    """Crea un staging limpio sin permitir que una ruta configurable amplíe el borrado."""
+    resolved = path.resolve()
+    expected = DEFAULT_BASELINE_PREFIX.resolve()
+    if resolved != expected:
+        raise ValueError(
+            "el staging del baseline debe ser exactamente "
+            f"{expected}; se recibió {resolved}"
+        )
+    if resolved.exists():
+        shutil.rmtree(resolved)
+    resolved.mkdir(parents=True)
+
+
+def promote_certified_baseline(source: Path, destination: Path, run_id: str) -> dict[str, str]:
+    """Reemplaza C:\\native-sharp con el staging certificado, siempre en dirección A: -> C:."""
+    source = source.resolve()
+    destination = destination.resolve()
+    if source != DEFAULT_BASELINE_PREFIX.resolve():
+        raise ValueError(f"origen de promoción no autorizado: {source}")
+    if destination != DEFAULT_PREFIX.resolve():
+        raise ValueError(f"destino de promoción no autorizado: {destination}")
+    if not (source / "bin" / "nsc.exe").is_file():
+        raise FileNotFoundError(f"el staging no contiene bin\\nsc.exe: {source}")
+
+    # C:\native-sharp también contiene componentes instalados por otros repositorios (bindings,
+    # linker, debugger y Saru). La promoción del compilador debe sobrescribir lo certificado por
+    # este staging, pero nunca borrar esos componentes ajenos.
+    destination.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, destination, dirs_exist_ok=True)
+    return {
+        "source": str(source),
+        "destination": str(destination),
+        "nsc_sha256": sha256_file(destination / "bin" / "nsc.exe"),
+    }
+
+
 def validate_plan_write_paths(plan: RunPlan) -> list[str]:
     """Rechaza destinos de escritura que escapen de las raíces autorizadas de la corrida."""
     if not plan.allowed_write_roots:
@@ -535,6 +577,7 @@ def validate_plan_write_paths(plan: RunPlan) -> list[str]:
     candidates = [
         Path(plan.compiler_build_dir),
         Path(plan.prefix),
+        Path(plan.deploy_prefix),
         *(Path(path) for path in plan.test_build_dirs.values()),
         Path(plan.history_root),
         Path(plan.test_work_root),
@@ -1749,6 +1792,32 @@ class PipelineWorker(QObject):
         self._emit(f"Bootstrap congelado para esta corrida: {self.bootstrap_lock_path}", "success")
         return True
 
+    def _prepare_baseline_prefix(self) -> bool:
+        if self.plan.operation != "baseline":
+            return True
+        assert self.run_dir is not None
+        name = "Preparar staging del baseline"
+        self.stage_started.emit(name)
+        started = time.monotonic()
+        log = self.run_dir / "stages" / "preparar_staging_baseline.log"
+        status = "passed"
+        code = 0
+        detail = f"Staging limpio: {Path(self.plan.prefix).resolve()}"
+        try:
+            reset_baseline_prefix(Path(self.plan.prefix))
+        except (OSError, ValueError) as exc:
+            status = "failed"
+            code = 1
+            detail = f"No se pudo preparar el staging del baseline: {exc}"
+            self.failed += 1
+            self._emit(detail, "error")
+        else:
+            self._emit(detail, "success")
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(detail + "\n", encoding="utf-8", errors="replace")
+        self._record_stage(name, status, time.monotonic() - started, code, "limpieza interna", log)
+        return status == "passed"
+
     def _build(self) -> bool:
         if not self.plan.run_build:
             return True
@@ -1826,6 +1895,8 @@ class PipelineWorker(QObject):
                 command.extend(["--target", *targets])
             command.extend(["--parallel", str(self.plan.jobs), "--", "-k", "0"])
         if not self._command_stage("Construir", command, self._base_environment()):
+            return False
+        if not self._prepare_baseline_prefix():
             return False
         return self._command_stage(
             "Instalar",
@@ -2005,40 +2076,24 @@ class PipelineWorker(QObject):
         if not self.plan.sync_libraries:
             return True
         assert self.run_dir is not None
-        name = "Sincronizar bibliotecas"
+        name = "Validar bibliotecas locales"
         self.stage_started.emit(name)
         started = time.monotonic()
-        log = self.run_dir / "stages" / "sincronizar_bibliotecas.log"
-        source_root = Path(self.plan.prefix).resolve() / "lib"
-        destination_root = Path(self.plan.root).resolve() / "lib"
+        log = self.run_dir / "stages" / "validar_bibliotecas_locales.log"
+        source_root = Path(self.plan.root).resolve() / "lib"
         libraries = ("NativeSharp.Core", "NativeSharp.Core.Collections.Generic")
-        lines = [f"origen={source_root}", f"destino={destination_root}"]
+        lines = [f"origen_local={source_root}", "copia=ninguna"]
         status = "passed"
         code = 0
         try:
-            destination_root.mkdir(parents=True, exist_ok=True)
-            sources: dict[str, Path] = {}
             for library in libraries:
                 source = source_root / library
-                destination = destination_root / library
                 project = source / f"{library}.nsproj"
                 if not project.is_file():
-                    raise FileNotFoundError(f"Falta la biblioteca instalada: {project}")
-                if source.resolve() == destination.resolve():
-                    raise ValueError(f"El origen y el destino son el mismo directorio: {source}")
-                sources[library] = source
-            for library in libraries:
-                source = sources[library]
-                destination = destination_root / library
-                if destination.exists():
-                    shutil.rmtree(destination)
-                shutil.copytree(source, destination)
-                lines.append(f"copiada={library}")
-                self._emit(f"[LIB] Copiada {library} desde {source}")
-            # Este marcador forma parte del manifiesto S0/S1. Sus bytes deben ser identicos sin
-            # importar si la sincronizacion se lanza desde Python o desde el .cmd de Windows.
-            (destination_root / ".source.txt").write_bytes(LIBRARY_SOURCE_MARKER)
-        except (OSError, ValueError) as exc:
+                    raise FileNotFoundError(f"Falta la biblioteca local: {project}")
+                lines.append(f"validada={library}")
+                self._emit(f"[LIB] Validada {library} en {source}")
+        except OSError as exc:
             status = "failed"
             code = 1
             lines.append(f"error={exc}")
@@ -2667,6 +2722,7 @@ class PipelineWorker(QObject):
                 "run_dir": str(self.run_dir.resolve()),
                 "root": self.plan.root,
                 "prefix": self.plan.prefix,
+                "deploy_prefix": self.plan.deploy_prefix,
                 "llvm_root": self.plan.llvm_root,
                 "compiler_build_dir": self.plan.compiler_build_dir,
                 "linkers": list(self.plan.linkers),
@@ -2716,6 +2772,25 @@ class PipelineWorker(QObject):
             # medido, que es justamente la red de seguridad para la que existe el gate. Fundirlas
             # en una sola condicion tiraria la medicion buena junto con el fallo.
             certified = not problems
+            promotion: dict[str, str] = {"status": "not-run"}
+            if certified and self.failed == 0:
+                try:
+                    promoted = promote_certified_baseline(
+                        Path(self.plan.prefix),
+                        Path(self.plan.deploy_prefix),
+                        str(self.metadata.get("id", "")),
+                    )
+                    promotion = {"status": "passed", **promoted}
+                    self._emit(
+                        "Baseline certificado promovido: "
+                        f"{promoted['source']} -> {promoted['destination']}",
+                        "success",
+                    )
+                except (OSError, ValueError) as exc:
+                    self.failed += 1
+                    promotion = {"status": "failed", "error": str(exc)}
+                    self._emit(f"No se pudo promover el baseline certificado: {exc}", "error")
+            payload["promotion"] = promotion
             state = "LANDED" if certified and self.failed == 0 else "FAILED"
             payload["certified"] = certified
             gate_dir = self._abi_gate_state(state, payload)
@@ -2763,6 +2838,8 @@ class PipelineWorker(QObject):
                 total += 3  # configurar, construir, instalar
             else:
                 total += 2  # construir, instalar
+            if self.plan.operation == "baseline":
+                total += 1  # vaciar y crear A:\native-sharp-3.0-baseline
         if self._runs_test_stages() and self.plan.run_ctest:
             for linker in self.plan.linkers:
                 build = self._test_build_dir(linker)
@@ -4655,6 +4732,7 @@ class MainWindow(QMainWindow):
                 root=str(ROOT),
                 compiler_build_dir=self.build_path.text().strip(),
                 prefix=self.prefix_path.text().strip(),
+                deploy_prefix=self.prefix_path.text().strip(),
                 llvm_root=self.llvm_path.text().strip(),
                 nslink_exe=self.nslink_path.text().strip(),
                 history_root=str(HISTORY_ROOT),
@@ -4725,7 +4803,8 @@ class MainWindow(QMainWindow):
             return make_baseline_plan(
                 self.test_jobs.value(),
                 compiler_build_dir=self.build_path.text().strip(),
-                prefix=self.prefix_path.text().strip(),
+                prefix=DEFAULT_BASELINE_PREFIX,
+                deploy_prefix=self.prefix_path.text().strip(),
                 llvm_root=self.llvm_path.text().strip(),
                 nslink_exe=self.nslink_path.text().strip(),
                 history_root=str(HISTORY_ROOT),
@@ -4743,6 +4822,7 @@ class MainWindow(QMainWindow):
             root=str(ROOT),
             compiler_build_dir="",
             prefix=self.test_prefix_path.text().strip(),
+            deploy_prefix=self.test_prefix_path.text().strip(),
             llvm_root=self.test_llvm_path.text().strip(),
             nslink_exe=self.nslink_path.text().strip(),
             history_root=str(HISTORY_ROOT),
@@ -5293,6 +5373,9 @@ def main() -> int:
         return 2
 
     prefix_default = configured_path(config, "prefix", DEFAULT_PREFIX)
+    baseline_prefix_default = configured_path(
+        config, "baseline_prefix", DEFAULT_BASELINE_PREFIX
+    )
     build_default = configured_path(config, "build_dir", DEFAULT_BUILD)
     llvm_default = configured_path(config, "llvm_root", DEFAULT_LLVM)
     nslink_default = configured_path(
@@ -5306,6 +5389,7 @@ def main() -> int:
     parser.add_argument("--jobs", type=int, default=min(os.cpu_count() or 4, 16))
     parser.add_argument("--config")
     parser.add_argument("--prefix", default=prefix_default)
+    parser.add_argument("--baseline-prefix", default=baseline_prefix_default)
     parser.add_argument("--build-dir", default=build_default)
     parser.add_argument(
         "--test-build-lld",
@@ -5339,6 +5423,7 @@ def main() -> int:
             "Opciones de rutas para --baseline:\n"
             "  --config FILE             JSON nscbuilder-paths v1\n"
             "  --prefix DIR              instalación de NativeSharp\n"
+            "  --baseline-prefix DIR     staging certificado del baseline\n"
             "  --build-dir DIR           build del compilador\n"
             "  --test-build-lld DIR      build CTest con lld-link\n"
             "  --test-build-nslink DIR   build CTest con NSLink\n"
@@ -5350,7 +5435,8 @@ def main() -> int:
             "  --write-root DIR          raíz autorizada; repetible\n\n"
             "  --run-id ID               identidad estable para evidencia automatizada\n\n"
             "  --build-id HEX16          identidad reproducible para nsc0\n\n"
-            "Entorno equivalente: NSC_INSTALL_ROOT, NSC_BUILD_ROOT, NSC_TEST_BUILD_LLD,\n"
+            "Entorno equivalente: NSC_INSTALL_ROOT, NSC_BASELINE_ROOT, NSC_BUILD_ROOT, "
+            "NSC_TEST_BUILD_LLD,\n"
             "NSC_TEST_BUILD_NSLINK, NSC_LLVM_ROOT, NSLINK_EXE, NSC_HISTORY_ROOT,\n"
             "NSC_WORK_ROOT, NSC_TEMP_ROOT y NSC_WRITE_ROOTS."
         )
@@ -5366,7 +5452,8 @@ def main() -> int:
         plan = make_baseline_plan(
             args.jobs,
             compiler_build_dir=args.build_dir,
-            prefix=args.prefix,
+            prefix=args.baseline_prefix,
+            deploy_prefix=args.prefix,
             llvm_root=args.llvm_root,
             nslink_exe=args.nslink,
             test_build_lld=args.test_build_lld,

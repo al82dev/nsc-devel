@@ -19,18 +19,9 @@ da paralelismo, codigo de salida fiable, timeout por trabajo y un log por caso s
 
 EL REQUISITO DURO, y no es opcional
 -----------------------------------
-`build_project.cmd` llama a `prepare_libraries.cmd` en CADA invocacion, y ese hace
-
-    rmdir /s /q lib\\NativeSharp.Core   +   xcopy desde el prefijo instalado
-
-En serie eso desperdicia una sincronizacion por trabajo. EN PARALELO ES UNA CARRERA QUE CORROMPE `lib\\`:
-un proceso borra el directorio mientras otro lo esta leyendo, y el fallo sale en un caso al azar
-con un mensaje que no tiene nada que ver.
-
-`prepare_libraries.cmd` se salta el trabajo si `NS_LIB_READY` esta definida. El checklist ya
-sincroniza antes de ctest y exporta esa variable, por eso hoy funciona. Aqui se pone
-EXPLICITAMENTE en el entorno de cada hijo en vez de confiar en heredarla: si alguien corre este
-script suelto, sigue siendo seguro.
+`build_project.cmd` llama a `prepare_libraries.cmd` en cada invocacion. Ese helper valida las
+bibliotecas versionadas bajo `lib\\`; nunca copia desde una instalación en C: hacia las fuentes.
+`NS_LIB_READY` se fija explícitamente para evitar repetir incluso esa validación en cada trabajo.
 
 QUE DEJA
 --------
@@ -120,7 +111,7 @@ def linker_path() -> str:
 
     nsc = os.environ.get("NSC_EXE", "")
     if not nsc:
-        nsc = str(Path(os.environ.get("NS_ROOT", r"C:\native-sharp-3.0")) / "bin" / "nsc.exe")
+        nsc = str(Path(os.environ.get("NS_ROOT", r"C:\native-sharp")) / "bin" / "nsc.exe")
 
     resolved = ""
     if Path(nsc).is_file():
