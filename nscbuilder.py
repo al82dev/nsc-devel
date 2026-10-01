@@ -439,6 +439,10 @@ class RunPlan:
     host_optimization: str
     certify_baseline: bool
     reuse_results: bool
+    # NSLink is the product path.  In the normal policy LLD does not repeat the complete
+    # matrix: it is invoked only for the exact NSLink failures so the report can distinguish a
+    # linker defect from a compiler/code-generation defect without hiding the primary failure.
+    lld_diagnostics: bool
     build_mode: str
     build_target: str
     build_runner: str
@@ -482,9 +486,10 @@ def make_baseline_plan(
     run_id: str = "",
     build_id_override: str = "",
     build_runner: str = "ninja",
-    linkers: Iterable[str] = ("lld-link", "NSLink"),
+    linkers: Iterable[str] = ("NSLink",),
     optimizations: Iterable[str] = ("-O0", "-O1", "-O2", "-O3"),
     reuse_results: bool = True,
+    lld_diagnostics: bool | None = None,
 ) -> RunPlan:
     """Construye el plan inmutable de G0.2 compartido por GUI y consola."""
     selected_linkers = list(dict.fromkeys(linkers))
@@ -495,9 +500,16 @@ def make_baseline_plan(
         raise ValueError("baseline linkers must contain lld-link and/or NSLink")
     if not selected_optimizations or not set(selected_optimizations) <= valid_optimizations:
         raise ValueError("baseline optimizations must contain one or more of -O0..-O3")
+    if lld_diagnostics is None:
+        lld_diagnostics = selected_linkers == ["NSLink"]
+    if lld_diagnostics and selected_linkers != ["NSLink"]:
+        raise ValueError("LLD diagnostics require NSLink as the only primary linker")
     certify_baseline = (
-        set(selected_linkers) == valid_linkers and
-        set(selected_optimizations) == valid_optimizations
+        set(selected_optimizations) == valid_optimizations and
+        (
+            set(selected_linkers) == valid_linkers or
+            (selected_linkers == ["NSLink"] and lld_diagnostics)
+        )
     )
     return RunPlan(
         operation="baseline",
@@ -517,6 +529,7 @@ def make_baseline_plan(
         host_optimization="O2",
         certify_baseline=certify_baseline,
         reuse_results=reuse_results,
+        lld_diagnostics=lld_diagnostics,
         build_mode="incremental",
         build_target="nsc",
         build_runner=build_runner,
@@ -1398,6 +1411,20 @@ class PipelineWorker(QObject):
         self.ctest_ready_linkers: set[str] = set()
         self.bootstrap_lock_path: Path | None = None
 
+    def _result_linkers(self) -> list[str]:
+        """Primary result channels plus the lazy LLD diagnostic channel, when enabled."""
+        values = list(self.plan.linkers)
+        if self.plan.lld_diagnostics and "lld-link" not in values:
+            values.append("lld-link")
+        return values
+
+    def _reserve_units(self, count: int) -> None:
+        """Grow progress only when a failure actually activates lazy diagnostic work."""
+        if count <= 0:
+            return
+        self.total_units += count
+        self.progress.emit(self.completed_units, self.total_units)
+
     def _source_digest(self) -> str:
         if self.source_digest_cache is None:
             root = Path(self.plan.root).resolve()
@@ -1418,8 +1445,14 @@ class PipelineWorker(QObject):
             self.tool_digest_cache[key] = value
             return value
 
-    def _ctest_result_cache(self, linker: str) -> tuple[Path, str]:
-        build = self._test_build_dir(linker).resolve()
+    def _ctest_result_cache(
+        self,
+        linker: str,
+        *,
+        selected_ctests: Iterable[str] | None = None,
+        build_dir: Path | None = None,
+    ) -> tuple[Path, str]:
+        build = (build_dir or self._test_build_dir(linker)).resolve()
         compiler = (Path(self.plan.prefix) / "bin" / "nsc.exe").resolve()
         environment = self._base_environment(linker)
         linker_executable = Path(environment["NSC_LLD_LINK"]).resolve()
@@ -1439,7 +1472,8 @@ class PipelineWorker(QObject):
             digest.update(b"\0")
             digest.update(sha256_file(executable).encode("ascii"))
             digest.update(b"\n")
-        for name in sorted(self.plan.selected_ctests, key=str.casefold):
+        selected = list(self.plan.selected_ctests if selected_ctests is None else selected_ctests)
+        for name in sorted(selected, key=str.casefold):
             digest.update(name.encode("utf-8"))
             digest.update(b"\n")
         identity = digest.hexdigest()
@@ -1728,6 +1762,7 @@ class PipelineWorker(QObject):
         command: str,
         log: Path,
         report_failure: bool = True,
+        count_failure: bool = True,
     ) -> None:
         row = {
             "name": name,
@@ -1741,7 +1776,7 @@ class PipelineWorker(QObject):
         self.metadata["stages"] = self.stage_rows
         self._save_metadata()
         self.stage_finished.emit(name, status, seconds, exit_code)
-        if status == "failed":
+        if status == "failed" and count_failure:
             self.failed += 1
             if report_failure:
                 linker_match = re.search(r"\[([^]]+)\]$", name)
@@ -1840,7 +1875,7 @@ class PipelineWorker(QObject):
             # de entrada rechazaria una maquina limpia por no tener todavia lo que va a construir.
             if self.plan.operation != "baseline":
                 required.append(Path(self.plan.prefix) / "bin" / "nsc.exe")
-            if "lld-link" in self.plan.linkers:
+            if "lld-link" in self.plan.linkers or self.plan.lld_diagnostics:
                 required.append(Path(self.plan.llvm_root) / "bin" / "lld-link.exe")
             if "NSLink" in self.plan.linkers and self.plan.operation != "baseline":
                 required.append(Path(self.plan.nslink_exe))
@@ -2368,19 +2403,39 @@ class PipelineWorker(QObject):
                 return False
         return True
 
-    def _ctest(self, linker: str) -> None:
+    def _ctest(
+        self,
+        linker: str,
+        *,
+        selected_ctests: Iterable[str] | None = None,
+        build_dir: Path | None = None,
+        diagnostic: bool = False,
+    ) -> list[str]:
         if not self.plan.run_ctest or self.cancel_event.is_set():
-            return
-        if linker not in self.ctest_ready_linkers:
+            return []
+        selected = list(self.plan.selected_ctests if selected_ctests is None else selected_ctests)
+        build = (build_dir or self._test_build_dir(linker)).resolve()
+        if build_dir is None and linker not in self.ctest_ready_linkers:
             self._emit(
                 f"CTest [{linker}] omitido porque su árbol de pruebas no pudo construirse.",
                 "error",
                 linker,
             )
-            return
+            return []
+        if build_dir is not None and not (build / "CTestTestfile.cmake").is_file():
+            self._emit(
+                f"CTest diagnóstico [{linker}] omitido: el árbol compartido no está configurado.",
+                "error",
+                linker,
+            )
+            return []
         assert self.run_dir is not None
-        name = f"CTest [{linker}]"
-        cache_path, cache_identity = self._ctest_result_cache(linker)
+        name = f"CTest diagnóstico [{linker}]" if diagnostic else f"CTest [{linker}]"
+        cache_path, cache_identity = self._ctest_result_cache(
+            linker,
+            selected_ctests=selected,
+            build_dir=build,
+        )
         if self.plan.reuse_results and cache_path.is_file():
             try:
                 cached_result = json.loads(cache_path.read_text(encoding="utf-8"))
@@ -2404,12 +2459,11 @@ class PipelineWorker(QObject):
                     linker,
                 )
                 self._record_stage(name, "reused", 0.0, 0, "content-addressed reuse", log)
-                self._advance()
-                return
+                return []
         command = [
             "ctest",
             "--test-dir",
-            str(self._test_build_dir(linker)),
+            str(build),
             # CTest defaults to interactive crash handling on Windows.  Set this explicitly even
             # though the builder process also installs SEM_NOGPFAULTERRORBOX: CTest can otherwise
             # let Windows Error Reporting display a modal dialog for a crashing test and stall the
@@ -2424,8 +2478,8 @@ class PipelineWorker(QObject):
             "-j",
             str(self.plan.jobs),
         ]
-        if self.plan.selected_ctests:
-            command.extend(["-R", ctest_name_filter(self.plan.selected_ctests)])
+        if selected:
+            command.extend(["-R", ctest_name_filter(selected)])
         self.stage_started.emit(name)
         log = self.run_dir / "stages" / f"{safe_name(name)}.log"
         result = self._run_process(
@@ -2452,10 +2506,10 @@ class PipelineWorker(QObject):
         # cuantas debian correr.
         executed = 0
         shortfall = 0
-        if self.plan.selected_ctests:
+        if selected:
             counter = re.search(r"out of\s+(\d+)", result.output)
             executed = int(counter.group(1)) if counter is not None else 0
-            shortfall = len(self.plan.selected_ctests) - executed
+            shortfall = len(selected) - executed
             if shortfall != 0 and status == "passed":
                 status = "failed"
 
@@ -2469,7 +2523,7 @@ class PipelineWorker(QObject):
                     "status": "passed",
                     "run_id": self.metadata.get("id"),
                     "linker": linker,
-                    "selected_ctests": list(self.plan.selected_ctests),
+                    "selected_ctests": selected,
                     "recorded_at": utc_stamp(),
                 },
             )
@@ -2482,27 +2536,28 @@ class PipelineWorker(QObject):
             command_text(command),
             log,
             report_failure=False,
+            count_failure=not diagnostic,
         )
-        self._advance()
         if status != "failed":
-            return
+            return []
         if shortfall != 0:
             detail = (
-                f"ctest ejecuto {executed} de las {len(self.plan.selected_ctests)} pruebas pedidas"
+                f"ctest ejecuto {executed} de las {len(selected)} pruebas pedidas"
             )
             self._emit(f"{name}: {detail}.", "error", linker)
-            self._report_failure(
-                {
-                    "linker": linker,
-                    "optimization": "General",
-                    "kind": "CTest",
-                    "source": name,
-                    "detail": detail,
-                    "error_log": str(log.resolve()),
-                }
-            )
+            if not diagnostic:
+                self._report_failure(
+                    {
+                        "linker": linker,
+                        "optimization": "General",
+                        "kind": "CTest",
+                        "source": name,
+                        "detail": detail,
+                        "error_log": str(log.resolve()),
+                    }
+                )
             if result.exit_code == 0:
-                return
+                return []
         failure_status = r"(?:Failed|Timeout|Not Run|Exception|SEGFAULT|BAD_COMMAND)"
         failed_names = re.findall(
             rf"^\s*\d+\s+-\s+([^\s]+)\s+\({failure_status}\)\s*$",
@@ -2515,19 +2570,22 @@ class PipelineWorker(QObject):
                 result.output,
                 re.IGNORECASE,
             )
-        if not failed_names and len(self.plan.selected_ctests) == 1:
-            failed_names = list(self.plan.selected_ctests)
-        for failed_name in dict.fromkeys(failed_names or [name]):
-            self._report_failure(
-                {
-                    "linker": linker,
-                    "optimization": "General",
-                    "kind": "CTest",
-                    "source": failed_name,
-                    "detail": f"CTest terminó con código {result.exit_code}",
-                    "error_log": str(log.resolve()),
-                }
-            )
+        if not failed_names and len(selected) == 1:
+            failed_names = list(selected)
+        failed_names = list(dict.fromkeys(failed_names))
+        for failed_name in failed_names or [name]:
+            if not diagnostic:
+                self._report_failure(
+                    {
+                        "linker": linker,
+                        "optimization": "General",
+                        "kind": "CTest",
+                        "source": failed_name,
+                        "detail": f"CTest terminó con código {result.exit_code}",
+                        "error_log": str(log.resolve()),
+                    }
+                )
+        return failed_names
 
     def _case_commands(self, case: CaseSpec, exe: Path, optimization: str) -> tuple[list[str], list[str]]:
         project = Path(self.plan.root) / case.project
@@ -2745,16 +2803,25 @@ class PipelineWorker(QObject):
                 "error_log": str(log.resolve()),
             }
 
-    def _run_case_group(self, linker: str) -> None:
+    def _run_case_group(
+        self,
+        linker: str,
+        *,
+        diagnostic_work: list[tuple[CaseSpec, str]] | None = None,
+    ) -> list[tuple[CaseSpec, str]]:
         if not self.plan.run_cases or self.cancel_event.is_set():
-            return
-        selected = set(self.plan.selected_cases)
-        cases = [case for case in self.cases if not selected or case.label in selected]
-        work = [(case, opt) for case in cases for opt in self.plan.optimizations]
-        name = f"Fixtures [{linker}]"
+            return []
+        diagnostic = diagnostic_work is not None
+        if diagnostic_work is None:
+            selected = set(self.plan.selected_cases)
+            cases = [case for case in self.cases if not selected or case.label in selected]
+            work = [(case, opt) for case in cases for opt in self.plan.optimizations]
+        else:
+            work = diagnostic_work
+        name = f"Fixtures diagnóstico [{linker}]" if diagnostic else f"Fixtures [{linker}]"
         self.stage_started.emit(name)
         started = time.monotonic()
-        before_failed = self.failed
+        failed_work: list[tuple[CaseSpec, str]] = []
         self._emit(f"{name}: {len(work)} trabajos, {self.plan.jobs} en paralelo", "info", linker)
         with ThreadPoolExecutor(max_workers=self.plan.jobs) as pool:
             futures = {
@@ -2763,20 +2830,23 @@ class PipelineWorker(QObject):
             }
             for future in as_completed(futures):
                 row = future.result()
+                row["diagnostic"] = diagnostic
                 self.case_rows.append(row)
                 if row["status"] == "failed":
-                    self.failed += 1
+                    failed_work.append(futures[future])
                     level = "error"
-                    self._report_failure(
-                        {
-                            "linker": row["linker"],
-                            "optimization": row["optimization"].lstrip("-"),
-                            "kind": "Fixtures y ejemplos",
-                            "source": f"{row['label']} {row['optimization']}",
-                            "detail": row["detail"],
-                            "error_log": row["error_log"],
-                        }
-                    )
+                    if not diagnostic:
+                        self.failed += 1
+                        self._report_failure(
+                            {
+                                "linker": row["linker"],
+                                "optimization": row["optimization"].lstrip("-"),
+                                "kind": "Fixtures y ejemplos",
+                                "source": f"{row['label']} {row['optimization']}",
+                                "detail": row["detail"],
+                                "error_log": row["error_log"],
+                            }
+                        )
                 elif row["status"] == "cancelled":
                     level = "warn"
                 else:
@@ -2793,14 +2863,16 @@ class PipelineWorker(QObject):
                 self._advance()
         elapsed = time.monotonic() - started
         status = "cancelled" if self.cancel_event.is_set() else (
-            "failed" if self.failed > before_failed else "passed"
+            "failed" if failed_work else "passed"
         )
         assert self.run_dir is not None
         log = self.run_dir / "stages" / f"{safe_name(name)}.log"
         group_rows = [
             row
             for row in self.case_rows
-            if row["linker"] == linker and row.get("kind") == "fixture"
+            if row["linker"] == linker
+            and row.get("kind") == "fixture"
+            and bool(row.get("diagnostic")) == diagnostic
         ]
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text(json.dumps(group_rows, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -2810,23 +2882,33 @@ class PipelineWorker(QObject):
             "status": status,
             "seconds": round(elapsed, 3),
             "exit_code": 0 if status == "passed" else 1,
-            "command": "runner interno",
+            "command": "diagnóstico LLD selectivo" if diagnostic else "runner interno",
             "log": str(log.relative_to(self.run_dir)),
         }
         self.stage_rows.append(stage_row)
         self.metadata["stages"] = self.stage_rows
         self._save_metadata()
         self.stage_finished.emit(name, status, elapsed, stage_row["exit_code"])
+        return failed_work
 
-    def _triage(self, linker: str) -> None:
+    def _triage(
+        self,
+        linker: str,
+        *,
+        diagnostic_work: list[tuple[CaseSpec, str]] | None = None,
+    ) -> list[tuple[CaseSpec, str]]:
         if not self.plan.run_triage or self.cancel_event.is_set():
-            return
-        name = f"Bug triage [{linker}]"
+            return []
+        diagnostic = diagnostic_work is not None
+        name = f"Bug triage diagnóstico [{linker}]" if diagnostic else f"Bug triage [{linker}]"
         self.stage_started.emit(name)
         started = time.monotonic()
-        before_failed = self.failed
-        cases = [CaseSpec(project, label, 42, "bug triage") for project, label in TRIAGE_CASES]
-        work = [(case, optimization) for case in cases for optimization in self.plan.optimizations]
+        failed_work: list[tuple[CaseSpec, str]] = []
+        if diagnostic_work is None:
+            cases = [CaseSpec(project, label, 42, "bug triage") for project, label in TRIAGE_CASES]
+            work = [(case, optimization) for case in cases for optimization in self.plan.optimizations]
+        else:
+            work = diagnostic_work
         self._emit(
             f"{name}: {len(work)} trabajos internos, {self.plan.jobs} en paralelo",
             "info",
@@ -2839,20 +2921,23 @@ class PipelineWorker(QObject):
             }
             for future in as_completed(futures):
                 row = future.result()
+                row["diagnostic"] = diagnostic
                 self.case_rows.append(row)
                 if row["status"] == "failed":
-                    self.failed += 1
+                    failed_work.append(futures[future])
                     level = "error"
-                    self._report_failure(
-                        {
-                            "linker": row["linker"],
-                            "optimization": row["optimization"].lstrip("-"),
-                            "kind": "Bug triage",
-                            "source": f"{row['label']} {row['optimization']}",
-                            "detail": row["detail"],
-                            "error_log": row["error_log"],
-                        }
-                    )
+                    if not diagnostic:
+                        self.failed += 1
+                        self._report_failure(
+                            {
+                                "linker": row["linker"],
+                                "optimization": row["optimization"].lstrip("-"),
+                                "kind": "Bug triage",
+                                "source": f"{row['label']} {row['optimization']}",
+                                "detail": row["detail"],
+                                "error_log": row["error_log"],
+                            }
+                        )
                 elif row["status"] == "cancelled":
                     level = "warn"
                 else:
@@ -2869,14 +2954,16 @@ class PipelineWorker(QObject):
                 self._advance()
         elapsed = time.monotonic() - started
         status = "cancelled" if self.cancel_event.is_set() else (
-            "failed" if self.failed > before_failed else "passed"
+            "failed" if failed_work else "passed"
         )
         assert self.run_dir is not None
         log = self.run_dir / "stages" / f"{safe_name(name)}.log"
         triage_rows = [
             row
             for row in self.case_rows
-            if row["linker"] == linker and row.get("kind") == "triage"
+            if row["linker"] == linker
+            and row.get("kind") == "triage"
+            and bool(row.get("diagnostic")) == diagnostic
         ]
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text(json.dumps(triage_rows, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -2885,13 +2972,110 @@ class PipelineWorker(QObject):
             "status": status,
             "seconds": round(elapsed, 3),
             "exit_code": 0 if status == "passed" else 1,
-            "command": "runner interno",
+            "command": "diagnóstico LLD selectivo" if diagnostic else "runner interno",
             "log": str(log.relative_to(self.run_dir)),
         }
         self.stage_rows.append(stage_row)
         self.metadata["stages"] = self.stage_rows
         self._save_metadata()
         self.stage_finished.emit(name, status, elapsed, stage_row["exit_code"])
+        return failed_work
+
+    def _diagnose_nslink_failures(
+        self,
+        failed_ctests: list[str],
+        failed_cases: list[tuple[CaseSpec, str]],
+        failed_triage: list[tuple[CaseSpec, str]],
+    ) -> None:
+        """Repeat only exact NSLink failures with LLD; never change the primary result."""
+        if not self.plan.lld_diagnostics or self.cancel_event.is_set():
+            return
+        diagnostic_units = int(bool(failed_ctests)) + len(failed_cases) + len(failed_triage)
+        if diagnostic_units == 0:
+            self._emit(
+                "NSLink passed; LLD diagnostic was not executed.",
+                "success",
+                "NSLink",
+            )
+            return
+
+        self._reserve_units(diagnostic_units)
+        self._emit(
+            "NSLink reported failures; LLD will repeat only the exact failing tests.",
+            "warn",
+            "lld-link",
+        )
+        diagnostics: list[dict] = []
+        if failed_ctests:
+            # Both CTest trees produce identical C++ executables.  The selected linker is supplied
+            # through NSC_LLD_LINK at execution time, so the already-built NSLink tree is reused
+            # instead of configuring and linking a second copy of every test binary.
+            lld_failed = set(
+                self._ctest(
+                    "lld-link",
+                    selected_ctests=failed_ctests,
+                    build_dir=self._test_build_dir("NSLink"),
+                    diagnostic=True,
+                )
+            )
+            for name in failed_ctests:
+                diagnostics.append(
+                    {
+                        "kind": "CTest",
+                        "source": name,
+                        "result": "both-failed" if name in lld_failed else "nslink-only",
+                    }
+                )
+        if failed_cases:
+            lld_failed_cases = {
+                (case.label, optimization)
+                for case, optimization in self._run_case_group(
+                    "lld-link", diagnostic_work=failed_cases
+                )
+            }
+            for case, optimization in failed_cases:
+                diagnostics.append(
+                    {
+                        "kind": "fixture",
+                        "source": case.label,
+                        "optimization": optimization,
+                        "result": (
+                            "both-failed"
+                            if (case.label, optimization) in lld_failed_cases
+                            else "nslink-only"
+                        ),
+                    }
+                )
+        if failed_triage:
+            lld_failed_triage = {
+                (case.label, optimization)
+                for case, optimization in self._triage(
+                    "lld-link", diagnostic_work=failed_triage
+                )
+            }
+            for case, optimization in failed_triage:
+                diagnostics.append(
+                    {
+                        "kind": "triage",
+                        "source": case.label,
+                        "optimization": optimization,
+                        "result": (
+                            "both-failed"
+                            if (case.label, optimization) in lld_failed_triage
+                            else "nslink-only"
+                        ),
+                    }
+                )
+        self.metadata["lld_diagnostics"] = diagnostics
+        self._save_metadata()
+        nslink_only = sum(row["result"] == "nslink-only" for row in diagnostics)
+        both_failed = len(diagnostics) - nslink_only
+        self._emit(
+            f"LLD diagnostic complete: {nslink_only} NSLink-only failure(s), "
+            f"{both_failed} failure(s) reproduced with both linkers. Primary result remains failed.",
+            "warn",
+            "lld-link",
+        )
 
     # ------------------------------------------------------------------ Gate 0 del plan 123
 
@@ -2900,7 +3084,7 @@ class PipelineWorker(QObject):
 
         Se toma TRES veces, y el orden lo fija G0.2 del plan 123: `S0` antes de construir --si se
         tomara despues incluiria lo que la propia construccion toque--, `B0`/`I0` despues de
-        construir e instalar TANTO el compilador COMO los dos arboles de pruebas, justo antes de
+        construir e instalar el compilador y los árboles seleccionados de pruebas, justo antes de
         ejecutar la matriz, y todo otra vez al terminar. La foto intermedia no puede adelantarse a
         `_build_tests()`: esa etapa crea/re-enlaza precisamente los `nsc_*tests.exe` que esta
         medicion inventaria y haria que el gate se invalidara a si mismo. Sin la ultima foto, unos
@@ -3018,12 +3202,19 @@ class PipelineWorker(QObject):
                 "llvm_root": self.plan.llvm_root,
                 "compiler_build_dir": self.plan.compiler_build_dir,
                 "linkers": list(self.plan.linkers),
+                "linker_policy": (
+                    "nslink-with-selective-lld-diagnostics"
+                    if self.plan.lld_diagnostics else
+                    "deep-both" if set(self.plan.linkers) == {"NSLink", "lld-link"} else
+                    "single-linker"
+                ),
                 "optimizations": list(self.plan.optimizations),
                 "s0_sources": s0,
                 "after_build": built,
                 "after_run": after,
                 "results": {
                     "failed": self.failed,
+                    "lld_diagnostics": list(self.metadata.get("lld_diagnostics", [])),
                     "stages": [
                         {
                             "name": row.get("name"),
@@ -3198,7 +3389,7 @@ class PipelineWorker(QObject):
     def _write_error_reports(self) -> list[dict]:
         assert self.run_dir is not None
         reports: list[dict] = []
-        linkers = list(dict.fromkeys(["Compilador", *self.plan.linkers]))
+        linkers = list(dict.fromkeys(["Compilador", *self._result_linkers()]))
         optimizations = ("General", "O0", "O1", "O2", "O3")
         for linker in linkers:
             for optimization in optimizations:
@@ -3315,6 +3506,24 @@ class PipelineWorker(QObject):
                     f"{row['status']} | {row['detail']} | {row['seconds']:.3f} s | "
                     f"`{row['log']}` |"
                 )
+        diagnostics = list(self.metadata.get("lld_diagnostics", []))
+        if diagnostics:
+            lines.extend(
+                [
+                    "",
+                    "## Diagnóstico selectivo con LLD",
+                    "",
+                    "Los fallos primarios de NSLink permanecen como fallos. LLD sólo clasifica su origen.",
+                    "",
+                    "| Tipo | Prueba | Opt | Clasificación |",
+                    "|---|---|---:|---|",
+                ]
+            )
+            for row in diagnostics:
+                lines.append(
+                    f"| {row.get('kind', '')} | {row.get('source', '')} | "
+                    f"{row.get('optimization', 'General')} | {row.get('result', '')} |"
+                )
         (self.run_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     @Slot()
@@ -3329,7 +3538,7 @@ class PipelineWorker(QObject):
         self.run_dir.mkdir(parents=True, exist_ok=False)
         self.console_path = self.run_dir / "console.log"
         self.console_path.touch()
-        for channel in dict.fromkeys(["Compilador", *self.plan.linkers]):
+        for channel in dict.fromkeys(["Compilador", *self._result_linkers()]):
             for optimization in ("General", "O0", "O1", "O2", "O3"):
                 channel_console = (
                     self.run_dir
@@ -3351,6 +3560,7 @@ class PipelineWorker(QObject):
             "stages": [],
             "cases": [],
             "failures": [],
+            "lld_diagnostics": [],
         }
         self._save_metadata()
         self.progress.emit(0, self.total_units)
@@ -3382,7 +3592,8 @@ class PipelineWorker(QObject):
                 # digest de fuentes ya incluiria cualquier cosa que la propia construccion tocara.
                 # Gate 0. El orden de las mediciones lo fija G0.2 y no es intercambiable: `S0`
                 # antes de construir; `B0`/`I0` despues de construir/instalar el compilador Y de
-                # terminar ambos arboles CTest; todo otra vez al terminar la matriz. Medir antes
+                # terminar los arboles CTest seleccionados; todo otra vez al terminar la matriz.
+                # Medir antes
                 # de `_build_tests()` hace que la propia corrida cambie o cree los ejecutables
                 # que `_abi_measure()` vigila y vuelve imposible certificar un baseline limpio.
                 is_baseline = self.plan.operation == "baseline"
@@ -3418,9 +3629,15 @@ class PipelineWorker(QObject):
                         if is_baseline:
                             baseline_built = self._abi_measure("after-build", sources=False)
                         for linker in self.plan.linkers:
-                            self._ctest(linker)
-                            self._run_case_group(linker)
-                            self._triage(linker)
+                            failed_ctests = self._ctest(linker)
+                            failed_cases = self._run_case_group(linker)
+                            failed_triage = self._triage(linker)
+                            if linker == "NSLink":
+                                self._diagnose_nslink_failures(
+                                    failed_ctests,
+                                    failed_cases,
+                                    failed_triage,
+                                )
                             if self.cancel_event.is_set():
                                 break
                 if baseline_sources is not None and not self.cancel_event.is_set():
@@ -3695,9 +3912,9 @@ class MainWindow(QMainWindow):
         self.test_build_runner.addItem("CMake", "cmake")
         self.test_build_runner.addItem("Ninja", "ninja")
         self.linker_mode = QComboBox()
-        self.linker_mode.addItem("LLD-link", ["lld-link"])
-        self.linker_mode.addItem("NSLink", ["NSLink"])
-        self.linker_mode.addItem("Ambos (corridas independientes)", ["lld-link", "NSLink"])
+        self.linker_mode.addItem("NSLink (LLD sólo diagnostica fallos)", ["NSLink"])
+        self.linker_mode.addItem("Ambos (validación profunda)", ["NSLink", "lld-link"])
+        self.linker_mode.addItem("LLD-link solamente", ["lld-link"])
         self.test_jobs = QSpinBox()
         self.test_jobs.setRange(1, 128)
         self.test_jobs.setValue(min(os.cpu_count() or 4, 16))
@@ -4503,7 +4720,10 @@ class MainWindow(QMainWindow):
                 "El enlazador que usa nsc al construir los programas de prueba. Aquí sí cambia lo "
                 "que se mide."
             ),
-            "ABI": "El Gate 0 usa siempre los dos enlazadores; esta elección no lo afecta.",
+            "ABI": (
+                "Gate 0 usa NSLink por defecto y repite con LLD sólo los fallos; el modo profundo "
+                "ejecuta la matriz completa con ambos."
+            ),
         }
         index = self.operation_tabs.currentIndex()
         title = self.operation_tabs.tabText(index) if index >= 0 else ""
@@ -4691,7 +4911,12 @@ class MainWindow(QMainWindow):
             f"{test_text} · {test_mode} · {self.linker_mode.currentText()} · "
             f"{', '.join(optimizations) or 'sin optimización'} · "
             f"{self.test_jobs.value()} proceso(s).\n"
-            f"Árboles independientes: {selected_build_text}. El nsc instalado no se modifica."
+            f"Árboles primarios: {selected_build_text}. "
+            + (
+                "LLD reutilizará el árbol NSLink sólo para fallos. "
+                if selected_linkers == ["NSLink"] else ""
+            )
+            + "El nsc instalado no se modifica."
         )
 
     def _load_settings(self) -> None:
@@ -4739,9 +4964,24 @@ class MainWindow(QMainWindow):
         )
         if test_runner_index >= 0:
             self.test_build_runner.setCurrentIndex(test_runner_index)
-        linker_index = int(self.settings.value("linker_index", 0))
-        if 0 <= linker_index < self.linker_mode.count():
-            self.linker_mode.setCurrentIndex(linker_index)
+        linker_policy = str(self.settings.value("linker_policy", ""))
+        if not linker_policy:
+            # Migrate the old positional setting: 0=LLD, 1=NSLink, 2=both.  The combo order is
+            # now different, so reusing the integer directly could silently enable deep mode.
+            legacy_index = int(self.settings.value("linker_index", 1))
+            linker_policy = {0: "lld-only", 1: "nslink-diagnostic", 2: "deep"}.get(
+                legacy_index, "nslink-diagnostic"
+            )
+        linker_values = {
+            "nslink-diagnostic": ["NSLink"],
+            "deep": ["NSLink", "lld-link"],
+            "lld-only": ["lld-link"],
+        }
+        wanted_linkers = linker_values.get(linker_policy, ["NSLink"])
+        for linker_index in range(self.linker_mode.count()):
+            if list(self.linker_mode.itemData(linker_index)) == wanted_linkers:
+                self.linker_mode.setCurrentIndex(linker_index)
+                break
         operation_tab_index = int(self.settings.value("operation_tab_index", 0))
         if 0 <= operation_tab_index < self.operation_tabs.count():
             self.operation_tabs.setCurrentIndex(operation_tab_index)
@@ -4769,6 +5009,13 @@ class MainWindow(QMainWindow):
         self.settings.setValue("host_optimization", self.host_optimization.currentData())
         self.settings.setValue("test_build_runner", self.test_build_runner.currentData())
         self.settings.setValue("linker_index", self.linker_mode.currentIndex())
+        selected_linkers = list(self.linker_mode.currentData())
+        linker_policy = (
+            "nslink-diagnostic" if selected_linkers == ["NSLink"] else
+            "deep" if set(selected_linkers) == {"NSLink", "lld-link"} else
+            "lld-only"
+        )
+        self.settings.setValue("linker_policy", linker_policy)
         self.settings.setValue("operation_tab_index", self.operation_tabs.currentIndex())
         self.settings.setValue("window_geometry", self.saveGeometry())
         self.settings.setValue("dock_state", self.saveState(1))
@@ -4938,16 +5185,21 @@ class MainWindow(QMainWindow):
         certified = QGroupBox("G0.2 — baseline certificado")
         certified_layout = QVBoxLayout(certified)
         certified_note = QLabel(
-            "Usa las rutas de la pestaña Compilador. Puedes ejecutar un alcance reducido para "
-            "diagnóstico; sólo ambos enlazadores y O0/O1/O2/O3 forman un baseline certificable. "
-            "Los resultados aprobados sólo se reutilizan cuando toda su identidad coincide."
+            "Usa las rutas de la pestaña Compilador. La ruta normal certifica NSLink en "
+            "O0/O1/O2/O3 y sólo repite con LLD los fallos exactos. La validación profunda "
+            "ejecuta toda la matriz con ambos enlazadores. Los resultados aprobados sólo se "
+            "reutilizan cuando toda su identidad coincide."
         )
         certified_note.setWordWrap(True)
         certified_layout.addWidget(certified_note)
         self.abi_linker_mode = QComboBox()
-        self.abi_linker_mode.addItem("Ambos — certificable", ["lld-link", "NSLink"])
-        self.abi_linker_mode.addItem("LLD-link — alcance reducido", ["lld-link"])
-        self.abi_linker_mode.addItem("NSLink — alcance reducido", ["NSLink"])
+        self.abi_linker_mode.addItem(
+            "NSLink — predeterminado; LLD sólo diagnostica fallos", ["NSLink"]
+        )
+        self.abi_linker_mode.addItem(
+            "NSLink + LLD — validación profunda", ["NSLink", "lld-link"]
+        )
+        self.abi_linker_mode.addItem("LLD-link — diagnóstico aislado", ["lld-link"])
         certified_layout.addWidget(self.abi_linker_mode)
         abi_optimization_box = QWidget()
         abi_optimization_layout = QHBoxLayout(abi_optimization_box)
@@ -5073,9 +5325,18 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, APP_NAME, "Selecciona por lo menos un perfil O0–O3.")
             return
         selected_linkers = list(self.abi_linker_mode.currentData())
+        normal_policy = selected_linkers == ["NSLink"]
+        deep_policy = set(selected_linkers) == {"lld-link", "NSLink"}
         complete = (
-            set(selected_linkers) == {"lld-link", "NSLink"} and
+            (normal_policy or deep_policy) and
             set(selected_optimizations) == {"-O0", "-O1", "-O2", "-O3"}
+        )
+        policy = (
+            "NSLink como ruta primaria; LLD sólo repetirá los fallos exactos."
+            if normal_policy else
+            "La matriz completa se ejecutará con NSLink y LLD."
+            if deep_policy else
+            "Se ejecutará únicamente LLD como diagnóstico aislado."
         )
         outcome = (
             "Si todo pasa, Gate 0 podrá certificarse y desplegarse."
@@ -5085,7 +5346,7 @@ class MainWindow(QMainWindow):
         answer = QMessageBox.question(
             self,
             APP_NAME,
-            f"Se ejecutarán {', '.join(selected_linkers)} y "
+            f"{policy}\nSe ejecutarán {', '.join(selected_linkers)} y "
             f"{', '.join(value.lstrip('-') for value in selected_optimizations)}.\n\n{outcome}\n\n"
             "¿Continuar?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -5147,6 +5408,7 @@ class MainWindow(QMainWindow):
                 host_optimization=str(self.host_optimization.currentData()),
                 certify_baseline=False,
                 reuse_results=True,
+                lld_diagnostics=False,
                 build_mode=(
                     "skip" if operation == "install" else str(self.build_mode.currentData())
                 ),
@@ -5247,6 +5509,7 @@ class MainWindow(QMainWindow):
             host_optimization="O2",
             certify_baseline=False,
             reuse_results=self.reuse_results.isChecked(),
+            lld_diagnostics=linkers == ["NSLink"],
             build_mode="skip",
             build_target="",
             build_runner=str(self.test_build_runner.currentData()),
@@ -5319,7 +5582,10 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 return
         self._save_settings()
-        test_channels = ["LLD-link" if linker == "lld-link" else linker for linker in plan.linkers]
+        result_linkers = list(plan.linkers)
+        if plan.lld_diagnostics and "lld-link" not in result_linkers:
+            result_linkers.append("lld-link")
+        test_channels = ["LLD-link" if linker == "lld-link" else linker for linker in result_linkers]
         if plan.operation in ("compiler", "install"):
             self.active_result_channels = ["Compilador"]
         elif plan.operation == "baseline":
@@ -5806,7 +6072,7 @@ def main() -> int:
     parser.add_argument(
         "--linker",
         choices=("both", "lld-link", "NSLink"),
-        default="both",
+        default="NSLink",
     )
     parser.add_argument(
         "--optimization",
@@ -5862,7 +6128,7 @@ def main() -> int:
             "  --write-root DIR          raíz autorizada; repetible\n\n"
             "  --run-id ID               identidad estable para evidencia automatizada\n\n"
             "  --build-id HEX16          identidad reproducible para nsc0\n\n"
-            "  --linker VALUE            both, lld-link o NSLink\n"
+            "  --linker VALUE            NSLink (default + LLD on failures), both (deep), or lld-link\n"
             "  --optimization OLEVEL     O0..O3; repetible (todas si se omite)\n"
             "  --no-reuse-results        fuerza a repetir resultados idénticos aprobados\n\n"
             "Entorno equivalente: NSC_INSTALL_ROOT, NSC_BASELINE_ROOT, NSC_BUILD_ROOT, "

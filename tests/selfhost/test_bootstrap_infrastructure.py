@@ -114,7 +114,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn(str((self.root / "forbidden").resolve()), rejected)
         self.assertNotIn(str((allowed / "build").resolve()), rejected)
 
-    def test_baseline_plan_covers_every_optimization_and_both_linkers(self) -> None:
+    def test_baseline_plan_defaults_to_nslink_with_selective_lld_diagnostics(self) -> None:
         plan = nscbuilder.make_baseline_plan(4)
         self.assertEqual(Path(plan.prefix), Path(r"A:\native-sharp-3.0-baseline"))
         self.assertEqual(Path(plan.deploy_prefix), Path(r"C:\native-sharp"))
@@ -124,12 +124,22 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         )
         self.assertFalse(plan.sync_libraries)
         self.assertEqual(plan.optimizations, ["-O0", "-O1", "-O2", "-O3"])
-        self.assertEqual(plan.linkers, ["lld-link", "NSLink"])
+        self.assertEqual(plan.linkers, ["NSLink"])
+        self.assertTrue(plan.lld_diagnostics)
         self.assertTrue(plan.run_ctest)
         self.assertTrue(plan.run_cases)
         self.assertTrue(plan.run_triage)
         self.assertTrue(plan.certify_baseline)
         self.assertTrue(plan.reuse_results)
+
+    def test_deep_baseline_plan_runs_both_linkers_without_a_third_diagnostic_pass(self) -> None:
+        plan = nscbuilder.make_baseline_plan(
+            4,
+            linkers=["NSLink", "lld-link"],
+        )
+        self.assertEqual(plan.linkers, ["NSLink", "lld-link"])
+        self.assertFalse(plan.lld_diagnostics)
+        self.assertTrue(plan.certify_baseline)
 
     def test_reduced_baseline_plan_cannot_certify(self) -> None:
         plan = nscbuilder.make_baseline_plan(
@@ -140,6 +150,79 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(plan.linkers, ["lld-link"])
         self.assertEqual(plan.optimizations, ["-O0"])
         self.assertFalse(plan.certify_baseline)
+        self.assertFalse(plan.lld_diagnostics)
+
+    def test_lld_diagnostic_repeats_only_exact_nslink_failures(self) -> None:
+        plan = nscbuilder.make_baseline_plan(2)
+        worker = nscbuilder.PipelineWorker(plan, [])
+        worker.run_dir = self.root / "diagnostic-run"
+        worker.run_dir.mkdir()
+        worker.metadata = {"id": "diagnostic", "stages": [], "cases": [], "failures": []}
+        worker.total_units = 10
+        worker.failed = 3
+        fixture = nscbuilder.CaseSpec("tests/probe.nsproj", "fixture-probe", 42, "fixture")
+        triage = nscbuilder.CaseSpec("tests/triage.nsproj", "triage-probe", 42, "bug triage")
+        with (
+            patch.object(worker, "_ctest", return_value=[]) as ctest,
+            patch.object(worker, "_run_case_group", return_value=[]) as cases,
+            patch.object(worker, "_triage", return_value=[]) as triage_run,
+        ):
+            worker._diagnose_nslink_failures(
+                ["nsc.failed.test"],
+                [(fixture, "-O0")],
+                [(triage, "-O2")],
+            )
+        ctest.assert_called_once_with(
+            "lld-link",
+            selected_ctests=["nsc.failed.test"],
+            build_dir=Path(plan.test_build_dirs["NSLink"]),
+            diagnostic=True,
+        )
+        cases.assert_called_once_with(
+            "lld-link", diagnostic_work=[(fixture, "-O0")]
+        )
+        triage_run.assert_called_once_with(
+            "lld-link", diagnostic_work=[(triage, "-O2")]
+        )
+        self.assertEqual(worker.failed, 3)
+        self.assertEqual(worker.total_units, 13)
+        self.assertEqual(
+            {row["result"] for row in worker.metadata["lld_diagnostics"]},
+            {"nslink-only"},
+        )
+
+    def test_failed_lld_diagnostic_never_counts_as_a_new_primary_failure(self) -> None:
+        plan = nscbuilder.make_baseline_plan(1, reuse_results=False)
+        worker = nscbuilder.PipelineWorker(plan, [])
+        worker.run_dir = self.root / "ctest-diagnostic"
+        worker.run_dir.mkdir()
+        worker.metadata = {"id": "diagnostic", "stages": [], "cases": [], "failures": []}
+        build = self.root / "shared-ctest"
+        build.mkdir()
+        (build / "CTestTestfile.cmake").write_text("# configured\n")
+        output = "1/1 Test #1: nsc.failed.test ***Failed 0.01 sec\n"
+        with (
+            patch.object(
+                worker,
+                "_ctest_result_cache",
+                return_value=(self.root / "no-cache.json", "diagnostic-id"),
+            ),
+            patch.object(
+                worker,
+                "_run_process",
+                return_value=nscbuilder.ProcessResult(8, 0.01, output),
+            ),
+        ):
+            failed = worker._ctest(
+                "lld-link",
+                selected_ctests=["nsc.failed.test"],
+                build_dir=build,
+                diagnostic=True,
+            )
+        self.assertEqual(failed, ["nsc.failed.test"])
+        self.assertEqual(worker.failed, 0)
+        self.assertEqual(worker.stage_rows[-1]["status"], "failed")
+        self.assertEqual(worker.failure_rows, [])
 
     def test_scoped_baseline_never_writes_gate_or_promotes(self) -> None:
         plan = nscbuilder.make_baseline_plan(
