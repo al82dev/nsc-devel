@@ -3,6 +3,7 @@
 #include "nativesharp/Driver/CompilerConsole.h"
 
 #include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
 
 #include <algorithm>
@@ -1141,6 +1142,8 @@ struct BuildOptions final
     std::optional<fs::path> libraryReferenceRoot;
     std::optional<std::size_t> compilerJobs;
     bool noRestore = false;
+    bool precompiledOnly = false;
+    bool dependencyReport = false;
     std::vector<std::string> programArguments;
 };
 
@@ -1155,6 +1158,8 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
         if ((argument == "-c" || argument == "--configuration") && index + 1 < arguments.size()) options.configuration = std::string(arguments[++index]);
         else if (argument == "--linker" && index + 1 < arguments.size()) options.linker = std::string(arguments[++index]);
         else if (argument == "--no-restore") options.noRestore = true;
+        else if (argument == "--precompiled-only") options.precompiledOnly = true;
+        else if (argument == "--dependency-report") options.dependencyReport = true;
         else if (argument == "-j" || (argument.starts_with("-j") && argument.size() > 2U))
         {
             if (options.compilerJobs.has_value())
@@ -1245,6 +1250,93 @@ bool loadPlanFromLock(const fs::path& project, RestorePlan& plan, std::string& e
 
 struct BuildResult final { fs::path project; fs::path artifact; std::string compilerOutput; std::string compilerError; };
 
+struct DependencyProvenance final
+{
+    std::string kind;
+    std::string identity;
+    fs::path path;
+    std::string fingerprint;
+};
+
+std::string fingerprintFiles(std::vector<fs::path> files)
+{
+    std::ranges::sort(files, {}, [](const fs::path& path) { return pathText(path); });
+    std::string material;
+    for (const fs::path& file : files)
+    {
+        basic::Sha256Digest digest{};
+        std::uintmax_t size = 0;
+        std::string ignored;
+        material += pathText(fs::absolute(file).lexically_normal());
+        material.push_back('\0');
+        if (basic::sha256File(file, digest, size, ignored)) material += basic::sha256Hex(digest);
+        else material += "missing";
+        material.push_back('\n');
+    }
+    return basic::sha256Hex(basic::sha256(std::span<const std::uint8_t>(
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size())));
+}
+
+std::vector<DependencyProvenance> dependencyProvenance(
+    const compilation::ProjectGraph& graph,
+    const RestorePlan& plan)
+{
+    std::vector<DependencyProvenance> records;
+    const compilation::Project* root = graph.rootProject();
+    for (const compilation::Project& project : graph.projects())
+    {
+        std::vector<fs::path> inputs = {project.projectFile()};
+        for (const compilation::ProjectSource& source : project.sourceSet().sources())
+            inputs.push_back(source.absolutePath);
+        records.push_back(DependencyProvenance{
+            root != nullptr && project.projectFile() == root->projectFile()
+                ? "source" : "project-reference",
+            project.moduleName(), project.projectFile(), fingerprintFiles(std::move(inputs))});
+        for (const compilation::LibraryReference& reference : project.libraryReferences())
+        {
+            std::vector<fs::path> artifacts = {reference.libraryPath, reference.metadataPath};
+            if (!reference.runtimePath.empty()) artifacts.push_back(reference.runtimePath);
+            records.push_back(DependencyProvenance{
+                "library-reference", reference.metadataPath.stem().string(),
+                reference.libraryPath, fingerprintFiles(std::move(artifacts))});
+        }
+    }
+    for (const RestoredPackage& package : plan.packages)
+    {
+        std::string material = package.request.id + "@" + package.request.version + "\n";
+        for (const Artifact& artifact : package.artifacts)
+            material += artifact.type + ":" + pathText(artifact.relativeDestination) + ":" +
+                artifact.hash + "\n";
+        records.push_back(DependencyProvenance{
+            "store-cache", package.request.id + "@" + package.request.version, plan.root,
+            basic::sha256Hex(basic::sha256(std::span<const std::uint8_t>(
+                reinterpret_cast<const std::uint8_t*>(material.data()), material.size())))});
+    }
+    std::ranges::sort(records, [](const auto& left, const auto& right) {
+        if (left.kind != right.kind) return left.kind < right.kind;
+        if (left.identity != right.identity) return left.identity < right.identity;
+        return pathText(left.path) < pathText(right.path);
+    });
+    return records;
+}
+
+std::string dependencyProvenanceJson(std::span<const DependencyProvenance> records)
+{
+    std::ostringstream json;
+    json << '[';
+    for (std::size_t index = 0; index < records.size(); ++index)
+    {
+        if (index != 0) json << ',';
+        const DependencyProvenance& record = records[index];
+        json << "{\"fingerprint\":\"" << jsonEscape(record.fingerprint)
+             << "\",\"identity\":\"" << jsonEscape(record.identity)
+             << "\",\"kind\":\"" << jsonEscape(record.kind)
+             << "\",\"path\":\"" << jsonEscape(pathText(record.path)) << "\"}";
+    }
+    json << ']';
+    return json.str();
+}
+
 ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecutor& executor,
                       std::ostream& output, std::ostream& error, BuildResult* buildResult)
 {
@@ -1284,10 +1376,13 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
         options.compilerJobs.has_value() ? options.compilerJobs : projectSettings->compilerJobs;
 
     RestorePlan plan;
-    if (options.noRestore || !sidecar.build.restoreBeforeBuild)
+    if (options.noRestore || options.precompiledOnly || !sidecar.build.restoreBeforeBuild)
     {
         if (!sidecar.packages.empty() && !loadPlanFromLock(project, plan, message))
-            return result.failure(error, message, ExitCode::CompilationError);
+            return result.failure(error,
+                std::string(options.precompiledOnly ? "--precompiled-only" : "--no-restore") +
+                " requires an existing verified lock/store closure: " + message,
+                ExitCode::CompilationError);
         plan.root = project.parent_path() / "obj" / "nativesharp" / "packages";
     }
     else
@@ -1307,6 +1402,39 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     projectLoadOptions.libraryReferenceRoot = libraryReferenceRoot;
     std::optional<compilation::Project> loaded = loader.load(generated, projectLoadOptions, message);
     if (!loaded.has_value()) return result.failure(error, "generated build project is invalid: " + message, ExitCode::CompilationError);
+    compilation::ProjectGraphLoader graphLoader(
+        compilerJobs.value_or(1U), {}, projectLoadOptions);
+    std::optional<compilation::ProjectGraph> graph = graphLoader.load(generated, message);
+    if (!graph.has_value())
+        return result.failure(error, "dependency closure is invalid: " + message,
+            ExitCode::CompilationError);
+    if (options.precompiledOnly && graph->projects().size() > 1U)
+    {
+        const compilation::Project& sourceDependency = graph->projects().front();
+        return result.failure(error,
+            "--precompiled-only rejected source ProjectReference module '" +
+                sourceDependency.moduleName() + "' at '" +
+                pathText(sourceDependency.projectFile()) +
+                "'; publish and reference its .lib + .nsmeta closure",
+            ExitCode::CompilationError);
+    }
+    std::vector<DependencyProvenance> provenance = dependencyProvenance(*graph, plan);
+    for (DependencyProvenance& record : provenance)
+    {
+        if (record.kind != "source") continue;
+        record.path = project;
+        std::vector<fs::path> rootInputs = {project};
+        for (const compilation::ProjectSource& source : loaded->sourceSet().sources())
+            rootInputs.push_back(source.absolutePath);
+        record.fingerprint = fingerprintFiles(std::move(rootInputs));
+    }
+    if (options.dependencyReport && !json)
+    {
+        output << "Dependency provenance:\n";
+        for (const DependencyProvenance& record : provenance)
+            output << "  " << record.kind << ' ' << record.identity << " path="
+                   << pathText(record.path) << " sha256=" << record.fingerprint << '\n';
+    }
     std::string action;
     std::string extension;
     if (loaded->outputKind() == compilation::ProjectOutputKind::Executable) { action = "--emit-project-oop-exe"; extension = ".exe"; }
@@ -1364,7 +1492,11 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
         "\"artifact\":\"" + jsonEscape(pathText(artifact)) + "\",\"configuration\":\"" +
         jsonEscape(configuration) + "\",\"optimization\":\"" + jsonEscape(optimization) +
         "\",\"linker\":\"" + jsonEscape(linker) + "\",\"contentFiles\":" +
-        std::to_string(contentFiles) + ",\"stdout\":\"" +
+        std::to_string(contentFiles) +
+        (options.dependencyReport
+            ? ",\"dependencyProvenance\":" + dependencyProvenanceJson(provenance)
+            : std::string{}) +
+        ",\"stdout\":\"" +
         jsonEscape(compilerOutput.str()) + "\",\"stderr\":\"" + jsonEscape(compilerError.str()) + "\"");
 }
 

@@ -1301,6 +1301,35 @@ std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
             {
                 if (!local.viewRootLocalName.empty()) return local.viewRootLocalName;
             }
+            else if (local.typeKey.ends_with("*"))
+            {
+                // A raw pointer local is a VALUE slot, not the storage it points at. Follow its
+                // initializer instead of declaring every pointer local frame-bound. This keeps
+                // `byte* p = arena.Allocate(n); return Spans.OfRaw(p, n);` valid while preserving
+                // the unsafe cases: VLA aliases, stackalloc and `&local` remain rooted in the
+                // current frame, and pointer/view arguments passed through calls propagate their
+                // existing root recursively.
+                if (local.variableLengthArrayRootLocalOrdinal.has_value() &&
+                    *local.variableLengthArrayRootLocalOrdinal < locals_.size())
+                    return locals_[*local.variableLengthArrayRootLocalOrdinal].name;
+                const ast::AstNode* initializer = local.syntax != nullptr
+                    ? local.syntax->first() : nullptr;
+                if (initializer == nullptr) return std::nullopt;
+                if (initializer->kind() == ast::AstNodeKind::StackallocExpression)
+                    return local.name;
+                if (initializer->kind() == ast::AstNodeKind::UnaryExpression &&
+                    initializer->tokenKind() == lexer::TokenKind::Amp &&
+                    initializer->first() != nullptr &&
+                    initializer->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+                {
+                    const std::optional<ScopeName> pointee = lookupScopeName(
+                        scopeOrdinal, initializer->first()->text());
+                    if (pointee.has_value() && pointee->kind == ScopeNameKind::Local &&
+                        pointee->semanticOrdinal < locals_.size())
+                        return locals_[pointee->semanticOrdinal].name;
+                }
+                return viewRootLocalOfExpression(initializer, scopeOrdinal);
+            }
             else if (typeKeyCarriesLifetime(local.typeKey))
             {
                 return local.name;

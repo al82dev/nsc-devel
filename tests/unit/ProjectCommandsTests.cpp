@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 namespace
@@ -149,6 +150,104 @@ int main()
         const ExitCode code = run({"restore", project.string(), "--verify", "--output-format=json"}, output, error);
         tests.expect(code == ExitCode::Success && output.str().find("Restore verified") != std::string::npos,
                      "restore verify accepts matching hashes without rewriting packages");
+    }
+
+    {
+        const fs::path lock = projectRoot / "NativeSharp.lock.json";
+        const fs::path cached = projectRoot /
+            "obj/nativesharp/packages/NativeSharp.Test/2.0.0/NativeSharp.Test.lib";
+        const auto lockTime = fs::last_write_time(lock);
+        const auto cacheTime = fs::last_write_time(cached);
+        const auto compile = [](std::span<const std::string_view> arguments,
+                                std::ostream&, std::ostream&) {
+            for (std::size_t index = 0; index + 1 < arguments.size(); ++index)
+            {
+                if (arguments[index] != "-o") continue;
+                writeFile(fs::path(arguments[index + 1]), "executable");
+                return ExitCode::Success;
+            }
+            return ExitCode::CommandLineError;
+        };
+        const auto buildOnce = [&]() {
+            std::ostringstream output;
+            std::ostringstream error;
+            const std::vector<std::string> owned{
+                "build", project.string(), "--precompiled-only", "--no-restore",
+                "--dependency-report", "--output-format=json"};
+            std::vector<std::string_view> arguments;
+            for (const std::string& value : owned) arguments.push_back(value);
+            const ExitCode code = nativesharp::driver::runProjectCommand(
+                arguments, output, error, compile);
+            return std::tuple(code, output.str(), error.str());
+        };
+        const auto first = buildOnce();
+        const auto second = buildOnce();
+        tests.expect(std::get<0>(first) == ExitCode::Success &&
+                std::get<1>(first).find("\"kind\":\"source\"") != std::string::npos &&
+                std::get<1>(first).find("\"kind\":\"library-reference\"") != std::string::npos &&
+                std::get<1>(first).find("\"kind\":\"store-cache\"") != std::string::npos,
+            "precompiled-only reports source, LibraryReference and store/cache provenance");
+        tests.expect(std::get<1>(first) == std::get<1>(second) &&
+                std::get<2>(first).empty() && std::get<2>(second).empty(),
+            "dependency JSON and fingerprints are reproducible");
+        tests.expect(fs::last_write_time(lock) == lockTime &&
+                fs::last_write_time(cached) == cacheTime,
+            "no-restore/precompiled-only does not mutate lock or restored artifacts");
+        std::ostringstream textOutput;
+        std::ostringstream textError;
+        const std::vector<std::string> textOwned{
+            "build", project.string(), "--precompiled-only", "--no-restore",
+            "--dependency-report"};
+        std::vector<std::string_view> textArguments;
+        for (const std::string& value : textOwned) textArguments.push_back(value);
+        tests.expect(nativesharp::driver::runProjectCommand(
+                textArguments, textOutput, textError, compile) == ExitCode::Success &&
+                textOutput.str().find("Dependency provenance:\n") != std::string::npos &&
+                textOutput.str().find("store-cache NativeSharp.Test@2.0.0") != std::string::npos,
+            "dependency provenance has a deterministic human-readable report");
+    }
+
+    {
+        const fs::path dependencyRoot = root / "SourceDependency";
+        const fs::path dependency = dependencyRoot / "SourceDependency.nsproj";
+        writeFile(dependency, "<Project><PropertyGroup><Name>SourceDependency</Name>"
+            "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
+            "<ItemGroup><Compile Include=\"**/*.ns\"/></ItemGroup></Project>");
+        writeFile(dependencyRoot / "Api.ns", "public class SourceApi { }\n");
+        const fs::path consumerRoot = root / "SourceConsumer";
+        const fs::path consumer = consumerRoot / "SourceConsumer.nsproj";
+        writeFile(consumer, "<Project><PropertyGroup><Name>SourceConsumer</Name></PropertyGroup>"
+            "<ItemGroup><Compile Include=\"**/*.ns\"/><ProjectReference Include=\"" +
+            dependency.generic_string() + "\"/></ItemGroup></Project>");
+        writeFile(consumerRoot / "Main.ns", "public class Program { public static int Main() { return 0; } }\n");
+        std::ostringstream output;
+        std::ostringstream error;
+        const ExitCode code = run({"build", consumer.string(), "--precompiled-only"}, output, error);
+        tests.expect(code == ExitCode::CompilationError &&
+                error.str().find("rejected source ProjectReference module 'SourceDependency'") !=
+                    std::string::npos,
+            "precompiled-only fails closed before compiling a source dependency");
+    }
+
+    {
+        const fs::path missingRoot = root / "MissingLock";
+        const fs::path missing = missingRoot / "MissingLock.nsproj";
+        writeFile(missing, "<Project><PropertyGroup><Name>MissingLock</Name></PropertyGroup>"
+            "<ItemGroup><Compile Include=\"**/*.ns\"/></ItemGroup></Project>");
+        writeFile(missingRoot / "Main.ns", "public class Program { public static int Main() { return 0; } }\n");
+        std::ostringstream addOutput;
+        std::ostringstream addError;
+        tests.expect(run({"add", "package", "NativeSharp.Test", "--version", "2.0.0",
+                "--source", package.string(), missing.string()}, addOutput, addError) == ExitCode::Success,
+            "missing-lock fixture records a package without restoring it");
+        std::ostringstream output;
+        std::ostringstream error;
+        const ExitCode code = run({"build", missing.string(), "--no-restore"}, output, error);
+        tests.expect(code == ExitCode::CompilationError &&
+                error.str().find("--no-restore requires an existing verified lock/store closure") !=
+                    std::string::npos && !fs::exists(missingRoot / "NativeSharp.lock.json") &&
+                !fs::exists(missingRoot / "obj"),
+            "no-restore reports the missing causal artifact and performs no restore mutation");
     }
 
     {
