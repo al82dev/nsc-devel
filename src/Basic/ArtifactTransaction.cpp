@@ -410,4 +410,32 @@ bool writeTextTransactionally(
     return writeFileTransactionally(destination,
         std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()), error);
 }
+
+bool seedArtifactStage(const std::filesystem::path& source,
+    const std::filesystem::path& stage, std::string& error)
+{
+    error.clear();
+    if (source.empty() || stage.empty())
+    {
+        error = "artifact seed source or stage is empty";
+        return false;
+    }
+#if defined(_WIN32)
+    bool present = false;
+    if (!exists(source, present, error)) return false;
+    if (!present) return true;
+    if (!ensureDirectory(stage.parent_path(), error)) return false;
+    return copyToSibling(source, stage, error);
+#else
+    std::error_code filesystemError;
+    if (!std::filesystem::is_regular_file(source, filesystemError))
+        return !filesystemError;
+    if (!ensureDirectory(stage.parent_path(), error)) return false;
+    std::filesystem::copy_file(source, stage,
+        std::filesystem::copy_options::overwrite_existing, filesystemError);
+    if (!filesystemError) return true;
+    error = "artifact seed copy failed for '" + stage.string() + "': " + filesystemError.message();
+    return false;
+#endif
+}
 }

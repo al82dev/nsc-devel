@@ -63,4 +63,12 @@ bool writeTextTransactionally(
     const std::filesystem::path& destination,
     std::string_view text,
     std::string& error);
+
+// Copies an existing published artifact into an isolated build stage. A missing source is not an
+// error: it represents the cold path. Windows extended paths and durable flush semantics match
+// ArtifactTransaction::commit().
+bool seedArtifactStage(
+    const std::filesystem::path& source,
+    const std::filesystem::path& stage,
+    std::string& error);
 }

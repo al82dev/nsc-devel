@@ -6219,6 +6219,29 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
         error << "nsc: error: executable output preflight failed: " << buildError << '\n';
         return ExitCode::CompilationError;
     }
+    if (incrementalLink)
+    {
+        const std::filesystem::path destinationState = destination.string() + ".nslinc";
+        const std::filesystem::path stagedState = stagedDestination.string() + ".nslinc";
+        if (!basic::seedArtifactStage(destination, stagedDestination, buildError) ||
+            !basic::seedArtifactStage(destinationState, stagedState, buildError))
+        {
+            error << "nsc: error: incremental-link staging failed: " << buildError << '\n';
+            return ExitCode::CompilationError;
+        }
+        if (debugInformation != llvm_backend::DebugInformationKind::None)
+        {
+            std::filesystem::path destinationPdb = destination;
+            destinationPdb.replace_extension(".pdb");
+            std::filesystem::path stagedPdb = stagedDestination;
+            stagedPdb.replace_extension(".pdb");
+            if (!basic::seedArtifactStage(destinationPdb, stagedPdb, buildError))
+            {
+                error << "nsc: error: incremental-link PDB staging failed: " << buildError << '\n';
+                return ExitCode::CompilationError;
+            }
+        }
+    }
     if (!measureDriverPhase("executable-build", [&] {
             return builder.buildObjects(
                 objectBundle->objectFiles(), objectBundle->combinedLlvmText(), stagedDestination,
