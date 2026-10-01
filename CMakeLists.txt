@@ -371,6 +371,19 @@ endif()
 
 if(WIN32)
     include(cmake/NativeSharpLlvmStaticDependencies.cmake)
+    # build-clang can come from the former LLVM-C.dll configuration. Merely dropping the old
+    # command-line option does not clear CMake cache entries, so make the Windows static-only
+    # contract authoritative even when an existing build tree is reused.
+    set(CMAKE_DISABLE_FIND_PACKAGE_LLVM FALSE CACHE BOOL
+        "NativeSharp requires LLVM's static CMake package on Windows" FORCE)
+    unset(NSC_LLVM_MONOLITHIC_LIBRARY CACHE)
+    # LLVMConfig probes optional system packages even though the Windows distribution does not
+    # ship them. zlib/zstd are the pinned targets above, and none of NSC's selected components
+    # references LibXml2. Disable machine-dependent discovery so configuration neither warns nor
+    # silently changes the final link when one of those packages happens to be installed.
+    set(CMAKE_DISABLE_FIND_PACKAGE_ZLIB TRUE)
+    set(CMAKE_DISABLE_FIND_PACKAGE_zstd TRUE)
+    set(CMAKE_DISABLE_FIND_PACKAGE_LibXml2 TRUE)
 endif()
 find_package(LLVM CONFIG QUIET)
 set(NSC_LLVM_LINK_LIBRARIES)

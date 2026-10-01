@@ -255,6 +255,8 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn(f"-DCMAKE_CXX_COMPILER={llvm}/bin/clang-cl.exe", command)
         self.assertIn(f"-DCMAKE_LINKER={llvm}/bin/lld-link.exe", command)
         self.assertIn(f"-DLLVM_DIR={llvm}/lib/cmake/llvm", command)
+        self.assertIn("-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=FALSE", command)
+        self.assertIn("-UNSC_LLVM_MONOLITHIC_LIBRARY", command)
         self.assertNotIn("-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE", command)
         self.assertFalse(
             any(argument.startswith("-DNSC_LLVM_MONOLITHIC_LIBRARY=") for argument in command)

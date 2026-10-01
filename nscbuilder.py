@@ -1780,6 +1780,8 @@ class PipelineWorker(QObject):
             f"-DCMAKE_MT={llvm}/bin/llvm-mt.exe",
             f"-DCMAKE_RC_COMPILER={llvm}/bin/llvm-rc.exe",
             "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
+            "-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=FALSE",
+            "-UNSC_LLVM_MONOLITHIC_LIBRARY",
             f"-DLLVM_DIR={llvm}/lib/cmake/llvm",
             f"-DNSC_BUILD_TESTS={'ON' if build_tests else 'OFF'}",
             "-DNSC_WARNINGS_AS_ERRORS=ON",
