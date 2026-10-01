@@ -5537,6 +5537,7 @@ private:
         LLVMValueRef array,
         std::string_view arrayTypeKey,
         std::string_view stem,
+        bool destroyElements,
         std::string& error)
     {
         const std::optional<std::string> elementType =
@@ -5556,7 +5557,7 @@ private:
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
         LLVMPositionBuilderAtEnd(builder_, destroyBlock);
 
-        if (requiresOwnedDestruction(*elementType))
+        if (destroyElements && requiresOwnedDestruction(*elementType))
         {
             LLVMValueRef length = LLVMBuildLoad2(
                 builder_, i64, array, (prefix + ".length").c_str());
@@ -5620,7 +5621,7 @@ private:
         std::string& error)
     {
         if (frontend::ProjectTypeConversion::isNativeArray(typeKey))
-            return emitNativeArrayDestroy(value, typeKey, stem, error);
+            return emitNativeArrayDestroy(value, typeKey, stem, true, error);
 
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         const std::string prefix(stem);
@@ -5710,7 +5711,12 @@ private:
         }
         if (frontend::ProjectTypeConversion::isNativeArray(node->typeKey))
         {
-            if (!emitNativeArrayDestroy(value, node->typeKey, "raii.array", error)) return false;
+            if (!emitNativeArrayDestroy(
+                    value,
+                    node->typeKey,
+                    "raii.array",
+                    node->ownership != sema::OwnershipKind::Borrowed,
+                    error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, doneBlock);
             LLVMPositionBuilderAtEnd(builder_, doneBlock);
             return true;
@@ -5802,7 +5808,8 @@ private:
         }
         if (frontend::ProjectTypeConversion::isNativeArray(node->typeKey))
         {
-            if (!emitNativeArrayDestroy(value, node->typeKey, "owned.param.array", error)) return false;
+            if (!emitNativeArrayDestroy(
+                    value, node->typeKey, "owned.param.array", true, error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, doneBlock);
             LLVMPositionBuilderAtEnd(builder_, doneBlock);
             return true;
@@ -13805,7 +13812,8 @@ private:
             : std::string_view(node->children.front()->typeKey);
         if (frontend::ProjectTypeConversion::isNativeArray(deletionType))
         {
-            if (!emitNativeArrayDestroy(pointer, deletionType, "delete.array", error)) return nullptr;
+            if (!emitNativeArrayDestroy(
+                    pointer, deletionType, "delete.array", true, error)) return nullptr;
             return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
         }
 

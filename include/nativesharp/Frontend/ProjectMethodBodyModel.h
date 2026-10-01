@@ -242,7 +242,8 @@ OwnershipArgumentFit classifyOwnershipArgument(
     sema::OwnershipKind parameterOwnership,
     sema::OwnershipKind argumentOwnership,
     bool argumentTransfer,
-    bool argumentIsFreshOwner) noexcept;
+    bool argumentIsFreshOwner,
+    bool argumentIsNull) noexcept;
 
 // Texto del diagnostico para un veredicto que no es Ok. Vive junto a la regla para que los dos
 // resolutores digan lo mismo ante la misma causa.
@@ -477,7 +478,20 @@ struct MethodLocalBorrowBinding final
     std::optional<std::size_t> sourceParameterOrdinal;
     std::optional<std::size_t> sourceOwnerLocalOrdinal;
     std::optional<std::size_t> sourceOwnerParameterOrdinal;
+    // T41: a borrowed local may be reassigned along different control-flow paths.  Keep every
+    // possible owner root; replacing the old root would make a later move/return check unsound.
+    std::vector<std::size_t> possibleSourceOwnerLocalOrdinals;
+    std::vector<std::size_t> possibleSourceOwnerParameterOrdinals;
     std::string typeKey;
+};
+
+struct MethodBorrowedParameterReassignmentBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    std::size_t methodMemberOrdinal = 0;
+    std::size_t parameterOrdinal = 0;
+    std::vector<std::size_t> possibleSourceOwnerLocalOrdinals;
+    std::vector<std::size_t> possibleSourceOwnerParameterOrdinals;
 };
 
 struct MethodUsingBinding final
@@ -1245,6 +1259,9 @@ struct MethodCallCandidate final
     // argument is an element of the final params ReadOnlySpan<T>, not a prebuilt span.
     std::vector<bool> parameterPackElements;
     std::optional<std::size_t> parameterPackOrdinal;
+    // Source argument ordinals whose fresh owned string is borrowed only for the duration of
+    // this call. Used by namespace/free functions as well as member calls.
+    std::vector<std::size_t> fullExpressionBorrowArgumentOrdinals;
     bool usesExpandedParameterPack = false;
     bool synthesizesEmptyParameterPack = false;
     std::size_t defaultedParameterCount = 0;
@@ -2001,6 +2018,8 @@ private:
     std::vector<MethodOwnershipTransferBinding> ownershipTransferBindings_;
     std::vector<MethodBorrowBinding> borrowBindings_;
     std::vector<MethodLocalBorrowBinding> localBorrowBindings_;
+    std::vector<MethodBorrowedParameterReassignmentBinding>
+        borrowedParameterReassignmentBindings_;
     std::unordered_set<std::size_t> movedRaiiLocals_;
     std::unordered_set<std::size_t> maybeMovedRaiiLocals_;
     std::unordered_set<std::size_t> movedOwnedParameters_;

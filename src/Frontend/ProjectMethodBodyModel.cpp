@@ -50,7 +50,8 @@ OwnershipArgumentFit classifyOwnershipArgument(
     sema::OwnershipKind parameterOwnership,
     sema::OwnershipKind argumentOwnership,
     bool argumentTransfer,
-    bool argumentIsFreshOwner) noexcept
+    bool argumentIsFreshOwner,
+    bool argumentIsNull) noexcept
 {
     // LA HISTORIA COMPLETA DE ESE ORDEN, medida en Stage 52 y conservada aqui porque no esta
     // escrita en ningun otro sitio:
@@ -77,6 +78,10 @@ OwnershipArgumentFit classifyOwnershipArgument(
     }
     if (parameterOwnership == sema::OwnershipKind::Owned)
     {
+        // T41: null names no owner and therefore has nothing to copy or transfer. Treating it as
+        // a fresh owner would make overload resolution work, but would also manufacture a false
+        // ownership-transfer binding downstream. Keep absence explicit instead.
+        if (argumentIsNull) return OwnershipArgumentFit::Ok;
         // DOS FORMAS DE SATISFACER UN `owned`, y la segunda faltaba.
         //
         //   1. una TRANSFERENCIA de un owner con nombre: `move(local)`, `move(p.campo)`;
@@ -2349,7 +2354,12 @@ void ProjectMethodBodyModel::invalidateHistoricalBorrowsOfOwnerLocal(std::size_t
 {
     for (std::size_t ordinal = 0; ordinal < localBorrowBindings_.size(); ++ordinal)
     {
-        if (localBorrowBindings_[ordinal].sourceOwnerLocalOrdinal == localOrdinal)
+        const MethodLocalBorrowBinding& borrow = localBorrowBindings_[ordinal];
+        if (borrow.sourceOwnerLocalOrdinal == localOrdinal ||
+            std::find(
+                borrow.possibleSourceOwnerLocalOrdinals.begin(),
+                borrow.possibleSourceOwnerLocalOrdinals.end(),
+                localOrdinal) != borrow.possibleSourceOwnerLocalOrdinals.end())
         {
             maybeInvalidLocalBorrows_.erase(ordinal);
             invalidLocalBorrows_.insert(ordinal);
@@ -2361,7 +2371,12 @@ void ProjectMethodBodyModel::invalidateHistoricalBorrowsOfOwnedParameter(std::si
 {
     for (std::size_t ordinal = 0; ordinal < localBorrowBindings_.size(); ++ordinal)
     {
-        if (localBorrowBindings_[ordinal].sourceOwnerParameterOrdinal == parameterOrdinal)
+        const MethodLocalBorrowBinding& borrow = localBorrowBindings_[ordinal];
+        if (borrow.sourceOwnerParameterOrdinal == parameterOrdinal ||
+            std::find(
+                borrow.possibleSourceOwnerParameterOrdinals.begin(),
+                borrow.possibleSourceOwnerParameterOrdinals.end(),
+                parameterOrdinal) != borrow.possibleSourceOwnerParameterOrdinals.end())
         {
             maybeInvalidLocalBorrows_.erase(ordinal);
             invalidLocalBorrows_.insert(ordinal);
@@ -2376,9 +2391,28 @@ bool ProjectMethodBodyModel::hasActiveBorrowOfOwnerLocal(
     for (std::size_t ordinal = 0; ordinal < localBorrowBindings_.size(); ++ordinal)
     {
         const MethodLocalBorrowBinding& borrow = localBorrowBindings_[ordinal];
-        if (borrow.sourceOwnerLocalOrdinal == localOrdinal &&
+        const bool rootedHere = borrow.sourceOwnerLocalOrdinal == localOrdinal ||
+            std::find(
+                borrow.possibleSourceOwnerLocalOrdinals.begin(),
+                borrow.possibleSourceOwnerLocalOrdinals.end(),
+                localOrdinal) != borrow.possibleSourceOwnerLocalOrdinals.end();
+        if (rootedHere &&
             scopeContains(borrow.creationScopeOrdinal, scopeOrdinal) &&
             localBorrowFlowState(ordinal) != MethodBorrowState::Invalidated)
+        {
+            return true;
+        }
+    }
+    const std::size_t methodMemberOrdinal = scopeOrdinal < scopes_.size()
+        ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+    for (const MethodBorrowedParameterReassignmentBinding& borrow :
+         borrowedParameterReassignmentBindings_)
+    {
+        if (borrow.methodMemberOrdinal == methodMemberOrdinal &&
+            std::find(
+                borrow.possibleSourceOwnerLocalOrdinals.begin(),
+                borrow.possibleSourceOwnerLocalOrdinals.end(),
+                localOrdinal) != borrow.possibleSourceOwnerLocalOrdinals.end())
         {
             return true;
         }
@@ -2409,9 +2443,28 @@ bool ProjectMethodBodyModel::hasActiveBorrowOfOwnedParameter(
     for (std::size_t ordinal = 0; ordinal < localBorrowBindings_.size(); ++ordinal)
     {
         const MethodLocalBorrowBinding& borrow = localBorrowBindings_[ordinal];
-        if (borrow.sourceOwnerParameterOrdinal == parameterOrdinal &&
+        const bool rootedHere = borrow.sourceOwnerParameterOrdinal == parameterOrdinal ||
+            std::find(
+                borrow.possibleSourceOwnerParameterOrdinals.begin(),
+                borrow.possibleSourceOwnerParameterOrdinals.end(),
+                parameterOrdinal) != borrow.possibleSourceOwnerParameterOrdinals.end();
+        if (rootedHere &&
             scopeContains(borrow.creationScopeOrdinal, scopeOrdinal) &&
             localBorrowFlowState(ordinal) != MethodBorrowState::Invalidated)
+        {
+            return true;
+        }
+    }
+    const std::size_t methodMemberOrdinal = scopeOrdinal < scopes_.size()
+        ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+    for (const MethodBorrowedParameterReassignmentBinding& borrow :
+         borrowedParameterReassignmentBindings_)
+    {
+        if (borrow.methodMemberOrdinal == methodMemberOrdinal &&
+            std::find(
+                borrow.possibleSourceOwnerParameterOrdinals.begin(),
+                borrow.possibleSourceOwnerParameterOrdinals.end(),
+                parameterOrdinal) != borrow.possibleSourceOwnerParameterOrdinals.end())
         {
             return true;
         }
@@ -3889,6 +3942,11 @@ void ProjectMethodBodyModel::analyzeVariable(
     MethodEscapeOrigin pendingReferenceEscapeOrigin;
     const bool raiiOwnsNativeArrayBuffer =
         variable->hasModifier(TokenKind::KwRaii) && ProjectTypeConversion::isNativeArray(typeKey);
+    // T41: `raii borrowed T[]` owns the allocation that stores the slots, while every T slot is
+    // an alias. The two keywords are not contradictory for an array: `raii` qualifies the
+    // buffer and `borrowed` qualifies its elements. For non-arrays the old contradiction remains.
+    const bool raiiBorrowedElementArray =
+        raiiOwnsNativeArrayBuffer && isBorrowed;
     if (isReferenceLocal &&
         (variable->flag() || variable->hasModifier(TokenKind::KwRaii) ||
          declaredOwnership != sema::OwnershipKind::None))
@@ -4097,7 +4155,7 @@ void ProjectMethodBodyModel::analyzeVariable(
                     "'; declare the local borrowed so its lifetime remains checked");
         }
 
-        if (isBorrowed)
+        if (isBorrowed && !raiiBorrowedElementArray)
         {
             if (isRaii)
             {
@@ -4154,6 +4212,10 @@ void ProjectMethodBodyModel::analyzeVariable(
                             borrow.sourceKind = MethodLocalBorrowSourceKind::BorrowedLocal;
                             borrow.sourceOwnerLocalOrdinal = sourceBorrow.sourceOwnerLocalOrdinal;
                             borrow.sourceOwnerParameterOrdinal = sourceBorrow.sourceOwnerParameterOrdinal;
+                            borrow.possibleSourceOwnerLocalOrdinals =
+                                sourceBorrow.possibleSourceOwnerLocalOrdinals;
+                            borrow.possibleSourceOwnerParameterOrdinals =
+                                sourceBorrow.possibleSourceOwnerParameterOrdinals;
                             borrow.maximumValidScopeOrdinal = sourceBorrow.maximumValidScopeOrdinal;
                         }
                         else
@@ -4201,6 +4263,16 @@ void ProjectMethodBodyModel::analyzeVariable(
                         }
                     }
 
+                    if (borrow.sourceOwnerLocalOrdinal.has_value())
+                    {
+                        borrow.possibleSourceOwnerLocalOrdinals.push_back(
+                            *borrow.sourceOwnerLocalOrdinal);
+                    }
+                    if (borrow.sourceOwnerParameterOrdinal.has_value())
+                    {
+                        borrow.possibleSourceOwnerParameterOrdinals.push_back(
+                            *borrow.sourceOwnerParameterOrdinal);
+                    }
                     const bool hasRootOwner = borrow.sourceOwnerLocalOrdinal.has_value() ||
                         borrow.sourceOwnerParameterOrdinal.has_value();
                     if (hasRootOwner &&
@@ -4654,6 +4726,18 @@ void ProjectMethodBodyModel::analyzeForeach(
         {
             statement->first()->addModifier(TokenKind::KwRaii);
         }
+        else if (probe.valid &&
+            (probe.ownership == sema::OwnershipKind::Owned ||
+             probe.ownership == sema::OwnershipKind::Borrowed) &&
+            collectionProbe->kind() == ast::AstNodeKind::IdentifierExpression &&
+            statement->first()->typeSyntax() != nullptr)
+        {
+            // A named owner is observed by foreach; it is never copied into the synthesized
+            // `$__foreach_source`. Mark that hidden local as borrowed so its lifetime remains
+            // rooted in the original RAII owner for both array and enumerator modes.
+            statement->first()->typeSyntax()->setOwnershipQualifier(
+                ast::OwnershipQualifierSyntaxKind::Borrowed);
+        }
     }
 
     // Resolve __foreach_source's type by analyzing its declaration exactly like any other `var`
@@ -5066,6 +5150,19 @@ void ProjectMethodBodyModel::analyzeReturn(
 
         if (!nullBorrow)
         {
+            if (!value.borrowedLocalOrdinal.has_value() &&
+                value.ownershipSourceLocalOrdinal.has_value())
+            {
+                const std::size_t ownerOrdinal = *value.ownershipSourceLocalOrdinal;
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidReturn,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->first()->range(),
+                    "borrowed return value outlives local owner '" +
+                        (ownerOrdinal < locals_.size() ? locals_[ownerOrdinal].name
+                                                      : std::string("<local-owner>")) + "'");
+                return;
+            }
             MethodBorrowBinding borrow;
             borrow.syntax = statement->first();
             borrow.methodMemberOrdinal = methodMemberOrdinal;
@@ -5090,9 +5187,16 @@ void ProjectMethodBodyModel::analyzeReturn(
 
                 const MethodLocalBorrowBinding& localBorrow =
                     localBorrowBindings_[*local.localBorrowBindingOrdinal];
-                if (localBorrow.sourceOwnerLocalOrdinal.has_value())
+                const std::optional<std::size_t> localOwner =
+                    localBorrow.sourceOwnerLocalOrdinal.has_value()
+                        ? localBorrow.sourceOwnerLocalOrdinal
+                        : (!localBorrow.possibleSourceOwnerLocalOrdinals.empty()
+                            ? std::optional<std::size_t>(
+                                  localBorrow.possibleSourceOwnerLocalOrdinals.front())
+                            : std::nullopt);
+                if (localOwner.has_value())
                 {
-                    const std::size_t ownerOrdinal = *localBorrow.sourceOwnerLocalOrdinal;
+                    const std::size_t ownerOrdinal = *localOwner;
                     const std::string ownerName = ownerOrdinal < locals_.size()
                         ? locals_[ownerOrdinal].name : std::string("<local-owner>");
                     diagnostics.report(
@@ -5103,9 +5207,22 @@ void ProjectMethodBodyModel::analyzeReturn(
                             "' outlives its owner '" + ownerName + "'");
                     return;
                 }
-                if (localBorrow.sourceOwnerParameterOrdinal.has_value())
+                std::optional<std::size_t> parameterOwner =
+                    localBorrow.sourceOwnerParameterOrdinal;
+                for (const std::size_t candidate :
+                     localBorrow.possibleSourceOwnerParameterOrdinals)
                 {
-                    const std::size_t parameterOrdinal = *localBorrow.sourceOwnerParameterOrdinal;
+                    if (candidate >= method->parameters.size() ||
+                        method->parameters[candidate].ownership != sema::OwnershipKind::Borrowed)
+                    {
+                        parameterOwner = candidate;
+                        break;
+                    }
+                    if (!parameterOwner.has_value()) parameterOwner = candidate;
+                }
+                if (parameterOwner.has_value())
+                {
+                    const std::size_t parameterOrdinal = *parameterOwner;
                     if (parameterOrdinal >= method->parameters.size() ||
                         method->parameters[parameterOrdinal].ownership != sema::OwnershipKind::Borrowed)
                     {
@@ -8226,10 +8343,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 result.valid = true;
                 result.objectLifetimeOwnership = local.objectLifetimeOwnership;
                 result.storageOwnership = local.storageOwnership;
-                if (local.isRaii)
+                if (local.isRaii &&
+                    !(local.ownership == sema::OwnershipKind::Borrowed &&
+                      ProjectTypeConversion::isNativeArray(local.typeKey)))
                 {
                     result.ownership = sema::OwnershipKind::Owned;
                     result.ownershipSourceLocalOrdinal = scopeName->semanticOrdinal;
+                }
+                else if (local.isRaii && local.ownership == sema::OwnershipKind::Borrowed &&
+                    ProjectTypeConversion::isNativeArray(local.typeKey))
+                {
+                    // Buffer owner / borrowed-element array. The local itself still has a RAII
+                    // cleanup region, but indexing it must not turn aliases into owned slots.
+                    result.ownership = sema::OwnershipKind::Borrowed;
                 }
                 else if (local.ownership == sema::OwnershipKind::Borrowed)
                 {
@@ -8251,12 +8377,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                         (borrow.sourceOwnerLocalOrdinal.has_value() &&
                          movedRaiiLocals_.contains(*borrow.sourceOwnerLocalOrdinal)) ||
                         (borrow.sourceOwnerParameterOrdinal.has_value() &&
-                         movedOwnedParameters_.contains(*borrow.sourceOwnerParameterOrdinal));
+                         movedOwnedParameters_.contains(*borrow.sourceOwnerParameterOrdinal)) ||
+                        std::ranges::any_of(
+                            borrow.possibleSourceOwnerLocalOrdinals,
+                            [&](std::size_t ordinal) { return movedRaiiLocals_.contains(ordinal); }) ||
+                        std::ranges::any_of(
+                            borrow.possibleSourceOwnerParameterOrdinals,
+                            [&](std::size_t ordinal) { return movedOwnedParameters_.contains(ordinal); });
                     const bool rootMaybeMoved =
                         (borrow.sourceOwnerLocalOrdinal.has_value() &&
                          maybeMovedRaiiLocals_.contains(*borrow.sourceOwnerLocalOrdinal)) ||
                         (borrow.sourceOwnerParameterOrdinal.has_value() &&
-                         maybeMovedOwnedParameters_.contains(*borrow.sourceOwnerParameterOrdinal));
+                         maybeMovedOwnedParameters_.contains(*borrow.sourceOwnerParameterOrdinal)) ||
+                        std::ranges::any_of(
+                            borrow.possibleSourceOwnerLocalOrdinals,
+                            [&](std::size_t ordinal) { return maybeMovedRaiiLocals_.contains(ordinal); }) ||
+                        std::ranges::any_of(
+                            borrow.possibleSourceOwnerParameterOrdinals,
+                            [&](std::size_t ordinal) { return maybeMovedOwnedParameters_.contains(ordinal); });
                     if (borrowState == MethodBorrowState::Invalidated || rootDefinitelyMoved)
                     {
                         diagnostics.report(
@@ -8284,8 +8422,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 // E11 heap-homes an outer local captured by a lambda in a shared cell.  It is an
                 // lvalue on both sides of the closure boundary, exactly like the source local;
                 // const and borrowed locals keep their existing restrictions.
-                result.assignable = !local.isConst &&
-                    local.ownership != sema::OwnershipKind::Borrowed;
+                // T41: a borrowed local is an alias slot, not immutable storage.  Reassignment
+                // is admitted here and its new owner roots are validated/accumulated in
+                // analyzeAssignment; `const borrowed` remains immutable.
+                result.assignable = !local.isConst;
                 result.addressable = true;
                 result.readonlyReceiver = local.isConst;
                 nameBindings_.push_back(MethodNameBinding{
@@ -8347,6 +8487,49 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             if (parameter.ownership != sema::OwnershipKind::None)
             {
                 result.ownershipSourceParameterOrdinal = scopeName->semanticOrdinal;
+            }
+            if (parameter.ownership == sema::OwnershipKind::Borrowed)
+            {
+                for (const MethodBorrowedParameterReassignmentBinding& reassignment :
+                     borrowedParameterReassignmentBindings_)
+                {
+                    if (reassignment.methodMemberOrdinal != methodMemberOrdinal ||
+                        reassignment.parameterOrdinal != scopeName->semanticOrdinal) continue;
+                    const bool rootDefinitelyMoved = std::ranges::any_of(
+                        reassignment.possibleSourceOwnerLocalOrdinals,
+                        [&](std::size_t ordinal) { return movedRaiiLocals_.contains(ordinal); }) ||
+                        std::ranges::any_of(
+                            reassignment.possibleSourceOwnerParameterOrdinals,
+                            [&](std::size_t ordinal) { return movedOwnedParameters_.contains(ordinal); });
+                    const bool rootMaybeMoved = std::ranges::any_of(
+                        reassignment.possibleSourceOwnerLocalOrdinals,
+                        [&](std::size_t ordinal) { return maybeMovedRaiiLocals_.contains(ordinal); }) ||
+                        std::ranges::any_of(
+                            reassignment.possibleSourceOwnerParameterOrdinals,
+                            [&](std::size_t ordinal) { return maybeMovedOwnedParameters_.contains(ordinal); });
+                    if (rootDefinitelyMoved || rootMaybeMoved)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            rootDefinitelyMoved
+                                ? "use of borrowed parameter whose reassigned owner was moved"
+                                : "use of borrowed parameter whose reassigned owner may have moved");
+                        return {};
+                    }
+                    if (!reassignment.possibleSourceOwnerLocalOrdinals.empty())
+                    {
+                        result.ownershipSourceLocalOrdinal =
+                            reassignment.possibleSourceOwnerLocalOrdinals.front();
+                    }
+                    else if (!reassignment.possibleSourceOwnerParameterOrdinals.empty())
+                    {
+                        result.ownershipSourceParameterOrdinal =
+                            reassignment.possibleSourceOwnerParameterOrdinals.front();
+                    }
+                    break;
+                }
             }
             // `in` is read-only by definition: it exists to avoid a copy, not to give the callee
             // a channel back to the caller. `ref`/`out` are assignable, and for `out` that is not
@@ -9575,12 +9758,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                     // Move-only and ownership-qualified values must be passed in a prebuilt span.
                     evaluated.viable = false;
                 }
+                const bool freshStringBorrow = !packElement &&
+                    parameter.typeKey == "builtin:string" &&
+                    (parameter.ownership == sema::OwnershipKind::None ||
+                     parameter.ownership == sema::OwnershipKind::Borrowed) &&
+                    arguments[argumentOrdinal].ownership == sema::OwnershipKind::Owned &&
+                    arguments[argumentOrdinal].ownershipTransfer &&
+                    arguments[argumentOrdinal].ownershipFreshOwner;
+                if (freshStringBorrow)
+                {
+                    evaluated.fullExpressionBorrowArgumentOrdinals.push_back(argumentOrdinal);
+                }
                 else if (classifyOwnershipArgument(
                              packElement ? false : typeKeyIsOwnable(parameter.typeKey),
                              packElement ? sema::OwnershipKind::None : parameter.ownership,
                              arguments[argumentOrdinal].ownership,
                              arguments[argumentOrdinal].ownershipTransfer,
-                             arguments[argumentOrdinal].ownershipFreshOwner) != OwnershipArgumentFit::Ok)
+                             arguments[argumentOrdinal].ownershipFreshOwner,
+                             arguments[argumentOrdinal].typeKey == "builtin:null") != OwnershipArgumentFit::Ok)
                 {
                     evaluated.viable = false;
                 }
@@ -9665,6 +9860,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     call.selectedParameterPackOrdinal = selected.parameterPackOrdinal;
     call.selectedUsesExpandedParameterPack = selected.usesExpandedParameterPack;
     call.selectedSynthesizesEmptyParameterPack = selected.synthesizesEmptyParameterPack;
+    for (const std::size_t argumentOrdinal : selected.fullExpressionBorrowArgumentOrdinals)
+    {
+        if (argumentOrdinal >= arguments.size() ||
+            argumentOrdinal >= selected.argumentParameterOrdinals.size())
+        {
+            continue;
+        }
+        MethodBorrowBinding borrow;
+        borrow.kind = MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter;
+        borrow.syntax = expression->children()[argumentOrdinal];
+        borrow.methodMemberOrdinal = callerCallableOrdinal;
+        borrow.scopeOrdinal = scopeOrdinal;
+        borrow.targetMemberOrdinal = namespaceCallableBase_ + functionOrdinal;
+        borrow.targetParameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+        borrow.typeKey = arguments[argumentOrdinal].typeKey;
+        borrowBindings_.push_back(std::move(borrow));
+    }
     for (const std::size_t parameterOrdinal : selected.defaultedParameterOrdinals)
     {
         call.selectedDefaultArguments.push_back(callable.parameters[parameterOrdinal].defaultValueSyntax);
@@ -10235,12 +10447,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         return ordinal < expression->children().size() ? expression->children()[ordinal] : nullptr;
     };
 
-    // NSC-LIMIT-021. A transfer-shaped value with no named owner may be borrowed for exactly the
-    // containing call. Explicit `borrowed` parameters state that contract themselves. A very
-    // small Core allow-list covers the native operations whose public source signature predates
-    // `borrowed` but whose implementation is compiler/runtime-owned and demonstrably does not
-    // retain the pointer. User-defined unqualified parameters are deliberately NOT included: an
-    // API that may retain a reference must keep rejecting a temporary owner.
+    // NSC-LIMIT-021 / T41. A fresh string owner may be observed through the same string parameter
+    // that already accepts a named RAII string. The hidden owner lives through the complete call
+    // expression and is destroyed afterwards (or during unwind). This applies uniformly to
+    // methods, interface dispatch and free functions; otherwise merely changing the callable
+    // container changes whether `Log("prefix " + value)` is legal.
     const auto isFullExpressionBorrow = [&] (
         const ClassMemberSymbol& candidate,
         std::size_t argumentOrdinal,
@@ -10249,8 +10460,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         if (!argument.valid || !argument.ownershipFreshOwner || !argument.ownershipTransfer ||
             argument.ownership != sema::OwnershipKind::Owned ||
             argumentOrdinal >= candidate.parameters.size() ||
-            candidate.parameters[argumentOrdinal].typeKey != "builtin:string" ||
-            candidate.declaredOwnership == sema::OwnershipKind::Borrowed)
+            candidate.parameters[argumentOrdinal].typeKey != "builtin:string")
         {
             return false;
         }
@@ -10258,23 +10468,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         {
             return true;
         }
-        if (candidate.parameters[argumentOrdinal].ownership != sema::OwnershipKind::None ||
-            nameLookup_ == nullptr || candidate.declaringTypeOrdinal >= nameLookup_->namedTypes().size() ||
-            !candidate.isStatic)
-        {
-            return false;
-        }
-        const std::string declaringName =
-            nameLookup_->namedTypes()[candidate.declaringTypeOrdinal].identity.fullyQualifiedName();
-        if (declaringName == "NativeSharp.Core.String")
-        {
-            return candidate.name == "Copy" || candidate.name == "Concat" ||
-                candidate.name == "Equals" || candidate.name == "Substring" ||
-                candidate.name == "ZFill";
-        }
-        return declaringName == "NativeSharp.Core.Console" &&
-            (candidate.name == "WriteLine" || candidate.name == "Write" ||
-             candidate.name == "ErrorWriteLine" || candidate.name == "ErrorWrite");
+        return candidate.parameters[argumentOrdinal].ownership == sema::OwnershipKind::None;
     };
 
     // A literal's bytes have process lifetime. Passing that value to an explicitly borrowed
@@ -10438,7 +10632,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                             parameterOwnership,
                             resolvedArguments[argumentOrdinal].ownership,
                             resolvedArguments[argumentOrdinal].ownershipTransfer,
-                            resolvedArguments[argumentOrdinal].ownershipFreshOwner) !=
+                            resolvedArguments[argumentOrdinal].ownershipFreshOwner,
+                            resolvedArguments[argumentOrdinal].typeKey == "builtin:null") !=
                         OwnershipArgumentFit::Ok)
                     {
                         candidateBinding.viable = false;
@@ -10566,7 +10761,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                             candidate.parameters[argumentOrdinal].ownership,
                             resolvedArguments[argumentOrdinal].ownership,
                             resolvedArguments[argumentOrdinal].ownershipTransfer,
-                            resolvedArguments[argumentOrdinal].ownershipFreshOwner) !=
+                            resolvedArguments[argumentOrdinal].ownershipFreshOwner,
+                            resolvedArguments[argumentOrdinal].typeKey == "builtin:null") !=
                         OwnershipArgumentFit::Ok)
                     {
                         std::string message = "owned parameter '" + candidate.parameters[argumentOrdinal].name +
@@ -10845,7 +11041,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         {
             const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
             if (parameterOrdinal >= selectedMember.parameters.size() ||
-                selectedMember.parameters[parameterOrdinal].ownership != sema::OwnershipKind::Owned)
+                selectedMember.parameters[parameterOrdinal].ownership != sema::OwnershipKind::Owned ||
+                resolvedArguments[argumentOrdinal].typeKey == "builtin:null")
             {
                 continue;
             }
@@ -13998,6 +14195,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // source; this only widens which assignment TARGETS are allowed to receive it.
     bool arrayElementMoveTarget = false;
     bool ownedArrayElementOwnsStorage = false;
+    bool borrowedArrayElementTarget = false;
     if (!raiiTargetLocal.has_value() && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
         left.valid && left.assignable)
@@ -14037,6 +14235,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             isReferenceTypeKey(left.typeKey) || left.typeKey == "builtin:string";
         ownedArrayElementOwnsStorage =
             arrayElementMoveTarget && receiverOwnsStorage && elementOwnsSeparateStorage;
+        borrowedArrayElementTarget = arrayElementMoveTarget &&
+            receiver.ownership == sema::OwnershipKind::Borrowed;
     }
 
     // Bloque 1 item 1 (owning field storage): a field declared `owned` is a legitimate move(...)
@@ -14279,8 +14479,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     {
         return {};
     }
+    const bool raiiStringAppend = raiiTargetLocal.has_value() &&
+        expression->tokenKind() == TokenKind::PlusEqual &&
+        left.typeKey == "builtin:string" &&
+        (right.typeKey == "builtin:string" || right.typeKey == "string-literal");
 
     std::optional<std::size_t> assignmentTargetLocal;
+    std::optional<std::size_t> assignmentTargetParameter;
     if (expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
@@ -14290,6 +14495,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             target->semanticOrdinal < locals_.size())
         {
             assignmentTargetLocal = target->semanticOrdinal;
+        }
+        else if (target.has_value() && target->kind == ScopeNameKind::Parameter)
+        {
+            assignmentTargetParameter = target->semanticOrdinal;
         }
     }
     if (assignmentTargetLocal.has_value() &&
@@ -14364,8 +14573,182 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         }
     }
 
+    // T41: borrowed names are rebindable alias slots.  Reassignment is safe only when the RHS
+    // has explicit, named provenance, and every possible owner root is accumulated instead of
+    // replacing the old one.  Accumulation is deliberately conservative across branches: after
+    // `if (...) view = a; else view = b;`, moving either owner remains forbidden while `view`
+    // lives, and returning the view is rejected if either root is a local/owned parameter.
+    bool borrowedReassignment = false;
+    MethodLocalBorrowBinding* targetLocalBorrow = nullptr;
+    const ClassMemberSymbol* enclosingMethod = methodSymbol(methodMemberOrdinal);
+    if (expression->tokenKind() == TokenKind::Equal && assignmentTargetLocal.has_value() &&
+        *assignmentTargetLocal < locals_.size())
+    {
+        MethodLocalSymbol& targetLocal = locals_[*assignmentTargetLocal];
+        if (!targetLocal.isRaii && targetLocal.ownership == sema::OwnershipKind::Borrowed &&
+            targetLocal.localBorrowBindingOrdinal.has_value() &&
+            *targetLocal.localBorrowBindingOrdinal < localBorrowBindings_.size())
+        {
+            borrowedReassignment = true;
+            targetLocalBorrow =
+                &localBorrowBindings_[*targetLocal.localBorrowBindingOrdinal];
+        }
+    }
+    const bool borrowedParameterReassignment =
+        expression->tokenKind() == TokenKind::Equal && assignmentTargetParameter.has_value() &&
+        enclosingMethod != nullptr &&
+        *assignmentTargetParameter < enclosingMethod->parameters.size() &&
+        enclosingMethod->parameters[*assignmentTargetParameter].ownership ==
+            sema::OwnershipKind::Borrowed;
+    borrowedReassignment = borrowedReassignment || borrowedParameterReassignment;
+
+    if (borrowedReassignment)
+    {
+        const ProjectImplicitConversion conversion = classifyImplicit(
+            right.typeKey, left.typeKey, right.integerConstant);
+        if (!conversion.exists())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "cannot rebind borrowed destination from '" + right.typeKey + "' to '" +
+                    left.typeKey + "'");
+            return {};
+        }
+
+        std::vector<std::size_t> ownerLocals;
+        std::vector<std::size_t> ownerParameters;
+        const auto appendUnique = [](std::vector<std::size_t>& values, std::size_t value)
+        {
+            if (std::find(values.begin(), values.end(), value) == values.end())
+                values.push_back(value);
+        };
+        if (expression->second() != nullptr &&
+            expression->second()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const std::optional<ScopeName> source = lookupScopeName(
+                scopeOrdinal, expression->second()->text());
+            if (source.has_value() && source->kind == ScopeNameKind::Local &&
+                source->semanticOrdinal < locals_.size())
+            {
+                const MethodLocalSymbol& sourceLocal = locals_[source->semanticOrdinal];
+                if (sourceLocal.isRaii)
+                {
+                    appendUnique(ownerLocals, source->semanticOrdinal);
+                }
+                else if (sourceLocal.ownership == sema::OwnershipKind::Borrowed &&
+                    sourceLocal.localBorrowBindingOrdinal.has_value() &&
+                    *sourceLocal.localBorrowBindingOrdinal < localBorrowBindings_.size())
+                {
+                    const MethodLocalBorrowBinding& sourceBorrow =
+                        localBorrowBindings_[*sourceLocal.localBorrowBindingOrdinal];
+                    if (sourceBorrow.sourceOwnerLocalOrdinal.has_value())
+                        appendUnique(ownerLocals, *sourceBorrow.sourceOwnerLocalOrdinal);
+                    if (sourceBorrow.sourceOwnerParameterOrdinal.has_value())
+                        appendUnique(ownerParameters, *sourceBorrow.sourceOwnerParameterOrdinal);
+                    for (const std::size_t ordinal : sourceBorrow.possibleSourceOwnerLocalOrdinals)
+                        appendUnique(ownerLocals, ordinal);
+                    for (const std::size_t ordinal : sourceBorrow.possibleSourceOwnerParameterOrdinals)
+                        appendUnique(ownerParameters, ordinal);
+                }
+            }
+            else if (source.has_value() && source->kind == ScopeNameKind::Parameter &&
+                enclosingMethod != nullptr &&
+                source->semanticOrdinal < enclosingMethod->parameters.size())
+            {
+                const MethodParameterSymbol& sourceParameter =
+                    enclosingMethod->parameters[source->semanticOrdinal];
+                if (sourceParameter.ownership == sema::OwnershipKind::Owned ||
+                    sourceParameter.ownership == sema::OwnershipKind::Borrowed)
+                {
+                    appendUnique(ownerParameters, source->semanticOrdinal);
+                    for (const MethodBorrowedParameterReassignmentBinding& prior :
+                         borrowedParameterReassignmentBindings_)
+                    {
+                        if (prior.methodMemberOrdinal != methodMemberOrdinal ||
+                            prior.parameterOrdinal != source->semanticOrdinal) continue;
+                        for (const std::size_t ordinal : prior.possibleSourceOwnerLocalOrdinals)
+                            appendUnique(ownerLocals, ordinal);
+                        for (const std::size_t ordinal : prior.possibleSourceOwnerParameterOrdinals)
+                            appendUnique(ownerParameters, ordinal);
+                    }
+                }
+            }
+        }
+        if (ownerLocals.empty() && ownerParameters.empty())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->second()->range(),
+                "borrowed reassignment requires a named RAII owner, owned/borrowed parameter, "
+                "or borrowed local with tracked provenance");
+            return {};
+        }
+
+        std::size_t destinationScope = scopeOrdinal;
+        if (targetLocalBorrow != nullptr)
+            destinationScope = targetLocalBorrow->creationScopeOrdinal;
+        else
+            while (destinationScope < scopes_.size() &&
+                   scopes_[destinationScope].parentScopeOrdinal.has_value())
+                destinationScope = *scopes_[destinationScope].parentScopeOrdinal;
+        for (const std::size_t ownerLocal : ownerLocals)
+        {
+            if (ownerLocal >= locals_.size() ||
+                !scopeContains(locals_[ownerLocal].scopeOrdinal, destinationScope))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->second()->range(),
+                    "borrowed reassignment would let the destination outlive local owner '" +
+                        (ownerLocal < locals_.size() ? locals_[ownerLocal].name
+                                                    : std::string("<local-owner>")) + "'");
+                return {};
+            }
+        }
+
+        if (targetLocalBorrow != nullptr)
+        {
+            for (const std::size_t ordinal : ownerLocals)
+                appendUnique(targetLocalBorrow->possibleSourceOwnerLocalOrdinals, ordinal);
+            for (const std::size_t ordinal : ownerParameters)
+                appendUnique(targetLocalBorrow->possibleSourceOwnerParameterOrdinals, ordinal);
+        }
+        else
+        {
+            MethodBorrowedParameterReassignmentBinding* targetBinding = nullptr;
+            for (MethodBorrowedParameterReassignmentBinding& candidate :
+                 borrowedParameterReassignmentBindings_)
+            {
+                if (candidate.methodMemberOrdinal == methodMemberOrdinal &&
+                    candidate.parameterOrdinal == *assignmentTargetParameter)
+                {
+                    targetBinding = &candidate;
+                    break;
+                }
+            }
+            if (targetBinding == nullptr)
+            {
+                MethodBorrowedParameterReassignmentBinding binding;
+                binding.syntax = expression;
+                binding.methodMemberOrdinal = methodMemberOrdinal;
+                binding.parameterOrdinal = *assignmentTargetParameter;
+                borrowedParameterReassignmentBindings_.push_back(std::move(binding));
+                targetBinding = &borrowedParameterReassignmentBindings_.back();
+            }
+            for (const std::size_t ordinal : ownerLocals)
+                appendUnique(targetBinding->possibleSourceOwnerLocalOrdinals, ordinal);
+            for (const std::size_t ordinal : ownerParameters)
+                appendUnique(targetBinding->possibleSourceOwnerParameterOrdinals, ordinal);
+        }
+    }
+
     const bool assignmentTargetOwnable = isReferenceTypeKey(left.typeKey) || left.typeKey == "builtin:string";
-    if (right.ownership == sema::OwnershipKind::Borrowed && assignmentTargetOwnable)
+    if (!borrowedReassignment && right.ownership == sema::OwnershipKind::Borrowed &&
+        assignmentTargetOwnable)
     {
         if (left.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
             *left.assignmentMemberOrdinal < memberModel_->members().size())
@@ -14416,7 +14799,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         }
     }
 
-    if (!raiiTargetLocal.has_value() && expression->second() != nullptr &&
+    if (!borrowedReassignment && !borrowedArrayElementTarget &&
+        !raiiTargetLocal.has_value() && expression->second() != nullptr &&
         expression->second()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
         const std::optional<ScopeName> sourceName = lookupScopeName(scopeOrdinal, expression->second()->text());
@@ -14527,9 +14911,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
 
     if (raiiTargetLocal.has_value())
     {
-        if (expression->tokenKind() != TokenKind::Equal ||
+        if (!raiiStringAppend && (expression->tokenKind() != TokenKind::Equal ||
             expression->second() == nullptr ||
-            expression->second()->kind() != ast::AstNodeKind::MoveExpression)
+            expression->second()->kind() != ast::AstNodeKind::MoveExpression))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidAssignmentTarget,
@@ -14795,6 +15179,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             expression->first()->range(),
             "left side of assignment is not assignable");
         return {};
+    }
+
+    if (raiiStringAppend)
+    {
+        // The concatenation is a fresh owner. Lowering materializes it before releasing the old
+        // buffer, then reuses the ordinary owning-store path to replace the same RAII slot.
+        left.ownsStorageDestination = true;
+        left.assignable = false;
+        left.ownership = sema::OwnershipKind::Owned;
+        left.ownershipTransfer = true;
+        left.ownershipFreshOwner = true;
+        return left;
     }
 
     if (expression->tokenKind() == TokenKind::Equal)

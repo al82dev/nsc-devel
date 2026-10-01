@@ -819,6 +819,15 @@ if(NSC_BUILD_TESTS)
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t40-flow"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT40Flow.cmake")
 
+    add_test(
+        NAME nsc.ns3.t41.ownership
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DFIXTURE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ns3_t41_ownership"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t41-ownership"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT41Ownership.cmake")
+
     add_executable(
         nsc_ns3_t03_sum_type_tests
         tests/unit/NativeSharp3T03SumTypeTests.cpp)

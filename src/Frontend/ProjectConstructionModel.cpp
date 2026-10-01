@@ -778,7 +778,8 @@ void ProjectConstructionModel::bindConstructorInitializer(
                 parameter.ownership,
                 argumentTypes[argumentOrdinal].ownership,
                 argumentTypes[argumentOrdinal].ownershipTransfer,
-                argumentTypes[argumentOrdinal].ownershipFreshOwner);
+                argumentTypes[argumentOrdinal].ownershipFreshOwner,
+                argumentTypes[argumentOrdinal].typeKey == "builtin:null");
             candidate.ownershipFits.push_back(fit);
             if (freshBorrow)
             {
@@ -1251,7 +1252,8 @@ void ProjectConstructionModel::bindConstruction(
                 parameter.ownership,
                 argumentTypes[argumentOrdinal].ownership,
                 argumentTypes[argumentOrdinal].ownershipTransfer,
-                argumentTypes[argumentOrdinal].ownershipFreshOwner);
+                argumentTypes[argumentOrdinal].ownershipFreshOwner,
+                argumentTypes[argumentOrdinal].typeKey == "builtin:null");
             candidate.ownershipFits.push_back(fit);
             if (freshBorrow)
             {

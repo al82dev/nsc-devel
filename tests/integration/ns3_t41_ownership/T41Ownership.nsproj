@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <Name>T41Ownership</Name>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj" />
+  </ItemGroup>
+</Project>

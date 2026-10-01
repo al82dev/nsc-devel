@@ -4945,6 +4945,37 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     error = "the result of a compound assignment is a value, not addressable storage";
                     return nullptr;
                 }
+                // T41: `raii string += value` is an ownership-aware replacement, not a numeric
+                // CompoundStore. The RAII destination is bound specially by semantic analysis,
+                // so its identifier does not need a separate expression-type record here; the
+                // assignment result type is the authoritative resolved type.
+                if (node->operation == lexer::TokenKind::PlusEqual &&
+                    resultType == "builtin:string")
+                {
+                    const MethodNameBinding* targetBinding = nameBinding(expression->first());
+                    if (targetBinding == nullptr || !targetBinding->localOrdinal.has_value())
+                    {
+                        error = "string += requires an identifier-backed RAII string destination";
+                        return nullptr;
+                    }
+                    auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
+                    auto current = lowerExpression(expression->first(), memberOrdinal, false, error);
+                    auto suffix = lowerExpression(expression->second(), memberOrdinal, false, error);
+                    if (address == nullptr || current == nullptr || suffix == nullptr) return nullptr;
+
+                    auto concatenated = makeNode(
+                        ProjectOopHirNodeKind::StringConcat, expression, "builtin:string");
+                    concatenated->operation = lexer::TokenKind::Plus;
+                    concatenated->children.push_back(std::move(current));
+                    concatenated->children.push_back(std::move(suffix));
+
+                    node->operation = lexer::TokenKind::Equal;
+                    node->booleanValue = true;
+                    node->localOrdinal = *targetBinding->localOrdinal;
+                    node->children.push_back(std::move(address));
+                    node->children.push_back(std::move(concatenated));
+                    return node;
+                }
                 const MethodExpressionTypeBinding* targetType = expressionType(expression->first());
                 if (targetType == nullptr)
                 {

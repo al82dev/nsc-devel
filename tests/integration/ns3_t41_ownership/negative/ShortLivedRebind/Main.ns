@@ -1,0 +1,17 @@
+namespace T41Negative
+{
+    class Resource { }
+    class Program
+    {
+        public static int Main()
+        {
+            raii Resource outer = new Resource();
+            borrowed Resource view = outer;
+            {
+                raii Resource inner = new Resource();
+                view = inner;
+            }
+            return 0;
+        }
+    }
+}

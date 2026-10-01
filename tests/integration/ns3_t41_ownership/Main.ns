@@ -1,0 +1,105 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+namespace T41Ownership
+{
+    public interface ITextMeasure
+    {
+        int Measure(borrowed string value);
+    }
+
+    public class TextMeasure : ITextMeasure
+    {
+        public int Measure(borrowed string value) { return value.Length; }
+    }
+
+    public class Resource
+    {
+        private int tag;
+        private static int destructions;
+        public Resource(int value) { tag = value; }
+        ~Resource() { destructions = destructions + 1; }
+        public int Tag() { return tag; }
+        public static int Destructions() { return destructions; }
+    }
+
+    public class Holder
+    {
+        public owned Resource Slot;
+        public Holder(owned Resource value) { Slot = move(value); }
+    }
+
+    int FreeLength(borrowed string value) { return value.Length; }
+    void AcceptOwned(owned Resource value) { }
+
+    public class Program
+    {
+        private static int FieldMove()
+        {
+            int before = Resource.Destructions();
+            {
+                raii Holder holder = new Holder(new Resource(11));
+                raii Resource extracted = move(holder.Slot);
+                if (extracted.Tag() != 11) return 90;
+            }
+            return Resource.Destructions() - before;
+        }
+
+        private static int BorrowedBufferAndRebind()
+        {
+            int before = Resource.Destructions();
+            int total = 0;
+            {
+                raii Resource first = new Resource(20);
+                raii Resource second = new Resource(22);
+                borrowed Resource view = first;
+                view = second;
+                if (view.Tag() != 22) return 91;
+
+                raii borrowed Resource[] aliases = new Resource[2];
+                aliases[0] = first;
+                aliases[1] = second;
+                foreach (var item in aliases) { total = total + item.Tag(); }
+            }
+            if (Resource.Destructions() - before != 2) return 92;
+            return total;
+        }
+
+        private static int StringsAndTemporaries()
+        {
+            raii string text = String.Copy("a");
+            text += "bc";
+            if (text != "abc") return 93;
+            if (FreeLength("de" + "fg") != 4) return 94;
+
+            raii TextMeasure concrete = new TextMeasure();
+            borrowed ITextMeasure contract = concrete;
+            if (contract.Measure("hi" + "jk") != 4) return 95;
+
+            raii char[] characters = String.ToCharArray(text);
+            if (characters.Length != 3 || characters[0] != 'a' || characters[2] != 'c') return 96;
+            return 0;
+        }
+
+        private static int ForeachNamedOwner()
+        {
+            raii List<int> values = new List<int>();
+            values.Add(10);
+            values.Add(20);
+            values.Add(12);
+            int total = 0;
+            foreach (var value in values) { total = total + value; }
+            return total;
+        }
+
+        public static int Main()
+        {
+            if (FieldMove() != 1) return 1;
+            if (BorrowedBufferAndRebind() != 42) return 2;
+            if (StringsAndTemporaries() != 0) return 3;
+            if (ForeachNamedOwner() != 42) return 4;
+            AcceptOwned(null);
+            return 0;
+        }
+    }
+}

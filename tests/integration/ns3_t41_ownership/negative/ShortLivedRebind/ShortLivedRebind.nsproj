@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>ShortLivedRebind</Name><Language>3</Language></PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>

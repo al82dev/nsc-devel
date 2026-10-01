@@ -1,0 +1,16 @@
+namespace T41Negative
+{
+    class Resource { }
+    class Program
+    {
+        public static int Main()
+        {
+            raii Resource first = new Resource();
+            raii Resource second = new Resource();
+            borrowed Resource view = first;
+            view = second;
+            raii Resource moved = move(second);
+            return 0;
+        }
+    }
+}

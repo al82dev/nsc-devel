@@ -1012,9 +1012,9 @@ namespace NativeSharp.Core
             return (int)hash;
         }
 
-        // Sin calificador owned: char[] aqui es un arreglo simple (Stage 41), la vida util la
-        // administra quien lo recibe con delete[], igual que cualquier otro T[] nuevo.
-        public static char[] ToCharArray(string value)
+        // The call allocates a new independent buffer. Publishing that fact lets the caller bind
+        // it directly to `raii char[]` instead of rebuilding the same copy with CopyTo.
+        public static owned char[] ToCharArray(string value)
         {
             char[] buffer = new char[value.Length];
             int i = 0;
