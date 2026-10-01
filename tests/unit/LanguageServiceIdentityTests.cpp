@@ -26,7 +26,7 @@ int main()
     const auto identity = service.identity();
 
     expect(identity.compilerRelease == "3.0.0", "compiler release is published");
-    expect(identity.languageVersion == "2.0.0", "language version is published");
+    expect(identity.languageVersion == "3.0.0", "language version is published");
     expect(
         identity.defaultLanguageEdition == nativesharp::language::LanguageEdition::V2,
         "default language edition is published");

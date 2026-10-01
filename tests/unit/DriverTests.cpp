@@ -54,7 +54,7 @@ int main()
         std::ostringstream error;
         const ExitCode code = runDriver({}, output, error);
         tests.expect(code == ExitCode::Success, "empty command line prints help successfully");
-        const std::string helpText = "NativeSharp Compiler 2.0.0 (nsc)";
+        const std::string helpText = "NativeSharp Compiler 3.0.0 (nsc)";
         tests.expect(
             output.str().find(helpText) != std::string::npos,
             "help text is written to stdout");
@@ -85,7 +85,7 @@ int main()
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success,
             "Spanish help selection succeeds");
-        tests.expect(output.str().find("Compilador NativeSharp 2.0.0 (nsc)") != std::string::npos &&
+        tests.expect(output.str().find("Compilador NativeSharp 3.0.0 (nsc)") != std::string::npos &&
                 output.str().find("Uso:") != std::string::npos &&
                 output.str().find("Hash de compilación: ") != std::string::npos,
             "Spanish help uses the localized compiler identity and heading");

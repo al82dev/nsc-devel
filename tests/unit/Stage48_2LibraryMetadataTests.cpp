@@ -1425,7 +1425,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
         "-dev+build.20000101T000000Z.0000000000000000";
     error.clear();
     tests.expect(codec.verifyCurrentCompiler(incompatible, error),
-                 "a prerelease suffix preserves the 2.0.0 compatibility line");
+                  "a prerelease suffix preserves the 3.0.0 compatibility line");
     incompatible = metadata;
     incompatible.pointerSize = 4;
     error.clear();

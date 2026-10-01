@@ -369,11 +369,11 @@ void testConsolidatedStage48Surface(TestContext& tests)
     // release string -- a prefix match that is really an equality in disguise. Requiring it to be
     // strictly longer is what makes the check mean "derives from" rather than "equals". The shape
     // of the suffix itself is nsc.version's business and is not duplicated here.
-    tests.expect(nativesharp::kLanguageVersion == "2.0.0"
+    tests.expect(nativesharp::kLanguageVersion == "3.0.0"
             && nativesharp::kCompilerVersion.starts_with(nativesharp::kCompilerReleaseVersion)
             && nativesharp::kCompilerVersion.size() > nativesharp::kCompilerReleaseVersion.size()
             && !nativesharp::kCompilerStage.empty(),
-        "compiler identity remains on the promoted NativeSharp 2.0 language line after the host-SDK closure");
+        "compiler identity remains on the NativeSharp 3.0 language line after the host-SDK closure");
 }
 
 void testCppCliBuildWhenAvailable(TestContext& tests, const std::filesystem::path& root)

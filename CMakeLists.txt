@@ -4002,9 +4002,10 @@ if(NSC_BUILD_TESTS)
             "-DVARARG_ABI_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/item333-vararg-abi-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpWin64VarargAbi.cmake")
 
-    # CC1-000: este regex comprueba la identidad visible del compilador instalado. El stage exacto
-    # se extrae de Version.h para conservar una sola fuente de verdad sin aceptar una instalacion
-    # atrasada. nsc.version.identity comprueba por separado las constantes enlazadas en este build.
+    # CC1-000: este regex comprueba el banner visible del compilador instalado. La version del
+    # compilador viene de project() y el stage exacto se extrae de Version.h para conservar fuentes
+    # de verdad unicas sin aceptar una instalacion atrasada. nsc.version.identity comprueba por
+    # separado la version SemVer completa y las constantes enlazadas en este build.
     #
     # `[0-9a-f]` y no `.*` a proposito: un @NSC_BUILD_ID@ sin sustituir dejaria la linea vacia, y un
     # `.*` la aceptaria igual.
@@ -4023,7 +4024,7 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(
         nsc.version
         PROPERTIES PASS_REGULAR_EXPRESSION
-            "nsc 2.0.0[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 2.0.0.*stage ${NSC_EXPECTED_COMPILER_STAGE}.*build [0-9a-f][0-9a-f]+")
+            "NativeSharp Compiler ${NSC_COMPILER_RELEASE_VERSION} [(]nsc[)].*Build hash: [0-9a-f][0-9a-f]+")
 
     add_test(
         NAME nsc.stage25.project-names

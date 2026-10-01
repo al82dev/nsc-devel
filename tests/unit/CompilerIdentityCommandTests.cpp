@@ -18,9 +18,9 @@ int main()
     const std::string identity = output.str();
     const bool valid = code == nativesharp::ExitCode::Success &&
         identity.starts_with("NSCOMPILER 1\n") &&
-        identity.find("compiler_version=2.0.0+build.") != std::string::npos &&
-        identity.find("compiler_release=2.0.0\n") != std::string::npos &&
-        identity.find("language=2.0.0\n") != std::string::npos &&
+        identity.find("compiler_version=3.0.0+build.") != std::string::npos &&
+        identity.find("compiler_release=3.0.0\n") != std::string::npos &&
+        identity.find("language=3.0.0\n") != std::string::npos &&
         identity.find("stage=70\n") != std::string::npos &&
         identity.find("build=") != std::string::npos &&
         identity.find("Copyright") == std::string::npos &&

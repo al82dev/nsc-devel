@@ -2,7 +2,9 @@
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/ToolchainContract.h"
+#include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Runtime/RuntimeAbiContract.h"
 
 #include "../support/TestContext.h"
 
@@ -75,11 +77,19 @@ int main()
     const std::string metadataFormat =
         std::to_string(interop::kMetadataFormatMajor) + "." +
         std::to_string(interop::kMetadataFormatMinor);
+    const std::string nativeAbi =
+        std::to_string(interop::kNativeAbiMajor) + "." + std::to_string(interop::kNativeAbiMinor);
+    const std::string runtimeAbi =
+        std::to_string(interop::kRuntimeAbiMajor) + "." + std::to_string(interop::kRuntimeAbiMinor);
+    const std::string runtimeSymbolSet = std::to_string(runtime::kRuntimeSymbolSetVersion);
+    const std::string mirSchema =
+        std::to_string(frontend::kProjectOopMirSchemaMajor) + "." +
+        std::to_string(frontend::kProjectOopMirSchemaMinor);
     tests.expect(contract.starts_with("NSTOOLCHAIN 2\n"), "contract has a versioned magic header");
     tests.expect(contract.ends_with('\n'), "contract has one canonical final newline");
-    tests.expect(contract.find("compiler_release=2.0.0\n") != std::string::npos,
+    tests.expect(contract.find("compiler_release=3.0.0\n") != std::string::npos,
         "contract identifies the compatible compiler release");
-    tests.expect(contract.find("language=2.0.0\n") != std::string::npos, "contract identifies the language line");
+    tests.expect(contract.find("language=3.0.0\n") != std::string::npos, "contract identifies the language line");
     tests.expect(contract.find("stage=" + std::string(kCompilerStage) + "\n") != std::string::npos,
         "contract identifies the current compiler stage");
     tests.expect(contract.find("target=x86_64-pc-windows-msvc\n") != std::string::npos,
@@ -87,11 +97,11 @@ int main()
     tests.expect(contract.find("llvm=23.x\n") != std::string::npos, "contract identifies the qualified LLVM line");
     tests.expect(contract.find("nsmeta=" + metadataFormat + "\n") != std::string::npos,
         "contract identifies the library metadata format");
-    tests.expect(contract.find("native_abi=1.0\n") != std::string::npos &&
-                     contract.find("runtime_abi=1.0\n") != std::string::npos,
+    tests.expect(contract.find("native_abi=" + nativeAbi + "\n") != std::string::npos &&
+                     contract.find("runtime_abi=" + runtimeAbi + "\n") != std::string::npos,
         "contract identifies native and runtime ABI versions");
-    tests.expect(contract.find("runtime_symbol_set=2\n") != std::string::npos &&
-                     contract.find("mir_schema=1.14\n") != std::string::npos,
+    tests.expect(contract.find("runtime_symbol_set=" + runtimeSymbolSet + "\n") != std::string::npos &&
+                     contract.find("mir_schema=" + mirSchema + "\n") != std::string::npos,
         "contract freezes the runtime symbol set and MIR schema");
     tests.expect(contract.find("mangling_abi=1\n") != std::string::npos &&
                      contract.find("object_abi=2\n") != std::string::npos &&
@@ -162,15 +172,15 @@ int main()
         "future contract format is rejected with its header named");
     tests.expect(verifyFails(malformed, contract + "future_field=1\n", "unknown toolchain contract field", error),
         "unknown fields are rejected instead of silently ignored");
-    tests.expect(verifyFails(malformed, contract + "language=2.0.0\n", "duplicate toolchain contract field", error),
+    tests.expect(verifyFails(malformed, contract + "language=3.0.0\n", "duplicate toolchain contract field", error),
         "duplicate fields are rejected");
     tests.expect(verifyFails(malformed,
-                     withoutLine(contract, "runtime_abi=1.0"),
+                     withoutLine(contract, "runtime_abi=" + runtimeAbi),
                      "missing toolchain contract field 'runtime_abi'",
                      error),
         "missing compatibility fields are diagnosed precisely");
     tests.expect(verifyFails(malformed,
-                     withoutLine(contract, "mir_schema=1.14"),
+                     withoutLine(contract, "mir_schema=" + mirSchema),
                      "missing toolchain contract field 'mir_schema'",
                      error),
         "missing MIR schema identity is diagnosed precisely");
@@ -181,14 +191,14 @@ int main()
         "incompatible field values name found and expected contracts");
     tests.expect(verifyFails(malformed,
                      replacing(contract,
-                         "language=2.0.0\nstage=" + std::string(kCompilerStage),
-                         "stage=" + std::string(kCompilerStage) + "\nlanguage=2.0.0"),
+                         "language=3.0.0\nstage=" + std::string(kCompilerStage),
+                         "stage=" + std::string(kCompilerStage) + "\nlanguage=3.0.0"),
                      "out of canonical order",
                      error),
         "otherwise valid fields still require deterministic canonical order");
     tests.expect(
         verifyFails(
-            malformed, replacing(contract, "language=2.0.0", "language"), "malformed toolchain contract line", error),
+            malformed, replacing(contract, "language=3.0.0", "language"), "malformed toolchain contract line", error),
         "malformed key-value lines identify their line");
 
     driver::Driver compiler;

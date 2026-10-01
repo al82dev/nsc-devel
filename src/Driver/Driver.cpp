@@ -5124,8 +5124,8 @@ void Driver::printHelp(std::ostream &output)
                << "--library-reference-root <directorio-absoluto> resuelve referencias de biblioteca desde una raíz de configuración.\n"
                << "--profile=debug selecciona O0 con depuración completa; --profile=release selecciona O2 con tablas de líneas.\n"
                << "NSC_LLD_LINK selecciona el enlazador PE y NSC_LLVM_LIB selecciona el bibliotecario estático.\n"
-               << "Este ejecutable es la versión estable NativeSharp 2.0; la documentación vigente está en "
-                  "share/nativesharp/docs/2.0.\n";
+               << "Este ejecutable pertenece a la línea de desarrollo NativeSharp 3.0; la documentación "
+                  "de compatibilidad 2.0 está en share/nativesharp/docs/2.0.\n";
         return;
     }
     output << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a "
@@ -5210,8 +5210,8 @@ void Driver::printHelp(std::ostream &output)
            << "switch/case. "
            << "The 1.0 library gates add component-level ABI diagnostics and "
               "standalone metadata/archive/DLL artifact verification. "
-           << "This executable is the stable NativeSharp 2.0 release; "
-              "the installed current documentation is under share/nativesharp/docs/2.0.\n";
+           << "This executable belongs to the NativeSharp 3.0 development line; "
+              "the 2.0 compatibility documentation is under share/nativesharp/docs/2.0.\n";
 }
 
 ExitCode Driver::printCodeGeneration(

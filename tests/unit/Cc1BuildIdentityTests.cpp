@@ -44,16 +44,16 @@ int main()
     // La parte compatible queda estable, mientras la version visible contiene la identidad exacta
     // de esta construccion como metadata SemVer.
     tests.expect(
-        nativesharp::kCompilerReleaseVersion == "2.0.0",
-        "compiler compatibility identity is the stable 2.0.0 release line");
+        nativesharp::kCompilerReleaseVersion == "3.0.0",
+        "compiler compatibility identity is the 3.0.0 development line");
     tests.expect(
-        nativesharp::kCompilerVersion.starts_with("2.0.0+build."),
-        "visible compiler version identifies the stable channel and build metadata");
+        nativesharp::kCompilerVersion.starts_with("3.0.0+build."),
+        "visible compiler version identifies the development line and build metadata");
     tests.expect(
         nativesharp::kCompilerVersion.ends_with(buildId),
         "visible compiler version contains the exact build id");
-    tests.expect(nativesharp::kLanguageVersion == "2.0.0", "language version is 2.0.0");
-    tests.expect(nativesharp::kCompilerStage == "70", "compiler stage tracks the 2.0 promotion");
+    tests.expect(nativesharp::kLanguageVersion == "3.0.0", "language version is 3.0.0");
+    tests.expect(nativesharp::kCompilerStage == "70", "compiler stage remains traceable during 3.0 development");
 
     return tests.result();
 }

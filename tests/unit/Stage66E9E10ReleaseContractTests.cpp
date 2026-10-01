@@ -250,16 +250,22 @@ int main()
     const std::string metadataFormat =
         std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
         std::to_string(nativesharp::interop::kMetadataFormatMinor);
+    const std::string nativeAbi =
+        std::to_string(nativesharp::interop::kNativeAbiMajor) + "." +
+        std::to_string(nativesharp::interop::kNativeAbiMinor);
+    const std::string runtimeAbi =
+        std::to_string(nativesharp::interop::kRuntimeAbiMajor) + "." +
+        std::to_string(nativesharp::interop::kRuntimeAbiMinor);
     tests.expect(
         policy.starts_with("NSCOMPAT 1\n") && policy.ends_with('\n'), "compatibility policy has canonical framing");
-    tests.expect(policy.find("compiler_release=2.0.0\n") != std::string::npos &&
-                     policy.find("language_release=2.0.0\n") != std::string::npos,
+    tests.expect(policy.find("compiler_release=3.0.0\n") != std::string::npos &&
+                     policy.find("language_release=3.0.0\n") != std::string::npos,
         "policy separates compiler and language releases");
     tests.expect(policy.find("nsmeta_read=1.0-" + metadataFormat + "\n") != std::string::npos &&
                      policy.find("nsmeta_write=" + metadataFormat + "\n") != std::string::npos,
         "policy publishes metadata read and write ranges independently");
-    tests.expect(
-        policy.find("native_abi=1.0\n") != std::string::npos && policy.find("runtime_abi=1.0\n") != std::string::npos,
+    tests.expect(policy.find("native_abi=" + nativeAbi + "\n") != std::string::npos &&
+                     policy.find("runtime_abi=" + runtimeAbi + "\n") != std::string::npos,
         "binary compatibility versions are explicit");
     tests.expect(policy.find("reproducibility_report=1\n") != std::string::npos &&
                      policy.find("update_plan=1\n") != std::string::npos &&
@@ -279,17 +285,17 @@ int main()
         "policy rejects unknown trailing fields");
 
     std::string explanation;
-    tests.expect(driver::checkCompilerCompatibility("2.0.0", explanation, error) &&
+    tests.expect(driver::checkCompilerCompatibility("3.0.0", explanation, error) &&
                      explanation.find("satisfies") != std::string::npos,
         "current compiler release satisfies its exact requirement");
-    tests.expect(!driver::checkCompilerCompatibility("1.0.1", explanation, error) && error.empty(),
+    tests.expect(!driver::checkCompilerCompatibility("2.0.0", explanation, error) && error.empty(),
         "a prior major requirement requires the explicit migration path");
-    tests.expect(!driver::checkCompilerCompatibility("2.0.1", explanation, error) && error.empty() &&
+    tests.expect(!driver::checkCompilerCompatibility("3.0.1", explanation, error) && error.empty() &&
                      explanation.find("does not satisfy") != std::string::npos,
         "newer patch requirement is incompatible");
-    tests.expect(!driver::checkCompilerCompatibility("2.1.0", explanation, error) && error.empty(),
+    tests.expect(!driver::checkCompilerCompatibility("3.1.0", explanation, error) && error.empty(),
         "a future minor requirement in the same major line is incompatible");
-    tests.expect(!driver::checkCompilerCompatibility("3.0.0", explanation, error) && error.empty(),
+    tests.expect(!driver::checkCompilerCompatibility("4.0.0", explanation, error) && error.empty(),
         "a different stable major line is not silently compatible");
     tests.expect(!driver::checkCompilerCompatibility("1.0", explanation, error) &&
                      error.find("canonical major.minor.patch") != std::string::npos,
@@ -307,9 +313,9 @@ int main()
     output.clear();
     driverError.str({});
     driverError.clear();
-    const std::vector<std::string_view> compatibleRequirement = {"--check-compiler-compatibility", "2.0.0"};
+    const std::vector<std::string_view> compatibleRequirement = {"--check-compiler-compatibility", "3.0.0"};
     tests.expect(compiler.run(compatibleRequirement, output, driverError) == ExitCode::Success &&
-                     output.str().find("satisfies 2.0.0") != std::string::npos && driverError.str().empty(),
+                     output.str().find("satisfies 3.0.0") != std::string::npos && driverError.str().empty(),
         "public compatibility command returns an executable positive decision");
 
     tests.expect(
