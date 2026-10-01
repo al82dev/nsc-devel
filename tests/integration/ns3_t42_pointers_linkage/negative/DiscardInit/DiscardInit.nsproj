@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>DiscardInit</Name><Language>3</Language></PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>

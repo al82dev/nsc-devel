@@ -429,6 +429,8 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
                 return false;
             ++cursor;
             if (!sawComma || elementCount < 2) return false;
+            if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::KwConst)
+                ++cursor;
             while (cursor < tokens_.size())
             {
                 if (tokens_[cursor].kind() == TokenKind::Star)
@@ -506,6 +508,8 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
         while (cursor < tokens_.size() && depth > 0);
         if (depth != 0) return false;
     }
+    if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::KwConst)
+        ++cursor;
     while (cursor < tokens_.size())
     {
         if (tokens_[cursor].kind() == TokenKind::Star)
@@ -830,6 +834,19 @@ ast::TypeSyntax* Parser::parseType()
         completeRange = join(completeRange, expansion);
     }
 
+    // T42 uses the unambiguous C-compatible postfix spelling for pointee constness:
+    // `int const* p`. A leading `const int* p` remains the existing declaration-level const
+    // and therefore makes `p`, not `*p`, immutable.
+    SourceRange pointeeConstRange{};
+    const bool pointeeConst = at(TokenKind::KwConst);
+    if (pointeeConst)
+    {
+        pointeeConstRange = consume().range();
+        requireEdition3(pointeeConstRange, "pointer pointee constness");
+        type->setPointeeConst();
+        completeRange = join(completeRange, pointeeConstRange);
+    }
+
     while (true)
     {
         if (at(TokenKind::Star))
@@ -929,6 +946,19 @@ ast::TypeSyntax* Parser::parseType()
         }
 
         break;
+    }
+
+    if (pointeeConst && std::ranges::none_of(
+            type->modifiers(), [](const ast::TypeModifierSyntax& modifier)
+            {
+                return modifier.kind == ast::TypeModifierSyntaxKind::Pointer;
+            }))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            pointeeConstRange,
+            "postfix const qualifies a pointer pointee and therefore requires '*' in the type");
     }
 
     type->setRange(completeRange);
@@ -2123,7 +2153,10 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             diagnostics::DiagnosticId::ExpectedDeclaration,
             diagnostics::DiagnosticSeverity::Error,
             current().range(),
-            "abstract, sealed, and static modifiers are supported only for class declarations");
+            isStatic
+                ? "static namespace declarations/file-local linkage are not supported in "
+                  "NativeSharp 3.0; use an internal uniquely named namespace state"
+                : "abstract and sealed modifiers are supported only for class declarations");
         synchronizeGlobal();
         return nullptr;
     }
@@ -5874,7 +5907,18 @@ ast::AstNode* Parser::parseExternCDeclaration()
     const std::size_t beginIndex = index_;
     consume();
     const bool isVectorCall = consumeIf(TokenKind::KwVectorCall);
-    if (!isVectorCall) expectContextualKeyword("C", "'C' or 'vectorcall'");
+    if (!isVectorCall && !atContextualKeyword("C"))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "extern namespace variables are not supported in NativeSharp 3.0; declare exactly "
+            "one namespace-state definition, or use 'extern C' for a native function boundary");
+        synchronizeGlobal();
+        return nullptr;
+    }
+    if (!isVectorCall) consume();
 
     if (at(TokenKind::KwDelegate))
     {
@@ -6288,7 +6332,7 @@ ast::AstNode* Parser::parseStatement()
     // pedia un nombre de variable, y el error era "expected variable name, found '.'": un
     // diagnostico que no menciona ni genericos ni miembros estaticos y manda a mirar donde no es.
     if ((atContextualKeyword("pin") && peek().kind() == TokenKind::KwRaii) ||
-        at(TokenKind::KwRaii) || at(TokenKind::KwConst) || at(TokenKind::KwVar) ||
+        at(TokenKind::KwRaii) || at(TokenKind::KwConst) || at(TokenKind::KwVolatile) || at(TokenKind::KwVar) ||
         (atContextualKeyword("ref") &&
          (canStartTypeAt(index_ + 1) || peek().kind() == TokenKind::KwVar ||
           peek().kind() == TokenKind::KwConst || peek().kind() == TokenKind::KwRaii)) ||
@@ -6896,6 +6940,7 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
          peek().kind() == TokenKind::KwConst || peek().kind() == TokenKind::KwRaii);
     if (isReferenceLocal) consume();
     const bool isRaii = consumeIf(TokenKind::KwRaii);
+    const bool isVolatile = consumeIf(TokenKind::KwVolatile);
     const bool isConst = consumeIf(TokenKind::KwConst);
     if (isRaii && isConst)
     {
@@ -6941,6 +6986,7 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
     variable->setText(std::string(name.lexeme()));
     variable->setFlag(isConst);
     if (isRaii) variable->addModifier(TokenKind::KwRaii);
+    if (isVolatile) variable->addModifier(TokenKind::KwVolatile);
     if (isReferenceLocal) variable->setAuxiliaryText("local:ref");
     else if (isPinned) variable->setAuxiliaryText("local:pinned");
 
@@ -7486,7 +7532,8 @@ ast::AstNode* Parser::parseForStatement()
     ast::AstNode* initializer = nullptr;
     if (!at(TokenKind::Semicolon))
     {
-        if (at(TokenKind::KwRaii) || at(TokenKind::KwConst) || at(TokenKind::KwVar) || canStartTypeAt(index_))
+        if (at(TokenKind::KwRaii) || at(TokenKind::KwConst) || at(TokenKind::KwVolatile) ||
+            at(TokenKind::KwVar) || canStartTypeAt(index_))
         {
             initializer = parseVariableDeclaration(false);
         }
@@ -8468,6 +8515,29 @@ ast::AstNode* Parser::parseUnaryExpression()
             join(start, operand->range()));
         node->setTokenKind(kind);
         node->setFirst(operand);
+        return node;
+    }
+
+    // T42 named casts are contextual spellings, not globally reserved words. This keeps existing
+    // identifiers source-compatible while ensuring a malformed/invalid cast receives a
+    // conversion diagnostic instead of "generic method template not found".
+    if (at(TokenKind::Identifier) && peek().kind() == TokenKind::Less &&
+        (current().lexeme() == "static_cast" || current().lexeme() == "reinterpret_cast" ||
+         current().lexeme() == "const_cast"))
+    {
+        const lexer::Token& castName = consume();
+        expect(TokenKind::Less, "'<' after named cast");
+        ast::TypeSyntax* type = parseType();
+        expect(TokenKind::Greater, "'>' after named cast target type");
+        expect(TokenKind::LeftParen, "'(' after named cast type");
+        ast::AstNode* operand = parseExpression();
+        expect(TokenKind::RightParen, "')' after named cast operand");
+        ast::AstNode* node = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::CastExpression,
+            join(castName.range(), tokens_[index_ - 1].range()));
+        node->setTypeSyntax(type);
+        node->setFirst(operand);
+        node->setAuxiliaryText("cast:" + std::string(castName.lexeme()));
         return node;
     }
 

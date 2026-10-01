@@ -69,6 +69,12 @@ public:
     bool isDynamicTrait() const noexcept;
     void setDynamicTrait(bool value = true) noexcept;
 
+    // NativeSharp 3.0 T42: `T const*` qualifies the pointed-to T. This is deliberately
+    // independent from a declaration's leading `const`, which qualifies the binding itself
+    // (`const T* p`). The bit is semantic-only: it does not alter the canonical Win64 ABI type.
+    bool isPointeeConst() const noexcept;
+    void setPointeeConst(bool value = true) noexcept;
+
     void addTypeArgument(TypeSyntax* typeArgument);
     const std::vector<TypeSyntax*>& typeArguments() const noexcept;
     void clearTypeArguments() noexcept;
@@ -133,6 +139,7 @@ private:
     std::string baseName_;
     OwnershipQualifierSyntaxKind ownershipQualifier_ = OwnershipQualifierSyntaxKind::None;
     bool isDynamicTrait_ = false;
+    bool isPointeeConst_ = false;
     std::vector<TypeSyntax*> typeArguments_;
     bool isTuple_ = false;
     std::vector<std::string> tupleElementNames_;

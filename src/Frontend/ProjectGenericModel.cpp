@@ -2483,6 +2483,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     // pointer/array modifiers just above.
     result->setOwnershipQualifier(source->ownershipQualifier());
     result->setDynamicTrait(source->isDynamicTrait());
+    result->setPointeeConst(source->isPointeeConst());
     result->setPackExpansion(source->isPackExpansion());
     // Stage 52 fix: only stamp the TEMPLATE's own range for the non-substituted branch (the
     // clone still represents source text written at that template position, e.g. `T[]`'s own

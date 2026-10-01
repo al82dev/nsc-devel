@@ -80,6 +80,7 @@ struct MethodParameterSymbol final
     std::string pointeeTypeKey;
     const ast::TypeSyntax* typeSyntax = nullptr;
     std::string typeKey;
+    bool pointerPointeeReadonly = false;
     sema::OwnershipKind ownership = sema::OwnershipKind::None;
     FileId fileId;
     SourceRange range;
@@ -119,6 +120,7 @@ struct ClassMemberSymbol final
     std::string name;
     const ast::TypeSyntax* declaredTypeSyntax = nullptr;
     std::string declaredTypeKey;
+    bool declaredPointerPointeeReadonly = false;
     sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
     std::vector<MethodParameterSymbol> parameters;
     std::string signatureKey;

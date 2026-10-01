@@ -1,0 +1,45 @@
+namespace T42Pointers
+{
+    class Program
+    {
+        private static int ReadOnly(int const* value) { return *value; }
+
+        public static int Main()
+        {
+            int mutableValue = 7;
+            const int immutableValue = 9;
+
+            int* mutablePointer = &mutableValue;
+            int const* readonlyPointer = &immutableValue;
+            const int* fixedBinding = &mutableValue;
+            const int const* fixedReadonlyBinding = &immutableValue;
+
+            *mutablePointer = 8;
+            *fixedBinding = 10;
+            readonlyPointer = &mutableValue;
+            if (ReadOnly(readonlyPointer) != 10) return 1;
+            if (*fixedReadonlyBinding != 9) return 2;
+
+            int* recovered = const_cast<int*>(&immutableValue);
+            if (recovered != &immutableValue) return 3;
+            nint raw = reinterpret_cast<nint>(mutablePointer);
+            int* roundTrip = reinterpret_cast<int*>(raw);
+            if (roundTrip != mutablePointer) return 4;
+            long widened = static_cast<long>(mutableValue);
+            if (widened != 10) return 5;
+
+            volatile int observed = 1;
+            observed += 2;
+            if (observed != 3) return 6;
+
+            int[4] values;
+            values[0] = 1;
+            values[1] = 2;
+            values[2] = 3;
+            values[3] = 4;
+            int* end = &values[4];
+            if (end != &values[0] + 4) return 7;
+            return 0;
+        }
+    }
+}

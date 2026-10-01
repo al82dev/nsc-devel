@@ -135,6 +135,7 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
         }
         output << '>';
     }
+    if (typeSyntax->isPointeeConst()) output << " const";
     for (const TypeModifierSyntax& modifier : typeSyntax->modifiers())
     {
         if (modifier.kind == TypeModifierSyntaxKind::Pointer)

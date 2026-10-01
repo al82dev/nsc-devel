@@ -1,0 +1,1 @@
+namespace T42Negative { class Program { static int Main() { const int value = 1; int* pointer = &value; return 0; } } }

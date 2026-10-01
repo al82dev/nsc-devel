@@ -3877,6 +3877,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     expression,
                     binding->typeKey);
                 node->localOrdinal = binding->localOrdinal;
+                node->volatileAccess = local != nullptr && local->isVolatile;
                 return node;
             }
             if (binding->kind == MethodNameBindingKind::ImplicitField ||

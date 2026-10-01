@@ -107,6 +107,11 @@ struct MethodLocalSymbol final
     MethodEscapeOrigin referenceEscapeOrigin;
     std::optional<std::size_t> referenceLifetimeScopeOrdinal;
     bool isConst = false;
+    // T42: volatile local storage uses the same observable-load/store contract as volatile
+    // fields. It is not atomic and supplies no inter-thread ordering.
+    bool isVolatile = false;
+    bool onePastEndPointer = false;
+    bool pointerPointeeReadonly = false;
     // El VALOR de un local `const` de tipo entero, plegado al declararlo.
     //
     // POR QUE SE GUARDA AQUI y no se recalcula al usarlo: la expresion que lo inicializa esta en
@@ -259,6 +264,7 @@ struct MethodExpressionTypeBinding final
     std::size_t scopeOrdinal = 0;
     std::string typeKey;
     std::optional<ProjectIntegerConstant> integerConstant;
+    bool pointerPointeeReadonly = false;
     // NSC-LIMIT-010. El resultado semantico de una expresion llevaba ownership, transferencia y
     // origen, y `recordExpressionType` los TIRABA al copiarlo aqui. ProjectConstructionModel solo
     // ve estos bindings, asi que sin estos cuatro campos no tiene con que decidir: para el, un
@@ -1436,6 +1442,12 @@ private:
         // the implicit receiver of a readonly struct member. Reads remain legal; writes and calls
         // to mutating instance members do not.
         bool readonlyReceiver = false;
+        // Source qualifier for raw pointers. Kept outside typeKey because LLVM pointers are
+        // opaque and the qualifier has no ABI/layout effect; semantic assignment/dereference
+        // still observes it.
+        bool pointerPointeeReadonly = false;
+        bool onePastEndAddress = false;
+        bool onePastEndPointer = false;
         std::vector<std::size_t> methodCandidates;
         std::optional<ProjectIntegerConstant> integerConstant;
         sema::OwnershipKind ownership = sema::OwnershipKind::None;
@@ -2045,6 +2057,7 @@ private:
     // same message.
     std::unordered_set<const ast::AstNode*> reportedUnassignedReads_;
     bool inUnevaluatedOperand_ = false;
+    bool formingAddressOperand_ = false;
     bool ownershipFlowReachable_ = true;
     std::vector<OwnershipFlowSnapshot> throwFlowStates_;
     std::vector<MethodSwitchBinding> switchBindings_;

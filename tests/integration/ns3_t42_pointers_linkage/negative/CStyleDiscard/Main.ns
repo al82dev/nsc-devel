@@ -1,0 +1,1 @@
+namespace T42Negative { class Program { static int Main() { int value = 1; int const* source = &value; int* target = (int*)source; return 0; } } }

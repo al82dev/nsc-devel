@@ -1214,6 +1214,8 @@ bool ProjectMemberModel::collectTypeMembers(
                 : symbol.kind == ClassMemberKind::Destructor
                     ? "builtin:void"
                     : canonicalTypeKey(memberNode->typeSyntax(), nameLookup);
+            symbol.declaredPointerPointeeReadonly = memberNode->typeSyntax() != nullptr &&
+                memberNode->typeSyntax()->isPointeeConst();
             symbol.declaredOwnership =
                 (symbol.kind == ClassMemberKind::Constructor || symbol.kind == ClassMemberKind::Destructor)
                 ? sema::OwnershipKind::None
@@ -1556,6 +1558,8 @@ bool ProjectMemberModel::collectTypeMembers(
                     parameter.name = parameterNode->text();
                     parameter.typeSyntax = parameterNode->typeSyntax();
                     parameter.typeKey = canonicalTypeKey(parameterNode->typeSyntax(), nameLookup);
+                    parameter.pointerPointeeReadonly = parameter.typeSyntax != nullptr &&
+                        parameter.typeSyntax->isPointeeConst();
                     parameter.ownership = ownershipKindFromSyntax(parameterNode->typeSyntax());
                     parameter.fileId = part.fileId;
                     parameter.range = parameterNode->range();

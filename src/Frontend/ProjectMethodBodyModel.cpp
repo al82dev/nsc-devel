@@ -918,6 +918,18 @@ bool ProjectMethodBodyModel::build(
             continue;
         }
 
+        if (initializer.pointerPointeeReadonly &&
+            ProjectTypeConversion::isPointer(field.declaredTypeKey) &&
+            !field.declaredPointerPointeeReadonly)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                field.syntax->first()->range(),
+                "field initializer would discard pointer pointee constness; declare the field as 'T const*' or use const_cast explicitly");
+            continue;
+        }
+
         const ProjectImplicitConversion conversion = classifyImplicit(
             initializer.typeKey,
             field.declaredTypeKey,
@@ -3932,6 +3944,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
     const bool isRaii = variable->hasModifier(TokenKind::KwRaii) || ownedQualifierOwnsStorage ||
         foreachEnumeratorNeedsRaii;
+    const bool isVolatile = variable->hasModifier(TokenKind::KwVolatile);
     // Wording helper: every owner diagnostic below has to name the spelling the user actually
     // wrote, otherwise an `owned` local reports errors about "raii local" and sends them looking at
     // the wrong keyword.
@@ -3947,6 +3960,24 @@ void ProjectMethodBodyModel::analyzeVariable(
     // buffer and `borrowed` qualifies its elements. For non-arrays the old contradiction remains.
     const bool raiiBorrowedElementArray =
         raiiOwnsNativeArrayBuffer && isBorrowed;
+    if (isVolatile &&
+        (!ProjectTypeConversion::isNumeric(typeKey) &&
+         !ProjectTypeConversion::isPointer(typeKey) && !isEnumTypeKey(typeKey)))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            variable->range(),
+            "volatile local must be a native scalar, enum, or raw pointer; volatile does not define aggregate-copy or managed-reference semantics");
+    }
+    if (isVolatile && (variable->flag() || isRaii || isBorrowed || isReferenceLocal))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            variable->range(),
+            "volatile local cannot also be const, raii, owned, borrowed, or a reference local");
+    }
     if (isReferenceLocal &&
         (variable->flag() || variable->hasModifier(TokenKind::KwRaii) ||
          declaredOwnership != sema::OwnershipKind::None))
@@ -4004,6 +4035,10 @@ void ProjectMethodBodyModel::analyzeVariable(
     }
     sema::OwnershipKind pendingObjectLifetimeOwnership = sema::OwnershipKind::None;
     sema::OwnershipKind pendingStorageOwnership = sema::OwnershipKind::None;
+    bool pendingOnePastEndPointer = false;
+    const bool declaredPointerPointeeReadonly = variable->typeSyntax() != nullptr &&
+        variable->typeSyntax()->isPointeeConst();
+    bool pendingPointerPointeeReadonly = declaredPointerPointeeReadonly;
     if (variable->first() != nullptr)
     {
         ExpressionResult initializer;
@@ -4141,6 +4176,16 @@ void ProjectMethodBodyModel::analyzeVariable(
                     variable->first()->range(),
                     "cannot initialize local '" + variable->text() + "' of type '" + typeKey +
                         "' from '" + initializer.typeKey + "'");
+            }
+            if (!isVarInferred && ProjectTypeConversion::isPointer(typeKey) &&
+                initializer.pointerPointeeReadonly && !declaredPointerPointeeReadonly)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    variable->first()->range(),
+                    "initialization of mutable-pointee pointer '" + variable->text() +
+                        "' would discard pointee constness; declare 'T const*' or use const_cast explicitly");
             }
         }
 
@@ -4293,6 +4338,9 @@ void ProjectMethodBodyModel::analyzeVariable(
         }
         pendingObjectLifetimeOwnership = initializer.objectLifetimeOwnership;
         pendingStorageOwnership = initializer.storageOwnership;
+        pendingOnePastEndPointer = initializer.onePastEndPointer;
+        pendingPointerPointeeReadonly = declaredPointerPointeeReadonly ||
+            initializer.pointerPointeeReadonly;
     }
 
     const std::optional<ScopeName> sameScope = lookupScopeNameInScope(scopeOrdinal, variable->text());
@@ -4334,6 +4382,9 @@ void ProjectMethodBodyModel::analyzeVariable(
             variableArrayRootLocalOfExpression(variable->first(), scopeOrdinal);
     }
     local.isConst = variable->flag();
+    local.isVolatile = isVolatile;
+    local.onePastEndPointer = pendingOnePastEndPointer;
+    local.pointerPointeeReadonly = pendingPointerPointeeReadonly;
     // El valor de un `const` entero, plegado aqui. Ver el comentario del campo: sirve para
     // contestar "¿el divisor es cero?" y para nada mas.
     if (local.isConst && variable->first() != nullptr &&
@@ -5082,6 +5133,17 @@ void ProjectMethodBodyModel::analyzeReturn(
             statement->first()->range(),
             "cannot convert return expression from '" + value.typeKey + "' to '" +
                 method->declaredTypeKey + "'");
+        return;
+    }
+    if (value.pointerPointeeReadonly &&
+        ProjectTypeConversion::isPointer(method->declaredTypeKey) &&
+        !method->declaredPointerPointeeReadonly)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->first()->range(),
+            "return would discard pointer pointee constness; declare the return type as 'T const*' or use const_cast explicitly");
         return;
     }
 
@@ -6849,6 +6911,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 result.typeKey = whenTrue.typeKey;
                 result.valid = true;
+                result.pointerPointeeReadonly = whenTrue.pointerPointeeReadonly ||
+                    whenFalse.pointerPointeeReadonly;
+                result.onePastEndPointer = whenTrue.onePastEndPointer ||
+                    whenFalse.onePastEndPointer;
                 mergeOwnership();
                 break;
             }
@@ -6875,6 +6941,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 result.typeKey = nonNull.typeKey;
                 result.valid = true;
+                result.pointerPointeeReadonly = nonNull.pointerPointeeReadonly;
+                result.onePastEndPointer = nonNull.onePastEndPointer;
                 result.ownership = nonNull.ownership;
                 result.ownershipTransfer = nonNull.ownershipTransfer;
                 result.ownershipSourceLocalOrdinal = nonNull.ownershipSourceLocalOrdinal;
@@ -6988,6 +7056,80 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.valid = operand.valid && !isErrorType(result.typeKey);
                 result.objectLifetimeOwnership = operand.objectLifetimeOwnership;
                 result.storageOwnership = operand.storageOwnership;
+                const bool targetPointeeReadonly = expression->typeSyntax() != nullptr &&
+                    expression->typeSyntax()->isPointeeConst();
+                result.pointerPointeeReadonly = targetPointeeReadonly;
+                result.onePastEndPointer = operand.onePastEndPointer;
+                const std::string_view namedCast = expression->auxiliaryText().starts_with("cast:")
+                    ? std::string_view(expression->auxiliaryText()).substr(5U)
+                    : std::string_view{};
+                if (result.valid && !namedCast.empty())
+                {
+                    const bool sourcePointer = ProjectTypeConversion::isPointer(operand.typeKey);
+                    const bool targetPointer = ProjectTypeConversion::isPointer(result.typeKey);
+                    bool allowed = false;
+                    if (namedCast == "const_cast")
+                    {
+                        // Qualifiers are source-only and ABI-neutral in this 3.0 profile. The
+                        // base/indirection identity must therefore remain byte-for-byte equal.
+                        allowed = sourcePointer && targetPointer && operand.typeKey == result.typeKey;
+                        if (allowed) result.pointerPointeeReadonly = targetPointeeReadonly;
+                    }
+                    else if (namedCast == "reinterpret_cast")
+                    {
+                        const bool sourceAddress = sourcePointer ||
+                            isPointerSizedIntegralTypeKey(operand.typeKey);
+                        const bool targetAddress = targetPointer ||
+                            isPointerSizedIntegralTypeKey(result.typeKey);
+                        allowed = sourceAddress && targetAddress &&
+                            !(operand.pointerPointeeReadonly && targetPointer &&
+                              !targetPointeeReadonly);
+                    }
+                    else if (namedCast == "static_cast")
+                    {
+                        const bool numeric =
+                            ProjectTypeConversion::isNumeric(operand.typeKey) &&
+                            ProjectTypeConversion::isNumeric(result.typeKey);
+                        const bool enumNumeric =
+                            (isEnumTypeKey(operand.typeKey) &&
+                             ProjectTypeConversion::isIntegral(result.typeKey)) ||
+                            (ProjectTypeConversion::isIntegral(operand.typeKey) &&
+                             isEnumTypeKey(result.typeKey));
+                        const bool voidPointerRecovery = sourcePointer && targetPointer &&
+                            (operand.typeKey == "builtin:void*" || result.typeKey == "builtin:void*");
+                        const ProjectImplicitConversion implicit = classifyImplicit(
+                            operand.typeKey, result.typeKey, operand.integerConstant);
+                        allowed = operand.typeKey == result.typeKey || numeric || enumNumeric ||
+                            voidPointerRecovery || implicit.exists();
+                        if (operand.pointerPointeeReadonly && targetPointer &&
+                            !targetPointeeReadonly)
+                            allowed = false;
+                    }
+                    if (!allowed)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidConversion,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            std::string(namedCast) + " cannot convert '" + operand.typeKey +
+                                "' to '" + result.typeKey + "' under its restricted contract");
+                        result.valid = false;
+                        break;
+                    }
+                }
+                else if (result.valid && namedCast.empty() &&
+                    operand.pointerPointeeReadonly &&
+                    ProjectTypeConversion::isPointer(result.typeKey) &&
+                    !targetPointeeReadonly)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "a C-style cast cannot discard pointer pointee constness; use const_cast<T*> explicitly");
+                    result.valid = false;
+                    break;
+                }
                 if (result.valid && inheritanceModel_ != nullptr)
                 {
                     const ProjectConversionClassifier classifier(
@@ -7376,6 +7518,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 : std::nullopt;
             const bool rawPointerBase = ProjectTypeConversion::isPointer(base.typeKey);
             bool validFixedIndices = base.valid && fixedElementType.has_value() && !indices.empty();
+            bool fixedOnePastAddress = false;
             std::string indexedType = base.typeKey;
             if (validFixedIndices)
             {
@@ -7393,17 +7536,26 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         validFixedIndices = false;
                         break;
                     }
-                    if (index.integerConstant.has_value() &&
-                        (index.integerConstant->isNegative || index.integerConstant->value >= *count))
+                    if (index.integerConstant.has_value())
                     {
-                        diagnostics.report(
-                            diagnostics::DiagnosticId::ConstantIndexOutOfBounds,
-                            diagnostics::DiagnosticSeverity::Error,
-                            expression->children().empty()
-                                ? expression->range()
-                                : expression->children()[dimensionOrdinal]->range(),
-                            "constant fixed-array index is outside [0, " +
-                                std::to_string(*count) + ")");
+                        const bool exactlyOnePast = !index.integerConstant->isNegative &&
+                            index.integerConstant->value == *count;
+                        const bool admittedOnePast = exactlyOnePast && formingAddressOperand_ &&
+                            dimensionOrdinal + 1U == indices.size();
+                        if (index.integerConstant->isNegative ||
+                            index.integerConstant->value > *count ||
+                            (exactlyOnePast && !admittedOnePast))
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::ConstantIndexOutOfBounds,
+                                diagnostics::DiagnosticSeverity::Error,
+                                expression->children().empty()
+                                    ? expression->range()
+                                    : expression->children()[dimensionOrdinal]->range(),
+                                "constant fixed-array index is outside [0, " +
+                                    std::to_string(*count) + ")");
+                        }
+                        if (admittedOnePast) fixedOnePastAddress = true;
                     }
                     indexedType = *element;
                 }
@@ -7482,6 +7634,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     !ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value();
                 result.addressable = true;
                 result.readonlyReceiver = readonlyInlineElement;
+                result.onePastEndAddress = fixedOnePastAddress;
                 MethodCoreBinding binding;
                 binding.kind = MethodCoreOperationKind::RawElement;
                 binding.syntax = expression;
@@ -8428,6 +8581,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 result.assignable = !local.isConst;
                 result.addressable = true;
                 result.readonlyReceiver = local.isConst;
+                result.pointerPointeeReadonly = local.pointerPointeeReadonly;
+                result.onePastEndPointer = local.onePastEndPointer;
                 nameBindings_.push_back(MethodNameBinding{
                     MethodNameBindingKind::Local,
                     expression,
@@ -8484,6 +8639,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             result.ownership = parameter.ownership;
             result.objectLifetimeOwnership = parameter.ownership;
             result.storageOwnership = parameter.ownership;
+            result.pointerPointeeReadonly = !byReferenceParameter &&
+                parameter.pointerPointeeReadonly;
             if (parameter.ownership != sema::OwnershipKind::None)
             {
                 result.ownershipSourceParameterOrdinal = scopeName->semanticOrdinal;
@@ -8674,6 +8831,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             (!field.isReadonly || readonlyFieldAssignable(field, methodMemberOrdinal));
         result.addressable = !field.isBitField;
         result.readonlyReceiver = readonlyThis || field.isReadonly;
+        result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
         result.assignmentMemberOrdinal = fields.front();
         if (!field.isStatic)
         {
@@ -8750,6 +8908,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 result.valid = true;
                 result.assignable = true;
                 result.addressable = true;
+                result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
                 result.assignmentMemberOrdinal = *backing;
                 result.receiverTypeKey = thisTypeKey;
                 result.receiverTypeOrdinal = accessingTypeOrdinal;
@@ -9395,6 +9554,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
             (!field.isReadonly || readonlyOnThis);
         result.addressable = !field.isBitField;
         result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
+        result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
         result.receiverSyntax = typeReceiver ? nullptr : expression->first();
         result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
         result.receiverTypeOrdinal = typeReceiver ? std::nullopt : receiverType;
@@ -9452,6 +9612,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
                 result.valid = true;
                 result.assignable = true;
                 result.addressable = true;
+                result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
                 result.assignmentMemberOrdinal = *backing;
                 result.receiverSyntax = expression->first();
                 result.receiverTypeKey = receiver.typeKey;
@@ -9745,7 +9906,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                     arguments[argumentOrdinal].typeKey,
                     conversionTarget,
                     arguments[argumentOrdinal].integerConstant);
-                if (!conversion.exists() || parameter.passKind != arguments[argumentOrdinal].argumentPassKind)
+                const bool discardsPointeeConst = !packElement &&
+                    arguments[argumentOrdinal].pointerPointeeReadonly &&
+                    ProjectTypeConversion::isPointer(parameter.typeKey) &&
+                    !parameter.pointerPointeeReadonly;
+                if (!conversion.exists() || discardsPointeeConst ||
+                    parameter.passKind != arguments[argumentOrdinal].argumentPassKind)
                 {
                     evaluated.viable = false;
                 }
@@ -9884,6 +10050,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     }
     call.resultTypeKey = callable.declaredTypeKey;
     result.typeKey = callable.declaredTypeKey;
+    result.pointerPointeeReadonly = callable.declaredPointerPointeeReadonly;
     result.valid = true;
     result.assignable = callable.isReferenceReturn;
     result.addressable = callable.isReferenceReturn;
@@ -10588,7 +10755,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     resolvedArguments[argumentOrdinal].typeKey,
                     conversionTarget,
                     resolvedArguments[argumentOrdinal].integerConstant);
-                if (!conversion.exists())
+                const MethodParameterSymbol& parameter =
+                    candidate.parameters[parameterOrdinal];
+                const bool discardsPointeeConst = !packElement &&
+                    resolvedArguments[argumentOrdinal].pointerPointeeReadonly &&
+                    ProjectTypeConversion::isPointer(parameter.typeKey) &&
+                    !parameter.pointerPointeeReadonly;
+                if (!conversion.exists() || discardsPointeeConst)
                 {
                     candidateBinding.viable = false;
                 }
@@ -10970,6 +11143,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             call.selectedDefaultArgumentParameterOrdinals.push_back(parameterOrdinal);
         }
         call.resultTypeKey = selectedMember.declaredTypeKey;
+        result.pointerPointeeReadonly = selectedMember.declaredPointerPointeeReadonly;
         result.ownership = selectedMember.declaredOwnership;
         if (selectedMember.declaredOwnership != sema::OwnershipKind::None)
         {
@@ -13049,8 +13223,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
             definiteAssignmentWriteTarget_ = expression->first();
         }
     }
+    const bool previousAddressFormation = formingAddressOperand_;
+    if (expression->tokenKind() == TokenKind::Amp) formingAddressOperand_ = true;
     ExpressionResult operand = analyzeExpression(
         expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+    formingAddressOperand_ = previousAddressFormation;
     definiteAssignmentWriteTarget_ = previousWriteTarget;
     if (rawUnassignedAddressLocal.has_value())
     {
@@ -13165,17 +13342,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
 
     if (operation == TokenKind::Amp)
     {
-        if (!operand.addressable || !operand.assignable)
+        if (!operand.addressable)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidAddressOf,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
-                "operand of & must be mutable addressable storage; bit fields have no address");
+                "operand of & must be addressable storage; bit fields and temporary values have no address");
             return result;
         }
         result.typeKey = operand.typeKey + '*';
         result.valid = true;
+        result.pointerPointeeReadonly = !operand.assignable || operand.readonlyReceiver;
+        result.onePastEndPointer = operand.onePastEndAddress;
         // C4: `f(ref x)` parses as the address-of expression the callee's pointer parameter
         // expects, carrying the keyword the programmer wrote so the call can be checked against
         // the signature. An `out` argument is the one case that does NOT require the operand to
@@ -13214,10 +13393,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
                     : "operand of * must be a non-void pointer");
             return result;
         }
+        if (operand.onePastEndPointer)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidDereference,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "a one-past-end pointer is a comparison/iteration sentinel and cannot be dereferenced");
+            return result;
+        }
         result.typeKey = operand.typeKey.substr(0, operand.typeKey.size() - 1);
         result.valid = true;
-        result.assignable = true;
+        result.assignable = !operand.pointerPointeeReadonly;
         result.addressable = true;
+        result.readonlyReceiver = operand.pointerPointeeReadonly;
         return result;
     }
 
@@ -13781,6 +13970,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
                     return result;
                 }
                 result.typeKey = pointerTypeKey;
+                const ExpressionResult& sourcePointer = leftIsPointer ? left : right;
+                result.pointerPointeeReadonly = sourcePointer.pointerPointeeReadonly;
+                result.onePastEndPointer = sourcePointer.onePastEndPointer;
             }
 
             MethodCoreBinding binding;
@@ -14511,6 +14703,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             "a variable-length array is storage, not a reassignable pointer");
         return {};
     }
+    if (assignmentTargetLocal.has_value() &&
+        ProjectTypeConversion::isPointer(locals_[*assignmentTargetLocal].typeKey))
+    {
+        if (right.pointerPointeeReadonly &&
+            !locals_[*assignmentTargetLocal].pointerPointeeReadonly)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->second()->range(),
+                "assignment would discard pointer pointee constness; use a 'T const*' destination or const_cast explicitly");
+            return {};
+        }
+        // Qualifier/provenance joins are MAY properties. Once any reachable assignment can make
+        // a pointer readonly or one-past, later dereference must remain conservative.
+        locals_[*assignmentTargetLocal].onePastEndPointer =
+            locals_[*assignmentTargetLocal].onePastEndPointer || right.onePastEndPointer;
+    }
     const std::optional<std::size_t> assignedVlaRoot =
         variableArrayRootLocalOfExpression(expression->second(), scopeOrdinal);
     if (assignedVlaRoot.has_value())
@@ -15207,6 +15417,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                 expression->range(),
                 "cannot implicitly convert assignment RHS from '" + right.typeKey + "' to '" +
                     left.typeKey + "'");
+            return {};
+        }
+        if (right.pointerPointeeReadonly &&
+            ProjectTypeConversion::isPointer(left.typeKey) &&
+            !left.pointerPointeeReadonly)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->second()->range(),
+                "assignment would discard pointer pointee constness; use a 'T const*' destination or const_cast explicitly");
             return {};
         }
         if (raiiTargetLocal.has_value())
@@ -17081,6 +17302,7 @@ void ProjectMethodBodyModel::recordExpressionType(
     binding.scopeOrdinal = scopeOrdinal;
     binding.typeKey = result.typeKey;
     binding.integerConstant = result.integerConstant;
+    binding.pointerPointeeReadonly = result.pointerPointeeReadonly;
     binding.ownership = result.ownership;
     binding.ownershipTransfer = result.ownershipTransfer;
     binding.ownershipFreshOwner = result.ownershipFreshOwner;

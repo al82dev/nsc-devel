@@ -7795,7 +7795,10 @@ private:
                 if (!node->localOrdinal.has_value()) return failValue(error, "local value missing ordinal");
                 LLVMValueRef address = localStorage_[*node->localOrdinal];
                 LLVMTypeRef type = llvmType(node->typeKey, error);
-                return type != nullptr && address != nullptr ? LLVMBuildLoad2(builder_, type, address, "local.load") : nullptr;
+                if (type == nullptr || address == nullptr) return nullptr;
+                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "local.load");
+                if (node->volatileAccess) LLVMSetVolatile(load, 1);
+                return load;
             }
             case frontend::ProjectOopMirNodeKind::FieldLoad:
             {

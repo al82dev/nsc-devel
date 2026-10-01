@@ -305,6 +305,8 @@ bool ProjectNamespaceFunctionModel::build(
             parameter.passKind = parameterPassKind(*parameterNode);
             parameter.typeSyntax = parameterNode->typeSyntax();
             parameter.typeKey = memberModel.canonicalTypeKey(parameter.typeSyntax, nameLookup);
+            parameter.pointerPointeeReadonly = parameter.typeSyntax != nullptr &&
+                parameter.typeSyntax->isPointeeConst();
             parameter.ownership = ownershipKindFromSyntax(parameter.typeSyntax);
             parameter.fileId = declaration.fileId;
             parameter.range = parameterNode->range();

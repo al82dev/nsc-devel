@@ -1,0 +1,1 @@
+namespace T42Negative { class Program { static int* Leak(int const* source) { return source; } } }

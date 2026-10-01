@@ -1,0 +1,1 @@
+namespace T42Negative { static int value; }

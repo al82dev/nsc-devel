@@ -1,0 +1,1 @@
+namespace T42Negative { class Program { static int Main() { int[2] values; int* end = &values[2]; return *end; } } }
