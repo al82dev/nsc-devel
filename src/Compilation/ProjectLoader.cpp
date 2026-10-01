@@ -809,15 +809,24 @@ std::optional<Project> ProjectLoader::load(
     const auto resolveLibraryReferencePath = [&](std::string_view text)
     {
         const std::filesystem::path path{std::string(text)};
-        const std::optional<std::filesystem::path>& referenceRoot =
+        const std::optional<std::filesystem::path>& explicitRoot =
             options.libraryReferenceRoot.has_value()
                 ? options.libraryReferenceRoot
                 : descriptor.buildSettings.libraryReferenceRoot;
-        if (path.is_absolute() || !referenceRoot.has_value())
+        if (path.is_absolute())
         {
             return projectDirectory / path;
         }
-        return resolveProjectPath(projectDirectory, *referenceRoot) / path;
+        if (explicitRoot.has_value())
+        {
+            return resolveProjectPath(projectDirectory, *explicitRoot) / path;
+        }
+
+        const std::filesystem::path local = projectDirectory / path;
+        if (!options.libraryReferenceFallbackRoot.has_value()) return local;
+        std::error_code existenceError;
+        if (std::filesystem::is_regular_file(local, existenceError)) return local;
+        return *options.libraryReferenceFallbackRoot / path;
     };
     for (const LibraryReferenceDescriptor& descriptorReference : descriptor.libraryReferences)
     {

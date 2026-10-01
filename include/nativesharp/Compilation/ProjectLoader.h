@@ -16,6 +16,11 @@ struct ProjectLoadOptions final
     // resolved from this directory instead of the directory that owns the
     // project file. Absolute paths keep their existing meaning.
     std::optional<std::filesystem::path> libraryReferenceRoot;
+
+    // Environment-provided package roots are fallbacks, not project rewrites. A relative
+    // LibraryReference that already exists beside its project keeps that local meaning; only a
+    // missing project-relative artifact is searched below this directory.
+    std::optional<std::filesystem::path> libraryReferenceFallbackRoot;
 };
 
 // Build defaults declared by the root .nsproj. The driver applies explicit

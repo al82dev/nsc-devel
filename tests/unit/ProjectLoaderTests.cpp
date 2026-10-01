@@ -343,6 +343,27 @@ void testLibraryReferenceRoot(TestContext& tests, const std::filesystem::path& r
         "Include, Metadata, and Runtime resolve from the selected root without rewriting the project");
     tests.expect(reference.libraryPath.string().find(o0.string()) == std::string::npos,
         "the selected O2 root cannot silently retain the O0 dependency path");
+
+    ProjectLoadOptions fallbackOptions;
+    fallbackOptions.libraryReferenceFallbackRoot = o2;
+    const auto fallbackProject = loader.load(app / "App.nsproj", fallbackOptions, error);
+    tests.expect(fallbackProject.has_value(),
+        "a fallback root supplies a dependency absent beside the project");
+    if (fallbackProject.has_value())
+        tests.expect(fallbackProject->libraryReferences()[0].libraryPath ==
+                std::filesystem::weakly_canonical(o2 / "dependencies" / "NativeMath.lib"),
+            "the fallback root supplies the missing relative dependency");
+
+    writeFile(app / "dependencies" / "NativeMath.lib", "local archive");
+    writeFile(app / "dependencies" / "NativeMath.nsmeta", "local metadata");
+    writeFile(app / "dependencies" / "NativeMath.dll", "local runtime");
+    const auto localProject = loader.load(app / "App.nsproj", fallbackOptions, error);
+    tests.expect(localProject.has_value(),
+        "a project-relative dependency remains valid when a fallback root is configured");
+    if (localProject.has_value())
+        tests.expect(localProject->libraryReferences()[0].libraryPath ==
+                std::filesystem::weakly_canonical(app / "dependencies" / "NativeMath.lib"),
+            "fallback roots never rebase an existing project-relative dependency");
 }
 
 void testBuildSettings(TestContext& tests, const std::filesystem::path& root)

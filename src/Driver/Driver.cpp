@@ -2622,6 +2622,12 @@ bool configurePrecompiledModules(
             if (loadOptions.libraryReferenceRoot.has_value() &&
                 foldedPathKey(*loadOptions.libraryReferenceRoot) != foldedPathKey(roots.front()))
                 roots.push_back(*loadOptions.libraryReferenceRoot);
+            if (loadOptions.libraryReferenceFallbackRoot.has_value() &&
+                std::ranges::none_of(roots, [&](const std::filesystem::path& root) {
+                    return foldedPathKey(root) ==
+                        foldedPathKey(*loadOptions.libraryReferenceFallbackRoot);
+                }))
+                roots.push_back(*loadOptions.libraryReferenceFallbackRoot);
 
             compilation::LibraryReference resolved;
             bool found = false;
@@ -3960,7 +3966,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             {
                 const std::filesystem::path root{environmentRoot};
                 if (root.is_absolute())
-                    executionScope.projectLoadOptions.libraryReferenceRoot =
+                    executionScope.projectLoadOptions.libraryReferenceFallbackRoot =
                         root.lexically_normal();
             }
             std::free(environmentRoot);
