@@ -17,14 +17,6 @@ constexpr std::array<ExpressionLoweringContract, 7> kContracts = {{
     {ExpressionFeature::WithExpressions, "with", true, true, false, true},
 }};
 
-std::string trim(std::string_view text)
-{
-    std::size_t begin = 0;
-    while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin]))) ++begin;
-    std::size_t end = text.size();
-    while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1]))) --end;
-    return std::string(text.substr(begin, end - begin));
-}
 }
 
 const ExpressionLoweringContract& expressionLoweringContract(ExpressionFeature feature) noexcept
@@ -91,7 +83,7 @@ bool parseStaticInterpolation(
     const auto flushLiteral = [&]
     {
         if (literal.empty()) return;
-        parts.push_back({InterpolationPartKind::Literal, std::move(literal), {}});
+        parts.push_back({InterpolationPartKind::Literal, std::move(literal), {}, 0, 0});
         literal.clear();
     };
 
@@ -173,7 +165,20 @@ bool parseStaticInterpolation(
         }
         const std::size_t expressionEnd =
             formatSeparator == std::string_view::npos ? cursor : formatSeparator;
-        std::string expression = trim(contents.substr(holeBegin, expressionEnd - holeBegin));
+        const std::string_view untrimmed = contents.substr(holeBegin, expressionEnd - holeBegin);
+        std::size_t leading = 0;
+        while (leading < untrimmed.size() &&
+               std::isspace(static_cast<unsigned char>(untrimmed[leading])))
+        {
+            ++leading;
+        }
+        std::size_t trailing = untrimmed.size();
+        while (trailing > leading &&
+               std::isspace(static_cast<unsigned char>(untrimmed[trailing - 1])))
+        {
+            --trailing;
+        }
+        std::string expression(untrimmed.substr(leading, trailing - leading));
         if (expression.empty())
         {
             error = "interpolation hole requires an expression";
@@ -183,7 +188,9 @@ bool parseStaticInterpolation(
         std::string format;
         if (formatSeparator != std::string_view::npos)
             format = std::string(contents.substr(formatSeparator + 1, cursor - formatSeparator - 1));
-        parts.push_back({InterpolationPartKind::Hole, std::move(expression), std::move(format)});
+        const std::size_t expressionLength = expression.size();
+        parts.push_back({InterpolationPartKind::Hole, std::move(expression), std::move(format),
+            holeBegin + leading, expressionLength});
         ++cursor;
     }
     flushLiteral();

@@ -123,9 +123,19 @@ int Main()
     tests.expect(mainFunction != nullptr && mainFunction->first()->children().size() >= 10,
         "Main body contains parsed statements");
 
-    frontend::FrontendCompilation invalidBraces;
-    const bool bracesOk = invalidBraces.compileBuffer("bad_braces.ns", "int Main() { if (true) return 0; }");
-    tests.expect(!bracesOk, "if body without braces is rejected by parser");
+    frontend::FrontendCompilation embeddedIf;
+    const bool embeddedIfOk = embeddedIf.compileBuffer(
+        "embedded_if.ns",
+        "int Main() { if (true) return 0; else return 1; }");
+    tests.expect(embeddedIfOk && !embeddedIf.diagnostics().hasErrors(),
+        "if and else accept one embedded statement without braces");
+
+    frontend::FrontendCompilation embeddedDeclaration;
+    const bool embeddedDeclarationOk = embeddedDeclaration.compileBuffer(
+        "embedded_declaration.ns",
+        "int Main() { if (true) int value = 1; return 0; }");
+    tests.expect(!embeddedDeclarationOk,
+        "a declaration used as an if body still requires an explicit block");
 
     frontend::FrontendCompilation declarationAmbiguity;
     const bool ambiguityOk = declarationAmbiguity.compileBuffer(

@@ -6925,7 +6925,8 @@ private:
         const std::size_t cleanupDepthAtEntry = activeCleanupRegions_.size();
         if (node->children[0] != nullptr)
         {
-            if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration)
+            if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration ||
+                node->children[0]->kind == frontend::ProjectOopMirNodeKind::Block)
             {
                 if (!lowerStatement(node->children[0].get(), error)) return false;
                 if (node->children[0]->cleanupRegionOrdinal.has_value())
@@ -6955,7 +6956,17 @@ private:
         if (!bodyOk) return false;
 
         LLVMPositionBuilderAtEnd(builder_, incBlock);
-        if (node->children[2] != nullptr && lowerExpression(node->children[2].get(), error) == nullptr) return false;
+        if (node->children[2] != nullptr)
+        {
+            if (node->children[2]->kind == frontend::ProjectOopMirNodeKind::Block)
+            {
+                if (!lowerStatement(node->children[2].get(), error)) return false;
+            }
+            else if (lowerExpression(node->children[2].get(), error) == nullptr)
+            {
+                return false;
+            }
+        }
         if (!terminated()) LLVMBuildBr(builder_, condBlock);
         LLVMPositionBuilderAtEnd(builder_, endBlock);
         if (!terminated())

@@ -750,7 +750,8 @@ bool ProjectCompilation::compileProjectConstructions(
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "construction");
     constructionModel_ = std::make_unique<ProjectConstructionModel>();
     return constructionModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_, units_, diagnostics_);
+        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
+        *namespaceFunctionModel_, units_, diagnostics_);
 }
 
 bool ProjectCompilation::compileProjectObjectLayouts(

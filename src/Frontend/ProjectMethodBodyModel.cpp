@@ -4355,6 +4355,15 @@ void ProjectMethodBodyModel::analyzeFor(
         {
             analyzeVariable(statement->first(), methodMemberOrdinal, forScope, diagnostics);
         }
+        else if (statement->first()->kind() == ast::AstNodeKind::BlockStatement)
+        {
+            for (const ast::AstNode* expressionStatement : statement->first()->children())
+            {
+                if (expressionStatement != nullptr && expressionStatement->first() != nullptr)
+                    analyzeExpression(
+                        expressionStatement->first(), methodMemberOrdinal, forScope, diagnostics);
+            }
+        }
         else
         {
             analyzeExpression(statement->first(), methodMemberOrdinal, forScope, diagnostics);
@@ -4411,7 +4420,19 @@ void ProjectMethodBodyModel::analyzeFor(
     if (backEdgeState.reachable && statement->third() != nullptr)
     {
         restoreOwnershipFlow(backEdgeState);
-        analyzeExpression(statement->third(), methodMemberOrdinal, forScope, diagnostics);
+        if (statement->third()->kind() == ast::AstNodeKind::BlockStatement)
+        {
+            for (const ast::AstNode* expressionStatement : statement->third()->children())
+            {
+                if (expressionStatement != nullptr && expressionStatement->first() != nullptr)
+                    analyzeExpression(
+                        expressionStatement->first(), methodMemberOrdinal, forScope, diagnostics);
+            }
+        }
+        else
+        {
+            analyzeExpression(statement->third(), methodMemberOrdinal, forScope, diagnostics);
+        }
         backEdgeState = captureOwnershipFlow();
     }
 
@@ -10060,7 +10081,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         if (declaringName == "NativeSharp.Core.String")
         {
             return candidate.name == "Copy" || candidate.name == "Concat" ||
-                candidate.name == "Equals" || candidate.name == "Substring";
+                candidate.name == "Equals" || candidate.name == "Substring" ||
+                candidate.name == "ZFill";
         }
         return declaringName == "NativeSharp.Core.Console" &&
             (candidate.name == "WriteLine" || candidate.name == "Write" ||

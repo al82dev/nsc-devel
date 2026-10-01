@@ -97,6 +97,7 @@ int Demo(int* left, int* right, int[] items, Box value)
     int[] cut = items[1..^1];
     Box changed = value with { Value = 7 };
     Box initialized = { Value = 1, ..value };
+    string folded = $"constant={42:D}";
     string text = $"last={last:D}";
     Consume(values: cut);
     return chosen?.Value;
@@ -119,8 +120,9 @@ int Demo(int* left, int* right, int[] items, Box value)
         "range and from-end syntax keep explicit AST nodes");
     tests.expect(tree.find("WithExpression") != std::string::npos &&
             tree.find("SpreadElementExpression") != std::string::npos &&
-            tree.find("InterpolatedStringExpression") != std::string::npos,
-        "with, spread and interpolation survive parsing");
+            tree.find("InterpolatedStringExpression") != std::string::npos &&
+            tree.find("aux=\"runtime-interpolation\"") != std::string::npos,
+        "with, spread, static interpolation, and runtime interpolation survive parsing");
     tests.expect(tree.find("aux=\"params\"") != std::string::npos &&
             tree.find("name=\"values\"") != std::string::npos,
         "typed packs and named arguments are present in the AST dump");

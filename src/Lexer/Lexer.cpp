@@ -737,8 +737,20 @@ Token Lexer::lexInterpolatedString(std::uint32_t begin)
         }
         if (current() == '\\')
         {
-            advance();
-            if (!decodeEscape(decoded, begin)) valid = false;
+            // Outside a hole this is an interpolated-string escape. Inside a hole it belongs
+            // to the embedded expression (most importantly to an embedded string/char literal)
+            // and must survive until that expression is lexed on its own by the parser.
+            if (braceDepth != 0)
+            {
+                decoded.push_back(advance());
+                if (!isAtEnd()) decoded.push_back(advance());
+                else valid = false;
+            }
+            else
+            {
+                advance();
+                if (!decodeEscape(decoded, begin)) valid = false;
+            }
             continue;
         }
         if (current() == '{')

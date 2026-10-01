@@ -300,18 +300,19 @@ void testInvalidTargetsAndBodies(TestContext& tests, const std::filesystem::path
     }
 
     {
-        const auto directory = root / "GlobalConstructionDeferred";
-        writeProject(directory, "GlobalConstructionDeferred");
+        const auto directory = root / "GlobalConstruction";
+        writeProject(directory, "GlobalConstruction");
         writeFile(directory / "Main.ns",
-            "class Box { } Box Make() { return new Box(); }\n");
+            "namespace Demo { class Box { } Box Make() { return new Box(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(
-            directory / "GlobalConstructionDeferred.nsproj", error);
-        tests.expect(!ok,
-            "Stage 28 rejects rather than silently ignores new C(args) in a global procedural function");
-        tests.expect(diagnosticCount(compilation, DiagnosticId::InvalidCall) == 1,
-            "unsupported global-function construction site receives an explicit Stage 28 boundary diagnostic");
+            directory / "GlobalConstruction.nsproj", error);
+        tests.expect(ok && compilation.constructionModel() != nullptr,
+            "NativeSharp 3.0 binds new C(args) in a namespace free function");
+        tests.expect(compilation.constructionModel() != nullptr &&
+                compilation.constructionModel()->constructions().size() == 1,
+            "namespace-function construction records the selected constructor plan");
     }
 
     {

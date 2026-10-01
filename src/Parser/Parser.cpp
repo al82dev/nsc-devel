@@ -2,10 +2,12 @@
 
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Lexer/Lexer.h"
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
+#include "nativesharp/Source/SourceFile.h"
 #include "nativesharp/Target/TargetInfo.h"
 
 #include <algorithm>
@@ -43,6 +45,33 @@ bool contains(std::span<const TokenKind> values, TokenKind kind) noexcept
         }
     }
     return false;
+}
+
+bool isStaticInterpolationHole(const language::InterpolationPart& part) noexcept
+{
+    if (part.kind != language::InterpolationPartKind::Hole) return true;
+    if (part.text == "true" || part.text == "false") return part.format.empty();
+
+    std::size_t cursor = 0;
+    const bool negative = !part.text.empty() && part.text.front() == '-';
+    if (negative) ++cursor;
+    if (cursor == part.text.size()) return false;
+    for (; cursor < part.text.size(); ++cursor)
+        if (!std::isdigit(static_cast<unsigned char>(part.text[cursor]))) return false;
+    if (part.format.empty()) return true;
+
+    const char mode = part.format.front();
+    if (mode != 'D' && mode != 'd' && mode != 'X' && mode != 'x') return false;
+    if (negative && (mode == 'X' || mode == 'x')) return false;
+    std::size_t width = 0;
+    for (std::size_t index = 1; index < part.format.size(); ++index)
+    {
+        const unsigned char byte = static_cast<unsigned char>(part.format[index]);
+        if (!std::isdigit(byte)) return false;
+        width = width * 10U + static_cast<std::size_t>(byte - '0');
+        if (width > 64U) return false;
+    }
+    return true;
 }
 
 bool isInvalidVoidObjectType(const ast::TypeSyntax* type) noexcept
@@ -6921,11 +6950,7 @@ ast::AstNode* Parser::parseIfStatement()
     expect(TokenKind::LeftParen, "'('");
     ast::AstNode* condition = parseExpression();
     expect(TokenKind::RightParen, "')'");
-    ast::AstNode* thenBlock = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
-    if (thenBlock == nullptr)
-    {
-        expect(TokenKind::LeftBrace, "'{' after if condition");
-    }
+    ast::AstNode* thenBlock = parseEmbeddedStatementBlock();
 
     ast::AstNode* elseNode = nullptr;
     if (consumeIf(TokenKind::KwElse))
@@ -6940,7 +6965,7 @@ ast::AstNode* Parser::parseIfStatement()
         }
         else
         {
-            expect(TokenKind::LeftBrace, "'{' or 'if' after else");
+            elseNode = parseEmbeddedStatementBlock();
         }
     }
 
@@ -6949,6 +6974,39 @@ ast::AstNode* Parser::parseIfStatement()
     node->setSecond(thenBlock);
     node->setThird(elseNode);
     return node;
+}
+
+ast::AstNode* Parser::parseEmbeddedStatementBlock()
+{
+    if (at(TokenKind::LeftBrace)) return parseBlock();
+
+    // In the embedded-statement grammar a lone semicolon is the empty statement. Represent it
+    // as the same empty block downstream already understands; this keeps flow, cleanup, ranges,
+    // and dangling-else handling identical without introducing a backend-only AST node.
+    if (at(TokenKind::Semicolon))
+    {
+        const SourceRange range = consume().range();
+        return arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
+    }
+
+    // T29 keeps every downstream invariant intact: the parser accepts one embedded statement,
+    // then gives semantic analysis/HIR the same BlockStatement shape produced by explicit braces.
+    // Nested `if` is parsed before it is wrapped, so its `else` binds to the nearest open `if`.
+    ast::AstNode* statement = parseStatement();
+    if (statement != nullptr &&
+        (statement->kind() == ast::AstNodeKind::VariableDeclarationStatement ||
+         statement->kind() == ast::AstNodeKind::DeconstructionDeclarationStatement))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->range(),
+            "a declaration used as an if or else body requires an explicit '{ ... }' block");
+    }
+    const SourceRange range = statement != nullptr ? statement->range() : current().range();
+    ast::AstNode* block = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
+    if (statement != nullptr) block->addChild(statement);
+    return block;
 }
 
 ast::AstNode* Parser::parseWhileStatement()
@@ -7316,6 +7374,24 @@ ast::AstNode* Parser::parseForStatement()
     consume();
     expect(TokenKind::LeftParen, "'('");
 
+    const auto parseExpressionList = [&]() -> ast::AstNode*
+    {
+        ast::AstNode* first = parseExpression();
+        if (!at(TokenKind::Comma)) return first;
+
+        ast::AstNode* sequence = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement,
+            first != nullptr ? first->range() : current().range());
+        if (first != nullptr) sequence->addChild(makeExpressionStatement(first));
+        while (consumeIf(TokenKind::Comma))
+        {
+            ast::AstNode* expression = parseExpression();
+            if (expression != nullptr) sequence->addChild(makeExpressionStatement(expression));
+        }
+        sequence->setRange(tokenRangeFrom(beginIndex));
+        return sequence;
+    };
+
     ast::AstNode* initializer = nullptr;
     if (!at(TokenKind::Semicolon))
     {
@@ -7325,7 +7401,7 @@ ast::AstNode* Parser::parseForStatement()
         }
         else
         {
-            initializer = parseExpression();
+            initializer = parseExpressionList();
         }
     }
     expect(TokenKind::Semicolon, "';'");
@@ -7340,7 +7416,7 @@ ast::AstNode* Parser::parseForStatement()
     ast::AstNode* increment = nullptr;
     if (!at(TokenKind::RightParen))
     {
-        increment = parseExpression();
+        increment = parseExpressionList();
     }
     expect(TokenKind::RightParen, "')'");
 
@@ -9013,8 +9089,155 @@ ast::AstNode* Parser::parsePrimaryExpression()
                     diagnostics::DiagnosticSeverity::Error,
                     token.range(),
                     std::move(error));
+                node->setIntegerValue(0);
+                return node;
             }
             node->setIntegerValue(parts.size());
+
+            const bool fullyStatic = std::ranges::all_of(parts, isStaticInterpolationHole);
+            if (fullyStatic) return node;
+
+            // Runtime interpolation is syntax sugar over the existing NativeSharp.Core.String
+            // formatting surface and ordinary string concatenation. Each hole is parsed as a
+            // real expression exactly once, and the left-associated concat tree freezes textual
+            // evaluation order. Starting with an empty literal is intentional: even a single
+            // runtime hole reaches StringConcat, so `noheap` observes the allocation instead of
+            // accidentally accepting a formatting call whose transitive body allocates.
+            std::vector<std::string> knownTypes;
+            knownTypes.reserve(knownTypeNames_.size());
+            for (const std::string& name : knownTypeNames_) knownTypes.push_back(name);
+
+            const auto makeStringLiteral = [&](std::string value) -> ast::AstNode*
+            {
+                ast::AstNode* literal = arena_.make<ast::AstNode>(
+                    ast::AstNodeKind::StringLiteralExpression, token.range());
+                literal->setTokenKind(TokenKind::StringLiteral);
+                literal->setText(std::move(value));
+                return literal;
+            };
+            const auto makeBooleanLiteral = [&](bool value) -> ast::AstNode*
+            {
+                ast::AstNode* literal = arena_.make<ast::AstNode>(
+                    ast::AstNodeKind::BooleanLiteralExpression, token.range());
+                literal->setTokenKind(value ? TokenKind::KwTrue : TokenKind::KwFalse);
+                literal->setIntegerValue(value ? 1U : 0U);
+                return literal;
+            };
+            const auto makeStringCall = [&](std::string method,
+                                            std::vector<ast::AstNode*> arguments) -> ast::AstNode*
+            {
+                ast::AstNode* receiver = makeIdentifierExpression(token.range(), "String");
+                ast::AstNode* member = makeMemberExpression(receiver, std::move(method));
+                ast::AstNode* call = arena_.make<ast::AstNode>(
+                    ast::AstNodeKind::CallExpression, token.range());
+                call->setFirst(member);
+                call->setAuxiliaryText("runtime-interpolation");
+                for (ast::AstNode* argument : arguments) call->addChild(argument);
+                return call;
+            };
+            const auto parseWidth = [](std::string_view format) -> std::optional<std::uint64_t>
+            {
+                std::uint64_t value = 0;
+                for (std::size_t index = 1; index < format.size(); ++index)
+                {
+                    const unsigned char byte = static_cast<unsigned char>(format[index]);
+                    if (!std::isdigit(byte)) return std::nullopt;
+                    value = value * 10U + static_cast<std::uint64_t>(byte - '0');
+                    if (value > 64U) return std::nullopt;
+                }
+                return value;
+            };
+
+            ast::AstNode* result = makeStringLiteral("");
+            for (const language::InterpolationPart& part : parts)
+            {
+                ast::AstNode* piece = nullptr;
+                if (part.kind == language::InterpolationPartKind::Literal)
+                {
+                    if (part.text.empty()) continue;
+                    piece = makeStringLiteral(part.text);
+                }
+                else
+                {
+                    const std::uint32_t tokenOffset = token.range().begin().offset();
+                    const std::uint64_t requestedOffset =
+                        static_cast<std::uint64_t>(tokenOffset) + 2U + part.expressionOffset;
+                    const std::size_t prefix = requestedOffset <=
+                            static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max())
+                        ? static_cast<std::size_t>(requestedOffset)
+                        : static_cast<std::size_t>(tokenOffset);
+                    std::string fragment(prefix, ' ');
+                    fragment += part.text;
+                    source::SourceFile fragmentSource(
+                        token.range().begin().fileId(), "<runtime-interpolation>", std::move(fragment));
+                    lexer::Lexer fragmentLexer(fragmentSource, diagnostics_);
+                    const std::vector<lexer::Token> fragmentTokens = fragmentLexer.lexAll();
+                    Parser fragmentParser(
+                        fragmentTokens, arena_, diagnostics_, knownTypes, languageEdition_);
+                    ast::AstNode* hole = fragmentParser.parseExpression();
+                    if (!fragmentParser.at(TokenKind::EndOfFile))
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::ExpectedExpression,
+                            diagnostics::DiagnosticSeverity::Error,
+                            token.range(),
+                            "interpolation hole must contain exactly one expression");
+                    }
+                    if (hole == nullptr) hole = makeErrorExpression();
+
+                    if (part.format.empty())
+                    {
+                        piece = makeStringCall("ToString", {hole});
+                    }
+                    else
+                    {
+                        const char mode = part.format.front();
+                        const std::optional<std::uint64_t> width = parseWidth(part.format);
+                        if (!width.has_value() ||
+                            (mode != 'D' && mode != 'd' && mode != 'X' && mode != 'x' &&
+                             mode != 'F' && mode != 'f' && mode != 'G' && mode != 'g') ||
+                            ((mode == 'G' || mode == 'g') && part.format.size() != 1))
+                        {
+                            diagnostics_.report(
+                                diagnostics::DiagnosticId::InvalidStringLiteral,
+                                diagnostics::DiagnosticSeverity::Error,
+                                token.range(),
+                                "runtime interpolation format must be D or X with optional width, F with optional precision, or G without precision; numeric arguments are limited to 64");
+                            piece = makeStringCall("ToString", {hole});
+                        }
+                        else if (mode == 'F' || mode == 'f')
+                        {
+                            const std::uint64_t precision = part.format.size() == 1 ? 2U : *width;
+                            piece = makeStringCall("ToStringFixed", {
+                                hole, makeIntegerLiteralExpression(token.range(), precision)});
+                        }
+                        else if (mode == 'G' || mode == 'g')
+                        {
+                            piece = makeStringCall("ToString", {hole});
+                        }
+                        else if (mode == 'X' || mode == 'x')
+                        {
+                            piece = makeStringCall("ToHexString", {
+                                hole,
+                                makeIntegerLiteralExpression(token.range(), *width),
+                                makeBooleanLiteral(mode == 'X')});
+                        }
+                        else
+                        {
+                            piece = makeStringCall("ToString", {hole});
+                            if (*width != 0)
+                            {
+                                piece = makeStringCall("ZFill", {
+                                    piece,
+                                    makeIntegerLiteralExpression(token.range(), *width)});
+                            }
+                        }
+                    }
+                }
+                result = makeBinaryExpression(TokenKind::Plus, result, piece);
+                result->setRange(token.range());
+            }
+            return result;
         }
     }
 

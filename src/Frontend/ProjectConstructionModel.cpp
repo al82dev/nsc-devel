@@ -134,6 +134,7 @@ bool ProjectConstructionModel::build(
     const ProjectInheritanceModel& inheritanceModel,
     const ProjectInterfaceModel& interfaceModel,
     const ProjectMethodBodyModel& methodBodyModel,
+    const ProjectNamespaceFunctionModel& namespaceFunctionModel,
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
     diagnostics::DiagnosticEngine& diagnostics)
 {
@@ -158,6 +159,7 @@ bool ProjectConstructionModel::build(
     inheritanceModel_ = &inheritanceModel;
     interfaceModel_ = &interfaceModel;
     methodBodyModel_ = &methodBodyModel;
+    namespaceFunctionModel_ = &namespaceFunctionModel;
     initializerBindingByMember_.resize(memberModel.members().size());
     implicitDefaultBindingByType_.resize(nameLookup.namedTypes().size());
 
@@ -214,6 +216,24 @@ bool ProjectConstructionModel::build(
             }
         }
         scanNode(member.syntax->first(), memberOrdinal, diagnostics);
+    }
+
+    // T29. Namespace functions already use synthetic callable ordinals in MethodBodyModel and
+    // OOP HIR. Bind their construction expressions with that same identity instead of rejecting
+    // them during the whole-tree unsupported-context scan.
+    const std::size_t namespaceCallableBase = memberModel.members().size();
+    for (std::size_t functionOrdinal = 0;
+         functionOrdinal < namespaceFunctionModel.functions().size(); ++functionOrdinal)
+    {
+        const NamespaceFunctionSymbol& function = namespaceFunctionModel.functions()[functionOrdinal];
+        if (function.definitionSyntax == nullptr || function.definitionSyntax->first() == nullptr)
+        {
+            continue;
+        }
+        scanNode(
+            function.definitionSyntax->first(),
+            namespaceCallableBase + functionOrdinal,
+            diagnostics);
     }
 
     built_ = true;
@@ -277,7 +297,8 @@ void ProjectConstructionModel::scanUnsupportedContexts(
     }
     if (node->kind() == ast::AstNodeKind::MethodDeclaration ||
         node->kind() == ast::AstNodeKind::ConstructorDeclaration ||
-        node->kind() == ast::AstNodeKind::FieldDeclaration)
+        node->kind() == ast::AstNodeKind::FieldDeclaration ||
+        node->kind() == ast::AstNodeKind::FunctionDeclaration)
     {
         return;
     }
@@ -1471,14 +1492,46 @@ bool ProjectConstructionModel::constructorAccessible(
     std::size_t callerMemberOrdinal,
     bool baseInitializer) const noexcept
 {
-    if (memberModel_ == nullptr || callerMemberOrdinal >= memberModel_->members().size())
+    if (memberModel_ == nullptr)
     {
         return false;
+    }
+    if (callerMemberOrdinal >= memberModel_->members().size())
+    {
+        if (namespaceFunctionModel_ == nullptr) return false;
+        const std::size_t functionOrdinal = callerMemberOrdinal - memberModel_->members().size();
+        if (functionOrdinal >= namespaceFunctionModel_->functions().size()) return false;
+        return constructorAccessibleFromProject(
+            constructor,
+            namespaceFunctionModel_->functions()[functionOrdinal].projectOrdinal);
     }
     return constructorAccessibleFromType(
         constructor,
         memberModel_->members()[callerMemberOrdinal].declaringTypeOrdinal,
         baseInitializer);
+}
+
+bool ProjectConstructionModel::constructorAccessibleFromProject(
+    const ClassMemberSymbol& constructor,
+    std::size_t callerProjectOrdinal) const noexcept
+{
+    if (nameLookup_ == nullptr ||
+        constructor.declaringTypeOrdinal >= nameLookup_->namedTypes().size())
+    {
+        return false;
+    }
+    switch (constructor.accessibility)
+    {
+        case ClassMemberAccessibility::Public:
+            return true;
+        case ClassMemberAccessibility::Internal:
+            return nameLookup_->namedTypes()[constructor.declaringTypeOrdinal].projectOrdinal ==
+                callerProjectOrdinal;
+        case ClassMemberAccessibility::Private:
+        case ClassMemberAccessibility::Protected:
+            return false;
+    }
+    return false;
 }
 
 bool ProjectConstructionModel::constructorAccessibleFromType(
@@ -1517,14 +1570,36 @@ bool ProjectConstructionModel::implicitDefaultAccessible(
     std::size_t callerMemberOrdinal,
     bool baseInitializer) const noexcept
 {
-    if (memberModel_ == nullptr || callerMemberOrdinal >= memberModel_->members().size())
+    if (memberModel_ == nullptr)
     {
         return false;
+    }
+    if (callerMemberOrdinal >= memberModel_->members().size())
+    {
+        if (namespaceFunctionModel_ == nullptr) return false;
+        const std::size_t functionOrdinal = callerMemberOrdinal - memberModel_->members().size();
+        if (functionOrdinal >= namespaceFunctionModel_->functions().size()) return false;
+        return implicitDefaultAccessibleFromProject(
+            targetTypeOrdinal,
+            namespaceFunctionModel_->functions()[functionOrdinal].projectOrdinal);
     }
     return implicitDefaultAccessibleFromType(
         targetTypeOrdinal,
         memberModel_->members()[callerMemberOrdinal].declaringTypeOrdinal,
         baseInitializer);
+}
+
+bool ProjectConstructionModel::implicitDefaultAccessibleFromProject(
+    std::size_t targetTypeOrdinal,
+    std::size_t callerProjectOrdinal) const noexcept
+{
+    if (nameLookup_ == nullptr || targetTypeOrdinal >= nameLookup_->namedTypes().size())
+    {
+        return false;
+    }
+    const NamedTypeDeclaration& target = nameLookup_->namedTypes()[targetTypeOrdinal];
+    return target.accessibility == NamedTypeAccessibility::Public ||
+        target.projectOrdinal == callerProjectOrdinal;
 }
 
 bool ProjectConstructionModel::implicitDefaultAccessibleFromType(

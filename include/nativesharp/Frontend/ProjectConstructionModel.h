@@ -6,6 +6,7 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 
@@ -179,6 +180,7 @@ public:
         const ProjectInheritanceModel& inheritanceModel,
         const ProjectInterfaceModel& interfaceModel,
         const ProjectMethodBodyModel& methodBodyModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel,
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics);
 
@@ -235,6 +237,9 @@ private:
         const ClassMemberSymbol& constructor,
         std::size_t callerTypeOrdinal,
         bool baseInitializer) const noexcept;
+    bool constructorAccessibleFromProject(
+        const ClassMemberSymbol& constructor,
+        std::size_t callerProjectOrdinal) const noexcept;
     bool implicitDefaultAccessible(
         std::size_t targetTypeOrdinal,
         std::size_t callerMemberOrdinal,
@@ -243,6 +248,9 @@ private:
         std::size_t targetTypeOrdinal,
         std::size_t callerTypeOrdinal,
         bool baseInitializer) const noexcept;
+    bool implicitDefaultAccessibleFromProject(
+        std::size_t targetTypeOrdinal,
+        std::size_t callerProjectOrdinal) const noexcept;
     bool betterCandidate(
         const ConstructorCandidateBinding& left,
         const ConstructorCandidateBinding& right) const noexcept;
@@ -252,6 +260,7 @@ private:
     const ProjectInheritanceModel* inheritanceModel_ = nullptr;
     const ProjectInterfaceModel* interfaceModel_ = nullptr;
     const ProjectMethodBodyModel* methodBodyModel_ = nullptr;
+    const ProjectNamespaceFunctionModel* namespaceFunctionModel_ = nullptr;
     std::vector<ObjectConstructionBinding> constructions_;
     std::vector<ConstructorInitializerBinding> constructorInitializerBindings_;
     std::vector<std::optional<std::size_t>> initializerBindingByMember_;

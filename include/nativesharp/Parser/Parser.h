@@ -225,6 +225,7 @@ private:
     ast::AstNode* parseVariableDeclaration(bool expectSemicolon);
     // C7 "aggregate initializer": the braced right-hand side of a declaration.
     ast::AstNode* parseAggregateInitializer();
+    ast::AstNode* parseEmbeddedStatementBlock();
     ast::AstNode* parseIfStatement();
     ast::AstNode* parseWhileStatement();
     ast::AstNode* parseDoWhileStatement();

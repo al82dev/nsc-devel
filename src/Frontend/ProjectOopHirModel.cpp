@@ -2883,9 +2883,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             const std::size_t cleanupDepthAtEntry = activeHirCleanupRegions_.size();
             if (statement->first() != nullptr)
             {
-                std::unique_ptr<ProjectOopHirNode> init = statement->first()->kind() == ast::AstNodeKind::VariableDeclarationStatement
-                    ? lowerStatement(statement->first(), memberOrdinal, error)
-                    : lowerExpression(statement->first(), memberOrdinal, false, error);
+                std::unique_ptr<ProjectOopHirNode> init;
+                if (statement->first()->kind() == ast::AstNodeKind::BlockStatement)
+                    init = lowerBlock(statement->first(), memberOrdinal, error);
+                else if (statement->first()->kind() == ast::AstNodeKind::VariableDeclarationStatement)
+                    init = lowerStatement(statement->first(), memberOrdinal, error);
+                else
+                    init = lowerExpression(statement->first(), memberOrdinal, false, error);
                 if (init == nullptr)
                 {
                     activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
@@ -2918,7 +2922,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             }
             if (statement->third() != nullptr)
             {
-                auto increment = lowerExpression(statement->third(), memberOrdinal, false, error);
+                std::unique_ptr<ProjectOopHirNode> increment =
+                    statement->third()->kind() == ast::AstNodeKind::BlockStatement
+                        ? lowerBlock(statement->third(), memberOrdinal, error)
+                        : lowerExpression(statement->third(), memberOrdinal, false, error);
                 if (increment == nullptr)
                 {
                     activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
@@ -3767,22 +3774,37 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 // which is exactly how `*p` already behaves for an explicit pointer parameter.
                 // Nothing new reaches MIR or the backend: `ref`/`out`/`in` are rules on top of
                 // machinery C1 already certified, not a second calling convention.
-                const ClassMemberSymbol* owner =
-                    memberModel_ != nullptr && binding->methodMemberOrdinal < memberModel_->members().size()
-                        ? &memberModel_->members()[binding->methodMemberOrdinal]
-                        : nullptr;
-                const bool byReference = owner != nullptr && binding->parameterOrdinal.has_value() &&
-                    *binding->parameterOrdinal < owner->parameters.size() &&
-                    owner->parameters[*binding->parameterOrdinal].passKind != ParameterPassKind::Value;
-                if (byReference)
+                const MethodParameterSymbol* parameter = nullptr;
+                if (binding->parameterOrdinal.has_value() && memberModel_ != nullptr)
                 {
-                    const MethodParameterSymbol& parameter = owner->parameters[*binding->parameterOrdinal];
+                    if (binding->methodMemberOrdinal < memberModel_->members().size())
+                    {
+                        const ClassMemberSymbol& owner =
+                            memberModel_->members()[binding->methodMemberOrdinal];
+                        if (*binding->parameterOrdinal < owner.parameters.size())
+                            parameter = &owner.parameters[*binding->parameterOrdinal];
+                    }
+                    else if (namespaceFunctionModel_ != nullptr)
+                    {
+                        const std::size_t functionOrdinal =
+                            binding->methodMemberOrdinal - memberModel_->members().size();
+                        if (functionOrdinal < namespaceFunctionModel_->functions().size())
+                        {
+                            const NamespaceFunctionSymbol& owner =
+                                namespaceFunctionModel_->functions()[functionOrdinal];
+                            if (*binding->parameterOrdinal < owner.parameters.size())
+                                parameter = &owner.parameters[*binding->parameterOrdinal];
+                        }
+                    }
+                }
+                if (parameter != nullptr && parameter->passKind != ParameterPassKind::Value)
+                {
                     auto pointer = makeNode(
-                        ProjectOopHirNodeKind::ParameterValue, expression, parameter.typeKey);
+                        ProjectOopHirNodeKind::ParameterValue, expression, parameter->typeKey);
                     pointer->parameterOrdinal = binding->parameterOrdinal;
                     if (addressContext) return pointer;
                     auto value = makeNode(
-                        ProjectOopHirNodeKind::PointerLoad, expression, parameter.pointeeTypeKey);
+                        ProjectOopHirNodeKind::PointerLoad, expression, parameter->pointeeTypeKey);
                     value->children.push_back(std::move(pointer));
                     return value;
                 }
