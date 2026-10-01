@@ -2618,6 +2618,22 @@ bool configurePrecompiledModules(
                     {parentOwner, std::filesystem::path{}, sourceProject->second});
                 continue;
             }
+            // A dependency may already be an explicit LibraryReference of this graph and may
+            // legitimately live in a sibling package directory. Module identity plus the frozen
+            // ABI fingerprint is the closure contract; do not require a second physical copy
+            // beside the parent metadata or under the global package root.
+            const auto loadedDependency = loadedByModule.find(dependency.moduleName);
+            if (loadedDependency != loadedByModule.end())
+            {
+                const LoadedPrecompiledMetadata& prior = loaded[loadedDependency->second];
+                if (prior.metadata.abiFingerprint != dependency.abiFingerprint)
+                {
+                    error = "binary closure ABI fingerprint mismatch for explicitly loaded module '" +
+                        dependency.moduleName + "' required by '" + parentModule + "'";
+                    return false;
+                }
+                continue;
+            }
             std::vector<std::filesystem::path> roots = {parentMetadataPath.parent_path()};
             if (loadOptions.libraryReferenceRoot.has_value() &&
                 foldedPathKey(*loadOptions.libraryReferenceRoot) != foldedPathKey(roots.front()))
