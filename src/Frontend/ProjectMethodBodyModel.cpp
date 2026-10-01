@@ -6731,6 +6731,34 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 mergeOwnership();
                 break;
             }
+            // `null` has no standalone runtime representation: in a conditional expression it
+            // is contextualized by the pointer/reference type of the opposite branch.  Reuse the
+            // ordinary implicit-conversion classifier so this accepts exactly the destinations
+            // to which null can already be assigned, rather than inventing a second type rule.
+            const auto adoptNullableBranch = [&](const ExpressionResult& nonNull)
+            {
+                result.typeKey = nonNull.typeKey;
+                result.valid = true;
+                result.ownership = nonNull.ownership;
+                result.ownershipTransfer = nonNull.ownershipTransfer;
+                result.ownershipSourceLocalOrdinal = nonNull.ownershipSourceLocalOrdinal;
+                result.ownershipSourceParameterOrdinal = nonNull.ownershipSourceParameterOrdinal;
+                result.borrowedLocalOrdinal = nonNull.borrowedLocalOrdinal;
+            };
+            if (whenTrue.typeKey == "builtin:null" &&
+                classifyImplicit(
+                    whenTrue.typeKey, whenFalse.typeKey, whenTrue.integerConstant).exists())
+            {
+                adoptNullableBranch(whenFalse);
+                break;
+            }
+            if (whenFalse.typeKey == "builtin:null" &&
+                classifyImplicit(
+                    whenFalse.typeKey, whenTrue.typeKey, whenFalse.integerConstant).exists())
+            {
+                adoptNullableBranch(whenTrue);
+                break;
+            }
             const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
                 whenTrue.typeKey, whenFalse.typeKey, whenTrue.integerConstant, whenFalse.integerConstant);
             if (common.has_value())
@@ -8596,6 +8624,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 "method group '" + expression->text() + "' can only be used as a call target");
         }
         return result;
+    }
+
+    // Class members deliberately win over namespace state, but an unqualified namespace
+    // constant/variable remains visible from a method after locals, parameters, fields,
+    // properties, events and methods have all had their normal precedence.
+    if (namespaceFunctionModel_ != nullptr)
+    {
+        if (const NamespaceStateReferenceBinding* stateReference =
+                namespaceFunctionModel_->stateReferenceBinding(expression);
+            stateReference != nullptr && !stateReference->qualified)
+        {
+            return analyzeNamespaceState(
+                expression, *stateReference, methodMemberOrdinal, scopeOrdinal, diagnostics);
+        }
     }
 
     diagnostics.report(

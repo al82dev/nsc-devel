@@ -1,0 +1,7 @@
+namespace T39Negative
+{
+    void Write(in int value)
+    {
+        value = 42;
+    }
+}

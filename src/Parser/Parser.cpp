@@ -47,6 +47,48 @@ bool contains(std::span<const TokenKind> values, TokenKind kind) noexcept
     return false;
 }
 
+// Generic parameter names are types only inside the declaration that introduces them.  The
+// statement lookahead intentionally consults knownTypeNames_ so it can distinguish `T value`
+// from an expression; keeping T globally would make an unrelated declaration in a later type
+// parse differently.  This guard installs only type parameters (never const parameters) and
+// removes exactly the names it inserted, preserving an equally named outer generic parameter.
+class KnownGenericTypeScope final
+{
+public:
+    KnownGenericTypeScope(
+        std::unordered_set<std::string>& knownTypeNames,
+        const ast::AstNode* declaration)
+        : knownTypeNames_(knownTypeNames)
+    {
+        if (declaration == nullptr) return;
+        for (const ast::GenericParameterSyntax& parameter :
+             declaration->genericParameterSyntaxes())
+        {
+            if (parameter.kind != ast::GenericParameterSyntaxKind::Type &&
+                parameter.kind != ast::GenericParameterSyntaxKind::TypePack)
+            {
+                continue;
+            }
+            if (knownTypeNames_.insert(parameter.name).second)
+            {
+                inserted_.push_back(parameter.name);
+            }
+        }
+    }
+
+    ~KnownGenericTypeScope()
+    {
+        for (const std::string& name : inserted_) knownTypeNames_.erase(name);
+    }
+
+    KnownGenericTypeScope(const KnownGenericTypeScope&) = delete;
+    KnownGenericTypeScope& operator=(const KnownGenericTypeScope&) = delete;
+
+private:
+    std::unordered_set<std::string>& knownTypeNames_;
+    std::vector<std::string> inserted_;
+};
+
 bool isStaticInterpolationHole(const language::InterpolationPart& part) noexcept
 {
     if (part.kind != language::InterpolationPartKind::Hole) return true;
@@ -505,7 +547,25 @@ bool Parser::looksLikeVariableDeclaration() const noexcept
         ++cursor;
     }
     std::size_t afterType = cursor;
-    if (!scanTypeAt(cursor, afterType)) return false;
+    if (!scanTypeAt(cursor, afterType))
+    {
+        // Preserve a type-shaped declaration even when its leading identifier is unknown.  The
+        // name-lookup phase can then issue the causal "unknown type name 'U'" diagnostic instead
+        // of the parser treating `U value;` as two adjacent expressions and reporting a stray
+        // semicolon.  This deliberately accepts only the unambiguous declaration prefix needed
+        // here: identifier, optional pointer/empty-array suffixes, then identifier.
+        if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Identifier)
+            return false;
+        ++cursor;
+        while (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Star) ++cursor;
+        while (cursor + 1U < tokens_.size() &&
+               tokens_[cursor].kind() == TokenKind::LeftBracket &&
+               tokens_[cursor + 1U].kind() == TokenKind::RightBracket)
+        {
+            cursor += 2U;
+        }
+        return cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier;
+    }
     cursor = afterType;
 
     return cursor < tokens_.size() &&
@@ -1501,7 +1561,13 @@ ast::AstNode* Parser::parseUsingDirective()
         // Item 276. An alias may bind type parameters exactly where a generic declaration does:
         // `using Buffer<T> = T*;`.  Keeping the parameters on the alias AST node lets the early
         // generic pass erase the alias before it computes specialization identities.
-        if (!parseGenericParameterList(node) || !expect(TokenKind::Equal, "'=' after using alias"))
+        if (!parseGenericParameterList(node))
+        {
+            synchronizeGlobal();
+            return nullptr;
+        }
+        KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
+        if (!expect(TokenKind::Equal, "'=' after using alias"))
         {
             synchronizeGlobal();
             return nullptr;
@@ -2252,6 +2318,7 @@ ast::AstNode* Parser::parseDelegateDeclaration()
     node->setTypeSyntax(returnType);
     node->setAuxiliaryText("delegate");
     parseGenericParameterList(node);
+    KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
 
     expect(TokenKind::LeftParen, "'('");
     if (!at(TokenKind::RightParen))
@@ -2319,6 +2386,7 @@ ast::AstNode* Parser::parseStructDeclaration(
         node->setAuxiliaryText(std::move(markers));
     }
     parseGenericParameterList(node);
+    KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
 
     // NativeSharp 3.0 T02-F05. A primary struct/record parameter list is deliberately
     // desugared here, before name binding, into the ordinary fields and constructor that every
@@ -2572,6 +2640,7 @@ ast::AstNode* Parser::parseVariantDeclaration()
     node->setText(variantName);
     node->setAuxiliaryText("variant");
     parseGenericParameterList(node);
+    KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
     parseGenericConstraintClauses(node);
 
     if (!expect(TokenKind::LeftBrace, "'{' after variant declaration"))
@@ -3002,6 +3071,7 @@ ast::AstNode* Parser::parseClassDeclaration(
     node->setText(className);
     node->setFlag(isPartial);
     parseGenericParameterList(node);
+    KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
     if (isAbstract)
     {
         node->addModifier(TokenKind::KwAbstract);
@@ -3121,6 +3191,7 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial, bool isTrait)
     node->setFlag(isPartial);
     if (isTrait) node->setAuxiliaryText("ns3-trait");
     parseGenericParameterList(node);
+    KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
 
     if (consumeIf(TokenKind::Colon))
     {
@@ -5664,6 +5735,7 @@ ast::AstNode* Parser::parseMethodTail(
     }
 
     parseGenericParameterList(method);
+    KnownGenericTypeScope genericTypeScope(knownTypeNames_, method);
 
     expect(TokenKind::LeftParen, "'('");
     if (!at(TokenKind::RightParen))
@@ -5943,6 +6015,7 @@ ast::AstNode* Parser::parseFunctionTail(
     function->setFlag(externalOnly);
 
     parseGenericParameterList(function);
+    KnownGenericTypeScope genericTypeScope(knownTypeNames_, function);
 
     expect(TokenKind::LeftParen, "'('");
     bool sawFixedParameter = false;

@@ -1,0 +1,16 @@
+namespace T39Negative
+{
+    public class GenericBox<T>
+    {
+        public static int Run()
+        {
+            U value;
+            return 0;
+        }
+    }
+
+    public class Program
+    {
+        public static int Run() { return GenericBox<int>.Run(); }
+    }
+}

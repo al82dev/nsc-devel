@@ -801,6 +801,15 @@ if(NSC_BUILD_TESTS)
         NAME nsc.ns3.t34.long-path-publication
         COMMAND nsc_ns3_t34_long_path_publication_tests)
 
+    add_test(
+        NAME nsc.ns3.t39.frontend-abi
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DFIXTURE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ns3_t39_frontend_abi"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t39-frontend-abi"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT39FrontendAbi.cmake")
+
     add_executable(
         nsc_ns3_t03_sum_type_tests
         tests/unit/NativeSharp3T03SumTypeTests.cpp)

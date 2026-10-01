@@ -1,0 +1,7 @@
+namespace T39Negative
+{
+    public class ConditionalNullInt
+    {
+        public static int Run() { return true ? 42 : null; }
+    }
+}

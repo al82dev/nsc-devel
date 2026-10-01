@@ -1,0 +1,109 @@
+namespace T39FrontendAbi
+{
+    public const int Population = 39;
+
+    public struct Pair
+    {
+        public int Left;
+        public int Right;
+    }
+
+    public class Box
+    {
+        public int Value;
+        public Box(int value) { Value = value; }
+    }
+
+    public class GenericBox<T>
+    {
+        public static T Copy(T value)
+        {
+            T local = value;
+            return local;
+        }
+
+        public static T[] SameArray(T[] values)
+        {
+            T[] local = values;
+            return local;
+        }
+    }
+
+    bool MutateScalar(ref int value, out int doubled, in int addend, int* expected)
+    {
+        bool sameAddress = &value == expected;
+        value = value + addend;
+        doubled = value * 2;
+        return sameAddress;
+    }
+
+    bool MutatePair(ref Pair value, out Pair snapshot, in Pair delta, Pair* expected)
+    {
+        bool sameAddress = &value == expected;
+        value.Left = value.Left + delta.Left;
+        value.Right = value.Right + delta.Right;
+        snapshot = value;
+        return sameAddress;
+    }
+
+    bool ReplaceBox(ref Box value, Box replacement, Box* expected)
+    {
+        bool sameAddress = &value == expected;
+        value = replacement;
+        return sameAddress;
+    }
+
+    public class Program
+    {
+        private static int ReadPopulation()
+        {
+            return Population + 1;
+        }
+
+        public static int Main()
+        {
+            int addend = 1;
+            int value = 20;
+            int doubled = 0;
+            if (!MutateScalar(ref value, out doubled, in addend, &value)) return 1;
+            if (value != 21 || doubled != 42 || addend != 1) return 2;
+
+            Pair pair;
+            pair.Left = 19;
+            pair.Right = 20;
+            Pair delta;
+            delta.Left = 1;
+            delta.Right = 2;
+            Pair snapshot;
+            if (!MutatePair(ref pair, out snapshot, in delta, &pair)) return 3;
+            if (pair.Left != 20 || pair.Right != 22 ||
+                snapshot.Left != 20 || snapshot.Right != 22) return 4;
+
+            Box original = new Box(1);
+            Box replacement = new Box(42);
+            Box current = original;
+            if (!ReplaceBox(ref current, replacement, &current)) return 5;
+            if (current.Value != 42 || original.Value != 1) return 6;
+            Box nullableBox = true ? replacement : null;
+            if (nullableBox == null || nullableBox.Value != 42) return 12;
+            delete original;
+            delete replacement;
+
+            int copied = GenericBox<int>.Copy(value);
+            if (copied != 21) return 7;
+            int[] values = new int[] { 42 };
+            int[] alias = GenericBox<int>.SameArray(values);
+            if (alias[0] != 42) return 8;
+            delete[] values;
+
+            int target = 42;
+            int* pointer = true ? &target : null;
+            if (pointer == null || *pointer != 42) return 9;
+            pointer = false ? &target : null;
+            if (pointer != null) return 10;
+
+            if (ReadPopulation() != 40) return 11;
+            return 0;
+        }
+    }
+}

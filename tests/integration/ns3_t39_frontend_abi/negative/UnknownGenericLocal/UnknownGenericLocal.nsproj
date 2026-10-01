@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>UnknownGenericLocal</Name><Language>3</Language><OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>
