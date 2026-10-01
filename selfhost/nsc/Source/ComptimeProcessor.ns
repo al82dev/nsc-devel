@@ -1,0 +1,299 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Compiler.Source
+{
+    // The seed compiler evaluates constant #run expressions before lexing and pads the
+    // replacement to the original width. Keeping that invariant preserves every source offset.
+    internal class ComptimeExpression
+    {
+        private string text;
+        private int cursor;
+        private bool valid;
+
+        public ComptimeExpression(string expression)
+        {
+            text = expression;
+            cursor = 0;
+            valid = true;
+        }
+
+        private static bool Space(char value)
+        {
+            return value == ' ' || value == '\t' || value == '\r' || value == '\n' ||
+                value == '\f' || value == '\v';
+        }
+
+        private static bool Digit(char value) { return value >= '0' && value <= '9'; }
+        private static bool Alpha(char value)
+        {
+            return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z');
+        }
+
+        private void SkipSpace()
+        {
+            while (cursor < text.Length && Space(text[cursor])) { cursor = cursor + 1; }
+        }
+
+        private bool Take(string token)
+        {
+            SkipSpace();
+            if (cursor + token.Length > text.Length) { return false; }
+            int index = 0;
+            while (index < token.Length)
+            {
+                if (text[cursor + index] != token[index]) { return false; }
+                index = index + 1;
+            }
+            cursor = cursor + token.Length;
+            return true;
+        }
+
+        private long ParsePrimary()
+        {
+            SkipSpace();
+            if (Take("("))
+            {
+                long value = ParseBitwiseOr();
+                if (!Take(")")) { valid = false; }
+                return value;
+            }
+            if (cursor < text.Length && (Alpha(text[cursor]) || text[cursor] == '_'))
+            {
+                valid = false;
+                return 0;
+            }
+
+            int radix = 10;
+            if (cursor + 1 < text.Length && text[cursor] == '0' &&
+                (text[cursor + 1] == 'x' || text[cursor + 1] == 'X'))
+            {
+                radix = 16;
+                cursor = cursor + 2;
+            }
+            int digits = cursor;
+            raii StringBuilder clean = new StringBuilder();
+            while (cursor < text.Length && (Alpha(text[cursor]) || Digit(text[cursor]) || text[cursor] == '_'))
+            {
+                if (text[cursor] != '_') { clean.Append(text[cursor]); }
+                cursor = cursor + 1;
+            }
+            if (cursor == digits) { valid = false; return 0; }
+            raii string number = clean.ToOwnedString();
+            ulong parsed = 0;
+            if (!Number.TryParseUInt64Radix(number, radix, out parsed)) { valid = false; return 0; }
+            return (long)parsed;
+        }
+
+        private long ParseUnary()
+        {
+            if (Take("+")) { return ParseUnary(); }
+            if (Take("-")) { return -ParseUnary(); }
+            if (Take("~")) { return ~ParseUnary(); }
+            return ParsePrimary();
+        }
+
+        private long ParseMultiply()
+        {
+            long left = ParseUnary();
+            bool scanning = true;
+            while (valid && scanning)
+            {
+                if (Take("*")) { left = left * ParseUnary(); }
+                else if (Take("/"))
+                {
+                    long right = ParseUnary();
+                    if (right == 0) { valid = false; } else { left = left / right; }
+                }
+                else if (Take("%"))
+                {
+                    long right = ParseUnary();
+                    if (right == 0) { valid = false; } else { left = left % right; }
+                }
+                else { scanning = false; }
+            }
+            return left;
+        }
+
+        private long ParseAdd()
+        {
+            long left = ParseMultiply();
+            bool scanning = true;
+            while (valid && scanning)
+            {
+                if (Take("+")) { left = left + ParseMultiply(); }
+                else if (Take("-")) { left = left - ParseMultiply(); }
+                else { scanning = false; }
+            }
+            return left;
+        }
+
+        private long ParseShift()
+        {
+            long left = ParseAdd();
+            bool scanning = true;
+            while (valid && scanning)
+            {
+                if (Take("<<")) { left = left << (int)ParseAdd(); }
+                else if (Take(">>")) { left = (long)((ulong)left >> (int)ParseAdd()); }
+                else { scanning = false; }
+            }
+            return left;
+        }
+
+        private long ParseBitwiseAnd()
+        {
+            long value = ParseShift();
+            while (valid && Take("&")) { value = value & ParseShift(); }
+            return value;
+        }
+
+        private long ParseBitwiseXor()
+        {
+            long value = ParseBitwiseAnd();
+            while (valid && Take("^")) { value = value ^ ParseBitwiseAnd(); }
+            return value;
+        }
+
+        private long ParseBitwiseOr()
+        {
+            long value = ParseBitwiseXor();
+            while (valid && Take("|")) { value = value | ParseBitwiseXor(); }
+            return value;
+        }
+
+        public bool Evaluate(out long value)
+        {
+            value = ParseBitwiseOr();
+            SkipSpace();
+            if (cursor != text.Length) { valid = false; }
+            return valid;
+        }
+    }
+
+    public class ComptimeProcessor
+    {
+        private static bool IdentifierByte(char value)
+        {
+            return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
+                (value >= '0' && value <= '9') || value == '_';
+        }
+
+        private static bool StartsAt(string source, int offset, string word)
+        {
+            if (offset + word.Length > source.Length) { return false; }
+            int index = 0;
+            while (index < word.Length)
+            {
+                if (source[offset + index] != word[index]) { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
+
+        private static bool StartsWord(string source, int offset, string word)
+        {
+            if (!StartsAt(source, offset, word)) { return false; }
+            if (offset != 0 && IdentifierByte(source[offset - 1])) { return false; }
+            int after = offset + word.Length;
+            return after >= source.Length || !IdentifierByte(source[after]);
+        }
+
+        private static bool Space(char value)
+        {
+            return value == ' ' || value == '\t' || value == '\r' || value == '\n' ||
+                value == '\f' || value == '\v';
+        }
+
+        public static owned string Transform(string source)
+        {
+            raii StringBuilder output = new StringBuilder(source.Length);
+            int state = 0;
+            bool escaped = false;
+            int cursor = 0;
+            while (cursor < source.Length)
+            {
+                char current = source[cursor];
+                char next = cursor + 1 < source.Length ? source[cursor + 1] : '\0';
+                if (state == 1)
+                {
+                    output.Append(current); cursor = cursor + 1;
+                    if (current == '\n') { state = 0; }
+                    continue;
+                }
+                if (state == 2)
+                {
+                    output.Append(current); cursor = cursor + 1;
+                    if (current == '*' && next == '/')
+                    {
+                        output.Append('/'); cursor = cursor + 1; state = 0;
+                    }
+                    continue;
+                }
+                if (state == 3 || state == 4)
+                {
+                    output.Append(current); cursor = cursor + 1;
+                    if (escaped) { escaped = false; continue; }
+                    if (current == '\\') { escaped = true; continue; }
+                    if ((state == 3 && current == '"') || (state == 4 && current == '\'')) { state = 0; }
+                    continue;
+                }
+                if (current == '/' && next == '/')
+                {
+                    output.Append('/'); output.Append('/'); cursor = cursor + 2; state = 1; continue;
+                }
+                if (current == '/' && next == '*')
+                {
+                    output.Append('/'); output.Append('*'); cursor = cursor + 2; state = 2; continue;
+                }
+                if (current == '"') { output.Append(current); cursor = cursor + 1; state = 3; continue; }
+                if (current == '\'') { output.Append(current); cursor = cursor + 1; state = 4; continue; }
+                if (StartsWord(source, cursor, "comptime"))
+                {
+                    int index = 0;
+                    while (index < 8) { output.Append(' '); index = index + 1; }
+                    cursor = cursor + 8;
+                    continue;
+                }
+                if (StartsAt(source, cursor, "#run") &&
+                    (cursor == 0 || !IdentifierByte(source[cursor - 1])))
+                {
+                    int open = cursor + 4;
+                    while (open < source.Length && Space(source[open])) { open = open + 1; }
+                    if (open < source.Length && source[open] == '(')
+                    {
+                        int close = open + 1;
+                        int depth = 1;
+                        while (close < source.Length && depth != 0)
+                        {
+                            if (source[close] == '(') { depth = depth + 1; }
+                            else if (source[close] == ')') { depth = depth - 1; }
+                            close = close + 1;
+                        }
+                        if (depth == 0)
+                        {
+                            raii string expression = String.Substring(source, open + 1, close - open - 2);
+                            raii ComptimeExpression evaluator = new ComptimeExpression(expression);
+                            long value = 0;
+                            if (evaluator.Evaluate(out value))
+                            {
+                                raii string replacement = String.ToString(value);
+                                int width = close - cursor;
+                                if (replacement.Length <= width)
+                                {
+                                    output.Append(replacement);
+                                    int padding = replacement.Length;
+                                    while (padding < width) { output.Append(' '); padding = padding + 1; }
+                                    cursor = close;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+                output.Append(current);
+                cursor = cursor + 1;
+            }
+            return output.ToOwnedString();
+        }
+    }
+}

@@ -86,6 +86,13 @@ namespace NativeSharp.Compiler.Source
             return new SourceBuffer(file, sourcePath, contents);
         }
 
+        public static owned SourceBuffer LoadFrontend(FileId file, string sourcePath)
+        {
+            string contents = File.ReadAllText(sourcePath);
+            raii string transformed = ComptimeProcessor.Transform(contents);
+            return new SourceBuffer(file, sourcePath, transformed);
+        }
+
         public FileId Id() { return id; }
         public string Path() { return path; }
         public string Text() { return text; }

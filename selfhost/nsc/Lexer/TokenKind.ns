@@ -24,7 +24,10 @@ namespace NativeSharp.Compiler.Lexer
         BangEqual, Less, LessEqual, Greater, GreaterEqual, Bang, AmpAmp,
         PipePipe, Amp, Pipe, Caret, Tilde, LessLess, GreaterGreater, Equal,
         PlusEqual, MinusEqual, StarEqual, SlashEqual, PercentEqual, AmpEqual,
-        PipeEqual, CaretEqual, LessLessEqual, GreaterGreaterEqual
+        PipeEqual, CaretEqual, LessLessEqual, GreaterGreaterEqual,
+        // NativeSharp 3.0 tokens stay at the tail so every 2.x numeric identity remains stable.
+        InterpolatedStringLiteral, QuestionQuestion, QuestionQuestionEqual,
+        QuestionDot, DotDot
     }
 
     public class TokenFacts
@@ -173,6 +176,11 @@ namespace NativeSharp.Compiler.Lexer
             if (kind == TokenKind.CaretEqual) { return "CaretEqual"; }
             if (kind == TokenKind.LessLessEqual) { return "LessLessEqual"; }
             if (kind == TokenKind.GreaterGreaterEqual) { return "GreaterGreaterEqual"; }
+            if (kind == TokenKind.InterpolatedStringLiteral) { return "InterpolatedStringLiteral"; }
+            if (kind == TokenKind.QuestionQuestion) { return "QuestionQuestion"; }
+            if (kind == TokenKind.QuestionQuestionEqual) { return "QuestionQuestionEqual"; }
+            if (kind == TokenKind.QuestionDot) { return "QuestionDot"; }
+            if (kind == TokenKind.DotDot) { return "DotDot"; }
             return "Invalid";
         }
     }

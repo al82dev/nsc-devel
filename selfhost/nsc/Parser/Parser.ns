@@ -411,12 +411,18 @@ namespace NativeSharp.Compiler.Parser
         {
             int expression = ParsePrimary();
             bool scanning = true;
+            bool hasExplicitGenericArguments = false;
             while (scanning)
             {
-                if (At(TokenKind.Less) && ConsumeGenericCallArguments(expression)) { }
+                if (At(TokenKind.Less) && ConsumeGenericCallArguments(expression))
+                {
+                    hasExplicitGenericArguments = true;
+                }
                 else if (ConsumeIf(TokenKind.LeftParen))
                 {
                     int call = NewNode("CallExpression"); Node(call).SetFirst(expression);
+                    Node(call).SetFlag(hasExplicitGenericArguments);
+                    hasExplicitGenericArguments = false;
                     if (!At(TokenKind.RightParen))
                     {
                         while (true)

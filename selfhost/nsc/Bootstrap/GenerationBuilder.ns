@@ -21,7 +21,7 @@ namespace NativeSharp.Compiler.Bootstrap
                 return 1;
             }
 
-            raii SourceBuffer source = SourceBuffer.Load(new FileId(fileNumber), path);
+            raii SourceBuffer source = SourceBuffer.LoadFrontend(new FileId(fileNumber), path);
             raii Lexer lexer = new Lexer(source);
             raii TokenStream tokens = lexer.LexAll();
             raii Parser parser = new Parser(source, tokens);

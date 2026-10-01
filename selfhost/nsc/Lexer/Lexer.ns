@@ -296,6 +296,11 @@ namespace NativeSharp.Compiler.Lexer
 
         private void LexString(int begin)
         {
+            if (Current() == '"' && Peek(1) == '"' && Peek(2) == '"')
+            {
+                LexRawString(begin);
+                return;
+            }
             Advance();
             bool valid = true;
             while (!AtEnd() && Current() != '"' && Current() != '\n' && Current() != '\r')
@@ -305,6 +310,82 @@ namespace NativeSharp.Compiler.Lexer
             }
             if (!Match('"')) { valid = false; }
             Add(valid ? TokenKind.StringLiteral : TokenKind.Invalid, begin);
+        }
+
+        private void LexRawString(int begin)
+        {
+            int delimiterWidth = 0;
+            while (Peek(delimiterWidth) == '"') { delimiterWidth = delimiterWidth + 1; }
+            int openingIndex = 0;
+            while (openingIndex < delimiterWidth) { Advance(); openingIndex = openingIndex + 1; }
+
+            bool valid = true;
+            while (!AtEnd())
+            {
+                if (Current() == '"')
+                {
+                    int quoteCount = 0;
+                    while (Peek(quoteCount) == '"') { quoteCount = quoteCount + 1; }
+                    if (quoteCount >= delimiterWidth)
+                    {
+                        int closingIndex = 0;
+                        while (closingIndex < delimiterWidth) { Advance(); closingIndex = closingIndex + 1; }
+                        Add(valid ? TokenKind.StringLiteral : TokenKind.Invalid, begin);
+                        return;
+                    }
+                }
+
+                byte raw = (byte)Advance();
+                if (raw < 32 && raw != 9 && raw != 10 && raw != 13) { valid = false; }
+            }
+            Add(TokenKind.Invalid, begin);
+        }
+
+        private void LexInterpolatedString(int begin)
+        {
+            Advance();
+            Advance();
+            bool valid = true;
+            int braceDepth = 0;
+            while (!AtEnd() && Current() != '\n' && Current() != '\r')
+            {
+                if (Current() == '"' && braceDepth == 0)
+                {
+                    Advance();
+                    Add(valid ? TokenKind.InterpolatedStringLiteral : TokenKind.Invalid, begin);
+                    return;
+                }
+                if (Current() == '\\')
+                {
+                    if (braceDepth != 0)
+                    {
+                        Advance();
+                        if (!AtEnd()) { Advance(); } else { valid = false; }
+                    }
+                    else
+                    {
+                        Advance();
+                        if (!DecodeEscape()) { valid = false; }
+                    }
+                }
+                else if (Current() == '{')
+                {
+                    if (Peek(1) == '{') { Advance(); Advance(); }
+                    else { braceDepth = braceDepth + 1; Advance(); }
+                }
+                else if (Current() == '}')
+                {
+                    if (Peek(1) == '}' && braceDepth == 0) { Advance(); Advance(); }
+                    else
+                    {
+                        if (braceDepth == 0) { valid = false; }
+                        else { braceDepth = braceDepth - 1; }
+                        Advance();
+                    }
+                }
+                else { Advance(); }
+            }
+            Add(TokenKind.Invalid, begin);
         }
 
         private void LexPunctuation(int begin)
@@ -319,11 +400,22 @@ namespace NativeSharp.Compiler.Lexer
             if (first == ';') { Add(TokenKind.Semicolon, begin); return; }
             if (first == ',') { Add(TokenKind.Comma, begin); return; }
             if (first == ':') { Add(TokenKind.Colon, begin); return; }
-            if (first == '?') { Add(TokenKind.Question, begin); return; }
+            if (first == '?')
+            {
+                if (Match('?'))
+                {
+                    if (Match('=')) { Add(TokenKind.QuestionQuestionEqual, begin); }
+                    else { Add(TokenKind.QuestionQuestion, begin); }
+                }
+                else if (Match('.')) { Add(TokenKind.QuestionDot, begin); }
+                else { Add(TokenKind.Question, begin); }
+                return;
+            }
             if (first == '~') { Add(TokenKind.Tilde, begin); return; }
             if (first == '.')
             {
                 if (Current() == '.' && Peek(1) == '.') { Advance(); Advance(); Add(TokenKind.Ellipsis, begin); }
+                else if (Match('.')) { Add(TokenKind.DotDot, begin); }
                 else { Add(TokenKind.Dot, begin); } return;
             }
             if (first == '+') { if (Match('+')) { Add(TokenKind.PlusPlus, begin); } else if (Match('=')) { Add(TokenKind.PlusEqual, begin); } else { Add(TokenKind.Plus, begin); } return; }
@@ -388,6 +480,7 @@ namespace NativeSharp.Compiler.Lexer
             else if (DecimalDigit(Current())) { LexNumber(begin); }
             else if (Current() == '\'') { LexCharacter(begin); }
             else if (Current() == '"') { LexString(begin); }
+            else if (Current() == '$' && Peek(1) == '"') { LexInterpolatedString(begin); }
             else { LexPunctuation(begin); }
 
             TokenKind kind = tokens.KindAt(before);

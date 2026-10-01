@@ -109,7 +109,7 @@ namespace NativeSharp.Compiler.Driver
                 raii Diagnostic missing = DiagnosticCatalog.MissingSource(path);
                 return EmitDiagnostic(missing, false);
             }
-            raii SourceBuffer source = SourceBuffer.Load(new FileId(1), path);
+            raii SourceBuffer source = SourceBuffer.LoadFrontend(new FileId(1), path);
             raii Lexer lexer = new Lexer(source);
             raii TokenStream tokens = lexer.LexAll();
             raii string output = TokenDumper.Dump(source, tokens);
@@ -125,7 +125,7 @@ namespace NativeSharp.Compiler.Driver
                 raii Diagnostic missing = DiagnosticCatalog.MissingSource(path);
                 return EmitDiagnostic(missing, false);
             }
-            raii SourceBuffer source = SourceBuffer.Load(new FileId(1), path);
+            raii SourceBuffer source = SourceBuffer.LoadFrontend(new FileId(1), path);
             raii Lexer lexer = new Lexer(source);
             raii TokenStream tokens = lexer.LexAll();
             raii Parser parser = new Parser(source, tokens);
@@ -143,7 +143,7 @@ namespace NativeSharp.Compiler.Driver
                 raii Diagnostic missing = DiagnosticCatalog.MissingSource(path);
                 return EmitDiagnostic(missing, false);
             }
-            raii SourceBuffer source = SourceBuffer.Load(new FileId(1), path);
+            raii SourceBuffer source = SourceBuffer.LoadFrontend(new FileId(1), path);
             raii Lexer lexer = new Lexer(source);
             raii TokenStream tokens = lexer.LexAll();
             raii Parser parser = new Parser(source, tokens);
@@ -164,7 +164,7 @@ namespace NativeSharp.Compiler.Driver
                 raii Diagnostic missing = DiagnosticCatalog.MissingSource(path);
                 return EmitDiagnostic(missing, false);
             }
-            raii SourceBuffer source = SourceBuffer.Load(new FileId(1), path);
+            raii SourceBuffer source = SourceBuffer.LoadFrontend(new FileId(1), path);
             raii Lexer lexer = new Lexer(source); raii TokenStream tokens = lexer.LexAll();
             raii Parser parser = new Parser(source, tokens); raii SyntaxTree tree = parser.ParseCompilationUnit();
             raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree); raii SemanticModel semantic = analyzer.Analyze();
@@ -209,7 +209,7 @@ namespace NativeSharp.Compiler.Driver
         private static int EmitBackend(string command, string sourcePath, string profile, string outputPath)
         {
             if (!File.Exists(sourcePath)) { return 1; }
-            raii SourceBuffer source = SourceBuffer.Load(new FileId(1), sourcePath);
+            raii SourceBuffer source = SourceBuffer.LoadFrontend(new FileId(1), sourcePath);
             raii Lexer lexer = new Lexer(source); raii TokenStream tokens = lexer.LexAll();
             raii Parser parser = new Parser(source, tokens); raii SyntaxTree tree = parser.ParseCompilationUnit();
             raii SemanticAnalyzer analyzer = new SemanticAnalyzer(tree); raii SemanticModel semantic = analyzer.Analyze();
@@ -535,7 +535,7 @@ namespace NativeSharp.Compiler.Driver
                     index = index + 1;
                     continue;
                 }
-                raii SourceBuffer source = SourceBuffer.Load(new FileId(unit.Order() + 1), unit.PathValue());
+                raii SourceBuffer source = SourceBuffer.LoadFrontend(new FileId(unit.Order() + 1), unit.PathValue());
                 raii Lexer lexer = new Lexer(source);
                 raii TokenStream tokens = lexer.LexAll();
                 raii Parser parser = new Parser(source, tokens);

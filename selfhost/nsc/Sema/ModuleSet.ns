@@ -462,7 +462,7 @@ namespace NativeSharp.Compiler.Sema
                     continue;
                 }
 
-                raii SourceBuffer buffer = SourceBuffer.Load(new FileId(unit.Order() + 1), unit.PathValue());
+                raii SourceBuffer buffer = SourceBuffer.LoadFrontend(new FileId(unit.Order() + 1), unit.PathValue());
                 raii Lexer lexer = new Lexer(buffer);
                 raii TokenStream tokens = lexer.LexAll();
                 raii Parser parser = new Parser(buffer, tokens);
