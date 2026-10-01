@@ -1,0 +1,10 @@
+using T44.Package;
+
+public class Program
+{
+    public static int Main()
+    {
+        if (Api.Answer() == 42) { return 0; }
+        return 1;
+    }
+}

@@ -22,6 +22,9 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 25 (2026-10-01): static-library metadata carries its binary LibraryReference closure and
+// private platform imports so a consumer can link the archive without repeating implementation
+// dependencies or losing DLL symbols.
 // MINOR 23 (2026-09-29): el productor publica la edición de lenguaje 2/3 para que un consumidor
 // precompilado no mezcle silenciosamente reglas de frontend.
 // MINOR 19 (2026-09-15): las declaraciones C variadicas conservan el marcador `...` para que
@@ -62,7 +65,7 @@ namespace nativesharp::interop
 // MINOR 23 (2026-09-29): modules preserve their NativeSharp language edition.
 // MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 24;
+inline constexpr std::uint16_t kMetadataFormatMinor = 25;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing
@@ -333,6 +336,21 @@ struct LibraryMetadataExport final
     std::string nativeMangledName;
 };
 
+struct LibraryMetadataBinaryDependency final
+{
+    std::string moduleName;
+    std::string libraryFileName;
+    std::string metadataFileName;
+    std::string runtimeFileName;
+    std::array<std::uint8_t, 32> abiFingerprint{};
+};
+
+struct LibraryMetadataPlatformImport final
+{
+    std::string dllName;
+    std::string symbolName;
+};
+
 struct LibraryMetadata final
 {
     std::uint16_t formatMajor = kMetadataFormatMajor;
@@ -369,6 +387,13 @@ struct LibraryMetadata final
     std::vector<std::string> externalTypeKeys;
     std::vector<LibraryMetadataDispatch> dispatchTables;
     std::vector<LibraryMetadataExport> exports;
+    // NSMETA 1.25. These are implementation closure edges of a static archive, not public API.
+    // Artifact names are leaf names resolved beside the referring metadata or under the explicit
+    // LibraryReferenceRoot; the ABI fingerprint prevents a same-name incompatible substitution.
+    std::vector<LibraryMetadataBinaryDependency> binaryDependencies;
+    // Private `extern C from` callees referenced by this archive. The final consumer materializes
+    // their import libraries even though the declarations themselves are not public metadata.
+    std::vector<LibraryMetadataPlatformImport> platformImports;
 };
 
 class LibraryMetadataCodec final

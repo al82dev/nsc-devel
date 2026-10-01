@@ -46,9 +46,11 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
 bool equalParameter(const LibraryMetadataParameter& left, const LibraryMetadataParameter& right)
 {
     return std::tie(left.name, left.typeKey, left.ownership, left.passKind,
+               left.isParameterPack,
                left.defaultValueKind, left.defaultValueFlags, left.defaultValueBits,
                left.defaultValueText) ==
         std::tie(right.name, right.typeKey, right.ownership, right.passKind,
+            right.isParameterPack,
             right.defaultValueKind, right.defaultValueFlags, right.defaultValueBits,
             right.defaultValueText);
 }
@@ -146,6 +148,24 @@ bool equalExport(const LibraryMetadataExport& left, const LibraryMetadataExport&
                left.parameterTypeKeys, left.nativeMangledName) ==
         std::tie(right.cAbiName, right.declaringTypeKey, right.returnTypeKey,
             right.parameterTypeKeys, right.nativeMangledName);
+}
+
+bool equalBinaryDependency(
+    const LibraryMetadataBinaryDependency& left,
+    const LibraryMetadataBinaryDependency& right)
+{
+    return std::tie(left.moduleName, left.libraryFileName, left.metadataFileName,
+               left.runtimeFileName, left.abiFingerprint) ==
+        std::tie(right.moduleName, right.libraryFileName, right.metadataFileName,
+            right.runtimeFileName, right.abiFingerprint);
+}
+
+bool equalPlatformImport(
+    const LibraryMetadataPlatformImport& left,
+    const LibraryMetadataPlatformImport& right)
+{
+    return std::tie(left.dllName, left.symbolName) ==
+        std::tie(right.dllName, right.symbolName);
 }
 
 bool sameHeader(const LibraryMetadata& left, const LibraryMetadata& right)
@@ -283,11 +303,25 @@ bool canonicalizeModel(LibraryMetadata& metadata, std::string& error)
             "dispatch table",
             error))
         return false;
-    return canonicalize(
+    if (!canonicalize(
         metadata.exports,
         [](const auto& item) -> const std::string& { return item.cAbiName; },
         equalExport,
         "C ABI export",
+        error))
+        return false;
+    if (!canonicalize(
+            metadata.binaryDependencies,
+            [](const auto& item) -> const std::string& { return item.moduleName; },
+            equalBinaryDependency,
+            "binary dependency",
+            error))
+        return false;
+    return canonicalize(
+        metadata.platformImports,
+        [](const auto& item) { return item.dllName + "\n" + item.symbolName; },
+        equalPlatformImport,
+        "platform import",
         error);
 }
 
@@ -321,6 +355,8 @@ bool LibraryMetadataMerger::merge(
     candidate.externalTypeKeys.clear();
     candidate.dispatchTables.clear();
     candidate.exports.clear();
+    candidate.binaryDependencies.clear();
+    candidate.platformImports.clear();
 
     for (std::size_t ordinal = 0; ordinal < fragments.size(); ++ordinal)
     {
@@ -341,6 +377,8 @@ bool LibraryMetadataMerger::merge(
         append(candidate.externalTypeKeys, fragment.externalTypeKeys);
         append(candidate.dispatchTables, fragment.dispatchTables);
         append(candidate.exports, fragment.exports);
+        append(candidate.binaryDependencies, fragment.binaryDependencies);
+        append(candidate.platformImports, fragment.platformImports);
     }
     if (!canonicalizeModel(candidate, error)) return false;
     merged = std::move(candidate);

@@ -46,6 +46,54 @@ const Project* ProjectGraph::rootProject() const noexcept
     return &projects_.back();
 }
 
+bool ProjectGraph::addLibraryReferences(
+    const std::filesystem::path& ownerProjectFile,
+    std::span<const LibraryReference> references,
+    std::string& error)
+{
+    error.clear();
+    if (references.empty()) return true;
+    const std::string ownerKey = foldedPath(ownerProjectFile);
+    bool foundOwner = false;
+    std::vector<Project> expanded;
+    expanded.reserve(projects_.size());
+    for (const Project& project : projects_)
+    {
+        std::vector<LibraryReference> libraries(
+            project.libraryReferences().begin(), project.libraryReferences().end());
+        if (foldedPath(project.projectFile()) == ownerKey)
+        {
+            foundOwner = true;
+            for (const LibraryReference& reference : references)
+            {
+                const std::string key = foldedPath(reference.libraryPath);
+                const bool duplicate = std::ranges::any_of(libraries, [&](const auto& existing) {
+                    return foldedPath(existing.libraryPath) == key;
+                });
+                if (!duplicate) libraries.push_back(reference);
+            }
+            std::ranges::sort(libraries, [](const auto& left, const auto& right) {
+                return foldedPath(left.libraryPath) < foldedPath(right.libraryPath);
+            });
+        }
+        expanded.emplace_back(
+            project.projectFile(), project.moduleName(), project.outputKind(), project.sourceSet(),
+            std::vector<std::filesystem::path>(
+                project.projectReferences().begin(), project.projectReferences().end()),
+            std::move(libraries),
+            std::vector<SdkManifest>(project.sdkReferences().begin(), project.sdkReferences().end()),
+            project.languageEdition());
+    }
+    if (!foundOwner)
+    {
+        error = "cannot add precompiled closure to unknown owner project '" +
+            ownerProjectFile.generic_string() + "'";
+        return false;
+    }
+    projects_ = std::move(expanded);
+    return true;
+}
+
 bool ProjectGraph::addPrecompiledProjects(
     std::span<const PrecompiledProjectDescriptor> descriptors,
     std::string& error)

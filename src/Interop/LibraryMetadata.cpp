@@ -62,6 +62,14 @@ std::string_view compilerReleasePart(std::string_view version) noexcept
     return version.substr(0, channelOrBuildMetadata);
 }
 
+std::string foldedAscii(std::string value)
+{
+    std::ranges::transform(value, value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
+
 class ByteWriter final
 {
 public:
@@ -1489,6 +1497,81 @@ bool buildMetadataModel(
     }
     metadata.externalTypeKeys.assign(externalTypeKeys.begin(), externalTypeKeys.end());
     std::sort(metadata.externalTypeKeys.begin(), metadata.externalTypeKeys.end());
+
+    // NSMETA 1.25: retain the direct binary closure of the produced archive. Every referenced
+    // metadata file carries its own direct edges, so consumers can expand this recursively without
+    // restore or source enumeration. Store leaf artifact names and certify the exact ABI contract;
+    // installation may relocate a package, but it may not substitute an incompatible module.
+    if (compilation.projectGraph() != nullptr && compilation.projectGraph()->rootProject() != nullptr)
+    {
+        LibraryMetadataCodec codec;
+        for (const compilation::LibraryReference& reference :
+             compilation.projectGraph()->rootProject()->libraryReferences())
+        {
+            LibraryMetadata dependencyMetadata;
+            std::string dependencyError;
+            if (!codec.read(reference.metadataPath, dependencyMetadata, dependencyError) ||
+                !codec.verifyCurrentCompiler(dependencyMetadata, dependencyError))
+            {
+                error = "cannot record binary dependency '" +
+                    reference.metadataPath.generic_string() + "': " + dependencyError;
+                return false;
+            }
+            LibraryMetadataBinaryDependency dependency;
+            dependency.moduleName = dependencyMetadata.moduleName;
+            dependency.libraryFileName = reference.libraryPath.filename().generic_string();
+            dependency.metadataFileName = reference.metadataPath.filename().generic_string();
+            dependency.runtimeFileName = reference.runtimePath.empty()
+                ? std::string{} : reference.runtimePath.filename().generic_string();
+            dependency.abiFingerprint = dependencyMetadata.abiFingerprint;
+            metadata.binaryDependencies.push_back(std::move(dependency));
+        }
+        std::sort(metadata.binaryDependencies.begin(), metadata.binaryDependencies.end(),
+            [](const auto& left, const auto& right) {
+                return std::tie(left.moduleName, left.metadataFileName) <
+                    std::tie(right.moduleName, right.metadataFileName);
+            });
+    }
+
+    std::unordered_set<std::string> referencedCallees;
+    const auto collectCallees = [&](const frontend::ProjectOopMirNode* node, auto&& self) -> void
+    {
+        if (node == nullptr) return;
+        if (!node->calleeName.empty()) referencedCallees.insert(node->calleeName);
+        for (const auto& child : node->children) self(child.get(), self);
+    };
+    for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
+        collectCallees(function.body.get(), collectCallees);
+    bool needsRuntimeBinding = false;
+    for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
+    {
+        if (!function.isImportedC || function.importDllName.empty() ||
+            !referencedCallees.contains(function.mangledName))
+            continue;
+        if (function.importRequiresRuntimeBinding)
+        {
+            needsRuntimeBinding = true;
+            continue;
+        }
+        metadata.platformImports.push_back(
+            LibraryMetadataPlatformImport{function.importDllName, function.cAbiName});
+    }
+    if (needsRuntimeBinding)
+    {
+        metadata.platformImports.push_back({"KERNEL32.dll", "LoadLibraryA"});
+        metadata.platformImports.push_back({"KERNEL32.dll", "GetProcAddress"});
+    }
+    std::sort(metadata.platformImports.begin(), metadata.platformImports.end(),
+        [](const auto& left, const auto& right) {
+            return std::tie(left.dllName, left.symbolName) <
+                std::tie(right.dllName, right.symbolName);
+        });
+    metadata.platformImports.erase(
+        std::unique(metadata.platformImports.begin(), metadata.platformImports.end(),
+            [](const auto& left, const auto& right) {
+                return left.dllName == right.dllName && left.symbolName == right.symbolName;
+            }),
+        metadata.platformImports.end());
     return true;
 }
 
@@ -1732,6 +1815,24 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
             writer.text(state.initializerText);
         }
     }
+    if (metadata.formatMinor >= 25)
+    {
+        writer.u32(static_cast<std::uint32_t>(metadata.binaryDependencies.size()));
+        for (const LibraryMetadataBinaryDependency& dependency : metadata.binaryDependencies)
+        {
+            writer.text(dependency.moduleName);
+            writer.text(dependency.libraryFileName);
+            writer.text(dependency.metadataFileName);
+            writer.text(dependency.runtimeFileName);
+            writer.raw(dependency.abiFingerprint);
+        }
+        writer.u32(static_cast<std::uint32_t>(metadata.platformImports.size()));
+        for (const LibraryMetadataPlatformImport& importRecord : metadata.platformImports)
+        {
+            writer.text(importRecord.dllName);
+            writer.text(importRecord.symbolName);
+        }
+    }
     return writer.bytes();
 }
 
@@ -1740,6 +1841,12 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
     LibraryMetadata projected = metadata;
     projected.producerVersion.clear();
     projected.languageEdition = 0;
+    // Static closure and private imports describe how to link this particular archive; they do
+    // not change the public NativeSharp ABI published by the module. Project through 1.24 so even
+    // the two 1.25 section counts stay outside the public fingerprint.
+    projected.binaryDependencies.clear();
+    projected.platformImports.clear();
+    if (projected.formatMinor == 25) projected.formatMinor = 24;
     return encodePayload(projected);
 }
 
@@ -2112,6 +2219,47 @@ bool decodePayload(
             metadata.namespaceStates.push_back(std::move(state));
         }
     }
+    metadata.binaryDependencies.clear();
+    metadata.platformImports.clear();
+    if (metadata.formatMinor >= 25)
+    {
+        if (!readCount(reader, count))
+        {
+            error = "invalid binary-dependency count";
+            return false;
+        }
+        metadata.binaryDependencies.reserve(count);
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            LibraryMetadataBinaryDependency dependency;
+            if (!reader.text(dependency.moduleName) ||
+                !reader.text(dependency.libraryFileName) ||
+                !reader.text(dependency.metadataFileName) ||
+                !reader.text(dependency.runtimeFileName) ||
+                !reader.raw(dependency.abiFingerprint))
+            {
+                error = "truncated binary-dependency metadata";
+                return false;
+            }
+            metadata.binaryDependencies.push_back(std::move(dependency));
+        }
+        if (!readCount(reader, count))
+        {
+            error = "invalid platform-import count";
+            return false;
+        }
+        metadata.platformImports.reserve(count);
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            LibraryMetadataPlatformImport importRecord;
+            if (!reader.text(importRecord.dllName) || !reader.text(importRecord.symbolName))
+            {
+                error = "truncated platform-import metadata";
+                return false;
+            }
+            metadata.platformImports.push_back(std::move(importRecord));
+        }
+    }
     if (!reader.atEnd())
     {
         error = "metadata payload has trailing bytes";
@@ -2384,6 +2532,13 @@ bool LibraryMetadataCodec::writeModelImpl(
                 "ReadOnlySpan<T> declaration";
             return false;
         }
+    }
+    if (metadata.formatMinor < 25 &&
+        (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))
+    {
+        error = "NativeSharp metadata before 1.25 cannot represent binary closure or private "
+            "platform imports";
+        return false;
     }
 
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
@@ -3041,6 +3196,44 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                 ? "metadata contains a C ABI export with an empty symbol name"
                 : "metadata contains duplicate C ABI export '" + exportRecord.cAbiName + "'";
             return false;
+        }
+    }
+    if (metadata.formatMinor >= 25)
+    {
+        const auto isLeafName = [](const std::string& value) {
+            if (value.empty()) return false;
+            const std::filesystem::path path(value);
+            return path == path.filename() && path.filename() != "." && path.filename() != "..";
+        };
+        std::unordered_set<std::string> dependencyModules;
+        for (const LibraryMetadataBinaryDependency& dependency : metadata.binaryDependencies)
+        {
+            const bool validRuntime = dependency.runtimeFileName.empty() ||
+                isLeafName(dependency.runtimeFileName);
+            const bool emptyFingerprint = std::ranges::all_of(
+                dependency.abiFingerprint, [](std::uint8_t byte) { return byte == 0U; });
+            if (dependency.moduleName.empty() || dependency.moduleName == metadata.moduleName ||
+                !isLeafName(dependency.libraryFileName) ||
+                !isLeafName(dependency.metadataFileName) || !validRuntime || emptyFingerprint ||
+                !dependencyModules.insert(dependency.moduleName).second)
+            {
+                error = "metadata contains an incomplete, recursive, or duplicate binary "
+                    "dependency for module '" + dependency.moduleName + "'";
+                return false;
+            }
+        }
+        std::unordered_set<std::string> platformImportKeys;
+        for (const LibraryMetadataPlatformImport& importRecord : metadata.platformImports)
+        {
+            const std::string key = foldedAscii(importRecord.dllName) + "\n" +
+                importRecord.symbolName;
+            if (importRecord.dllName.empty() || importRecord.symbolName.empty() ||
+                !platformImportKeys.insert(key).second)
+            {
+                error = "metadata contains an incomplete or duplicate private platform import '" +
+                    importRecord.dllName + "!" + importRecord.symbolName + "'";
+                return false;
+            }
         }
     }
     // El productor conserva la identidad exacta del ejecutable para poder

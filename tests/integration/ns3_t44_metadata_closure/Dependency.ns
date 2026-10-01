@@ -1,0 +1,7 @@
+namespace T44.Dependency
+{
+    public class ValueProvider
+    {
+        public static int Forty() { return 40; }
+    }
+}

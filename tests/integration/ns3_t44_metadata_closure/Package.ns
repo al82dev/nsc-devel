@@ -1,0 +1,26 @@
+using T44.Dependency;
+
+namespace T44.Package
+{
+    internal class Session
+    {
+        public static int Finish(int value) { return value + 2; }
+    }
+
+    internal class Kernel
+    {
+        extern C from "kernel32.dll"
+        {
+            public static uint GetCurrentProcessId();
+        }
+    }
+
+    public class Api
+    {
+        public static int Answer()
+        {
+            if (Kernel.GetCurrentProcessId() == 0u) { return 1; }
+            return Session.Finish(ValueProvider.Forty());
+        }
+    }
+}

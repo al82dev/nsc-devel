@@ -2545,6 +2545,8 @@ bool configurePrecompiledModules(
 
     interop::LibraryMetadataCodec codec;
     std::vector<LoadedPrecompiledMetadata> loaded;
+    std::unordered_map<std::string, std::size_t> loadedByModule;
+    std::unordered_map<std::string, std::vector<compilation::LibraryReference>> discoveredByOwner;
     for (const compilation::Project &project : graph->projects())
     {
         for (const compilation::LibraryReference &reference : project.libraryReferences())
@@ -2556,8 +2558,135 @@ bool configurePrecompiledModules(
                     "cannot import precompiled metadata '" + reference.metadataPath.generic_string() + "': " + error;
                 return false;
             }
+            const auto existing = loadedByModule.find(metadata.moduleName);
+            if (existing != loadedByModule.end())
+            {
+                const LoadedPrecompiledMetadata& prior = loaded[existing->second];
+                if (prior.metadata.abiFingerprint != metadata.abiFingerprint ||
+                    foldedPathKey(prior.metadataPath) != foldedPathKey(reference.metadataPath))
+                {
+                    error = "precompiled module '" + metadata.moduleName +
+                        "' was explicitly referenced with incompatible artifacts '" +
+                        prior.metadataPath.generic_string() + "' and '" +
+                        reference.metadataPath.generic_string() + "'";
+                    return false;
+                }
+                continue;
+            }
+            loadedByModule.emplace(metadata.moduleName, loaded.size());
             loaded.push_back({project.projectFile(), reference.metadataPath, std::move(metadata)});
         }
+    }
+
+    // NSMETA 1.25 expands the static binary closure without restore or source enumeration. Each
+    // edge is resolved either beside its referring metadata (relocatable package layout) or below
+    // the explicit LibraryReferenceRoot. The recorded ABI fingerprint prevents same-name artifact
+    // substitution before a linker is invoked.
+    for (std::size_t cursor = 0; cursor < loaded.size(); ++cursor)
+    {
+        const std::filesystem::path parentOwner = loaded[cursor].ownerProjectFile;
+        const std::filesystem::path parentMetadataPath = loaded[cursor].metadataPath;
+        const std::string parentModule = loaded[cursor].metadata.moduleName;
+        const std::vector<interop::LibraryMetadataBinaryDependency> parentDependencies =
+            loaded[cursor].metadata.binaryDependencies;
+        for (const interop::LibraryMetadataBinaryDependency& dependency :
+             parentDependencies)
+        {
+            std::vector<std::filesystem::path> roots = {parentMetadataPath.parent_path()};
+            if (loadOptions.libraryReferenceRoot.has_value() &&
+                foldedPathKey(*loadOptions.libraryReferenceRoot) != foldedPathKey(roots.front()))
+                roots.push_back(*loadOptions.libraryReferenceRoot);
+
+            compilation::LibraryReference resolved;
+            bool found = false;
+            for (const std::filesystem::path& root : roots)
+            {
+                compilation::LibraryReference candidate{
+                    root / dependency.libraryFileName,
+                    root / dependency.metadataFileName,
+                    dependency.runtimeFileName.empty()
+                        ? std::filesystem::path{}
+                        : root / dependency.runtimeFileName};
+                std::error_code fileError;
+                const bool hasLibrary = std::filesystem::is_regular_file(candidate.libraryPath, fileError);
+                fileError.clear();
+                const bool hasMetadata = std::filesystem::is_regular_file(candidate.metadataPath, fileError);
+                fileError.clear();
+                const bool hasRuntime = candidate.runtimePath.empty() ||
+                    std::filesystem::is_regular_file(candidate.runtimePath, fileError);
+                if (hasLibrary && hasMetadata && hasRuntime)
+                {
+                    resolved = std::move(candidate);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                error = "binary closure for module '" + parentModule +
+                    "' cannot resolve dependency '" + dependency.moduleName +
+                    "' (expected " + dependency.libraryFileName + " + " +
+                    dependency.metadataFileName + ") beside metadata or under LibraryReferenceRoot";
+                return false;
+            }
+
+            interop::LibraryMetadata childMetadata;
+            if (!codec.read(resolved.metadataPath, childMetadata, error) ||
+                !codec.verifyCurrentCompiler(childMetadata, error))
+            {
+                error = "cannot import transitive metadata '" +
+                    resolved.metadataPath.generic_string() + "' required by module '" +
+                    parentModule + "': " + error;
+                return false;
+            }
+            if (childMetadata.moduleName != dependency.moduleName)
+            {
+                error = "binary closure expected module '" + dependency.moduleName +
+                    "' but metadata '" + resolved.metadataPath.generic_string() +
+                    "' identifies '" + childMetadata.moduleName + "'";
+                return false;
+            }
+            if (childMetadata.abiFingerprint != dependency.abiFingerprint)
+            {
+                error = "binary closure ABI fingerprint mismatch for module '" +
+                    dependency.moduleName + "' required by '" + parentModule + "'";
+                return false;
+            }
+
+            const auto existing = loadedByModule.find(childMetadata.moduleName);
+            bool addGraphReference = false;
+            if (existing != loadedByModule.end())
+            {
+                const LoadedPrecompiledMetadata& prior = loaded[existing->second];
+                if (prior.metadata.abiFingerprint != childMetadata.abiFingerprint)
+                {
+                    error = "binary closure selects incompatible versions of module '" +
+                        childMetadata.moduleName + "'";
+                    return false;
+                }
+            }
+            else
+            {
+                loadedByModule.emplace(childMetadata.moduleName, loaded.size());
+                loaded.push_back({parentOwner, resolved.metadataPath,
+                    std::move(childMetadata)});
+                addGraphReference = true;
+            }
+            if (addGraphReference)
+                discoveredByOwner[foldedPathKey(parentOwner)].push_back(std::move(resolved));
+        }
+    }
+    std::vector<std::filesystem::path> closureOwners;
+    closureOwners.reserve(discoveredByOwner.size());
+    for (const compilation::Project& project : graph->projects())
+    {
+        if (discoveredByOwner.contains(foldedPathKey(project.projectFile())))
+            closureOwners.push_back(project.projectFile());
+    }
+    for (const std::filesystem::path& owner : closureOwners)
+    {
+        const auto additions = discoveredByOwner.find(foldedPathKey(owner));
+        if (!graph->addLibraryReferences(owner, additions->second, error)) return false;
     }
     if (!validatePrecompiledExternalTypeClosure(loaded, error)) return false;
 
@@ -2645,10 +2774,28 @@ void configureObjectGeneratorProgress(llvm_backend::ProjectOopObjectGenerator& g
 
 bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesystem::path &right);
 
+void appendExternalImport(
+    std::vector<linker::ExternalImportModule>& modules,
+    const std::string& dllName,
+    const std::string& symbol)
+{
+    auto module = std::ranges::find_if(modules, [&](const auto& candidate) {
+        return foldedName(candidate.dllName) == foldedName(dllName);
+    });
+    if (module == modules.end())
+    {
+        modules.push_back(linker::ExternalImportModule{dllName, {}});
+        module = std::prev(modules.end());
+    }
+    if (std::ranges::find(module->symbols, symbol) == module->symbols.end())
+        module->symbols.push_back(symbol);
+}
+
 bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compilation,
     std::vector<std::filesystem::path> &libraries,
     std::vector<std::filesystem::path> &runtimeLibraries,
-    std::string &error)
+    std::string &error,
+    std::vector<linker::ExternalImportModule>* inheritedImports = nullptr)
 {
     error.clear();
     if (compilation.projectGraph() == nullptr)
@@ -2708,6 +2855,13 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
                 error = "precompiled library metadata has an empty module identity: '" +
                         reference.metadataPath.string() + "'";
                 return false;
+            }
+            if (inheritedImports != nullptr)
+            {
+                for (const interop::LibraryMetadataPlatformImport& importRecord :
+                     metadata.platformImports)
+                    appendExternalImport(
+                        *inheritedImports, importRecord.dllName, importRecord.symbolName);
             }
 
             const std::unordered_set<std::string> archiveSymbols(
@@ -5838,24 +5992,7 @@ std::vector<linker::ExternalImportModule> collectExternalImports(const frontend:
     std::vector<linker::ExternalImportModule> modules;
     bool anyRuntimeBoundImport = false;
     const auto addSymbol = [&modules](const std::string &dllName, const std::string &symbol) {
-        linker::ExternalImportModule *found = nullptr;
-        for (linker::ExternalImportModule &module : modules)
-        {
-            if (module.dllName == dllName)
-            {
-                found = &module;
-                break;
-            }
-        }
-        if (found == nullptr)
-        {
-            modules.push_back(linker::ExternalImportModule{dllName, {}});
-            found = &modules.back();
-        }
-        if (std::find(found->symbols.begin(), found->symbols.end(), symbol) == found->symbols.end())
-        {
-            found->symbols.push_back(symbol);
-        }
+        appendExternalImport(modules, dllName, symbol);
     };
     for (const frontend::ProjectOopMirFunction &function : mirModel.functions())
     {
@@ -5978,8 +6115,10 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
 
     std::vector<std::filesystem::path> linkLibraries = extraLinkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
+    std::vector<linker::ExternalImportModule> inheritedImports;
     std::string referenceError;
-    if (!appendValidatedLibraryReferences(compilation, linkLibraries, runtimeLibraries, referenceError))
+    if (!appendValidatedLibraryReferences(
+            compilation, linkLibraries, runtimeLibraries, referenceError, &inheritedImports))
     {
         error << "nsc: error: precompiled library reference validation failed: " << referenceError << '\n';
         return ExitCode::CompilationError;
@@ -5991,7 +6130,12 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     builder.setSubsystem(subsystem);
     builder.setDebugInformation(debugInformation);
     builder.setIncrementalLink(incrementalLink);
-    builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
+    std::vector<linker::ExternalImportModule> externalImports =
+        collectExternalImports(*compilation.oopMirModel());
+    for (const linker::ExternalImportModule& module : inheritedImports)
+        for (const std::string& symbol : module.symbols)
+            appendExternalImport(externalImports, module.dllName, symbol);
+    builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
@@ -6147,8 +6291,10 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     }
     std::vector<std::filesystem::path> referencedLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
+    std::vector<linker::ExternalImportModule> inheritedImports;
     std::string referenceError;
-    if (!appendValidatedLibraryReferences(compilation, referencedLibraries, runtimeLibraries, referenceError))
+    if (!appendValidatedLibraryReferences(
+            compilation, referencedLibraries, runtimeLibraries, referenceError, &inheritedImports))
     {
         error << "nsc: error: precompiled library reference validation failed: " << referenceError << '\n';
         return ExitCode::CompilationError;
@@ -6179,7 +6325,12 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     linker::WindowsLibraryBuilder builder;
     builder.setProgramObjectsVerified(true);
     builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
-    builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
+    std::vector<linker::ExternalImportModule> externalImports =
+        collectExternalImports(*compilation.oopMirModel());
+    for (const linker::ExternalImportModule& module : inheritedImports)
+        for (const std::string& symbol : module.symbols)
+            appendExternalImport(externalImports, module.dllName, symbol);
+    builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(referencedLibraries);
     std::string buildError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
@@ -6501,8 +6652,10 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
 
     std::vector<std::filesystem::path> linkLibraries = extraLinkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
+    std::vector<linker::ExternalImportModule> inheritedImports;
     std::string referenceError;
-    if (!appendValidatedLibraryReferences(compilation, linkLibraries, runtimeLibraries, referenceError))
+    if (!appendValidatedLibraryReferences(
+            compilation, linkLibraries, runtimeLibraries, referenceError, &inheritedImports))
     {
         error << "nsc: error: precompiled library reference validation failed: " << referenceError << '\n';
         return ExitCode::CompilationError;
@@ -6511,7 +6664,12 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     linker::WindowsLibraryBuilder builder;
     builder.setProgramObjectsVerified(true);
     builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
-    builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
+    std::vector<linker::ExternalImportModule> externalImports =
+        collectExternalImports(*compilation.oopMirModel());
+    for (const linker::ExternalImportModule& module : inheritedImports)
+        for (const std::string& symbol : module.symbols)
+            appendExternalImport(externalImports, module.dllName, symbol);
+    builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
     basic::ArtifactTransaction artifactTransaction;

@@ -14,6 +14,7 @@
 namespace
 {
 using nativesharp::interop::LibraryMetadata;
+using nativesharp::interop::LibraryMetadataBinaryDependency;
 using nativesharp::interop::LibraryMetadataDispatch;
 using nativesharp::interop::LibraryMetadataDispatchInterface;
 using nativesharp::interop::LibraryMetadataExport;
@@ -21,6 +22,7 @@ using nativesharp::interop::LibraryMetadataGenericSpecialization;
 using nativesharp::interop::LibraryMetadataGenericTemplate;
 using nativesharp::interop::LibraryMetadataMember;
 using nativesharp::interop::LibraryMetadataMerger;
+using nativesharp::interop::LibraryMetadataPlatformImport;
 using nativesharp::interop::LibraryMetadataType;
 using nativesharp::interop::LibraryMetadataTypeKind;
 using nativesharp::tests::TestContext;
@@ -83,6 +85,13 @@ void testOrderIndependentMerge(TestContext& tests, const std::filesystem::path& 
     dispatch.interfaces = {zed, alpha};
     left.dispatchTables.push_back(dispatch);
     left.externalTypeKeys = {"type:Foreign::Zed", "type:Foreign::Alpha"};
+    LibraryMetadataBinaryDependency dependency;
+    dependency.moduleName = "Foundation";
+    dependency.libraryFileName = "Foundation.lib";
+    dependency.metadataFileName = "Foundation.nsmeta";
+    dependency.abiFingerprint[0] = 1U;
+    left.binaryDependencies.push_back(dependency);
+    left.platformImports.push_back({"kernel32.dll", "GetCurrentProcessId"});
 
     LibraryMetadata right = header();
     right.types = {type("Merged::Alpha", 4), type("Merged::Middle", 2)};
@@ -99,6 +108,9 @@ void testOrderIndependentMerge(TestContext& tests, const std::filesystem::path& 
     exportRecord.returnTypeKey = "builtin:int";
     right.exports.push_back(exportRecord);
     right.externalTypeKeys = {"type:Foreign::Alpha", "type:Foreign::Middle"};
+    right.binaryDependencies.push_back(dependency);
+    right.platformImports.push_back({"kernel32.dll", "GetCurrentProcessId"});
+    right.platformImports.push_back({"user32.dll", "MessageBeep"});
 
     LibraryMetadataMerger merger;
     LibraryMetadata forward;
@@ -136,6 +148,10 @@ void testOrderIndependentMerge(TestContext& tests, const std::filesystem::path& 
     tests.expect(forward.genericSpecializations.size() == 1 &&
             forward.exports.size() == 1,
         "specializations and C exports survive fragmented collection");
+    tests.expect(forward.binaryDependencies.size() == 1 &&
+            forward.binaryDependencies[0].moduleName == "Foundation" &&
+            forward.platformImports.size() == 2,
+        "binary closure and private platform imports merge canonically without duplicates");
 
     nativesharp::interop::LibraryMetadataCodec codec;
     const auto forwardPath = root / "forward.nsmeta";

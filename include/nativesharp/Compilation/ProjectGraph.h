@@ -34,6 +34,13 @@ public:
         std::span<const PrecompiledProjectDescriptor> descriptors,
         std::string& error);
 
+    // Adds metadata-discovered binary closure edges to an existing source project. This mutates
+    // only the in-memory graph; no project file, restore state, or source dependency is created.
+    bool addLibraryReferences(
+        const std::filesystem::path& ownerProjectFile,
+        std::span<const LibraryReference> references,
+        std::string& error);
+
 private:
     std::filesystem::path rootProjectFile_;
     std::vector<Project> projects_;

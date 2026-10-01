@@ -846,6 +846,15 @@ if(NSC_BUILD_TESTS)
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t43-callables-events"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT43CallablesEvents.cmake")
 
+    add_test(
+        NAME nsc.ns3.t44.metadata-closure
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DFIXTURE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ns3_t44_metadata_closure"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t44-metadata-closure"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT44MetadataClosure.cmake")
+
     add_executable(
         nsc_ns3_t03_sum_type_tests
         tests/unit/NativeSharp3T03SumTypeTests.cpp)
