@@ -13519,7 +13519,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
                 diagnostics::DiagnosticId::InvalidAddressOf,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
-                "operand of & must be addressable storage; bit fields and temporary values have no address");
+                "bit fields have no address; operand of & must name addressable storage, not a bit field or temporary value");
             return result;
         }
         result.typeKey = operand.typeKey + '*';

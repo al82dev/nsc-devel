@@ -1,5 +1,6 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
 #include "../support/TestContext.h"
@@ -126,7 +127,9 @@ public class Program
     tests.expect(mir, "noheap contracts lower to MIR (" + error + ")");
     if (mir)
     {
-        tests.expect(output.find("schema=1.14") != std::string::npos &&
+        tests.expect(output.find("schema=" +
+                         std::to_string(nativesharp::frontend::kProjectOopMirSchemaMajor) + "." +
+                         std::to_string(nativesharp::frontend::kProjectOopMirSchemaMinor)) != std::string::npos &&
                          output.find("noheap=true") != std::string::npos,
             "current MIR transports the noheap function flag");
     }

@@ -48,7 +48,7 @@ int main()
         codec.write(compilation, metadataPath, written, error);
     tests.expect(wrote && error.empty(),
         "NSMETA producer writes namespace function records");
-    tests.expect(written.formatMinor == 22,
+    tests.expect(written.formatMinor == nativesharp::interop::kMetadataFormatMinor,
         "namespace function publication uses current NSMETA format");
     tests.expect(written.namespaceFunctions.size() == 1,
         "only public namespace functions are published");

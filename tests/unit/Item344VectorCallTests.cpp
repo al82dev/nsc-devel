@@ -160,7 +160,7 @@ public class Api
     for (const auto& type : metadata.types)
         foundVectorCall = foundVectorCall || (type.fullyQualifiedName == "VectorSum" &&
             (type.delegateFlags & 3U) == 3U);
-    tests.expect(metadataRead && metadata.formatMinor == 22U && foundVectorCall,
+    tests.expect(metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor && foundVectorCall,
         "current NSMETA preserves the vectorcall delegate flag (" + metadataError + ")");
     metadata.formatMinor = 19U;
     metadataError.clear();
