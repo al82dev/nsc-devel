@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <mutex>
@@ -688,6 +689,22 @@ std::optional<Project> ProjectLoader::load(
     const ProjectLoadOptions& options,
     std::string& error) const
 {
+    ProjectLoadOptions effectiveOptions = options;
+    if (!effectiveOptions.libraryReferenceRoot.has_value() &&
+        !effectiveOptions.libraryReferenceFallbackRoot.has_value())
+    {
+        char* environmentRoot = nullptr;
+        std::size_t environmentRootLength = 0;
+        if (_dupenv_s(&environmentRoot, &environmentRootLength, "NS_LIB_ROOT") == 0 &&
+            environmentRoot != nullptr && *environmentRoot != '\0')
+        {
+            const std::filesystem::path root{environmentRoot};
+            if (root.is_absolute())
+                effectiveOptions.libraryReferenceFallbackRoot = root.lexically_normal();
+        }
+        std::free(environmentRoot);
+    }
+
     std::filesystem::path canonicalProject;
     ProjectDescriptor descriptor;
     if (!loadDescriptorFile(projectFile, canonicalProject, descriptor, *cache_, error))
@@ -810,8 +827,8 @@ std::optional<Project> ProjectLoader::load(
     {
         const std::filesystem::path path{std::string(text)};
         const std::optional<std::filesystem::path>& explicitRoot =
-            options.libraryReferenceRoot.has_value()
-                ? options.libraryReferenceRoot
+            effectiveOptions.libraryReferenceRoot.has_value()
+                ? effectiveOptions.libraryReferenceRoot
                 : descriptor.buildSettings.libraryReferenceRoot;
         if (path.is_absolute())
         {
@@ -823,10 +840,10 @@ std::optional<Project> ProjectLoader::load(
         }
 
         const std::filesystem::path local = projectDirectory / path;
-        if (!options.libraryReferenceFallbackRoot.has_value()) return local;
+        if (!effectiveOptions.libraryReferenceFallbackRoot.has_value()) return local;
         std::error_code existenceError;
         if (std::filesystem::is_regular_file(local, existenceError)) return local;
-        return *options.libraryReferenceFallbackRoot / path;
+        return *effectiveOptions.libraryReferenceFallbackRoot / path;
     };
     for (const LibraryReferenceDescriptor& descriptorReference : descriptor.libraryReferences)
     {

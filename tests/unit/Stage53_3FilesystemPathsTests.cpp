@@ -60,6 +60,17 @@ using nativesharp::driver::Driver;
 using nativesharp::frontend::ProjectCompilation;
 using nativesharp::tests::TestContext;
 
+std::string diagnosticMessages(const ProjectCompilation& compilation)
+{
+    std::string result;
+    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+    {
+        if (!result.empty()) result += " | ";
+        result += diagnostic.message();
+    }
+    return result;
+}
+
 void writeFile(const std::filesystem::path& path, std::string_view text)
 {
     std::filesystem::create_directories(path.parent_path());
@@ -215,15 +226,18 @@ void testPackagedExampleAtOptimizationLevel(
 
     std::string error;
     ProjectCompilation bodies;
-    tests.expect(bodies.compileProjectMethodBodies(project, error),
+    const bool bodiesOk = bodies.compileProjectMethodBodies(project, error);
+    tests.expect(bodiesOk,
         std::string("packaged Stage 53.3 example (") + std::string(levelLabel) +
-            ") passes method-body ownership analysis");
+            ") passes method-body ownership analysis (" + diagnosticMessages(bodies) + ")");
     tests.expect(error.empty(), "packaged Stage 53.3 method-body analysis has no loader error");
 
     error.clear();
     ProjectCompilation mir;
-    tests.expect(mir.compileProjectOopMir(project, error),
-        std::string("packaged Stage 53.3 example (") + std::string(levelLabel) + ") lowers to OOP MIR");
+    const bool mirOk = mir.compileProjectOopMir(project, error);
+    tests.expect(mirOk,
+        std::string("packaged Stage 53.3 example (") + std::string(levelLabel) +
+            ") lowers to OOP MIR (" + diagnosticMessages(mir) + ")");
     tests.expect(error.empty(), "packaged Stage 53.3 MIR lowering has no loader/lowering error");
     if (mir.nameLookup() == nullptr || mir.oopMirModel() == nullptr) return;
 

@@ -5,6 +5,7 @@
 
 #include "../support/TestContext.h"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -353,6 +354,23 @@ void testLibraryReferenceRoot(TestContext& tests, const std::filesystem::path& r
         tests.expect(fallbackProject->libraryReferences()[0].libraryPath ==
                 std::filesystem::weakly_canonical(o2 / "dependencies" / "NativeMath.lib"),
             "the fallback root supplies the missing relative dependency");
+
+    char* previousEnvironmentRoot = nullptr;
+    std::size_t previousEnvironmentRootLength = 0;
+    _dupenv_s(
+        &previousEnvironmentRoot, &previousEnvironmentRootLength, "NS_LIB_ROOT");
+    const std::string savedEnvironmentRoot =
+        previousEnvironmentRoot != nullptr ? previousEnvironmentRoot : "";
+    std::free(previousEnvironmentRoot);
+    _putenv_s("NS_LIB_ROOT", o2.string().c_str());
+    const auto environmentProject = loader.load(app / "App.nsproj", error);
+    tests.expect(environmentProject.has_value(),
+        "NS_LIB_ROOT supplies the fallback to direct ProjectLoader clients");
+    if (environmentProject.has_value())
+        tests.expect(environmentProject->libraryReferences()[0].libraryPath ==
+                std::filesystem::weakly_canonical(o2 / "dependencies" / "NativeMath.lib"),
+            "the environment fallback resolves the same package artifacts as explicit options");
+    _putenv_s("NS_LIB_ROOT", savedEnvironmentRoot.c_str());
 
     writeFile(app / "dependencies" / "NativeMath.lib", "local archive");
     writeFile(app / "dependencies" / "NativeMath.nsmeta", "local metadata");

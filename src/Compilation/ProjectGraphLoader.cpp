@@ -223,6 +223,58 @@ bool normalizeTransitiveSourceOwnership(
     return true;
 }
 
+void preferExactSourceModuleArtifacts(
+    std::map<std::string, Project>& projects,
+    const std::map<std::string, std::filesystem::path>& moduleOwners)
+{
+    std::map<std::string, Project> rewired;
+    for (const auto& [key, project] : projects)
+    {
+        std::vector<std::filesystem::path> projectReferences(
+            project.projectReferences().begin(), project.projectReferences().end());
+        std::vector<LibraryReference> libraryReferences;
+        libraryReferences.reserve(project.libraryReferences().size());
+        for (const LibraryReference& reference : project.libraryReferences())
+        {
+            const std::string libraryStem = reference.libraryPath.stem().string();
+            const std::string metadataStem = reference.metadataPath.stem().string();
+            const auto source = libraryStem == metadataStem
+                ? moduleOwners.find(libraryStem)
+                : moduleOwners.end();
+            if (source == moduleOwners.end() ||
+                pathKey(canonicalPath(source->second)) ==
+                    pathKey(canonicalPath(project.projectFile())))
+            {
+                libraryReferences.push_back(reference);
+                continue;
+            }
+
+            const std::string sourceKey = pathKey(canonicalPath(source->second));
+            const bool alreadyReferenced = std::ranges::any_of(
+                projectReferences, [&](const std::filesystem::path& path) {
+                    return pathKey(canonicalPath(path)) == sourceKey;
+                });
+            if (!alreadyReferenced) projectReferences.push_back(source->second);
+        }
+        std::ranges::sort(projectReferences, {}, [](const std::filesystem::path& path) {
+            return pathKey(canonicalPath(path));
+        });
+        std::ranges::sort(libraryReferences, {}, [](const LibraryReference& reference) {
+            return pathKey(canonicalPath(reference.libraryPath));
+        });
+        rewired.emplace(
+            key,
+            Project(
+                project.projectFile(), project.moduleName(), project.outputKind(),
+                project.sourceSet(), std::move(projectReferences),
+                std::move(libraryReferences),
+                std::vector<SdkManifest>(
+                    project.sdkReferences().begin(), project.sdkReferences().end()),
+                project.languageEdition()));
+    }
+    projects = std::move(rewired);
+}
+
 }
 
 ProjectGraphLoader::ProjectGraphLoader(
@@ -313,6 +365,12 @@ std::optional<ProjectGraph> ProjectGraphLoader::load(
         }
         frontier = std::move(next);
     }
+
+    // Direct frontend clients do not run the Driver's NSMETA closure pass. Preserve source
+    // precedence for the unambiguous convention where both artifact stems exactly equal a
+    // source module already present in the graph. Non-matching package names remain untouched
+    // for the Driver's authoritative metadata-identity resolution.
+    preferExactSourceModuleArtifacts(projects, moduleOwners);
 
     GraphLoadState state;
     if (!visitProject(root, projects, state, error))

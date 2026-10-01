@@ -274,7 +274,7 @@ void testShadowedLibraryReferenceBecomesSourceEdge(TestContext& tests, const std
     const auto core = root / "SourcePrecedenceCore";
     const auto io = root / "SourcePrecedenceIo";
     const auto app = root / "SourcePrecedenceApp";
-    writeProject(core, "Core.nsproj", "Core");
+    writeProject(core, "Core.nsproj", "CoreModule");
     writeFile(io / "Core.lib", "archive fixture");
     writeFile(io / "Core.nsmeta", "metadata fixture");
     writeProject(
@@ -317,6 +317,51 @@ void testShadowedLibraryReferenceBecomesSourceEdge(TestContext& tests, const std
             graph->rootProject()->moduleName() == "App",
         "source precedence preserves project order and root identity");
 }
+
+void testExactArtifactSourcePrecedenceIsAutomatic(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const auto core = root / "AutomaticSourcePrecedenceCore";
+    const auto io = root / "AutomaticSourcePrecedenceIo";
+    const auto app = root / "AutomaticSourcePrecedenceApp";
+    writeProject(core, "Core.nsproj", "Core");
+    writeFile(io / "Core.lib", "archive fixture");
+    writeFile(io / "Core.nsmeta", "metadata fixture");
+    writeProject(
+        io,
+        "Io.nsproj",
+        "Io",
+        "    <LibraryReference Include=\"Core.lib\" Metadata=\"Core.nsmeta\" />\n");
+    writeProject(
+        app,
+        "App.nsproj",
+        "App",
+        "    <ProjectReference Include=\"../AutomaticSourcePrecedenceCore/Core.nsproj\" />\n"
+        "    <ProjectReference Include=\"../AutomaticSourcePrecedenceIo/Io.nsproj\" />\n");
+
+    ProjectGraphLoader loader;
+    std::string error;
+    const auto graph = loader.load(app / "App.nsproj", error);
+    tests.expect(graph.has_value(),
+        "an exact artifact/module identity receives automatic source precedence");
+    if (!graph.has_value()) return;
+    const auto ioProject = std::ranges::find_if(graph->projects(), [](const auto& project) {
+        return project.moduleName() == "Io";
+    });
+    tests.expect(ioProject != graph->projects().end() &&
+            ioProject->libraryReferences().empty(),
+        "automatic source precedence removes the exact shadowed binary edge");
+    tests.expect(ioProject != graph->projects().end() &&
+            ioProject->projectReferences().size() == 1 &&
+            ioProject->projectReferences().front().filename() == "Core.nsproj",
+        "automatic source precedence exposes the source module to its former binary consumer");
+    tests.expect(graph->projects().size() == 3 &&
+            graph->projects()[0].moduleName() == "Core" &&
+            graph->projects()[1].moduleName() == "Io" &&
+            graph->projects()[2].moduleName() == "App",
+        "automatic source precedence restores deterministic dependency order");
+}
 }
 
 int main()
@@ -335,6 +380,7 @@ int main()
     testMissingTransitiveReference(tests, root);
     testPrecompiledOrderIsCanonical(tests, root);
     testShadowedLibraryReferenceBecomesSourceEdge(tests, root);
+    testExactArtifactSourcePrecedenceIsAutomatic(tests, root);
 
     std::filesystem::remove_all(root, errorCode);
     return tests.result();
