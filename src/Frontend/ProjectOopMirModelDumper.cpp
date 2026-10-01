@@ -95,13 +95,17 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
                << " zero=" << (node->zeroInitialize ? "true" : "false")
                << " storage=supplied";
     if (node->kind == ProjectOopMirNodeKind::ArrayAllocate ||
+        node->kind == ProjectOopMirNodeKind::RangeArrayAllocate ||
         node->kind == ProjectOopMirNodeKind::ArrayElementLoad ||
-        node->kind == ProjectOopMirNodeKind::ArrayElementAddress)
+        node->kind == ProjectOopMirNodeKind::ArrayElementAddress ||
+        node->kind == ProjectOopMirNodeKind::RangeArrayElementLoad ||
+        node->kind == ProjectOopMirNodeKind::RangeArrayElementAddress)
         output << " element=" << node->elementTypeKey
                << " element-size=" << node->immediate
                << " element-align=" << node->alignment
                << ((node->kind != ProjectOopMirNodeKind::ArrayAllocate && node->booleanValue)
                     ? " index=from-end" : "");
+    if (node->nativeArrayRank > 1) output << " rank=" << node->nativeArrayRank;
     if (node->kind == ProjectOopMirNodeKind::StringElementLoad && node->booleanValue)
         output << " index=from-end";
     if (node->kind == ProjectOopMirNodeKind::StringLiteral)

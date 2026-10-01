@@ -738,9 +738,12 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::DefaultValue: return "default-value";
         case ProjectOopMirNodeKind::StringLiteral: return "string-literal";
         case ProjectOopMirNodeKind::ArrayAllocate: return "array-allocate";
+        case ProjectOopMirNodeKind::RangeArrayAllocate: return "range-array-allocate";
         case ProjectOopMirNodeKind::ArrayLength: return "array-length";
         case ProjectOopMirNodeKind::ArrayElementLoad: return "array-element-load";
         case ProjectOopMirNodeKind::ArrayElementAddress: return "array-element-address";
+        case ProjectOopMirNodeKind::RangeArrayElementLoad: return "range-array-element-load";
+        case ProjectOopMirNodeKind::RangeArrayElementAddress: return "range-array-element-address";
         case ProjectOopMirNodeKind::StringLength: return "string-length";
         case ProjectOopMirNodeKind::StringElementLoad: return "string-element-load";
         case ProjectOopMirNodeKind::EnumName: return "enum-name";
@@ -1822,6 +1825,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->automaticDestruction = node->automaticDestruction;
     result->variableLengthArray = node->variableLengthArray;
     result->variableLengthArrayRank = node->variableLengthArrayRank;
+    result->nativeArrayRank = node->nativeArrayRank;
     result->placementConstructed = node->placementConstructed;
     result->stackPromotedObject = node->stackPromotedObject;
     result->volatileAccess = node->volatileAccess;
@@ -2524,8 +2528,11 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->kind = ProjectOopMirNodeKind::EventInvoke;
             break;
         case ProjectOopHirNodeKind::ArrayAllocation:
+        case ProjectOopHirNodeKind::RangeArrayAllocation:
         case ProjectOopHirNodeKind::ArrayElementValue:
         case ProjectOopHirNodeKind::ArrayElementAddress:
+        case ProjectOopHirNodeKind::RangeArrayElementValue:
+        case ProjectOopHirNodeKind::RangeArrayElementAddress:
         {
             if (nameLookup_ == nullptr || objectLayoutModel_ == nullptr)
             {
@@ -2540,11 +2547,17 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             }
             result->immediate = layout->first;
             result->alignment = layout->second;
-            result->kind = node->kind == ProjectOopHirNodeKind::ArrayAllocation
-                ? ProjectOopMirNodeKind::ArrayAllocate
-                : node->kind == ProjectOopHirNodeKind::ArrayElementValue
-                    ? ProjectOopMirNodeKind::ArrayElementLoad
-                    : ProjectOopMirNodeKind::ArrayElementAddress;
+            if (node->kind == ProjectOopHirNodeKind::ArrayAllocation)
+                result->kind = ProjectOopMirNodeKind::ArrayAllocate;
+            else if (node->kind == ProjectOopHirNodeKind::RangeArrayAllocation)
+                result->kind = ProjectOopMirNodeKind::RangeArrayAllocate;
+            else if (node->kind == ProjectOopHirNodeKind::ArrayElementValue)
+                result->kind = ProjectOopMirNodeKind::ArrayElementLoad;
+            else if (node->kind == ProjectOopHirNodeKind::ArrayElementAddress)
+                result->kind = ProjectOopMirNodeKind::ArrayElementAddress;
+            else if (node->kind == ProjectOopHirNodeKind::RangeArrayElementValue)
+                result->kind = ProjectOopMirNodeKind::RangeArrayElementLoad;
+            else result->kind = ProjectOopMirNodeKind::RangeArrayElementAddress;
             break;
         }
         case ProjectOopHirNodeKind::Unary: result->kind = ProjectOopMirNodeKind::Unary; break;

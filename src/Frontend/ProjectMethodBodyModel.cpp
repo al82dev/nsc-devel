@@ -7007,6 +7007,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
             if (base.valid && ProjectTypeConversion::isNativeArray(base.typeKey))
             {
+                const std::size_t arrayRank = ProjectTypeConversion::nativeArrayRank(base.typeKey);
                 const ast::AstNode* singleIndex = !indexSyntaxes.empty()
                     ? indexSyntaxes.front() : expression->second();
                 if (indices.size() == 1 && singleIndex != nullptr &&
@@ -7020,8 +7021,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         "Span<T>/ReadOnlySpan<T> Length/Slice view");
                     break;
                 }
-                if (indices.size() == 1 && indices.front().valid &&
-                    ProjectTypeConversion::isIntegral(indices.front().typeKey))
+                bool validIndices = indices.size() == arrayRank;
+                for (const ExpressionResult& index : indices)
+                    validIndices = validIndices && index.valid &&
+                        ProjectTypeConversion::isIntegral(index.typeKey) &&
+                        index.typeKey != "builtin:bool";
+                if (validIndices)
                 {
                     const std::optional<std::string> element =
                         ProjectTypeConversion::nativeArrayElementType(base.typeKey);
@@ -7035,7 +7040,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         // `&array[index]` raw-pointer boundary as a separate property.
                         result.addressable = true;
                         coreBindings_.push_back(MethodCoreBinding{
-                            MethodCoreOperationKind::ArrayElement,
+                            arrayRank > 1
+                                ? MethodCoreOperationKind::RangeArrayElement
+                                : MethodCoreOperationKind::ArrayElement,
                             expression,
                             methodMemberOrdinal,
                             scopeOrdinal,
@@ -7050,7 +7057,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         diagnostics::DiagnosticId::InvalidIndex,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "native array indexing requires exactly one integral index");
+                        "native array indexing requires exactly one integral index per dimension");
                 }
                 break;
             }
@@ -7614,6 +7621,56 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     expression->flag();
                 if (dynamicArrayNew)
                 {
+                    const bool rangeArray = expression->auxiliaryText().starts_with(
+                        "range-array-allocation:");
+                    if (rangeArray)
+                    {
+                        std::vector<const ast::AstNode*> dimensions;
+                        dimensions.push_back(expression->first());
+                        dimensions.insert(dimensions.end(), expression->children().begin(),
+                            expression->children().end());
+                        bool dimensionsValid = dimensions.size() >= 2;
+                        for (const ast::AstNode* dimension : dimensions)
+                        {
+                            const ExpressionResult extent = analyzeExpression(
+                                dimension, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                            if (!extent.valid || !ProjectTypeConversion::isIntegral(extent.typeKey) ||
+                                extent.typeKey == "builtin:bool")
+                            {
+                                diagnostics.report(
+                                    diagnostics::DiagnosticId::InvalidArrayCount,
+                                    diagnostics::DiagnosticSeverity::Error,
+                                    dimension->range(),
+                                    "rectangular array dimensions must be integral");
+                                dimensionsValid = false;
+                            }
+                        }
+                        if (element == "builtin:void")
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidAllocationType,
+                                diagnostics::DiagnosticSeverity::Error,
+                                expression->range(),
+                                "rectangular arrays cannot have void elements");
+                            dimensionsValid = false;
+                        }
+                        result.typeKey = element + '[' +
+                            std::string(dimensions.size() - 1, ',') + ']';
+                        result.valid = dimensionsValid && !isErrorType(element);
+                        if (result.valid)
+                        {
+                            result.storageOwnership = sema::OwnershipKind::Owned;
+                            coreBindings_.push_back(MethodCoreBinding{
+                                MethodCoreOperationKind::RangeArrayAllocation,
+                                expression,
+                                methodMemberOrdinal,
+                                scopeOrdinal,
+                                result.typeKey,
+                                element,
+                                false, std::nullopt, std::nullopt});
+                        }
+                        break;
+                    }
                     const bool inferredInitializer =
                         expression->auxiliaryText() == "inferred-array-initializer";
                     bool countValid = inferredInitializer
@@ -16670,9 +16727,11 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
     switch (kind)
     {
         case MethodCoreOperationKind::ArrayAllocation: return "array-allocation";
+        case MethodCoreOperationKind::RangeArrayAllocation: return "range-array-allocation";
         case MethodCoreOperationKind::ArrayLength: return "array-length";
         case MethodCoreOperationKind::FixedArrayLength: return "fixed-array-length";
         case MethodCoreOperationKind::ArrayElement: return "array-element";
+        case MethodCoreOperationKind::RangeArrayElement: return "range-array-element";
         case MethodCoreOperationKind::RawElement: return "raw-element";
         case MethodCoreOperationKind::StringLiteral: return "string-literal";
         case MethodCoreOperationKind::StringLength: return "string-length";

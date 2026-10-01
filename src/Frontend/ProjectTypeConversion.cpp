@@ -586,7 +586,25 @@ bool ProjectTypeConversion::isNativeString(std::string_view typeKey) noexcept
 
 bool ProjectTypeConversion::isNativeArray(std::string_view typeKey) noexcept
 {
-    return typeKey.size() >= 2 && typeKey.ends_with("[]");
+    return (typeKey.size() >= 2 && typeKey.ends_with("[]")) || isNativeRangeArray(typeKey);
+}
+
+bool ProjectTypeConversion::isNativeRangeArray(std::string_view typeKey) noexcept
+{
+    if (typeKey.size() < 4 || typeKey.back() != ']') return false;
+    const std::size_t open = typeKey.rfind('[');
+    if (open == std::string_view::npos || open == 0 || open + 2 >= typeKey.size()) return false;
+    for (std::size_t index = open + 1; index + 1 < typeKey.size(); ++index)
+        if (typeKey[index] != ',') return false;
+    return true;
+}
+
+std::size_t ProjectTypeConversion::nativeArrayRank(std::string_view typeKey) noexcept
+{
+    if (typeKey.size() >= 2 && typeKey.ends_with("[]")) return 1;
+    if (!isNativeRangeArray(typeKey)) return 0;
+    const std::size_t open = typeKey.rfind('[');
+    return typeKey.size() - open - 1;
 }
 
 bool ProjectTypeConversion::isNativeCoreReference(std::string_view typeKey) noexcept
@@ -597,7 +615,7 @@ bool ProjectTypeConversion::isNativeCoreReference(std::string_view typeKey) noex
 std::optional<std::string> ProjectTypeConversion::nativeArrayElementType(std::string_view typeKey)
 {
     if (!isNativeArray(typeKey)) return std::nullopt;
-    return std::string(typeKey.substr(0, typeKey.size() - 2));
+    return std::string(typeKey.substr(0, typeKey.rfind('[')));
 }
 
 bool ProjectTypeConversion::isTuple(std::string_view typeKey) noexcept

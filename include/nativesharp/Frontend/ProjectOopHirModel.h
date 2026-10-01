@@ -141,6 +141,7 @@ enum class ProjectOopHirNodeKind
     DefaultValue,
     StringLiteral,
     ArrayAllocation,
+    RangeArrayAllocation,
     // CC1 fase 4B -- `stackalloc T[n]`. Un hijo: el contador. `elementTypeKey` es T. El MIR le
     // pone el tamano y la alineacion; el backend emite un alloca de arreglo.
     StackAllocation,
@@ -155,6 +156,8 @@ enum class ProjectOopHirNodeKind
     ArrayLength,
     ArrayElementValue,
     ArrayElementAddress,
+    RangeArrayElementValue,
+    RangeArrayElementAddress,
     StringLength,
     StringElementValue,
     // ID 129. `ToString()` de un enum: el NOMBRE del enumerador.
@@ -517,6 +520,7 @@ struct ProjectOopHirNode final
     bool automaticDestruction = false;
     bool variableLengthArray = false;
     std::size_t variableLengthArrayRank = 0;
+    std::size_t nativeArrayRank = 0;
     bool placementConstructed = false;
     // Item 323. Set on a proven-nonescaping RAII class local and its ObjectConstruction child.
     // The object lifetime remains owned, but its backing bytes belong to the current stack frame.

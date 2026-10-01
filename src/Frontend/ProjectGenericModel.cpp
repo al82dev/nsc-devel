@@ -2447,7 +2447,8 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
         result->addModifier(ast::TypeModifierSyntax{
             modifier.kind,
             cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
-            modifier.range});
+            modifier.range,
+            modifier.arrayRank});
         // In the substitution branch `result` already carries the argument's canonical identity
         // (including modifiers written on that argument). Modifiers written on the template
         // parameter occurrence are outer modifiers and must be appended as well: substituting
@@ -2461,6 +2462,9 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
                     identity->second.push_back('*');
                 else if (modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray)
                     identity->second += "[]";
+                else if (modifier.kind == ast::TypeModifierSyntaxKind::RangeArray)
+                    identity->second += '[' + std::string(
+                        modifier.arrayRank > 0 ? modifier.arrayRank - 1 : 0, ',') + ']';
                 else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray)
                     identity->second += "[*]";
                 else
@@ -2716,6 +2720,9 @@ std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) con
     {
         if (modifier.kind == ast::TypeModifierSyntaxKind::Pointer) result.push_back('*');
         else if (modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray) result += "[]";
+        else if (modifier.kind == ast::TypeModifierSyntaxKind::RangeArray)
+            result += '[' + std::string(
+                modifier.arrayRank > 0 ? modifier.arrayRank - 1 : 0, ',') + ']';
         else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray) result += "[*]";
         else result += "[fixed]";
     }
@@ -2878,6 +2885,9 @@ void ProjectGenericModel::appendTypeModifiers(
     {
         if (modifier.kind == ast::TypeModifierSyntaxKind::Pointer) identity.push_back('*');
         else if (modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray) identity += "[]";
+        else if (modifier.kind == ast::TypeModifierSyntaxKind::RangeArray)
+            identity += '[' + std::string(
+                modifier.arrayRank > 0 ? modifier.arrayRank - 1 : 0, ',') + ']';
         else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray) identity += "[*]";
         else identity += "[fixed]";
     }

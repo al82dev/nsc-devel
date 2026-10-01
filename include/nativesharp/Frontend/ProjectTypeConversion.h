@@ -71,6 +71,8 @@ public:
     static bool isPointer(std::string_view typeKey) noexcept;
     static bool isNativeString(std::string_view typeKey) noexcept;
     static bool isNativeArray(std::string_view typeKey) noexcept;
+    static bool isNativeRangeArray(std::string_view typeKey) noexcept;
+    static std::size_t nativeArrayRank(std::string_view typeKey) noexcept;
     static bool isNativeCoreReference(std::string_view typeKey) noexcept;
     static std::optional<std::string> nativeArrayElementType(std::string_view typeKey);
     static bool isTuple(std::string_view typeKey) noexcept;

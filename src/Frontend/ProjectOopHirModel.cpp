@@ -387,9 +387,11 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     // lowerExpression (acceso a arreglo, consola, atomicos, sincronizacion, ...).
     // ---------------------------------------------------------------------------------------
     case MethodCoreOperationKind::ArrayAllocation:
+    case MethodCoreOperationKind::RangeArrayAllocation:
     case MethodCoreOperationKind::ArrayLength:
     case MethodCoreOperationKind::FixedArrayLength:
     case MethodCoreOperationKind::ArrayElement:
+    case MethodCoreOperationKind::RangeArrayElement:
     case MethodCoreOperationKind::RawElement:
     case MethodCoreOperationKind::StringLiteral:
     case MethodCoreOperationKind::StringLength:
@@ -1025,9 +1027,12 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::DefaultValue: return "default-value";
         case ProjectOopHirNodeKind::StringLiteral: return "string-literal";
         case ProjectOopHirNodeKind::ArrayAllocation: return "array-allocation";
+        case ProjectOopHirNodeKind::RangeArrayAllocation: return "range-array-allocation";
         case ProjectOopHirNodeKind::ArrayLength: return "array-length";
         case ProjectOopHirNodeKind::ArrayElementValue: return "array-element-value";
         case ProjectOopHirNodeKind::ArrayElementAddress: return "array-element-address";
+        case ProjectOopHirNodeKind::RangeArrayElementValue: return "range-array-element-value";
+        case ProjectOopHirNodeKind::RangeArrayElementAddress: return "range-array-element-address";
         case ProjectOopHirNodeKind::StringLength: return "string-length";
         case ProjectOopHirNodeKind::StringElementValue: return "string-element-value";
         case ProjectOopHirNodeKind::EnumName: return "enum-name";
@@ -3284,6 +3289,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         switch (kind)
         {
             case ProjectOopHirNodeKind::ArrayAllocation:
+            case ProjectOopHirNodeKind::RangeArrayAllocation:
             case ProjectOopHirNodeKind::RawAllocation:
             case ProjectOopHirNodeKind::StringConcat:
             case ProjectOopHirNodeKind::StringSubstring:
@@ -4459,6 +4465,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             const MethodCoreBinding* core = coreBinding(expression);
             if (core != nullptr &&
                 (core->kind == MethodCoreOperationKind::ArrayElement ||
+                 core->kind == MethodCoreOperationKind::RangeArrayElement ||
                  core->kind == MethodCoreOperationKind::StringElement))
             {
                 if (core->kind == MethodCoreOperationKind::StringElement && addressContext)
@@ -4472,12 +4479,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     ? expression->children().front() : expression->second();
                 const bool fromEnd = indexSyntax != nullptr &&
                     indexSyntax->kind() == ast::AstNodeKind::FromEndExpression;
-                auto index = lowerExpression(
-                    fromEnd ? indexSyntax->first() : indexSyntax,
-                    memberOrdinal,
-                    false,
-                    error);
-                if (index == nullptr) return nullptr;
+                std::vector<const ast::AstNode*> indexSyntaxes;
+                if (!expression->children().empty())
+                    indexSyntaxes.assign(expression->children().begin(), expression->children().end());
+                else indexSyntaxes.push_back(expression->second());
                 ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::StringElementValue;
                 if (core->kind == MethodCoreOperationKind::ArrayElement)
                 {
@@ -4485,11 +4490,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         ? ProjectOopHirNodeKind::ArrayElementAddress
                         : ProjectOopHirNodeKind::ArrayElementValue;
                 }
+                else if (core->kind == MethodCoreOperationKind::RangeArrayElement)
+                {
+                    kind = addressContext
+                        ? ProjectOopHirNodeKind::RangeArrayElementAddress
+                        : ProjectOopHirNodeKind::RangeArrayElementValue;
+                }
                 auto node = makeNode(kind, expression, core->resultTypeKey);
                 node->elementTypeKey = core->elementTypeKey;
                 node->booleanValue = fromEnd;
+                node->nativeArrayRank = core->kind == MethodCoreOperationKind::RangeArrayElement
+                    ? indexSyntaxes.size() : 1U;
                 node->children.push_back(std::move(receiver));
-                node->children.push_back(std::move(index));
+                for (const ast::AstNode* syntax : indexSyntaxes)
+                {
+                    auto index = lowerExpression(
+                        fromEnd ? syntax->first() : syntax, memberOrdinal, false, error);
+                    if (index == nullptr) return nullptr;
+                    node->children.push_back(std::move(index));
+                }
                 return node;
             }
             // C2.1 "fixed arrays": inline, unmanaged element access -- `fixedArrayField[i]` and
@@ -6403,7 +6422,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->elementTypeKey = core->elementTypeKey;
                 return node;
             }
-            if (core == nullptr || core->kind != MethodCoreOperationKind::ArrayAllocation)
+            if (core == nullptr ||
+                (core->kind != MethodCoreOperationKind::ArrayAllocation &&
+                 core->kind != MethodCoreOperationKind::RangeArrayAllocation))
             {
                 error = "Stage 41 OOP HIR only owns dynamic new T[count]; raw new remains outside this pipeline";
                 return nullptr;
@@ -6412,6 +6433,24 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             {
                 error = "Stage 41 array allocation result is a reference value, not addressable storage";
                 return nullptr;
+            }
+            if (core->kind == MethodCoreOperationKind::RangeArrayAllocation)
+            {
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::RangeArrayAllocation, expression, core->resultTypeKey);
+                node->elementTypeKey = core->elementTypeKey;
+                node->nativeArrayRank = ProjectTypeConversion::nativeArrayRank(core->resultTypeKey);
+                std::vector<const ast::AstNode*> dimensions;
+                dimensions.push_back(expression->first());
+                dimensions.insert(dimensions.end(), expression->children().begin(),
+                    expression->children().end());
+                for (const ast::AstNode* dimension : dimensions)
+                {
+                    auto extent = lowerExpression(dimension, memberOrdinal, false, error);
+                    if (extent == nullptr) return nullptr;
+                    node->children.push_back(std::move(extent));
+                }
+                return node;
             }
             const bool inferredInitializer =
                 expression->auxiliaryText() == "inferred-array-initializer";

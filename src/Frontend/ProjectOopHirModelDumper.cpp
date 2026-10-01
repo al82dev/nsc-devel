@@ -72,6 +72,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
          node->kind == ProjectOopHirNodeKind::ArrayElementAddress ||
          node->kind == ProjectOopHirNodeKind::StringElementValue) && node->booleanValue)
         output << " index=from-end";
+    if (node->nativeArrayRank > 1) output << " rank=" << node->nativeArrayRank;
     if (node->kind == ProjectOopHirNodeKind::ParameterPack)
         output << " elements=" << node->children.size() << " storage=stack";
     if (node->kind == ProjectOopHirNodeKind::AggregateSpread)

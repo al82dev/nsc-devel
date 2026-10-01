@@ -319,7 +319,8 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutTypeSyntax(
     {
         const ast::TypeModifierSyntax& modifier = modifiers[modifierIndex];
         if (modifier.kind == ast::TypeModifierSyntaxKind::Pointer ||
-            modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray)
+            modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray ||
+            modifier.kind == ast::TypeModifierSyntaxKind::RangeArray)
         {
             current = targetLayout_.layoutOf(BuiltinLayoutKind::Pointer);
             continue;

@@ -42,6 +42,10 @@ std::string writtenSpelling(const ast::TypeSyntax* syntax)
             case ast::TypeModifierSyntaxKind::Pointer: text += "*"; break;
             case ast::TypeModifierSyntaxKind::Array: text += "[N]"; break;
             case ast::TypeModifierSyntaxKind::DynamicArray: text += "[]"; break;
+            case ast::TypeModifierSyntaxKind::RangeArray:
+                text += '[' + std::string(
+                    modifier.arrayRank > 0 ? modifier.arrayRank - 1 : 0, ',') + ']';
+                break;
             case ast::TypeModifierSyntaxKind::FlexibleArray: text += "[*]"; break;
         }
     }
@@ -93,7 +97,8 @@ bool isReferenceTypeArgument(
         // ProjectMethodBodyModel, y meter los dos bajo `class` prometia sobre `int[4]` lo que solo
         // es cierto de `int[]`.
         const ast::TypeModifierSyntaxKind outermost = syntax->modifiers().back().kind;
-        return outermost == ast::TypeModifierSyntaxKind::DynamicArray;
+        return outermost == ast::TypeModifierSyntaxKind::DynamicArray ||
+            outermost == ast::TypeModifierSyntaxKind::RangeArray;
     }
     if (syntax->baseTokenKind() == lexer::TokenKind::KwString) return true;
     if (declaration == nullptr) return false;

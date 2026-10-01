@@ -27,6 +27,7 @@ enum class TypeModifierSyntaxKind
     Pointer,
     Array,
     DynamicArray,
+    RangeArray,
     FlexibleArray
 };
 
@@ -35,6 +36,7 @@ struct TypeModifierSyntax
     TypeModifierSyntaxKind kind = TypeModifierSyntaxKind::Pointer;
     AstNode* arrayCount = nullptr;
     SourceRange range;
+    std::size_t arrayRank = 0;
 };
 
 class TypeSyntax final

@@ -105,6 +105,7 @@ void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
     output.scalar(node->automaticDestruction);
     output.scalar(node->variableLengthArray);
     output.scalar(node->variableLengthArrayRank);
+    output.scalar(node->nativeArrayRank);
     output.scalar(node->placementConstructed);
     output.scalar(node->stackPromotedObject);
     output.scalar(node->volatileAccess);

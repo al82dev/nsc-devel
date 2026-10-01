@@ -85,6 +85,7 @@ bool isInvalidVoidObjectType(const ast::TypeSyntax* type) noexcept
     return modifiers.empty() ||
         modifiers.front().kind == ast::TypeModifierSyntaxKind::Array ||
         modifiers.front().kind == ast::TypeModifierSyntaxKind::DynamicArray ||
+        modifiers.front().kind == ast::TypeModifierSyntaxKind::RangeArray ||
         modifiers.front().kind == ast::TypeModifierSyntaxKind::FlexibleArray;
 }
 
@@ -807,6 +808,23 @@ ast::TypeSyntax* Parser::parseType()
                     ast::TypeModifierSyntaxKind::DynamicArray,
                     nullptr,
                     modifierRange});
+                completeRange = join(completeRange, modifierRange);
+                continue;
+            }
+
+            // NativeSharp 3.0 T32: comma-only brackets are one rectangular heap-array modifier.
+            // Rank stays in the type instead of degrading `T[,]` into jagged `T[][]`.
+            if (at(TokenKind::Comma))
+            {
+                std::size_t rank = 1;
+                while (consumeIf(TokenKind::Comma)) ++rank;
+                const SourceRange beforeRight = current().range();
+                expect(TokenKind::RightBracket, "']'");
+                SourceRange modifierRange = join(left, beforeRight);
+                if (index_ > 0 && tokens_[index_ - 1].kind() == TokenKind::RightBracket)
+                    modifierRange = join(left, tokens_[index_ - 1].range());
+                type->addModifier(ast::TypeModifierSyntax{
+                    ast::TypeModifierSyntaxKind::RangeArray, nullptr, modifierRange, rank});
                 completeRange = join(completeRange, modifierRange);
                 continue;
             }
@@ -8602,21 +8620,34 @@ ast::AstNode* Parser::parseUnaryExpression()
                     continue;
                 }
 
-                ast::AstNode* count = parseExpression();
-                ++countedDimensions;
-                if (countedDimensions == 1)
+                std::vector<ast::AstNode*> groupDimensions;
+                groupDimensions.push_back(parseExpression());
+                while (consumeIf(TokenKind::Comma)) groupDimensions.push_back(parseExpression());
+                countedDimensions += groupDimensions.size();
+                if (groupDimensions.size() > 1)
                 {
-                    node->setFirst(count);
+                    if (node->first() != nullptr || !omittedDimensions.empty())
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::UnexpectedToken,
+                            diagnostics::DiagnosticSeverity::Error,
+                            groupDimensions.front()->range(),
+                            "a rectangular allocation uses one counted bracket group");
+                    }
+                    node->setAuxiliaryText("range-array-allocation:" +
+                        std::to_string(groupDimensions.size()));
+                    node->setFirst(groupDimensions.front());
+                    for (std::size_t dimension = 1; dimension < groupDimensions.size(); ++dimension)
+                        node->addChild(groupDimensions[dimension]);
                 }
+                else if (node->first() == nullptr)
+                    node->setFirst(groupDimensions.front());
                 else
-                {
                     diagnostics_.report(
                         diagnostics::DiagnosticId::UnexpectedToken,
                         diagnostics::DiagnosticSeverity::Error,
-                        count->range(),
-                        "dynamic jagged allocation accepts exactly one counted dimension; "
-                        "rectangular rank belongs to NativeSharp 3.0 range arrays");
-                }
+                        groupDimensions.front()->range(),
+                        "dynamic jagged allocation accepts exactly one counted dimension");
                 expect(TokenKind::RightBracket, "']'");
             }
 

@@ -82,6 +82,7 @@ void visit(const ProjectOopMirNode& node, ProjectFunctionCosts& costs)
             break;
         case ProjectOopMirNodeKind::RawAllocation:
         case ProjectOopMirNodeKind::ArrayAllocate:
+        case ProjectOopMirNodeKind::RangeArrayAllocate:
         case ProjectOopMirNodeKind::StringConcat:
         case ProjectOopMirNodeKind::StringSubstring:
         case ProjectOopMirNodeKind::StringFromCharArray:

@@ -290,6 +290,7 @@ bool isInvalidVoidObjectType(const ast::TypeSyntax* type) noexcept
     return modifiers.empty() ||
         modifiers.front().kind == ast::TypeModifierSyntaxKind::Array ||
         modifiers.front().kind == ast::TypeModifierSyntaxKind::DynamicArray ||
+        modifiers.front().kind == ast::TypeModifierSyntaxKind::RangeArray ||
         modifiers.front().kind == ast::TypeModifierSyntaxKind::FlexibleArray;
 }
 }
@@ -838,6 +839,12 @@ std::string ProjectMemberModel::canonicalTypeKey(
         else if (modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray)
         {
             result += "[]";
+        }
+        else if (modifier.kind == ast::TypeModifierSyntaxKind::RangeArray)
+        {
+            result.push_back('[');
+            if (modifier.arrayRank >= 2) result.append(modifier.arrayRank - 1, ',');
+            result.push_back(']');
         }
         else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray)
         {

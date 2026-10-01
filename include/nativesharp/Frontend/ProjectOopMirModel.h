@@ -31,7 +31,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 18: abort-profile panic is an explicit divergent node with builtin:never type.
 // MINOR 19: closure capture provenance and shared-cell environment layout are inspectable.
 // MINOR 20: Optional<T> coalescing preserves its public HasValue/UncheckedValue protocol calls.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 20;
+// MINOR 21: rectangular native arrays preserve rank and use explicit allocate/index operations.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 21;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -138,9 +139,12 @@ enum class ProjectOopMirNodeKind
     DefaultValue,
     StringLiteral,
     ArrayAllocate,
+    RangeArrayAllocate,
     ArrayLength,
     ArrayElementLoad,
     ArrayElementAddress,
+    RangeArrayElementLoad,
+    RangeArrayElementAddress,
     StringLength,
     StringElementLoad,
     // ID 129. Ver ProjectOopHirNodeKind::EnumName para la forma y el porque.
@@ -414,6 +418,7 @@ struct ProjectOopMirNode final
     bool automaticDestruction = false;
     bool variableLengthArray = false;
     std::size_t variableLengthArrayRank = 0;
+    std::size_t nativeArrayRank = 0;
     bool placementConstructed = false;
     // Item 323. Mirrors the HIR proof; AllocateAndConstruct consumes a frame-owned object buffer.
     bool stackPromotedObject = false;
