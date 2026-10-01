@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
+#include <functional>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace nativesharp::compilation
@@ -91,6 +94,131 @@ bool ProjectGraph::addLibraryReferences(
         return false;
     }
     projects_ = std::move(expanded);
+    return true;
+}
+
+bool ProjectGraph::replaceLibraryReferencesWithSourceProjects(
+    std::span<const SourceLibraryReferenceReplacement> replacements,
+    std::string& error)
+{
+    error.clear();
+    if (replacements.empty()) return true;
+
+    std::unordered_map<std::string, std::size_t> projectByPath;
+    projectByPath.reserve(projects_.size());
+    for (std::size_t ordinal = 0; ordinal < projects_.size(); ++ordinal)
+        projectByPath.emplace(foldedPath(projects_[ordinal].projectFile()), ordinal);
+
+    std::unordered_map<std::string, std::vector<const SourceLibraryReferenceReplacement*>> byOwner;
+    for (const SourceLibraryReferenceReplacement& replacement : replacements)
+    {
+        if (!projectByPath.contains(foldedPath(replacement.ownerProjectFile)))
+        {
+            error = "cannot replace LibraryReference for unknown owner project '" +
+                replacement.ownerProjectFile.generic_string() + "'";
+            return false;
+        }
+        if (!projectByPath.contains(foldedPath(replacement.sourceProjectFile)))
+        {
+            error = "cannot replace LibraryReference with unknown source project '" +
+                replacement.sourceProjectFile.generic_string() + "'";
+            return false;
+        }
+        byOwner[foldedPath(replacement.ownerProjectFile)].push_back(&replacement);
+    }
+
+    std::vector<Project> rewired;
+    rewired.reserve(projects_.size());
+    for (const Project& project : projects_)
+    {
+        std::vector<std::filesystem::path> projectReferences(
+            project.projectReferences().begin(), project.projectReferences().end());
+        std::vector<LibraryReference> libraries;
+        libraries.reserve(project.libraryReferences().size());
+        const auto ownerReplacements = byOwner.find(foldedPath(project.projectFile()));
+        for (const LibraryReference& reference : project.libraryReferences())
+        {
+            bool replaced = false;
+            if (ownerReplacements != byOwner.end())
+            {
+                const std::string metadataKey = foldedPath(reference.metadataPath);
+                for (const SourceLibraryReferenceReplacement* replacement : ownerReplacements->second)
+                {
+                    if (replacement->metadataPath.empty() ||
+                        foldedPath(replacement->metadataPath) != metadataKey)
+                        continue;
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced) libraries.push_back(reference);
+        }
+        if (ownerReplacements != byOwner.end())
+        {
+            for (const SourceLibraryReferenceReplacement* replacement : ownerReplacements->second)
+            {
+                const std::string sourceKey = foldedPath(replacement->sourceProjectFile);
+                const bool alreadyReferenced = std::ranges::any_of(
+                    projectReferences, [&](const std::filesystem::path& path) {
+                        return foldedPath(path) == sourceKey;
+                    });
+                if (!alreadyReferenced) projectReferences.push_back(replacement->sourceProjectFile);
+            }
+        }
+        std::ranges::sort(projectReferences, {}, [](const std::filesystem::path& path) {
+            return foldedPath(path);
+        });
+        rewired.emplace_back(
+            project.projectFile(), project.moduleName(), project.outputKind(), project.sourceSet(),
+            std::move(projectReferences),
+            std::move(libraries),
+            std::vector<SdkManifest>(project.sdkReferences().begin(), project.sdkReferences().end()),
+            project.languageEdition());
+    }
+
+    std::vector<std::uint8_t> state(rewired.size(), 0U);
+    std::vector<Project> ordered;
+    ordered.reserve(rewired.size());
+    std::function<bool(std::size_t)> visit = [&](std::size_t ordinal) {
+        if (state[ordinal] == 2U) return true;
+        if (state[ordinal] == 1U)
+        {
+            error = "source-preferred project reference introduces a cycle at module '" +
+                rewired[ordinal].moduleName() + "'";
+            return false;
+        }
+        state[ordinal] = 1U;
+        for (const std::filesystem::path& reference : rewired[ordinal].projectReferences())
+        {
+            const auto dependency = projectByPath.find(foldedPath(reference));
+            if (dependency == projectByPath.end())
+            {
+                error = "source-preferred project reference names unknown project '" +
+                    reference.generic_string() + "'";
+                return false;
+            }
+            if (rewired[ordinal].languageEdition() != rewired[dependency->second].languageEdition())
+            {
+                error = "source-preferred project reference mixes language editions between '" +
+                    rewired[ordinal].moduleName() + "' and '" +
+                    rewired[dependency->second].moduleName() + "'";
+                return false;
+            }
+            if (!visit(dependency->second)) return false;
+        }
+        state[ordinal] = 2U;
+        ordered.push_back(rewired[ordinal]);
+        return true;
+    };
+
+    const auto root = projectByPath.find(foldedPath(rootProjectFile_));
+    if (root == projectByPath.end() || !visit(root->second)) return false;
+    if (ordered.size() != rewired.size())
+    {
+        error = "source-preferred project graph contains unreachable projects";
+        return false;
+    }
+    projects_ = std::move(ordered);
     return true;
 }
 

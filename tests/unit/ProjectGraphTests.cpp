@@ -268,6 +268,55 @@ void testPrecompiledOrderIsCanonical(TestContext& tests, const std::filesystem::
             first->projects()[1].moduleName() == "Zulu",
         "precompiled modules use canonical module order");
 }
+
+void testShadowedLibraryReferenceBecomesSourceEdge(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto core = root / "SourcePrecedenceCore";
+    const auto io = root / "SourcePrecedenceIo";
+    const auto app = root / "SourcePrecedenceApp";
+    writeProject(core, "Core.nsproj", "Core");
+    writeFile(io / "Core.lib", "archive fixture");
+    writeFile(io / "Core.nsmeta", "metadata fixture");
+    writeProject(
+        io,
+        "Io.nsproj",
+        "Io",
+        "    <LibraryReference Include=\"Core.lib\" Metadata=\"Core.nsmeta\" />\n");
+    writeProject(
+        app,
+        "App.nsproj",
+        "App",
+        "    <ProjectReference Include=\"../SourcePrecedenceCore/Core.nsproj\" />\n"
+        "    <ProjectReference Include=\"../SourcePrecedenceIo/Io.nsproj\" />\n");
+
+    ProjectGraphLoader loader;
+    std::string error;
+    auto graph = loader.load(app / "App.nsproj", error);
+    tests.expect(graph.has_value(), "source/binary precedence fixture loads");
+    if (!graph.has_value()) return;
+
+    const auto ioProject = std::ranges::find_if(graph->projects(), [](const auto& project) {
+        return project.moduleName() == "Io";
+    });
+    tests.expect(ioProject != graph->projects().end() && ioProject->libraryReferences().size() == 1,
+        "fixture initially contains the binary edge");
+
+    const std::vector<nativesharp::compilation::SourceLibraryReferenceReplacement> replacements = {{
+        io / "Io.nsproj", io / "Core.nsmeta", core / "Core.nsproj"}};
+    tests.expect(graph->replaceLibraryReferencesWithSourceProjects(replacements, error),
+        "source precedence rewires the graph");
+    const auto filteredIo = std::ranges::find_if(graph->projects(), [](const auto& project) {
+        return project.moduleName() == "Io";
+    });
+    tests.expect(filteredIo != graph->projects().end() && filteredIo->libraryReferences().empty(),
+        "source precedence removes the shadowed binary edge");
+    tests.expect(filteredIo != graph->projects().end() && filteredIo->projectReferences().size() == 1 &&
+            filteredIo->projectReferences().front().filename() == "Core.nsproj",
+        "source precedence adds the source dependency edge");
+    tests.expect(graph->projects().size() == 3 && graph->rootProject() != nullptr &&
+            graph->rootProject()->moduleName() == "App",
+        "source precedence preserves project order and root identity");
+}
 }
 
 int main()
@@ -285,6 +334,7 @@ int main()
     testDuplicateModuleDiagnostic(tests, root);
     testMissingTransitiveReference(tests, root);
     testPrecompiledOrderIsCanonical(tests, root);
+    testShadowedLibraryReferenceBecomesSourceEdge(tests, root);
 
     std::filesystem::remove_all(root, errorCode);
     return tests.result();

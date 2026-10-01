@@ -17,6 +17,13 @@ struct PrecompiledProjectDescriptor final
     language::LanguageEdition languageEdition = language::LanguageEdition::V2;
 };
 
+struct SourceLibraryReferenceReplacement final
+{
+    std::filesystem::path ownerProjectFile;
+    std::filesystem::path metadataPath;
+    std::filesystem::path sourceProjectFile;
+};
+
 class ProjectGraph final
 {
 public:
@@ -39,6 +46,13 @@ public:
     bool addLibraryReferences(
         const std::filesystem::path& ownerProjectFile,
         std::span<const LibraryReference> references,
+        std::string& error);
+
+    // A source ProjectReference is authoritative when the same module is also reachable through
+    // a LibraryReference. Replace the shadowed binary edge in memory and restore topological
+    // project order; no project file is modified.
+    bool replaceLibraryReferencesWithSourceProjects(
+        std::span<const SourceLibraryReferenceReplacement> replacements,
         std::string& error);
 
 private:

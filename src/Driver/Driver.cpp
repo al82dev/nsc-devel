@@ -617,7 +617,9 @@ bool metadataProvidesType(
 }
 
 bool validatePrecompiledExternalTypeClosure(
-    std::span<const LoadedPrecompiledMetadata> loaded, std::string &error)
+    std::span<const LoadedPrecompiledMetadata> loaded,
+    const std::unordered_map<std::string, std::filesystem::path> &sourceProjects,
+    std::string &error)
 {
     std::unordered_map<std::string, const interop::LibraryMetadata *> modules;
     for (const LoadedPrecompiledMetadata &entry : loaded)
@@ -638,6 +640,9 @@ bool validatePrecompiledExternalTypeClosure(
             const auto provider = modules.find(*owner);
             if (provider == modules.end())
             {
+                // A project source node in the same graph is the authoritative provider. Its
+                // declaration is validated by ordinary name binding after metadata is parsed.
+                if (sourceProjects.contains(*owner)) continue;
                 failures.insert("module '" + entry.metadata.moduleName + "' requires external type '" +
                     typeKey + "', but LibraryReference module '" + *owner + "' is not present");
                 continue;
@@ -2549,6 +2554,10 @@ bool configurePrecompiledModules(
     std::vector<LoadedPrecompiledMetadata> loaded;
     std::unordered_map<std::string, std::size_t> loadedByModule;
     std::unordered_map<std::string, std::vector<compilation::LibraryReference>> discoveredByOwner;
+    std::unordered_map<std::string, std::filesystem::path> sourceProjects;
+    for (const compilation::Project& project : graph->projects())
+        sourceProjects.emplace(project.moduleName(), project.projectFile());
+    std::vector<compilation::SourceLibraryReferenceReplacement> sourceReplacements;
     for (const compilation::Project &project : graph->projects())
     {
         for (const compilation::LibraryReference &reference : project.libraryReferences())
@@ -2559,6 +2568,13 @@ bool configurePrecompiledModules(
                 error =
                     "cannot import precompiled metadata '" + reference.metadataPath.generic_string() + "': " + error;
                 return false;
+            }
+            const auto sourceProject = sourceProjects.find(metadata.moduleName);
+            if (sourceProject != sourceProjects.end())
+            {
+                sourceReplacements.push_back(
+                    {project.projectFile(), reference.metadataPath, sourceProject->second});
+                continue;
             }
             const auto existing = loadedByModule.find(metadata.moduleName);
             if (existing != loadedByModule.end())
@@ -2579,7 +2595,6 @@ bool configurePrecompiledModules(
             loaded.push_back({project.projectFile(), reference.metadataPath, std::move(metadata)});
         }
     }
-
     // NSMETA 1.25 expands the static binary closure without restore or source enumeration. Each
     // edge is resolved either beside its referring metadata (relocatable package layout) or below
     // the explicit LibraryReferenceRoot. The recorded ABI fingerprint prevents same-name artifact
@@ -2594,6 +2609,15 @@ bool configurePrecompiledModules(
         for (const interop::LibraryMetadataBinaryDependency& dependency :
              parentDependencies)
         {
+            // A source module already in this graph supplies declarations and object code; do
+            // not restore or materialize its precompiled counterpart from the binary closure.
+            const auto sourceProject = sourceProjects.find(dependency.moduleName);
+            if (sourceProject != sourceProjects.end())
+            {
+                sourceReplacements.push_back(
+                    {parentOwner, std::filesystem::path{}, sourceProject->second});
+                continue;
+            }
             std::vector<std::filesystem::path> roots = {parentMetadataPath.parent_path()};
             if (loadOptions.libraryReferenceRoot.has_value() &&
                 foldedPathKey(*loadOptions.libraryReferenceRoot) != foldedPathKey(roots.front()))
@@ -2690,7 +2714,10 @@ bool configurePrecompiledModules(
         const auto additions = discoveredByOwner.find(foldedPathKey(owner));
         if (!graph->addLibraryReferences(owner, additions->second, error)) return false;
     }
-    if (!validatePrecompiledExternalTypeClosure(loaded, error)) return false;
+    // ProjectReference wins over a binary edge to the same canonical module. Rewiring the
+    // effective graph preserves dependency visibility and prevents a second definition at link.
+    if (!graph->replaceLibraryReferencesWithSourceProjects(sourceReplacements, error)) return false;
+    if (!validatePrecompiledExternalTypeClosure(loaded, sourceProjects, error)) return false;
 
     std::vector<frontend::PrecompiledSyntaxModule> modules;
     modules.reserve(loaded.size());
