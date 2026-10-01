@@ -202,7 +202,12 @@ bool ArtifactTransaction::add(
         return false;
     }
     if (!ensureStaging(error)) return false;
-    stage = stagingRoot_ / (std::to_string(entries_.size()) + "-" + destination.filename().string());
+    // Linkers persist the output basename inside PE artifacts: DLL import libraries name their
+    // runtime and CodeView RSDS records name their PDB. Keep isolation in a per-entry directory
+    // instead of prefixing the filename, otherwise a later rename publishes internally stale
+    // names such as `0-Product.dll` and `0-Product.pdb`.
+    stage = stagingRoot_ / std::to_string(entries_.size()) / destination.filename();
+    if (!ensureDirectory(stage.parent_path(), error)) return false;
     entries_.push_back(Entry{destination, stage});
     return true;
 }

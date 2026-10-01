@@ -177,6 +177,10 @@ int main()
     std::string transactionError;
     const bool staged = transaction.add(first, firstStage, transactionError) &&
         transaction.add(second, secondStage, transactionError);
+    tests.expect(staged && firstStage.filename() == first.filename() &&
+            secondStage.filename() == second.filename() &&
+            firstStage.parent_path() != secondStage.parent_path(),
+        "transaction stages preserve artifact basenames in isolated directories");
     if (staged)
     {
         writeFile(firstStage, "new-first");
