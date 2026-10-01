@@ -435,6 +435,8 @@ class RunPlan:
     allowed_write_roots: list[str]
     run_id: str
     build_id_override: str
+    host_linkage: str
+    host_optimization: str
     build_mode: str
     build_target: str
     build_runner: str
@@ -494,6 +496,8 @@ def make_baseline_plan(
         allowed_write_roots=[str(path) for path in allowed_write_roots],
         run_id=run_id,
         build_id_override=build_id_override,
+        host_linkage="STATIC",
+        host_optimization="O2",
         build_mode="incremental",
         build_target="nsc",
         build_runner=build_runner,
@@ -1789,6 +1793,8 @@ class PipelineWorker(QObject):
             f"-DLLVM_DIR={llvm}/lib/cmake/llvm",
             f"-DNSC_BUILD_TESTS={'ON' if build_tests else 'OFF'}",
             "-DNSC_WARNINGS_AS_ERRORS=ON",
+            f"-DNSC_HOST_LINKAGE={self.plan.host_linkage}",
+            f"-DNSC_HOST_OPTIMIZATION={self.plan.host_optimization}",
         ]
         # Always write the cache entry, including the empty value. Otherwise a build directory
         # previously used for a reproducible baseline silently keeps its fixed identity when it
@@ -3382,6 +3388,13 @@ class MainWindow(QMainWindow):
         self.build_runner = QComboBox()
         self.build_runner.addItem("CMake (cmake --build)", "cmake")
         self.build_runner.addItem("Ninja directo", "ninja")
+        self.host_linkage = QComboBox()
+        self.host_linkage.addItem("Estático — certificable", "STATIC")
+        self.host_linkage.addItem("Dinámico LLVM — desarrollo", "DYNAMIC")
+        self.host_optimization = QComboBox()
+        for host_optimization in ("O0", "O1", "O2", "O3"):
+            self.host_optimization.addItem(host_optimization, host_optimization)
+        self.host_optimization.setCurrentIndex(2)
         self.compiler_jobs = QSpinBox()
         self.compiler_jobs.setRange(1, 128)
         self.compiler_jobs.setValue(min(os.cpu_count() or 4, 16))
@@ -3406,19 +3419,23 @@ class MainWindow(QMainWindow):
         grid.addWidget(self.build_mode, 0, 1)
         grid.addWidget(QLabel("Motor"), 1, 0)
         grid.addWidget(self.build_runner, 1, 1)
-        grid.addWidget(QLabel("Procesos en paralelo"), 2, 0)
-        grid.addWidget(self.compiler_jobs, 2, 1)
+        grid.addWidget(QLabel("Enlace LLVM de nsc"), 2, 0)
+        grid.addWidget(self.host_linkage, 2, 1)
+        grid.addWidget(QLabel("Optimización de nsc"), 3, 0)
+        grid.addWidget(self.host_optimization, 3, 1)
+        grid.addWidget(QLabel("Procesos en paralelo"), 4, 0)
+        grid.addWidget(self.compiler_jobs, 4, 1)
         build_note = QLabel(
             "Sólo reconstruye e instala nsc. El compilador usa siempre clang-cl + lld-link; "
-            "NSLink no participa en esta operación."
+            "NSLink no participa. Sólo el enlace estático puede certificar Gate 0."
         )
         build_note.setWordWrap(True)
         build_note.setObjectName("muted")
-        grid.addWidget(build_note, 3, 0, 1, 2)
+        grid.addWidget(build_note, 5, 0, 1, 2)
         self.compiler_summary = QLabel()
         self.compiler_summary.setWordWrap(True)
         self.compiler_summary.setObjectName("planSummary")
-        grid.addWidget(self.compiler_summary, 4, 0, 1, 2)
+        grid.addWidget(self.compiler_summary, 6, 0, 1, 2)
         self.compiler_start_button = QPushButton("Construir e instalar nsc")
         self.compiler_start_button.clicked.connect(self._start_compiler)
         self.compiler_install_button = QPushButton("Instalar build existente")
@@ -3431,7 +3448,7 @@ class MainWindow(QMainWindow):
         compiler_buttons_layout.setContentsMargins(0, 0, 0, 0)
         compiler_buttons_layout.addWidget(self.compiler_start_button)
         compiler_buttons_layout.addWidget(self.compiler_install_button)
-        grid.addWidget(compiler_buttons, 5, 0, 1, 2)
+        grid.addWidget(compiler_buttons, 7, 0, 1, 2)
         config_layout.addWidget(options)
 
         # Estos controles pertenecen exclusivamente al panel de pruebas.
@@ -3681,6 +3698,8 @@ class MainWindow(QMainWindow):
         for widget in (
             self.build_mode,
             self.build_runner,
+            self.host_linkage,
+            self.host_optimization,
             self.test_build_runner,
             self.linker_mode,
         ):
@@ -4420,7 +4439,8 @@ class MainWindow(QMainWindow):
         compiler_mode = "desde cero" if self.build_mode.currentData() == "clean" else "incremental"
         self.compiler_summary.setText(
             f"nsc se construirá {compiler_mode} con {self.build_runner.currentText()} y "
-            f"{self.compiler_jobs.value()} proceso(s); después se instalará. No se ejecutarán pruebas."
+            f"{self.compiler_jobs.value()} proceso(s), {self.host_optimization.currentText()} y "
+            f"enlace {self.host_linkage.currentText()}; después se instalará. No se ejecutarán pruebas."
         )
         selected_ctests = self._selected_language_values()
         tests: list[str] = []
@@ -4493,6 +4513,16 @@ class MainWindow(QMainWindow):
         runner_index = self.build_runner.findData(self.settings.value("build_runner", "cmake"))
         if runner_index >= 0:
             self.build_runner.setCurrentIndex(runner_index)
+        linkage_index = self.host_linkage.findData(
+            self.settings.value("host_linkage", "STATIC")
+        )
+        if linkage_index >= 0:
+            self.host_linkage.setCurrentIndex(linkage_index)
+        optimization_index = self.host_optimization.findData(
+            self.settings.value("host_optimization", "O2")
+        )
+        if optimization_index >= 0:
+            self.host_optimization.setCurrentIndex(optimization_index)
         test_runner_index = self.test_build_runner.findData(
             self.settings.value("test_build_runner", "cmake")
         )
@@ -4524,6 +4554,8 @@ class MainWindow(QMainWindow):
         self.settings.setValue("test_jobs", self.test_jobs.value())
         self.settings.setValue("build_mode", self.build_mode.currentData())
         self.settings.setValue("build_runner", self.build_runner.currentData())
+        self.settings.setValue("host_linkage", self.host_linkage.currentData())
+        self.settings.setValue("host_optimization", self.host_optimization.currentData())
         self.settings.setValue("test_build_runner", self.test_build_runner.currentData())
         self.settings.setValue("linker_index", self.linker_mode.currentIndex())
         self.settings.setValue("operation_tab_index", self.operation_tabs.currentIndex())
@@ -4865,6 +4897,8 @@ class MainWindow(QMainWindow):
                 # La pestaña del compilador produce un binario distribuible: identidad nueva.
                 # Los baselines reproducibles la fijan explícitamente con --build-id/config.
                 build_id_override="",
+                host_linkage=str(self.host_linkage.currentData()),
+                host_optimization=str(self.host_optimization.currentData()),
                 build_mode=(
                     "skip" if operation == "install" else str(self.build_mode.currentData())
                 ),
@@ -4953,6 +4987,8 @@ class MainWindow(QMainWindow):
             allowed_write_roots=[],
             run_id="",
             build_id_override="",
+            host_linkage="STATIC",
+            host_optimization="O2",
             build_mode="skip",
             build_target="",
             build_runner=str(self.test_build_runner.currentData()),

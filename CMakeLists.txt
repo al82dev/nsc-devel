@@ -19,6 +19,33 @@ endif()
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
 option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+set(NSC_HOST_LINKAGE "STATIC" CACHE STRING
+    "LLVM linkage for nsc.exe: STATIC (distributable) or DYNAMIC (development only)")
+set_property(CACHE NSC_HOST_LINKAGE PROPERTY STRINGS STATIC DYNAMIC)
+string(TOUPPER "${NSC_HOST_LINKAGE}" NSC_HOST_LINKAGE)
+if(NOT NSC_HOST_LINKAGE MATCHES "^(STATIC|DYNAMIC)$")
+    message(FATAL_ERROR "NSC_HOST_LINKAGE must be STATIC or DYNAMIC")
+endif()
+set(NSC_HOST_OPTIMIZATION "O2" CACHE STRING
+    "Optimization used to build the native nsc.exe host: O0, O1, O2 or O3")
+set_property(CACHE NSC_HOST_OPTIMIZATION PROPERTY STRINGS O0 O1 O2 O3)
+string(TOUPPER "${NSC_HOST_OPTIMIZATION}" NSC_HOST_OPTIMIZATION)
+if(NOT NSC_HOST_OPTIMIZATION MATCHES "^O[0-3]$")
+    message(FATAL_ERROR "NSC_HOST_OPTIMIZATION must be O0, O1, O2 or O3")
+endif()
+if(MSVC)
+    if(NSC_HOST_OPTIMIZATION STREQUAL "O0")
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Od>)
+    elseif(NSC_HOST_OPTIMIZATION STREQUAL "O1")
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/O1>)
+    elseif(NSC_HOST_OPTIMIZATION STREQUAL "O2")
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/O2>)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-O3>)
+    else()
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Ox>)
+    endif()
+endif()
 set(NSC_BUILD_ID_OVERRIDE "" CACHE STRING
     "Fixed 16-digit lowercase hexadecimal build id; reserved for reproducibility gates")
 if(NOT NSC_BUILD_ID_OVERRIDE STREQUAL "")
@@ -370,7 +397,9 @@ if(WIN32 AND NOT MSVC_DIA_SDK_DIR)
 endif()
 
 if(WIN32)
-    include(cmake/NativeSharpLlvmStaticDependencies.cmake)
+    if(NSC_HOST_LINKAGE STREQUAL "STATIC")
+        include(cmake/NativeSharpLlvmStaticDependencies.cmake)
+    endif()
     # build-clang can come from the former LLVM-C.dll configuration. Merely dropping the old
     # command-line option does not clear CMake cache entries, so make the Windows static-only
     # contract authoritative even when an existing build tree is reused.
@@ -403,20 +432,33 @@ if(LLVM_FOUND)
             "line is qualified for the 3.0 release contract; "
             "found LLVM ${LLVM_PACKAGE_VERSION}")
     endif()
-    message(STATUS
-        "NativeSharp LLVM backend: LLVM ${LLVM_PACKAGE_VERSION} static components via LLVMConfig.cmake")
-
-    explicit_map_components_to_libraries(
-        NSC_LLVM_COMPONENT_LIBS
-        core
-        analysis
-        support
-        target
-        nativecodegen
-        passes
-        X86
-        AArch64)
-    list(APPEND NSC_LLVM_LINK_LIBRARIES ${NSC_LLVM_COMPONENT_LIBS})
+    if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
+        find_library(NSC_LLVM_C_IMPORT_LIBRARY
+            NAMES LLVM-C
+            HINTS ${LLVM_LIBRARY_DIRS}
+            REQUIRED)
+        find_file(NSC_LLVM_C_RUNTIME
+            NAMES LLVM-C.dll
+            HINTS "${LLVM_TOOLS_BINARY_DIR}"
+            REQUIRED)
+        message(STATUS
+            "NativeSharp LLVM backend: LLVM ${LLVM_PACKAGE_VERSION} dynamic development host")
+        list(APPEND NSC_LLVM_LINK_LIBRARIES "${NSC_LLVM_C_IMPORT_LIBRARY}")
+    else()
+        message(STATUS
+            "NativeSharp LLVM backend: LLVM ${LLVM_PACKAGE_VERSION} static components via LLVMConfig.cmake")
+        explicit_map_components_to_libraries(
+            NSC_LLVM_COMPONENT_LIBS
+            core
+            analysis
+            support
+            target
+            nativecodegen
+            passes
+            X86
+            AArch64)
+        list(APPEND NSC_LLVM_LINK_LIBRARIES ${NSC_LLVM_COMPONENT_LIBS})
+    endif()
 else()
     if(WIN32)
         message(FATAL_ERROR
@@ -455,6 +497,9 @@ add_library(nsc_llvm STATIC
     src/LLVM/CoffObjectVerifier.cpp)
 
 target_include_directories(nsc_llvm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(LLVM_FOUND)
+    target_include_directories(nsc_llvm SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+endif()
 target_link_libraries(nsc_llvm PUBLIC nsc_frontend nsc_target PRIVATE ${NSC_LLVM_LINK_LIBRARIES})
 target_compile_features(nsc_llvm PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_llvm)
@@ -537,13 +582,27 @@ if(WIN32)
         NAMES llvm-readobj
         HINTS "${LLVM_TOOLS_BINARY_DIR}"
         REQUIRED)
-    add_custom_command(TARGET nsc POST_BUILD
-        COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
-            "-DLLVM_READOBJ=${NSC_LLVM_READOBJ}"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpStaticHostRuntime.cmake"
-        COMMENT "Verificando que nsc.exe no dependa de LLVM-C ni del runtime dinamico de MSVC"
-        VERBATIM)
+    if(NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
+        add_custom_command(TARGET nsc POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${NSC_LLVM_C_RUNTIME}" "$<TARGET_FILE_DIR:nsc>/LLVM-C.dll"
+            COMMAND "${CMAKE_COMMAND}"
+                "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+                "-DLLVM_READOBJ=${NSC_LLVM_READOBJ}"
+                -DNSC_ALLOW_LLVM_C=TRUE
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpStaticHostRuntime.cmake"
+            COMMENT "Preparando nsc.exe dinamico de desarrollo con runtime MSVC estatico"
+            VERBATIM)
+    else()
+        add_custom_command(TARGET nsc POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E rm -f "$<TARGET_FILE_DIR:nsc>/LLVM-C.dll"
+            COMMAND "${CMAKE_COMMAND}"
+                "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+                "-DLLVM_READOBJ=${NSC_LLVM_READOBJ}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpStaticHostRuntime.cmake"
+            COMMENT "Verificando que nsc.exe no dependa de LLVM-C ni del runtime dinamico de MSVC"
+            VERBATIM)
+    endif()
 endif()
 
 # E9 / Stage 66. El manifiesto instalado lo escribe EL nsc que se acaba de enlazar. Asi CMake no
@@ -642,6 +701,9 @@ set(NSC_INSTALLATION_EXPECTED_PATHS
     "share/nativesharp/toolchain/NativeSharp3FinalBaseline.contract"
     "share/nativesharp/toolchain/NativeSharp3Promotion.act"
     "share/nativesharp/toolchain/NativeSharpToolchain.contract")
+if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
+    list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "bin/LLVM-C.dll")
+endif()
 foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_LIBRARY_FILES)
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "lib/${_nsc_install_file}")
 endforeach()
@@ -695,6 +757,9 @@ if(NOT WIN32)
         INSTALL_RPATH "${LLVM_LIBRARY_DIRS}")
 endif()
 install(TARGETS nsc RUNTIME DESTINATION bin)
+if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
+    install(FILES "${NSC_LLVM_C_RUNTIME}" DESTINATION bin)
+endif()
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib/ DESTINATION lib)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ DESTINATION share/nativesharp/spec)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/docs/

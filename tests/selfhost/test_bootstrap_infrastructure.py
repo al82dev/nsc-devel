@@ -270,6 +270,21 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertFalse(
             any(argument.startswith("-DNSC_LLVM_MONOLITHIC_LIBRARY=") for argument in command)
         )
+        self.assertIn("-DNSC_HOST_LINKAGE=STATIC", command)
+        self.assertIn("-DNSC_HOST_OPTIMIZATION=O2", command)
+
+    def test_compiler_plan_can_select_dynamic_llvm_and_o0_without_changing_msvc_runtime(self) -> None:
+        plan = nscbuilder.make_baseline_plan(1)
+        plan.host_linkage = "DYNAMIC"
+        plan.host_optimization = "O0"
+        command = nscbuilder.PipelineWorker(plan, [])._configure_command(build_tests=False)
+        self.assertIn("-DNSC_HOST_LINKAGE=DYNAMIC", command)
+        self.assertIn("-DNSC_HOST_OPTIMIZATION=O0", command)
+
+        cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertIn('set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")', cmake)
+        self.assertIn('install(FILES "${NSC_LLVM_C_RUNTIME}" DESTINATION bin)', cmake)
+        self.assertIn("NSC_ALLOW_LLVM_C=TRUE", cmake)
 
     def test_performance_baseline_uses_the_selected_compiler_installation(self) -> None:
         module = runpy.run_path(str(ROOT / "tools/nsc_performance_baseline.py"))
