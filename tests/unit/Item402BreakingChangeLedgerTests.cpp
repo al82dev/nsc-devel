@@ -22,20 +22,21 @@ int main()
     tests.expect(ledger.find("entry_count=1\n") != std::string::npos,
         "ledger declares its complete entry count");
     for (const std::string_view field : {
-             "1x_contract", "consumer", "compatible_alternatives_rejected", "new_semantics",
+             "2x_contract", "consumer", "compatible_alternatives_rejected", "new_semantics",
              "impact", "diagnostics_migration", "minimum_component_version", "compatibility_tests"})
     {
         tests.expect(ledger.find("change.001." + std::string(field) + "=") != std::string::npos,
             "ledger entry contains required field " + std::string(field));
     }
-    tests.expect(ledger.find("NativeSharp.Runtime.Win32.lib") != std::string::npos,
-        "ledger records the explicit independent-runtime migration");
+    tests.expect(ledger.find("runtime-abi:1.1") != std::string::npos &&
+            ledger.find("nsmeta:1.25") != std::string::npos,
+        "ledger records the 3.0 runtime and metadata migration");
 
     const std::filesystem::path root =
         nativesharp::tests::evidenceRoot("nativesharp_item402_breaking_change_ledger_tests");
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
-    const std::filesystem::path path = root / "NativeSharp2BreakingChanges.ledger";
+    const std::filesystem::path path = root / "NativeSharp3BreakingChanges.ledger";
     std::string verificationError;
     tests.expect(writeBreakingChangeLedger(path, verificationError),
         "canonical ledger writes: " + verificationError);

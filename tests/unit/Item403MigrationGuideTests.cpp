@@ -19,14 +19,14 @@ int main()
     const std::string guide = currentMigrationGuide();
     tests.expect(guide.starts_with("NSMIGRATION-GUIDE 1\n"),
         "migration guide has canonical versioned framing");
-    tests.expect(guide.find("source_release=1.0.1\n") != std::string::npos &&
-            guide.find("target_release=2.0.0\n") != std::string::npos,
+    tests.expect(guide.find("source_release=2.0.0\n") != std::string::npos &&
+            guide.find("target_release=3.0.0\n") != std::string::npos,
         "migration guide fixes both release endpoints");
     tests.expect(guide.find("breaking_change_ledger=NSBREAKING 1\n") != std::string::npos,
         "migration guide is bound to the certified breaking-change ledger");
-    tests.expect(guide.find("NativeSharp.Runtime.Win32.lib") != std::string::npos,
-        "migration guide contains the concrete static-host link action");
-    tests.expect(guide.find("compat.nsmeta-1.20=accepted\n") != std::string::npos &&
+    tests.expect(guide.find("select-Language-3-explicitly-only-for-opted-in-projects") != std::string::npos,
+        "migration guide preserves Language 2 by default and makes Language 3 opt-in");
+    tests.expect(guide.find("compat.nsmeta-1.21=accepted\n") != std::string::npos &&
             guide.find("compat.runtime-abi-1.0=accepted\n") != std::string::npos,
         "migration guide records preserved exchange contracts");
 
@@ -34,7 +34,7 @@ int main()
         nativesharp::tests::evidenceRoot("nativesharp_item403_migration_guide_tests");
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
-    const std::filesystem::path path = root / "NativeSharp2Migration.guide";
+    const std::filesystem::path path = root / "NativeSharp3Migration.guide";
     std::string verificationError;
     tests.expect(writeMigrationGuide(path, verificationError),
         "canonical migration guide writes: " + verificationError);

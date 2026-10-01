@@ -20,7 +20,8 @@ int main()
     tests.expect(contract.starts_with("NSFINALBASELINE 1\n"),
         "final baseline contract has canonical framing");
     for (const std::string_view requirement : {
-             "build=clean-release", "install=verified-C:/native-sharp", "linker.001=lld-link",
+             "release=3.0.0", "build=clean-release", "staging=verified-A:/native-sharp-3.0-baseline",
+             "install=promotion-target-C:/native-sharp", "linker.001=lld-link",
              "linker.002=NSLink", "optimization.001=O0", "optimization.002=O2",
              "ctest=all-no-skips", "fixtures=all", "bug_triage=all", "gate0=landed",
              "source_digest=S0-equals-S1", "compiler_hash=build-equals-install-and-stable",
@@ -35,7 +36,7 @@ int main()
         nativesharp::tests::evidenceRoot("nativesharp_item406_final_baseline_contract_tests");
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
-    const std::filesystem::path path = root / "NativeSharp2FinalBaseline.contract";
+    const std::filesystem::path path = root / "NativeSharp3FinalBaseline.contract";
     std::string verificationError;
     tests.expect(writeFinalBaselineContract(path, verificationError),
         "final baseline contract writes: " + verificationError);

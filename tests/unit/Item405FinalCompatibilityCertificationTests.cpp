@@ -17,8 +17,8 @@ int main()
     using namespace nativesharp::driver;
 
     const std::string matrix = currentCompatibilityMatrix();
-    tests.expect(matrix.starts_with("NSCOMPAT-MATRIX 1\ncertification=final\n"),
-        "final N-1/N matrix is explicitly certified");
+    tests.expect(matrix.starts_with("NSCOMPAT-MATRIX 1\ncertification=pending-final-baseline\n"),
+        "N-1/N matrix remains pending until the final baseline is certified");
     tests.expect(matrix.find("compiler.N=3.0.0\ncompiler.N-1=2.0.0\n") != std::string::npos,
         "compiler window is explicit 2.0.0 and 3.0.0 rather than arithmetic");
     tests.expect(matrix.find("nsmeta.N=1.25\nnsmeta.N-1=1.21\n") != std::string::npos,

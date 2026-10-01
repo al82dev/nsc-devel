@@ -10,18 +10,18 @@ namespace
 {
 constexpr const char* kLedger =
     "NSBREAKING 1\n"
-    "source_release=1.0.1\n"
-    "target_release=2.0.0\n"
+    "source_release=2.0.0\n"
+    "target_release=3.0.0\n"
     "entry_count=1\n"
-    "change.001.id=NS2-BREAK-001\n"
-    "change.001.1x_contract=static-library-products-contained-win32-runtime\n"
-    "change.001.consumer=native-c-and-cpp-static-library-hosts\n"
-    "change.001.compatible_alternatives_rejected=duplicate-runtime-per-library;implicit-linker-injection\n"
-    "change.001.new_semantics=link-NativeSharp.Runtime.Win32.lib-explicitly\n"
-    "change.001.impact=source:no;binary:yes;metadata:no;tools:yes\n"
-    "change.001.diagnostics_migration=unresolved-runtime-symbol;add-NativeSharp.Runtime.Win32.lib\n"
-    "change.001.minimum_component_version=compiler:2.0.0;runtime-abi:1.0;nslink:2.0.0\n"
-    "change.001.compatibility_tests=nsc.item401.independent-windows-runtime;nsc.item402.breaking-change-ledger\n";
+    "change.001.id=NS3-BREAK-001\n"
+    "change.001.2x_contract=compiler:2.0.0;nsmeta:1.21;runtime-abi:1.0;runtime-symbol-set:2\n"
+    "change.001.consumer=precompiled-libraries-runtime-and-tooling\n"
+    "change.001.compatible_alternatives_rejected=silent-abi-upgrade;accept-N-minus-2-producers\n"
+    "change.001.new_semantics=compiler:3.0.0;nsmeta:1.25;runtime-abi:1.1;runtime-symbol-set:3\n"
+    "change.001.impact=source:no;binary:yes;metadata:yes;tools:yes\n"
+    "change.001.diagnostics_migration=unsupported-producer-or-runtime-abi;rebuild-with-3.0\n"
+    "change.001.minimum_component_version=compiler:3.0.0;runtime-abi:1.1;nsmeta:1.25\n"
+    "change.001.compatibility_tests=nsc.stage48_2.library-metadata;nsc.item393.compatibility-matrix\n";
 }
 
 std::string currentBreakingChangeLedger()
@@ -74,7 +74,7 @@ bool verifyBreakingChangeLedger(const std::filesystem::path& source, std::string
     }
     if (actual != currentBreakingChangeLedger())
     {
-        error = "breaking-change ledger does not match the certified 1.0.1 to 2.0 inventory";
+        error = "breaking-change ledger does not match the NativeSharp 2.0 to 3.0 inventory";
         return false;
     }
     return true;

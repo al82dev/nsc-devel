@@ -19,8 +19,8 @@ int main()
     const std::string freeze = currentReleaseCandidateFreeze();
     tests.expect(freeze.starts_with("NSRCFREEZE 1\n"),
         "RC freeze has canonical versioned framing");
-    tests.expect(freeze.find("candidate=2.0.0-rc.1\n") != std::string::npos &&
-            freeze.find("promotion_target=2.0.0\n") != std::string::npos,
+    tests.expect(freeze.find("candidate=3.0.0-rc.1\n") != std::string::npos &&
+            freeze.find("promotion_target=3.0.0\n") != std::string::npos,
         "RC freeze separates candidate identity from final promotion");
     for (const std::string_view contract : {"NSBREAKING 1", "NSMIGRATION-GUIDE 1", "NSCOMPAT-MATRIX 1"})
     {
@@ -34,7 +34,7 @@ int main()
         nativesharp::tests::evidenceRoot("nativesharp_item404_rc_freeze_tests");
     std::error_code ignored;
     std::filesystem::remove_all(root, ignored);
-    const std::filesystem::path path = root / "NativeSharp2RC.freeze";
+    const std::filesystem::path path = root / "NativeSharp3RC.freeze";
     std::string verificationError;
     tests.expect(writeReleaseCandidateFreeze(path, verificationError),
         "canonical RC freeze writes: " + verificationError);

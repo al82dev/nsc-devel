@@ -42,17 +42,17 @@ constexpr std::array<std::string_view, 32> kRequiredFiles = {
     "share/nativesharp/docs/1.0.1/compiler/NativeSharp_Compiler_Contract_1_0_1.md",
     "share/nativesharp/docs/1.0.1/debug/NativeSharp_Debug_Artifact_Contract_1_0_1.md",
     "share/nativesharp/docs/1.0.1/book/NativeSharp_El_Lenguaje_de_Programacion_ES.md",
-    "share/nativesharp/toolchain/NativeSharp2Migration.baseline",
-    "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger",
-    "share/nativesharp/toolchain/NativeSharp2Migration.guide",
+    "share/nativesharp/toolchain/NativeSharp3Migration.baseline",
+    "share/nativesharp/toolchain/NativeSharp3BreakingChanges.ledger",
+    "share/nativesharp/toolchain/NativeSharp3Migration.guide",
     "share/nativesharp/docs/2.0/MIGRATION_FROM_1_0_1.md",
-    "share/nativesharp/toolchain/NativeSharp2RC.freeze",
+    "share/nativesharp/toolchain/NativeSharp3RC.freeze",
     "share/nativesharp/docs/2.0/RELEASE_CANDIDATE.md",
-    "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix",
+    "share/nativesharp/toolchain/NativeSharp3Compatibility.matrix",
     "share/nativesharp/docs/2.0/COMPATIBILITY.md",
-    "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract",
+    "share/nativesharp/toolchain/NativeSharp3FinalBaseline.contract",
     "share/nativesharp/docs/2.0/FINAL_BASELINE.md",
-    "share/nativesharp/toolchain/NativeSharp2Promotion.act",
+    "share/nativesharp/toolchain/NativeSharp3Promotion.act",
     "share/nativesharp/docs/2.0/README.md",
     "share/nativesharp/docs/2.0/VERSION.md",
     "share/nativesharp/docs/2.0/RELEASE.md",
@@ -93,26 +93,26 @@ bool populateInstallation(const std::filesystem::path &prefix) {
              error) &&
          nativesharp::driver::writeMigrationBaseline(
              prefix /
-                 "share/nativesharp/toolchain/NativeSharp2Migration.baseline",
+                 "share/nativesharp/toolchain/NativeSharp3Migration.baseline",
              error) &&
          nativesharp::driver::writeBreakingChangeLedger(
              prefix /
-                 "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger",
+                 "share/nativesharp/toolchain/NativeSharp3BreakingChanges.ledger",
              error) &&
          nativesharp::driver::writeMigrationGuide(
-             prefix / "share/nativesharp/toolchain/NativeSharp2Migration.guide",
+             prefix / "share/nativesharp/toolchain/NativeSharp3Migration.guide",
              error) &&
          nativesharp::driver::writeReleaseCandidateFreeze(
-             prefix / "share/nativesharp/toolchain/NativeSharp2RC.freeze",
+             prefix / "share/nativesharp/toolchain/NativeSharp3RC.freeze",
              error) &&
          nativesharp::driver::writeCompatibilityMatrix(
-             prefix / "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix",
+             prefix / "share/nativesharp/toolchain/NativeSharp3Compatibility.matrix",
              error) &&
          nativesharp::driver::writeFinalBaselineContract(
-             prefix / "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract",
+             prefix / "share/nativesharp/toolchain/NativeSharp3FinalBaseline.contract",
              error) &&
          nativesharp::driver::writePromotionAct(
-             prefix / "share/nativesharp/toolchain/NativeSharp2Promotion.act",
+             prefix / "share/nativesharp/toolchain/NativeSharp3Promotion.act",
              error);
 }
 } // namespace
@@ -196,7 +196,7 @@ int main() {
                "current compatibility policy fixture is restored");
 
   const std::filesystem::path migration =
-      prefix / "share/nativesharp/toolchain/NativeSharp2Migration.baseline";
+      prefix / "share/nativesharp/toolchain/NativeSharp3Migration.baseline";
   tests.expect(writeFile(migration, "NSMIGRATION 9\n"),
                "incompatible migration baseline fixture is written");
   tests.expect(!driver::verifyInstallation(prefix, error) &&
@@ -207,7 +207,7 @@ int main() {
                "current migration baseline fixture is restored");
 
   const std::filesystem::path breakingChanges =
-      prefix / "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger";
+      prefix / "share/nativesharp/toolchain/NativeSharp3BreakingChanges.ledger";
   tests.expect(writeFile(breakingChanges, "NSBREAKING 9\n"),
                "incompatible breaking-change ledger fixture is written");
   tests.expect(!driver::verifyInstallation(prefix, error) &&
@@ -218,7 +218,7 @@ int main() {
                "current breaking-change ledger fixture is restored");
 
   const std::filesystem::path migrationGuide =
-      prefix / "share/nativesharp/toolchain/NativeSharp2Migration.guide";
+      prefix / "share/nativesharp/toolchain/NativeSharp3Migration.guide";
   tests.expect(writeFile(migrationGuide, "NSMIGRATION-GUIDE 9\n"),
                "incompatible migration guide fixture is written");
   tests.expect(!driver::verifyInstallation(prefix, error) &&
@@ -228,7 +228,7 @@ int main() {
                "current migration guide fixture is restored");
 
   const std::filesystem::path freeze =
-      prefix / "share/nativesharp/toolchain/NativeSharp2RC.freeze";
+      prefix / "share/nativesharp/toolchain/NativeSharp3RC.freeze";
   tests.expect(writeFile(freeze, "NSRCFREEZE 9\n"),
                "incompatible release-candidate freeze fixture is written");
   tests.expect(!driver::verifyInstallation(prefix, error) &&
@@ -238,7 +238,7 @@ int main() {
                "current release-candidate freeze fixture is restored");
 
   const std::filesystem::path matrix =
-      prefix / "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix";
+      prefix / "share/nativesharp/toolchain/NativeSharp3Compatibility.matrix";
   tests.expect(writeFile(matrix, "NSCOMPAT-MATRIX 9\n"),
                "incompatible final compatibility matrix fixture is written");
   tests.expect(!driver::verifyInstallation(prefix, error) &&
@@ -248,7 +248,7 @@ int main() {
                "current final compatibility matrix fixture is restored");
 
   const std::filesystem::path finalBaseline =
-      prefix / "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract";
+      prefix / "share/nativesharp/toolchain/NativeSharp3FinalBaseline.contract";
   tests.expect(writeFile(finalBaseline, "NSFINALBASELINE 9\n"),
                "incompatible final baseline contract fixture is written");
   tests.expect(!driver::verifyInstallation(prefix, error) &&
@@ -258,7 +258,7 @@ int main() {
                "current final baseline contract fixture is restored");
 
   const std::filesystem::path promotion =
-      prefix / "share/nativesharp/toolchain/NativeSharp2Promotion.act";
+      prefix / "share/nativesharp/toolchain/NativeSharp3Promotion.act";
   tests.expect(writeFile(promotion, "NSPROMOTION 9\n"),
                "incompatible promotion act fixture is written");
   tests.expect(!driver::verifyInstallation(prefix, error) &&

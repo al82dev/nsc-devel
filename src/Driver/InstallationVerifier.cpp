@@ -131,7 +131,7 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   }
 
   const std::filesystem::path migrationPath =
-      prefix / "share/nativesharp/toolchain/NativeSharp2Migration.baseline";
+      prefix / "share/nativesharp/toolchain/NativeSharp3Migration.baseline";
   std::string migrationError;
   if (!verifyMigrationBaseline(migrationPath, migrationError)) {
     error = "installed migration baseline is invalid: " + migrationError;
@@ -139,7 +139,7 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   }
 
   const std::filesystem::path breakingChangesPath =
-      prefix / "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger";
+      prefix / "share/nativesharp/toolchain/NativeSharp3BreakingChanges.ledger";
   std::string breakingChangesError;
   if (!verifyBreakingChangeLedger(breakingChangesPath, breakingChangesError)) {
     error = "installed breaking-change ledger is invalid: " + breakingChangesError;
@@ -147,7 +147,7 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   }
 
   const std::filesystem::path migrationGuidePath =
-      prefix / "share/nativesharp/toolchain/NativeSharp2Migration.guide";
+      prefix / "share/nativesharp/toolchain/NativeSharp3Migration.guide";
   std::string migrationGuideError;
   if (!verifyMigrationGuide(migrationGuidePath, migrationGuideError)) {
     error = "installed migration guide is invalid: " + migrationGuideError;
@@ -155,7 +155,7 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   }
 
   const std::filesystem::path freezePath =
-      prefix / "share/nativesharp/toolchain/NativeSharp2RC.freeze";
+      prefix / "share/nativesharp/toolchain/NativeSharp3RC.freeze";
   std::string freezeError;
   if (!verifyReleaseCandidateFreeze(freezePath, freezeError)) {
     error = "installed release-candidate freeze is invalid: " + freezeError;
@@ -163,7 +163,7 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   }
 
   const std::filesystem::path matrixPath =
-      prefix / "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix";
+      prefix / "share/nativesharp/toolchain/NativeSharp3Compatibility.matrix";
   std::string matrixError;
   if (!verifyCompatibilityMatrix(matrixPath, matrixError)) {
     error = "installed final compatibility matrix is invalid: " + matrixError;
@@ -171,7 +171,7 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   }
 
   const std::filesystem::path finalBaselinePath =
-      prefix / "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract";
+      prefix / "share/nativesharp/toolchain/NativeSharp3FinalBaseline.contract";
   std::string finalBaselineError;
   if (!verifyFinalBaselineContract(finalBaselinePath, finalBaselineError)) {
     error = "installed final baseline contract is invalid: " + finalBaselineError;
@@ -179,7 +179,7 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   }
 
   const std::filesystem::path promotionPath =
-      prefix / "share/nativesharp/toolchain/NativeSharp2Promotion.act";
+      prefix / "share/nativesharp/toolchain/NativeSharp3Promotion.act";
   std::string promotionError;
   if (!verifyPromotionAct(promotionPath, promotionError)) {
     error = "installed promotion act is invalid: " + promotionError;

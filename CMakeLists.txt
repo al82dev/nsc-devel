@@ -493,19 +493,19 @@ set(NSC_TOOLCHAIN_CONTRACT
 set(NSC_COMPATIBILITY_POLICY
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpCompatibility.policy")
 set(NSC_MIGRATION_BASELINE
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Migration.baseline")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3Migration.baseline")
 set(NSC_BREAKING_CHANGE_LEDGER
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2BreakingChanges.ledger")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3BreakingChanges.ledger")
 set(NSC_MIGRATION_GUIDE
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Migration.guide")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3Migration.guide")
 set(NSC_RELEASE_CANDIDATE_FREEZE
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2RC.freeze")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3RC.freeze")
 set(NSC_FINAL_COMPATIBILITY_MATRIX
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Compatibility.matrix")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3Compatibility.matrix")
 set(NSC_FINAL_BASELINE_CONTRACT
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2FinalBaseline.contract")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3FinalBaseline.contract")
 set(NSC_PROMOTION_ACT
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Promotion.act")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp3Promotion.act")
 set(NSC_RUNTIME_ABI_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpRuntime.abi")
 set(NSC_CONCURRENCY_CONTRACT
@@ -572,13 +572,13 @@ set(NSC_INSTALLATION_EXPECTED_PATHS
     "share/nativesharp/runtime/NativeSharpNumeric.contract"
     "share/nativesharp/toolchain/NativeSharpInstallation.files"
     "share/nativesharp/toolchain/NativeSharpCompatibility.policy"
-    "share/nativesharp/toolchain/NativeSharp2Migration.baseline"
-    "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger"
-    "share/nativesharp/toolchain/NativeSharp2Migration.guide"
-    "share/nativesharp/toolchain/NativeSharp2RC.freeze"
-    "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix"
-    "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract"
-    "share/nativesharp/toolchain/NativeSharp2Promotion.act"
+    "share/nativesharp/toolchain/NativeSharp3Migration.baseline"
+    "share/nativesharp/toolchain/NativeSharp3BreakingChanges.ledger"
+    "share/nativesharp/toolchain/NativeSharp3Migration.guide"
+    "share/nativesharp/toolchain/NativeSharp3RC.freeze"
+    "share/nativesharp/toolchain/NativeSharp3Compatibility.matrix"
+    "share/nativesharp/toolchain/NativeSharp3FinalBaseline.contract"
+    "share/nativesharp/toolchain/NativeSharp3Promotion.act"
     "share/nativesharp/toolchain/NativeSharpToolchain.contract")
 foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_LIBRARY_FILES)
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "lib/${_nsc_install_file}")

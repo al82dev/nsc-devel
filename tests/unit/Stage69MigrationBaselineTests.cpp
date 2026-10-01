@@ -36,22 +36,22 @@ int main()
     const std::string baseline = driver::currentMigrationBaseline();
     tests.expect(baseline.starts_with("NSMIGRATION 1\n") && baseline.ends_with('\n'),
         "migration baseline has canonical versioned framing");
-    tests.expect(baseline.find("source_compiler=1.0.1\n") != std::string::npos &&
-                     baseline.find("source_language=1.0.1\n") != std::string::npos &&
-                     baseline.find("target_release=2.0.0\n") != std::string::npos &&
-                     baseline.find("status=promoted\n") != std::string::npos,
-        "migration baseline identifies its frozen source and final target");
-    tests.expect(baseline.find("nsmeta=1.22\n") != std::string::npos &&
+    tests.expect(baseline.find("source_compiler=2.0.0\n") != std::string::npos &&
+                     baseline.find("source_language=2.0.0\n") != std::string::npos &&
+                     baseline.find("target_release=3.0.0\n") != std::string::npos &&
+                     baseline.find("status=pending-final-baseline\n") != std::string::npos,
+        "migration baseline identifies its frozen source, current target and pending gate");
+    tests.expect(baseline.find("nsmeta=1.25\n") != std::string::npos &&
                      baseline.find("native_abi=1.0\n") != std::string::npos &&
-                     baseline.find("runtime_abi=1.0\n") != std::string::npos &&
-                     baseline.find("runtime_symbol_set=2\n") != std::string::npos &&
-                     baseline.find("mir_schema=1.14\n") != std::string::npos,
+                     baseline.find("runtime_abi=1.1\n") != std::string::npos &&
+                     baseline.find("runtime_symbol_set=3\n") != std::string::npos &&
+                     baseline.find("mir_schema=1.21\n") != std::string::npos,
         "migration baseline freezes every cross-component contract");
     tests.expect(baseline.find("breaking_change_ledger=1\n") != std::string::npos &&
                      baseline.find("migration_notes=1\n") != std::string::npos &&
                      baseline.find("n_minus_one_matrix=1\n") != std::string::npos &&
                      baseline.find("release_candidate_freeze=1\n") != std::string::npos,
-        "2.0 promotion requirements are executable fields rather than prose only");
+        "3.0 promotion requirements are executable fields rather than prose only");
     tests.expect(baseline.find("final_baseline_contract=1\n") != std::string::npos,
         "migration baseline binds the final complete-baseline gate");
     tests.expect(baseline.find("promotion_act=1\n") != std::string::npos,
@@ -65,7 +65,7 @@ int main()
     std::filesystem::create_directories(evidence, filesystemError);
     tests.expect(!filesystemError, "migration baseline evidence directory is available");
 
-    const std::filesystem::path path = evidence / "NativeSharp2Migration.baseline";
+    const std::filesystem::path path = evidence / "NativeSharp3Migration.baseline";
     std::string error;
     tests.expect(driver::writeMigrationBaseline(path, error), "migration baseline writer succeeds");
     tests.expect(readFile(path) == baseline, "writer preserves canonical bytes");
@@ -73,10 +73,10 @@ int main()
         "current migration baseline verifies");
 
     std::string incompatible = baseline;
-    const std::size_t runtime = incompatible.find("runtime_abi=1.0");
+    const std::size_t runtime = incompatible.find("runtime_abi=1.1");
     if (runtime != std::string::npos)
     {
-        incompatible.replace(runtime, std::string("runtime_abi=1.0").size(), "runtime_abi=2.0");
+        incompatible.replace(runtime, std::string("runtime_abi=1.1").size(), "runtime_abi=2.0");
     }
     tests.expect(writeFile(path, incompatible) && !driver::verifyMigrationBaseline(path, error) &&
                      error.find("incompatible migration baseline field") != std::string::npos,

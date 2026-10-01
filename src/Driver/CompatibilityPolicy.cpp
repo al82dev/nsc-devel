@@ -217,7 +217,7 @@ std::string currentCompatibilityMatrix()
 {
     std::string matrix = "NSCOMPAT-MATRIX " +
         std::to_string(kCompatibilityMatrixFormatVersion) + "\n";
-    matrix += "certification=final\n";
+    matrix += "certification=pending-final-baseline\n";
     matrix += "compiler.N=" + std::string(kCompilerReleaseVersion) + "\n";
     matrix += "compiler.N-1=" + std::string(kPreviousCompilerReleaseVersion) + "\n";
     matrix += "nsmeta.N=" + std::to_string(interop::kMetadataFormatMajor) + "." +

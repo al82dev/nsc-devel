@@ -10,22 +10,22 @@ namespace
 {
 constexpr const char* kGuide =
     "NSMIGRATION-GUIDE 1\n"
-    "source_release=1.0.1\n"
-    "target_release=2.0.0\n"
+    "source_release=2.0.0\n"
+    "target_release=3.0.0\n"
     "breaking_change_ledger=NSBREAKING 1\n"
     "step_count=4\n"
-    "step.001=verify-the-1.0.1-installation-and-record-project-products\n"
-    "step.002=rebuild-all-nativeSharp-sources-and-precompiled-libraries-with-2.0\n"
-    "step.003=link-NativeSharp.Runtime.Win32.lib-in-static-library-hosts\n"
-    "step.004=verify-installation-and-run-the-N-minus-1-and-N-matrix\n"
+    "step.001=verify-the-2.0-installation-and-record-project-products\n"
+    "step.002=select-Language-3-explicitly-only-for-opted-in-projects\n"
+    "step.003=rebuild-all-sources-and-precompiled-libraries-with-3.0\n"
+    "step.004=verify-staging-and-run-the-N-minus-1-and-N-matrix\n"
     "compat.source=review-required-only-for-ledger-entries\n"
-    "compat.nsmeta-1.20=accepted\n"
+    "compat.nsmeta-1.21=accepted\n"
     "compat.native-abi-1.0=accepted\n"
     "compat.runtime-abi-1.0=accepted\n"
-    "compat.static-host-link=explicit-runtime-library-required\n"
-    "diagnostic.static-host=unresolved-__nativesharp-runtime-symbol\n"
-    "migration.static-host=add-NativeSharp.Runtime.Win32.lib-after-user-library\n"
-    "verify.command=nsc--verify-installation-then-project-baseline\n";
+    "compat.default-language-edition=2\n"
+    "diagnostic.precompiled=unsupported-producer-or-runtime-abi\n"
+    "migration.precompiled=rebuild-with-NativeSharp-3.0\n"
+    "verify.command=nsc--verify-installation-then-final-baseline\n";
 }
 
 std::string currentMigrationGuide()
@@ -78,7 +78,7 @@ bool verifyMigrationGuide(const std::filesystem::path& source, std::string& erro
     }
     if (actual != currentMigrationGuide())
     {
-        error = "migration guide does not match the certified 1.0.1 to 2.0 procedure";
+        error = "migration guide does not match the NativeSharp 2.0 to 3.0 procedure";
         return false;
     }
     return true;

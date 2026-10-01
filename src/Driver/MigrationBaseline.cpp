@@ -28,10 +28,10 @@ std::vector<Field> fields()
 {
     using namespace interop;
     return {
-        {"source_compiler", "1.0.1"},
-        {"source_language", "1.0.1"},
-        {"target_release", "2.0.0"},
-        {"status", "promoted"},
+        {"source_compiler", std::string(kPreviousCompilerReleaseVersion)},
+        {"source_language", std::string(kPreviousCompilerReleaseVersion)},
+        {"target_release", std::string(kCompilerReleaseVersion)},
+        {"status", "pending-final-baseline"},
         {"nsmeta", std::to_string(kMetadataFormatMajor) + "." + std::to_string(kMetadataFormatMinor)},
         {"native_abi", std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
         {"runtime_abi", std::to_string(kRuntimeAbiMajor) + "." + std::to_string(kRuntimeAbiMinor)},
