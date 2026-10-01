@@ -59,6 +59,7 @@
 #include "nativesharp/Interop/LibraryCapabilityAudit.h"
 #include "nativesharp/Language/SmartPointerSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
+#include "nativesharp/Language/Language3Surface.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/FloatingPointMode.h"
@@ -4134,6 +4135,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << language::concurrencyContractManifest();
             return ExitCode::Success;
         }
+        if (argument == "--print-language-3-surface")
+        {
+            output << language::language3SurfaceManifest();
+            return ExitCode::Success;
+        }
         if (argument == "--print-runtime-capabilities")
         {
             output << runtime::runtimeCapabilityReport();
@@ -4943,6 +4949,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --write-smart-pointer-contract <file.contract>\n"
            << "  nsc --verify-smart-pointer-contract <file.contract>\n"
            << "  nsc --print-concurrency-contract\n"
+           << "  nsc --print-language-3-surface\n"
            << "  nsc --write-concurrency-contract <file.contract>\n"
            << "  nsc --verify-concurrency-contract <file.contract>\n"
            << "  nsc --print-runtime-capabilities\n"
@@ -5021,6 +5028,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-runtime-abi-contract\n"
            << "  nsc --print-smart-pointer-contract\n"
            << "  nsc --print-concurrency-contract\n"
+           << "  nsc --print-language-3-surface\n"
            << "  nsc --print-runtime-capabilities\n"
            << "  nsc --print-numeric-contract\n"
            << "  nsc --print-linker\n"

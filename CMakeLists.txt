@@ -140,6 +140,7 @@ add_library(nsc_compilation STATIC
     src/Language/GenericSemantics.cpp
     src/Language/IterationSemantics.cpp
     src/Language/IntegrationQuality.cpp
+    src/Language/Language3Surface.cpp
     src/Language/OwnershipSemantics.cpp
     src/Language/ReleaseSemantics.cpp
     src/Language/SmartPointerSemantics.cpp
@@ -854,6 +855,20 @@ if(NSC_BUILD_TESTS)
             "-DFIXTURE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ns3_t44_metadata_closure"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t44-metadata-closure"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT44MetadataClosure.cmake")
+
+    add_executable(
+        nsc_ns3_t49_language_surface_tests
+        tests/unit/NativeSharp3T49LanguageSurfaceTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t49_language_surface_tests
+        PRIVATE nsc_driver nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_ns3_t49_language_surface_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_ns3_t49_language_surface_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t49_language_surface_tests)
+    add_test(
+        NAME nsc.ns3.t49.language-surface
+        COMMAND nsc_ns3_t49_language_surface_tests)
 
     add_executable(
         nsc_ns3_t03_sum_type_tests

@@ -38,6 +38,7 @@ private:
     Token lexNumber(std::uint32_t begin);
     Token lexCharacter(std::uint32_t begin);
     Token lexString(std::uint32_t begin);
+    Token lexRawString(std::uint32_t begin);
     Token lexInterpolatedString(std::uint32_t begin);
     Token lexOperatorOrPunctuation(std::uint32_t begin);
     Token lexAssemblyBodyToken();

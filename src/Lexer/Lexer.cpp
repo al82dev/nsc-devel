@@ -622,6 +622,11 @@ Token Lexer::lexCharacter(std::uint32_t begin)
 
 Token Lexer::lexString(std::uint32_t begin)
 {
+    if (current() == '"' && peek() == '"' && peek(2) == '"')
+    {
+        return lexRawString(begin);
+    }
+
     advance();
     std::string decoded;
     bool valid = true;
@@ -714,6 +719,102 @@ Token Lexer::lexString(std::uint32_t begin)
     }
 
     return Token(TokenKind::StringLiteral, range(begin, offset_), text(begin, offset_), std::move(decoded));
+}
+
+Token Lexer::lexRawString(std::uint32_t begin)
+{
+    std::uint32_t delimiterWidth = 0;
+    while (peek(delimiterWidth) == '"') ++delimiterWidth;
+    for (std::uint32_t index = 0; index < delimiterWidth; ++index) advance();
+
+    std::string decoded;
+    bool valid = true;
+    while (!isAtEnd())
+    {
+        if (current() == '"')
+        {
+            std::uint32_t quoteCount = 0;
+            while (peek(quoteCount) == '"') ++quoteCount;
+            if (quoteCount >= delimiterWidth)
+            {
+                for (std::uint32_t index = 0; index < delimiterWidth; ++index) advance();
+                if (!valid)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::InvalidStringLiteral,
+                        diagnostics::DiagnosticSeverity::Error,
+                        range(begin, offset_),
+                        "raw string literal contains an invalid control byte or UTF-8 sequence");
+                    return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
+                }
+                return Token(TokenKind::StringLiteral, range(begin, offset_), text(begin, offset_),
+                    std::move(decoded));
+            }
+        }
+
+        const unsigned char raw = static_cast<unsigned char>(advance());
+        if (raw < 0x20)
+        {
+            if (raw != '\t' && raw != '\n' && raw != '\r') valid = false;
+            decoded.push_back(static_cast<char>(raw));
+            continue;
+        }
+        if (raw < 0x80)
+        {
+            decoded.push_back(static_cast<char>(raw));
+            continue;
+        }
+
+        unsigned continuationCount = 0;
+        unsigned char secondMinimum = 0x80;
+        unsigned char secondMaximum = 0xBF;
+        if (raw >= 0xC2 && raw <= 0xDF)
+        {
+            continuationCount = 1;
+        }
+        else if (raw >= 0xE0 && raw <= 0xEF)
+        {
+            continuationCount = 2;
+            if (raw == 0xE0) secondMinimum = 0xA0;
+            if (raw == 0xED) secondMaximum = 0x9F;
+        }
+        else if (raw >= 0xF0 && raw <= 0xF4)
+        {
+            continuationCount = 3;
+            if (raw == 0xF0) secondMinimum = 0x90;
+            if (raw == 0xF4) secondMaximum = 0x8F;
+        }
+        else
+        {
+            valid = false;
+        }
+
+        decoded.push_back(static_cast<char>(raw));
+        for (unsigned index = 0; index < continuationCount; ++index)
+        {
+            if (isAtEnd())
+            {
+                valid = false;
+                break;
+            }
+            const unsigned char continuation = static_cast<unsigned char>(current());
+            const unsigned char minimum = index == 0 ? secondMinimum : 0x80;
+            const unsigned char maximum = index == 0 ? secondMaximum : 0xBF;
+            if (continuation < minimum || continuation > maximum)
+            {
+                valid = false;
+                break;
+            }
+            decoded.push_back(advance());
+        }
+    }
+
+    diagnostics_.report(
+        diagnostics::DiagnosticId::InvalidStringLiteral,
+        diagnostics::DiagnosticSeverity::Error,
+        range(begin, offset_),
+        "invalid or unterminated raw string literal");
+    return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
 }
 
 Token Lexer::lexInterpolatedString(std::uint32_t begin)

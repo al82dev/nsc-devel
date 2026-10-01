@@ -6,6 +6,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
+#include "nativesharp/Language/Language3Surface.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
 #include "nativesharp/Source/SourceFile.h"
 #include "nativesharp/Target/TargetInfo.h"
@@ -45,6 +46,18 @@ bool contains(std::span<const TokenKind> values, TokenKind kind) noexcept
         }
     }
     return false;
+}
+
+void reportDeferredLanguage3(
+    diagnostics::DiagnosticEngine& diagnostics,
+    SourceRange range,
+    language::Language3Feature feature)
+{
+    diagnostics.report(
+        diagnostics::DiagnosticId::NS3049DeferredLanguageSurface,
+        diagnostics::DiagnosticSeverity::Error,
+        range,
+        language::language3SurfaceDiagnostic(feature));
 }
 
 // Generic parameter names are types only inside the declaration that introduces them.  The
@@ -734,6 +747,22 @@ ast::TypeSyntax* Parser::parseType()
         dynamicTrait = true;
     }
 
+    SourceRange longDoubleRange{};
+    bool recoverLongDoubleAsDouble = false;
+    if (at(TokenKind::KwLong) && peek().kind() == TokenKind::KwDouble)
+    {
+        longDoubleRange = join(current().range(), peek().range());
+        reportDeferredLanguage3(
+            diagnostics_, longDoubleRange, language::Language3Feature::LongDouble);
+        consume();
+        recoverLongDoubleAsDouble = true;
+    }
+    if (atContextualKeyword("decimal"))
+    {
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::Decimal);
+    }
+
     if (at(TokenKind::LeftParen))
     {
         const SourceRange open = consume().range();
@@ -805,6 +834,7 @@ ast::TypeSyntax* Parser::parseType()
         baseName = std::string(base.lexeme());
         completeRange = base.range();
     }
+    if (recoverLongDoubleAsDouble) completeRange = join(longDoubleRange, completeRange);
 
     ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
         completeRange, baseKind, std::move(baseName));
@@ -1493,6 +1523,36 @@ bool Parser::looksLikeClosedGenericTypeReference() const noexcept
 
 ast::AstNode* Parser::parseNamespaceMember()
 {
+    if (atContextualKeyword("async"))
+    {
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        consume();
+    }
+    if (atContextualKeyword("extension"))
+    {
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::ExtensionMethods);
+        std::size_t braceDepth = 0;
+        bool sawBody = false;
+        while (!at(TokenKind::EndOfFile))
+        {
+            if (at(TokenKind::LeftBrace))
+            {
+                sawBody = true;
+                ++braceDepth;
+            }
+            else if (at(TokenKind::RightBrace))
+            {
+                if (braceDepth == 0) break;
+                --braceDepth;
+            }
+            const TokenKind consumed = consume().kind();
+            if (consumed == TokenKind::Semicolon && braceDepth == 0) break;
+            if (sawBody && braceDepth == 0) break;
+        }
+        return nullptr;
+    }
     if (at(TokenKind::KwUsing))
     {
         return parseUsingDirective();
@@ -2000,6 +2060,13 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             continue;
         }
         break;
+    }
+
+    if (atContextualKeyword("async"))
+    {
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        consume();
     }
 
     ast::AstNode* declaration = nullptr;
@@ -3347,6 +3414,12 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial, bool isTrait)
 ast::AstNode* Parser::parseInterfaceMember()
 {
     const std::size_t beginIndex = index_;
+    if (atContextualKeyword("async"))
+    {
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        consume();
+    }
     TokenKind accessibility = TokenKind::KwPublic;
     bool sawPublic = false;
     bool sawAbstract = false;
@@ -3393,6 +3466,13 @@ ast::AstNode* Parser::parseInterfaceMember()
         }
     }
 
+    if (atContextualKeyword("async"))
+    {
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        consume();
+    }
+
     const bool isReferenceReturn = atContextualKeyword("ref") && canStartTypeAt(index_ + 1);
     if (isReferenceReturn) consume();
 
@@ -3431,7 +3511,16 @@ ast::AstNode* Parser::parseInterfaceMember()
             returnType, name, accessibility,
             false, false, false, false, true, false, false, false, false, false, false, sawNoHeap,
             beginIndex);
-        if (method != nullptr) method->setReference(isReferenceReturn);
+        if (method != nullptr)
+        {
+            method->setReference(isReferenceReturn);
+            if (method->first() != nullptr)
+            {
+                reportDeferredLanguage3(
+                    diagnostics_, method->first()->range(),
+                    language::Language3Feature::DefaultInterfaceImplementations);
+            }
+        }
         return method;
     }
     if (at(TokenKind::LeftBrace))
@@ -3646,6 +3735,12 @@ ast::AstNode* Parser::parseClassMember(
 {
     (void)allowUnresolvedNamedTypes;
     const std::size_t beginIndex = index_;
+    if (atContextualKeyword("async"))
+    {
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        consume();
+    }
     TokenKind accessibility = TokenKind::Invalid;
     bool isPartial = false;
     bool isNew = false;
@@ -4130,6 +4225,13 @@ ast::AstNode* Parser::parseClassMember(
         }
     }
 
+    if (atContextualKeyword("async"))
+    {
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::AsyncAwait);
+        consume();
+    }
+
     if (isVirtual && isOverride)
     {
         diagnostics_.report(
@@ -4254,6 +4356,11 @@ ast::AstNode* Parser::parseClassMember(
     if (at(TokenKind::Identifier) && current().lexeme() == className &&
         peek().kind() == TokenKind::LeftParen)
     {
+        if (isStatic)
+        {
+            reportDeferredLanguage3(
+                diagnostics_, current().range(), language::Language3Feature::StaticConstructors);
+        }
         if (isNew || isVirtual || isOverride || isStatic || isReadonly || isVolatile || isConst ||
             isInline || isForceInline || isNoInline || isAbstract || isSealed ||
             isExported || isExternC)
@@ -5131,7 +5238,13 @@ ast::AstNode* Parser::parsePropertyTail(
         else if (at(TokenKind::LeftBrace))
         {
             sawExplicit = true;
-            if (interfaceContext || isAbstract)
+            if (interfaceContext)
+            {
+                reportDeferredLanguage3(
+                    diagnostics_, current().range(),
+                    language::Language3Feature::DefaultInterfaceImplementations);
+            }
+            else if (isAbstract)
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -5377,7 +5490,13 @@ ast::AstNode* Parser::parseIndexerTail(
         }
         else if (at(TokenKind::LeftBrace))
         {
-            if (interfaceContext || isAbstract)
+            if (interfaceContext)
+            {
+                reportDeferredLanguage3(
+                    diagnostics_, current().range(),
+                    language::Language3Feature::DefaultInterfaceImplementations);
+            }
+            else if (isAbstract)
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -6325,6 +6444,27 @@ ast::AstNode* Parser::parseStatement()
     if (atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
         return parseMatchStatement();
 
+    if (atContextualKeyword("yield") &&
+        (peek().kind() == TokenKind::KwReturn || peek().kind() == TokenKind::KwBreak))
+    {
+        const std::size_t beginIndex = index_;
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::YieldGenerators);
+        synchronizeStatement();
+        return arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, tokenRangeFrom(beginIndex));
+    }
+
+    if (at(TokenKind::KwStatic))
+    {
+        const SourceRange staticRange = consume().range();
+        reportDeferredLanguage3(
+            diagnostics_, staticRange, language::Language3Feature::StaticLocals);
+        if (looksLikeVariableDeclaration()) return parseVariableDeclaration(true);
+        synchronizeStatement();
+        return arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, staticRange);
+    }
+
     if (at(TokenKind::KwBreak) || at(TokenKind::KwContinue))
     {
         const std::size_t beginIndex = index_;
@@ -7142,6 +7282,11 @@ ast::AstNode* Parser::parseIfStatement()
     const std::size_t beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'('");
+    if (looksLikeVariableDeclaration())
+    {
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::ConditionDeclarations);
+    }
     ast::AstNode* condition = parseExpression();
     expect(TokenKind::RightParen, "')'");
     ast::AstNode* thenBlock = parseEmbeddedStatementBlock();
@@ -7208,6 +7353,11 @@ ast::AstNode* Parser::parseWhileStatement()
     const std::size_t beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'('");
+    if (looksLikeVariableDeclaration())
+    {
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::ConditionDeclarations);
+    }
     ast::AstNode* condition = parseExpression();
     expect(TokenKind::RightParen, "')'");
     ast::AstNode* body = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
@@ -7284,6 +7434,11 @@ ast::AstNode* Parser::parseSwitchStatement()
     const std::size_t beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'(' after 'switch'");
+    if (looksLikeVariableDeclaration())
+    {
+        reportDeferredLanguage3(
+            diagnostics_, current().range(), language::Language3Feature::ConditionDeclarations);
+    }
     ast::AstNode* governing = parseExpression();
     expect(TokenKind::RightParen, "')' after the switch governing expression");
     expect(TokenKind::LeftBrace, "'{' to open the switch body");
@@ -7317,6 +7472,11 @@ ast::AstNode* Parser::parseSwitchStatement()
             const std::size_t labelBegin = index_;
             const bool isDefault = at(TokenKind::KwDefault);
             consume();
+            if (!isDefault && at(TokenKind::LeftBracket))
+            {
+                reportDeferredLanguage3(
+                    diagnostics_, current().range(), language::Language3Feature::ListPatterns);
+            }
             ast::AstNode* value = isDefault ? nullptr : parseExpression();
             expect(TokenKind::Colon, isDefault ? "':' after 'default'" : "':' after the case value");
 
@@ -8530,6 +8690,15 @@ ast::AstNode* Parser::parseMultiplicativeExpression()
 
 ast::AstNode* Parser::parseUnaryExpression()
 {
+    if (atContextualKeyword("await") && peek().kind() != TokenKind::Equal &&
+        peek().kind() != TokenKind::LeftParen)
+    {
+        const SourceRange awaitRange = consume().range();
+        reportDeferredLanguage3(
+            diagnostics_, awaitRange, language::Language3Feature::AsyncAwait);
+        return parseUnaryExpression();
+    }
+
     if (at(TokenKind::Caret))
     {
         const SourceRange start = consume().range();
@@ -9255,7 +9424,11 @@ ast::AstNode* Parser::parsePrimaryExpression()
         case TokenKind::IntegerLiteral: kind = ast::AstNodeKind::IntegerLiteralExpression; break;
         case TokenKind::FloatingLiteral: kind = ast::AstNodeKind::FloatingLiteralExpression; break;
         case TokenKind::CharacterLiteral: kind = ast::AstNodeKind::CharacterLiteralExpression; break;
-        case TokenKind::StringLiteral: kind = ast::AstNodeKind::StringLiteralExpression; break;
+        case TokenKind::StringLiteral:
+            if (token.lexeme().starts_with("\"\"\""))
+                requireEdition3(token.range(), "raw string literals");
+            kind = ast::AstNodeKind::StringLiteralExpression;
+            break;
         case TokenKind::InterpolatedStringLiteral:
             requireEdition3(token.range(), "static string interpolation");
             kind = ast::AstNodeKind::InterpolatedStringExpression;
