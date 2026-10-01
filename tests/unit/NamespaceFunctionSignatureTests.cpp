@@ -126,9 +126,9 @@ int main()
             root / "missing",
             "namespace Numeric { int DeclaredOnly(int value); }\n");
         const bool ok = compilation.compileProjectMembers(project, error);
-        tests.expect(!ok, "ordinary body-less namespace function is rejected");
-        tests.expect(hasDiagnostic(compilation, DiagnosticId::MissingFunctionDefinition),
-            "body-less function emits MissingFunctionDefinition");
+        tests.expect(ok, "an unused namespace-function prototype is a valid declaration");
+        tests.expect(!hasDiagnostic(compilation, DiagnosticId::MissingFunctionDefinition),
+            "an unused prototype does not demand code generation");
     }
 
     std::filesystem::remove_all(root, errorCode);

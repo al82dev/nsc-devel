@@ -1,0 +1,58 @@
+namespace NativeSharp.Core
+{
+    public class Exception { }
+}
+
+using NativeSharp.Core;
+
+namespace T43
+{
+    public class Boom : Exception { }
+
+    public static class Harness
+    {
+        public static int Trace;
+        public static event Changed Signal;
+
+        public static int Twice(int value) { return value * 2; }
+        public static int Apply(Transform transform, int value) { return transform(value); }
+        public static void First() { Trace = Trace * 10 + 1; }
+        public static void Second() { Trace = Trace * 10 + 2; }
+
+        public static int Run()
+        {
+            Transform free = AddOne;
+            Transform qualified = T43.AddOne;
+            if (free(40) != 41 || qualified(41) != 42) return 1;
+            if (Apply(Twice, 21) != 42) return 2;
+            if (Apply(AddOne, 41) != 42) return 3;
+
+            Trace = 0;
+            Signal += First;
+            Signal += Second;
+            Signal();
+            if (Trace != 12) return 4;
+
+            Signal -= First;
+            Signal += First;
+            Trace = 0;
+            Signal();
+            if (Trace != 21) return 5;
+
+            try
+            {
+                throw new Boom();
+            }
+            catch (Boom)
+            {
+                return 0;
+            }
+            return 6;
+        }
+    }
+
+    public static class Program
+    {
+        public static int Main() { return Harness.Run(); }
+    }
+}

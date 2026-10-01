@@ -1,0 +1,9 @@
+namespace Bad
+{
+    delegate long Wide(long value);
+    int Narrow(int value) { return value; }
+    class Program
+    {
+        public static int Main() { Wide value = Narrow; return 0; }
+    }
+}

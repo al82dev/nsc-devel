@@ -1674,6 +1674,9 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     bool isSealed = false;
     bool isStatic = false;
     bool isExportedFunction = false;
+    bool isInlineFunction = false;
+    bool isForceInlineFunction = false;
+    bool isNoInlineFunction = false;
     bool isReadonlyType = false;
     bool isRecordStruct = false;
     // C2.2 "union and explicit layout": `pack(N)` and `align(N)` are contextual-keyword layout
@@ -1806,6 +1809,24 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                     modifier.range(),
                     "namespace exports require the exact modifier sequence 'export extern C'");
             }
+            continue;
+        }
+        if (at(TokenKind::KwInline) || at(TokenKind::KwForceInline) ||
+            at(TokenKind::KwNoInline))
+        {
+            const lexer::Token& modifier = consume();
+            bool* seen = modifier.kind() == TokenKind::KwInline ? &isInlineFunction :
+                modifier.kind() == TokenKind::KwForceInline ? &isForceInlineFunction :
+                &isNoInlineFunction;
+            if (*seen)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate namespace-function inlining modifier");
+            }
+            *seen = true;
             continue;
         }
         if (at(TokenKind::KwPublic) || at(TokenKind::KwInternal))
@@ -2213,6 +2234,42 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                     declaration->range(),
                     "an exported namespace function requires a body");
             }
+        }
+    }
+    if (declaration != nullptr &&
+        (isInlineFunction || isForceInlineFunction || isNoInlineFunction))
+    {
+        const unsigned policyCount = static_cast<unsigned>(isInlineFunction) +
+            static_cast<unsigned>(isForceInlineFunction) +
+            static_cast<unsigned>(isNoInlineFunction);
+        if (declaration->kind() != ast::AstNodeKind::FunctionDeclaration)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                declaration->range(),
+                "inline, forceinline, and noinline apply only to namespace functions");
+        }
+        else if (policyCount != 1U)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                declaration->range(),
+                "inline, forceinline, and noinline are contradictory inlining policies");
+        }
+        else if (declaration->first() == nullptr)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                declaration->range(),
+                "a namespace-function inlining policy requires a function body");
+        }
+        else
+        {
+            declaration->addModifier(isInlineFunction ? TokenKind::KwInline :
+                isForceInlineFunction ? TokenKind::KwForceInline : TokenKind::KwNoInline);
         }
     }
     if (declaration != nullptr)
@@ -8091,14 +8148,10 @@ ast::AstNode* Parser::parseCatchClause()
             expect(TokenKind::Identifier, "exception type");
         }
 
+        // The exception name is optional. `catch(Type)` observes only the dynamic type while
+        // `catch(Type value)` additionally introduces a local in the catch scope.
         if (at(TokenKind::Identifier))
-        {
             clause->setText(std::string(consume().lexeme()));
-        }
-        else
-        {
-            expect(TokenKind::Identifier, "exception variable name");
-        }
 
         expect(TokenKind::RightParen, "')' after catch declaration");
     }

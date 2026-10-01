@@ -277,6 +277,13 @@ bool ProjectNamespaceFunctionModel::build(
         candidate.definitionSyntax = declaration.hasBody ? declaration.syntax : nullptr;
         candidate.isReferenceReturn = syntax.isReference();
         candidate.isVariadic = syntax.isVariadic();
+        candidate.inliningPolicy = syntax.hasModifier(lexer::TokenKind::KwForceInline)
+            ? InliningPolicy::Required
+            : syntax.hasModifier(lexer::TokenKind::KwNoInline)
+                ? InliningPolicy::Forbidden
+                : syntax.hasModifier(lexer::TokenKind::KwInline)
+                    ? InliningPolicy::Preferred
+                    : InliningPolicy::Automatic;
         candidate.isExternC =
             syntax.flag() || syntax.hasModifier(lexer::TokenKind::KwExtern);
         candidate.isExportedC = syntax.hasModifier(lexer::TokenKind::KwExport);
@@ -476,7 +483,11 @@ bool ProjectNamespaceFunctionModel::build(
         }
 
         symbol.parts.push_back(candidate.parts.front());
-        if (declaration.hasBody) symbol.definitionSyntax = declaration.syntax;
+        if (declaration.hasBody)
+        {
+            symbol.definitionSyntax = declaration.syntax;
+            symbol.inliningPolicy = candidate.inliningPolicy;
+        }
     }
 
     for (const NamespaceStateDeclaration& declaration : nameLookup.namespaceStates())
@@ -536,18 +547,6 @@ bool ProjectNamespaceFunctionModel::build(
 
         stateByName_.emplace(lookupKey, states_.size());
         states_.push_back(std::move(state));
-    }
-
-    for (const NamespaceFunctionSymbol& symbol : functions_)
-    {
-        if (symbol.definitionSyntax == nullptr && !symbol.isExternC && !symbol.isPrecompiled)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::MissingFunctionDefinition,
-                diagnostics::DiagnosticSeverity::Error,
-                symbol.range,
-                "namespace function '" + symbol.signatureKey + "' is declared but never defined");
-        }
     }
 
     auto visibleProjects = [&](std::size_t projectOrdinal) -> std::span<const std::size_t>
@@ -796,6 +795,57 @@ bool ProjectNamespaceFunctionModel::build(
                 const std::optional<std::string> written = expressionName(node);
                 if (written.has_value())
                 {
+                    // Calls are not the only consumers of a function name: assignment to a
+                    // delegate and a target-typed argument both need the same overload set.
+                    {
+                        const std::size_t lastDot = written->find_last_of('.');
+                        const bool qualified = lastDot != std::string::npos;
+                        const std::string functionName = qualified
+                            ? written->substr(lastDot + 1) : *written;
+                        std::vector<std::size_t> candidates;
+                        if (qualified)
+                        {
+                            const std::optional<std::string> resolvedNamespace = resolveNamespace(
+                                unit.projectOrdinal(), lexicalNamespace, environment,
+                                written->substr(0, lastDot));
+                            if (resolvedNamespace.has_value())
+                            {
+                                candidates = candidatesInNamespace(
+                                    unit.projectOrdinal(), *resolvedNamespace, functionName);
+                            }
+                        }
+                        else
+                        {
+                            candidates = candidatesInNamespace(
+                                unit.projectOrdinal(), lexicalNamespace, functionName);
+                            if (candidates.empty())
+                            {
+                                for (const std::string& imported : environment.importedNamespaces)
+                                {
+                                    std::vector<std::size_t> importedCandidates = candidatesInNamespace(
+                                        unit.projectOrdinal(), imported, functionName);
+                                    candidates.insert(candidates.end(), importedCandidates.begin(),
+                                        importedCandidates.end());
+                                }
+                                std::sort(candidates.begin(), candidates.end());
+                                candidates.erase(
+                                    std::unique(candidates.begin(), candidates.end()), candidates.end());
+                            }
+                        }
+                        if (!candidates.empty())
+                        {
+                            NamespaceFunctionReferenceBinding binding;
+                            binding.calleeSyntax = node;
+                            binding.projectOrdinal = unit.projectOrdinal();
+                            binding.fileId = unit.fileId();
+                            binding.lexicalNamespace = lexicalNamespace;
+                            binding.writtenName = *written;
+                            binding.qualified = qualified;
+                            binding.candidateFunctionOrdinals = std::move(candidates);
+                            referenceBindingBySyntax_.emplace(node, referenceBindings_.size());
+                            referenceBindings_.push_back(std::move(binding));
+                        }
+                    }
                     const std::size_t lastDot = written->find_last_of('.');
                     const bool qualified = lastDot != std::string::npos;
                     const std::string stateName = qualified

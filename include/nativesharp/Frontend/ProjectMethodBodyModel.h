@@ -1733,6 +1733,13 @@ private:
         std::size_t callerCallableOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeNamespaceFunctionGroup(
+        const ast::AstNode* expression,
+        const NamespaceFunctionReferenceBinding& reference,
+        std::size_t callerCallableOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
     ExpressionResult analyzeUnary(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
@@ -1847,6 +1854,9 @@ private:
         std::string& returnTypeKey,
         std::vector<std::string>& parameterTypeKeys,
         std::size_t& delegateTypeOrdinal) const;
+    bool methodGroupExactlyMatchesDelegate(
+        const ExpressionResult& methodGroup,
+        std::string_view delegateTypeKey) const;
     ExpressionResult bindLambdaToDelegate(
         const ast::AstNode* syntax,
         std::string_view delegateTypeKey,

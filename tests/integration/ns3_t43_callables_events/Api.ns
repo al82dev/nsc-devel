@@ -1,0 +1,11 @@
+namespace T43
+{
+    public delegate int Transform(int value);
+    public delegate void Changed();
+
+    // A prototype may live in the public API unit. The matching body is in Impl.ns.
+    public int AddOne(int value);
+
+    // An unused declaration is legal and emits no code.
+    internal int ReservedForLater(int value);
+}

@@ -837,6 +837,15 @@ if(NSC_BUILD_TESTS)
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t42-pointers-linkage"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT42PointersLinkage.cmake")
 
+    add_test(
+        NAME nsc.ns3.t43.callables-events
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DFIXTURE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ns3_t43_callables_events"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t43-callables-events"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpT43CallablesEvents.cmake")
+
     add_executable(
         nsc_ns3_t03_sum_type_tests
         tests/unit/NativeSharp3T03SumTypeTests.cpp)

@@ -246,13 +246,13 @@ public class Service : Contracts.Types.Base, Contracts.Types.IBase
         "qualified types parse in delegates, class/interface bases, interface contracts, events, "
         "conversions, catch, and using declarations");
 
-    ParsedSyntax malformedCatch;
+    ParsedSyntax unnamedTypedCatch;
     parse(
-        malformedCatch,
+        unnamedTypedCatch,
         "int Main() { try { return 0; } catch (Exception) { return 1; } }",
         {"Exception"});
-    tests.expect(malformedCatch.diagnostics.hasErrors(),
-        "typed catch requires an exception variable name");
+    tests.expect(!unnamedTypedCatch.diagnostics.hasErrors(),
+        "typed catch may omit the exception variable when the value is unused");
 
     ParsedSyntax malformedUsing;
     parse(

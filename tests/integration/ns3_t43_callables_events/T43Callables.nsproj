@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>T43Callables</Name><Language>3</Language></PropertyGroup><ItemGroup><Compile Include="Api.ns" /><Compile Include="Impl.ns" /><Compile Include="Main.ns" /></ItemGroup></Project>

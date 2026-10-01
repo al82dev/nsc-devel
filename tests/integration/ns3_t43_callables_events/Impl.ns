@@ -1,0 +1,7 @@
+namespace T43
+{
+    public inline int AddOne(int value)
+    {
+        return value + 1;
+    }
+}

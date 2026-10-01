@@ -53,6 +53,7 @@ struct NamespaceFunctionSymbol final
     std::vector<NamespaceFunctionPart> parts;
     bool isReferenceReturn = false;
     bool isVariadic = false;
+    InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExternC = false;
     bool isExportedC = false;
     bool isPrecompiled = false;

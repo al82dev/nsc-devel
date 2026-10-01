@@ -1,0 +1,5 @@
+namespace Bad
+{
+    int Missing(int value);
+    class Program { public static int Main() { return Missing(1); } }
+}

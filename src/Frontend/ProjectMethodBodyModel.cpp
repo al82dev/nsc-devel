@@ -592,6 +592,7 @@ bool ProjectMethodBodyModel::build(
         adapter.isStatic = true;
         adapter.isReferenceReturn = function.isReferenceReturn;
         adapter.isVariadic = function.isVariadic;
+        adapter.inliningPolicy = function.inliningPolicy;
         namespaceCallableAdapters_.push_back(std::move(adapter));
     }
     inheritanceModel_ = &inheritanceModel;
@@ -8990,6 +8991,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         return result;
     }
 
+    // Members deliberately win. If no member claimed the identifier, a namespace function
+    // overload set is a first-class method group and can be converted contextually to a delegate.
+    if (namespaceFunctionModel_ != nullptr)
+    {
+        if (const NamespaceFunctionReferenceBinding* functionReference =
+                namespaceFunctionModel_->referenceBinding(expression);
+            functionReference != nullptr && !functionReference->qualified)
+        {
+            return analyzeNamespaceFunctionGroup(
+                expression, *functionReference, methodMemberOrdinal, scopeOrdinal,
+                diagnostics, allowMethodGroup);
+        }
+    }
+
     // Class members deliberately win over namespace state, but an unqualified namespace
     // constant/variable remains visible from a method after locals, parameters, fields,
     // properties, events and methods have all had their normal precedence.
@@ -9071,6 +9086,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     ExpressionResult result;
     if (namespaceFunctionModel_ != nullptr && expression != nullptr)
     {
+        if (const NamespaceFunctionReferenceBinding* functionReference =
+                namespaceFunctionModel_->referenceBinding(expression);
+            functionReference != nullptr && functionReference->qualified)
+        {
+            const bool receiverShadowed =
+                expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                lookupScopeName(scopeOrdinal, expression->first()->text()).has_value();
+            if (!receiverShadowed)
+            {
+                return analyzeNamespaceFunctionGroup(
+                    expression, *functionReference, methodMemberOrdinal, scopeOrdinal,
+                    diagnostics, allowMethodGroup);
+            }
+        }
         if (const NamespaceStateReferenceBinding* stateReference =
                 namespaceFunctionModel_->stateReferenceBinding(expression);
             stateReference != nullptr && stateReference->qualified)
@@ -9792,6 +9822,50 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     return result;
 }
 
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespaceFunctionGroup(
+    const ast::AstNode* expression,
+    const NamespaceFunctionReferenceBinding& reference,
+    std::size_t callerCallableOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics,
+    bool allowMethodGroup)
+{
+    ExpressionResult result;
+    result.methodGroup = true;
+    result.valid = allowMethodGroup;
+    result.typeKey = "<method-group>";
+    result.methodCandidates.reserve(reference.candidateFunctionOrdinals.size());
+    for (const std::size_t functionOrdinal : reference.candidateFunctionOrdinals)
+    {
+        if (functionOrdinal < namespaceCallableAdapters_.size())
+            result.methodCandidates.push_back(namespaceCallableBase_ + functionOrdinal);
+    }
+    nameBindings_.push_back(MethodNameBinding{
+        MethodNameBindingKind::StaticMethodGroup,
+        expression,
+        callerCallableOrdinal,
+        scopeOrdinal,
+        reference.writtenName,
+        "<method-group>",
+        std::nullopt,
+        std::nullopt,
+        result.methodCandidates,
+        nullptr,
+        "",
+        std::nullopt,
+        false});
+    if (!allowMethodGroup)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression != nullptr ? expression->range() : SourceRange{},
+            "namespace function group '" + reference.writtenName +
+                "' can only be used as a call target or converted to a delegate");
+    }
+    return result;
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespaceFunctionCall(
     const ast::AstNode* expression,
     const NamespaceFunctionReferenceBinding& reference,
@@ -9815,11 +9889,52 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     std::vector<ExpressionResult> arguments;
     arguments.reserve(expression->children().size());
     bool argumentsValid = true;
-    for (const ast::AstNode* argument : expression->children())
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < expression->children().size(); ++argumentOrdinal)
     {
+        const ast::AstNode* argument = expression->children()[argumentOrdinal];
         ExpressionResult analyzed = analyzeExpression(
             argument, callerCallableOrdinal, scopeOrdinal, diagnostics,
-            false, false, true);
+            true, false, true);
+        if (analyzed.methodGroup)
+        {
+            std::vector<std::string> targets;
+            for (const std::size_t functionOrdinal : reference.candidateFunctionOrdinals)
+            {
+                if (functionOrdinal >= namespaceCallableAdapters_.size()) continue;
+                const ClassMemberSymbol& candidate = namespaceCallableAdapters_[functionOrdinal];
+                const NamedArgumentMap mapping =
+                    mapArgumentsToParameters(expression->children(), candidate);
+                if (!mapping.valid || argumentOrdinal >= mapping.explicitParameterOrdinals.size())
+                    continue;
+                const std::size_t parameterOrdinal =
+                    mapping.explicitParameterOrdinals[argumentOrdinal];
+                if (parameterOrdinal >= candidate.parameters.size()) continue;
+                const std::string& target = candidate.parameters[parameterOrdinal].typeKey;
+                if (methodGroupExactlyMatchesDelegate(analyzed, target) &&
+                    std::ranges::find(targets, target) == targets.end())
+                    targets.push_back(target);
+            }
+            if (targets.size() == 1)
+            {
+                analyzed = bindMethodGroupToDelegate(
+                    argument, analyzed, targets.front(), callerCallableOrdinal,
+                    scopeOrdinal, diagnostics);
+            }
+            else
+            {
+                diagnostics.report(
+                    targets.empty() ? diagnostics::DiagnosticId::InvalidConversion
+                                    : diagnostics::DiagnosticId::InvalidCall,
+                    diagnostics::DiagnosticSeverity::Error,
+                    argument->range(),
+                    targets.empty()
+                        ? "method group does not match a delegate parameter of namespace function '" +
+                            reference.writtenName + "'"
+                        : "method group argument has more than one compatible delegate target in namespace function '" +
+                            reference.writtenName + "'");
+            }
+        }
         argumentsValid = argumentsValid && analyzed.valid && !analyzed.methodGroup;
         arguments.push_back(std::move(analyzed));
     }
@@ -10011,6 +10126,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     const MethodCallCandidate& selected = call.evaluatedCandidates[nonDominated.front()];
     const std::size_t functionOrdinal = selected.memberOrdinal;
     const ClassMemberSymbol& callable = namespaceCallableAdapters_[functionOrdinal];
+    if (namespaceFunctionModel_ != nullptr &&
+        functionOrdinal < namespaceFunctionModel_->functions().size())
+    {
+        const NamespaceFunctionSymbol& function =
+            namespaceFunctionModel_->functions()[functionOrdinal];
+        if (function.definitionSyntax == nullptr && !function.isExternC && !function.isPrecompiled)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::MissingFunctionDefinition,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "namespace function '" + function.signatureKey +
+                    "' is called but has no definition in the project");
+            store();
+            return result;
+        }
+    }
     checkArgumentPassKinds(
         expression,
         callable.name,
@@ -10435,7 +10567,46 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         else
         {
             argumentResult = analyzeExpression(
-                argument, methodMemberOrdinal, scopeOrdinal, diagnostics, false, false, true);
+                argument, methodMemberOrdinal, scopeOrdinal, diagnostics, true, false, true);
+            if (argumentResult.methodGroup && callee.methodGroup)
+            {
+                std::vector<std::string> targets;
+                for (const std::size_t candidateOrdinal : callee.methodCandidates)
+                {
+                    const ClassMemberSymbol* candidate = methodSymbol(candidateOrdinal);
+                    if (candidate == nullptr || candidate->kind != ClassMemberKind::Method) continue;
+                    const NamedArgumentMap mapping = mapArgumentsToParameters(
+                        expression->children(), *candidate, coreStringForwarding ? 1U : 0U);
+                    if (!mapping.valid || argumentOrdinal >= mapping.explicitParameterOrdinals.size())
+                        continue;
+                    const std::size_t parameterOrdinal =
+                        mapping.explicitParameterOrdinals[argumentOrdinal];
+                    if (parameterOrdinal >= candidate->parameters.size()) continue;
+                    const std::string& target = candidate->parameters[parameterOrdinal].typeKey;
+                    if (methodGroupExactlyMatchesDelegate(argumentResult, target) &&
+                        std::ranges::find(targets, target) == targets.end())
+                        targets.push_back(target);
+                }
+                if (targets.size() == 1)
+                {
+                    argumentResult = bindMethodGroupToDelegate(
+                        argument, argumentResult, targets.front(), methodMemberOrdinal,
+                        scopeOrdinal, diagnostics);
+                }
+                else
+                {
+                    diagnostics.report(
+                        targets.empty() ? diagnostics::DiagnosticId::InvalidConversion
+                                        : diagnostics::DiagnosticId::InvalidCall,
+                        diagnostics::DiagnosticSeverity::Error,
+                        argument->range(),
+                        targets.empty()
+                            ? "method group does not match any delegate parameter of '" +
+                                call.methodName + "'"
+                            : "method group argument has more than one compatible delegate target in '" +
+                                call.methodName + "'");
+                }
+            }
         }
         if (!argumentResult.valid || argumentResult.methodGroup)
         {
@@ -16186,6 +16357,38 @@ bool ProjectMethodBodyModel::delegateSignature(
     return !returnTypeKey.empty() && !isErrorType(returnTypeKey);
 }
 
+bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
+    const ExpressionResult& methodGroup,
+    std::string_view delegateTypeKey) const
+{
+    if (!methodGroup.methodGroup) return false;
+    std::string returnType;
+    std::vector<std::string> parameterTypes;
+    std::size_t delegateOrdinal = 0;
+    if (!delegateSignature(delegateTypeKey, returnType, parameterTypes, delegateOrdinal))
+        return false;
+    std::size_t matches = 0;
+    for (const std::size_t candidateOrdinal : methodGroup.methodCandidates)
+    {
+        const ClassMemberSymbol* candidate = methodSymbol(candidateOrdinal);
+        if (candidate == nullptr || candidate->kind != ClassMemberKind::Method ||
+            candidate->parameters.size() != parameterTypes.size() ||
+            candidate->declaredTypeKey != returnType)
+            continue;
+        bool exact = true;
+        for (std::size_t index = 0; index < parameterTypes.size(); ++index)
+        {
+            if (candidate->parameters[index].typeKey != parameterTypes[index])
+            {
+                exact = false;
+                break;
+            }
+        }
+        if (exact && ++matches > 1) return false;
+    }
+    return matches == 1;
+}
+
 std::optional<std::size_t> ProjectMethodBodyModel::lambdaCaptureOrdinal(
     const MethodLambdaBinding& binding,
     MethodLambdaCaptureKind kind,
@@ -16687,8 +16890,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
     std::vector<std::size_t> compatible;
     for (const std::size_t candidateOrdinal : methodGroup.methodCandidates)
     {
-        if (candidateOrdinal >= memberModel_->members().size()) continue;
-        const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
+        const ClassMemberSymbol* candidatePointer = methodSymbol(candidateOrdinal);
+        if (candidatePointer == nullptr) continue;
+        const ClassMemberSymbol& candidate = *candidatePointer;
         if (candidate.kind != ClassMemberKind::Method || candidate.parameters.size() != parameterTypes.size()) continue;
         if (candidate.declaredTypeKey != returnType) continue;
         bool exact = true;
@@ -16723,7 +16927,26 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
     }
 
     const std::size_t selected = compatible.front();
-    const ClassMemberSymbol& target = memberModel_->members()[selected];
+    const ClassMemberSymbol* targetPointer = methodSymbol(selected);
+    if (targetPointer == nullptr) return result;
+    const ClassMemberSymbol& target = *targetPointer;
+    if (selected >= namespaceCallableBase_ && namespaceFunctionModel_ != nullptr)
+    {
+        const std::size_t functionOrdinal = selected - namespaceCallableBase_;
+        if (functionOrdinal >= namespaceFunctionModel_->functions().size()) return result;
+        const NamespaceFunctionSymbol& function =
+            namespaceFunctionModel_->functions()[functionOrdinal];
+        if (function.definitionSyntax == nullptr && !function.isExternC && !function.isPrecompiled)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::MissingFunctionDefinition,
+                diagnostics::DiagnosticSeverity::Error,
+                syntax != nullptr ? syntax->range() : SourceRange{},
+                "namespace function '" + function.signatureKey +
+                    "' is used as a delegate target but has no definition");
+            return result;
+        }
+    }
     // Interop Foundation (callbacks C -> NativeSharp): an extern C delegate value IS a raw C
     // function pointer -- no cell, no receiver channel, no closure environment. Only a STATIC
     // method can convert; an instance method would need somewhere to smuggle `this` and a C

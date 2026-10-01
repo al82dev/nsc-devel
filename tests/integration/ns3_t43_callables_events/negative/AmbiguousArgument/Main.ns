@@ -1,0 +1,12 @@
+namespace Bad
+{
+    delegate int FirstTransform(int value);
+    delegate int SecondTransform(int value);
+    class Program
+    {
+        static int Inc(int value) { return value + 1; }
+        static int Take(FirstTransform value) { return value(1); }
+        static int Take(SecondTransform value) { return value(1); }
+        public static int Main() { return Take(Inc); }
+    }
+}

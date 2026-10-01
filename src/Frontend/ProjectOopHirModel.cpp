@@ -1963,6 +1963,7 @@ bool ProjectOopHirModel::buildImpl(
             function.namespaceFunctionOrdinal = functionOrdinal;
             function.declaringTypeOrdinal = nameLookup.namedTypes().size();
             function.isStatic = true;
+            function.inliningPolicy = symbol.inliningPolicy;
             function.referenceReturn = symbol.isReferenceReturn;
             function.isVariadic = symbol.isVariadic;
             function.isExportedC = symbol.isExportedC;
@@ -1992,9 +1993,9 @@ bool ProjectOopHirModel::buildImpl(
                 }
                 if (!symbol.isExternC)
                 {
-                    error = "namespace function '" + symbol.signatureKey +
-                        "' reached HIR without a definition";
-                    return false;
+                    // A prototype that is never selected emits no code. A selected call or
+                    // delegate conversion was already rejected by method-body binding.
+                    continue;
                 }
                 function.isImportedC = true;
                 function.cAbiName = symbol.name;
@@ -2352,7 +2353,11 @@ std::span<const ProjectOopHirFieldInitializer> ProjectOopHirModel::fieldInitiali
 
 const ProjectOopHirFunction* ProjectOopHirModel::functionForMember(std::size_t memberOrdinal) const noexcept
 {
-    if (memberOrdinal >= functionByMember_.size() || !functionByMember_[memberOrdinal].has_value())
+    if (memberOrdinal >= functionByMember_.size())
+    {
+        return functionForNamespaceFunction(memberOrdinal - functionByMember_.size());
+    }
+    if (!functionByMember_[memberOrdinal].has_value())
     {
         return nullptr;
     }
@@ -3441,8 +3446,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
     const MethodDelegateBinding* stage42Delegate = delegateBinding(expression);
     if (stage42Delegate != nullptr && stage42Delegate->kind == MethodDelegateOperationKind::Create)
     {
-        if (!stage42Delegate->selectedMemberOrdinal.has_value() || memberModel_ == nullptr ||
-            *stage42Delegate->selectedMemberOrdinal >= memberModel_->members().size())
+        const bool memberTarget = stage42Delegate->selectedMemberOrdinal.has_value() &&
+            memberModel_ != nullptr &&
+            *stage42Delegate->selectedMemberOrdinal < memberModel_->members().size();
+        const bool namespaceTarget = stage42Delegate->selectedMemberOrdinal.has_value() &&
+            memberModel_ != nullptr && namespaceFunctionModel_ != nullptr &&
+            *stage42Delegate->selectedMemberOrdinal >= memberModel_->members().size() &&
+            *stage42Delegate->selectedMemberOrdinal - memberModel_->members().size() <
+                namespaceFunctionModel_->functions().size();
+        if (!memberTarget && !namespaceTarget)
         {
             error = "Stage 42 delegate creation has no selected callable";
             return nullptr;

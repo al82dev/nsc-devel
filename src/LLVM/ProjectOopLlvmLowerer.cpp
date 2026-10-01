@@ -10945,11 +10945,50 @@ private:
             allocationFunctionType_, allocationFunction_, allocArgs, 1, "event.node");
         eventNode = checkedStage42Allocation(eventNode, "event.add.alloc", error);
         if (eventNode == nullptr) return nullptr;
-        LLVMValueRef head = LLVMBuildLoad2(builder_, ptr, backingAddress, "event.head");
         LLVMBuildStore(builder_, handler, eventNode);
         LLVMValueRef nextAddress = byteOffset(eventNode, 8, "event.next.addr");
-        LLVMBuildStore(builder_, head, nextAddress);
+        LLVMBuildStore(builder_, LLVMConstNull(ptr), nextAddress);
+
+        // Event invocation order is subscription order. Keep a singly-linked FIFO list and
+        // append the new node; removing then adding a handler naturally moves it to the tail.
+        LLVMValueRef head = LLVMBuildLoad2(builder_, ptr, backingAddress, "event.head");
+        LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef emptyBlock = appendBlock("event.add.empty");
+        LLVMBasicBlockRef loopBlock = appendBlock("event.add.loop");
+        LLVMBasicBlockRef appendBlockRef = appendBlock("event.add.append");
+        LLVMBasicBlockRef doneBlock = appendBlock("event.add.done");
+        LLVMValueRef empty = LLVMBuildICmp(
+            builder_, LLVMIntEQ, head, LLVMConstNull(ptr), "event.add.is.empty");
+        LLVMBuildCondBr(builder_, empty, emptyBlock, loopBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, emptyBlock);
         LLVMBuildStore(builder_, eventNode, backingAddress);
+        LLVMBuildBr(builder_, doneBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, loopBlock);
+        LLVMValueRef current = LLVMBuildPhi(builder_, ptr, "event.add.current");
+        LLVMValueRef initialValues[] = {head};
+        LLVMBasicBlockRef initialBlocks[] = {preheader};
+        LLVMAddIncoming(current, initialValues, initialBlocks, 1);
+        LLVMValueRef currentNextAddress = byteOffset(current, 8, "event.add.current.next.addr");
+        LLVMValueRef currentNext = LLVMBuildLoad2(
+            builder_, ptr, currentNextAddress, "event.add.current.next");
+        LLVMValueRef atTail = LLVMBuildICmp(
+            builder_, LLVMIntEQ, currentNext, LLVMConstNull(ptr), "event.add.at.tail");
+        LLVMBasicBlockRef advanceBlock = appendBlock("event.add.advance");
+        LLVMBuildCondBr(builder_, atTail, appendBlockRef, advanceBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, advanceBlock);
+        LLVMBuildBr(builder_, loopBlock);
+        LLVMValueRef nextValues[] = {currentNext};
+        LLVMBasicBlockRef nextBlocks[] = {advanceBlock};
+        LLVMAddIncoming(current, nextValues, nextBlocks, 1);
+
+        LLVMPositionBuilderAtEnd(builder_, appendBlockRef);
+        LLVMBuildStore(builder_, eventNode, currentNextAddress);
+        LLVMBuildBr(builder_, doneBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 
