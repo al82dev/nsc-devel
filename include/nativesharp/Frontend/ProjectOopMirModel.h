@@ -578,6 +578,8 @@ struct ProjectOopMirStaticField final
     // This flag lets the LLVM lowerer take the integral constant-materialization path anyway.
     bool isEnumConstant = false;
     std::optional<std::size_t> namespaceStateOrdinal = std::nullopt;
+    SourceRange sourceRange;
+    std::string debugDisplayName;
 };
 
 
@@ -718,6 +720,7 @@ struct ProjectOopMirFunction final
     sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
     std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;
+    std::vector<ParameterPassKind> parameterPassKinds;
     std::vector<sema::OwnershipKind> parameterOwnerships;
     ProjectOopMirFunctionAbi abi;
     std::vector<std::size_t> localOrdinals;

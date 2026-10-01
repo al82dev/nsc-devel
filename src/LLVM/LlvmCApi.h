@@ -87,6 +87,7 @@ enum LLVMDIFlags
 };
 
 constexpr unsigned LLVMDWARFTagClassType = 0x02;
+constexpr unsigned LLVMDWARFTagReferenceType = 0x10;
 constexpr unsigned LLVMDWARFTagStructureType = 0x13;
 
 using LLVMDWARFTypeEncoding = unsigned;
@@ -279,6 +280,14 @@ void LLVMGetVersion(unsigned* major, unsigned* minor, unsigned* patch);
 // un TIPO y no un modulo porque imprime tres bytes --«i32»-- y no tiene ningun efecto.
 LLVMContextRef LLVMGetModuleContext(LLVMModuleRef module);
 LLVMMetadataRef LLVMValueAsMetadata(LLVMValueRef value);
+unsigned LLVMGetMDKindIDInContext(
+    LLVMContextRef context,
+    const char* name,
+    unsigned nameLength);
+void LLVMGlobalSetMetadata(
+    LLVMValueRef global,
+    unsigned kind,
+    LLVMMetadataRef metadata);
 void LLVMDumpType(LLVMTypeRef type);
 LLVMBool LLVMVerifyModule(
     LLVMModuleRef module,
@@ -347,6 +356,24 @@ LLVMMetadataRef LLVMDIBuilderCreateFunction(
     unsigned scopeLine,
     LLVMDIFlags flags,
     LLVMBool optimized);
+LLVMMetadataRef LLVMDIBuilderCreateReferenceType(
+    LLVMDIBuilderRef builder,
+    unsigned tag,
+    LLVMMetadataRef type);
+LLVMMetadataRef LLVMDIBuilderCreateGlobalVariableExpression(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef scope,
+    const char* name,
+    std::size_t nameLength,
+    const char* linkageName,
+    std::size_t linkageNameLength,
+    LLVMMetadataRef file,
+    unsigned line,
+    LLVMMetadataRef type,
+    LLVMBool localToUnit,
+    LLVMMetadataRef expression,
+    LLVMMetadataRef declaration,
+    std::uint32_t alignInBits);
 LLVMMetadataRef LLVMDIBuilderCreateLexicalBlockFile(
     LLVMDIBuilderRef builder,
     LLVMMetadataRef scope,

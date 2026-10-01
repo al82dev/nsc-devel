@@ -1499,6 +1499,7 @@ bool ProjectOopHirModel::buildImpl(
             for (const MethodParameterSymbol& parameter : member.parameters)
             {
                 imported.parameterTypeKeys.push_back(parameter.typeKey);
+                imported.parameterPassKinds.push_back(parameter.passKind);
                 imported.parameterOwnerships.push_back(parameter.ownership);
             }
             functionByMember_[memberOrdinal] = functions_.size();
@@ -1537,6 +1538,7 @@ bool ProjectOopHirModel::buildImpl(
             for (const MethodParameterSymbol& parameter : member.parameters)
             {
                 imported.parameterTypeKeys.push_back(parameter.typeKey);
+                imported.parameterPassKinds.push_back(parameter.passKind);
                 imported.parameterOwnerships.push_back(parameter.ownership);
             }
             functionByMember_[memberOrdinal] = functions_.size();
@@ -1596,6 +1598,7 @@ bool ProjectOopHirModel::buildImpl(
         {
             function.parameterNames.push_back(parameter.name);
             function.parameterTypeKeys.push_back(parameter.typeKey);
+            function.parameterPassKinds.push_back(parameter.passKind);
             function.parameterOwnerships.push_back(parameter.ownership);
         }
         for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel.locals().size(); ++localOrdinal)
@@ -1974,6 +1977,7 @@ bool ProjectOopHirModel::buildImpl(
             {
                 function.parameterNames.push_back(parameter.name);
                 function.parameterTypeKeys.push_back(parameter.typeKey);
+                function.parameterPassKinds.push_back(parameter.passKind);
                 function.parameterOwnerships.push_back(parameter.ownership);
             }
 
@@ -2091,6 +2095,8 @@ bool ProjectOopHirModel::buildImpl(
         function.returnTypeKey = lambda.returnTypeKey;
         function.parameterNames = lambda.parameterNames;
         function.parameterTypeKeys = lambda.parameterTypeKeys;
+        function.parameterPassKinds.assign(
+            lambda.parameterTypeKeys.size(), ParameterPassKind::Value);
         for (const MethodLambdaCapture& capture : lambda.captures)
         {
             function.captureTypeKeys.push_back(capture.typeKey);

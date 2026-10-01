@@ -3796,6 +3796,10 @@ if(NSC_BUILD_TESTS)
         NAMES llvm-readobj
         HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
         REQUIRED)
+    find_program(NSC_LLVM_OBJDUMP_EXECUTABLE
+        NAMES llvm-objdump
+        HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
+        REQUIRED)
     find_program(NSC_DEBUG_LLD_LINK_EXECUTABLE
         NAMES lld-link lld-link.exe
         HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
@@ -3835,6 +3839,19 @@ if(NSC_BUILD_TESTS)
             "-DDEBUG_T36_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/debug_scopes_t36/DebugScopesT36.nsproj"
             "-DDEBUG_T36_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-scopes-t36-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDebugScopesT36.cmake")
+
+    add_test(
+        NAME nsc.ns3.t37-debug-values
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
+            "-DLLVM_READOBJ=${NSC_LLVM_READOBJ_EXECUTABLE}"
+            "-DLLVM_OBJDUMP=${NSC_LLVM_OBJDUMP_EXECUTABLE}"
+            "-DLLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
+            "-DRUNTIME_LIBRARY=${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp.Runtime.Win32.lib"
+            "-DDEBUG_T37_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/debug_values_t37/DebugValuesT37.nsproj"
+            "-DDEBUG_T37_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-values-t37-test"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDebugValuesT37.cmake")
 
     file(GLOB _nsc_dia_sdk_roots
         "C:/Program Files/Microsoft Visual Studio/2022/*/DIA SDK")

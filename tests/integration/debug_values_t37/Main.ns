@@ -1,0 +1,48 @@
+namespace NativeSharp.Core
+{
+    public class Exception { }
+}
+
+namespace DebugValuesT37
+{
+    using NativeSharp.Core;
+
+    public int GlobalCount = 5;
+
+    public class SpecificError : Exception { }
+
+    public class Widget
+    {
+        public static int Created = 4;
+        public static int Destroyed = 4;
+    }
+
+    public static class Program
+    {
+        public static int Capture(int literal, int fromCaller, out int produced)
+        {
+            produced = literal + fromCaller;
+            return produced;
+        }
+
+        public static int CatchValue()
+        {
+            try
+            {
+                throw new SpecificError();
+            }
+            catch (SpecificError specific)
+            {
+                return 1;
+            }
+        }
+
+        public static int Main()
+        {
+            int callerValue = 2;
+            int outValue;
+            int captured = Capture(26, callerValue, out outValue);
+            return captured + DebugValuesT37.GlobalCount + Widget.Created + Widget.Destroyed + CatchValue();
+        }
+    }
+}

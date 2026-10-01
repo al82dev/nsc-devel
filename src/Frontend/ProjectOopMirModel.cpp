@@ -1302,6 +1302,7 @@ bool ProjectOopMirModel::build(
         function.returnOwnership = source.returnOwnership;
         function.parameterNames = source.parameterNames;
         function.parameterTypeKeys = source.parameterTypeKeys;
+        function.parameterPassKinds = source.parameterPassKinds;
         function.parameterOwnerships = source.parameterOwnerships;
         const auto abiPassing = [&](std::string_view typeKey) {
             for (const ProjectOopMirStructLayout& layout : structLayouts_)
@@ -1427,18 +1428,17 @@ bool ProjectOopMirModel::build(
         const ClassMemberSymbol& field = memberModel.members()[memberOrdinal];
         if (field.kind == ClassMemberKind::Field && field.isStatic)
         {
-            ProjectOopMirStaticField staticField{
-                memberOrdinal,
-                field.declaringTypeOrdinal,
-                field.name,
-                field.declaredTypeKey,
-                field.isReadonly,
-                field.isVolatile,
-                field.isConst,
-                field.isPrecompiled,
-                genericSpecializationKeyForType(nameLookup, field.declaringTypeOrdinal),
-                {},
-                {}};
+            ProjectOopMirStaticField staticField;
+            staticField.memberOrdinal = memberOrdinal;
+            staticField.declaringTypeOrdinal = field.declaringTypeOrdinal;
+            staticField.name = field.name;
+            staticField.typeKey = field.declaredTypeKey;
+            staticField.isReadonly = field.isReadonly;
+            staticField.isVolatile = field.isVolatile;
+            staticField.isConst = field.isConst;
+            staticField.isImported = field.isPrecompiled;
+            staticField.genericSpecializationKey =
+                genericSpecializationKeyForType(nameLookup, field.declaringTypeOrdinal);
             if (field.declaringTypeOrdinal >= nameLookup.namedTypes().size())
             {
                 error = "Stage 37 static field has an invalid declaring type ordinal";
@@ -1449,6 +1449,10 @@ bool ProjectOopMirModel::build(
             const std::string fieldFragment = compilation::symbolFragmentForIdentityKey(field.name);
             staticField.storageSymbol = "__nsc_static_" + typeFragment + "__" + fieldFragment;
             staticField.accessorName = "__nsc_get_static_" + typeFragment + "__" + fieldFragment;
+            staticField.sourceRange = field.range;
+            staticField.debugDisplayName =
+                nameLookup.namedTypes()[field.declaringTypeOrdinal].identity.fullyQualifiedName() +
+                "." + field.name;
             staticField.isEnumConstant = field.isEnumConstant;
             if (field.isConst)
             {
@@ -1515,19 +1519,21 @@ bool ProjectOopMirModel::build(
          stateOrdinal < namespaceFunctionModel.states().size(); ++stateOrdinal)
     {
         const NamespaceStateSymbol& state = namespaceFunctionModel.states()[stateOrdinal];
-        ProjectOopMirStaticField staticField{
-            namespaceStateMemberBase + stateOrdinal,
-            nameLookup.namedTypes().size(),
-            state.name,
-            state.declaredTypeKey,
-            state.isConst,
-            false,
-            state.isConst,
-            state.isPrecompiled,
-            {},
-            state.storageName,
-            "__nsc_get_" + state.storageName};
+        ProjectOopMirStaticField staticField;
+        staticField.memberOrdinal = namespaceStateMemberBase + stateOrdinal;
+        staticField.declaringTypeOrdinal = nameLookup.namedTypes().size();
+        staticField.name = state.name;
+        staticField.typeKey = state.declaredTypeKey;
+        staticField.isReadonly = state.isConst;
+        staticField.isConst = state.isConst;
+        staticField.isImported = state.isPrecompiled;
+        staticField.storageSymbol = state.storageName;
+        staticField.accessorName = "__nsc_get_" + state.storageName;
         staticField.namespaceStateOrdinal = stateOrdinal;
+        staticField.sourceRange = state.range;
+        staticField.debugDisplayName = state.namespaceName.empty()
+            ? state.name
+            : state.namespaceName + "." + state.name;
         switch (state.initializerKind)
         {
             case NamespaceStateInitializerKind::Integer:

@@ -180,6 +180,7 @@ void writeFunction(
     output.scalar(function.returnOwnership);
     output.texts(function.parameterNames);
     output.texts(function.parameterTypeKeys);
+    output.scalars(function.parameterPassKinds);
     output.scalars(function.parameterOwnerships);
     output.scalar(function.abi.returnPassing);
     output.optional(function.abi.hiddenReturnParameterOrdinal);
@@ -254,6 +255,8 @@ void writeCommonModel(IdentityWriter& output, const frontend::ProjectOopMirModel
         output.scalar(std::bit_cast<std::uint64_t>(field.constantFloatingValue));
         output.scalar(field.constantBooleanValue); output.text(field.constantStringValue);
         output.scalar(field.isEnumConstant);
+        output.optional(field.namespaceStateOrdinal);
+        output.text(field.debugDisplayName);
     }
     output.scalar(model.dispatchTables().size());
     for (const auto& table : model.dispatchTables())
@@ -321,7 +324,7 @@ std::string projectOopMirCacheIdentity(
     std::span<const std::size_t> declarationOrdinals)
 {
     IdentityWriter output;
-    output.text("NativeSharp.ProjectOopMirCacheIdentity.v2");
+    output.text("NativeSharp.ProjectOopMirCacheIdentity.v3");
     output.text(language::languageEditionFingerprint(model.languageEdition()));
     writeCommonModel(output, model);
     output.scalar(declarationOrdinals.size());

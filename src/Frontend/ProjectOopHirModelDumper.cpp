@@ -136,6 +136,11 @@ std::string ProjectOopHirModelDumper::dump(const ProjectOopHirModel& model)
         output << '\n';
         for (std::size_t index = 0; index < function.parameterOwnerships.size(); ++index)
         {
+            if (index < function.parameterPassKinds.size())
+            {
+                output << "  parameter-pass[" << index << "]="
+                       << parameterPassKindName(function.parameterPassKinds[index]) << '\n';
+            }
             output << "  parameter-ownership[" << index << "]="
                    << sema::ownershipKindName(function.parameterOwnerships[index]) << '\n';
         }
