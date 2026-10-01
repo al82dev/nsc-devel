@@ -3139,23 +3139,6 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage48_4_cpp_host_tests)
     add_test(NAME nsc.stage48_4.cpp-host COMMAND nsc_stage48_4_cpp_host_tests)
 
-    add_executable(nsc_stage48_5_csharp_host_tests tests/unit/Stage48_5CSharpPInvokeHostTests.cpp)
-    target_link_libraries(nsc_stage48_5_csharp_host_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_stage48_5_csharp_host_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_stage48_5_csharp_host_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-    nsc_enable_warnings(nsc_stage48_5_csharp_host_tests)
-    add_test(NAME nsc.stage48_5.csharp-pinvoke-host COMMAND nsc_stage48_5_csharp_host_tests)
-
-    add_executable(nsc_stage48_6_cppcli_host_tests tests/unit/Stage48_6CppCliHostClosureTests.cpp)
-    target_link_libraries(nsc_stage48_6_cppcli_host_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-    target_compile_features(nsc_stage48_6_cppcli_host_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_stage48_6_cppcli_host_tests PRIVATE
-        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-        NSC_TEST_NSC_EXECUTABLE="$<TARGET_FILE:nsc>"
-        NSC_TEST_CLANGXX_EXECUTABLE="${NSC_TEST_CLANGXX_EXECUTABLE}")
-    nsc_enable_warnings(nsc_stage48_6_cppcli_host_tests)
-    add_test(NAME nsc.stage48_6.cppcli-stage48-closure COMMAND nsc_stage48_6_cppcli_host_tests)
-
     add_executable(nsc_stage49_raii_move_tests tests/unit/Stage49RaiiMoveSemanticsTests.cpp)
     target_link_libraries(nsc_stage49_raii_move_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage49_raii_move_tests PRIVATE cxx_std_20)

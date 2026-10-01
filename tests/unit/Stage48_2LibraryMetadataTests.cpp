@@ -209,9 +209,9 @@ namespace Meta
         Second = 2
     }
 
-    // Enums CON tipo subyacente declarado. Los metadatos alimentan a los GENERADORES DE HOST (el
-    // enlace P/Invoke de C# y el de C++/CLI), asi que un tamano fijo de 4 aqui se propaga a codigo
-    // que otro compilador genera y que ya nadie relaciona con este fichero.
+    // Enums CON tipo subyacente declarado. Los metadatos alimentan a consumidores del ABI C
+    // publico, asi que un tamano fijo de 4 aqui se propaga a codigo externo que ya nadie
+    // relaciona con este fichero.
     public enum Narrow : byte
     {
         Low = 0,

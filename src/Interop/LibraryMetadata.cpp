@@ -906,10 +906,9 @@ bool buildMetadataModel(
             //
             // Este era el SEPTIMO sitio con "un enum mide cuatro bytes" escrito a
             // mano, y el mas caro de los que quedaban: los metadatos alimentan a los
-            // generadores de host --el enlace P/Invoke de C# y el de C++/CLI-- asi
-            // que un 4/4 fijo se propaga a codigo que otro compilador genera y que ya
-            // nadie relaciona con este fichero. Un `enum : byte` exportado hacia que
-            // el host reservara cuatro bytes donde el modulo pone uno.
+            // consumidores del ABI C publico, asi que un 4/4 fijo se propaga a codigo
+            // externo que ya nadie relaciona con este fichero. Un `enum : byte`
+            // exportado hacia que el host reservara cuatro bytes donde el modulo pone uno.
             //
             // `valueLayoutForTypeKey` es la misma consulta que usan el modelo MIR y
             // el HIR, asi que los metadatos no pueden discrepar del layout que el

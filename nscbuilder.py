@@ -1233,7 +1233,7 @@ def ctest_target_for(name: str, mapping: dict[str, str]) -> str | None:
 # El dialecto que ctest si entiende es el basico: `^ $ . [ ] ( ) | * + ?` y `\` como escape. Ni
 # grupos no capturantes, ni `{n,m}`, ni clases como `\d`. De ahi las dos diferencias con
 # `re.escape`: el grupo se abre con `(` a secas, y solo se escapan los metacaracteres de ESE motor
-# --el `-` de `cppcli-stage48-closure` no es uno de ellos y escaparlo es justo lo que rompia--.
+# Los guiones de nombres CTest ordinarios no son metacaracteres y no deben escaparse.
 CTEST_REGEX_SPECIALS = frozenset("\\^$.[]()|*+?")
 
 

@@ -8,8 +8,7 @@
 // perfectly valid COFF/PE object -- the corruption only manifested as a page fault when the
 // resulting .exe was actually RUN. This file closes that gap: it uses the real `nsc` Driver
 // in-process to emit a genuine Windows x64 PE executable, then (when Wine is available on the
-// host, gracefully skipped otherwise -- see commandAvailable()/wineAvailable() below, the same
-// pattern Stage48_6CppCliHostClosureTests.cpp already uses for optional host-toolchain checks)
+// host, gracefully skipped otherwise -- see commandAvailable()/wineAvailable() below)
 // actually EXECUTES it and checks the real exit code, exactly per this repo's Stage 52 closure
 // checklist ("no basta con verificar únicamente COFF/PE; este bug fue precisamente invisible a
 // la validación estructural").

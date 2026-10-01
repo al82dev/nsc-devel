@@ -136,12 +136,11 @@ public:
     // Cierra la prueba SIN BORRAR LA EVIDENCIA CUANDO FALLA.
     //
     // POR QUE EXISTE. Las pruebas que construyen algo de verdad --DLLs, bibliotecas de
-    // importacion, anfitriones de C, C++ y .NET-- trabajan en un directorio temporal y lo
+    // importacion y anfitriones nativos de C/C++-- trabajan en un directorio temporal y lo
     // borraban al terminar, PASARAN O NO. Cuando una fallaba, lo unico que quedaba era el nombre
     // del check; el comando, el log del enlazador y los objetos se habian ido. Medido el
-    // 2026-09-02: `nsc.stage48_5` fallo con NSLink, y al ir a leer su `dotnet_build.log` la
-    // respuesta fue "The system cannot find the path specified" -- porque la prueba se lo habia
-    // llevado por delante.
+    // 2026-09-02: una integracion externa fallo y su directorio temporal ya habia desaparecido
+    // cuando se intento inspeccionar el log.
     //
     // Una prueba que borra su evidencia al fallar obliga a reproducir a mano lo que acaba de
     // pasar, y eso es justo lo que una suite existe para evitar. En verde se limpia igual, que

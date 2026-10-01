@@ -773,15 +773,23 @@ un solo commit.
 **Commit sugerido / Suggested commit:**
 `Agrega PDB a productos DLL NativeSharp / Add PDB support to NativeSharp DLL products`
 
-### DLL-P8 — Hosts externos y ABI pública
+### DLL-P8 — Hosts nativos externos y ABI pública
 
-- C, C++, C# P/Invoke y C++/CLI;
+- C y C++ nativo;
 - structs por valor e indirectos;
 - callbacks y exception boundary;
 - bool, enums, punteros, handles y strings C explícitas;
 - overloads mediante nombres C publicados;
-- headers compilados con clang-cl y MSVC;
+- headers compilados con Clang para Windows x64;
 - productor/host con optimizaciones independientes.
+
+La distribución 3.0 es autónoma: Visual Studio, MSBuild, .NET, C# y C++/CLI no forman parte
+del producto, del roadmap ni de su baseline. El paquete debe poder descomprimirse y usarse sin
+instalar esos toolchains o runtimes administrados.
+
+Esto no retira ni sustituye la ABI MSVC de Windows x64, UCRT ni el runtime nativo de Visual C++.
+El compilador y los productos nativos pueden conservar esas dependencias; quedan fuera de alcance
+únicamente el ecosistema administrado y las herramientas de host de .NET.
 
 No exponer clases NativeSharp como ABI C++ implícita. El header publica la
 frontera C que puede expresar y verificar.
