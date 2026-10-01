@@ -132,6 +132,20 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertTrue(plan.certify_baseline)
         self.assertTrue(plan.reuse_results)
 
+    def test_debug_ctests_inherit_the_linker_selected_by_nscbuilder(self) -> None:
+        cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+        for test_name in (
+            "nsc.debug.codeview-pdb",
+            "nsc.debug.extreme-o0",
+            "nsc.debug.inline-stepping-o0",
+            "nsc.debug.assembly-stepping-o0",
+        ):
+            self.assertIn(f"NAME {test_name}", cmake)
+        self.assertNotIn(
+            '"NSC_LLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"',
+            cmake,
+        )
+
     def test_deep_baseline_plan_runs_both_linkers_without_a_third_diagnostic_pass(self) -> None:
         plan = nscbuilder.make_baseline_plan(
             4,

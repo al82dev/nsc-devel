@@ -3988,9 +3988,7 @@ if(NSC_BUILD_TESTS)
         REQUIRED)
     add_test(
         NAME nsc.debug.codeview-pdb
-        COMMAND "${CMAKE_COMMAND}" -E env
-            "NSC_LLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
-            "${CMAKE_COMMAND}"
+        COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
             "-DLLVM_READOBJ=${NSC_LLVM_READOBJ_EXECUTABLE}"
@@ -4000,9 +3998,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.debug.extreme-o0
-        COMMAND "${CMAKE_COMMAND}" -E env
-            "NSC_LLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
-            "${CMAKE_COMMAND}"
+        COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
             "-DLLVM_READOBJ=${NSC_LLVM_READOBJ_EXECUTABLE}"
@@ -4069,9 +4065,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.debug.inline-stepping-o0
-        COMMAND "${CMAKE_COMMAND}" -E env
-            "NSC_LLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
-            "${CMAKE_COMMAND}"
+        COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
             "-DINLINE_DEBUG_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/inline_debug/InlineDebug.nsproj"
@@ -4080,9 +4074,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.debug.assembly-stepping-o0
-        COMMAND "${CMAKE_COMMAND}" -E env
-            "NSC_LLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
-            "${CMAKE_COMMAND}"
+        COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
             "-DASSEMBLY_DEBUG_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/asm_debug/AssemblyDebug.nsproj"
