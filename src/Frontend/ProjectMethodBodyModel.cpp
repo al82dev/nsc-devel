@@ -2351,6 +2351,22 @@ bool ProjectMethodBodyModel::hasActiveBorrowOfOwnerLocal(
             return true;
         }
     }
+    // T31 view values (`borrowed struct`, including Span<T> and BorrowedReference<T>) carry
+    // their owner provenance in MethodLocalSymbol::viewRootLocalName rather than in the older
+    // explicit `borrowed T` binding table above. Both are real borrows and must block the same
+    // move while the view's lexical scope is active.
+    if (localOrdinal < locals_.size())
+    {
+        const std::string& ownerName = locals_[localOrdinal].name;
+        for (const MethodLocalSymbol& local : locals_)
+        {
+            if (local.viewRootLocalName == ownerName &&
+                scopeContains(local.scopeOrdinal, scopeOrdinal))
+            {
+                return true;
+            }
+        }
+    }
     return false;
 }
 
@@ -8760,6 +8776,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         receiver.receiverSyntax = expression->first();
         receiver.receiverTypeKey = receiver.typeKey;
         receiver.receiverTypeOrdinal = namedTypeOrdinalForTypeKey(receiver.typeKey);
+    }
+
+    if (!typeReceiver && expression->text() == "Length")
+    {
+        const std::optional<std::uint64_t> fixedCount =
+            ProjectMemberModel::fixedArrayCount(receiver.typeKey);
+        if (fixedCount.has_value())
+        {
+            result.typeKey = "builtin:int";
+            result.valid = true;
+            result.assignable = false;
+            result.integerConstant = ProjectIntegerConstant{*fixedCount, false};
+            coreBindings_.push_back(MethodCoreBinding{
+                MethodCoreOperationKind::FixedArrayLength,
+                expression,
+                methodMemberOrdinal,
+                scopeOrdinal,
+                result.typeKey,
+                receiver.typeKey,
+                false, std::nullopt, std::nullopt});
+            return result;
+        }
     }
 
     if (!typeReceiver && expression->text() == "Length" &&
@@ -16633,6 +16671,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
     {
         case MethodCoreOperationKind::ArrayAllocation: return "array-allocation";
         case MethodCoreOperationKind::ArrayLength: return "array-length";
+        case MethodCoreOperationKind::FixedArrayLength: return "fixed-array-length";
         case MethodCoreOperationKind::ArrayElement: return "array-element";
         case MethodCoreOperationKind::RawElement: return "raw-element";
         case MethodCoreOperationKind::StringLiteral: return "string-literal";

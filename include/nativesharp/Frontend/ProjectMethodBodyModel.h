@@ -554,6 +554,9 @@ enum class MethodCoreOperationKind
 {
     ArrayAllocation,
     ArrayLength,
+    // NativeSharp 3.0 T31. Inline fixed arrays do not carry a runtime header. Their Length is
+    // part of the canonical type key and therefore folds to a compile-time integer constant.
+    FixedArrayLength,
     ArrayElement,
     // C2.1 "fixed arrays": indexing something whose storage is INLINE and unmanaged -- a fixed
     // array field/local (`float[4]`) or a raw pointer (`int*`). One operation kind covers both

@@ -8587,19 +8587,61 @@ ast::AstNode* Parser::parseUnaryExpression()
 
         ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::NewExpression, start);
         node->setTypeSyntax(type);
-        if (consumeIf(TokenKind::LeftBracket))
+        if (at(TokenKind::LeftBracket))
         {
             node->setFlag(true);
-            if (!at(TokenKind::RightBracket))
+            std::vector<SourceRange> omittedDimensions;
+            std::size_t countedDimensions = 0;
+            while (consumeIf(TokenKind::LeftBracket))
             {
-                node->setFirst(parseExpression());
+                const SourceRange left = tokens_[index_ - 1].range();
+                if (at(TokenKind::RightBracket))
+                {
+                    const SourceRange right = consume().range();
+                    omittedDimensions.push_back(join(left, right));
+                    continue;
+                }
+
+                ast::AstNode* count = parseExpression();
+                ++countedDimensions;
+                if (countedDimensions == 1)
+                {
+                    node->setFirst(count);
+                }
+                else
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::UnexpectedToken,
+                        diagnostics::DiagnosticSeverity::Error,
+                        count->range(),
+                        "dynamic jagged allocation accepts exactly one counted dimension; "
+                        "rectangular rank belongs to NativeSharp 3.0 range arrays");
+                }
+                expect(TokenKind::RightBracket, "']'");
             }
-            expect(TokenKind::RightBracket, "']'");
-            // NSC-LIMIT-017. `new T[] { a, b }`: the omitted count is intentional and the
-            // initializer supplies it. Keep values as children in source order; semantic analysis
-            // freezes their conversions and HIR materializes the inferred count.
-            if (consumeIf(TokenKind::LeftBrace))
+
+            // NSC-LIMIT-017. The final omitted outer dimension followed by an initializer is
+            // `new T[] { ... }`; any earlier `[]` belongs to its ELEMENT type. In every other
+            // allocation spelling, every `[]` is part of the element type, so both conventional
+            // jagged forms are canonicalized identically:
+            // `new T[count][]` and `new T[][count]` both allocate a `T[][]` whose element is T[].
+            const bool inferredInitializer = countedDimensions == 0 &&
+                !omittedDimensions.empty() && at(TokenKind::LeftBrace);
+            if (inferredInitializer)
             {
+                // The final omitted dimension is the inferred OUTER array; every preceding []
+                // belongs to its element type. Thus `new T[][] { row }` is an inferred T[][]
+                // whose elements are T[], rather than an allocation with two missing counts.
+                for (std::size_t dimension = 1; dimension < omittedDimensions.size(); ++dimension)
+                {
+                    const SourceRange& range = omittedDimensions[dimension - 1];
+                    type->addModifier(ast::TypeModifierSyntax{
+                        ast::TypeModifierSyntaxKind::DynamicArray,
+                        nullptr,
+                        range});
+                    type->setRange(join(type->range(), range));
+                }
+                consume();
                 node->setAuxiliaryText("inferred-array-initializer");
                 if (!at(TokenKind::RightBrace))
                 {
@@ -8611,6 +8653,25 @@ ast::AstNode* Parser::parseUnaryExpression()
                     }
                 }
                 expect(TokenKind::RightBrace, "'}'");
+            }
+            else
+            {
+                for (const SourceRange& range : omittedDimensions)
+                {
+                    type->addModifier(ast::TypeModifierSyntax{
+                        ast::TypeModifierSyntaxKind::DynamicArray,
+                        nullptr,
+                        range});
+                    type->setRange(join(type->range(), range));
+                }
+                if (countedDimensions == 0)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedExpression,
+                        diagnostics::DiagnosticSeverity::Error,
+                        node->range(),
+                        "dynamic array allocation requires one count or an aggregate initializer");
+                }
             }
         }
         node->setRange(SourceRange(start.begin(), tokens_[index_ - 1].range().end()));

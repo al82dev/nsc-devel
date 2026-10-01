@@ -5377,6 +5377,132 @@ private:
         return true;
     }
 
+    // NativeSharp 3.0 T31. A native array owns every ownable reference stored in its element
+    // slots. Destruction clears each slot before descending, destroys nested arrays recursively,
+    // and releases the outer allocation last. All owning element shapes are pointer-sized, so
+    // their canonical array data offset and stride are both eight on the Windows-x64-only ABI.
+    bool emitNativeArrayDestroy(
+        LLVMValueRef array,
+        std::string_view arrayTypeKey,
+        std::string_view stem,
+        std::string& error)
+    {
+        const std::optional<std::string> elementType =
+            frontend::ProjectTypeConversion::nativeArrayElementType(arrayTypeKey);
+        if (!elementType.has_value())
+        {
+            return fail(error, "NativeSharp 3.0 array destruction lost its element type");
+        }
+
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        const std::string prefix(stem);
+        LLVMValueRef isNull = LLVMBuildICmp(
+            builder_, LLVMIntEQ, array, LLVMConstNull(ptr), (prefix + ".isnull").c_str());
+        LLVMBasicBlockRef destroyBlock = appendBlock(prefix + ".destroy");
+        LLVMBasicBlockRef doneBlock = appendBlock(prefix + ".done");
+        LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
+        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+
+        if (requiresOwnedDestruction(*elementType))
+        {
+            LLVMValueRef length = LLVMBuildLoad2(
+                builder_, i64, array, (prefix + ".length").c_str());
+            LLVMBasicBlockRef conditionBlock = appendBlock(prefix + ".elements.cond");
+            LLVMBasicBlockRef bodyBlock = appendBlock(prefix + ".elements.body");
+            LLVMBasicBlockRef releaseBlock = appendBlock(prefix + ".release");
+            LLVMBuildBr(builder_, conditionBlock);
+
+            LLVMPositionBuilderAtEnd(builder_, conditionBlock);
+            LLVMValueRef index = LLVMBuildPhi(builder_, i64, (prefix + ".index").c_str());
+            LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
+            LLVMAddIncoming(index, &zero, &destroyBlock, 1);
+            LLVMValueRef inRange = LLVMBuildICmp(
+                builder_, LLVMIntULT, index, length, (prefix + ".inrange").c_str());
+            LLVMBuildCondBr(builder_, inRange, bodyBlock, releaseBlock);
+
+            LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+            LLVMValueRef scaled = LLVMBuildMul(
+                builder_, index, LLVMConstInt(i64, 8, 0), (prefix + ".scaled").c_str());
+            LLVMValueRef offset = LLVMBuildAdd(
+                builder_, scaled, LLVMConstInt(i64, 8, 0), (prefix + ".offset").c_str());
+            LLVMValueRef indices[] = {offset};
+            LLVMValueRef slot = LLVMBuildGEP2(
+                builder_, LLVMInt8TypeInContext(context_), array, indices, 1,
+                (prefix + ".slot").c_str());
+            LLVMValueRef child = LLVMBuildLoad2(
+                builder_, ptr, slot, (prefix + ".element").c_str());
+            // Clear before any user destructor can transfer control through EH.
+            LLVMBuildStore(builder_, LLVMConstNull(ptr), slot);
+            if (!emitOwnedPointerDestroy(child, *elementType, prefix + ".element.destroy", error))
+                return false;
+            LLVMBasicBlockRef incrementBlock = LLVMGetInsertBlock(builder_);
+            if (!terminated())
+            {
+                LLVMValueRef next = LLVMBuildAdd(
+                    builder_, index, LLVMConstInt(i64, 1, 0), (prefix + ".next").c_str());
+                LLVMBuildBr(builder_, conditionBlock);
+                LLVMAddIncoming(index, &next, &incrementBlock, 1);
+            }
+
+            LLVMPositionBuilderAtEnd(builder_, releaseBlock);
+        }
+
+        LLVMValueRef arguments[] = {array};
+        buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
+        if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        return true;
+    }
+
+    bool emitOwnedPointerDestroy(
+        LLVMValueRef value,
+        std::string_view typeKey,
+        std::string_view stem,
+        std::string& error)
+    {
+        if (frontend::ProjectTypeConversion::isNativeArray(typeKey))
+            return emitNativeArrayDestroy(value, typeKey, stem, error);
+
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        const std::string prefix(stem);
+        LLVMValueRef isNull = LLVMBuildICmp(
+            builder_, LLVMIntEQ, value, LLVMConstNull(ptr), (prefix + ".isnull").c_str());
+        LLVMBasicBlockRef destroyBlock = appendBlock(prefix + ".destroy");
+        LLVMBasicBlockRef doneBlock = appendBlock(prefix + ".done");
+        LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
+        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+
+        if (isDelegateReference(typeKey))
+        {
+            if (!emitDelegateDestroy(value, prefix + ".delegate", error)) return false;
+        }
+        else if (typeKey == "builtin:string")
+        {
+            LLVMValueRef arguments[] = {value};
+            buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
+        }
+        else if (isClassReference(typeKey))
+        {
+            if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
+                return fail(error, "NativeSharp 3.0 array element cleanup has no class destruction ABI");
+            LLVMValueRef descriptor = LLVMBuildLoad2(
+                builder_, ptr, value, (prefix + ".descriptor").c_str());
+            LLVMValueRef entryAddress = LLVMBuildStructGEP2(
+                builder_, descriptorType_, descriptor, 5, (prefix + ".entry.addr").c_str());
+            LLVMValueRef destructionEntry = LLVMBuildLoad2(
+                builder_, ptr, entryAddress, (prefix + ".entry").c_str());
+            LLVMValueRef arguments[] = {value};
+            if (buildPotentiallyThrowingCall(
+                    destructionEntryFunctionType_, destructionEntry, arguments, 1, "", error) == nullptr &&
+                !error.empty())
+                return false;
+        }
+        if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        return true;
+    }
+
     bool emitRaiiDestroy(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr ||
@@ -5424,7 +5550,14 @@ private:
             LLVMPositionBuilderAtEnd(builder_, doneBlock);
             return true;
         }
-        if (node->typeKey == "builtin:string" || node->typeKey.ends_with("[]"))
+        if (frontend::ProjectTypeConversion::isNativeArray(node->typeKey))
+        {
+            if (!emitNativeArrayDestroy(value, node->typeKey, "raii.array", error)) return false;
+            if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            return true;
+        }
+        if (node->typeKey == "builtin:string")
         {
             LLVMValueRef arguments[] = {value};
             buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
@@ -5505,6 +5638,13 @@ private:
         if (isDelegateReference(node->typeKey))
         {
             if (!emitDelegateDestroy(value, "owned.param.delegate", error)) return false;
+            if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            return true;
+        }
+        if (frontend::ProjectTypeConversion::isNativeArray(node->typeKey))
+        {
+            if (!emitNativeArrayDestroy(value, node->typeKey, "owned.param.array", error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, doneBlock);
             LLVMPositionBuilderAtEnd(builder_, doneBlock);
             return true;
@@ -13306,6 +13446,15 @@ private:
             return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
         }
 
+        const std::string_view deletionType = node->booleanValue && !node->elementTypeKey.empty()
+            ? std::string_view(node->elementTypeKey)
+            : std::string_view(node->children.front()->typeKey);
+        if (frontend::ProjectTypeConversion::isNativeArray(deletionType))
+        {
+            if (!emitNativeArrayDestroy(pointer, deletionType, "delete.array", error)) return nullptr;
+            return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+        }
+
         if (!node->dynamicDestruction)
         {
             LLVMValueRef arguments[] = {pointer};
@@ -13843,7 +13992,9 @@ private:
     // the three call sites that already live in this file.
     bool requiresOwnedDestruction(std::string_view typeKey) const noexcept
     {
-        return typeKey == "builtin:string" || isClassReference(typeKey) || isDelegateReference(typeKey);
+        return typeKey == "builtin:string" ||
+            frontend::ProjectTypeConversion::isNativeArray(typeKey) ||
+            isClassReference(typeKey) || isDelegateReference(typeKey);
     }
 
     bool isFloat32x4TypeKey(std::string_view typeKey) const noexcept

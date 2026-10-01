@@ -388,6 +388,7 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     // ---------------------------------------------------------------------------------------
     case MethodCoreOperationKind::ArrayAllocation:
     case MethodCoreOperationKind::ArrayLength:
+    case MethodCoreOperationKind::FixedArrayLength:
     case MethodCoreOperationKind::ArrayElement:
     case MethodCoreOperationKind::RawElement:
     case MethodCoreOperationKind::StringLiteral:
@@ -3687,6 +3688,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         case ast::AstNodeKind::MemberExpression:
         {
             const MethodCoreBinding* core = coreBinding(expression);
+            if (core != nullptr && core->kind == MethodCoreOperationKind::FixedArrayLength)
+            {
+                if (addressContext)
+                {
+                    error = "NativeSharp 3.0 fixed-array Length is a constant value and is not addressable";
+                    return nullptr;
+                }
+                const std::optional<std::uint64_t> count =
+                    ProjectMemberModel::fixedArrayCount(core->elementTypeKey);
+                if (!count.has_value())
+                {
+                    error = "NativeSharp 3.0 fixed-array Length lost its canonical extent";
+                    return nullptr;
+                }
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::IntegerConstant, expression, core->resultTypeKey);
+                node->integerValue = *count;
+                return node;
+            }
             if (core != nullptr &&
                 (core->kind == MethodCoreOperationKind::ArrayLength ||
                  core->kind == MethodCoreOperationKind::StringLength))
@@ -6676,11 +6696,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     error = "Stage 41 delete[] requires a native dynamic array reference";
                     return nullptr;
                 }
-                auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+                const MethodCoreBinding* elementBinding = coreBinding(expression->first());
+                const bool directElement = elementBinding != nullptr &&
+                    (elementBinding->kind == MethodCoreOperationKind::ArrayElement ||
+                     elementBinding->kind == MethodCoreOperationKind::RawElement);
+                auto operand = lowerExpression(
+                    expression->first(), memberOrdinal, directElement, error);
                 if (operand == nullptr) return nullptr;
                 auto node = makeNode(ProjectOopHirNodeKind::Deallocation, expression, "builtin:void");
                 node->dynamicDestruction = false;
                 node->storageOwnership = sema::OwnershipKind::Owned;
+                // A jagged row is itself an owning native-array reference. Carrying the slot
+                // address lets LLVM null it before recursive destruction, so an explicit row
+                // delete followed by deletion of the outer array can never double-drop it.
+                node->booleanValue = directElement;
+                node->elementTypeKey = operandType->typeKey;
                 node->children.push_back(std::move(operand));
                 return node;
             }

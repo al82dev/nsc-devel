@@ -1,0 +1,32 @@
+namespace NativeSharp.Core
+{
+    // NativeSharp 3.0 T31. A non-owning object relationship expressed as a view value.
+    //
+    // This type deliberately has no Dispose/destructor and never releases `target`. Because it
+    // is a `borrowed struct`, the compiler applies the same escape rules as Span<T>: it cannot be
+    // stored in an ordinary/static field, captured by a lambda, or returned when rooted in a
+    // local owner. Moving that owner while a live BorrowedReference<T> local exists is rejected.
+    // The representation is exactly one native reference; construction performs no allocation.
+    public borrowed struct BorrowedReference<T>
+    {
+        private T target;
+
+        public BorrowedReference(T value)
+        {
+            target = value;
+        }
+
+        public T Get()
+        {
+            return target;
+        }
+    }
+
+    public class Borrows
+    {
+        public static BorrowedReference<T> Of<T>(T target)
+        {
+            return new BorrowedReference<T>(target);
+        }
+    }
+}
