@@ -11100,6 +11100,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         false, std::nullopt, std::nullopt});
                 }
             }
+            if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Console" &&
+                selectedMember.isStatic && selectedMember.name == "ReadLine" &&
+                selectedMember.declaredTypeKey == "builtin:string" &&
+                selectedMember.declaredOwnership == sema::OwnershipKind::Owned &&
+                selectedMember.parameters.size() == 1 &&
+                selectedMember.parameters.front().pointeeTypeKey == "builtin:int" &&
+                selectedMember.parameters.front().passKind == ParameterPassKind::Out)
+            {
+                coreBindings_.push_back(MethodCoreBinding{
+                    MethodCoreOperationKind::ConsoleReadLine,
+                    expression,
+                    methodMemberOrdinal,
+                    scopeOrdinal,
+                    "builtin:string",
+                    "builtin:int",
+                    false, std::nullopt, std::nullopt});
+            }
             // C8 "type root" -- NativeSharp.Core.RuntimeHelpers' two primitives. Same recognition
             // shape as every core operation before them (exact class, exact static method name,
             // exact signature): read a type's name out of its runtime descriptor, and turn a
@@ -16630,6 +16647,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::ConsoleWrite: return "console-write";
         case MethodCoreOperationKind::ConsoleErrorWriteLine: return "console-error-writeline";
         case MethodCoreOperationKind::ConsoleErrorWrite: return "console-error-write";
+        case MethodCoreOperationKind::ConsoleReadLine: return "console-readline";
         case MethodCoreOperationKind::StructToString: return "struct-to-string";
         case MethodCoreOperationKind::EnumToString: return "enum-to-string";
         case MethodCoreOperationKind::StructEquals: return "struct-equals";

@@ -738,6 +738,19 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_ns3_t29_procedural_ergonomics_tests)
 
     add_executable(
+        nsc_ns3_t30_console_input_tests
+        tests/unit/NativeSharp3T30ConsoleInputTests.cpp)
+    target_link_libraries(nsc_ns3_t30_console_input_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_ns3_t30_console_input_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_ns3_t30_console_input_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_ns3_t30_console_input_tests)
+    add_test(
+        NAME nsc.ns3.t30.console-input
+        COMMAND nsc_ns3_t30_console_input_tests)
+
+    add_executable(
         nsc_ns3_t03_sum_type_tests
         tests/unit/NativeSharp3T03SumTypeTests.cpp)
     target_link_libraries(

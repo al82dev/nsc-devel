@@ -750,6 +750,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::StringCharacterPointer: return "string-character-pointer";
         case ProjectOopMirNodeKind::StringFromCharArray: return "string-from-char-array";
         case ProjectOopMirNodeKind::CoreConsoleWriteLine: return "core-console-writeline";
+        case ProjectOopMirNodeKind::CoreConsoleReadLine: return "core-console-readline";
         case ProjectOopMirNodeKind::AggregateEquals: return "aggregate-equals";
         case ProjectOopMirNodeKind::AggregateHash: return "aggregate-hash";
         case ProjectOopMirNodeKind::CoreObjectTypeName: return "core-object-type-name";
@@ -2035,6 +2036,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::CoreConsoleWriteLine:
             result->kind = ProjectOopMirNodeKind::CoreConsoleWriteLine;
             result->immediate = node->integerValue;
+            break;
+        case ProjectOopHirNodeKind::CoreConsoleReadLine:
+            result->kind = ProjectOopMirNodeKind::CoreConsoleReadLine;
             break;
         case ProjectOopHirNodeKind::AggregateEquals:
         case ProjectOopHirNodeKind::AggregateHash:

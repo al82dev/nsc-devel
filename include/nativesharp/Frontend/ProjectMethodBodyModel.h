@@ -595,6 +595,7 @@ enum class MethodCoreOperationKind
     ConsoleWrite,
     ConsoleErrorWriteLine,
     ConsoleErrorWrite,
+    ConsoleReadLine,
     // C8 "type root": the two primitives NativeSharp.Core.Object's virtual methods need and that
     // cannot be written in NativeSharp -- read a type's name out of its runtime descriptor, and
     // turn a reference into an integer. See lib/NativeSharp.Core/Object.ns.

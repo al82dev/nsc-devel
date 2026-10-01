@@ -175,6 +175,7 @@ enum class ProjectOopHirNodeKind
     StringCharacterPointer,
     StringFromCharArray,
     CoreConsoleWriteLine,
+    CoreConsoleReadLine,
     // C8 -- see MethodCoreOperationKind::ObjectTypeName / ObjectReferenceHash. One operand each
     // (the object reference); result is builtin:string and builtin:int respectively.
     CoreObjectTypeName,

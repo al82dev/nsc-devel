@@ -397,6 +397,7 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::ConsoleWrite:
     case MethodCoreOperationKind::ConsoleErrorWriteLine:
     case MethodCoreOperationKind::ConsoleErrorWrite:
+    case MethodCoreOperationKind::ConsoleReadLine:
     case MethodCoreOperationKind::SizeofConstant:
     case MethodCoreOperationKind::AlignofConstant:
     case MethodCoreOperationKind::OffsetofConstant:
@@ -1035,6 +1036,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::StringCharacterPointer: return "string-character-pointer";
         case ProjectOopHirNodeKind::StringFromCharArray: return "string-from-char-array";
         case ProjectOopHirNodeKind::CoreConsoleWriteLine: return "core-console-writeline";
+        case ProjectOopHirNodeKind::CoreConsoleReadLine: return "core-console-readline";
         case ProjectOopHirNodeKind::AggregateEquals: return "aggregate-equals";
         case ProjectOopHirNodeKind::AggregateHash: return "aggregate-hash";
         case ProjectOopHirNodeKind::CoreObjectTypeName: return "core-object-type-name";
@@ -5682,6 +5684,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->integerValue = (appendNewline ? 1u : 0u) | (useStandardError ? 2u : 0u);
                 node->children.push_back(std::move(argument));
                 return wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
+            }
+            if (core != nullptr && core->kind == MethodCoreOperationKind::ConsoleReadLine)
+            {
+                if (addressContext || expression->children().size() != 1)
+                {
+                    error = "NativeSharp.Core.Console.ReadLine requires one out status argument";
+                    return nullptr;
+                }
+                auto status = lowerExpression(
+                    expression->children().front(), memberOrdinal, false, error);
+                if (status == nullptr) return nullptr;
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::CoreConsoleReadLine, expression, "builtin:string");
+                node->children.push_back(std::move(status));
+                return node;
             }
             // ID 129. `ToString()` sobre un ENUM devuelve el NOMBRE del enumerador.
             //

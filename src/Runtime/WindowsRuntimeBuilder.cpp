@@ -335,6 +335,215 @@ bool buildConsoleWrite(
     return true;
 }
 
+bool buildConsoleReadLine(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    LLVMValueRef getProcessHeap,
+    LLVMTypeRef getProcessHeapType,
+    LLVMValueRef heapAlloc,
+    LLVMTypeRef heapAllocType,
+    LLVMValueRef heapReAlloc,
+    LLVMTypeRef heapReAllocType,
+    LLVMValueRef heapFree,
+    LLVMTypeRef heapFreeType,
+    LLVMValueRef getStdHandle,
+    LLVMTypeRef getStdHandleType,
+    LLVMValueRef readFile,
+    LLVMTypeRef readFileType,
+    LLVMValueRef getLastError,
+    LLVMTypeRef getLastErrorType)
+{
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef type = functionType(pointerType, {pointerType});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_console_readline", type);
+    if (function == nullptr) return false;
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBasicBlockRef allocated = LLVMAppendBasicBlockInContext(context, function, "allocated");
+    LLVMBasicBlockRef loop = LLVMAppendBasicBlockInContext(context, function, "loop");
+    LLVMBasicBlockRef grow = LLVMAppendBasicBlockInContext(context, function, "grow");
+    LLVMBasicBlockRef grown = LLVMAppendBasicBlockInContext(context, function, "grown");
+    LLVMBasicBlockRef read = LLVMAppendBasicBlockInContext(context, function, "read");
+    LLVMBasicBlockRef readOk = LLVMAppendBasicBlockInContext(context, function, "read_ok");
+    LLVMBasicBlockRef readFailed = LLVMAppendBasicBlockInContext(context, function, "read_failed");
+    LLVMBasicBlockRef haveByte = LLVMAppendBasicBlockInContext(context, function, "have_byte");
+    LLVMBasicBlockRef append = LLVMAppendBasicBlockInContext(context, function, "append");
+    LLVMBasicBlockRef eof = LLVMAppendBasicBlockInContext(context, function, "eof");
+    LLVMBasicBlockRef eofEmpty = LLVMAppendBasicBlockInContext(context, function, "eof_empty");
+    LLVMBasicBlockRef finalize = LLVMAppendBasicBlockInContext(context, function, "finalize");
+    LLVMBasicBlockRef finalizeNonEmpty = LLVMAppendBasicBlockInContext(context, function, "finalize_nonempty");
+    LLVMBasicBlockRef finish = LLVMAppendBasicBlockInContext(context, function, "finish");
+    LLVMBasicBlockRef fail = LLVMAppendBasicBlockInContext(context, function, "fail");
+
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMValueRef status = LLVMGetParam(function, 0);
+    LLVMValueRef bufferSlot = LLVMBuildAlloca(builder, pointerType, "buffer_slot");
+    LLVMValueRef capacitySlot = LLVMBuildAlloca(builder, i64Type, "capacity_slot");
+    LLVMValueRef countSlot = LLVMBuildAlloca(builder, i64Type, "count_slot");
+    LLVMValueRef bytesReadSlot = LLVMBuildAlloca(builder, i32Type, "bytes_read_slot");
+    LLVMBuildStore(builder, LLVMConstNull(pointerType), bufferSlot);
+    LLVMValueRef heap = LLVMBuildCall2(builder, getProcessHeapType, getProcessHeap, nullptr, 0, "heap");
+    LLVMValueRef initialCapacity = LLVMConstInt(i64Type, 256, 0);
+    LLVMValueRef allocationSize = LLVMBuildAdd(
+        builder, initialCapacity, LLVMConstInt(i64Type, 8, 0), "allocation_size");
+    LLVMValueRef allocationArguments[] = {
+        heap, LLVMConstInt(i32Type, 0, 0), allocationSize};
+    LLVMValueRef buffer = LLVMBuildCall2(
+        builder, heapAllocType, heapAlloc, allocationArguments, 3, "buffer");
+    LLVMValueRef allocationFailed = LLVMBuildICmp(
+        builder, LLVMIntEQ, buffer, LLVMConstNull(pointerType), "allocation_failed");
+    LLVMBuildCondBr(builder, allocationFailed, fail, allocated);
+
+    LLVMPositionBuilderAtEnd(builder, allocated);
+    LLVMBuildStore(builder, buffer, bufferSlot);
+    LLVMBuildStore(builder, initialCapacity, capacitySlot);
+    LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), countSlot);
+    LLVMValueRef inputCode = LLVMConstInt(i32Type, 0xfffffff6ULL, 0);
+    LLVMValueRef inputArguments[] = {inputCode};
+    LLVMValueRef input = LLVMBuildCall2(
+        builder, getStdHandleType, getStdHandle, inputArguments, 1, "stdin_handle");
+    LLVMBuildBr(builder, loop);
+
+    LLVMPositionBuilderAtEnd(builder, loop);
+    LLVMValueRef count = LLVMBuildLoad2(builder, i64Type, countSlot, "count");
+    LLVMValueRef capacity = LLVMBuildLoad2(builder, i64Type, capacitySlot, "capacity");
+    LLVMValueRef full = LLVMBuildICmp(builder, LLVMIntEQ, count, capacity, "full");
+    LLVMBuildCondBr(builder, full, grow, read);
+
+    LLVMPositionBuilderAtEnd(builder, grow);
+    LLVMValueRef oldBuffer = LLVMBuildLoad2(builder, pointerType, bufferSlot, "old_buffer");
+    LLVMValueRef newCapacity = LLVMBuildMul(
+        builder, capacity, LLVMConstInt(i64Type, 2, 0), "new_capacity");
+    LLVMValueRef newSize = LLVMBuildAdd(
+        builder, newCapacity, LLVMConstInt(i64Type, 8, 0), "new_size");
+    LLVMValueRef reallocationArguments[] = {
+        heap, LLVMConstInt(i32Type, 0, 0), oldBuffer, newSize};
+    LLVMValueRef newBuffer = LLVMBuildCall2(
+        builder, heapReAllocType, heapReAlloc, reallocationArguments, 4, "new_buffer");
+    LLVMValueRef growFailed = LLVMBuildICmp(
+        builder, LLVMIntEQ, newBuffer, LLVMConstNull(pointerType), "grow_failed");
+    LLVMBuildCondBr(builder, growFailed, fail, grown);
+
+    LLVMPositionBuilderAtEnd(builder, grown);
+    LLVMBuildStore(builder, newBuffer, bufferSlot);
+    LLVMBuildStore(builder, newCapacity, capacitySlot);
+    LLVMBuildBr(builder, read);
+
+    LLVMPositionBuilderAtEnd(builder, read);
+    LLVMValueRef activeBuffer = LLVMBuildLoad2(builder, pointerType, bufferSlot, "active_buffer");
+    LLVMValueRef activeCount = LLVMBuildLoad2(builder, i64Type, countSlot, "active_count");
+    LLVMValueRef byteOffset = LLVMBuildAdd(
+        builder, activeCount, LLVMConstInt(i64Type, 8, 0), "byte_offset");
+    LLVMValueRef byteIndices[] = {byteOffset};
+    LLVMValueRef byteAddress = LLVMBuildGEP2(
+        builder, i8Type, activeBuffer, byteIndices, 1, "byte_address");
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, 0, 0), bytesReadSlot);
+    LLVMValueRef readArguments[] = {
+        input, byteAddress, LLVMConstInt(i32Type, 1, 0), bytesReadSlot,
+        LLVMConstNull(pointerType)};
+    LLVMValueRef readResult = LLVMBuildCall2(
+        builder, readFileType, readFile, readArguments, 5, "read_result");
+    LLVMValueRef readSucceeded = LLVMBuildICmp(
+        builder, LLVMIntNE, readResult, LLVMConstInt(i32Type, 0, 0), "read_succeeded");
+    LLVMBuildCondBr(builder, readSucceeded, readOk, readFailed);
+
+    LLVMPositionBuilderAtEnd(builder, readFailed);
+    LLVMValueRef lastError = LLVMBuildCall2(
+        builder, getLastErrorType, getLastError, nullptr, 0, "last_error");
+    LLVMValueRef brokenPipe = LLVMBuildICmp(
+        builder, LLVMIntEQ, lastError, LLVMConstInt(i32Type, 109, 0), "broken_pipe");
+    LLVMBuildCondBr(builder, brokenPipe, eof, fail);
+
+    LLVMPositionBuilderAtEnd(builder, readOk);
+    LLVMValueRef bytesRead = LLVMBuildLoad2(builder, i32Type, bytesReadSlot, "bytes_read");
+    LLVMValueRef isEof = LLVMBuildICmp(
+        builder, LLVMIntEQ, bytesRead, LLVMConstInt(i32Type, 0, 0), "is_eof");
+    LLVMBuildCondBr(builder, isEof, eof, haveByte);
+
+    LLVMPositionBuilderAtEnd(builder, haveByte);
+    LLVMValueRef byte = LLVMBuildLoad2(builder, i8Type, byteAddress, "byte");
+    LLVMValueRef isNewline = LLVMBuildICmp(
+        builder, LLVMIntEQ, byte, LLVMConstInt(i8Type, 10, 0), "is_newline");
+    LLVMBuildCondBr(builder, isNewline, finalize, append);
+
+    LLVMPositionBuilderAtEnd(builder, append);
+    LLVMValueRef nextCount = LLVMBuildAdd(
+        builder, activeCount, LLVMConstInt(i64Type, 1, 0), "next_count");
+    LLVMBuildStore(builder, nextCount, countSlot);
+    LLVMBuildBr(builder, loop);
+
+    LLVMPositionBuilderAtEnd(builder, eof);
+    LLVMValueRef eofCount = LLVMBuildLoad2(builder, i64Type, countSlot, "eof_count");
+    LLVMValueRef noData = LLVMBuildICmp(
+        builder, LLVMIntEQ, eofCount, LLVMConstInt(i64Type, 0, 0), "no_data");
+    LLVMBuildCondBr(builder, noData, eofEmpty, finalize);
+
+    LLVMPositionBuilderAtEnd(builder, eofEmpty);
+    LLVMValueRef eofBuffer = LLVMBuildLoad2(builder, pointerType, bufferSlot, "eof_buffer");
+    LLVMValueRef eofFreeArguments[] = {
+        heap, LLVMConstInt(i32Type, 0, 0), eofBuffer};
+    LLVMBuildCall2(builder, heapFreeType, heapFree, eofFreeArguments, 3, "");
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, static_cast<std::uint64_t>(-1), 1), status);
+    LLVMBuildRet(builder, LLVMConstNull(pointerType));
+
+    LLVMPositionBuilderAtEnd(builder, finalize);
+    LLVMValueRef finalCount = LLVMBuildLoad2(builder, i64Type, countSlot, "final_count");
+    LLVMValueRef hasData = LLVMBuildICmp(
+        builder, LLVMIntNE, finalCount, LLVMConstInt(i64Type, 0, 0), "has_data");
+    LLVMBuildCondBr(builder, hasData, finalizeNonEmpty, finish);
+
+    LLVMPositionBuilderAtEnd(builder, finalizeNonEmpty);
+    LLVMValueRef finalBuffer = LLVMBuildLoad2(builder, pointerType, bufferSlot, "final_buffer");
+    LLVMValueRef lastIndex = LLVMBuildSub(
+        builder, finalCount, LLVMConstInt(i64Type, 1, 0), "last_index");
+    LLVMValueRef lastOffset = LLVMBuildAdd(
+        builder, lastIndex, LLVMConstInt(i64Type, 8, 0), "last_offset");
+    LLVMValueRef lastIndices[] = {lastOffset};
+    LLVMValueRef lastAddress = LLVMBuildGEP2(
+        builder, i8Type, finalBuffer, lastIndices, 1, "last_address");
+    LLVMValueRef lastByte = LLVMBuildLoad2(builder, i8Type, lastAddress, "last_byte");
+    LLVMValueRef hasCr = LLVMBuildICmp(
+        builder, LLVMIntEQ, lastByte, LLVMConstInt(i8Type, 13, 0), "has_cr");
+    LLVMValueRef strippedCount = LLVMBuildSelect(
+        builder,
+        hasCr,
+        LLVMBuildSub(builder, finalCount, LLVMConstInt(i64Type, 1, 0), "without_cr"),
+        finalCount,
+        "stripped_count");
+    LLVMBuildStore(builder, strippedCount, countSlot);
+    LLVMBuildBr(builder, finish);
+
+    LLVMPositionBuilderAtEnd(builder, finish);
+    LLVMValueRef resultBuffer = LLVMBuildLoad2(builder, pointerType, bufferSlot, "result_buffer");
+    LLVMValueRef resultCount = LLVMBuildLoad2(builder, i64Type, countSlot, "result_count");
+    LLVMBuildStore(builder, resultCount, resultBuffer);
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, 0, 0), status);
+    LLVMBuildRet(builder, resultBuffer);
+
+    LLVMPositionBuilderAtEnd(builder, fail);
+    LLVMValueRef failedBuffer = LLVMBuildLoad2(builder, pointerType, bufferSlot, "failed_buffer");
+    LLVMValueRef hasFailedBuffer = LLVMBuildICmp(
+        builder, LLVMIntNE, failedBuffer, LLVMConstNull(pointerType), "has_failed_buffer");
+    LLVMBasicBlockRef freeFailed = LLVMAppendBasicBlockInContext(context, function, "free_failed");
+    LLVMBasicBlockRef returnFailed = LLVMAppendBasicBlockInContext(context, function, "return_failed");
+    LLVMBuildCondBr(builder, hasFailedBuffer, freeFailed, returnFailed);
+    LLVMPositionBuilderAtEnd(builder, freeFailed);
+    LLVMValueRef failureFreeArguments[] = {
+        heap, LLVMConstInt(i32Type, 0, 0), failedBuffer};
+    LLVMBuildCall2(builder, heapFreeType, heapFree, failureFreeArguments, 3, "");
+    LLVMBuildBr(builder, returnFailed);
+    LLVMPositionBuilderAtEnd(builder, returnFailed);
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, static_cast<std::uint64_t>(-3), 1), status);
+    LLVMBuildRet(builder, LLVMConstNull(pointerType));
+
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
 // Stage 53.1 "Time" -- three tiny wrappers, all sharing one shape: allocate 8 bytes on the
 // stack, hand Win32 a pointer to them ("an out-parameter"), then load back a plain i64 and
 // return it. This is the SAME "out-parameter via alloca" idiom QueryPerformanceCounter,
@@ -5589,10 +5798,15 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
     LLVMValueRef getProcessHeap = LLVMAddFunction(module, "GetProcessHeap", getProcessHeapType);
     LLVMTypeRef heapAllocType = functionType(pointerType, {pointerType, i32Type, i64Type});
     LLVMValueRef heapAlloc = LLVMAddFunction(module, "HeapAlloc", heapAllocType);
+    LLVMTypeRef heapReAllocType = functionType(
+        pointerType, {pointerType, i32Type, pointerType, i64Type});
+    LLVMValueRef heapReAlloc = LLVMAddFunction(module, "HeapReAlloc", heapReAllocType);
     LLVMTypeRef heapFreeType = functionType(i32Type, {pointerType, i32Type, pointerType});
     LLVMValueRef heapFree = LLVMAddFunction(module, "HeapFree", heapFreeType);
     LLVMTypeRef getStdHandleType = functionType(pointerType, {i32Type});
     LLVMValueRef getStdHandle = LLVMAddFunction(module, "GetStdHandle", getStdHandleType);
+    LLVMTypeRef getLastErrorType = functionType(i32Type, {});
+    LLVMValueRef getLastError = LLVMAddFunction(module, "GetLastError", getLastErrorType);
     LLVMTypeRef writeFileType = functionType(
         i32Type,
         {pointerType, pointerType, i32Type, pointerType, pointerType});
@@ -6027,6 +6241,15 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         (!includeStart || buildStart(
             context, module, exitProcess, exitProcessType, ehInit, ehInitType, mainSymbol)) &&
         buildConsoleWrite(context, module, getStdHandle, getStdHandleType, writeFile, writeFileType) &&
+        buildConsoleReadLine(
+            context, module,
+            getProcessHeap, getProcessHeapType,
+            heapAlloc, heapAllocType,
+            heapReAlloc, heapReAllocType,
+            heapFree, heapFreeType,
+            getStdHandle, getStdHandleType,
+            readFile, readFileType,
+            getLastError, getLastErrorType) &&
         buildPuts(context, module, getStdHandle, getStdHandleType, writeFile, writeFileType) &&
         buildClockQueryCounter(context, module, queryPerformanceCounter, queryPerformanceCounterType) &&
         buildClockQueryFrequency(context, module, queryPerformanceFrequency, queryPerformanceFrequencyType) &&

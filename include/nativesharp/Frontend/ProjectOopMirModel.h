@@ -151,6 +151,7 @@ enum class ProjectOopMirNodeKind
     StringCharacterPointer,
     StringFromCharArray,
     CoreConsoleWriteLine,
+    CoreConsoleReadLine,
     // C8 -- see ProjectOopHirNodeKind::CoreObjectTypeName / CoreObjectReferenceHash.
     CoreObjectTypeName,
     CoreObjectReferenceHash,

@@ -48,6 +48,7 @@ constexpr const char* kTrapFunctionName = "__nativesharp_trap";
 // SHR-022. Una sola funcion para las cuatro salidas de consola: el segundo parametro es una
 // mascara de dos bits -- bit 0 anade el salto de linea, bit 1 escribe por error estandar.
 constexpr const char* kConsoleWriteLineFunctionName = "__nativesharp_console_write";
+constexpr const char* kConsoleReadLineFunctionName = "__nativesharp_console_readline";
 constexpr const char* kNativeThrowFunctionName = "__nativesharp_throw";
 constexpr const char* kExceptionCurrentFunctionName = "__nativesharp_exception_current";
 constexpr const char* kExceptionClearFunctionName = "__nativesharp_exception_clear";
@@ -1919,6 +1920,10 @@ private:
         LLVMTypeRef consoleParams[] = {ptr, LLVMInt32TypeInContext(context_)};
         consoleWriteLineFunctionType_ = LLVMFunctionType(LLVMVoidTypeInContext(context_), consoleParams, 2, 0);
         consoleWriteLineFunction_ = LLVMAddFunction(module_, kConsoleWriteLineFunctionName, consoleWriteLineFunctionType_);
+        LLVMTypeRef consoleReadLineParams[] = {ptr};
+        consoleReadLineFunctionType_ = LLVMFunctionType(ptr, consoleReadLineParams, 1, 0);
+        consoleReadLineFunction_ = LLVMAddFunction(
+            module_, kConsoleReadLineFunctionName, consoleReadLineFunctionType_);
 
         // Stage 53.1 "Time" -- all three take zero parameters and return i64 (builtin:long).
         // Defined for real in src/Runtime/WindowsRuntimeBuilder.cpp; declared here, exactly
@@ -7584,6 +7589,16 @@ private:
                 LLVMValueRef args[] = {value, mode};
                 buildNoUnwindCall(consoleWriteLineFunctionType_, consoleWriteLineFunction_, args, 2, "");
                 return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
+            case frontend::ProjectOopMirNodeKind::CoreConsoleReadLine:
+            {
+                if (node->children.size() != 1 || consoleReadLineFunction_ == nullptr)
+                    return failValue(error, "Console.ReadLine requires one out status and runtime hook");
+                LLVMValueRef status = lowerExpression(node->children.front().get(), error);
+                if (status == nullptr) return nullptr;
+                LLVMValueRef args[] = {status};
+                return buildNoUnwindCall(
+                    consoleReadLineFunctionType_, consoleReadLineFunction_, args, 1, "console.readline");
             }
 
             // Stage 53.1 "Time": three sibling zero-argument, zero-branch calls. No argument
@@ -14244,6 +14259,8 @@ private:
     LLVMTypeRef deallocationFunctionType_ = nullptr;
     LLVMValueRef consoleWriteLineFunction_ = nullptr;
     LLVMTypeRef consoleWriteLineFunctionType_ = nullptr;
+    LLVMValueRef consoleReadLineFunction_ = nullptr;
+    LLVMTypeRef consoleReadLineFunctionType_ = nullptr;
     LLVMValueRef clockQueryCounterFunction_ = nullptr;
     LLVMTypeRef clockQueryCounterFunctionType_ = nullptr;
     LLVMValueRef clockQueryFrequencyFunction_ = nullptr;

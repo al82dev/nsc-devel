@@ -11,11 +11,11 @@ namespace nativesharp::runtime
 // Runtime ABI and symbol-set versions live with the contract they version.  The
 // metadata codec aliases these values; it does not own a second copy.
 inline constexpr std::uint16_t kRuntimeAbiMajor = 1;
-inline constexpr std::uint16_t kRuntimeAbiMinor = 0;
+inline constexpr std::uint16_t kRuntimeAbiMinor = 1;
 
-// Version 2 completes the NativeSharp-prefixed Windows x64 symbol inventory and
-// records the exact opaque-pointer LLVM type of every entry.
-inline constexpr std::uint16_t kRuntimeSymbolSetVersion = 2;
+// Version 3 adds the sequential, redirectable Console.ReadLine hook while preserving the exact
+// opaque-pointer LLVM type of every NativeSharp-prefixed Windows x64 entry.
+inline constexpr std::uint16_t kRuntimeSymbolSetVersion = 3;
 
 enum class RuntimeAbiSymbolKind : std::uint8_t
 {
@@ -48,6 +48,7 @@ inline constexpr std::array kRuntimeAbiSymbols = {
     RuntimeAbiSymbol{"__nativesharp_clock_query_counter", RuntimeAbiSymbolKind::Function, "i64()"},
     RuntimeAbiSymbol{"__nativesharp_clock_query_frequency", RuntimeAbiSymbolKind::Function, "i64()"},
     RuntimeAbiSymbol{"__nativesharp_clock_query_system_filetime", RuntimeAbiSymbolKind::Function, "i64()"},
+    RuntimeAbiSymbol{"__nativesharp_console_readline", RuntimeAbiSymbolKind::Function, "ptr(ptr)"},
     RuntimeAbiSymbol{"__nativesharp_console_write", RuntimeAbiSymbolKind::Function, "void(ptr,i32)"},
     RuntimeAbiSymbol{"__nativesharp_debug_capture_stack_frame_count", RuntimeAbiSymbolKind::Function, "i64()"},
     RuntimeAbiSymbol{"__nativesharp_debug_is_debugger_present", RuntimeAbiSymbolKind::Function, "i64()"},
