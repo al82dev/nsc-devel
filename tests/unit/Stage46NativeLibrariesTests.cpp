@@ -22,6 +22,14 @@
 #include <string>
 #include <string_view>
 
+#ifdef _WIN32
+#include <process.h>
+#endif
+
+#ifndef NSC_TEST_NSC_EXECUTABLE
+#error "CMake must provide the nsc executable built by this configuration"
+#endif
+
 namespace
 {
 using nativesharp::ExitCode;
@@ -109,6 +117,41 @@ ExitCode emitLibrary(std::string_view action,
     output = out.str();
     error = err.str();
     return result;
+}
+
+// Stage 46 exercises dozens of complete compilations in one test process. The final transitive
+// DLL closure is deliberately run through the built compiler executable: that is the production
+// process boundary and prevents LLVM/driver state accumulated by earlier embedded compilations
+// from turning this packaging check into a test-harness fast-fail.
+ExitCode emitLibraryFreshProcess(std::string_view action,
+                                 const std::filesystem::path& project,
+                                 const std::filesystem::path& outputPath,
+                                 std::string& output,
+                                 std::string& error,
+                                 bool optimize)
+{
+#ifdef _WIN32
+    const std::wstring compiler = std::filesystem::path(NSC_TEST_NSC_EXECUTABLE).wstring();
+    const std::wstring optimization = optimize ? L"-O2" : L"-O0";
+    const std::wstring actionText(action.begin(), action.end());
+    const std::wstring projectText = project.wstring();
+    const std::wstring outputText = outputPath.wstring();
+    const wchar_t* const arguments[] = {
+        compiler.c_str(), optimization.c_str(), actionText.c_str(), projectText.c_str(),
+        L"-o", outputText.c_str(), nullptr};
+    const intptr_t result = _wspawnv(_P_WAIT, compiler.c_str(), arguments);
+    if (result == 0)
+    {
+        output = "fresh compiler process: ok";
+        error.clear();
+        return ExitCode::Success;
+    }
+    output.clear();
+    error = "fresh compiler process exited with code " + std::to_string(result);
+    return ExitCode::CompilationError;
+#else
+    return emitLibrary(action, project, outputPath, output, error, optimize);
+#endif
 }
 
 ExitCode emitDebugLibrary(std::string_view action,
@@ -5014,12 +5057,13 @@ public class Program
         const auto packageDirectory = packageRoot / (optimize ? "O2" : "O0");
         std::filesystem::create_directories(packageDirectory);
         const auto executable = packageDirectory / "CompositeConsumer.exe";
-        const ExitCode result = emitLibrary("--emit-project-oop-exe",
-                                            compositeDllConsumer / "CompositeDllConsumer.nsproj",
-                                            executable,
-                                            output,
-                                            error,
-                                            optimize);
+        const ExitCode result = emitLibraryFreshProcess(
+            "--emit-project-oop-exe",
+            compositeDllConsumer / "CompositeDllConsumer.nsproj",
+            executable,
+            output,
+            error,
+            optimize);
         tests.expect(result == ExitCode::Success,
                      std::string("consumer links only the top-level DLL of a "
                                  "nominal dependency chain at ") +
@@ -5067,12 +5111,13 @@ public class Program
     const auto diamondExecutable = diamondPackage / "DiamondConsumer.exe";
     output.clear();
     error.clear();
-    const ExitCode diamondResult = emitLibrary("--emit-project-oop-exe",
-                                               diamondConsumer / "DiamondConsumer.nsproj",
-                                               diamondExecutable,
-                                               output,
-                                               error,
-                                               false);
+    const ExitCode diamondResult = emitLibraryFreshProcess(
+        "--emit-project-oop-exe",
+        diamondConsumer / "DiamondConsumer.nsproj",
+        diamondExecutable,
+        output,
+        error,
+        false);
     PeExecutableVerifier diamondVerifier;
     tests.expect(diamondResult == ExitCode::Success && diamondVerifier.verify(diamondExecutable) &&
                      contains(diamondVerifier.info().importedLibraries, "CompositeNative.dll") &&
@@ -5411,8 +5456,33 @@ public class Program
 }
 } // namespace
 
-int main()
+#ifdef _WIN32
+int wmain(int argc, wchar_t** argv)
+#else
+int main(int argc, char** argv)
+#endif
 {
+    // Directed O0 entry point used to validate the fresh-process boundary without running the
+    // complete Stage 46 O0/O2 corpus. It is intentionally not registered as a separate CTest.
+#ifdef _WIN32
+    if (argc == 4 && std::wstring_view(argv[1]) == L"--fresh-process-o0")
+#else
+    if (argc == 4 && std::string_view(argv[1]) == "--fresh-process-o0")
+#endif
+    {
+        std::string output;
+        std::string error;
+        const std::filesystem::path executable = argv[3];
+        const ExitCode result = emitLibraryFreshProcess(
+            "--emit-project-oop-exe", argv[2], executable, output, error, false);
+        if (result != ExitCode::Success) return 1;
+#ifdef _WIN32
+        return runExecutable(executable) == 42 ? 0 : 2;
+#else
+        return 0;
+#endif
+    }
+
     TestContext tests;
     const std::filesystem::path root = nativesharp::tests::evidenceRoot("nativesharp_stage46_native_libraries");
     std::error_code cleanupError;

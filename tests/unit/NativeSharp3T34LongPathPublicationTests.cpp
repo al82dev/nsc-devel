@@ -195,6 +195,18 @@ int main()
             readFile(first) == "old-first" && readFile(second) == "old-second",
         "a locked member aborts the set and restores every previous artifact");
 
+    const fs::path unicodeDestination =
+        root / L"paquete_\u00e1\u00e9_\u8fd0\u884c" / L"resultado.txt";
+    ArtifactTransaction unicodeTransaction;
+    fs::path unicodeStage;
+    std::string unicodeError;
+    const bool unicodeStaged =
+        unicodeTransaction.add(unicodeDestination, unicodeStage, unicodeError);
+    if (unicodeStaged) writeFile(unicodeStage, "unicode-ok");
+    const bool unicodeCommitted = unicodeStaged && unicodeTransaction.commit(unicodeError);
+    tests.expect(unicodeCommitted && readFile(unicodeDestination) == "unicode-ok",
+        "transaction creates and publishes into a UTF-16 output directory (" + unicodeError + ")");
+
     fs::remove_all(extended(root), ignored);
     return tests.result();
 }

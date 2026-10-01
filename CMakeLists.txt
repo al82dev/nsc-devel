@@ -3048,6 +3048,8 @@ if(NSC_BUILD_TESTS)
     add_executable(nsc_stage46_native_libraries_tests tests/unit/Stage46NativeLibrariesTests.cpp)
     target_link_libraries(nsc_stage46_native_libraries_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage46_native_libraries_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_stage46_native_libraries_tests PRIVATE
+        NSC_TEST_NSC_EXECUTABLE="$<TARGET_FILE:nsc>")
     nsc_enable_warnings(nsc_stage46_native_libraries_tests)
     add_test(NAME nsc.stage46.native-libraries COMMAND nsc_stage46_native_libraries_tests)
 

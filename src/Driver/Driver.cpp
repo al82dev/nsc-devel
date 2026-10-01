@@ -23,6 +23,12 @@
 #include <algorithm>
 #include <cstdlib>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 #include "nativesharp/AST/AstDumper.h"
 #include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Version.h"
@@ -3185,8 +3191,21 @@ bool verifyLinkedRuntimeLibraries(
 
 std::filesystem::path pathFromUtf8(std::string_view value)
 {
+#if defined(_WIN32)
+    if (value.empty()) return {};
+    const int required = ::MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0);
+    if (required <= 0) return std::filesystem::path(std::string(value));
+    std::wstring converted(static_cast<std::size_t>(required), L'\0');
+    if (::MultiByteToWideChar(
+            CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+            converted.data(), required) != required)
+        return std::filesystem::path(std::string(value));
+    return std::filesystem::path(converted);
+#else
     const std::u8string encoded(reinterpret_cast<const char8_t *>(value.data()), value.size());
     return std::filesystem::path(encoded);
+#endif
 }
 
 bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesystem::path &right)

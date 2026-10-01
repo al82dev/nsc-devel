@@ -16,6 +16,12 @@ namespace
 {
 std::atomic<unsigned long long> transactionOrdinal = 0;
 
+std::string pathText(const std::filesystem::path& path)
+{
+    const std::u8string encoded = path.u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+
 #if defined(_WIN32)
 std::filesystem::path extendedPath(const std::filesystem::path& input)
 {
@@ -32,7 +38,7 @@ bool failWin32(std::string_view operation, const std::filesystem::path& path,
     unsigned long code, std::string& error)
 {
     const OutputFailureKind kind = classifyWindowsOutputError(code);
-    error = std::string(operation) + " failed for '" + path.string() + "': " +
+    error = std::string(operation) + " failed for '" + pathText(path) + "': " +
         std::string(outputFailureKindName(kind)) + " (Win32 error " + std::to_string(code) + ")";
     return false;
 }
@@ -40,8 +46,15 @@ bool failWin32(std::string_view operation, const std::filesystem::path& path,
 bool ensureDirectory(const std::filesystem::path& directory, std::string& error)
 {
     if (directory.empty()) return true;
-    const std::filesystem::path extended = extendedPath(directory);
     std::error_code filesystemError;
+    std::filesystem::create_directories(directory, filesystemError);
+    if (!filesystemError) return true;
+
+    // The MSVC filesystem implementation does not reliably enumerate a new directory tree
+    // when its input already carries the Win32 extended-path prefix. Use the native UTF-16
+    // path first, then retain the extended form as the long-path fallback.
+    const std::filesystem::path extended = extendedPath(directory);
+    filesystemError.clear();
     std::filesystem::create_directories(extended, filesystemError);
     if (!filesystemError) return true;
     filesystemError.clear();
@@ -103,7 +116,7 @@ bool ensureDirectory(const std::filesystem::path& directory, std::string& error)
     std::error_code filesystemError;
     std::filesystem::create_directories(directory, filesystemError);
     if (!filesystemError) return true;
-    error = "output directory creation failed for '" + directory.string() + "': " + filesystemError.message();
+    error = "output directory creation failed for '" + pathText(directory) + "': " + filesystemError.message();
     return false;
 }
 void removeNoThrow(const std::filesystem::path& path) noexcept
@@ -264,7 +277,7 @@ bool ArtifactTransaction::commit(std::string& error)
         std::error_code filesystemError;
         if (!std::filesystem::is_regular_file(entry.stage, filesystemError) || filesystemError)
         {
-            error = "artifact transaction stage is missing: '" + entry.stage.string() + "'";
+            error = "artifact transaction stage is missing: '" + pathText(entry.stage) + "'";
             cleanupPrepared();
             return false;
         }
@@ -273,12 +286,14 @@ bool ArtifactTransaction::commit(std::string& error)
             cleanupPrepared();
             return false;
         }
-        states[index].sibling = entry.destination.string() + suffix + ".new";
-        states[index].backup = entry.destination.string() + suffix + ".old";
+        states[index].sibling = entry.destination;
+        states[index].sibling += suffix + ".new";
+        states[index].backup = entry.destination;
+        states[index].backup += suffix + ".old";
 #if defined(_WIN32)
         if (entry.destination.native().size() >= 32767U)
         {
-            error = "artifact preflight failed for '" + entry.destination.string() +
+            error = "artifact preflight failed for '" + pathText(entry.destination) +
                 "': path-limit (Windows extended path exceeds 32767 UTF-16 code units)";
             cleanupPrepared();
             return false;
@@ -294,13 +309,13 @@ bool ArtifactTransaction::commit(std::string& error)
         const auto required = std::filesystem::file_size(entry.stage, filesystemError);
         if (filesystemError)
         {
-            error = "cannot measure staged artifact '" + entry.stage.string() + "': " + filesystemError.message();
+            error = "cannot measure staged artifact '" + pathText(entry.stage) + "': " + filesystemError.message();
             cleanupPrepared();
             return false;
         }
         if (available.QuadPart < required)
         {
-            error = "artifact preflight failed for '" + entry.destination.string() + "': insufficient-space";
+            error = "artifact preflight failed for '" + pathText(entry.destination) + "': insufficient-space";
             cleanupPrepared();
             return false;
         }
@@ -316,7 +331,7 @@ bool ArtifactTransaction::commit(std::string& error)
             std::filesystem::copy_options::overwrite_existing, filesystemError);
         if (filesystemError)
         {
-            error = "artifact staging copy failed for '" + entry.destination.string() + "': " + filesystemError.message();
+            error = "artifact staging copy failed for '" + pathText(entry.destination) + "': " + filesystemError.message();
             cleanupPrepared();
             return false;
         }
@@ -391,14 +406,14 @@ bool writeFileTransactionally(const std::filesystem::path& destination,
     std::ofstream stream(stage, std::ios::binary | std::ios::trunc);
     if (!stream)
     {
-        error = "cannot open staged artifact '" + stage.string() + "'";
+        error = "cannot open staged artifact '" + pathText(stage) + "'";
         return false;
     }
     stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     stream.close();
     if (!stream)
     {
-        error = "cannot finish staged artifact '" + stage.string() + "'";
+        error = "cannot finish staged artifact '" + pathText(stage) + "'";
         return false;
     }
     return transaction.commit(error);
@@ -434,7 +449,7 @@ bool seedArtifactStage(const std::filesystem::path& source,
     std::filesystem::copy_file(source, stage,
         std::filesystem::copy_options::overwrite_existing, filesystemError);
     if (!filesystemError) return true;
-    error = "artifact seed copy failed for '" + stage.string() + "': " + filesystemError.message();
+    error = "artifact seed copy failed for '" + pathText(stage) + "': " + filesystemError.message();
     return false;
 #endif
 }

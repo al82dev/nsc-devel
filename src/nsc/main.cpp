@@ -13,9 +13,16 @@
 #include <iostream>
 #include <sstream>
 #include <streambuf>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 namespace
 {
@@ -494,8 +501,44 @@ int runCompiler(int argc, char** argv)
 }
 }
 
+#ifdef _WIN32
+std::string utf8Argument(std::wstring_view argument)
+{
+    if (argument.empty()) return {};
+    const int required = WideCharToMultiByte(
+        CP_UTF8, WC_ERR_INVALID_CHARS, argument.data(), static_cast<int>(argument.size()),
+        nullptr, 0, nullptr, nullptr);
+    if (required <= 0) throw std::runtime_error("could not convert a command-line argument to UTF-8");
+    std::string converted(static_cast<std::size_t>(required), '\0');
+    if (WideCharToMultiByte(
+            CP_UTF8, WC_ERR_INVALID_CHARS, argument.data(), static_cast<int>(argument.size()),
+            converted.data(), required, nullptr, nullptr) != required)
+        throw std::runtime_error("could not convert a command-line argument to UTF-8");
+    return converted;
+}
+
+int wmain(int argc, wchar_t** argv)
+{
+    return nativesharp::driver::runWithCrashBoundary(
+        [&]()
+        {
+            std::vector<std::string> utf8Arguments;
+            utf8Arguments.reserve(static_cast<std::size_t>(argc));
+            for (int index = 0; index < argc; ++index)
+                utf8Arguments.push_back(utf8Argument(argv[index]));
+
+            std::vector<char*> argumentPointers;
+            argumentPointers.reserve(utf8Arguments.size());
+            for (std::string& argument : utf8Arguments)
+                argumentPointers.push_back(argument.data());
+            return runCompiler(argc, argumentPointers.data());
+        },
+        std::cerr);
+}
+#else
 int main(int argc, char** argv)
 {
     return nativesharp::driver::runWithCrashBoundary(
         [&]() { return runCompiler(argc, argv); }, std::cerr);
 }
+#endif
