@@ -3613,8 +3613,9 @@ namespace DuplicateContract
                              error,
                              true) == ExitCode::CompilationError,
                  "P6 rejects two precompiled products with the same canonical module identity");
-    tests.expect(error.find("duplicate module name 'StaticProducer'") != std::string::npos,
-                 "P6 duplicate-module diagnostic names the conflicting canonical identity");
+    tests.expect(error.find("precompiled module 'StaticProducer' was explicitly referenced with incompatible artifacts") !=
+                     std::string::npos,
+                  "P6 duplicate-module diagnostic names the conflicting canonical identity and artifacts");
     tests.expect(!std::filesystem::exists(duplicateModuleExecutable),
                  "P6 duplicate-module rejection leaves no partial executable");
 
@@ -4942,6 +4943,15 @@ namespace Precompiled
                      error + ")");
     tests.expect(std::filesystem::exists(compositeDllProducer / "NativeMath.dll"),
                  "DLL packaging places the explicitly imported producer runtime beside the dependent DLL");
+    LibraryMetadata compositeDllMetadata;
+    std::string compositeMetadataError;
+    tests.expect(compositeDllResult == ExitCode::Success &&
+                     LibraryMetadataCodec{}.read(
+                         compositeDllProducer / "CompositeNative.nsmeta",
+                         compositeDllMetadata,
+                         compositeMetadataError) &&
+                     compositeDllMetadata.binaryDependencies.empty(),
+                 "a linked DLL does not republish private inputs as static binary-closure edges");
 
     const auto compositeSiblingProducer = dllRoot / "CompositeSiblingProducer";
     writeFile(compositeSiblingProducer / "Main.ns", R"NS(

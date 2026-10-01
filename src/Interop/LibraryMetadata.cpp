@@ -1497,11 +1497,15 @@ bool buildMetadataModel(
     metadata.externalTypeKeys.assign(externalTypeKeys.begin(), externalTypeKeys.end());
     std::sort(metadata.externalTypeKeys.begin(), metadata.externalTypeKeys.end());
 
-    // NSMETA 1.25: retain the direct binary closure of the produced archive. Every referenced
-    // metadata file carries its own direct edges, so consumers can expand this recursively without
-    // restore or source enumeration. Store leaf artifact names and certify the exact ABI contract;
-    // installation may relocate a package, but it may not substitute an incompatible module.
-    if (compilation.projectGraph() != nullptr && compilation.projectGraph()->rootProject() != nullptr)
+    // NSMETA 1.25: retain the direct binary closure of a produced static archive. A static archive
+    // has not consumed its link dependencies yet, so its final consumer must expand these edges.
+    // A DLL has already linked its static inputs and exposes dynamic dependencies through its PE
+    // import table; publishing those inputs here would make a DLL consumer relink private modules
+    // and incorrectly require their .lib/.nsmeta sidecars beside the DLL.
+    if (compilation.projectGraph() != nullptr &&
+        compilation.projectGraph()->rootProject() != nullptr &&
+        compilation.projectGraph()->rootProject()->outputKind() ==
+            compilation::ProjectOutputKind::Library)
     {
         LibraryMetadataCodec codec;
         for (const compilation::LibraryReference& reference :
