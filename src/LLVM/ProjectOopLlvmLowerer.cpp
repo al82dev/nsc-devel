@@ -997,6 +997,24 @@ private:
             context_, position.line, position.column, scope, nullptr);
     }
 
+    LLVMMetadataRef createDebugLexicalScope(
+        const frontend::ProjectOopMirNode* node,
+        LLVMMetadataRef parent)
+    {
+        if (debugInformation_ != DebugInformationKind::Full || debugBuilder_ == nullptr ||
+            sourceManager_ == nullptr || node == nullptr || node->syntax == nullptr ||
+            parent == nullptr || !node->syntax->range().isValid())
+        {
+            return nullptr;
+        }
+        const SourceRange range = node->syntax->range();
+        LLVMMetadataRef file = debugFile(range.begin());
+        if (file == nullptr) return nullptr;
+        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        return LLVMDIBuilderCreateLexicalBlock(
+            debugBuilder_, parent, file, position.line, position.column);
+    }
+
     const frontend::NamedTypeDeclaration* debugNamedType(std::string_view typeKey) const noexcept
     {
         if (!typeKey.starts_with("type:")) return nullptr;
@@ -6398,27 +6416,30 @@ private:
         {
             case frontend::ProjectOopMirNodeKind::Block:
             {
-                LLVMMetadataRef lexicalScope = nullptr;
-                if (debugInformation_ == DebugInformationKind::Full &&
-                    currentDebugScope_ != nullptr && node->syntax != nullptr &&
-                    node->syntax->range().isValid())
-                {
-                    const SourceRange range = node->syntax->range();
-                    LLVMMetadataRef file = debugFile(range.begin());
-                    const source::SourcePosition position =
-                        sourceManager_->getPosition(range.begin());
-                    if (file != nullptr)
-                    {
-                        lexicalScope = LLVMDIBuilderCreateLexicalBlock(
-                            debugBuilder_, currentDebugScope_, file,
-                            position.line, position.column);
-                    }
-                }
+                LLVMMetadataRef lexicalScope =
+                    createDebugLexicalScope(node, currentDebugScope_);
                 ScopedDebugScope scopedDebugScope(currentDebugScope_, lexicalScope);
                 const std::size_t cleanupDepthAtEntry = activeCleanupRegions_.size();
                 for (const auto& child : node->children)
                 {
                     if (terminated()) break;
+                    // A source block alone is too broad for a local: CodeView treats the
+                    // variable's lexical parent as its visibility range, so assigning every
+                    // declaration to the brace scope makes a local visible before its own line.
+                    // Nest one scope at each declaration and keep it active for the remainder of
+                    // this block. Consecutive declarations therefore form the same lifetime
+                    // chain as the source language: earlier locals remain visible, later locals
+                    // begin exactly where declared, and all scopes close at the brace.
+                    if (child != nullptr &&
+                        child->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration)
+                    {
+                        if (LLVMMetadataRef declarationScope =
+                                createDebugLexicalScope(child.get(), currentDebugScope_);
+                            declarationScope != nullptr)
+                        {
+                            currentDebugScope_ = declarationScope;
+                        }
+                    }
                     if (!lowerStatement(child.get(), error))
                     {
                         activeCleanupRegions_.resize(cleanupDepthAtEntry);
@@ -6454,17 +6475,17 @@ private:
                 return true;
 
             case frontend::ProjectOopMirNodeKind::LocalDeclaration:
+            {
+                bool initialized = true;
+                LLVMValueRef localAddress = nullptr;
                 if (node->localOrdinal.has_value())
                 {
                     const auto storage = localStorage_.find(*node->localOrdinal);
-                    if (storage != localStorage_.end() &&
-                        !emitDebugLocal(node, storage->second, error))
-                        return false;
+                    if (storage != localStorage_.end()) localAddress = storage->second;
                 }
                 if (!node->children.empty() && node->children.front() != nullptr)
                 {
-                    LLVMValueRef address =
-                        node->localOrdinal.has_value() ? localStorage_[*node->localOrdinal] : nullptr;
+                    LLVMValueRef address = localAddress;
                     if (address == nullptr)
                         return fail(error, "Stage 34 local initialization has no storage");
                     if (node->children.front()->kind ==
@@ -6475,15 +6496,35 @@ private:
                         // loading it, and storing the carrier a second time. The helper keeps the
                         // same textual evaluation order and zero-initialization contract used by
                         // aggregate expressions in non-place contexts.
-                        return initializeAggregateIntoSlot(
+                        initialized = initializeAggregateIntoSlot(
                             node->children.front().get(), address, error);
                     }
-                    LLVMValueRef value = lowerExpression(node->children.front().get(), error);
-                    if (value == nullptr) return fail(error, "Stage 34 local initialization failed");
-                    LLVMBuildStore(builder_, value, address);
-                    return true;
+                    else
+                    {
+                        LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                        if (value == nullptr)
+                            return fail(error, "Stage 34 local initialization failed");
+                        LLVMBuildStore(builder_, value, address);
+                    }
                 }
-                return emitDefaultLocalStorage(node, error);
+                else
+                {
+                    initialized = emitDefaultLocalStorage(node, error);
+                }
+                if (!initialized) return false;
+
+                // A local becomes debugger-visible only after its initializer has completed.
+                // Emitting dbg.declare before the store lets CodeView extend the location into
+                // the preceding source statement when both occupy one machine block.
+                if (node->localOrdinal.has_value())
+                {
+                    const auto storage = localStorage_.find(*node->localOrdinal);
+                    if (storage != localStorage_.end() &&
+                        !emitDebugLocal(node, storage->second, error))
+                        return false;
+                }
+                return true;
+            }
 
             case frontend::ProjectOopMirNodeKind::ExpressionStatement:
                 if (!node->children.empty() && lowerExpression(node->children.front().get(), error) == nullptr && error.empty())
@@ -7096,6 +7137,11 @@ private:
     bool lowerFor(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node->children.size() != 4) return fail(error, "Stage 34 for MIR is incomplete");
+        // The initializer local belongs to the `for`, not to the surrounding brace. Without a
+        // loop scope, two sequential `for (int i...)` declarations become sibling S_LOCAL records
+        // with one identical function-wide S_DEFRANGE, and a debugger may show the dead `i`.
+        LLVMMetadataRef lexicalScope = createDebugLexicalScope(node, currentDebugScope_);
+        ScopedDebugScope scopedDebugScope(currentDebugScope_, lexicalScope);
         const std::size_t cleanupDepthAtEntry = activeCleanupRegions_.size();
         if (node->children[0] != nullptr)
         {

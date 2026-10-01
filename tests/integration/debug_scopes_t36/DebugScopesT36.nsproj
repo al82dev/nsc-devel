@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <Name>DebugScopesT36</Name>
+    <OutputType>Exe</OutputType>
+    <Language>3</Language>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

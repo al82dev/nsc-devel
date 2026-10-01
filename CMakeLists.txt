@@ -3826,6 +3826,16 @@ if(NSC_BUILD_TESTS)
             "-DDEBUG_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-extreme-o0-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpExtremeDebugO0.cmake")
 
+    add_test(
+        NAME nsc.ns3.t36-debug-scopes
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
+            "-DLLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
+            "-DDEBUG_T36_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/debug_scopes_t36/DebugScopesT36.nsproj"
+            "-DDEBUG_T36_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-scopes-t36-test"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDebugScopesT36.cmake")
+
     file(GLOB _nsc_dia_sdk_roots
         "C:/Program Files/Microsoft Visual Studio/2022/*/DIA SDK")
     find_path(NSC_DIA_INCLUDE_DIR dia2.h

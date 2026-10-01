@@ -1,0 +1,23 @@
+namespace DebugScopesT36
+{
+    public int Main()
+    {
+        int total = 0;
+        {
+            total = total + 1;
+            int late = 39;
+            total = total + late;
+        }
+        for (int i = 0; i < 1; i++)
+        {
+            total = total + i;
+        }
+        for (int i = 0; i < 1; i++)
+        {
+            total = total + 2;
+        }
+        int Next = 0;
+        Next = total;
+        return Next;
+    }
+}
