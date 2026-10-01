@@ -108,6 +108,14 @@ class Holder
     public borrowed Resource View;
 }
 
+class GenericOwner
+{
+    public static owned T Transfer<T>(owned T value) where T : class
+    {
+        return move(value);
+    }
+}
+
 owned Resource Create(borrowed Resource source)
 {
     borrowed Resource view = source;

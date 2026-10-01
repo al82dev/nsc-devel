@@ -574,7 +574,10 @@ bool Parser::looksLikeVariableDeclaration() const noexcept
         if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Identifier)
             return false;
         ++cursor;
-        while (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Star) ++cursor;
+        // C-style declaration/expression disambiguation needs a typedef-like known name for
+        // pointer declarators. If the leading identifier is unknown, `x * x;` is multiplication,
+        // not a declaration of the second x. Known types already take the scanTypeAt path above.
+        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Star) return false;
         while (cursor + 1U < tokens_.size() &&
                tokens_[cursor].kind() == TokenKind::LeftBracket &&
                tokens_[cursor + 1U].kind() == TokenKind::RightBracket)
@@ -587,6 +590,27 @@ bool Parser::looksLikeVariableDeclaration() const noexcept
 
     return cursor < tokens_.size() &&
         tokens_[cursor].kind() == TokenKind::Identifier;
+}
+
+// A declaration used as a condition must initialize the declared name.  Reusing the broader
+// statement lookahead here made `if (left * right >= limit)` look like `Type* name` whenever the
+// first identifier happened to be type-shaped.  Requiring the initializer token both models the
+// deferred construct we diagnose (`T value = expression`) and leaves ordinary multiplication to
+// the expression parser. Keep this lookahead narrower than the ordinary local-declaration probe.
+bool Parser::looksLikeConditionDeclaration() const noexcept
+{
+    std::size_t cursor = index_;
+    if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier &&
+        tokens_[cursor].lexeme() == "ref")
+    {
+        ++cursor;
+    }
+    std::size_t afterType = cursor;
+    if (!scanTypeAt(cursor, afterType)) return false;
+    cursor = afterType;
+    if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Identifier) return false;
+    ++cursor;
+    return cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Equal;
 }
 
 bool Parser::looksLikeParenthesizedType() const noexcept
@@ -3479,7 +3503,12 @@ ast::AstNode* Parser::parseInterfaceMember()
     // A generic parameter is intentionally not a globally known type name. As in class members,
     // accept an identifier-shaped type here and let name lookup decide whether it names this
     // interface's parameter or is genuinely unknown.
-    if (!canStartTypeAt(index_) && !at(TokenKind::Identifier))
+    // A method-scoped generic parameter is declared after the method name, so the return type
+    // lookahead cannot know `T` yet in `owned T Transfer<T>(...)`.  The ownership keyword is
+    // nevertheless an unambiguous type prefix; let parseType consume it and preserve the same
+    // unresolved-identifier path already allowed immediately below for ordinary `T Method<T>`.
+    if (!canStartTypeAt(index_) && !at(TokenKind::Identifier) &&
+        !lexer::isOwnershipQualifierKeyword(current().kind()))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -4593,7 +4622,11 @@ ast::AstNode* Parser::parseClassMember(
     const bool isReferenceReturn = atContextualKeyword("ref") && canStartTypeAt(index_ + 1);
     if (isReferenceReturn) consume();
 
-    if (!canStartTypeAt(index_) && !at(TokenKind::Identifier))
+    // A method-scoped generic parameter is declared after the method name, so the return type
+    // lookahead cannot know `T` yet in `owned T Transfer<T>(...)`. The ownership keyword is an
+    // unambiguous type prefix; parseType will retain it and the generic scope will validate T.
+    if (!canStartTypeAt(index_) && !at(TokenKind::Identifier) &&
+        !lexer::isOwnershipQualifierKeyword(current().kind()))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -6089,8 +6122,9 @@ ast::AstNode* Parser::parseExternCDeclaration()
             diagnostics::DiagnosticId::ExpectedDeclaration,
             diagnostics::DiagnosticSeverity::Error,
             current().range(),
-            "extern namespace variables are not supported in NativeSharp 3.0; declare exactly "
-            "one namespace-state definition, or use 'extern C' for a native function boundary");
+            "expected 'C' after extern; extern namespace variables are not supported in "
+            "NativeSharp 3.0; declare exactly one namespace-state definition, or use 'extern C' "
+            "for a native function boundary");
         synchronizeGlobal();
         return nullptr;
     }
@@ -7282,7 +7316,7 @@ ast::AstNode* Parser::parseIfStatement()
     const std::size_t beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'('");
-    if (looksLikeVariableDeclaration())
+    if (looksLikeConditionDeclaration())
     {
         reportDeferredLanguage3(
             diagnostics_, current().range(), language::Language3Feature::ConditionDeclarations);
@@ -7353,7 +7387,7 @@ ast::AstNode* Parser::parseWhileStatement()
     const std::size_t beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'('");
-    if (looksLikeVariableDeclaration())
+    if (looksLikeConditionDeclaration())
     {
         reportDeferredLanguage3(
             diagnostics_, current().range(), language::Language3Feature::ConditionDeclarations);
@@ -7434,7 +7468,7 @@ ast::AstNode* Parser::parseSwitchStatement()
     const std::size_t beginIndex = index_;
     consume();
     expect(TokenKind::LeftParen, "'(' after 'switch'");
-    if (looksLikeVariableDeclaration())
+    if (looksLikeConditionDeclaration())
     {
         reportDeferredLanguage3(
             diagnostics_, current().range(), language::Language3Feature::ConditionDeclarations);

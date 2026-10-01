@@ -129,6 +129,10 @@ int main()
         "int Work() { if (int value = 1) return value; return 0; }",
         "condition-declarations"),
         "condition declarations fail with NS3049 and a flow rationale");
+    tests.expect(!hasDeferredDiagnostic(
+        "bool Work(double magnitude, double factor) { return magnitude * factor >= 1.0; }",
+        "condition-declarations"),
+        "multiplication in a condition is not mistaken for a condition declaration");
     tests.expect(hasDeferredDiagnostic(
         "int Work() { static int value = 1; return value; }", "static-locals"),
         "static locals fail with NS3049 and a lifetime rationale");
