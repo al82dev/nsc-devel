@@ -128,6 +128,89 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertTrue(plan.run_ctest)
         self.assertTrue(plan.run_cases)
         self.assertTrue(plan.run_triage)
+        self.assertTrue(plan.certify_baseline)
+        self.assertTrue(plan.reuse_results)
+
+    def test_reduced_baseline_plan_cannot_certify(self) -> None:
+        plan = nscbuilder.make_baseline_plan(
+            4,
+            linkers=["lld-link"],
+            optimizations=["-O0"],
+        )
+        self.assertEqual(plan.linkers, ["lld-link"])
+        self.assertEqual(plan.optimizations, ["-O0"])
+        self.assertFalse(plan.certify_baseline)
+
+    def test_scoped_baseline_never_writes_gate_or_promotes(self) -> None:
+        plan = nscbuilder.make_baseline_plan(
+            1,
+            history_root=self.root / "history",
+            linkers=["lld-link"],
+            optimizations=["-O0"],
+        )
+        worker = nscbuilder.PipelineWorker(plan, [])
+        worker.run_dir = self.root / "run"
+        worker.run_dir.mkdir()
+        worker.metadata = {"id": "scoped-test", "stages": []}
+        after = {"source_digest": "same", "binaries": {}, "tools": {}}
+        with (
+            patch.object(worker, "_abi_measure", return_value=after),
+            patch.object(worker, "_abi_compare", return_value=[]),
+            patch.object(worker, "_abi_gate_state") as gate_state,
+            patch("nscbuilder.promote_certified_baseline") as promote,
+        ):
+            worker._abi_baseline({"source_digest": "same"}, after)
+        gate_state.assert_not_called()
+        promote.assert_not_called()
+        scoped = json.loads((worker.run_dir / "scoped-validation.json").read_text())
+        self.assertEqual(scoped["state"], "SCOPED-PASSED")
+        self.assertFalse(scoped["certified"])
+
+    def test_incremental_identity_uses_content_instead_of_timestamps(self) -> None:
+        project = self.root / "Probe.nsproj"
+        source = self.root / "Main.ns"
+        compiler = self.root / "nsc.exe"
+        linker = self.root / "lld-link.exe"
+        project.write_text('<Project><Compile Include="Main.ns" /></Project>')
+        source.write_text("namespace Probe;\n")
+        compiler.write_bytes(b"compiler")
+        linker.write_bytes(b"linker")
+        before = nscbuilder.incremental_fingerprint(project, compiler, linker)
+        os.utime(compiler, None)
+        self.assertEqual(before, nscbuilder.incremental_fingerprint(project, compiler, linker))
+        source.write_text("namespace Changed;\n")
+        self.assertNotEqual(before, nscbuilder.incremental_fingerprint(project, compiler, linker))
+
+    def test_execution_identity_covers_adjacent_runtime_dlls(self) -> None:
+        executable = self.root / "probe.exe"
+        runtime = self.root / "probe.runtime.dll"
+        executable.write_bytes(b"exe")
+        runtime.write_bytes(b"runtime-a")
+        before = nscbuilder.executable_execution_fingerprint(executable, 42)
+        runtime.write_bytes(b"runtime-b")
+        self.assertNotEqual(
+            before,
+            nscbuilder.executable_execution_fingerprint(executable, 42),
+        )
+
+    def test_ctest_approved_result_is_reused_without_spawning_ctest(self) -> None:
+        plan = nscbuilder.make_baseline_plan(1, reuse_results=True)
+        worker = nscbuilder.PipelineWorker(plan, [])
+        worker.run_dir = self.root / "run"
+        worker.run_dir.mkdir()
+        worker.metadata = {"id": "current", "stages": []}
+        worker.ctest_ready_linkers.add("lld-link")
+        cache = self.root / "ctest-cache.json"
+        nscbuilder.write_json(
+            cache,
+            {"identity": "exact", "status": "passed", "run_id": "prior"},
+        )
+        with (
+            patch.object(worker, "_ctest_result_cache", return_value=(cache, "exact")),
+            patch.object(worker, "_run_process", side_effect=AssertionError("must not run")),
+        ):
+            worker._ctest("lld-link")
+        self.assertEqual(worker.stage_rows[-1]["status"], "reused")
 
     def test_baseline_staging_is_reset_only_at_the_fixed_a_drive_path(self) -> None:
         staging = self.root / "native-sharp-3.0-baseline"

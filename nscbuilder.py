@@ -437,6 +437,8 @@ class RunPlan:
     build_id_override: str
     host_linkage: str
     host_optimization: str
+    certify_baseline: bool
+    reuse_results: bool
     build_mode: str
     build_target: str
     build_runner: str
@@ -480,8 +482,23 @@ def make_baseline_plan(
     run_id: str = "",
     build_id_override: str = "",
     build_runner: str = "ninja",
+    linkers: Iterable[str] = ("lld-link", "NSLink"),
+    optimizations: Iterable[str] = ("-O0", "-O1", "-O2", "-O3"),
+    reuse_results: bool = True,
 ) -> RunPlan:
     """Construye el plan inmutable de G0.2 compartido por GUI y consola."""
+    selected_linkers = list(dict.fromkeys(linkers))
+    selected_optimizations = list(dict.fromkeys(optimizations))
+    valid_linkers = {"lld-link", "NSLink"}
+    valid_optimizations = {"-O0", "-O1", "-O2", "-O3"}
+    if not selected_linkers or not set(selected_linkers) <= valid_linkers:
+        raise ValueError("baseline linkers must contain lld-link and/or NSLink")
+    if not selected_optimizations or not set(selected_optimizations) <= valid_optimizations:
+        raise ValueError("baseline optimizations must contain one or more of -O0..-O3")
+    certify_baseline = (
+        set(selected_linkers) == valid_linkers and
+        set(selected_optimizations) == valid_optimizations
+    )
     return RunPlan(
         operation="baseline",
         root=str(ROOT),
@@ -498,6 +515,8 @@ def make_baseline_plan(
         build_id_override=build_id_override,
         host_linkage="STATIC",
         host_optimization="O2",
+        certify_baseline=certify_baseline,
+        reuse_results=reuse_results,
         build_mode="incremental",
         build_target="nsc",
         build_runner=build_runner,
@@ -508,8 +527,8 @@ def make_baseline_plan(
             "lld-link": str(test_build_lld),
             "NSLink": str(test_build_nslink),
         },
-        linkers=["lld-link", "NSLink"],
-        optimizations=["-O0", "-O1", "-O2", "-O3"],
+        linkers=selected_linkers,
+        optimizations=selected_optimizations,
         jobs=jobs,
         run_build=True,
         sync_libraries=False,
@@ -1008,16 +1027,43 @@ def project_inputs(project: Path) -> list[Path]:
     return sorted(inputs, key=lambda path: str(path).casefold())
 
 
-def incremental_fingerprint(project: Path, compiler: Path, linker: Path) -> str:
+def incremental_fingerprint(
+    project: Path,
+    compiler: Path,
+    linker: Path,
+    tool_digests: tuple[str, str] | None = None,
+) -> str:
     digest = hashlib.sha256()
-    for path in [*project_inputs(project), compiler.resolve(), linker.resolve()]:
+    for path in project_inputs(project):
         digest.update(str(path).casefold().encode("utf-8", errors="replace"))
         try:
-            stat = path.stat()
+            digest.update(b"\0")
+            digest.update(sha256_file(path).encode("ascii"))
         except OSError:
             digest.update(b"\0missing")
-            continue
-        digest.update(f"\0{stat.st_size}\0{stat.st_mtime_ns}".encode("ascii"))
+        digest.update(b"\n")
+    if tool_digests is None:
+        tool_digests = tuple(
+            sha256_file(path.resolve()) if path.is_file() else "missing"
+            for path in (compiler, linker)
+        )
+    for path, identity in zip((compiler, linker), tool_digests, strict=True):
+        digest.update(str(path.resolve()).casefold().encode("utf-8", errors="replace"))
+        digest.update(b"\0")
+        digest.update(identity.encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def executable_execution_fingerprint(executable: Path, expected: int) -> str:
+    """Identidad de todo lo que puede cambiar la ejecución de un fixture ya enlazado."""
+    digest = hashlib.sha256(f"nscbuilder-execution-v1\0{expected}\0".encode("ascii"))
+    runtime_files = [executable, *sorted(executable.parent.glob("*.dll"), key=lambda p: p.name.casefold())]
+    for path in runtime_files:
+        digest.update(path.name.casefold().encode("utf-8", errors="replace"))
+        digest.update(b"\0")
+        digest.update(sha256_file(path).encode("ascii"))
+        digest.update(b"\n")
     return digest.hexdigest()
 
 
@@ -1337,6 +1383,9 @@ class PipelineWorker(QObject):
         self.process_lock = threading.Lock()
         self.processes: dict[int, subprocess.Popen[str]] = {}
         self.console_lock = threading.Lock()
+        self.result_cache_lock = threading.Lock()
+        self.source_digest_cache: str | None = None
+        self.tool_digest_cache: dict[tuple[str, int, int], str] = {}
         self.run_dir: Path | None = None
         self.console_path: Path | None = None
         self.metadata: dict = {}
@@ -1348,6 +1397,54 @@ class PipelineWorker(QObject):
         self.total_units = 1
         self.ctest_ready_linkers: set[str] = set()
         self.bootstrap_lock_path: Path | None = None
+
+    def _source_digest(self) -> str:
+        if self.source_digest_cache is None:
+            root = Path(self.plan.root).resolve()
+            self.source_digest_cache = manifest_digest(
+                canonical_manifest(root, collect_source_files(root))
+            )
+        return self.source_digest_cache
+
+    def _tool_digest(self, path: Path) -> str:
+        resolved = path.resolve()
+        stat = resolved.stat()
+        key = (str(resolved).casefold(), stat.st_size, stat.st_mtime_ns)
+        with self.result_cache_lock:
+            cached = self.tool_digest_cache.get(key)
+            if cached is not None:
+                return cached
+            value = sha256_file(resolved)
+            self.tool_digest_cache[key] = value
+            return value
+
+    def _ctest_result_cache(self, linker: str) -> tuple[Path, str]:
+        build = self._test_build_dir(linker).resolve()
+        compiler = (Path(self.plan.prefix) / "bin" / "nsc.exe").resolve()
+        environment = self._base_environment(linker)
+        linker_executable = Path(environment["NSC_LLD_LINK"]).resolve()
+        digest = hashlib.sha256(b"nscbuilder-ctest-result-v1\0")
+        digest.update(self._source_digest().encode("ascii"))
+        digest.update(b"\0")
+        for identity_path in (compiler, linker_executable, build / "CTestTestfile.cmake"):
+            digest.update(str(identity_path).casefold().encode("utf-8", errors="replace"))
+            digest.update(b"\0")
+            digest.update(
+                self._tool_digest(identity_path).encode("ascii")
+                if identity_path.is_file() else b"missing"
+            )
+            digest.update(b"\n")
+        for executable in sorted(build.rglob("*.exe"), key=lambda p: str(p).casefold()):
+            digest.update(str(executable.relative_to(build)).casefold().encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(sha256_file(executable).encode("ascii"))
+            digest.update(b"\n")
+        for name in sorted(self.plan.selected_ctests, key=str.casefold):
+            digest.update(name.encode("utf-8"))
+            digest.update(b"\n")
+        identity = digest.hexdigest()
+        cache = Path(self.plan.test_work_root) / "_result-cache" / "ctest" / f"{identity}.json"
+        return cache, identity
 
     def cancel(self) -> None:
         self.cancel_event.set()
@@ -2283,6 +2380,32 @@ class PipelineWorker(QObject):
             return
         assert self.run_dir is not None
         name = f"CTest [{linker}]"
+        cache_path, cache_identity = self._ctest_result_cache(linker)
+        if self.plan.reuse_results and cache_path.is_file():
+            try:
+                cached_result = json.loads(cache_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError):
+                cached_result = {}
+            if (
+                cached_result.get("identity") == cache_identity and
+                cached_result.get("status") == "passed"
+            ):
+                self.stage_started.emit(name)
+                log = self.run_dir / "stages" / f"{safe_name(name)}.log"
+                origin = str(cached_result.get("run_id", "unknown"))
+                log.parent.mkdir(parents=True, exist_ok=True)
+                log.write_text(
+                    f"status=reused\nidentity={cache_identity}\norigin_run={origin}\n",
+                    encoding="utf-8",
+                )
+                self._emit(
+                    f"{name}: REUSED — identical approved result from {origin}",
+                    "success",
+                    linker,
+                )
+                self._record_stage(name, "reused", 0.0, 0, "content-addressed reuse", log)
+                self._advance()
+                return
         command = [
             "ctest",
             "--test-dir",
@@ -2336,6 +2459,21 @@ class PipelineWorker(QObject):
             if shortfall != 0 and status == "passed":
                 status = "failed"
 
+        if status == "passed" and self.plan.reuse_results:
+            write_json(
+                cache_path,
+                {
+                    "schema": "nativesharp-ctest-result-cache",
+                    "version": 1,
+                    "identity": cache_identity,
+                    "status": "passed",
+                    "run_id": self.metadata.get("id"),
+                    "linker": linker,
+                    "selected_ctests": list(self.plan.selected_ctests),
+                    "recorded_at": utc_stamp(),
+                },
+            )
+
         self._record_stage(
             name,
             status,
@@ -2345,6 +2483,7 @@ class PipelineWorker(QObject):
             log,
             report_failure=False,
         )
+        self._advance()
         if status != "failed":
             return
         if shortfall != 0:
@@ -2428,13 +2567,20 @@ class PipelineWorker(QObject):
             object_command, executable_command = self._case_commands(case, exe, optimization)
             compiler = Path(self.plan.prefix) / "bin" / "nsc.exe"
             linker_exe = Path(env.get("NSC_LLD_LINK", ""))
-            fingerprint = incremental_fingerprint(project, compiler, linker_exe)
+            fingerprint = incremental_fingerprint(
+                project,
+                compiler,
+                linker_exe,
+                (self._tool_digest(compiler), self._tool_digest(linker_exe)),
+            )
             manifest = artifact_dir / "incremental.json"
             obj = exe.with_suffix(".obj")
             cached = False
+            cache: dict = {}
             if self.plan.test_build_mode == "incremental" and obj.is_file() and exe.is_file():
                 try:
-                    cache = json.loads(manifest.read_text(encoding="utf-8"))
+                    loaded_cache = json.loads(manifest.read_text(encoding="utf-8"))
+                    cache = loaded_cache if isinstance(loaded_cache, dict) else {}
                     cached = cache.get("fingerprint") == fingerprint
                 except (OSError, ValueError, TypeError):
                     cached = False
@@ -2490,48 +2636,66 @@ class PipelineWorker(QObject):
                         error_log = log.with_suffix(".exe.log")
                         executable_ready = False
                     else:
-                        write_json(
-                            manifest,
-                            {
-                                "fingerprint": fingerprint,
-                                "project": str(project.resolve()),
-                                "compiler": str(compiler.resolve()),
-                                "linker": str(linker_exe.resolve()),
-                                "optimization": optimization,
-                                "built_at": utc_stamp(),
-                            },
-                        )
+                        cache = {
+                            "fingerprint": fingerprint,
+                            "project": str(project.resolve()),
+                            "compiler": str(compiler.resolve()),
+                            "linker": str(linker_exe.resolve()),
+                            "optimization": optimization,
+                            "built_at": utc_stamp(),
+                        }
+                        write_json(manifest, cache)
                         executable_ready = True
             if executable_ready:
                 if case.expected is None:
                     status = "passed"
                     detail = "sin cambios" if cached else "compila y enlaza"
                 else:
-                    run = self._run_process(
-                        [str(exe)],
-                        # Cada variante tiene su propio directorio de artefactos. Ejecutarla ahi
-                        # tambien aisla los archivos relativos que cree el fixture: si O1 y O2
-                        # comparten la raiz del repositorio pueden truncarse o borrarse entre si.
-                        artifact_dir,
-                        env,
-                        log.with_suffix(".run.log"),
-                        timeout=CASE_TIMEOUT_SECONDS,
-                        prefix=prefix,
-                        channel=linker,
-                        optimization=optimization.lstrip("-"),
-                    )
-                    actual = run.exit_code
-                    if run.cancelled:
-                        status, detail = "cancelled", "cancelado"
-                    elif run.timed_out:
-                        status, detail = "failed", run.error
-                        error_log = log.with_suffix(".run.log")
-                    elif actual == case.expected:
-                        suffix = "; binario incremental" if cached else ""
-                        status, detail = "passed", f"exit {actual}{suffix}"
+                    execution_identity = executable_execution_fingerprint(exe, case.expected)
+                    previous_execution = cache.get("execution", {})
+                    if (
+                        self.plan.reuse_results and
+                        isinstance(previous_execution, dict) and
+                        previous_execution.get("identity") == execution_identity and
+                        previous_execution.get("status") == "passed"
+                    ):
+                        actual = int(previous_execution["actual"])
+                        status = "reused"
+                        detail = f"exit {actual}; resultado idéntico reutilizado"
                     else:
-                        status, detail = "failed", f"exit {actual}; se esperaba {case.expected}"
-                        error_log = log.with_suffix(".run.log")
+                        run = self._run_process(
+                            [str(exe)],
+                            # Cada variante tiene su propio directorio de artefactos. Ejecutarla ahi
+                            # tambien aisla los archivos relativos que cree el fixture: si O1 y O2
+                            # comparten la raiz del repositorio pueden truncarse o borrarse entre si.
+                            artifact_dir,
+                            env,
+                            log.with_suffix(".run.log"),
+                            timeout=CASE_TIMEOUT_SECONDS,
+                            prefix=prefix,
+                            channel=linker,
+                            optimization=optimization.lstrip("-"),
+                        )
+                        actual = run.exit_code
+                        if run.cancelled:
+                            status, detail = "cancelled", "cancelado"
+                        elif run.timed_out:
+                            status, detail = "failed", run.error
+                            error_log = log.with_suffix(".run.log")
+                        elif actual == case.expected:
+                            suffix = "; binario incremental" if cached else ""
+                            status, detail = "passed", f"exit {actual}{suffix}"
+                            cache["execution"] = {
+                                "identity": execution_identity,
+                                "status": "passed",
+                                "actual": actual,
+                                "run_id": self.metadata.get("id"),
+                                "recorded_at": utc_stamp(),
+                            }
+                            write_json(manifest, cache)
+                        else:
+                            status, detail = "failed", f"exit {actual}; se esperaba {case.expected}"
+                            error_log = log.with_suffix(".run.log")
             elapsed = time.monotonic() - started
             summary = [
                 f"case={case.label}",
@@ -2829,7 +2993,11 @@ class PipelineWorker(QObject):
     def _abi_baseline(self, s0: dict, built: dict | None) -> None:
         """Cierra el Gate 0: ultima medicion, comparacion, y estado en `_abi/gates/G00`."""
         assert self.run_dir is not None
-        name = "Certificar baseline (Gate 0)"
+        name = (
+            "Certificar baseline (Gate 0)"
+            if self.plan.certify_baseline else
+            "Cerrar validación de alcance reducido"
+        )
         self.stage_started.emit(name)
         started = time.monotonic()
         log = self.run_dir / "stages" / "gate0_baseline.log"
@@ -2878,6 +3046,35 @@ class PipelineWorker(QObject):
                 },
                 "problems": problems,
             }
+            if not self.plan.certify_baseline:
+                payload["state"] = (
+                    "SCOPED-PASSED" if not problems and self.failed == 0 else "SCOPED-FAILED"
+                )
+                payload["certified"] = False
+                payload["promotion"] = {
+                    "status": "not-run",
+                    "reason": "a partial linker/optimization matrix cannot certify or deploy",
+                }
+                scoped_path = self.run_dir / "scoped-validation.json"
+                write_json(scoped_path, payload)
+                lines.extend([
+                    f"estado: {payload['state']}",
+                    "baseline certificado: no (matriz parcial)",
+                    "promoción: no ejecutada",
+                    f"resultado escrito en: {scoped_path}",
+                ])
+                for problem in problems:
+                    lines.append(f"problema: {problem}")
+                    self._emit(problem, "error")
+                passed = not problems and self.failed == 0
+                status, code = ("passed", 0) if passed else ("failed", 1)
+                self._emit(
+                    "Validación reducida terminada; Gate 0 y C:\\native-sharp no se modificaron.",
+                    "success" if passed else "error",
+                )
+                log.write_text("\n".join(lines) + "\n", encoding="utf-8", errors="replace")
+                self._record_stage(name, status, time.monotonic() - started, code, "", log)
+                return
             # DOS CONDICIONES DISTINTAS, Y NO SE MEZCLAN.
             #
             # CERTIFICAR EL BASELINE es lo que pide el paso 10 de G0.2, y lo que el Cierre G0
@@ -3192,6 +3389,17 @@ class PipelineWorker(QObject):
                 baseline_sources = (
                     self._abi_measure("before-build", binaries=False) if is_baseline else None
                 )
+                if is_baseline and not self.plan.build_id_override and baseline_sources is not None:
+                    # A baseline rebuilt from identical sources must produce the same compiler.
+                    # Otherwise the deliberately unique ordinary build id invalidates every
+                    # content-addressed result even though no compiler input changed.
+                    self.plan.build_id_override = str(baseline_sources["source_digest"])[:16]
+                    self.metadata["plan"] = asdict(self.plan)
+                    self._save_metadata()
+                    self._emit(
+                        "Baseline reproducible build id: " + self.plan.build_id_override,
+                        "info",
+                    )
                 baseline_built: dict | None = None
                 if (
                     self._build()
@@ -3459,6 +3667,8 @@ class MainWindow(QMainWindow):
         self.stage_triage = QCheckBox("Bug triage")
         self.stage_triage.setChecked(True)
         self.keep_temps = QCheckBox("Conservar temporales de enlace")
+        self.reuse_results = QCheckBox("Reutilizar resultados aprobados con identidad exacta")
+        self.reuse_results.setChecked(True)
 
         paths = QGroupBox("Rutas del compilador")
         form = QFormLayout(paths)
@@ -3508,6 +3718,7 @@ class MainWindow(QMainWindow):
         test_grid.addWidget(QLabel("Ejecutable NSLink"), 7, 0)
         test_grid.addWidget(self.nslink_path, 7, 1, 1, 3)
         test_grid.addWidget(self.keep_temps, 8, 0, 1, 4)
+        test_grid.addWidget(self.reuse_results, 9, 0, 1, 4)
         linker_note = QLabel(
             "Esta sección NO COMPILA NADA: ni nsc ni ningún ejecutable de prueba. Usa el nsc "
             "ya instalado para "
@@ -3517,7 +3728,7 @@ class MainWindow(QMainWindow):
         )
         linker_note.setWordWrap(True)
         linker_note.setObjectName("muted")
-        test_grid.addWidget(linker_note, 9, 0, 1, 4)
+        test_grid.addWidget(linker_note, 10, 0, 1, 4)
         test_grid.setColumnStretch(1, 1)
         test_grid.setColumnStretch(3, 2)
         selection_layout.addWidget(test_options)
@@ -3705,7 +3916,7 @@ class MainWindow(QMainWindow):
         ):
             widget.currentIndexChanged.connect(self._update_plan_summary)
         for widget in (self.stage_ctest, self.stage_cases, self.stage_triage, self.opt_o0, self.opt_o1,
-                       self.opt_o2, self.opt_o3):
+                       self.opt_o2, self.opt_o3, self.reuse_results):
             widget.toggled.connect(self._update_plan_summary)
         self.compiler_jobs.valueChanged.connect(self._update_plan_summary)
         self.test_jobs.valueChanged.connect(self._update_plan_summary)
@@ -4727,13 +4938,33 @@ class MainWindow(QMainWindow):
         certified = QGroupBox("G0.2 — baseline certificado")
         certified_layout = QVBoxLayout(certified)
         certified_note = QLabel(
-            "Usa las rutas de la pestana Compilador. La matriz no es configurable: un baseline "
-            "parcial no es un baseline. La preparación es incremental y conserva los tres "
-            "árboles de build; las pruebas sí se ejecutan completas porque una certificación no "
-            "puede reutilizar resultados anteriores."
+            "Usa las rutas de la pestaña Compilador. Puedes ejecutar un alcance reducido para "
+            "diagnóstico; sólo ambos enlazadores y O0/O1/O2/O3 forman un baseline certificable. "
+            "Los resultados aprobados sólo se reutilizan cuando toda su identidad coincide."
         )
         certified_note.setWordWrap(True)
         certified_layout.addWidget(certified_note)
+        self.abi_linker_mode = QComboBox()
+        self.abi_linker_mode.addItem("Ambos — certificable", ["lld-link", "NSLink"])
+        self.abi_linker_mode.addItem("LLD-link — alcance reducido", ["lld-link"])
+        self.abi_linker_mode.addItem("NSLink — alcance reducido", ["NSLink"])
+        certified_layout.addWidget(self.abi_linker_mode)
+        abi_optimization_box = QWidget()
+        abi_optimization_layout = QHBoxLayout(abi_optimization_box)
+        abi_optimization_layout.setContentsMargins(0, 0, 0, 0)
+        self.abi_optimization_checks: list[QCheckBox] = []
+        for name in ("O0", "O1", "O2", "O3"):
+            check = QCheckBox(name)
+            check.setChecked(True)
+            self.abi_optimization_checks.append(check)
+            abi_optimization_layout.addWidget(check)
+        abi_optimization_layout.addStretch()
+        certified_layout.addWidget(abi_optimization_box)
+        self.abi_reuse_results = QCheckBox(
+            "No repetir resultados aprobados con identidad exacta"
+        )
+        self.abi_reuse_results.setChecked(True)
+        certified_layout.addWidget(self.abi_reuse_results)
         self.abi_baseline_button = QPushButton("Construir, medir y certificar el baseline")
         self.abi_baseline_button.clicked.connect(self._start_baseline)
         certified_layout.addWidget(self.abi_baseline_button)
@@ -4835,12 +5066,27 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _start_baseline(self) -> None:
+        selected_optimizations = [
+            f"-{check.text()}" for check in self.abi_optimization_checks if check.isChecked()
+        ]
+        if not selected_optimizations:
+            QMessageBox.warning(self, APP_NAME, "Selecciona por lo menos un perfil O0–O3.")
+            return
+        selected_linkers = list(self.abi_linker_mode.currentData())
+        complete = (
+            set(selected_linkers) == {"lld-link", "NSLink"} and
+            set(selected_optimizations) == {"-O0", "-O1", "-O2", "-O3"}
+        )
+        outcome = (
+            "Si todo pasa, Gate 0 podrá certificarse y desplegarse."
+            if complete else
+            "Es una validación reducida: no certificará Gate 0 ni desplegará a C:."
+        )
         answer = QMessageBox.question(
             self,
             APP_NAME,
-            "El Gate 0 construira, instalara y ejecutara la matriz completa con los dos "
-            "enlazadores y O0/O1/O2/O3, y despues exigira que fuentes y binarios no se hayan "
-            "movido.\n\n"
+            f"Se ejecutarán {', '.join(selected_linkers)} y "
+            f"{', '.join(value.lstrip('-') for value in selected_optimizations)}.\n\n{outcome}\n\n"
             "¿Continuar?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -4899,6 +5145,8 @@ class MainWindow(QMainWindow):
                 build_id_override="",
                 host_linkage=str(self.host_linkage.currentData()),
                 host_optimization=str(self.host_optimization.currentData()),
+                certify_baseline=False,
+                reuse_results=True,
                 build_mode=(
                     "skip" if operation == "install" else str(self.build_mode.currentData())
                 ),
@@ -4953,9 +5201,14 @@ class MainWindow(QMainWindow):
             )
             return None
         if operation == "baseline":
-            # G0.2 no es configurable a proposito. Un baseline parcial --un solo enlazador, un solo
-            # nivel de optimizacion, sin fixtures-- seria un certificado que no dice lo que parece
-            # decir, y el Gate 0 existe justamente para que no exista esa clase de verde.
+            baseline_optimizations = [
+                f"-{check.text()}"
+                for check in self.abi_optimization_checks
+                if check.isChecked()
+            ]
+            if not baseline_optimizations:
+                QMessageBox.warning(self, APP_NAME, "Selecciona por lo menos un perfil O0–O3.")
+                return None
             return make_baseline_plan(
                 self.test_jobs.value(),
                 compiler_build_dir=self.build_path.text().strip(),
@@ -4972,6 +5225,9 @@ class MainWindow(QMainWindow):
                 test_build_lld=test_build_dirs["lld-link"],
                 test_build_nslink=test_build_dirs["NSLink"],
                 build_runner=str(self.build_runner.currentData()),
+                linkers=list(self.abi_linker_mode.currentData()),
+                optimizations=baseline_optimizations,
+                reuse_results=self.abi_reuse_results.isChecked(),
             )
         return RunPlan(
             operation=operation,
@@ -4989,6 +5245,8 @@ class MainWindow(QMainWindow):
             build_id_override="",
             host_linkage="STATIC",
             host_optimization="O2",
+            certify_baseline=False,
+            reuse_results=self.reuse_results.isChecked(),
             build_mode="skip",
             build_target="",
             build_runner=str(self.test_build_runner.currentData()),
@@ -5545,6 +5803,17 @@ def main() -> int:
     parser.add_argument("--help", action="store_true")
     parser.add_argument("--baseline", action="store_true")
     parser.add_argument("--jobs", type=int, default=min(os.cpu_count() or 4, 16))
+    parser.add_argument(
+        "--linker",
+        choices=("both", "lld-link", "NSLink"),
+        default="both",
+    )
+    parser.add_argument(
+        "--optimization",
+        choices=("O0", "O1", "O2", "O3"),
+        action="append",
+    )
+    parser.add_argument("--no-reuse-results", action="store_true")
     parser.add_argument("--config")
     parser.add_argument("--prefix", default=prefix_default)
     parser.add_argument("--baseline-prefix", default=baseline_prefix_default)
@@ -5593,6 +5862,9 @@ def main() -> int:
             "  --write-root DIR          raíz autorizada; repetible\n\n"
             "  --run-id ID               identidad estable para evidencia automatizada\n\n"
             "  --build-id HEX16          identidad reproducible para nsc0\n\n"
+            "  --linker VALUE            both, lld-link o NSLink\n"
+            "  --optimization OLEVEL     O0..O3; repetible (todas si se omite)\n"
+            "  --no-reuse-results        fuerza a repetir resultados idénticos aprobados\n\n"
             "Entorno equivalente: NSC_INSTALL_ROOT, NSC_BASELINE_ROOT, NSC_BUILD_ROOT, "
             "NSC_TEST_BUILD_LLD,\n"
             "NSC_TEST_BUILD_NSLINK, NSC_LLVM_ROOT, NSLINK_EXE, NSC_HISTORY_ROOT,\n"
@@ -5607,6 +5879,12 @@ def main() -> int:
             print("--jobs debe estar entre 1 y 128", file=sys.stderr)
             return 2
         write_roots = args.write_root if args.write_root is not None else configured_write_roots(config)
+        baseline_linkers = (
+            ["lld-link", "NSLink"] if args.linker == "both" else [args.linker]
+        )
+        baseline_optimizations = [
+            f"-{value}" for value in (args.optimization or ["O0", "O1", "O2", "O3"])
+        ]
         plan = make_baseline_plan(
             args.jobs,
             compiler_build_dir=args.build_dir,
@@ -5622,6 +5900,9 @@ def main() -> int:
             allowed_write_roots=write_roots,
             run_id=args.run_id,
             build_id_override=args.build_id,
+            linkers=baseline_linkers,
+            optimizations=baseline_optimizations,
+            reuse_results=not args.no_reuse_results,
         )
         return run_baseline_cli(plan)
     app = QApplication([sys.argv[0], *qt_args])
