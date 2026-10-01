@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import argparse,json,re,sys
 from pathlib import Path
-REQUIRED=('projects=5','graph-units=96','compiler-units=26','external-projects=4','status=source-verified')
+REQUIRED=('projects=5','graph-units=97','compiler-units=26','external-projects=4','status=source-verified')
 OWNERS=('NativeSharpCore ','NativeSharpCoreCollectionsGeneric ','NativeSharpCoreIO ','NativeSharpLLVM_C ','NativeSharpCompilerNext ')
-CHECKS={'core':40,'collections':23,'io':4,'llvm-c':3}
+CHECKS={'core':41,'collections':23,'io':4,'llvm-c':3}
 def main():
  p=argparse.ArgumentParser();p.add_argument('--output-dir',type=Path,required=True);p.add_argument('--report',type=Path,required=True);a=p.parse_args()
  try:
@@ -25,7 +25,7 @@ def main():
    current=(report,graph,modules,*checks)
    if canonical is None: canonical=current
    elif current!=canonical: raise ValueError(f'{profile} dependency graph differs')
-  a.report.write_text(json.dumps({'schema':'nativesharp-selfhost-sh40-report','version':2,'gate':'SH40','status':'passed','projects':5,'units':96,'parsed_dependency_units':70,'external_resolutions':observed_resolutions,'problems':[]},indent=2)+'\n')
+  a.report.write_text(json.dumps({'schema':'nativesharp-selfhost-sh40-report','version':2,'gate':'SH40','status':'passed','projects':5,'units':97,'parsed_dependency_units':71,'external_resolutions':observed_resolutions,'problems':[]},indent=2)+'\n')
  except (OSError,ValueError) as e: print(f'verify_bootstrap_dependencies: error: {e}',file=sys.stderr);return 1
  print('SH40 source-only bootstrap dependency graph verified across O0-O3');return 0
 if __name__=='__main__': raise SystemExit(main())
