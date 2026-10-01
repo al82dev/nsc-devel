@@ -10,15 +10,9 @@ lo verificara. C7 ya mató uno de C6 de paso, sin buscarlo.
 
 ## Cómo se corre
 
-Desde la raíz del repo:
-
-```
-run_bug_triage.bat
-```
-
-No reconstruye el compilador — usa el `nsc` instalado en `C:\native-sharp`. El resultado queda
-en `_logs\TRIAGE.txt`, y el detalle completo de cada compilación y ejecución en
-`_logs\10_triage.log`.
+Abrir `nscbuilder.py` y ejecutar el conjunto **Bug triage**. El runner no reconstruye el compilador
+desde esa pestaña; usa el `nsc` seleccionado y conserva un log independiente por caso, enlazador y
+nivel de optimización dentro del historial de la corrida.
 
 ## Cómo leer el resultado
 

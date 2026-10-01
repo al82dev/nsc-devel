@@ -1,11 +1,8 @@
 """LA UNICA TABLA DE CASOS del corpus de fixtures y ejemplos.
 
-POR QUE ESTE FICHERO EXISTE, y es la correccion del 2026-09-03. Esta tabla estaba escrita DOS
-VECES -- en `run_cases.py` (la pasada de lld-link) y en `nslink_pipeline.py` (la de NSLink) -- y la
-segunda llevaba, al final del informe, este aviso:
-
-    "La tabla CASES de este script esta duplicada de run_cases.py a proposito (aislamiento).
-     Si alguien anadio una fixture alla, hay que anadirla aqui."
+POR QUE ESTE FICHERO EXISTE, y es la correccion del 2026-09-03. La tabla estaba escrita dos veces
+en los runners heredados de LLD-link y NSLink. `nscbuilder.py` importa ahora este módulo de datos
+una sola vez y ejecuta exactamente la misma matriz con ambos enlazadores.
 
 Es EXACTAMENTE la misma forma de defecto que las cinco copias de la tabla de imports (docs 102 y
 103), las dos tablas de enteros (doc 112), las tres cadenas del HIR (doc 106) y las dos copias de
@@ -13,14 +10,10 @@ la regla de tipado de literales (doc 115): una regla escrita dos veces con una N
 alguien se acuerde. Un aviso impreso al final de un informe no es un guardian; es una nota
 adhesiva.
 
-Y AQUI YA HABIA MORDIDO UNA VEZ. El doc 109 lo cuenta: un commit mio sobre una copia rancia
-revirtio el registro de c26 en `nslink_pipeline.py`, y las dos tablas quedaron en 48 y 44. Se
-detecto contando, no por un fallo -- la corrida de NSLink midio cuatro casos menos y salio verde.
+Y AQUI YA HABIA MORDIDO UNA VEZ. El doc 109 lo cuenta: una copia rancia revirtió el registro de
+c26 y las dos tablas quedaron en 48 y 44. Se detectó contando, no por un fallo.
 
-EL MOTIVO REAL DE LA DUPLICACION ERA EL AISLAMIENTO: que la pasada de NSLink no dependiera del
-script de la otra. Un modulo de DATOS lo respeta entero -- no importa codigo, no ejecuta nada, no
-tiene dependencias -- y ademas elimina la copia. Los dos scripts siguen siendo independientes
-entre si; los dos dependen de la misma tabla, que es lo que se queria.
+El módulo sigue siendo sólo datos: no importa código del runner ni ejecuta trabajo al cargarse.
 
 El AVISO de conteos NO se quita: sigue comparando contra los resultados de la OTRA pasada, y eso
 detecta algo distinto -- una pasada que no ejecuto todo lo que debia.

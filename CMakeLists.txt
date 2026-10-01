@@ -4757,10 +4757,9 @@ if(NSC_BUILD_TESTS)
     # `pruebas` -- UN OBJETIVO CON TODOS LOS EJECUTABLES DE PRUEBA Y NINGUNO DEL COMPILADOR.
     #
     # POR QUE EXISTE. `cmake --build` sin `--target` construye TODO, y eso incluye `nsc`.
-    # Para correr la bateria contra un compilador YA instalado --que es lo que hace
-    # test_nsc.bat-- reconstruir `nsc` es trabajo de mas y, peor, arriesga cambiar lo que se
-    # esta midiendo. `build_nsc.bat` genera el compilador aparte y a proposito; este objetivo
-    # es la otra mitad de esa separacion.
+    # Para correr la batería contra NSC_TEST_COMPILER, reconstruir `nsc` es trabajo de más y,
+    # peor, arriesga cambiar lo que se está midiendo. El runner Python genera el compilador
+    # aparte; este objetivo es la otra mitad de esa separación.
     #
     # LA LISTA NO SE ESCRIBE A MANO. Son mas de cien ejecutables y crecen cada semana: una
     # lista escrita aqui envejeceria en silencio y un test nuevo dejaria de construirse sin

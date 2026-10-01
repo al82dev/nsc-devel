@@ -1,5 +1,5 @@
 @echo off
 setlocal EnableExtensions
 set "PROJDIR=%~dp0"
-call "%PROJDIR%..\..\tools\build_project.cmd" "%PROJDIR%Tutorial06Structs.nsproj" "%PROJDIR%Tutorial06Structs.exe"
+python "%PROJDIR%..\..\tools\build_project.py" "%PROJDIR%Tutorial06Structs.nsproj" "%PROJDIR%Tutorial06Structs.exe"
 exit /b %ERRORLEVEL%

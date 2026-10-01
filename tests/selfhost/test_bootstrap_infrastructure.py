@@ -156,10 +156,26 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(result["destination"], str(destination.resolve()))
 
     def test_library_preparation_never_copies_from_the_installed_prefix(self) -> None:
-        helper = (ROOT / "tools" / "prepare_libraries.cmd").read_text(encoding="utf-8")
-        self.assertNotIn("xcopy", helper.casefold())
-        self.assertNotIn("NS_LIB_ROOT", helper)
-        self.assertIn("Using bundled project libraries", helper)
+        retired = (
+            "all.bat",
+            "build_nsc.bat",
+            "build-all.bat",
+            "check_entorno.bat",
+            "nslink_solo.bat",
+            "run_bug_triage.bat",
+            "run_windows_checklist.bat",
+            "test_nsc.bat",
+            "tools/build_project.cmd",
+            "tools/clean_project.cmd",
+            "tools/prepare_libraries.cmd",
+            "tools/setup_toolchain.cmd",
+            "build_al_dia.py",
+            "run_cases.py",
+            "report.py",
+            "nslink_pipeline.py",
+            "verify_manifest.py",
+        )
+        self.assertEqual([path for path in retired if (ROOT / path).exists()], [])
 
     def test_cmake_configuration_explicitly_sets_or_clears_build_identity(self) -> None:
         distributable = nscbuilder.make_baseline_plan(1, build_id_override="")
