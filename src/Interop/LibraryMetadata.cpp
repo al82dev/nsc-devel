@@ -1,6 +1,7 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Interop/LibraryMetadataMerger.h"
 
+#include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
@@ -2137,45 +2138,7 @@ bool writeBytesAtomically(
     std::span<const std::uint8_t> bytes,
     std::string& error)
 {
-    std::error_code filesystemError;
-    if (!destination.parent_path().empty())
-    {
-        std::filesystem::create_directories(destination.parent_path(), filesystemError);
-        if (filesystemError)
-        {
-            error = "cannot create metadata output directory: " + filesystemError.message();
-            return false;
-        }
-    }
-    std::filesystem::path temporary = destination;
-    temporary += ".tmp";
-    std::filesystem::remove(temporary, filesystemError);
-    {
-        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-        if (!stream)
-        {
-            error = "cannot open temporary metadata file '" + temporary.string() + "'";
-            return false;
-        }
-        stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        if (!stream)
-        {
-            stream.close();
-            std::filesystem::remove(temporary, filesystemError);
-            error = "failed while writing NativeSharp metadata";
-            return false;
-        }
-    }
-    std::filesystem::remove(destination, filesystemError);
-    filesystemError.clear();
-    std::filesystem::rename(temporary, destination, filesystemError);
-    if (filesystemError)
-    {
-        std::filesystem::remove(temporary, filesystemError);
-        error = "cannot commit NativeSharp metadata: " + filesystemError.message();
-        return false;
-    }
-    return true;
+    return basic::writeFileTransactionally(destination, bytes, error);
 }
 
 std::string versionPair(std::uint16_t major, std::uint16_t minor)

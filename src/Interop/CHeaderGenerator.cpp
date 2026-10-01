@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/CHeaderGenerator.h"
 
+#include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Compilation/Project.h"
@@ -358,27 +359,7 @@ std::optional<HostContext> makeContext(const ProjectCompilation& compilation, st
 
 bool writeText(const std::filesystem::path& destination, const std::string& text, std::string& error)
 {
-    std::error_code ec;
-    const std::filesystem::path parent = destination.parent_path();
-    if (!parent.empty()) std::filesystem::create_directories(parent, ec);
-    if (ec)
-    {
-        error = "failed to create C header directory '" + parent.string() + "': " + ec.message();
-        return false;
-    }
-    std::ofstream stream(destination, std::ios::binary | std::ios::trunc);
-    if (!stream)
-    {
-        error = "failed to open generated C header '" + destination.string() + "'";
-        return false;
-    }
-    stream.write(text.data(), static_cast<std::streamsize>(text.size()));
-    if (!stream)
-    {
-        error = "failed to write generated C header '" + destination.string() + "'";
-        return false;
-    }
-    return true;
+    return basic::writeTextTransactionally(destination, text, error);
 }
 
 void emitOpaque(

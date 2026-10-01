@@ -23,6 +23,7 @@
 #include <algorithm>
 
 #include "nativesharp/AST/AstDumper.h"
+#include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/CFG/CfgDumper.h"
 #include "nativesharp/CFG/CfgVerifier.h"
@@ -5786,9 +5787,16 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     }
 
     const std::filesystem::path destination = pathFromUtf8(outputPath);
+    basic::ArtifactTransaction artifactTransaction;
+    std::filesystem::path stagedDestination;
+    if (!artifactTransaction.add(destination, stagedDestination, targetError))
+    {
+        error << "nsc: error: output preflight failed: " << targetError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!measureDriverPhase("object-emission", [&] {
             return targetMachine->emit(
-                *module, destination, llvm_backend::LlvmCodeGenFileType::Object, targetError);
+                *module, stagedDestination, llvm_backend::LlvmCodeGenFileType::Object, targetError);
         }))
     {
         error << "nsc: error: " << targetError << '\n';
@@ -5796,7 +5804,7 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     }
     llvm_backend::CoffObjectVerifier verifier;
     if (!measureDriverPhase("coff-verification", [&] {
-            return verifier.verify(destination);
+            return verifier.verify(stagedDestination);
         }))
     {
         error << "nsc: error: Stage 44 emitted invalid COFF object: " << verifier.error() << '\n';
@@ -5805,6 +5813,11 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     if (!compilation.completeCodeGeneration(loadError))
     {
         error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!artifactTransaction.commit(targetError))
+    {
+        error << "nsc: error: object publication failed: " << targetError << '\n';
         return ExitCode::CompilationError;
     }
     output << "project OOP object emission: ok (machine=0x" << std::hex << verifier.info().machine << std::dec
@@ -5982,9 +5995,16 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
+    basic::ArtifactTransaction artifactTransaction;
+    std::filesystem::path stagedDestination;
+    if (!artifactTransaction.add(destination, stagedDestination, buildError))
+    {
+        error << "nsc: error: executable output preflight failed: " << buildError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!measureDriverPhase("executable-build", [&] {
             return builder.buildObjects(
-                objectBundle->objectFiles(), objectBundle->combinedLlvmText(), destination,
+                objectBundle->objectFiles(), objectBundle->combinedLlvmText(), stagedDestination,
                 optimizationLevel, entryFunction->mangledName, buildError);
         }))
     {
@@ -5993,18 +6013,54 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     }
     if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.info(), referenceError))
     {
-        std::error_code removeError;
-        std::filesystem::remove(destination, removeError);
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return ExitCode::CompilationError;
     }
     std::vector<std::filesystem::path> packagedRuntimes;
-    if (!packageRuntimeClosure(runtimeLibraries, destination, packagedRuntimes, referenceError))
+    if (!packageRuntimeClosure(runtimeLibraries, stagedDestination, packagedRuntimes, referenceError))
     {
         removePackagedFiles(packagedRuntimes);
-        std::error_code removeError;
-        std::filesystem::remove(destination, removeError);
         error << "nsc: error: runtime packaging failed: " << referenceError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (debugInformation != llvm_backend::DebugInformationKind::None)
+    {
+        std::filesystem::path stagedPdb = stagedDestination;
+        stagedPdb.replace_extension(".pdb");
+        std::filesystem::path destinationPdb = destination;
+        destinationPdb.replace_extension(".pdb");
+        if (!artifactTransaction.addStaged(destinationPdb, stagedPdb, buildError))
+        {
+            error << "nsc: error: PDB output preflight failed: " << buildError << '\n';
+            return ExitCode::CompilationError;
+        }
+    }
+    if (incrementalLink)
+    {
+        const std::filesystem::path stagedState = stagedDestination.string() + ".nslinc";
+        std::error_code stateError;
+        if (std::filesystem::is_regular_file(stagedState, stateError) && !stateError)
+        {
+            const std::filesystem::path destinationState = destination.string() + ".nslinc";
+            if (!artifactTransaction.addStaged(destinationState, stagedState, buildError))
+            {
+                error << "nsc: error: incremental-state output preflight failed: " << buildError << '\n';
+                return ExitCode::CompilationError;
+            }
+        }
+    }
+    for (const std::filesystem::path& stagedRuntime : packagedRuntimes)
+    {
+        if (!artifactTransaction.addStaged(
+                destination.parent_path() / stagedRuntime.filename(), stagedRuntime, buildError))
+        {
+            error << "nsc: error: runtime output preflight failed: " << buildError << '\n';
+            return ExitCode::CompilationError;
+        }
+    }
+    if (!artifactTransaction.commit(buildError))
+    {
+        error << "nsc: error: executable publication failed: " << buildError << '\n';
         return ExitCode::CompilationError;
     }
 
@@ -6127,40 +6183,51 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     builder.setExtraLinkLibraries(referencedLibraries);
     std::string buildError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
+    std::filesystem::path headerDestination = destination;
+    headerDestination.replace_extension(".h");
+    std::filesystem::path metadataDestination = destination;
+    metadataDestination.replace_extension(".nsmeta");
+    basic::ArtifactTransaction artifactTransaction;
+    std::filesystem::path stagedDestination;
+    std::filesystem::path stagedHeader;
+    std::filesystem::path stagedMetadata;
+    if (!artifactTransaction.add(destination, stagedDestination, buildError) ||
+        !artifactTransaction.add(headerDestination, stagedHeader, buildError) ||
+        !artifactTransaction.add(metadataDestination, stagedMetadata, buildError))
+    {
+        error << "nsc: error: static-library output preflight failed: " << buildError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!measureDriverPhase("static-library-build", [&] {
             return builder.buildStaticObjects(
-                objectBundle->objectFiles(), destination, optimizationLevel, buildError);
+                objectBundle->objectFiles(), stagedDestination, optimizationLevel, buildError);
         }))
     {
         error << "nsc: error: NativeSharp static-library generation failed: " << buildError << '\n';
         return ExitCode::CompilationError;
     }
 
-    std::filesystem::path headerDestination = destination;
-    headerDestination.replace_extension(".h");
     interop::CHeaderGenerator headerGenerator;
     std::string headerError;
     if (!measureDriverPhase("host-header", [&] {
-            return headerGenerator.writeHeader(compilation, headerDestination, headerError);
+            return headerGenerator.writeHeader(compilation, stagedHeader, headerError);
         }))
     {
-        std::error_code removeError;
-        std::filesystem::remove(destination, removeError);
         error << "nsc: error: Stage 48.1 static-library C header generation failed: " << headerError << '\n';
         return ExitCode::CompilationError;
     }
 
-    std::filesystem::path metadataDestination = destination;
-    metadataDestination.replace_extension(".nsmeta");
     std::string metadataError;
     if (!measureDriverPhase("library-metadata", [&] {
-            return writeVerifiedLibraryMetadata(compilation, metadataDestination, metadataError);
+            return writeVerifiedLibraryMetadata(compilation, stagedMetadata, metadataError);
         }))
     {
-        std::error_code removeError;
-        std::filesystem::remove(destination, removeError);
-        std::filesystem::remove(headerDestination, removeError);
         error << "nsc: error: Stage 48.2 static-library metadata generation failed: " << metadataError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!artifactTransaction.commit(buildError))
+    {
+        error << "nsc: error: static-library publication failed: " << buildError << '\n';
         return ExitCode::CompilationError;
     }
 
@@ -6427,6 +6494,10 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         pdbDestination = destination;
         pdbDestination.replace_extension(".pdb");
     }
+    std::filesystem::path headerDestination = destination;
+    headerDestination.replace_extension(".h");
+    std::filesystem::path metadataDestination = destination;
+    metadataDestination.replace_extension(".nsmeta");
 
     std::vector<std::filesystem::path> linkLibraries = extraLinkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
@@ -6443,10 +6514,23 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
+    basic::ArtifactTransaction artifactTransaction;
+    std::filesystem::path stagedDestination;
+    std::filesystem::path stagedImportLibrary;
+    std::filesystem::path stagedHeader;
+    std::filesystem::path stagedMetadata;
+    if (!artifactTransaction.add(destination, stagedDestination, buildError) ||
+        !artifactTransaction.add(importLibrary, stagedImportLibrary, buildError) ||
+        !artifactTransaction.add(headerDestination, stagedHeader, buildError) ||
+        !artifactTransaction.add(metadataDestination, stagedMetadata, buildError))
+    {
+        error << "nsc: error: DLL output preflight failed: " << buildError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!measureDriverPhase("dynamic-library-build", [&] {
             return builder.buildDynamicObjects(
                 objectBundle->objectFiles(), objectBundle->combinedLlvmText(), exportSymbols,
-                destination, importLibrary, optimizationLevel, debugInformation, buildError);
+                stagedDestination, stagedImportLibrary, optimizationLevel, debugInformation, buildError);
         }))
     {
         error << "nsc: error: NativeSharp DLL generation failed: " << buildError << '\n';
@@ -6454,57 +6538,58 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     }
     if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.dynamicLibraryInfo(), referenceError))
     {
-        std::error_code removeError;
-        std::filesystem::remove(destination, removeError);
-        std::filesystem::remove(importLibrary, removeError);
-        if (!pdbDestination.empty()) std::filesystem::remove(pdbDestination, removeError);
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return ExitCode::CompilationError;
     }
 
-    std::filesystem::path headerDestination = destination;
-    headerDestination.replace_extension(".h");
     interop::CHeaderGenerator headerGenerator;
     std::string headerError;
     if (!measureDriverPhase("host-header", [&] {
-            return headerGenerator.writeHeader(compilation, headerDestination, headerError);
+            return headerGenerator.writeHeader(compilation, stagedHeader, headerError);
         }))
     {
-        std::error_code removeError;
-        std::filesystem::remove(destination, removeError);
-        std::filesystem::remove(importLibrary, removeError);
-        if (!pdbDestination.empty()) std::filesystem::remove(pdbDestination, removeError);
         error << "nsc: error: Stage 48.1 DLL C header generation failed: " << headerError << '\n';
         return ExitCode::CompilationError;
     }
 
-    std::filesystem::path metadataDestination = destination;
-    metadataDestination.replace_extension(".nsmeta");
     std::string metadataError;
     if (!measureDriverPhase("library-metadata", [&] {
-            return writeVerifiedLibraryMetadata(compilation, metadataDestination, metadataError);
+            return writeVerifiedLibraryMetadata(compilation, stagedMetadata, metadataError);
         }))
     {
-        std::error_code removeError;
-        std::filesystem::remove(destination, removeError);
-        std::filesystem::remove(importLibrary, removeError);
-        std::filesystem::remove(headerDestination, removeError);
-        if (!pdbDestination.empty()) std::filesystem::remove(pdbDestination, removeError);
         error << "nsc: error: Stage 48.2 DLL metadata generation failed: " << metadataError << '\n';
         return ExitCode::CompilationError;
     }
 
     std::vector<std::filesystem::path> packagedRuntimes;
-    if (!packageRuntimeClosure(runtimeLibraries, destination, packagedRuntimes, referenceError))
+    if (!packageRuntimeClosure(runtimeLibraries, stagedDestination, packagedRuntimes, referenceError))
     {
         removePackagedFiles(packagedRuntimes);
-        std::error_code removeError;
-        std::filesystem::remove(destination, removeError);
-        std::filesystem::remove(importLibrary, removeError);
-        std::filesystem::remove(headerDestination, removeError);
-        std::filesystem::remove(metadataDestination, removeError);
-        if (!pdbDestination.empty()) std::filesystem::remove(pdbDestination, removeError);
         error << "nsc: error: runtime packaging failed: " << referenceError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!pdbDestination.empty())
+    {
+        std::filesystem::path stagedPdb = stagedDestination;
+        stagedPdb.replace_extension(".pdb");
+        if (!artifactTransaction.addStaged(pdbDestination, stagedPdb, buildError))
+        {
+            error << "nsc: error: DLL PDB output preflight failed: " << buildError << '\n';
+            return ExitCode::CompilationError;
+        }
+    }
+    for (const std::filesystem::path& stagedRuntime : packagedRuntimes)
+    {
+        if (!artifactTransaction.addStaged(
+                destination.parent_path() / stagedRuntime.filename(), stagedRuntime, buildError))
+        {
+            error << "nsc: error: DLL runtime output preflight failed: " << buildError << '\n';
+            return ExitCode::CompilationError;
+        }
+    }
+    if (!artifactTransaction.commit(buildError))
+    {
+        error << "nsc: error: DLL publication failed: " << buildError << '\n';
         return ExitCode::CompilationError;
     }
 

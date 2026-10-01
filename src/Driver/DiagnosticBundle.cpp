@@ -1,5 +1,6 @@
 #include "nativesharp/Driver/DiagnosticBundle.h"
 
+#include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
@@ -125,48 +126,6 @@ bool writeDiagnosticBundle(
     document << "stdout=" << quoted(standardOutput) << '\n'
              << "stderr=" << quoted(standardError) << '\n';
 
-    std::error_code filesystemError;
-    if (!destination.parent_path().empty())
-        std::filesystem::create_directories(destination.parent_path(), filesystemError);
-    if (filesystemError)
-    {
-        error = "cannot create diagnostic bundle directory '" + destination.parent_path().string() + "'";
-        return false;
-    }
-    const std::filesystem::path temporary = destination.string() + ".tmp";
-    std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-    if (!stream)
-    {
-        error = "cannot open diagnostic bundle temporary destination '" + temporary.string() + "'";
-        return false;
-    }
-    stream << document.str();
-    if (!stream)
-    {
-        error = "cannot write diagnostic bundle destination '" + destination.string() + "'";
-        stream.close();
-        std::error_code removeError;
-        std::filesystem::remove(temporary, removeError);
-        return false;
-    }
-    stream.close();
-    if (!stream)
-    {
-        std::error_code removeError;
-        std::filesystem::remove(temporary, removeError);
-        error = "cannot close diagnostic bundle destination '" + destination.string() + "'";
-        return false;
-    }
-    std::filesystem::remove(destination, filesystemError);
-    filesystemError.clear();
-    std::filesystem::rename(temporary, destination, filesystemError);
-    if (filesystemError)
-    {
-        std::error_code removeError;
-        std::filesystem::remove(temporary, removeError);
-        error = "cannot publish diagnostic bundle destination '" + destination.string() + "'";
-        return false;
-    }
-    return true;
+    return basic::writeTextTransactionally(destination, document.str(), error);
 }
 }

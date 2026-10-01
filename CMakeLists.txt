@@ -115,6 +115,7 @@ function(nsc_enable_warnings target_name)
 endfunction()
 
 add_library(nsc_basic STATIC
+    src/Basic/ArtifactTransaction.cpp
     src/Basic/Version.cpp)
 
 target_include_directories(nsc_basic PUBLIC
@@ -787,6 +788,18 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.ns3.t33.package-coherence
         COMMAND nsc_ns3_t33_package_coherence_tests)
+
+    add_executable(
+        nsc_ns3_t34_long_path_publication_tests
+        tests/unit/NativeSharp3T34LongPathPublicationTests.cpp)
+    target_link_libraries(nsc_ns3_t34_long_path_publication_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_ns3_t34_long_path_publication_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_ns3_t34_long_path_publication_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t34_long_path_publication_tests)
+    add_test(
+        NAME nsc.ns3.t34.long-path-publication
+        COMMAND nsc_ns3_t34_long_path_publication_tests)
 
     add_executable(
         nsc_ns3_t03_sum_type_tests

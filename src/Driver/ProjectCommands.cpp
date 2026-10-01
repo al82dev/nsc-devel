@@ -2,6 +2,7 @@
 
 #include "nativesharp/Driver/CompilerConsole.h"
 
+#include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
@@ -316,29 +317,7 @@ bool readJson(const fs::path& path, Json& value, std::string& error)
 
 bool atomicWrite(const fs::path& path, std::string_view contents, std::string& error)
 {
-    std::error_code fileError;
-    if (path.has_parent_path()) fs::create_directories(path.parent_path(), fileError);
-    if (fileError) { error = "cannot create directory for '" + path.string() + "': " + fileError.message(); return false; }
-#if defined(_WIN32)
-    const std::string suffix = ".tmp." + std::to_string(_getpid());
-#else
-    const std::string suffix = ".tmp";
-#endif
-    const fs::path temporary = path.string() + suffix;
-    std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-    stream.write(contents.data(), static_cast<std::streamsize>(contents.size()));
-    stream.close();
-    if (!stream) { fs::remove(temporary, fileError); error = "cannot write '" + temporary.string() + "'"; return false; }
-    fs::remove(path, fileError);
-    fileError.clear();
-    fs::rename(temporary, path, fileError);
-    if (fileError)
-    {
-        fs::remove(temporary, fileError);
-        error = "cannot publish '" + path.string() + "': " + fileError.message();
-        return false;
-    }
-    return true;
+    return basic::writeTextTransactionally(path, contents, error);
 }
 
 struct PackageRequest final { std::string id; std::string version; std::string source; };
