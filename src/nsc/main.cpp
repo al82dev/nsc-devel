@@ -26,6 +26,13 @@
 
 namespace
 {
+bool automaticErrorLogEnabled()
+{
+    char value[2]{};
+    const DWORD length = GetEnvironmentVariableA("NSC_NO_ERROR_LOG", value, sizeof(value));
+    return length != 1U || value[0] != '1';
+}
+
 class TeeBuffer final : public std::streambuf
 {
 public:
@@ -293,7 +300,7 @@ int runCompiler(int argc, char** argv)
     bool quiet = false;
     bool verbose = false;
     bool banner = true;
-    bool automaticErrorLog = true;
+    bool automaticErrorLog = automaticErrorLogEnabled();
     for (const std::string_view argument : consoleArguments.arguments)
     {
         if (argument.starts_with("--log=")) { logPath = argument.substr(6); continue; }

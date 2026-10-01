@@ -155,6 +155,15 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(worker._effective_nslink_executable(), destination.resolve())
         self.assertEqual(Path(worker._base_environment("NSLink")["NSC_LLD_LINK"]), destination)
 
+    def test_builder_disables_only_redundant_automatic_error_logs(self) -> None:
+        plan = nscbuilder.make_baseline_plan(1)
+        environment = nscbuilder.PipelineWorker(plan, [])._base_environment("lld-link")
+        self.assertEqual(environment["NSC_NO_ERROR_LOG"], "1")
+
+        source = (ROOT / "src/nsc/main.cpp").read_text(encoding="utf-8")
+        self.assertIn('GetEnvironmentVariableA("NSC_NO_ERROR_LOG"', source)
+        self.assertIn('argument == "--no-error-log"', source)
+
     def test_baseline_rejects_nslink_from_installed_c_drive(self) -> None:
         plan = nscbuilder.make_baseline_plan(
             1,
@@ -644,6 +653,8 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn('"nsc0_invocations_during_generation": 0', verifier)
         self.assertIn('"source_derived_codegen": True', verifier)
         self.assertIn("nsc2_object.read_bytes() == nsc3_object.read_bytes()", verifier)
+        self.assertIn("PROCESS_AUDIT_INTERVAL_SECONDS = 0.010", verifier)
+        self.assertNotIn("time.sleep(0.001)", verifier)
         self.assertNotIn("source-attested-image-replay", verifier)
 
     def test_sh44_local_environment_matrix_is_a_complete_gate(self) -> None:

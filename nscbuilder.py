@@ -1594,6 +1594,10 @@ class PipelineWorker(QObject):
         # exit status and remain visible in the logs; only modal UI is forbidden.
         env["CTEST_INTERACTIVE_DEBUG_MODE"] = "0"
         env["NSC_TEST_NONINTERACTIVE"] = "1"
+        # Las pruebas negativas ya conservan stdout/stderr y evidencia en el historial de esta
+        # corrida. Evita que cada invocación esperadamente fallida vuelva a escribir error.log,
+        # error1.log, etc. El comportamiento normal de nsc fuera del builder no cambia.
+        env["NSC_NO_ERROR_LOG"] = "1"
         if linker == "lld-link":
             env["NSC_LLD_LINK"] = str(Path(self.plan.llvm_root) / "bin" / "lld-link.exe")
         elif linker == "NSLink":

@@ -18,6 +18,10 @@ SCHEMA = "nativesharp-selfhost-generation-contract"
 REPORT_SCHEMA = "nativesharp-selfhost-sh41-report"
 TH32CS_SNAPPROCESS = 0x00000002
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+# A compiler invocation lasts long enough that a 100 Hz audit still observes any real seed
+# compiler process, while avoiding the former 1,000 full Windows process-table snapshots/second.
+# One final snapshot is taken after exit so children alive at the boundary are not lost.
+PROCESS_AUDIT_INTERVAL_SECONDS = 0.010
 
 
 class PROCESSENTRY32W(ctypes.Structure):
@@ -130,7 +134,10 @@ def audited_emit(producer: Path, project: Path, profile: str, output: Path,
         for item in descendants(process.pid, process_snapshot()):
             key = (int(item["pid"]), int(item["parent_pid"]), str(item["image"]))
             observed[key] = item
-        time.sleep(0.001)
+        time.sleep(PROCESS_AUDIT_INTERVAL_SECONDS)
+    for item in descendants(process.pid, process_snapshot()):
+        key = (int(item["pid"]), int(item["parent_pid"]), str(item["image"]))
+        observed[key] = item
     stdout, stderr = process.communicate()
     elapsed = time.perf_counter() - started
     require(process.returncode == 0,
