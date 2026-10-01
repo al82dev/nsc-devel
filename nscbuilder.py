@@ -293,12 +293,7 @@ ABI_SOURCE_DIRECTORIES: tuple[str, ...] = (
 ABI_SOURCE_FILES: tuple[str, ...] = (
     "CMakeLists.txt",
     "nscbuilder.py",
-    "all.bat",
     "cases_table.py",
-    "report.py",
-    "run_bug_triage.bat",
-    "run_cases.py",
-    "run_windows_checklist.bat",
 )
 ABI_SOURCE_EXCLUDED_NAMES: frozenset[str] = frozenset(
     {".git", "_abi", "_nscbuilder", "__pycache__", ".vs", ".vscode", ".cache"}

@@ -198,11 +198,11 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         )
 
     def test_legacy_windows_runners_cover_all_optimization_levels(self) -> None:
-        run_cases = (ROOT / "run_cases.py").read_text(encoding="utf-8")
-        self.assertIn('OPT_LEVELS = ("-O0", "-O1", "-O2", "-O3")', run_cases)
-        triage = (ROOT / "run_bug_triage.bat").read_text(encoding="utf-8")
-        for level in ("O0", "O1", "O2", "O3"):
-            self.assertIn(f'call :one "%TPROJ%" "%TNAME%" {level}', triage)
+        plan = nscbuilder.make_baseline_plan(1)
+        self.assertEqual(plan.optimizations, ["-O0", "-O1", "-O2", "-O3"])
+        source = (ROOT / "nscbuilder.py").read_text(encoding="utf-8")
+        self.assertIn("def _run_case_group", source)
+        self.assertIn("def _triage", source)
 
     def test_configured_build_is_usable_but_not_deletable_until_marked(self) -> None:
         allowed = self.root / "allowed"
