@@ -155,6 +155,26 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(result["source"], str(staging.resolve()))
         self.assertEqual(result["destination"], str(destination.resolve()))
 
+    def test_baseline_builds_core_package_inside_staging(self) -> None:
+        staging = self.root / "staging"
+        plan = nscbuilder.make_baseline_plan(3, prefix=staging)
+        worker = nscbuilder.PipelineWorker(plan, [])
+        with patch.object(worker, "_command_stage", return_value=True) as command_stage:
+            self.assertTrue(worker._build_baseline_libraries())
+        name, command, environment = command_stage.call_args.args
+        self.assertEqual(name, "Construir bibliotecas bootstrap")
+        self.assertEqual(Path(command[0]), staging / "bin" / "nsc.exe")
+        self.assertIn("--emit-project-oop-lib", command)
+        self.assertIn("-O0", command)
+        self.assertEqual(Path(command[-1]), staging / "lib" / "NativeSharpCore.lib")
+        self.assertEqual(Path(environment["NS_LIB_ROOT"]), staging / "lib")
+
+    def test_driver_uses_ns_lib_root_only_as_a_fallback(self) -> None:
+        source = (ROOT / "src" / "Driver" / "Driver.cpp").read_text(encoding="utf-8")
+        self.assertIn('_dupenv_s(&environmentRoot, &environmentRootLength, "NS_LIB_ROOT")', source)
+        self.assertIn("!libraryReferenceRootSeen", source)
+        self.assertIn("!executionScope.projectLoadOptions.libraryReferenceRoot.has_value()", source)
+
     def test_library_preparation_never_copies_from_the_installed_prefix(self) -> None:
         retired = (
             "all.bat",

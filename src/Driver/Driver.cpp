@@ -21,6 +21,7 @@
 #include "nativesharp/Runtime/RuntimeAbiContract.h"
 #include "nativesharp/Runtime/RuntimeCapabilityReport.h"
 #include <algorithm>
+#include <cstdlib>
 
 #include "nativesharp/AST/AstDumper.h"
 #include "nativesharp/Basic/ArtifactTransaction.h"
@@ -3921,6 +3922,21 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             executionScope.projectLoadOptions.libraryReferenceRoot =
                 projectSettings->libraryReferenceRoot->lexically_normal();
+        }
+        else if (!libraryReferenceRootSeen &&
+                 !executionScope.projectLoadOptions.libraryReferenceRoot.has_value())
+        {
+            char* environmentRoot = nullptr;
+            std::size_t environmentRootLength = 0;
+            if (_dupenv_s(&environmentRoot, &environmentRootLength, "NS_LIB_ROOT") == 0 &&
+                environmentRoot != nullptr && *environmentRoot != '\0')
+            {
+                const std::filesystem::path root{environmentRoot};
+                if (root.is_absolute())
+                    executionScope.projectLoadOptions.libraryReferenceRoot =
+                        root.lexically_normal();
+            }
+            std::free(environmentRoot);
         }
         if (normalizedArguments.size() == 2U && projectSettings->outputPath.has_value())
         {

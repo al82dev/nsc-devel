@@ -1544,6 +1544,13 @@ class PipelineWorker(QObject):
         env["NSC_EXE"] = str(prefix / "bin" / "nsc.exe")
         env["NS_LIB_ROOT"] = str(prefix / "lib")
         env["NS_LIB_READY"] = "1"
+        runtime_library = (
+            Path(self.plan.compiler_build_dir).resolve()
+            / "generated"
+            / "NativeSharp.Runtime.Win32.lib"
+        )
+        if runtime_library.is_file():
+            env["NSC_WINDOWS_RUNTIME_LIBRARY"] = str(runtime_library)
         # Both layers are intentional.  CTest gets the documented non-interactive setting and
         # TestContext installs the same protection inside every native test process before it can
         # launch generated executables through std::system().  Failures still return their real
@@ -1813,6 +1820,29 @@ class PipelineWorker(QObject):
         self._record_stage(name, status, time.monotonic() - started, code, "limpieza interna", log)
         return status == "passed"
 
+    def _build_baseline_libraries(self) -> bool:
+        if self.plan.operation != "baseline":
+            return True
+        prefix = Path(self.plan.prefix).resolve()
+        output = prefix / "lib" / "NativeSharpCore.lib"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        command = [
+            str(prefix / "bin" / "nsc.exe"),
+            "--emit-project-oop-lib",
+            str(Path(self.plan.root).resolve() / "lib" / "NativeSharp.Core" /
+                "NativeSharp.Core.nsproj"),
+            "-O0",
+            "-j",
+            str(self.plan.jobs),
+            "-o",
+            str(output),
+        ]
+        return self._command_stage(
+            "Construir bibliotecas bootstrap",
+            command,
+            self._base_environment(),
+        )
+
     def _build(self) -> bool:
         if not self.plan.run_build:
             return True
@@ -1893,11 +1923,13 @@ class PipelineWorker(QObject):
             return False
         if not self._prepare_baseline_prefix():
             return False
-        return self._command_stage(
+        if not self._command_stage(
             "Instalar",
             ["cmake", "--install", self.plan.compiler_build_dir, "--prefix", self.plan.prefix],
             self._base_environment(),
-        )
+        ):
+            return False
+        return self._build_baseline_libraries()
 
     def _build_tests(self) -> bool:
         if not self.plan.build_test_trees:
@@ -2834,7 +2866,7 @@ class PipelineWorker(QObject):
             else:
                 total += 2  # construir, instalar
             if self.plan.operation == "baseline":
-                total += 1  # vaciar y crear A:\native-sharp-3.0-baseline
+                total += 2  # vaciar el staging y construir sus bibliotecas bootstrap
         if self._runs_test_stages() and self.plan.run_ctest:
             for linker in self.plan.linkers:
                 build = self._test_build_dir(linker)
