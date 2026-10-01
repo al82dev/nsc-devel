@@ -1,10 +1,21 @@
 cmake_minimum_required(VERSION 3.25)
 
+cmake_policy(SET CMP0091 NEW)
+
 project(
     NativeSharp
     VERSION 3.0.0
     DESCRIPTION "NativeSharp 3.0 development compiler"
-    LANGUAGES CXX)
+    LANGUAGES C CXX)
+
+# NativeSharp is distributed as a standalone Windows x64 compiler. Keep the Microsoft C/C++
+# runtime inside every binary built by this project; in particular, nsc.exe must not require the
+# VC++ Redistributable on the destination machine. The qualified LLVM 23 static libraries use the
+# release static CRT even in developer configurations, so Debug keeps iterator ABI 0 as well.
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+    add_compile_definitions($<$<CONFIG:Debug>:_ITERATOR_DEBUG_LEVEL=0>)
+endif()
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
 option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
@@ -337,10 +348,30 @@ export(TARGETS
     NAMESPACE NativeSharp::
     FILE "${CMAKE_CURRENT_BINARY_DIR}/NativeSharpLanguageServiceTargets.cmake")
 
-# Delivery 18: LLVM is a real backend dependency. Prefer an installed LLVM CMake
-# package, but allow a monolithic libLLVM fallback for environments that ship
-# the runtime library without development headers. The implementation uses the
-# stable LLVM C ABI so both paths execute the same lowering code.
+# Delivery 18: LLVM is a real backend dependency. The distributed Windows compiler links the
+# qualified LLVM component archives and their compression dependencies statically; LLVM-C.dll is
+# deliberately not a supported fallback there.
+if(WIN32 AND NOT MSVC_DIA_SDK_DIR)
+    find_program(NSC_VSWHERE
+        NAMES vswhere
+        HINTS "C:/Program Files (x86)/Microsoft Visual Studio/Installer")
+    if(NSC_VSWHERE)
+        execute_process(
+            COMMAND "${NSC_VSWHERE}" -latest -products *
+                -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+                -property installationPath
+            OUTPUT_VARIABLE NSC_VISUAL_STUDIO_ROOT
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(EXISTS "${NSC_VISUAL_STUDIO_ROOT}/DIA SDK")
+            set(MSVC_DIA_SDK_DIR "${NSC_VISUAL_STUDIO_ROOT}/DIA SDK" CACHE PATH
+                "DIA SDK used only for static LLVM PDB support")
+        endif()
+    endif()
+endif()
+
+if(WIN32)
+    include(cmake/NativeSharpLlvmStaticDependencies.cmake)
+endif()
 find_package(LLVM CONFIG QUIET)
 set(NSC_LLVM_LINK_LIBRARIES)
 if(LLVM_FOUND)
@@ -354,27 +385,31 @@ if(LLVM_FOUND)
     # kind of contract break a version gate exists to prevent.
     if(LLVM_PACKAGE_VERSION VERSION_LESS 23 OR LLVM_PACKAGE_VERSION VERSION_GREATER_EQUAL 24)
         message(FATAL_ERROR
-            "NativeSharp 2.0 supports LLVM 23.x; the API floor is LLVM 20 because "
+            "NativeSharp 3.0 supports LLVM 23.x; the API floor is LLVM 20 because "
             "LLVMRunPassesOnFunction is required for -O0 SEH legalization, but only the LLVM 23 "
-            "line is qualified for the 1.0 release contract; "
+            "line is qualified for the 3.0 release contract; "
             "found LLVM ${LLVM_PACKAGE_VERSION}")
     endif()
-    message(STATUS "NativeSharp LLVM backend: LLVM ${LLVM_PACKAGE_VERSION} via LLVMConfig.cmake")
-    if(TARGET LLVM)
-        list(APPEND NSC_LLVM_LINK_LIBRARIES LLVM)
-    else()
-        llvm_map_components_to_libnames(
-            NSC_LLVM_COMPONENT_LIBS
-            core
-            analysis
-            support
-            target
-            nativecodegen
-            passes
-            X86)
-        list(APPEND NSC_LLVM_LINK_LIBRARIES ${NSC_LLVM_COMPONENT_LIBS})
-    endif()
+    message(STATUS
+        "NativeSharp LLVM backend: LLVM ${LLVM_PACKAGE_VERSION} static components via LLVMConfig.cmake")
+
+    explicit_map_components_to_libraries(
+        NSC_LLVM_COMPONENT_LIBS
+        core
+        analysis
+        support
+        target
+        nativecodegen
+        passes
+        X86
+        AArch64)
+    list(APPEND NSC_LLVM_LINK_LIBRARIES ${NSC_LLVM_COMPONENT_LIBS})
 else()
+    if(WIN32)
+        message(FATAL_ERROR
+            "NativeSharp requires the LLVM 23 CMake package and its static component libraries; "
+            "the monolithic LLVM-C.dll/import-library fallback is forbidden on Windows")
+    endif()
     find_library(
         NSC_LLVM_MONOLITHIC_LIBRARY
         # Bug B-008: LLVM-19 deliberately dropped from this list -- see the version gate above for
@@ -482,6 +517,20 @@ if(MSVC)
     # value with deterministic content-derived data; ordinary builds still differ because their
     # explicit NativeSharp build identity is intentionally unique.
     target_link_options(nsc PRIVATE /Brepro)
+endif()
+
+if(WIN32)
+    find_program(NSC_LLVM_READOBJ
+        NAMES llvm-readobj
+        HINTS "${LLVM_TOOLS_BINARY_DIR}"
+        REQUIRED)
+    add_custom_command(TARGET nsc POST_BUILD
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DLLVM_READOBJ=${NSC_LLVM_READOBJ}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpStaticHostRuntime.cmake"
+        COMMENT "Verificando que nsc.exe no dependa de LLVM-C ni del runtime dinamico de MSVC"
+        VERBATIM)
 endif()
 
 # E9 / Stage 66. El manifiesto instalado lo escribe EL nsc que se acaba de enlazar. Asi CMake no

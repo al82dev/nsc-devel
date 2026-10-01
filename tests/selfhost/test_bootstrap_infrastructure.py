@@ -247,6 +247,19 @@ class BootstrapInfrastructureTests(unittest.TestCase):
             reproducible_command,
         )
 
+    def test_cmake_configuration_uses_clang_cl_and_static_llvm_components(self) -> None:
+        plan = nscbuilder.make_baseline_plan(1)
+        command = nscbuilder.PipelineWorker(plan, [])._configure_command(build_tests=False)
+        llvm = Path(plan.llvm_root).as_posix()
+        self.assertIn(f"-DCMAKE_C_COMPILER={llvm}/bin/clang-cl.exe", command)
+        self.assertIn(f"-DCMAKE_CXX_COMPILER={llvm}/bin/clang-cl.exe", command)
+        self.assertIn(f"-DCMAKE_LINKER={llvm}/bin/lld-link.exe", command)
+        self.assertIn(f"-DLLVM_DIR={llvm}/lib/cmake/llvm", command)
+        self.assertNotIn("-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE", command)
+        self.assertFalse(
+            any(argument.startswith("-DNSC_LLVM_MONOLITHIC_LIBRARY=") for argument in command)
+        )
+
     def test_performance_baseline_uses_the_selected_compiler_installation(self) -> None:
         module = runpy.run_path(str(ROOT / "tools/nsc_performance_baseline.py"))
         compiler = self.root / "selected-prefix" / "bin" / "nsc.exe"

@@ -1718,7 +1718,10 @@ class PipelineWorker(QObject):
                     Path(self.plan.llvm_root) / "bin" / "llvm-mt.exe",
                     Path(self.plan.llvm_root) / "bin" / "llvm-rc.exe",
                     Path(self.plan.llvm_root) / "bin" / "lld-link.exe",
-                    Path(self.plan.llvm_root) / "lib" / "LLVM-C.lib",
+                    Path(self.plan.llvm_root) / "bin" / "llvm-readobj.exe",
+                    Path(self.plan.llvm_root) / "lib" / "LLVMCore.lib",
+                    Path(self.plan.llvm_root) / "lib" / "LLVMSupport.lib",
+                    Path(self.plan.llvm_root) / "lib" / "cmake" / "llvm" / "LLVMConfig.cmake",
                 ]
             )
             if shutil.which("cmake") is None:
@@ -1771,13 +1774,13 @@ class PipelineWorker(QObject):
             "Ninja",
             "-DCMAKE_BUILD_TYPE=Release",
             f"-DCMAKE_INSTALL_PREFIX={prefix}",
+            f"-DCMAKE_C_COMPILER={llvm}/bin/clang-cl.exe",
             f"-DCMAKE_CXX_COMPILER={llvm}/bin/clang-cl.exe",
             f"-DCMAKE_LINKER={llvm}/bin/lld-link.exe",
             f"-DCMAKE_MT={llvm}/bin/llvm-mt.exe",
             f"-DCMAKE_RC_COMPILER={llvm}/bin/llvm-rc.exe",
             "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
-            "-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE",
-            f"-DNSC_LLVM_MONOLITHIC_LIBRARY={llvm}/lib/LLVM-C.lib",
+            f"-DLLVM_DIR={llvm}/lib/cmake/llvm",
             f"-DNSC_BUILD_TESTS={'ON' if build_tests else 'OFF'}",
             "-DNSC_WARNINGS_AS_ERRORS=ON",
         ]
