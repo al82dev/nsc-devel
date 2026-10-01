@@ -1123,11 +1123,16 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
         const std::string name(parameter.lexeme());
         if (!names.insert(name).second)
         {
+            const std::string parameterKind =
+                syntax.kind == ast::GenericParameterSyntaxKind::Constant ||
+                    syntax.kind == ast::GenericParameterSyntaxKind::ConstantPack
+                ? "const generic parameter"
+                : "generic type parameter";
             diagnostics_.report(
                 diagnostics::DiagnosticId::DuplicateSymbol,
                 diagnostics::DiagnosticSeverity::Error,
                 parameter.range(),
-                "duplicate generic parameter '" + name + "'");
+                "duplicate " + parameterKind + " '" + name + "'");
         }
         syntax.name = name;
         syntax.range = tokenRangeFrom(parameterBegin);

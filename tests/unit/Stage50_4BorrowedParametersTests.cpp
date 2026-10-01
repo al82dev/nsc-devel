@@ -208,7 +208,11 @@ void testFreshOwnedStringTemporaryBorrow(TestContext& tests, const std::filesyst
 class Api
 {
     public static int Inspect(borrowed string value) { return 2; }
-    public static int Run() { return Inspect("a" + "b"); }
+    public static int InspectLegacy(string value) { return 3; }
+    public static int Run()
+    {
+        return Inspect("a" + "b") + InspectLegacy("c" + "d");
+    }
 }
 )NS");
 
@@ -223,8 +227,8 @@ class Api
         compilation.methodBodyModel()->borrowBindings(), [](const auto& borrow)
         {
             return borrow.kind == MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter;
-        }) == 1,
-        "the temporary borrow is explicit in the semantic model rather than accepted as an untracked alias");
+        }) == 2,
+        "explicit and legacy non-retaining string parameters record their temporary borrows");
 }
 
 void testNegativeBorrowCalls(TestContext& tests, const std::filesystem::path& root)
@@ -289,13 +293,6 @@ class Api
 }
 )NS", "borrowed parameter 'value' requires a checked owner or borrowed source");
 
-    expectInvalid(tests, root, "TemporaryIntoPotentiallyRetainingParameter", R"NS(
-class Api
-{
-    public static int Retain(string value) { return 2; }
-    public static int Run() { return Retain("a" + "b"); }
-}
-)NS", "ownership-transfer argument requires an owned parameter");
 }
 }
 

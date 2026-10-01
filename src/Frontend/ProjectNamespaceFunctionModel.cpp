@@ -653,6 +653,7 @@ bool ProjectNamespaceFunctionModel::build(
         if (unitPointer == nullptr || unitPointer->syntaxTree() == nullptr) continue;
         const ProjectSyntaxUnit& unit = *unitPointer;
         std::unordered_set<const ast::AstNode*> visited;
+        std::unordered_set<const ast::AstNode*> directCallCallees;
         std::function<void(const ast::AstNode*, const std::string&, const FunctionLookupEnvironment&)>
             walkNode;
         std::function<void(const ast::AstNode*, const std::string&, const FunctionLookupEnvironment&)>
@@ -734,6 +735,11 @@ bool ProjectNamespaceFunctionModel::build(
 
             if (node->kind() == ast::AstNodeKind::CallExpression && node->first() != nullptr)
             {
+                // A direct callee already receives a binding keyed by the CallExpression below.
+                // Do not register the same spelling again as a first-class callable value when
+                // the recursive walk reaches its Identifier/MemberExpression node. Its receiver
+                // is still walked normally, so namespace-state/object expressions are preserved.
+                directCallCallees.insert(node->first());
                 const std::optional<std::string> written = expressionName(node->first());
                 if (written.has_value())
                 {
@@ -796,7 +802,9 @@ bool ProjectNamespaceFunctionModel::build(
                 if (written.has_value())
                 {
                     // Calls are not the only consumers of a function name: assignment to a
-                    // delegate and a target-typed argument both need the same overload set.
+                    // delegate and a target-typed argument both need the same overload set. A
+                    // direct call was already bound by its parent CallExpression.
+                    if (!directCallCallees.contains(node))
                     {
                         const std::size_t lastDot = written->find_last_of('.');
                         const bool qualified = lastDot != std::string::npos;

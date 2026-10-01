@@ -1890,7 +1890,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
                 element->range(),
-                "aggregate initializer for '" + targetTypeKey + "' has more values than elements");
+                binding.generalized
+                    ? "aggregate initializer for '" + targetTypeKey +
+                        "' has more values than elements"
+                    : "aggregate initializer for '" + targetTypeKey + "' has " +
+                        std::to_string(syntax->children().size()) +
+                        " values but the type takes " + std::to_string(elements->size()));
             valid = false;
             binding.entries.push_back(std::move(entry));
             continue;
@@ -13378,7 +13383,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
     {
         markAssignmentTarget(expression->first(), scopeOrdinal);
     }
-    else if (expression->tokenKind() == TokenKind::Amp && expression->first() != nullptr &&
+    else if (expression->tokenKind() == TokenKind::Amp &&
+             !expression->auxiliaryText().starts_with("pass:") &&
+             expression->first() != nullptr &&
              expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
         const std::optional<ScopeName> target =

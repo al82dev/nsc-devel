@@ -104,12 +104,11 @@ int main()
         const nativesharp::FileId id = sources.addBuffer("ellipsis.ns", ". ... ..");
         nativesharp::lexer::Lexer lexer(*sources.getFile(id), diagnostics);
         const std::vector<nativesharp::lexer::Token> tokens = lexer.lexAll();
-        tests.expect(!diagnostics.hasErrors() && tokens.size() == 5U &&
+        tests.expect(!diagnostics.hasErrors() && tokens.size() == 4U &&
                          tokens[0].kind() == nativesharp::lexer::TokenKind::Dot &&
                          tokens[1].kind() == nativesharp::lexer::TokenKind::Ellipsis &&
-                         tokens[2].kind() == nativesharp::lexer::TokenKind::Dot &&
-                         tokens[3].kind() == nativesharp::lexer::TokenKind::Dot,
-            "ellipsis uses maximal munch without changing one- or two-dot tokenization");
+                         tokens[2].kind() == nativesharp::lexer::TokenKind::DotDot,
+            "ellipsis and the edition-3 range token both use maximal munch");
     }
 
     const auto syntaxPath = root / "syntax.ns";

@@ -979,12 +979,13 @@ int main(int argc, char** argv)
     }
 
     // T01 deliberately rejects shapes for which 3.0 does not yet have a sound carrier/protocol.
-    // These checks prevent a later parser/backend change from silently turning the rejection into
-    // an allocating array/string slice, an Optional<T> ABI guess, or an owning aggregate copy.
+    // Runtime interpolation itself was completed by T29; an isolated project without Core must
+    // now fail closed on its explicit String formatting dependency rather than claim that the
+    // syntax still needs a handler design.
     checkRejected(
-        tests, root, "ns3-t01-runtime-interpolation-needs-handler",
+        tests, root, "ns3-t01-runtime-interpolation-needs-core-string",
         R"(namespace reject { public class Program { public static int Main() { int value = 42; string text = $"value={value}"; return 0; } } })",
-        "runtime holes require an explicit formatting handler", "3");
+        "unknown identifier 'String'", "3");
     checkRejected(
         tests, root, "ns3-t01-value-null-conditional-needs-optional",
         R"(namespace reject { public class Box { public int Value; } public class Program { public static int Main() { Box box = null; int value = box?.Value; return value; } } })",
