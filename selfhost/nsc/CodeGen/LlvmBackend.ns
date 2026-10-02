@@ -2293,6 +2293,15 @@ namespace NativeSharp.Compiler.CodeGen
                 raii CString unaryName = new CString("unary.not"); valid = true;
                 return LLVM.LLVMBuildNot(builder, operand, unaryName.Pointer());
             }
+            if (node.Kind() == "UnaryExpression" && node.OperatorKind() == TokenKind.Tilde)
+            {
+                bool operandValid = false;
+                void* operand = EmitScalarExpression(module, builder, i32, i1, tree, semantic,
+                    declarationId, function, state, node.First(), out operandValid);
+                if (!operandValid || operand == null) { return null; }
+                raii CString unaryName = new CString("unary.complement"); valid = true;
+                return LLVM.LLVMBuildNot(builder, operand, unaryName.Pointer());
+            }
             if (node.Kind() == "UnaryExpression" &&
                 (node.OperatorKind() == TokenKind.Plus || node.OperatorKind() == TokenKind.Minus))
             {

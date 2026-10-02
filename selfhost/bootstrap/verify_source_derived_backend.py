@@ -75,7 +75,7 @@ def main() -> int:
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"verify_source_derived_backend: error: {error}", file=sys.stderr)
         return 1
-    print("SH16 source-derived backend verified: 2 sources, O0/O3, lld-link/NSLink")
+    print("SH16 source-derived backend verified: 2 sources, O0/O3, NSLink")
     return 0
 
 

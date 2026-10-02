@@ -3,7 +3,7 @@
   "version": 1,
   "gate": "SH16",
   "profiles": ["O0", "O3"],
-  "linkers": ["lld", "nslink"],
+  "linkers": ["nslink"],
   "sources": {
     "17": "selfhost/tests/codegen/source-derived-17.ns",
     "42": "selfhost/tests/codegen/source-derived-42.ns"

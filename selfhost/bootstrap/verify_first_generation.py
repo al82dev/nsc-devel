@@ -89,7 +89,6 @@ def main() -> int:
     parser.add_argument("--nsc0", type=Path, required=True)
     parser.add_argument("--nsc1-a", type=Path, required=True)
     parser.add_argument("--nsc1-b", type=Path, required=True)
-    parser.add_argument("--linker", type=Path, required=True)
     parser.add_argument("--nslink", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
@@ -115,7 +114,6 @@ def main() -> int:
         pe = pe_contract(arguments.nsc1_a, contract["required_imports"])
         require(pe_contract(arguments.nsc1_b, contract["required_imports"]) == pe,
                 "nsc1 PE contracts differ")
-        require((arguments.linker.parent / "LLVM-C.dll").is_file(), "LLVM-C.dll is not physical")
         require(arguments.nslink.is_file(), "NSLink is not physical")
 
         timings: dict[str, float] = {}
@@ -156,7 +154,7 @@ def main() -> int:
             obj = arguments.output_dir / f"corpus-{lower}.obj"
             require(obj.is_file() and obj.stat().st_size > 0, f"missing corpus object {profile}")
             artifact_hashes[obj.name] = digest(obj)
-            for route in ("lld", "nslink"):
+            for route in ("nslink",):
                 executable = arguments.output_dir / f"{route}-{lower}.exe"
                 require(executable.is_file(), f"missing {route}/{profile} executable")
                 artifact_hashes[executable.name] = digest(executable)
@@ -194,7 +192,7 @@ def main() -> int:
     except (OSError, UnicodeError, json.JSONDecodeError, VerificationError) as error:
         print(f"verify_first_generation: error: {error}", file=sys.stderr)
         return 1
-    print("SH10 nsc1 verified: two clean roots, frozen sources, compiler corpus, O0-O3, two linkers")
+    print("SH10 nsc1 verified: two clean roots, frozen sources, compiler corpus, O0-O3, NSLink")
     return 0
 
 

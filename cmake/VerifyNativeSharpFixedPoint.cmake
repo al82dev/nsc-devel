@@ -1,6 +1,6 @@
 if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SOURCE_ROOT OR
-   NOT DEFINED OUTPUT_DIR OR NOT DEFINED LINKER_EXECUTABLE OR NOT DEFINED ENV{NS_ROOT})
-    message(FATAL_ERROR "SH12 requires nsc0, Python, roots and linker")
+   NOT DEFINED OUTPUT_DIR OR NOT DEFINED ENV{NS_ROOT})
+    message(FATAL_ERROR "SH12 requires nsc0, Python, roots and NSLink")
 endif()
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 set(prefix "$ENV{NS_ROOT}")
@@ -40,7 +40,7 @@ execute_process(
         --contract "${SOURCE_ROOT}/selfhost/contracts/fixed-point.contract.json"
         --source-root "${SOURCE_ROOT}"
         --clean-root "${OUTPUT_DIR}/clean-a" --clean-root "${OUTPUT_DIR}/clean-b" --clean-root "${OUTPUT_DIR}/clean-c"
-        --nsc1 "${nsc1}" --adapter "${adapter}" --linker "${LINKER_EXECUTABLE}" --nslink "${nslink}"
+        --nsc1 "${nsc1}" --adapter "${adapter}" --nslink "${nslink}"
         --import-library "${import_library}" --output-dir "${OUTPUT_DIR}" --report "${OUTPUT_DIR}/sh12-report.json"
     RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT result EQUAL 0)

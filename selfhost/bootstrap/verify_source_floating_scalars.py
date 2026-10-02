@@ -62,7 +62,7 @@ def main() -> int:
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"verify_source_floating_scalars: error: {error}", file=sys.stderr)
         return 1
-    print("SH24 floating scalars verified across O0-O3 and both linkers")
+    print("SH24 floating scalars verified across O0-O3 with NSLink")
     return 0
 
 

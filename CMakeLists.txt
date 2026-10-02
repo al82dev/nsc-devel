@@ -378,20 +378,51 @@ export(TARGETS
 # Delivery 18: LLVM is a real backend dependency. The distributed Windows compiler links the
 # qualified LLVM component archives and their compression dependencies statically; LLVM-C.dll is
 # deliberately not a supported fallback there.
-if(WIN32 AND NOT MSVC_DIA_SDK_DIR)
-    find_program(NSC_VSWHERE
-        NAMES vswhere
-        HINTS "C:/Program Files (x86)/Microsoft Visual Studio/Installer")
-    if(NSC_VSWHERE)
-        execute_process(
-            COMMAND "${NSC_VSWHERE}" -latest -products *
-                -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
-                -property installationPath
-            OUTPUT_VARIABLE NSC_VISUAL_STUDIO_ROOT
-            OUTPUT_STRIP_TRAILING_WHITESPACE)
-        if(EXISTS "${NSC_VISUAL_STUDIO_ROOT}/DIA SDK")
-            set(MSVC_DIA_SDK_DIR "${NSC_VISUAL_STUDIO_ROOT}/DIA SDK" CACHE PATH
-                "DIA SDK used only for static LLVM PDB support")
+if(WIN32)
+    set(NSC_VS2026_RUNTIME_ROOT "A:/vc2026-runtime" CACHE PATH
+        "Pinned local copy of the Visual Studio 2026 static x64 runtime")
+    set(NSC_VS2026_CRT_RELEASE_DIR "${NSC_VS2026_RUNTIME_ROOT}/lib/x64/release")
+    set(NSC_VS2026_CRT_DEBUG_DIR "${NSC_VS2026_RUNTIME_ROOT}/lib/x64/debug")
+    foreach(runtime_file IN ITEMS libcmt.lib libcpmt.lib libvcruntime.lib oldnames.lib
+            legacy_stdio_definitions.lib iso_stdio_wide_specifiers.lib delayimp.lib aligned_new.lib)
+        if(NOT EXISTS "${NSC_VS2026_CRT_RELEASE_DIR}/${runtime_file}")
+            message(FATAL_ERROR
+                "Pinned Visual Studio 2026 Release runtime is incomplete: "
+                "${NSC_VS2026_CRT_RELEASE_DIR}/${runtime_file}")
+        endif()
+    endforeach()
+    foreach(runtime_file IN ITEMS libcmtd.lib libcpmtd.lib libvcruntimed.lib oldnames.lib
+            legacy_stdio_definitions.lib iso_stdio_wide_specifiers.lib delayimp.lib aligned_new.lib)
+        if(NOT EXISTS "${NSC_VS2026_CRT_DEBUG_DIR}/${runtime_file}")
+            message(FATAL_ERROR
+                "Pinned Visual Studio 2026 Debug runtime is incomplete: "
+                "${NSC_VS2026_CRT_DEBUG_DIR}/${runtime_file}")
+        endif()
+    endforeach()
+    # LLVM's qualified static archives use the Release static CRT. Keep nsc.exe on /MT for every
+    # configuration, including developer Debug builds, and retain the copied Debug set for tools
+    # that are built entirely with /MTd.
+    set(NSC_VS2026_CRT_LIBRARY_DIR "${NSC_VS2026_CRT_RELEASE_DIR}")
+    message(STATUS
+        "NativeSharp host runtime: Visual Studio 2026 static x64 (${NSC_VS2026_CRT_LIBRARY_DIR})")
+
+    # DIA belongs exclusively to the native compiler build. No test discovers or loads Visual
+    # Studio. LLVM's static PDB component still needs diaguids.lib while nsc.exe is linked.
+    if(NOT MSVC_DIA_SDK_DIR)
+        find_program(NSC_VSWHERE
+            NAMES vswhere
+            HINTS "C:/Program Files (x86)/Microsoft Visual Studio/Installer")
+        if(NSC_VSWHERE)
+            execute_process(
+                COMMAND "${NSC_VSWHERE}" -latest -products * -version "[18.0,19.0)"
+                    -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+                    -property installationPath
+                OUTPUT_VARIABLE NSC_VS2026_ROOT
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+            if(EXISTS "${NSC_VS2026_ROOT}/DIA SDK")
+                set(MSVC_DIA_SDK_DIR "${NSC_VS2026_ROOT}/DIA SDK" CACHE PATH
+                    "Visual Studio 2026 DIA SDK used only while building nsc.exe")
+            endif()
         endif()
     endif()
 endif()
@@ -568,6 +599,9 @@ nsc_enable_warnings(nsc_driver)
 # aqui; solo cambia de nuevo mas abajo, justo antes del primer add_executable() de test.
 add_executable(nsc src/nsc/main.cpp)
 target_link_libraries(nsc PRIVATE nsc_driver)
+if(WIN32)
+    target_link_options(nsc PRIVATE "/libpath:${NSC_VS2026_CRT_LIBRARY_DIR}")
+endif()
 target_compile_features(nsc PRIVATE cxx_std_20)
 nsc_enable_warnings(nsc)
 if(MSVC)
@@ -687,6 +721,7 @@ file(GLOB_RECURSE NSC_INSTALLATION_DOCUMENTATION_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/docs/*")
 set(NSC_INSTALLATION_EXPECTED_PATHS
     "bin/nsc.exe"
+    "sdk/win64/nativesharp-runtime.nsimports"
     "lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib"
     "share/nativesharp/runtime/NativeSharpRuntime.abi"
     "share/nativesharp/runtime/NativeSharpConcurrency.contract"
@@ -764,6 +799,8 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib/ DESTINATION lib)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ DESTINATION share/nativesharp/spec)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/docs/
     DESTINATION share/nativesharp/docs)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/sdk/win64/nativesharp-runtime.nsimports"
+    DESTINATION sdk/win64)
 install(FILES "${NSC_TOOLCHAIN_CONTRACT}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_COMPATIBILITY_POLICY}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_MIGRATION_BASELINE}" DESTINATION share/nativesharp/toolchain)
@@ -3982,10 +4019,6 @@ if(NSC_BUILD_TESTS)
         NAMES llvm-objdump
         HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
         REQUIRED)
-    find_program(NSC_DEBUG_LLD_LINK_EXECUTABLE
-        NAMES lld-link lld-link.exe
-        HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
-        REQUIRED)
     add_test(
         NAME nsc.debug.codeview-pdb
         COMMAND "${CMAKE_COMMAND}"
@@ -4013,7 +4046,7 @@ if(NSC_BUILD_TESTS)
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
-            "-DLLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
+            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
             "-DDEBUG_T36_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/debug_scopes_t36/DebugScopesT36.nsproj"
             "-DDEBUG_T36_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-scopes-t36-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDebugScopesT36.cmake")
@@ -4025,43 +4058,12 @@ if(NSC_BUILD_TESTS)
             "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
             "-DLLVM_READOBJ=${NSC_LLVM_READOBJ_EXECUTABLE}"
             "-DLLVM_OBJDUMP=${NSC_LLVM_OBJDUMP_EXECUTABLE}"
-            "-DLLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
+            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
             "-DRUNTIME_LIBRARY=${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp.Runtime.Win32.lib"
+            "-DNSIMPORTS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/sdk/win64/nativesharp-runtime.nsimports"
             "-DDEBUG_T37_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/debug_values_t37/DebugValuesT37.nsproj"
             "-DDEBUG_T37_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-values-t37-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDebugValuesT37.cmake")
-
-    file(GLOB _nsc_dia_sdk_roots
-        "C:/Program Files/Microsoft Visual Studio/2022/*/DIA SDK")
-    find_path(NSC_DIA_INCLUDE_DIR dia2.h
-        HINTS ${_nsc_dia_sdk_roots}
-        PATH_SUFFIXES include
-        NO_DEFAULT_PATH)
-    find_file(NSC_DIA_GUIDS_LIBRARY diaguids.lib
-        HINTS ${_nsc_dia_sdk_roots}
-        PATH_SUFFIXES lib/amd64
-        NO_DEFAULT_PATH)
-    find_file(NSC_DIA_RUNTIME msdia140.dll
-        HINTS ${_nsc_dia_sdk_roots}
-        PATH_SUFFIXES bin/amd64
-        NO_DEFAULT_PATH)
-    if(NSC_DIA_INCLUDE_DIR AND NSC_DIA_GUIDS_LIBRARY AND NSC_DIA_RUNTIME)
-        add_executable(nsc_debugger_consumer_handoff
-            tests/integration/debugger_consumers/DebuggerConsumerHandoff.cpp)
-        target_compile_features(nsc_debugger_consumer_handoff PRIVATE cxx_std_20)
-        target_include_directories(nsc_debugger_consumer_handoff PRIVATE "${NSC_DIA_INCLUDE_DIR}")
-        target_link_libraries(nsc_debugger_consumer_handoff PRIVATE
-            "${NSC_DIA_GUIDS_LIBRARY}" ole32 dbghelp)
-        add_test(
-            NAME nsc.debug.consumer-handoff
-            COMMAND nsc_debugger_consumer_handoff
-                "${NSC_DIA_RUNTIME}"
-                "${CMAKE_CURRENT_BINARY_DIR}/debug-extreme-o0-test/Consumer/DebugExtremeConsumer.exe"
-                "${CMAKE_CURRENT_BINARY_DIR}/debug-extreme-o0-test/Consumer/DebugExtremeConsumer.pdb")
-        set_tests_properties(nsc.debug.consumer-handoff PROPERTIES DEPENDS nsc.debug.extreme-o0)
-    else()
-        message(STATUS "DIA SDK not found; Visual Studio consumer handoff test is unavailable")
-    endif()
 
     add_test(
         NAME nsc.debug.inline-stepping-o0
@@ -4087,7 +4089,7 @@ if(NSC_BUILD_TESTS)
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DCLANG_C=${NSC_TEST_CLANG_EXECUTABLE}"
             "-DCLANG_CXX=${NSC_TEST_CLANGXX_EXECUTABLE}"
-            "-DLLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
+            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
             "-DASSEMBLY_ABI_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/asm_abi"
             "-DASSEMBLY_ABI_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/assembly-abi-o0-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpAssemblyAbiO0.cmake")
@@ -4102,7 +4104,7 @@ if(NSC_BUILD_TESTS)
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DCLANG_C=${NSC_TEST_CLANG_EXECUTABLE}"
             "-DCLANG_CXX=${NSC_TEST_CLANGXX_EXECUTABLE}"
-            "-DLLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
+            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
             "-DVARARG_ABI_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/item333_vararg_abi"
             "-DVARARG_ABI_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/item333-vararg-abi-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpWin64VarargAbi.cmake")

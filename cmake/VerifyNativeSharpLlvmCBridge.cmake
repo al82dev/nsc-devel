@@ -1,6 +1,6 @@
 if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR
    NOT DEFINED SOURCE_ROOT OR NOT DEFINED OUTPUT_DIR OR NOT DEFINED LINKER_EXECUTABLE)
-    message(FATAL_ERROR "SH03 requires nsc, Python, source root, output dir and lld-link")
+    message(FATAL_ERROR "SH03 requires nsc, Python, source root, output dir and the LLVM tools directory")
 endif()
 
 if(NOT DEFINED ENV{NS_ROOT})
@@ -88,12 +88,8 @@ if(NOT adapter_compile EQUAL 0)
     message(FATAL_ERROR "SH03 linker adapter compilation failed:\n${adapter_compile_out}${adapter_compile_err}")
 endif()
 
-foreach(route IN ITEMS lld nslink)
-    if(route STREQUAL "lld")
-        set(route_linker "${LINKER_EXECUTABLE}")
-    else()
-        set(route_linker "${nslink}")
-    endif()
+foreach(route IN ITEMS nslink)
+    set(route_linker "${nslink}")
     set(response "${space_dir}/${route} response file.rsp")
     set(executable "${space_dir}/${route} linked output.exe")
     set(link_log "${space_dir}/${route} linker output.log")
@@ -134,7 +130,6 @@ if(NOT services_result EQUAL 42)
 endif()
 
 file(SHA256 "${object}" object_sha256)
-file(SHA256 "${space_dir}/lld linked output.exe" lld_sha256)
 file(SHA256 "${space_dir}/nslink linked output.exe" nslink_sha256)
 file(WRITE "${OUTPUT_DIR}/sh03-report.json"
     "{\n"
@@ -142,13 +137,13 @@ file(WRITE "${OUTPUT_DIR}/sh03-report.json"
     "  \"version\": 1,\n"
     "  \"status\": \"passed\",\n"
     "  \"llvm_major\": 23,\n"
-    "  \"nsc0_llvm_imports\": 219,\n"
+    "  \"llvm_linkage\": \"static-components\",\n"
+    "  \"llvm_c_dynamic_imports\": 0,\n"
     "  \"bootstrap_llvm_symbols\": 42,\n"
-    "  \"linkers\": [\"lld-link\", \"NSLink\"],\n"
+    "  \"linkers\": [\"NSLink\"],\n"
     "  \"paths_with_spaces\": true,\n"
     "  \"response_files\": true,\n"
     "  \"expected_exit_code\": 42,\n"
     "  \"object_sha256\": \"${object_sha256}\",\n"
-    "  \"lld_executable_sha256\": \"${lld_sha256}\",\n"
     "  \"nslink_executable_sha256\": \"${nslink_sha256}\"\n"
     "}\n")

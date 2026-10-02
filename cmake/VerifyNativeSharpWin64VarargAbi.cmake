@@ -7,8 +7,8 @@ endif()
 if(NOT DEFINED CLANG_CXX OR NOT EXISTS "${CLANG_CXX}")
     message(FATAL_ERROR "CLANG_CXX must name the independent C++ host compiler")
 endif()
-if(NOT DEFINED LLD_LINK OR NOT EXISTS "${LLD_LINK}")
-    message(FATAL_ERROR "LLD_LINK must name the PE linker")
+if(NOT DEFINED NSLINK_EXECUTABLE OR NOT EXISTS "${NSLINK_EXECUTABLE}")
+    message(FATAL_ERROR "NSLINK_EXECUTABLE must name NSLink")
 endif()
 if(NOT DEFINED VARARG_ABI_SOURCE_DIR OR
    NOT EXISTS "${VARARG_ABI_SOURCE_DIR}/host.c" OR
@@ -58,7 +58,7 @@ foreach(language IN ITEMS c cpp)
     endif()
 
     execute_process(
-        COMMAND "${LLD_LINK}" /dll /noentry /nodefaultlib /machine:x64
+        COMMAND "${NSLINK_EXECUTABLE}" /dll /noentry /nodefaultlib /machine:x64
             "/out:${host_dll}" "/implib:${host_library}" /export:NSVarargProbe "${host_object}"
         RESULT_VARIABLE link_result
         OUTPUT_VARIABLE link_output

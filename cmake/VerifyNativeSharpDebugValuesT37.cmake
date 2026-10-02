@@ -1,5 +1,5 @@
-foreach(required NSC_EXECUTABLE LLVM_PDBUTIL LLVM_READOBJ LLVM_OBJDUMP LLD_LINK
-                 RUNTIME_LIBRARY DEBUG_T37_FIXTURE DEBUG_T37_OUTPUT_DIR)
+foreach(required NSC_EXECUTABLE LLVM_PDBUTIL LLVM_READOBJ LLVM_OBJDUMP NSLINK_EXECUTABLE
+                 RUNTIME_LIBRARY NSIMPORTS_FILE DEBUG_T37_FIXTURE DEBUG_T37_OUTPUT_DIR)
     if(NOT DEFINED ${required} OR NOT EXISTS "${${required}}")
         if(required STREQUAL "DEBUG_T37_OUTPUT_DIR")
             if(DEFINED DEBUG_T37_OUTPUT_DIR)
@@ -9,35 +9,6 @@ foreach(required NSC_EXECUTABLE LLVM_PDBUTIL LLVM_READOBJ LLVM_OBJDUMP LLD_LINK
         message(FATAL_ERROR "${required} must name an existing T37 input")
     endif()
 endforeach()
-
-file(GLOB sdk_candidates LIST_DIRECTORIES TRUE
-    "C:/Program Files (x86)/Windows Kits/10/Lib/*")
-list(SORT sdk_candidates COMPARE NATURAL ORDER DESCENDING)
-set(sdk_root "")
-foreach(candidate IN LISTS sdk_candidates)
-    if(EXISTS "${candidate}/um/x64/kernel32.lib" AND
-       EXISTS "${candidate}/ucrt/x64/ucrt.lib")
-        set(sdk_root "${candidate}")
-        break()
-    endif()
-endforeach()
-if(sdk_root STREQUAL "")
-    message(FATAL_ERROR "T37 could not find the installed Windows x64 SDK libraries")
-endif()
-
-file(GLOB msvc_candidates LIST_DIRECTORIES TRUE
-    "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*")
-list(SORT msvc_candidates COMPARE NATURAL ORDER DESCENDING)
-set(msvc_lib "")
-foreach(candidate IN LISTS msvc_candidates)
-    if(EXISTS "${candidate}/lib/x64/libcmt.lib")
-        set(msvc_lib "${candidate}/lib/x64")
-        break()
-    endif()
-endforeach()
-if(msvc_lib STREQUAL "")
-    message(FATAL_ERROR "T37 could not find the installed MSVC x64 libraries")
-endif()
 
 file(REMOVE_RECURSE "${DEBUG_T37_OUTPUT_DIR}")
 file(MAKE_DIRECTORY "${DEBUG_T37_OUTPUT_DIR}")
@@ -97,16 +68,12 @@ if(NOT disassembly_result EQUAL 0 OR
 endif()
 
 execute_process(
-    COMMAND "${LLD_LINK}"
+    COMMAND "${NSLINK_EXECUTABLE}"
         /nodefaultlib /subsystem:console
         "/entry:__nsc_method_DebugValuesT37$3A$3ADebugValuesT37$2EProgram__Main"
         /debug:full "/pdbaltpath:%_PDB%"
         "/out:${executable}" "/pdb:${pdb}"
-        "/libpath:${sdk_root}/um/x64" "/libpath:${sdk_root}/ucrt/x64"
-        "/libpath:${msvc_lib}"
-        "${object}" "${RUNTIME_LIBRARY}"
-        kernel32.lib shell32.lib psapi.lib advapi32.lib user32.lib
-        ucrt.lib vcruntime.lib libcmt.lib
+        "/nsimports:${NSIMPORTS_FILE}" "${object}" "${RUNTIME_LIBRARY}"
     RESULT_VARIABLE link_result
     OUTPUT_VARIABLE link_output
     ERROR_VARIABLE link_error)

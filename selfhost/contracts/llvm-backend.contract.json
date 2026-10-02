@@ -5,7 +5,7 @@
   "llvm_major": 23,
   "optimizations": ["O0", "O1", "O2", "O3"],
   "artifacts": ["object", "assembly"],
-  "linkers": ["lld-link", "NSLink"],
+  "linkers": ["NSLink"],
   "entry": "mainCRTStartup",
   "expected_exit_code": 42,
   "required_symbols": ["mainCRTStartup", "NativeSharpCompute", "ExitProcess"],

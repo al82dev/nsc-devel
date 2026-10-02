@@ -2,7 +2,7 @@
   "schema": "nativesharp-selfhost-project-driver-contract",
   "version": 1,
   "optimizations": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld-link", "NSLink"],
+  "linkers": ["NSLink"],
   "project": "selfhost/tests/projects/Sh09App/Sh09App.nsproj",
   "expected_project": "NativeSharpSelfHostSh09App",
   "expected_output": "Exe",

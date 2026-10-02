@@ -33,7 +33,6 @@ def main() -> int:
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--compiler", type=Path, required=True)
     parser.add_argument("--nslink", type=Path, required=True)
-    parser.add_argument("--lld-link", type=Path, required=True)
     parser.add_argument("--clang-cl", type=Path, required=True)
     parser.add_argument("--llvm-nm", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -64,14 +63,6 @@ def main() -> int:
     for command, label in compile_jobs:
         require(run(command, root), label, failures)
 
-    import_libraries: list[Path] = []
-    for dll, symbols in contract["imports"].items():
-        library = output / (dll.replace(".", "_") + ".lib")
-        made = run([str(args.nslink), "--link", "--make-implib",
-                    dll + ":" + ",".join(symbols), str(library)], root)
-        if require(made, f"import library {dll}", failures):
-            import_libraries.append(library)
-
     project = root / contract["project"]
     for profile in contract["profiles"]:
         lower = profile.lower()
@@ -92,15 +83,10 @@ def main() -> int:
         for linker in contract["linkers"]:
             stem = f"interop-{lower}-{linker}"
             executable = output / (stem + ".exe")
-            if linker == "lld":
-                link_command = [str(args.lld_link), "/nologo", "/subsystem:console", "/machine:x64",
-                                "/timestamp:0", "/entry:" + contract["entry"], "/out:" + str(executable),
-                                str(native_object), str(host_c), str(host_cpp), *map(str, import_libraries)]
-            else:
-                link_command = [str(args.nslink), "--link", str(native_object), str(host_c), str(host_cpp)]
-                for dll, names in contract["imports"].items():
-                    link_command += ["--import", dll + ":" + ",".join(names)]
-                link_command += ["--entry", contract["entry"], "-o", str(executable)]
+            link_command = [str(args.nslink), "--link", str(native_object), str(host_c), str(host_cpp)]
+            for dll, names in contract["imports"].items():
+                link_command += ["--import", dll + ":" + ",".join(names)]
+            link_command += ["--entry", contract["entry"], "-o", str(executable)]
             linked = run(link_command, root)
             if require(linked, f"{profile} {linker} EXE link", failures):
                 executed = run([str(executable)], output, timeout=10)
@@ -110,30 +96,19 @@ def main() -> int:
 
             dll = output / (stem + ".dll")
             implib = output / (stem + ".lib")
-            if linker == "lld":
-                dll_command = [str(args.lld_link), "/nologo", "/dll", "/noentry", "/machine:x64",
-                               "/timestamp:0", "/out:" + str(dll), "/implib:" + str(implib),
-                               *["/export:" + value for value in contract["exports"]],
-                               str(native_object), str(host_c), str(host_cpp), *map(str, import_libraries)]
-            else:
-                dll_command = [str(args.nslink), "--link", str(native_object), str(host_c), str(host_cpp), "--dll"]
-                for name in contract["exports"]:
-                    dll_command += ["--export", name]
-                for imported_dll, names in contract["imports"].items():
-                    dll_command += ["--import", imported_dll + ":" + ",".join(names)]
-                dll_command += ["--implib", str(implib), "-o", str(dll)]
+            dll_command = [str(args.nslink), "--link", str(native_object), str(host_c), str(host_cpp), "--dll"]
+            for name in contract["exports"]:
+                dll_command += ["--export", name]
+            for imported_dll, names in contract["imports"].items():
+                dll_command += ["--import", imported_dll + ":" + ",".join(names)]
+            dll_command += ["--implib", str(implib), "-o", str(dll)]
             built_dll = run(dll_command, root)
             if not require(built_dll, f"{profile} {linker} DLL link", failures):
                 continue
             consumer_exe = output / (stem + "-consumer.exe")
-            if linker == "lld":
-                consumer_command = [str(args.lld_link), "/nologo", "/subsystem:console", "/machine:x64",
-                                    "/timestamp:0", "/entry:mainCRTStartup", "/out:" + str(consumer_exe),
-                                    str(consumer), str(implib), str(import_libraries[0])]
-            else:
-                consumer_command = [str(args.nslink), "--link", str(consumer), "--lib", str(implib),
-                                    "--import", "KERNEL32.dll:ExitProcess", "--entry", "mainCRTStartup",
-                                    "-o", str(consumer_exe)]
+            consumer_command = [str(args.nslink), "--link", str(consumer), "--lib", str(implib),
+                                "--import", "KERNEL32.dll:ExitProcess", "--entry", "mainCRTStartup",
+                                "-o", str(consumer_exe)]
             linked_consumer = run(consumer_command, root)
             if require(linked_consumer, f"{profile} {linker} DLL consumer link", failures):
                 consumed = run([str(consumer_exe)], output, timeout=10)

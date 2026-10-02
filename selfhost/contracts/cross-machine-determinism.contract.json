@@ -13,7 +13,7 @@
     "lib/NativeSharp.LLVM.C"
   ],
   "optimizations": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld", "nslink"],
+  "linkers": ["nslink"],
   "expected_identity": "nsc-next 2.0.0-bootstrap.sh14 (NativeSharp 2.0.0, promotion candidate)",
   "normalization": [],
   "variants": [

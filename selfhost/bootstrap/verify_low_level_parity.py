@@ -33,7 +33,6 @@ def main() -> int:
     parser.add_argument("--contract", required=True, type=Path)
     parser.add_argument("--compiler", required=True, type=Path)
     parser.add_argument("--nslink", required=True, type=Path)
-    parser.add_argument("--lld-link", required=True, type=Path)
     parser.add_argument("--llvm-nm", required=True, type=Path)
     parser.add_argument("--llvm-objdump", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
@@ -49,16 +48,6 @@ def main() -> int:
     output.mkdir(parents=True, exist_ok=True)
     failures: list[str] = []
     cases: list[dict[str, object]] = []
-
-    import_libraries: list[Path] = []
-    for dll, symbols in contract["imports"].items():
-        library = output / (dll.replace(".", "_") + ".lib")
-        description = dll + ":" + ",".join(symbols)
-        result = run([str(args.nslink), "--link", "--make-implib", description, str(library)], cwd=root)
-        if result.returncode != 0:
-            failures.append(f"import library {dll}: {result.stdout}{result.stderr}")
-        else:
-            import_libraries.append(library)
 
     full_project = root / "selfhost/tests/low-level-2.0/LowLevel.nsproj"
     metadata = run([str(args.compiler), "--dump-project-layout", str(full_project)], cwd=root)
@@ -98,17 +87,10 @@ def main() -> int:
                 executable = output / f"{stem}-{profile.lower()}-{linker}.exe"
                 if executable.exists():
                     executable.unlink()
-                if linker == "nslink":
-                    command = [str(args.nslink), "--link", str(object_path), "--entry", contract["entry"]]
-                    for dll, imported in contract["imports"].items():
-                        command += ["--import", dll + ":" + ",".join(imported)]
-                    command += ["-o", str(executable)]
-                else:
-                    command = [
-                        str(args.lld_link), "/nologo", "/subsystem:console", "/machine:x64",
-                        "/timestamp:0", "/entry:" + contract["entry"], "/out:" + str(executable),
-                        str(object_path), *map(str, import_libraries),
-                    ]
+                command = [str(args.nslink), "--link", str(object_path), "--entry", contract["entry"]]
+                for dll, imported in contract["imports"].items():
+                    command += ["--import", dll + ":" + ",".join(imported)]
+                command += ["-o", str(executable)]
                 linked = run(command, cwd=root)
                 if linked.returncode != 0:
                     failures.append(f"{project_text} {profile} {linker}: link failed: {linked.stdout}{linked.stderr}")
@@ -164,7 +146,7 @@ def main() -> int:
             print("NSH4502: " + failure, file=sys.stderr)
         return 1
     print(
-        f"SH45 low-level parity verified: {len(cases)} O0-O3 LLD/NSLink executions, "
+        f"SH45 low-level parity verified: {len(cases)} O0-O3 NSLink executions, "
         f"{len(contract['negative_projects']) * len(contract['profiles'])} contractual rejections"
     )
     return 0

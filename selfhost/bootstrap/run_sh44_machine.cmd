@@ -20,7 +20,7 @@ if not exist "%SH44_SOURCE%\cmake\VerifyNativeSharpCrossMachineDeterminism.cmake
   echo SH44: invalid source root: "%SH44_SOURCE%"
   exit /b 2
 )
-if not exist "%SH44_SH41%\nsc2-o0-lld.exe" (
+if not exist "%SH44_SH41%\nsc2-o0-nslink.exe" (
   echo SH44: SH41 products are missing: "%SH44_SH41%"
   exit /b 2
 )

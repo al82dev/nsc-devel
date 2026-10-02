@@ -4,7 +4,7 @@
   "gate": "SH24",
   "source": "selfhost/tests/codegen/source-floating-scalars.ns",
   "profiles": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld", "nslink"],
+  "linkers": ["nslink"],
   "expected_exit_code": 42,
   "required_symbols": ["__nativesharp_14105985445286626767_Average", "__nativesharp_9907239901718769404_Offset", "__nativesharp_3347706242812374255_Main", "_fltused"],
   "required_llvm_api": ["LLVMConstReal", "LLVMBuildFAdd", "LLVMBuildFDiv", "LLVMBuildFRem", "LLVMBuildFCmp", "LLVMBuildFPExt", "LLVMBuildFPToSI"],

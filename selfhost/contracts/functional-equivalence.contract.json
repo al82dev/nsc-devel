@@ -4,7 +4,7 @@
   "gate": "SH42",
   "tanda": 44,
   "optimizations": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld", "nslink"],
+  "linkers": ["nslink"],
   "expected_exit_code": 42,
   "diagnostics": ["missing-source", "unknown-option"],
   "frontend_contract": "selfhost/contracts/frontend.contract.json",

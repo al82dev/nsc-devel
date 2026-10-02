@@ -2,7 +2,7 @@
   "schema": "nativesharp-selfhost-object-model-contract",
   "version": 1,
   "profiles": ["O0", "O1", "O2", "O3"],
-  "routes": ["lld", "nslink"],
+  "routes": ["nslink"],
   "source": "selfhost/tests/object-model/ObjectModel.ns",
   "project": "selfhost/tests/object-model/ObjectModel.nsproj",
   "expected_exit_code": 42,

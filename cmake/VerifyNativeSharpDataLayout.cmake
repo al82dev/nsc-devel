@@ -44,11 +44,8 @@ foreach(profile IN ITEMS O0 O1 O2 O3)
  if(NOT result EQUAL 0)
   message(FATAL_ERROR "SH29 ${profile} inspection failed: ${err}")
  endif()
- foreach(route IN ITEMS lld nslink)
+ foreach(route IN ITEMS nslink)
   set(tool "${nslink}")
-  if(route STREQUAL "lld")
-   set(tool "${LINKER_EXECUTABLE}")
-  endif()
   set(exe "${OUTPUT_DIR}/${route}-${lower}.exe")
   execute_process(COMMAND "${adapter}" "${route}" "${tool}" "${object}" "${import_library}"
    "${OUTPUT_DIR}/${route}-${lower}.rsp" "${exe}" "${OUTPUT_DIR}/${route}-${lower}.log"

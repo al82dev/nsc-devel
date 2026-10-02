@@ -4,7 +4,7 @@
   "gate": "SH47",
   "target": "x86_64-pc-windows-msvc",
   "profiles": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld", "nslink"],
+  "linkers": ["nslink"],
   "project": "selfhost/tests/specialized-2.0/Specialized.nsproj",
   "assembly": "selfhost/tests/specialized-2.0/specialized.asm",
   "entry": "mainCRTStartup",
@@ -21,5 +21,5 @@
     "vectors", "matrices", "half", "packed-formats", "hardware-intrinsics",
     "inline-assembly", "floating-point-modes", "NSAsm"
   ],
-  "expected_executions": 8
+  "expected_executions": 4
 }

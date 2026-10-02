@@ -1,8 +1,9 @@
 {
   "schema": "nativesharp-llvm-c-api-contract",
-  "version": 1,
+  "version": 2,
   "target": "x86_64-pc-windows-msvc",
-  "library": "LLVM-C.dll",
+  "linkage": "static-llvm-components",
+  "forbidden_dynamic_library": "LLVM-C.dll",
   "supported_llvm_major": 23,
   "calling_convention": "win64-c",
   "pointer_model": "llvm-opaque",
@@ -76,7 +77,7 @@
     "LLVMVoidTypeInContext"
   ],
   "bootstrap_extension_symbols": ["LLVMGetNamedGlobal", "LLVMVerifyFunction"],
-  "nsc0_import_symbols": [
+  "audited_binding_symbols": [
     "LLVMAddAttributeAtIndex",
     "LLVMAddCallSiteAttribute",
     "LLVMAddCase",

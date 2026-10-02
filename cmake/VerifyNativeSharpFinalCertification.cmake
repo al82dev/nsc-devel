@@ -3,7 +3,7 @@ if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SO
    NOT DEFINED BUILD_DIR)
     message(FATAL_ERROR "SH54 requires compiler, roots, SH41 products and CTest")
 endif()
-set(candidate "${SH41_OUTPUT_DIR}/nsc2-o0-lld.exe")
+set(candidate "${SH41_OUTPUT_DIR}/nsc2-o0-nslink.exe")
 foreach(required IN ITEMS NSC_EXECUTABLE PYTHON_EXECUTABLE candidate CTEST_EXECUTABLE)
     if(NOT EXISTS "${${required}}")
         message(FATAL_ERROR "SH54 missing ${required}: ${${required}}")

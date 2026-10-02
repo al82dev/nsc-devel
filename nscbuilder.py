@@ -501,15 +501,12 @@ def make_baseline_plan(
     if not selected_optimizations or not set(selected_optimizations) <= valid_optimizations:
         raise ValueError("baseline optimizations must contain one or more of -O0..-O3")
     if lld_diagnostics is None:
-        lld_diagnostics = selected_linkers == ["NSLink"]
+        lld_diagnostics = False
     if lld_diagnostics and selected_linkers != ["NSLink"]:
         raise ValueError("LLD diagnostics require NSLink as the only primary linker")
     certify_baseline = (
         set(selected_optimizations) == valid_optimizations and
-        (
-            set(selected_linkers) == valid_linkers or
-            (selected_linkers == ["NSLink"] and lld_diagnostics)
-        )
+        (selected_linkers == ["NSLink"] or set(selected_linkers) == valid_linkers)
     )
     return RunPlan(
         operation="baseline",
@@ -3912,7 +3909,7 @@ class MainWindow(QMainWindow):
         self.test_build_runner.addItem("CMake", "cmake")
         self.test_build_runner.addItem("Ninja", "ninja")
         self.linker_mode = QComboBox()
-        self.linker_mode.addItem("NSLink (LLD sólo diagnostica fallos)", ["NSLink"])
+        self.linker_mode.addItem("NSLink (predeterminado)", ["NSLink"])
         self.linker_mode.addItem("Ambos (validación profunda)", ["NSLink", "lld-link"])
         self.linker_mode.addItem("LLD-link solamente", ["lld-link"])
         self.test_jobs = QSpinBox()
@@ -5509,7 +5506,7 @@ class MainWindow(QMainWindow):
             host_optimization="O2",
             certify_baseline=False,
             reuse_results=self.reuse_results.isChecked(),
-            lld_diagnostics=linkers == ["NSLink"],
+            lld_diagnostics=False,
             build_mode="skip",
             build_target="",
             build_runner=str(self.test_build_runner.currentData()),
@@ -6128,7 +6125,7 @@ def main() -> int:
             "  --write-root DIR          raíz autorizada; repetible\n\n"
             "  --run-id ID               identidad estable para evidencia automatizada\n\n"
             "  --build-id HEX16          identidad reproducible para nsc0\n\n"
-            "  --linker VALUE            NSLink (default + LLD on failures), both (deep), or lld-link\n"
+            "  --linker VALUE            NSLink (default), both (deep), or lld-link\n"
             "  --optimization OLEVEL     O0..O3; repetible (todas si se omite)\n"
             "  --no-reuse-results        fuerza a repetir resultados idénticos aprobados\n\n"
             "Entorno equivalente: NSC_INSTALL_ROOT, NSC_BASELINE_ROOT, NSC_BUILD_ROOT, "

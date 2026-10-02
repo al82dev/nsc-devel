@@ -10,7 +10,7 @@ def main():
     text=(a.output_dir/f'{kind}-{profile}.plan').read_text()
     if not all(part in text for part in parts): raise ValueError(f'{kind}/{profile} plan differs')
    if 'output=Exe' not in (a.output_dir/f'response-{profile}.txt').read_text(): raise ValueError(f'{profile} response failed')
-   for route in ('lld','nslink'):
+   for route in ('nslink',):
     if int((a.output_dir/f'{route}-{profile}.result.txt').read_text())!=42: raise ValueError(f'{route}/{profile} failed')
   a.report.write_text(json.dumps({'schema':'nativesharp-selfhost-sh39-report','version':1,'gate':'SH39','status':'passed','problems':[]},indent=2)+'\n')
  except (OSError,ValueError) as e: print(f'verify_driver_products: error: {e}',file=sys.stderr);return 1

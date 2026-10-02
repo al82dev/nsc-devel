@@ -1,10 +1,10 @@
 if(NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SOURCE_ROOT OR NOT DEFINED OUTPUT_DIR OR
    NOT DEFINED SH41_OUTPUT_DIR OR NOT DEFINED LINKER_EXECUTABLE OR NOT DEFINED NSLINK_EXECUTABLE)
-    message(FATAL_ERROR "SH46 requires Python, roots, SH41 products, LLD and NSLink")
+    message(FATAL_ERROR "SH46 requires Python, roots, SH41 products, LLVM tools and NSLink")
 endif()
 
 get_filename_component(llvm_bin "${LINKER_EXECUTABLE}" DIRECTORY)
-set(candidate "${SH41_OUTPUT_DIR}/nsc2-o0-lld.exe")
+set(candidate "${SH41_OUTPUT_DIR}/nsc2-o0-nslink.exe")
 set(clang_cl "${llvm_bin}/clang-cl.exe")
 set(llvm_nm "${llvm_bin}/llvm-nm.exe")
 foreach(required IN ITEMS PYTHON_EXECUTABLE candidate LINKER_EXECUTABLE NSLINK_EXECUTABLE clang_cl llvm_nm)
@@ -20,7 +20,7 @@ execute_process(COMMAND "${PYTHON_EXECUTABLE}" -B
     --source-root "${SOURCE_ROOT}"
     --contract "${SOURCE_ROOT}/selfhost/contracts/interop-parity.contract.json"
     --compiler "${candidate}" --nslink "${NSLINK_EXECUTABLE}"
-    --lld-link "${LINKER_EXECUTABLE}" --clang-cl "${clang_cl}" --llvm-nm "${llvm_nm}"
+    --clang-cl "${clang_cl}" --llvm-nm "${llvm_nm}"
     --output "${OUTPUT_DIR}" --report "${OUTPUT_DIR}/sh46-report.json"
     RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT result EQUAL 0)

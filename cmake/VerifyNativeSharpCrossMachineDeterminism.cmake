@@ -1,6 +1,6 @@
 if(NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SOURCE_ROOT OR NOT DEFINED OUTPUT_DIR OR
    NOT DEFINED SH41_OUTPUT_DIR OR NOT DEFINED LINKER_EXECUTABLE OR NOT DEFINED NSLINK_EXECUTABLE)
-    message(FATAL_ERROR "SH44 requires Python, roots, SH41 products, LLD and NSLink")
+    message(FATAL_ERROR "SH44 requires Python, roots, SH41 products, LLVM tools and NSLink")
 endif()
 
 get_filename_component(nslink_bin "${NSLINK_EXECUTABLE}" DIRECTORY)
@@ -30,7 +30,7 @@ file(MAKE_DIRECTORY "${input_dir}")
 set(candidate_arguments)
 foreach(profile IN ITEMS O0 O1 O2 O3)
     string(TOLOWER "${profile}" lower)
-    set(candidate "${SH41_OUTPUT_DIR}/nsc2-${lower}-lld.exe")
+    set(candidate "${SH41_OUTPUT_DIR}/nsc2-${lower}-nslink.exe")
     if(NOT EXISTS "${candidate}")
         message(FATAL_ERROR "SH44 missing SH41 nsc2 image: ${candidate}")
     endif()
@@ -72,7 +72,7 @@ execute_process(COMMAND "${PYTHON_EXECUTABLE}" -B
     "${SOURCE_ROOT}/selfhost/bootstrap/verify_cross_machine_determinism.py"
     --contract "${SOURCE_ROOT}/selfhost/contracts/cross-machine-determinism.contract.json"
     --source-root "${SOURCE_ROOT}" ${candidate_arguments}
-    --linker "${LINKER_EXECUTABLE}" --nslink "${NSLINK_EXECUTABLE}"
+    --nslink "${NSLINK_EXECUTABLE}"
     --runtime-library "${runtime_library}" --llvm-library "${llvm_library}"
     ${import_arguments} --output-dir "${OUTPUT_DIR}" --report "${OUTPUT_DIR}/sh44-report.json"
     --attestation "${OUTPUT_DIR}/machine-attestation.json" ${peer_arguments}

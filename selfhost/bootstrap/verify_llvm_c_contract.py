@@ -60,27 +60,25 @@ def main() -> int:
 
     contract = json.loads(args.contract.read_text(encoding="utf-8"))
     failures: list[str] = []
-    if contract.get("schema") != "nativesharp-llvm-c-api-contract" or contract.get("version") != 1:
+    if contract.get("schema") != "nativesharp-llvm-c-api-contract" or contract.get("version") != 2:
         failures.append("unsupported LLVM C contract schema")
     if contract.get("source_hash_canonicalization") != "utf-8-lf":
         failures.append("unsupported LLVM C source hash canonicalization")
 
-    inventory = imported_llvm_symbols(args.llvm_readobj, args.nsc, contract["library"])
-    expected_inventory = contract["nsc0_import_symbols"]
-    if inventory != expected_inventory:
-        failures.append(
-            "nsc0 LLVM-C import drift: missing="
-            + repr(sorted(set(expected_inventory) - set(inventory)))
-            + " unexpected="
-            + repr(sorted(set(inventory) - set(expected_inventory)))
-        )
+    dynamic_imports = imported_llvm_symbols(
+        args.llvm_readobj, args.nsc, contract["forbidden_dynamic_library"])
+    if contract.get("linkage") != "static-llvm-components":
+        failures.append("SH03 requires static LLVM component linkage")
+    if dynamic_imports:
+        failures.append("nsc imports forbidden LLVM-C.dll symbols: " + repr(dynamic_imports))
 
     signature_source = args.source_root / contract["signature_source"]
     enum_source = args.source_root / contract["enum_source"]
     declared = declared_binding_symbols(signature_source)
     if not set(contract["bootstrap_symbols"]).issubset(declared):
         failures.append("NativeSharp LLVM binding lost an SH03 bootstrap symbol")
-    audited_bindings = set(inventory) | set(contract.get("bootstrap_extension_symbols", []))
+    audited_bindings = set(contract["audited_binding_symbols"]) | set(
+        contract.get("bootstrap_extension_symbols", []))
     if not set(declared).issubset(audited_bindings):
         failures.append("NativeSharp LLVM binding declares symbols outside the audited nsc0 inventory")
     if digest(signature_source) != contract["signature_source_sha256"]:
@@ -93,7 +91,9 @@ def main() -> int:
         "version": 1,
         "status": "failed" if failures else "passed",
         "llvm_major": contract["supported_llvm_major"],
-        "nsc0_import_count": len(inventory),
+        "linkage": contract["linkage"],
+        "forbidden_dynamic_import_count": len(dynamic_imports),
+        "audited_binding_symbol_count": len(contract["audited_binding_symbols"]),
         "bootstrap_symbol_count": len(contract["bootstrap_symbols"]),
         "bootstrap_extension_symbol_count": len(contract.get("bootstrap_extension_symbols", [])),
         "binding_symbol_count": len(declared),
@@ -107,7 +107,7 @@ def main() -> int:
             print("NSH0302: " + failure, file=sys.stderr)
         return 1
     print(
-        f"SH03 LLVM-C contract verified: {len(inventory)} nsc0 imports, "
+        "SH03 LLVM contract verified: static component linkage, no LLVM-C.dll imports, "
         f"{len(contract['bootstrap_symbols'])} bootstrap and {len(declared)} bound symbols"
     )
     return 0

@@ -1,10 +1,10 @@
 if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR
    NOT DEFINED SOURCE_ROOT OR NOT DEFINED OUTPUT_DIR OR NOT DEFINED SH41_OUTPUT_DIR OR
-   NOT DEFINED LINKER_EXECUTABLE OR NOT DEFINED NSLINK_EXECUTABLE)
-    message(FATAL_ERROR "SH42 requires nsc0, Python, roots, SH41 products, LLD and NSLink")
+   NOT DEFINED NSLINK_EXECUTABLE)
+    message(FATAL_ERROR "SH42 requires nsc0, Python, roots, SH41 products and NSLink")
 endif()
 
-foreach(required IN ITEMS NSC_EXECUTABLE PYTHON_EXECUTABLE LINKER_EXECUTABLE NSLINK_EXECUTABLE)
+foreach(required IN ITEMS NSC_EXECUTABLE PYTHON_EXECUTABLE NSLINK_EXECUTABLE)
     if(NOT EXISTS "${${required}}")
         message(FATAL_ERROR "SH42 missing ${required}: ${${required}}")
     endif()
@@ -14,7 +14,7 @@ file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 set(candidate_arguments)
 foreach(profile IN ITEMS O0 O1 O2 O3)
     string(TOLOWER "${profile}" lower)
-    set(candidate "${SH41_OUTPUT_DIR}/nsc2-${lower}-lld.exe")
+    set(candidate "${SH41_OUTPUT_DIR}/nsc2-${lower}-nslink.exe")
     if(NOT EXISTS "${candidate}")
         message(FATAL_ERROR "SH42 missing SH41 nsc2 image: ${candidate}")
     endif()
@@ -35,7 +35,7 @@ execute_process(
         --contract "${SOURCE_ROOT}/selfhost/contracts/functional-equivalence.contract.json"
         --source-root "${SOURCE_ROOT}" --python "${PYTHON_EXECUTABLE}"
         --nsc0 "${NSC_EXECUTABLE}" ${candidate_arguments}
-        --linker "${LINKER_EXECUTABLE}" --nslink "${NSLINK_EXECUTABLE}"
+        --nslink "${NSLINK_EXECUTABLE}"
         --import-library "${import_library}" --output-dir "${OUTPUT_DIR}"
         --report "${OUTPUT_DIR}/sh42-report.json"
     RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)

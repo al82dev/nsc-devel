@@ -4,8 +4,8 @@ endif()
 if(NOT DEFINED LLVM_PDBUTIL OR NOT EXISTS "${LLVM_PDBUTIL}")
     message(FATAL_ERROR "LLVM_PDBUTIL must name llvm-pdbutil")
 endif()
-if(NOT DEFINED LLD_LINK OR NOT EXISTS "${LLD_LINK}")
-    message(FATAL_ERROR "LLD_LINK must name lld-link")
+if(NOT DEFINED NSLINK_EXECUTABLE OR NOT EXISTS "${NSLINK_EXECUTABLE}")
+    message(FATAL_ERROR "NSLINK_EXECUTABLE must name NSLink")
 endif()
 if(NOT DEFINED DEBUG_T36_FIXTURE OR NOT EXISTS "${DEBUG_T36_FIXTURE}")
     message(FATAL_ERROR "DEBUG_T36_FIXTURE must name DebugScopesT36.nsproj")
@@ -33,7 +33,7 @@ if(NOT compile_result EQUAL 0 OR NOT EXISTS "${object}")
 endif()
 
 execute_process(
-    COMMAND "${LLD_LINK}"
+    COMMAND "${NSLINK_EXECUTABLE}"
         /nodefaultlib /subsystem:console
         "/entry:__nsc_function_DebugScopesT36$3A$3ADebugScopesT36__Main"
         /debug:full "/pdbaltpath:%_PDB%"

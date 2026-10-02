@@ -1,6 +1,6 @@
 if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SOURCE_ROOT OR
-   NOT DEFINED OUTPUT_DIR OR NOT DEFINED LINKER_EXECUTABLE OR NOT DEFINED ENV{NS_ROOT})
-    message(FATAL_ERROR "SH10 requires nsc0, Python, roots and linker")
+   NOT DEFINED OUTPUT_DIR OR NOT DEFINED ENV{NS_ROOT})
+    message(FATAL_ERROR "SH10 requires nsc0, Python, roots and NSLink")
 endif()
 
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
@@ -61,12 +61,8 @@ foreach(profile IN ITEMS O0 O1 O2 O3)
     if(NOT result EQUAL 0)
         message(FATAL_ERROR "SH10 nsc1 ${profile} corpus compile failed: ${out}${err}")
     endif()
-    foreach(route IN ITEMS lld nslink)
-        if(route STREQUAL "lld")
-            set(tool "${LINKER_EXECUTABLE}")
-        else()
-            set(tool "${nslink}")
-        endif()
+    foreach(route IN ITEMS nslink)
+        set(tool "${nslink}")
         execute_process(COMMAND "${adapter}" "${route}" "${tool}" "${object}" "${import_library}"
             "${OUTPUT_DIR}/${route}-${lower}.rsp" "${OUTPUT_DIR}/${route}-${lower}.exe"
             "${OUTPUT_DIR}/${route}-${lower}.log"
@@ -86,7 +82,6 @@ execute_process(
         --nsc0 "${NSC_EXECUTABLE}"
         --nsc1-a "${nsc1_a}"
         --nsc1-b "${nsc1_b}"
-        --linker "${LINKER_EXECUTABLE}"
         --nslink "${nslink}"
         --output-dir "${OUTPUT_DIR}"
         --report "${OUTPUT_DIR}/sh10-report.json"

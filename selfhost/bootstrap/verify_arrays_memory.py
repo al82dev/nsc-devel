@@ -20,5 +20,5 @@ def main():
             artifacts[irp.name]=sha(irp);artifacts[op.name]=sha(op);checks.append({"profile":profile,"routes":c["routes"]})
         a.report.write_text(json.dumps({"schema":"nativesharp-selfhost-sh32-report","version":1,"gate":"SH32","status":"passed","checks":checks,"artifacts":dict(sorted(artifacts.items())),"problems":[]},indent=2,sort_keys=True)+"\n")
     except (OSError,ValueError,KeyError,json.JSONDecodeError) as e:print(f"verify_arrays_memory: error: {e}",file=sys.stderr);return 1
-    print("SH32 heap/stack arrays, indexed memory and delete[] verified across O0-O3 with both linkers");return 0
+    print("SH32 heap/stack arrays, indexed memory and delete[] verified across O0-O3 with NSLink");return 0
 if __name__=="__main__":raise SystemExit(main())

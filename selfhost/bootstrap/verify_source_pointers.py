@@ -62,7 +62,7 @@ def main() -> int:
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"verify_source_pointers: error: {error}", file=sys.stderr)
         return 1
-    print("SH23 pointers and local memory verified across O0-O3 and both linkers")
+    print("SH23 pointers and local memory verified across O0-O3 with NSLink")
     return 0
 
 

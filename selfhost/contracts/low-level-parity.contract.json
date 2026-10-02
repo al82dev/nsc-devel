@@ -3,7 +3,7 @@
   "version": 1,
   "target": "x86_64-pc-windows-msvc",
   "profiles": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld", "nslink"],
+  "linkers": ["nslink"],
   "entry": "mainCRTStartup",
   "imports": {
     "KERNEL32.dll": ["GetProcessHeap", "HeapAlloc", "ExitProcess"],

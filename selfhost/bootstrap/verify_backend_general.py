@@ -69,7 +69,7 @@ def main() -> int:
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(f"verify_backend_general: error: {error}", file=sys.stderr)
         return 1
-    print("SH27 general project backend verified: O0-O3, LLD+NSLink, stable ABI names")
+    print("SH27 general project backend verified: O0-O3, NSLink, stable ABI names")
     return 0
 
 

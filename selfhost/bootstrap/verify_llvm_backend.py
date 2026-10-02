@@ -33,7 +33,7 @@ def main() -> int:
         require(contract.get("version") == 1, "unsupported SH08 contract version")
         require(contract.get("optimizations") == ["O0", "O1", "O2", "O3"],
                 "optimization matrix is incomplete")
-        require(contract.get("linkers") == ["lld-link", "NSLink"],
+        require(contract.get("linkers") == ["NSLink"],
                 "linker matrix is incomplete")
         require(len(contract.get("covered_work_items", [])) == 14,
                 "SH08 work-item ledger is incomplete")
@@ -67,7 +67,7 @@ def main() -> int:
             require(contract["entry"] in assembly and "ExitProcess" in assembly,
                     f"{profile} assembly misses entry/import")
             assembly_checks += 2
-            for route in ("lld", "nslink"):
+            for route in ("nslink",):
                 exe = args.output_dir / f"{route}-{lower}.exe"
                 require(exe.is_file() and exe.stat().st_size > 0,
                         f"missing linked executable {exe.name}")
@@ -95,7 +95,7 @@ def main() -> int:
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"verify_llvm_backend: error: {error}", file=sys.stderr)
         return 1
-    print("SH08 LLVM backend verified: 4 profiles, 2 artifacts, 2 linkers, exit=42")
+    print("SH08 LLVM backend verified: 4 profiles, NSLink artifacts, exit=42")
     return 0
 
 

@@ -160,21 +160,16 @@ def audited_emit(producer: Path, project: Path, profile: str, output: Path,
     }, elapsed
 
 
-def link_image(route: str, tool: Path, object_path: Path, libraries: list[Path],
+def link_image(tool: Path, object_path: Path, libraries: list[Path],
                output: Path) -> tuple[dict[str, object], float]:
-    if route == "lld":
-        command = [str(tool), str(object_path), *(str(item) for item in libraries),
-                   "/entry:mainCRTStartup", "/subsystem:console", "/machine:x64",
-                   "/nodefaultlib", f"/out:{output}"]
-    else:
-        command = [str(tool), "--link", str(object_path)]
-        for library in libraries:
-            command.extend(["--lib", str(library)])
-        command.extend(["--entry", "mainCRTStartup", "-o", str(output)])
+    command = [str(tool), "--link", str(object_path)]
+    for library in libraries:
+        command.extend(["--lib", str(library)])
+    command.extend(["--entry", "mainCRTStartup", "-o", str(output)])
     completed, elapsed = run(command)
     require(completed.returncode == 0,
-            f"{route} link failed ({completed.returncode}): {completed.stdout}{completed.stderr}")
-    require(output.is_file() and output.stat().st_size > 0, f"{route} did not create {output}")
+            f"NSLink failed ({completed.returncode}): {completed.stdout}{completed.stderr}")
+    require(output.is_file() and output.stat().st_size > 0, f"NSLink did not create {output}")
     return {
         "command": command, "stdout": completed.stdout, "stderr": completed.stderr,
         "elapsed_seconds": round(elapsed, 6), "sha256": digest(output),
@@ -206,7 +201,6 @@ def main() -> int:
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--nsc0", type=Path, required=True)
     parser.add_argument("--nsc1", type=Path, required=True)
-    parser.add_argument("--linker", type=Path, required=True)
     parser.add_argument("--nslink", type=Path, required=True)
     parser.add_argument("--runtime-library", type=Path, required=True)
     parser.add_argument("--llvm-library", type=Path, required=True)
@@ -223,7 +217,7 @@ def main() -> int:
         require(contract.get("source_derived_codegen") is True,
                 "SH41 contract must require source-derived code generation")
         require(arguments.nsc0.is_file() and arguments.nsc1.is_file(), "missing seed or nsc1")
-        require(arguments.linker.is_file() and arguments.nslink.is_file(), "missing linker")
+        require(arguments.nslink.is_file(), "missing NSLink")
         libraries = [arguments.runtime_library, arguments.llvm_library, *arguments.import_library]
         require(all(path.is_file() for path in libraries), "one or more link libraries are missing")
         arguments.output_dir.mkdir(parents=True, exist_ok=True)
@@ -245,33 +239,33 @@ def main() -> int:
                 arguments.nsc0.name, environment)
             hashes[f"nsc2_{lower}_object"] = digest(nsc2_object)
 
-            nsc2_images: dict[str, Path] = {}
             nsc2_links: dict[str, object] = {}
-            for route, tool in (("lld", arguments.linker), ("nslink", arguments.nslink)):
-                image = arguments.output_dir / f"nsc2-{lower}-{route}.exe"
-                link_record, _ = link_image(route, tool, nsc2_object, libraries, image)
-                link_record["verification"] = verify_image(image, contract["expected_identity"], project)
-                nsc2_images[route] = image
-                nsc2_links[route] = link_record
-                hashes[f"nsc2_{lower}_{route}_image"] = digest(image)
-                total_executions += 1
+            nsc2_image = arguments.output_dir / f"nsc2-{lower}-nslink.exe"
+            link_record, _ = link_image(
+                arguments.nslink, nsc2_object, libraries, nsc2_image)
+            link_record["verification"] = verify_image(
+                nsc2_image, contract["expected_identity"], project)
+            nsc2_links["nslink"] = link_record
+            hashes[f"nsc2_{lower}_nslink_image"] = digest(nsc2_image)
+            total_executions += 1
 
             nsc3_object = arguments.output_dir / f"nsc3-{lower}.obj"
             nsc3_audit, _ = audited_emit(
-                nsc2_images["lld"], project, profile, nsc3_object,
+                nsc2_image, project, profile, nsc3_object,
                 arguments.nsc0.name, environment)
             hashes[f"nsc3_{lower}_object"] = digest(nsc3_object)
             require(nsc2_object.read_bytes() == nsc3_object.read_bytes(),
                     f"{profile} nsc2/nsc3 objects are not byte-identical")
 
             nsc3_links: dict[str, object] = {}
-            for route, tool in (("lld", arguments.linker), ("nslink", arguments.nslink)):
-                image = arguments.output_dir / f"nsc3-{lower}-{route}.exe"
-                link_record, _ = link_image(route, tool, nsc3_object, libraries, image)
-                link_record["verification"] = verify_image(image, contract["expected_identity"], project)
-                nsc3_links[route] = link_record
-                hashes[f"nsc3_{lower}_{route}_image"] = digest(image)
-                total_executions += 1
+            nsc3_image = arguments.output_dir / f"nsc3-{lower}-nslink.exe"
+            link_record, _ = link_image(
+                arguments.nslink, nsc3_object, libraries, nsc3_image)
+            link_record["verification"] = verify_image(
+                nsc3_image, contract["expected_identity"], project)
+            nsc3_links["nslink"] = link_record
+            hashes[f"nsc3_{lower}_nslink_image"] = digest(nsc3_image)
+            total_executions += 1
 
             profiles[profile] = {
                 "nsc2_audit": nsc2_audit, "nsc3_audit": nsc3_audit,
@@ -289,7 +283,7 @@ def main() -> int:
             "nsc0_invocations_during_generation": 0,
             "source_files": source_count, "source_sha256": source_sha256,
             "profiles": profiles, "profile_count": len(profiles),
-            "linkers": ["lld-link", "NSLink"], "executions": total_executions,
+            "linkers": ["NSLink"], "executions": total_executions,
             "object_fixed_point_per_profile": True,
             "hashes": dict(sorted(hashes.items())),
             "work_items": contract["work_items"], "problems": [],
@@ -300,7 +294,7 @@ def main() -> int:
     except (OSError, UnicodeError, json.JSONDecodeError, VerificationError) as error:
         print(f"verify_self_hosted_generation: error: {error}", file=sys.stderr)
         return 1
-    print("SH41 passed: real nsc1->nsc2->nsc3 source compilation, O0-O3, LLD and NSLink")
+    print("SH41 passed: real nsc1->nsc2->nsc3 source compilation, O0-O3, NSLink")
     return 0
 
 

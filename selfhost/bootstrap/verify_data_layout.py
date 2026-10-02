@@ -34,6 +34,6 @@ def main() -> int:
         a.report.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     except (OSError,ValueError,KeyError,json.JSONDecodeError) as e:
         print(f"verify_data_layout: error: {e}",file=sys.stderr); return 1
-    print("SH29 layouts, static globals and Win64 relocations verified with LLD+NSLink")
+    print("SH29 layouts, static globals and Win64 relocations verified with NSLink")
     return 0
 if __name__=="__main__": raise SystemExit(main())

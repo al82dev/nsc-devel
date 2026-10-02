@@ -2,7 +2,7 @@
   "schema": "nativesharp-selfhost-arrays-memory-contract",
   "version": 1,
   "profiles": ["O0", "O1", "O2", "O3"],
-  "routes": ["lld", "nslink"],
+  "routes": ["nslink"],
   "source": "selfhost/tests/arrays-memory/Program.ns",
   "project": "selfhost/tests/arrays-memory/ArraysMemory.nsproj",
   "expected_exit_code": 42,

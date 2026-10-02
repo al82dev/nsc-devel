@@ -91,20 +91,13 @@ def coff_summary(path: Path) -> dict[str, object]:
             "sha256": digest(path), "bytes": len(data)}
 
 
-def link(route: str, tool: Path, obj: Path, output: Path, entry: str,
+def link(tool: Path, obj: Path, output: Path, entry: str,
          import_library: Path | None = None) -> None:
-    if route == "lld":
-        command = [str(tool), str(obj)]
-        if import_library is not None:
-            command.append(str(import_library))
-        command.extend([f"/entry:{entry}", "/subsystem:console", "/machine:x64", "/nodefaultlib",
-                        f"/out:{output}"])
-    else:
-        command = [str(tool), "--link", str(obj)]
-        if import_library is not None:
-            command.extend(["--lib", str(import_library)])
-        command.extend(["--entry", entry, "-o", str(output)])
-    checked(command, f"{route} link of {obj.name}")
+    command = [str(tool), "--link", str(obj)]
+    if import_library is not None:
+        command.extend(["--lib", str(import_library)])
+    command.extend(["--entry", entry, "-o", str(output)])
+    checked(command, f"NSLink link of {obj.name}")
     require(output.is_file() and output.stat().st_size > 0, f"missing linked image: {output}")
 
 
@@ -174,7 +167,6 @@ def main() -> int:
     parser.add_argument("--nsc0", type=Path, required=True)
     for level in ("o0", "o1", "o2", "o3"):
         parser.add_argument(f"--nsc2-{level}", type=Path, required=True)
-    parser.add_argument("--linker", type=Path, required=True)
     parser.add_argument("--nslink", type=Path, required=True)
     parser.add_argument("--import-library", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -239,12 +231,12 @@ def main() -> int:
                 require("Main" in summaries["nsc0"]["symbols"], "nsc0 object misses Main")
                 require("mainCRTStartup" in summaries["nsc2"]["symbols"],
                         "nsc2 object misses mainCRTStartup")
-                for route, tool in (("lld", args.linker), ("nslink", args.nslink)):
+                for route, tool in (("nslink", args.nslink),):
                     for producer, obj, entry, imports in (
                             ("nsc0", legacy_obj, "Main", None),
                             ("nsc2", modern_obj, "mainCRTStartup", args.import_library)):
                         image = out / f"{stem}-{producer}-{route}.exe"
-                        link(route, tool, obj, image, entry, imports)
+                        link(tool, obj, image, entry, imports)
                         execute(image, expected)
                         executions += 1
                 object_records.append({"profile": profile, "source": relative,
@@ -272,9 +264,9 @@ def main() -> int:
                      "-o", str(modern_obj)], f"nsc2 {profile} project object", 600)
             summary = coff_summary(modern_obj)
             require("mainCRTStartup" in summary["symbols"], f"{profile} project object misses entry")
-            for route, tool in (("lld", args.linker), ("nslink", args.nslink)):
+            for route, tool in (("nslink", args.nslink),):
                 image = out / f"project-{profile.lower()}-nsc2-{route}.exe"
-                link(route, tool, modern_obj, image, "mainCRTStartup", args.import_library)
+                link(tool, modern_obj, image, "mainCRTStartup", args.import_library)
                 execute(image, contract["expected_exit_code"])
                 plan = out / f"product-{profile.lower()}-{route}.plan"
                 checked([str(candidate), "--emit-product-plan", str(project), profile, route, str(plan)],

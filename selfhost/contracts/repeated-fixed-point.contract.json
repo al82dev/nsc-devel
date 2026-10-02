@@ -6,7 +6,7 @@
   "repetitions": 3,
   "generations": ["nsc2", "nsc3", "nsc4"],
   "optimizations": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld", "nslink"],
+  "linkers": ["nslink"],
   "compiler_project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
   "verification_project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
   "expected_identity": "nsc-next 2.0.0-bootstrap.sh14 (NativeSharp 2.0.0, promotion candidate)",

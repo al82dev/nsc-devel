@@ -4,7 +4,7 @@
   "gate": "SH19",
   "source": "selfhost/tests/codegen/source-loop-control.ns",
   "profiles": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld", "nslink"],
+  "linkers": ["nslink"],
   "expected_exit_code": 42,
   "required_symbols": ["__nativesharp_3347706242812374255_Main", "NativeSharpCompute"],
   "required_llvm_api": ["LLVMBuildBr", "LLVMBuildCondBr", "LLVMGetEntryBasicBlock", "LLVMGetFirstInstruction", "LLVMGetInsertBlock", "LLVMPositionBuilderBefore"],

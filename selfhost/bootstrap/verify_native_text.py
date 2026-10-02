@@ -27,5 +27,5 @@ def main():
             artifacts[semap.name]=sha(semap);artifacts[objp.name]=sha(objp);checks.append({"profile":profile,"routes":c["routes"]})
         a.report.write_text(json.dumps({"schema":"nativesharp-selfhost-sh31-report","version":1,"gate":"SH31","status":"passed","checks":checks,"artifacts":dict(sorted(artifacts.items())),"problems":[]},indent=2,sort_keys=True)+"\n",encoding="utf-8")
     except (OSError,ValueError,KeyError,json.JSONDecodeError) as e:print(f"verify_native_text: error: {e}",file=sys.stderr);return 1
-    print("SH31 native char/UTF-8 literals/concatenation/indexing verified with O0-O3 and both linkers");return 0
+    print("SH31 native char/UTF-8 literals/concatenation/indexing verified with O0-O3 and NSLink");return 0
 if __name__=="__main__":raise SystemExit(main())

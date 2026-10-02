@@ -34,7 +34,6 @@ def main() -> int:
     parser.add_argument("--compiler", type=Path, required=True)
     parser.add_argument("--nsasm", type=Path, required=True)
     parser.add_argument("--nslink", type=Path, required=True)
-    parser.add_argument("--lld-link", type=Path, required=True)
     parser.add_argument("--llvm-objdump", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--report", type=Path)
@@ -63,14 +62,6 @@ def main() -> int:
                 if fragment.lower() not in text:
                     failures.append(f"NSAsm object is missing instruction {fragment}")
 
-    import_libraries: list[Path] = []
-    for dll, symbols in contract["imports"].items():
-        library = output / (dll.replace(".", "_") + ".lib")
-        made = run([str(args.nslink), "--link", "--make-implib",
-                    dll + ":" + ",".join(symbols), str(library)], root)
-        if require(made, f"import library {dll}", failures):
-            import_libraries.append(library)
-
     project = root / contract["project"]
     for profile in contract["profiles"]:
         native_object = output / f"specialized-{profile.lower()}.obj"
@@ -87,15 +78,10 @@ def main() -> int:
 
         for linker in contract["linkers"]:
             executable = output / f"specialized-{profile.lower()}-{linker}.exe"
-            if linker == "lld":
-                command = [str(args.lld_link), "/nologo", "/subsystem:console", "/machine:x64",
-                           "/timestamp:0", "/entry:" + contract["entry"], "/out:" + str(executable),
-                           str(native_object), str(assembly_object), *map(str, import_libraries)]
-            else:
-                command = [str(args.nslink), "--link", str(native_object), str(assembly_object)]
-                for dll, symbols in contract["imports"].items():
-                    command += ["--import", dll + ":" + ",".join(symbols)]
-                command += ["--entry", contract["entry"], "-o", str(executable)]
+            command = [str(args.nslink), "--link", str(native_object), str(assembly_object)]
+            for dll, symbols in contract["imports"].items():
+                command += ["--import", dll + ":" + ",".join(symbols)]
+            command += ["--entry", contract["entry"], "-o", str(executable)]
             linked = run(command, root)
             if require(linked, f"{profile} {linker} link", failures):
                 executed = run([str(executable)], output, timeout=10)

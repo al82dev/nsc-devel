@@ -2,7 +2,7 @@
   "schema": "nativesharp-selfhost-data-layout-contract",
   "version": 1,
   "profiles": ["O0", "O1", "O2", "O3"],
-  "routes": ["lld", "nslink"],
+  "routes": ["nslink"],
   "project": "selfhost/tests/data-layout/DataLayout.nsproj",
   "expected_exit_code": 42,
   "required_layout_fragments": [

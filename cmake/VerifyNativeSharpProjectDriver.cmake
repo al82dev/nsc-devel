@@ -1,6 +1,6 @@
 if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SOURCE_ROOT OR
-   NOT DEFINED OUTPUT_DIR OR NOT DEFINED LINKER_EXECUTABLE OR NOT DEFINED ENV{NS_ROOT})
-    message(FATAL_ERROR "SH09 requires nsc, Python, roots and linker")
+   NOT DEFINED OUTPUT_DIR OR NOT DEFINED ENV{NS_ROOT})
+    message(FATAL_ERROR "SH09 requires nsc, Python, roots and NSLink")
 endif()
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 set(prefix "$ENV{NS_ROOT}")
@@ -55,12 +55,8 @@ foreach(profile IN ITEMS O0 O1 O2 O3)
     if(NOT result EQUAL 0)
         message(FATAL_ERROR "SH09 ${profile} manifest failed")
     endif()
-    foreach(route IN ITEMS lld nslink)
-        if(route STREQUAL "lld")
-            set(tool "${LINKER_EXECUTABLE}")
-        else()
-            set(tool "${nslink}")
-        endif()
+    foreach(route IN ITEMS nslink)
+        set(tool "${nslink}")
         execute_process(COMMAND "${adapter}" "${route}" "${tool}" "${object}" "${import_library}"
             "${OUTPUT_DIR}/${route}-${lower}.rsp" "${OUTPUT_DIR}/${route}-${lower}.exe" "${OUTPUT_DIR}/${route}-${lower}.log"
             RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)

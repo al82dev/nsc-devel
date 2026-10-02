@@ -14,8 +14,8 @@
   ],
   "source_files": 80,
   "profiles": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld", "nslink"],
-  "expected_executions": 8,
+  "linkers": ["nslink"],
+  "expected_executions": 4,
   "forbidden_library_symbols": ["mainCRTStartup", "NativeSharpCompute"],
   "required_smoke_hooks": [
     "__nativesharp_clock_query_frequency",

@@ -4,7 +4,7 @@
   "gate": "SH20",
   "source": "selfhost/tests/codegen/source-bool-void.ns",
   "profiles": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld", "nslink"],
+  "linkers": ["nslink"],
   "expected_exit_code": 42,
   "required_symbols": ["__nativesharp_16399912023371545781_IsReady", "__nativesharp_10802056817357250753_Observe", "__nativesharp_3347706242812374255_Main"],
   "required_llvm_api": ["LLVMBuildNot", "LLVMBuildRetVoid", "LLVMGlobalGetValueType"],

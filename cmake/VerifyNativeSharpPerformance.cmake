@@ -2,7 +2,7 @@ if(NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SOURCE_ROOT OR NOT DEFINED OUTPU
    NOT DEFINED SH41_OUTPUT_DIR OR NOT DEFINED CTEST_EXECUTABLE OR NOT DEFINED BUILD_DIR)
     message(FATAL_ERROR "SH50 requires Python, roots, SH41 products, CTest and the current build")
 endif()
-set(candidate "${SH41_OUTPUT_DIR}/nsc2-o0-lld.exe")
+set(candidate "${SH41_OUTPUT_DIR}/nsc2-o0-nslink.exe")
 foreach(required IN ITEMS PYTHON_EXECUTABLE candidate CTEST_EXECUTABLE)
     if(NOT EXISTS "${${required}}")
         message(FATAL_ERROR "SH50 missing ${required}: ${${required}}")

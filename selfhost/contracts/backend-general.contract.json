@@ -2,7 +2,7 @@
   "schema": "nativesharp-selfhost-backend-general-contract",
   "version": 1,
   "profiles": ["O0", "O1", "O2", "O3"],
-  "routes": ["lld", "nslink"],
+  "routes": ["nslink"],
   "project": "selfhost/tests/backend-general/BackendGeneral.nsproj",
   "expected_exit_code": 42,
   "expected_functions": ["Main", "Sum6", "Twice"],

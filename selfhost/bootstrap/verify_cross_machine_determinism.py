@@ -94,19 +94,14 @@ def stage_sources(source_root: Path, files: list[Path], target: Path,
     return created
 
 
-def link(route: str, tool: Path, obj: Path, libraries: list[Path], output: Path) -> float:
-    if route == "lld":
-        command = [str(tool), str(obj), *(str(item) for item in libraries),
-                   "/entry:mainCRTStartup", "/subsystem:console", "/machine:x64",
-                   "/nodefaultlib", "/timestamp:0", f"/out:{output}"]
-    else:
-        command = [str(tool), "--link", str(obj)]
-        for library in libraries:
-            command.extend(["--lib", str(library)])
-        command.extend(["--entry", "mainCRTStartup", "-o", str(output)])
+def link(tool: Path, obj: Path, libraries: list[Path], output: Path) -> float:
+    command = [str(tool), "--link", str(obj)]
+    for library in libraries:
+        command.extend(["--lib", str(library)])
+    command.extend(["--entry", "mainCRTStartup", "-o", str(output)])
     result, elapsed = run(command)
     require(result.returncode == 0,
-            f"{route} failed ({result.returncode}): {result.stdout}{result.stderr}")
+            f"NSLink failed ({result.returncode}): {result.stdout}{result.stderr}")
     require(output.is_file() and output.stat().st_size > 0, f"missing linked image: {output}")
     return elapsed
 
@@ -140,7 +135,7 @@ def verify_image(image: Path, expected_identity: str, project: Path,
 
 
 def execute_profile(profile: str, candidate: Path, project: Path, case_root: Path,
-                    environment: dict[str, str], linker: Path, nslink: Path,
+                    environment: dict[str, str], nslink: Path,
                     libraries: list[Path], expected_identity: str) -> tuple[str, dict[str, object], dict[str, object]]:
     profile_dir = case_root / profile.lower()
     profile_dir.mkdir(parents=True)
@@ -155,11 +150,11 @@ def execute_profile(profile: str, candidate: Path, project: Path, case_root: Pat
     images: dict[str, str] = {}
     link_times: dict[str, float] = {}
     validation: dict[str, object] = {}
-    for route, tool in (("lld", linker), ("nslink", nslink)):
-        image = profile_dir / f"nsc3-{route}.exe"
-        link_times[route] = round(link(route, tool, obj, libraries, image), 6)
-        images[route] = digest(image)
-        validation[route] = verify_image(image, expected_identity, project, environment)
+    route = "nslink"
+    image = profile_dir / "nsc3-nslink.exe"
+    link_times[route] = round(link(nslink, obj, libraries, image), 6)
+    images[route] = digest(image)
+    validation[route] = verify_image(image, expected_identity, project, environment)
     return profile, {"object": digest(obj), "images": images}, {
         "emit_seconds": round(emit_seconds, 6),
         "link_seconds": link_times,
@@ -187,7 +182,6 @@ def main() -> int:
     parser.add_argument("--source-root", type=Path, required=True)
     for level in ("o0", "o1", "o2", "o3"):
         parser.add_argument(f"--nsc2-{level}", type=Path, required=True)
-    parser.add_argument("--linker", type=Path, required=True)
     parser.add_argument("--nslink", type=Path, required=True)
     parser.add_argument("--runtime-library", type=Path, required=True)
     parser.add_argument("--llvm-library", type=Path, required=True)
@@ -213,7 +207,7 @@ def main() -> int:
                       for profile in contract["optimizations"]}
         libraries = [args.runtime_library.resolve(), args.llvm_library.resolve(),
                      *(item.resolve() for item in args.import_library)]
-        inputs = [*candidates.values(), args.linker.resolve(), args.nslink.resolve(), *libraries]
+        inputs = [*candidates.values(), args.nslink.resolve(), *libraries]
         require(all(path.is_file() for path in inputs), "one or more SH44 inputs are missing")
         files = ordered_files(root, contract["source_roots"])
         source_sha256, manifest = source_manifest(root, files)
@@ -241,7 +235,7 @@ def main() -> int:
             with ThreadPoolExecutor(max_workers=variant["workers"]) as executor:
                 pending = [executor.submit(
                     execute_profile, profile, candidates[profile], project, case_root,
-                    environment, args.linker.resolve(), args.nslink.resolve(), libraries,
+                    environment, args.nslink.resolve(), libraries,
                     contract["expected_identity"]) for profile in contract["optimizations"]]
                 for future in as_completed(pending):
                     completed.append(future.result())
@@ -268,7 +262,7 @@ def main() -> int:
 
         input_sha256 = {
             "nsc2": {key: digest(value) for key, value in sorted(candidates.items())},
-            "lld": digest(args.linker.resolve()), "nslink": digest(args.nslink.resolve()),
+            "nslink": digest(args.nslink.resolve()),
             "libraries": {path.name: digest(path) for path in libraries},
         }
         attestation: dict[str, object] = {

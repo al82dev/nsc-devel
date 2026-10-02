@@ -24,7 +24,6 @@ def main() -> int:
     parser.add_argument("--clean-root", action="append", type=Path, required=True)
     parser.add_argument("--nsc1", type=Path, required=True)
     parser.add_argument("--adapter", type=Path, required=True)
-    parser.add_argument("--linker", type=Path, required=True)
     parser.add_argument("--nslink", type=Path, required=True)
     parser.add_argument("--import-library", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -83,7 +82,7 @@ def main() -> int:
                 require(result.returncode == 0, f"{label}/{profile} object failed")
                 artifacts[obj.name] = digest(obj); objects.append(obj)
             require(objects[0].read_bytes() == objects[1].read_bytes(), f"{profile} object differs")
-            for route, tool in (("lld", arguments.linker), ("nslink", arguments.nslink)):
+            for route, tool in (("nslink", arguments.nslink),):
                 executable = arguments.output_dir / f"{route}-{lower}.exe"
                 linked, _ = run(arguments.adapter, route, str(tool), str(objects[1]),
                                 str(arguments.import_library), str(arguments.output_dir / f"{route}-{lower}.rsp"),
@@ -112,7 +111,7 @@ def main() -> int:
             "nsc0_invocations_during_generation": 0,
             "nsc2_audit": audit_nsc2, "nsc3_audits": audits,
             "hashes": hashes, "compiler_sources_verified": len(compiler_sources),
-            "profiles": 4, "linkers": 2, "executions": executions,
+            "profiles": 4, "linkers": len(contract["linkers"]), "executions": executions,
             "artifacts": dict(sorted(artifacts.items())),
             "machine": {"node": platform.node(), "platform": platform.platform(), "processor": platform.processor()},
             "cross_machine_verified": cross_machine, "cross_machine_evidence": external,

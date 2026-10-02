@@ -47,17 +47,12 @@ def checked(command: list[str], label: str, environment: dict[str, str] | None =
     return elapsed
 
 
-def link(route: str, tool: Path, obj: Path, libraries: list[Path], output: Path) -> float:
-    if route == "lld":
-        command = [str(tool), str(obj), *(str(item) for item in libraries),
-                   "/entry:mainCRTStartup", "/subsystem:console", "/machine:x64",
-                   "/nodefaultlib", "/timestamp:0", f"/out:{output}"]
-    else:
-        command = [str(tool), "--link", str(obj)]
-        for library in libraries:
-            command.extend(["--lib", str(library)])
-        command.extend(["--entry", "mainCRTStartup", "-o", str(output)])
-    elapsed = checked(command, f"{route} link {output.name}")
+def link(tool: Path, obj: Path, libraries: list[Path], output: Path) -> float:
+    command = [str(tool), "--link", str(obj)]
+    for library in libraries:
+        command.extend(["--lib", str(library)])
+    command.extend(["--entry", "mainCRTStartup", "-o", str(output)])
+    elapsed = checked(command, f"NSLink link {output.name}")
     require(output.is_file() and output.stat().st_size > 0, f"missing image {output}")
     return elapsed
 
@@ -77,7 +72,7 @@ def verify_image(image: Path, identity: str, project: Path) -> dict[str, object]
 
 
 def execute_case(repetition: int, profile: str, nsc2: Path, project: Path,
-                 identity: str, linker: Path, nslink: Path, libraries: list[Path],
+                 identity: str, nslink: Path, libraries: list[Path],
                  output_root: Path, environment: dict[str, str]) -> dict[str, object]:
     case = output_root / f"repetition-{repetition}" / profile.lower()
     require(not case.exists(), f"clean repetition output already exists: {case}")
@@ -88,30 +83,22 @@ def execute_case(repetition: int, profile: str, nsc2: Path, project: Path,
                      "-o", str(nsc3_object)], f"repetition {repetition}/{profile} nsc3", environment)
     require(nsc3_object.is_file(), f"nsc3 object missing in repetition {repetition}/{profile}")
 
-    images3: dict[str, Path] = {}
-    link_times3: dict[str, float] = {}
-    for route, tool in (("lld", linker), ("nslink", nslink)):
-        image = case / f"nsc3-{route}.exe"
-        link_times3[route] = link(route, tool, nsc3_object, libraries, image)
-        images3[route] = image
-    validation3 = verify_image(images3["lld"], identity, project)
+    images3 = {"nslink": case / "nsc3-nslink.exe"}
+    link_times3 = {"nslink": link(nslink, nsc3_object, libraries, images3["nslink"])}
+    validation3 = verify_image(images3["nslink"], identity, project)
 
-    emit4 = checked([str(images3["lld"]), "--emit-bootstrap-object", str(project),
+    emit4 = checked([str(images3["nslink"]), "--emit-bootstrap-object", str(project),
                      f"-{profile}", "-o", str(nsc4_object)],
                     f"repetition {repetition}/{profile} nsc4", environment)
     require(nsc4_object.is_file(), f"nsc4 object missing in repetition {repetition}/{profile}")
     require(nsc3_object.read_bytes() == nsc4_object.read_bytes(),
             f"raw object bytes differ in repetition {repetition}/{profile}")
 
-    images4: dict[str, Path] = {}
-    link_times4: dict[str, float] = {}
-    for route, tool in (("lld", linker), ("nslink", nslink)):
-        image = case / f"nsc4-{route}.exe"
-        link_times4[route] = link(route, tool, nsc4_object, libraries, image)
-        images4[route] = image
-        require(images3[route].read_bytes() == image.read_bytes(),
-                f"raw {route} image bytes differ in repetition {repetition}/{profile}")
-    validation4 = verify_image(images4["lld"], identity, project)
+    images4 = {"nslink": case / "nsc4-nslink.exe"}
+    link_times4 = {"nslink": link(nslink, nsc4_object, libraries, images4["nslink"])}
+    require(images3["nslink"].read_bytes() == images4["nslink"].read_bytes(),
+            f"raw NSLink image bytes differ in repetition {repetition}/{profile}")
+    validation4 = verify_image(images4["nslink"], identity, project)
     return {
         "repetition": repetition, "profile": profile,
         "clean_root": case.as_posix(), "normalization_applied": [],
@@ -132,7 +119,6 @@ def main() -> int:
     parser.add_argument("--source-root", type=Path, required=True)
     for level in ("o0", "o1", "o2", "o3"):
         parser.add_argument(f"--nsc2-{level}", type=Path, required=True)
-    parser.add_argument("--linker", type=Path, required=True)
     parser.add_argument("--nslink", type=Path, required=True)
     parser.add_argument("--runtime-library", type=Path, required=True)
     parser.add_argument("--llvm-library", type=Path, required=True)
@@ -158,7 +144,7 @@ def main() -> int:
                       for profile in contract["optimizations"]}
         libraries = [args.runtime_library.resolve(), args.llvm_library.resolve(),
                      *(path.resolve() for path in args.import_library)]
-        require(all(path.is_file() for path in [*candidates.values(), args.linker, args.nslink,
+        require(all(path.is_file() for path in [*candidates.values(), args.nslink,
                                                 *libraries]), "SH43 input artifact is missing")
         environment = os.environ.copy()
         environment.update({"LANG": "C", "LC_ALL": "C", "TZ": "UTC"})
@@ -169,7 +155,7 @@ def main() -> int:
         with ThreadPoolExecutor(max_workers=args.workers) as executor:
             pending = [executor.submit(
                 execute_case, repetition, profile, candidates[profile], project,
-                contract["expected_identity"], args.linker.resolve(), args.nslink.resolve(),
+                contract["expected_identity"], args.nslink.resolve(),
                 libraries, output, environment) for repetition, profile in jobs]
             for future in as_completed(pending):
                 records.append(future.result())
@@ -201,7 +187,7 @@ def main() -> int:
             subprocess.SubprocessError, VerificationError) as error:
         print(f"verify_repeated_fixed_point: error: {error}", file=sys.stderr)
         return 1
-    print("SH43 passed: three clean nsc2->nsc3->nsc4 raw-byte fixed points, O0-O3, LLD and NSLink")
+    print("SH43 passed: three clean nsc2->nsc3->nsc4 raw-byte fixed points, O0-O3, NSLink")
     return 0
 
 

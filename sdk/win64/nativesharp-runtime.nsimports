@@ -1,0 +1,95 @@
+# NativeSharp Runtime ABI 1.0, symbol set 2.
+# Direct Windows import closure for NativeSharp.Runtime.Win32.lib.
+library "KERNEL32.dll"
+{
+    ExitProcess
+    GetProcessHeap
+    HeapAlloc
+    HeapReAlloc
+    HeapFree
+    GetLastError
+    GetStdHandle
+    WriteFile
+    TlsAlloc
+    TlsGetValue
+    TlsSetValue
+    RaiseException
+    QueryPerformanceCounter
+    QueryPerformanceFrequency
+    GetSystemTimeAsFileTime
+    GetTickCount64
+    GetActiveProcessorCount
+    GetEnvironmentVariableA
+    SetEnvironmentVariableA
+    GetFileAttributesA
+    GetFileAttributesW
+    DeleteFileA
+    CreateDirectoryA
+    CreateFileA
+    CreateFileW
+    GetFileSizeEx
+    ReadFile
+    CloseHandle
+    SetFilePointer
+    RemoveDirectoryA
+    GetFullPathNameW
+    GetCurrentDirectoryA
+    CreateProcessA
+    GetExitCodeProcess
+    GetCommandLineW
+    WideCharToMultiByte
+    MultiByteToWideChar
+    LocalFree
+    FindFirstFileW
+    FindNextFileW
+    FindClose
+    CreateThread
+    WaitForSingleObject
+    CreateMutexA
+    ReleaseMutex
+    GetCurrentThreadId
+    AcquireSRWLockExclusive
+    ReleaseSRWLockExclusive
+    WakeConditionVariable
+    WakeAllConditionVariable
+    SleepConditionVariableSRW
+    CreateSemaphoreA
+    ReleaseSemaphore
+    CreateEventA
+    SetEvent
+    ResetEvent
+    GetCurrentProcessId
+    GetCurrentProcess
+    K32GetProcessMemoryInfo
+    GetProcessTimes
+    GetPriorityClass
+    SetPriorityClass
+    GetSystemInfo
+    GlobalMemoryStatusEx
+    OutputDebugStringA
+    IsDebuggerPresent
+    RtlCaptureStackBackTrace
+    Sleep
+    CopyFileA
+    MoveFileA
+}
+
+library "KERNELBASE.dll"
+{
+    __chkstk
+}
+
+library "SHELL32.dll"
+{
+    CommandLineToArgvW
+}
+
+library "ucrtbase.dll"
+{
+    strlen
+    __C_specific_handler
+    memset
+    memcpy
+    memmove
+    fmaf
+}

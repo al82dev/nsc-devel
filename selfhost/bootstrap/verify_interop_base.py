@@ -20,5 +20,5 @@ def main():
             artifacts[ast_path.name]=sha(ast_path);artifacts[object_path.name]=sha(object_path);checks.append({"profile":profile,"routes":contract["routes"]})
         args.report.write_text(json.dumps({"schema":"nativesharp-selfhost-sh33-report","version":1,"gate":"SH33","status":"passed","checks":checks,"artifacts":dict(sorted(artifacts.items())),"problems":[]},indent=2,sort_keys=True)+"\n")
     except (OSError,ValueError,KeyError,json.JSONDecodeError) as error: print(f"verify_interop_base: error: {error}",file=sys.stderr);return 1
-    print("SH33 ref/out/in, extern C and basic varargs verified across O0-O3 with both linkers");return 0
+    print("SH33 ref/out/in, extern C and basic varargs verified across O0-O3 with NSLink");return 0
 if __name__=="__main__": raise SystemExit(main())

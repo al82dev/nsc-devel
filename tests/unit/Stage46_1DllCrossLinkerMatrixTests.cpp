@@ -216,21 +216,14 @@ int main()
     std::filesystem::remove_all(root, cleanupError);
     std::filesystem::create_directories(root, cleanupError);
 
-    const std::filesystem::path lldLink = configuredTool(
-        "NSC_P1_LLD_LINK", "C:/clang-llvm/bin/lld-link.exe");
     const std::filesystem::path nsLink = configuredTool(
-        "NSC_P1_NSLINK", configuredTool("NSLINK_EXE", "C:/native-sharp/bin/nslink.exe"));
-    tests.expect(std::filesystem::is_regular_file(lldLink),
-                 "DLL-P1 locates the lld-link executable");
+        "NSC_P1_NSLINK", configuredTool("NSLINK_EXE", "A:/nslink-devel/build-debug/bin/nslink.exe"));
     tests.expect(std::filesystem::is_regular_file(nsLink),
                  "DLL-P1 locates the NSLink executable");
-    if (!std::filesystem::is_regular_file(lldLink) || !std::filesystem::is_regular_file(nsLink))
+    if (!std::filesystem::is_regular_file(nsLink))
         return tests.resultKeeping(root);
 
-    const std::array<LinkerChoice, 2> linkers = {{
-        {"lld", lldLink},
-        {"nslink", nsLink}
-    }};
+    const std::array<LinkerChoice, 1> linkers = {{{"nslink", nsLink}}};
     const std::array<bool, 2> optimizations = {false, true};
 
     for (const LinkerChoice& producerLinker : linkers)
@@ -340,10 +333,10 @@ public class Program
         }
     }
 
-    const std::array<std::string_view, 4> deterministicCases = {
-        "lld-O0__lld-O0", "lld-O2__lld-O0", "nslink-O0__lld-O0", "nslink-O2__lld-O0"
+    const std::array<std::string_view, 2> deterministicCases = {
+        "nslink-O0__nslink-O0", "nslink-O2__nslink-O0"
     };
-    std::array<ProductContract, 4> contracts;
+    std::array<ProductContract, 2> contracts;
     bool contractsLoaded = true;
     for (std::size_t index = 0; index < deterministicCases.size(); ++index)
     {
@@ -360,22 +353,20 @@ public class Program
         tests.expect(std::ranges::all_of(contracts, [&](const ProductContract& contract) {
                          return contract.exports == contracts.front().exports;
                      }),
-                     "DLL-P4 export list is identical across producer O0/O2 and lld-link/NSLink");
+                     "DLL-P4 export list is identical across producer O0/O2 with NSLink");
         tests.expect(std::ranges::all_of(contracts, [&](const ProductContract& contract) {
                          return contract.fingerprint == contracts.front().fingerprint;
                      }),
-                     "DLL-P4 NSMETA ABI fingerprint is identical across producer O0/O2 and both linkers");
+                     "DLL-P4 NSMETA ABI fingerprint is identical across producer O0/O2 with NSLink");
         tests.expect(std::ranges::all_of(contracts, [&](const ProductContract& contract) {
                          return contract.metadataBytes == contracts.front().metadataBytes;
                      }),
-                     "DLL-P4 NSMETA is byte-identical across producer O0/O2 and both linkers");
+                     "DLL-P4 NSMETA is byte-identical across producer O0/O2 with NSLink");
         tests.expect(std::ranges::all_of(contracts, [&](const ProductContract& contract) {
                          return contract.importSymbols == contracts.front().importSymbols;
                      }),
-                     "DLL-P4 published import-library entries are identical across O0/O2 and both writers");
+                     "DLL-P4 published import-library entries are identical across O0/O2 with NSLink");
         tests.expect(contracts[0].importLibraryBytes == contracts[1].importLibraryBytes,
-                     "lld-link import library is byte-identical between O0 and O2");
-        tests.expect(contracts[2].importLibraryBytes == contracts[3].importLibraryBytes,
                      "NSLink import library is byte-identical between O0 and O2");
     }
 

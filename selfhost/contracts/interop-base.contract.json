@@ -2,7 +2,7 @@
   "schema": "nativesharp-selfhost-interop-base-contract",
   "version": 1,
   "profiles": ["O0", "O1", "O2", "O3"],
-  "routes": ["lld", "nslink"],
+  "routes": ["nslink"],
   "expected_exit_code": 42,
   "required_ast_fragments": ["pass:ref", "pass:out", "pass:in", "variadic=true"],
   "required_object_fragments": ["GetProcessHeap", "VariadicBase", "Transform"],

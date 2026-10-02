@@ -114,7 +114,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn(str((self.root / "forbidden").resolve()), rejected)
         self.assertNotIn(str((allowed / "build").resolve()), rejected)
 
-    def test_baseline_plan_defaults_to_nslink_with_selective_lld_diagnostics(self) -> None:
+    def test_baseline_plan_defaults_to_nslink_without_lld_diagnostics(self) -> None:
         plan = nscbuilder.make_baseline_plan(4)
         self.assertEqual(Path(plan.prefix), Path(r"A:\native-sharp-3.0-baseline"))
         self.assertEqual(Path(plan.deploy_prefix), Path(r"C:\native-sharp"))
@@ -125,7 +125,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertFalse(plan.sync_libraries)
         self.assertEqual(plan.optimizations, ["-O0", "-O1", "-O2", "-O3"])
         self.assertEqual(plan.linkers, ["NSLink"])
-        self.assertTrue(plan.lld_diagnostics)
+        self.assertFalse(plan.lld_diagnostics)
         self.assertTrue(plan.run_ctest)
         self.assertTrue(plan.run_cases)
         self.assertTrue(plan.run_triage)
@@ -167,7 +167,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertFalse(plan.lld_diagnostics)
 
     def test_lld_diagnostic_repeats_only_exact_nslink_failures(self) -> None:
-        plan = nscbuilder.make_baseline_plan(2)
+        plan = nscbuilder.make_baseline_plan(2, lld_diagnostics=True)
         worker = nscbuilder.PipelineWorker(plan, [])
         worker.run_dir = self.root / "diagnostic-run"
         worker.run_dir.mkdir()
@@ -466,6 +466,16 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn('install(FILES "${NSC_LLVM_C_RUNTIME}" DESTINATION bin)', cmake)
         self.assertIn("NSC_ALLOW_LLVM_C=TRUE", cmake)
 
+    def test_compiler_runtime_is_pinned_to_vs2026_static_x64_toolset(self) -> None:
+        cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertIn('-version "[18.0,19.0)"', cmake)
+        self.assertIn('set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")', cmake)
+        self.assertIn('set(NSC_VS2026_RUNTIME_ROOT "A:/vc2026-runtime"', cmake)
+        self.assertIn('set(NSC_VS2026_CRT_RELEASE_DIR "${NSC_VS2026_RUNTIME_ROOT}/lib/x64/release")', cmake)
+        self.assertIn('set(NSC_VS2026_CRT_DEBUG_DIR "${NSC_VS2026_RUNTIME_ROOT}/lib/x64/debug")', cmake)
+        self.assertIn('set(NSC_VS2026_CRT_LIBRARY_DIR "${NSC_VS2026_CRT_RELEASE_DIR}")', cmake)
+        self.assertIn('target_link_options(nsc PRIVATE "/libpath:${NSC_VS2026_CRT_LIBRARY_DIR}")', cmake)
+
     def test_performance_baseline_uses_the_selected_compiler_installation(self) -> None:
         module = runpy.run_path(str(ROOT / "tools/nsc_performance_baseline.py"))
         compiler = self.root / "selected-prefix" / "bin" / "nsc.exe"
@@ -617,15 +627,18 @@ class BootstrapInfrastructureTests(unittest.TestCase):
             (ROOT / "selfhost/contracts/llvm-c-api.contract.json").read_text(encoding="utf-8")
         )
         self.assertEqual(contract["schema"], "nativesharp-llvm-c-api-contract")
+        self.assertEqual(contract["version"], 2)
+        self.assertEqual(contract["linkage"], "static-llvm-components")
+        self.assertEqual(contract["forbidden_dynamic_library"], "LLVM-C.dll")
         self.assertEqual(contract["supported_llvm_major"], 23)
-        self.assertEqual(len(contract["nsc0_import_symbols"]), 219)
+        self.assertEqual(len(contract["audited_binding_symbols"]), 219)
         self.assertEqual(len(contract["bootstrap_symbols"]), 57)
         signature_source = ROOT / contract["signature_source"]
         enum_source = ROOT / contract["enum_source"]
         declared = verify_llvm_c_contract.declared_binding_symbols(signature_source)
         self.assertEqual(len(declared), 127)
         self.assertTrue(set(contract["bootstrap_symbols"]).issubset(declared))
-        audited = set(contract["nsc0_import_symbols"]) | set(contract["bootstrap_extension_symbols"])
+        audited = set(contract["audited_binding_symbols"]) | set(contract["bootstrap_extension_symbols"])
         self.assertTrue(set(declared).issubset(audited))
         self.assertEqual(
             verify_llvm_c_contract.digest(signature_source),
@@ -644,7 +657,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         )
         self.assertEqual(contract["schema"], "nativesharp-selfhost-low-level-parity-contract")
         self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
-        self.assertEqual(contract["linkers"], ["lld", "nslink"])
+        self.assertEqual(contract["linkers"], ["nslink"])
         self.assertEqual(len(contract["positive_projects"]), 5)
         self.assertEqual(len(contract["negative_projects"]), 4)
         self.assertIn("__chkstk", contract["imports"]["ntdll.dll"])
@@ -666,8 +679,8 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         )
         self.assertEqual(contract["schema"], "nativesharp-selfhost-interop-parity-contract")
         self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
-        self.assertEqual(contract["linkers"], ["lld", "nslink"])
-        self.assertEqual(contract["expected_executions_per_profile"], 4)
+        self.assertEqual(contract["linkers"], ["nslink"])
+        self.assertEqual(contract["expected_executions_per_profile"], 2)
         for boundary in ("C", "C++", "COM-vtable", "callback", "aggregate-parameter",
                          "aggregate-return", "varargs", "vectorcall", "DLL"):
             self.assertIn(boundary, contract["boundaries"])
@@ -791,7 +804,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["schema"], "nativesharp-selfhost-llvm-backend-contract")
         self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
         self.assertEqual(contract["artifacts"], ["object", "assembly"])
-        self.assertEqual(contract["linkers"], ["lld-link", "NSLink"])
+        self.assertEqual(contract["linkers"], ["NSLink"])
         self.assertEqual(contract["expected_exit_code"], 42)
         self.assertEqual(len(contract["covered_work_items"]), 14)
 
@@ -805,7 +818,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         contract = json.loads((ROOT / "selfhost/contracts/project-driver.contract.json").read_text())
         self.assertEqual(contract["schema"], "nativesharp-selfhost-project-driver-contract")
         self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
-        self.assertEqual(contract["linkers"], ["lld-link", "NSLink"])
+        self.assertEqual(contract["linkers"], ["NSLink"])
         self.assertEqual(contract["metadata_versions"], [1, 2])
         self.assertEqual(len(contract["work_items"]), 14)
 
@@ -815,7 +828,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["generation"], "nsc1")
         self.assertEqual(contract["built_by"], "nsc0")
         self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
-        self.assertEqual(contract["linkers"], ["lld-link", "NSLink"])
+        self.assertEqual(contract["linkers"], ["NSLink"])
         self.assertEqual(len(contract["source_roots"]), 5)
         self.assertEqual(len(contract["work_items"]), 12)
 
@@ -839,7 +852,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertTrue(contract["source_derived_codegen"])
         self.assertFalse(contract["image_replay"])
         self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
-        self.assertEqual(contract["linkers"], ["lld-link", "NSLink"])
+        self.assertEqual(contract["linkers"], ["NSLink"])
         self.assertEqual(len(contract["work_items"]), 11)
 
     def test_sh41_generation_audits_seed_isolation_and_fixed_point(self) -> None:
@@ -848,6 +861,13 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn('"nsc0_invocations_during_generation": 0', verifier)
         self.assertIn('"source_derived_codegen": True', verifier)
         self.assertIn("nsc2_object.read_bytes() == nsc3_object.read_bytes()", verifier)
+        self.assertIn('nsc2-{lower}-nslink.exe', verifier)
+        self.assertIn('nsc3-{lower}-nslink.exe', verifier)
+        self.assertNotIn('nsc2_images["lld"]', verifier)
+        cmake_sources = "\n".join(
+            path.read_text(encoding="utf-8") for path in (ROOT / "cmake").glob("*.cmake")
+        )
+        self.assertNotIn("nsc2-o0-lld.exe", cmake_sources)
         self.assertIn("PROCESS_AUDIT_INTERVAL_SECONDS = 0.010", verifier)
         self.assertNotIn("time.sleep(0.001)", verifier)
         self.assertNotIn("source-attested-image-replay", verifier)
@@ -859,7 +879,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["required_machines"], 1)
         self.assertEqual(len(contract["variants"]), 4)
         self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
-        self.assertEqual(contract["linkers"], ["lld", "nslink"])
+        self.assertEqual(contract["linkers"], ["nslink"])
         verifier = (ROOT / "selfhost/bootstrap/verify_cross_machine_determinism.py").read_text()
         self.assertIn("requirement_met = peer is not None or required_machines == 1", verifier)
         source_graph = (ROOT / "selfhost/nsc/Projects/SourceGraph.ns").read_text()
@@ -1007,8 +1027,8 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         contract = json.loads((ROOT / "selfhost/contracts/specialized-code.contract.json").read_text())
         self.assertEqual(contract["schema"], "nativesharp-selfhost-specialized-code-contract")
         self.assertEqual(contract["profiles"], ["O0", "O1", "O2", "O3"])
-        self.assertEqual(contract["linkers"], ["lld", "nslink"])
-        self.assertEqual(contract["expected_executions"], 8)
+        self.assertEqual(contract["linkers"], ["nslink"])
+        self.assertEqual(contract["expected_executions"], 4)
         for surface in ("vectors", "matrices", "half", "packed-formats", "hardware-intrinsics",
                         "inline-assembly", "floating-point-modes", "NSAsm"):
             self.assertIn(surface, contract["surfaces"])

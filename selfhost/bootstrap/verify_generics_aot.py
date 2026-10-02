@@ -16,5 +16,5 @@ def main():
             checks.append({"profile":profile,"routes":contract["routes"]})
         args.report.write_text(json.dumps({"schema":"nativesharp-selfhost-sh34-report","version":1,"gate":"SH34","status":"passed","checks":checks,"artifacts":dict(sorted(artifacts.items())),"problems":[]},indent=2,sort_keys=True)+"\n")
     except (OSError,ValueError,KeyError,json.JSONDecodeError) as error: print(f"verify_generics_aot: error: {error}",file=sys.stderr);return 1
-    print("SH34 canonical generic AOT identity verified across O0-O3 with both linkers");return 0
+    print("SH34 canonical generic AOT identity verified across O0-O3 with NSLink");return 0
 if __name__=="__main__": raise SystemExit(main())

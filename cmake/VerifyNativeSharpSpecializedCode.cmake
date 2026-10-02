@@ -1,11 +1,11 @@
 if(NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SOURCE_ROOT OR NOT DEFINED OUTPUT_DIR OR
    NOT DEFINED SH41_OUTPUT_DIR OR NOT DEFINED LINKER_EXECUTABLE OR
    NOT DEFINED NSLINK_EXECUTABLE OR NOT DEFINED NSASM_EXECUTABLE)
-    message(FATAL_ERROR "SH47 requires Python, roots, SH41 products, LLD, NSLink and NSAsm")
+    message(FATAL_ERROR "SH47 requires Python, roots, SH41 products, LLVM tools, NSLink and NSAsm")
 endif()
 
 get_filename_component(llvm_bin "${LINKER_EXECUTABLE}" DIRECTORY)
-set(candidate "${SH41_OUTPUT_DIR}/nsc2-o0-lld.exe")
+set(candidate "${SH41_OUTPUT_DIR}/nsc2-o0-nslink.exe")
 set(llvm_objdump "${llvm_bin}/llvm-objdump.exe")
 foreach(required IN ITEMS PYTHON_EXECUTABLE candidate LINKER_EXECUTABLE NSLINK_EXECUTABLE
                           NSASM_EXECUTABLE llvm_objdump)
@@ -21,7 +21,7 @@ execute_process(COMMAND "${PYTHON_EXECUTABLE}" -B
     --source-root "${SOURCE_ROOT}"
     --contract "${SOURCE_ROOT}/selfhost/contracts/specialized-code.contract.json"
     --compiler "${candidate}" --nsasm "${NSASM_EXECUTABLE}"
-    --nslink "${NSLINK_EXECUTABLE}" --lld-link "${LINKER_EXECUTABLE}"
+    --nslink "${NSLINK_EXECUTABLE}"
     --llvm-objdump "${llvm_objdump}" --output "${OUTPUT_DIR}"
     --report "${OUTPUT_DIR}/sh47-report.json"
     RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)

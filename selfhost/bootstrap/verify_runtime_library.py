@@ -38,7 +38,6 @@ def main() -> int:
     parser.add_argument("--seed-compiler", type=Path, required=True)
     parser.add_argument("--runtime-library", type=Path, required=True)
     parser.add_argument("--runtime-abi", type=Path, required=True)
-    parser.add_argument("--lld-link", type=Path, required=True)
     parser.add_argument("--nslink", type=Path, required=True)
     parser.add_argument("--llvm-ar", type=Path, required=True)
     parser.add_argument("--llvm-nm", type=Path, required=True)
@@ -125,15 +124,10 @@ def main() -> int:
         libraries = [args.runtime_library, *args.import_library]
         for linker in contract["linkers"]:
             executable = output / f"runtime-smoke-{lower}-{linker}.exe"
-            if linker == "lld":
-                link = [str(args.lld_link), str(smoke_object), *map(str, libraries),
-                        "/entry:mainCRTStartup", "/subsystem:console", "/machine:x64",
-                        "/nodefaultlib", f"/out:{executable}"]
-            else:
-                link = [str(args.nslink), "--link", str(smoke_object)]
-                for library in libraries:
-                    link += ["--lib", str(library)]
-                link += ["--entry", "mainCRTStartup", "-o", str(executable)]
+            link = [str(args.nslink), "--link", str(smoke_object)]
+            for library in libraries:
+                link += ["--lib", str(library)]
+            link += ["--entry", "mainCRTStartup", "-o", str(executable)]
             linked, elapsed = run(link, root)
             timings[f"link_{lower}_{linker}"] = round(elapsed, 6)
             if require(linked, f"{profile} {linker} link", failures):

@@ -4,7 +4,7 @@
   "gate": "SH23",
   "source": "selfhost/tests/codegen/source-pointers.ns",
   "profiles": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld", "nslink"],
+  "linkers": ["nslink"],
   "expected_exit_code": 42,
   "required_symbols": ["__nativesharp_10617594450780811446_Sum", "__nativesharp_3347706242812374255_Main"],
   "required_llvm_api": ["LLVMBuildArrayAlloca", "LLVMBuildGEP2", "LLVMBuildLoad2", "LLVMBuildStore", "LLVMConstNull"],

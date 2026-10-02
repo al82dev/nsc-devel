@@ -1,7 +1,7 @@
 if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR
    NOT DEFINED SOURCE_ROOT OR NOT DEFINED OUTPUT_DIR OR
    NOT DEFINED LINKER_EXECUTABLE OR NOT DEFINED NSLINK_EXECUTABLE)
-    message(FATAL_ERROR "SH41 requires nsc0, Python, source/output roots, LLD and NSLink")
+    message(FATAL_ERROR "SH41 requires nsc0, Python, source/output roots, LLVM libraries and NSLink")
 endif()
 
 foreach(required IN ITEMS NSC_EXECUTABLE PYTHON_EXECUTABLE LINKER_EXECUTABLE NSLINK_EXECUTABLE)
@@ -58,7 +58,6 @@ execute_process(
         --source-root "${SOURCE_ROOT}"
         --nsc0 "${NSC_EXECUTABLE}"
         --nsc1 "${nsc1}"
-        --linker "${LINKER_EXECUTABLE}"
         --nslink "${NSLINK_EXECUTABLE}"
         --runtime-library "${runtime_library}"
         --llvm-library "${llvm_library}"

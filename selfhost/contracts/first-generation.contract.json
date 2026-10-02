@@ -4,7 +4,7 @@
   "generation": "nsc1",
   "built_by": "nsc0",
   "optimizations": ["O0", "O1", "O2", "O3"],
-  "linkers": ["lld-link", "NSLink"],
+  "linkers": ["NSLink"],
   "source_roots": [
     "selfhost/nsc",
     "lib/NativeSharp.Core",

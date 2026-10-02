@@ -62,7 +62,7 @@ def main() -> int:
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"verify_source_integer_widths: error: {error}", file=sys.stderr)
         return 1
-    print("SH22 integer widths verified across O0-O3 and both linkers")
+    print("SH22 integer widths verified across O0-O3 with NSLink")
     return 0
 
 
