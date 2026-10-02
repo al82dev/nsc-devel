@@ -43,6 +43,7 @@ std::string expectedListText() {
   return "NSFILES 1\n"
          "bin/nsc.exe\n"
          "lib/Core/A.ns\n"
+         "sdk/win64/nativesharp-runtime.nsimports\n"
          "share/nativesharp/spec/spec.md\n"
          "share/nativesharp/toolchain/NativeSharpInstallation.files\n"
          "share/nativesharp/toolchain/NativeSharpToolchain.contract\n";
@@ -51,6 +52,8 @@ std::string expectedListText() {
 bool populatePackage(const std::filesystem::path &prefix) {
   return writeFile(prefix / "bin/nsc.exe", "compiler") &&
          writeFile(prefix / "lib/Core/A.ns", "alpha") &&
+         writeFile(prefix / "sdk/win64/nativesharp-runtime.nsimports",
+                   "KERNEL32.dll:ExitProcess\n") &&
          writeFile(prefix / "share/nativesharp/spec/spec.md",
                    "specification") &&
          writeFile(
@@ -191,6 +194,17 @@ int main() {
   std::filesystem::remove(prefix / "lib/Core/stale.ns", filesystemError);
   tests.expect(driver::verifyInstallationManifest(prefix, manifest, error),
                "restored package returns to a valid state");
+  tests.expect(writeFile(prefix / "sdk/win64/stale.nsimports", "stale"),
+               "unexpected SDK residue fixture is written");
+  tests.expect(
+      !driver::verifyInstallationManifest(prefix, manifest, error) &&
+          error.find("unexpected installed file 'sdk/win64/stale.nsimports'") !=
+              std::string::npos,
+      "residue inside the managed Win64 SDK tree is rejected");
+  std::filesystem::remove(prefix / "sdk/win64/stale.nsimports",
+                          filesystemError);
+  tests.expect(driver::verifyInstallationManifest(prefix, manifest, error),
+               "SDK cleanup restores the package to a valid state");
   std::filesystem::remove(prefix / "lib/NativeAsmCore.lib", filesystemError);
 
   const std::filesystem::path malformed = evidence / "malformed.manifest";

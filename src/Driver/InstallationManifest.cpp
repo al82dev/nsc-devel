@@ -30,6 +30,7 @@ void removeCarriageReturn(std::string &line) {
 
 bool isManagedPath(std::string_view path) {
   return path.starts_with("bin/") || path.starts_with("lib/") ||
+         path.starts_with("sdk/win64/") ||
          path.starts_with("share/nativesharp/");
 }
 
@@ -232,7 +233,7 @@ bool rejectUnexpectedFiles(const std::filesystem::path &prefix,
   // this package actually selected. This keeps NSLink/NativeAsm executables and
   // archives from becoming accidental property of the compiler package.
   std::set<std::string> roots = {"share/nativesharp/spec",
-                                 "share/nativesharp/toolchain"};
+                                 "share/nativesharp/toolchain", "sdk/win64"};
   for (const std::string &relative : expected) {
     if (!relative.starts_with("lib/")) {
       continue;
