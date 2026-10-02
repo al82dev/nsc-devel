@@ -126,7 +126,7 @@ def main() -> int:
         require(self_test.returncode == 42, "nsc1 basic self-test failed")
 
         missing = arguments.output_dir / "missing source.ns"
-        nsc0_missing, _ = run(arguments.nsc0, str(missing))
+        nsc0_missing, _ = run(arguments.nsc0, "--no-banner", str(missing))
         nsc1_missing, timings["diagnostic"] = run(arguments.nsc1_a, str(missing))
         require((nsc0_missing.returncode, nsc0_missing.stdout, nsc0_missing.stderr) ==
                 (nsc1_missing.returncode, nsc1_missing.stdout, nsc1_missing.stderr),

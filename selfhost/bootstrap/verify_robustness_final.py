@@ -82,7 +82,10 @@ def main() -> int:
                   "-o", str(occupied)], root)
     if atomic.returncode == 0 or not occupied.is_dir() or any(occupied.iterdir()):
         failures.append("failed output publication was not atomic")
-    shutil.rmtree(occupied)
+    if occupied.is_dir():
+        shutil.rmtree(occupied)
+    else:
+        occupied.unlink(missing_ok=True)
 
     first = output / "repeat-a.obj"
     second = output / "repeat-b.obj"

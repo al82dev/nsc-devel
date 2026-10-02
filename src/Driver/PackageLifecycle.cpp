@@ -43,7 +43,8 @@ bool isCanonicalManagedPath(std::string_view text)
 {
     if (text.empty() || text.front() == '/' || text.find('\\') != std::string_view::npos ||
         text.find('|') != std::string_view::npos || text.find(':') != std::string_view::npos ||
-        !(text.starts_with("bin/") || text.starts_with("lib/") || text.starts_with("share/nativesharp/")))
+        !(text.starts_with("bin/") || text.starts_with("lib/") || text.starts_with("sdk/win64/") ||
+            text.starts_with("share/nativesharp/")))
     {
         return false;
     }

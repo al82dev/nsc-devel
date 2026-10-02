@@ -105,6 +105,21 @@ bool exists(const std::filesystem::path& path, bool& value, std::string& error)
     return failWin32("artifact inspection", path, code, error);
 }
 
+bool destinationCanBeReplaced(const std::filesystem::path& path, std::string& error)
+{
+    const DWORD attributes = ::GetFileAttributesW(extendedPath(path).c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES)
+    {
+        const DWORD code = ::GetLastError();
+        if (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND) return true;
+        return failWin32("artifact destination preflight", path, code, error);
+    }
+    if ((attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) == 0) return true;
+    error = "artifact destination preflight failed for '" + pathText(path) +
+        "': destination-not-regular";
+    return false;
+}
+
 void removeNoThrow(const std::filesystem::path& path) noexcept
 {
     if (path.empty()) return;
@@ -117,6 +132,22 @@ bool ensureDirectory(const std::filesystem::path& directory, std::string& error)
     std::filesystem::create_directories(directory, filesystemError);
     if (!filesystemError) return true;
     error = "output directory creation failed for '" + pathText(directory) + "': " + filesystemError.message();
+    return false;
+}
+bool destinationCanBeReplaced(const std::filesystem::path& path, std::string& error)
+{
+    std::error_code filesystemError;
+    const std::filesystem::file_status status = std::filesystem::symlink_status(path, filesystemError);
+    if (filesystemError == std::errc::no_such_file_or_directory) return true;
+    if (filesystemError)
+    {
+        error = "artifact destination preflight failed for '" + pathText(path) + "': " +
+            filesystemError.message();
+        return false;
+    }
+    if (!std::filesystem::exists(status) || std::filesystem::is_regular_file(status)) return true;
+    error = "artifact destination preflight failed for '" + pathText(path) +
+        "': destination-not-regular";
     return false;
 }
 void removeNoThrow(const std::filesystem::path& path) noexcept
@@ -282,6 +313,11 @@ bool ArtifactTransaction::commit(std::string& error)
             return false;
         }
         if (!ensureDirectory(entry.destination.parent_path(), error))
+        {
+            cleanupPrepared();
+            return false;
+        }
+        if (!destinationCanBeReplaced(entry.destination, error))
         {
             cleanupPrepared();
             return false;

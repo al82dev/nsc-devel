@@ -32,6 +32,17 @@ def load_log(path: Path, failures: list[str]) -> dict[str, object]:
     return value
 
 
+def load_time_trace(path: Path, failures: list[str]) -> dict[str, object]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exception:
+        failures.append(f"unreadable JSON time trace {path.name}: {exception}")
+        return {}
+    if value.get("schema") != "nativesharp-time-trace" or value.get("version") != 1:
+        failures.append(f"invalid time trace schema in {path.name}")
+    return value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-root", type=Path, required=True)
@@ -81,8 +92,9 @@ def main() -> int:
 
     trace_path = output / "time-trace.json"
     trace = run([str(args.compiler), "--version", f"--time-trace={trace_path}"], root)
-    trace_data = load_log(trace_path, failures)
-    if trace.returncode != 0 or "timing total_ms=" not in str(trace_data.get("stdout", "")):
+    trace_data = load_time_trace(trace_path, failures)
+    if (trace.returncode != 0 or trace_data.get("exit_code") != 0 or
+            "timing total_ms=" not in trace.stdout):
         failures.append("time trace did not retain measured compiler output")
 
     selfhost_missing = output / "selfhost-missing.ns"

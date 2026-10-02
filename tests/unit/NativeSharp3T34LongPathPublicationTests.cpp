@@ -195,6 +195,21 @@ int main()
             readFile(first) == "old-first" && readFile(second) == "old-second",
         "a locked member aborts the set and restores every previous artifact");
 
+    const fs::path occupiedDestination = root / "occupied.obj";
+    fs::create_directory(occupiedDestination, ignored);
+    ArtifactTransaction occupiedTransaction;
+    fs::path occupiedStage;
+    std::string occupiedError;
+    const bool occupiedStaged =
+        occupiedTransaction.add(occupiedDestination, occupiedStage, occupiedError);
+    if (occupiedStaged) writeFile(occupiedStage, "must-not-replace-directory");
+    const bool occupiedCommitted =
+        occupiedStaged && occupiedTransaction.commit(occupiedError);
+    tests.expect(!occupiedCommitted && fs::is_directory(occupiedDestination) &&
+            fs::is_empty(occupiedDestination) &&
+            occupiedError.find("destination-not-regular") != std::string::npos,
+        "transaction refuses to replace an occupied directory with a file");
+
     const fs::path unicodeDestination =
         root / L"paquete_\u00e1\u00e9_\u8fd0\u884c" / L"resultado.txt";
     ArtifactTransaction unicodeTransaction;

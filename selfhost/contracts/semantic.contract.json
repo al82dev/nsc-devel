@@ -37,7 +37,7 @@
     {
       "source": "examples/tutorial_17_delegates_y_lambdas/Main.ns",
       "action": "--dump-sema",
-      "contains": ["LambdaExpression : lambda rvalue", "IdentifierExpression \"x\" : lambda-parameter lvalue modifiable addressable symbol=x"]
+      "contains": ["LambdaExpression : lambda value", "IdentifierExpression \"x\" : lambda-parameter place modifiable addressable symbol=x"]
     },
     {
       "source": "tests/interop_contract/c2_12_union/Main.ns",

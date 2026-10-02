@@ -851,10 +851,7 @@ if(_nsc_test_compiler_es_ruta AND NOT EXISTS "${NSC_TEST_COMPILER}")
 endif()
 
 set(NSC_TEST_NSASM "" CACHE FILEPATH
-    "Ejecutable NSAsm para gates de codigo especializado (vacio = <prefix>/bin/nsasm.exe)")
-if(NSC_TEST_NSASM STREQUAL "")
-    set(NSC_TEST_NSASM "${CMAKE_INSTALL_PREFIX}/bin/nsasm.exe")
-endif()
+    "Ejecutable NSAsm opcional para gates de integracion de codigo especializado")
 
 if(NSC_BUILD_TESTS)
     enable_testing()
@@ -1634,14 +1631,18 @@ if(NSC_BUILD_TESTS)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpInteropParity.cmake")
     set_tests_properties(nsc.selfhost.interop-parity PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.low-level-parity)
 
-    add_test(NAME nsc.selfhost.specialized-code COMMAND "${CMAKE_COMMAND}"
-        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
-        "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh47"
-        "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
-        "-DNSASM_EXECUTABLE=${NSC_TEST_NSASM}"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSpecializedCode.cmake")
-    set_tests_properties(nsc.selfhost.specialized-code PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.interop-parity)
+    if(NSC_TEST_NSASM AND EXISTS "${NSC_TEST_NSASM}")
+        add_test(NAME nsc.selfhost.specialized-code COMMAND "${CMAKE_COMMAND}"
+            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh47"
+            "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
+            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSASM_EXECUTABLE=${NSC_TEST_NSASM}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSpecializedCode.cmake")
+        set_tests_properties(nsc.selfhost.specialized-code PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.interop-parity)
+    else()
+        message(STATUS "NSAsm integration gate SH47 is disabled; set NSC_TEST_NSASM to test the external assembler")
+    endif()
 
     add_test(NAME nsc.selfhost.runtime-library COMMAND "${CMAKE_COMMAND}"
         "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"

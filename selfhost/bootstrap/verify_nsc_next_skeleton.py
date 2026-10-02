@@ -89,8 +89,8 @@ def verify(
         require(self_test.returncode == 42 and "self-test passed" in self_test.stdout,
                 f"{optimization} Basic/Source/Diagnostics self-test failed")
 
-    legacy_missing = run(nsc0, str(missing))
-    legacy_unknown = run(nsc0, "--sh04-unknown-option")
+    legacy_missing = run(nsc0, "--no-banner", str(missing))
+    legacy_unknown = run(nsc0, "--no-banner", "--sh04-unknown-option")
     require(legacy_missing.returncode == 1, "nsc0 missing-file contract changed")
     require(legacy_unknown.returncode == 2, "nsc0 unknown-option contract changed")
 

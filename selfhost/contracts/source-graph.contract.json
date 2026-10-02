@@ -17,6 +17,7 @@
     "Basic/GenerationArena.ns",
     "Basic/Identifiers.ns",
     "Basic/StableHash.ns",
+    "Source/ComptimeProcessor.ns",
     "Source/SourceBuffer.ns",
     "Diagnostics/Diagnostics.ns",
     "Lexer/Lexer.ns",

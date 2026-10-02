@@ -58,12 +58,14 @@ bool createManifest(const std::filesystem::path &root,
     {
         list += "lib/Core/Old.ns\n";
     }
+    list += "sdk/win64/nativesharp-runtime.nsimports\n";
     list += "share/nativesharp/toolchain/NativeSharpInstallation.files\n";
 
     const std::filesystem::path listPath = root / "share/nativesharp/toolchain/NativeSharpInstallation.files";
     manifest = root / "share/nativesharp/toolchain/NativeSharpInstallation.manifest";
     if (!writeFile(root / "bin/nsc.exe", compilerBytes) || !writeFile(root / "lib/Core/Common.ns", commonBytes) ||
         !writeFile(root / "lib/Core/Changing.ns", changingBytes) ||
+        !writeFile(root / "sdk/win64/nativesharp-runtime.nsimports", "KERNEL32.dll:ExitProcess\n") ||
         (oldFile && !writeFile(root / "lib/Core/Old.ns", "retired")) ||
         (newFile && !writeFile(root / "lib/Core/New.ns", "added")) || !writeFile(listPath, list))
     {
@@ -114,7 +116,7 @@ int main()
         "two canonical installation manifests can be compared");
     tests.expect(comparison.reproducible, "build-id-only binary variation is explicitly reproducible");
     tests.expect(comparison.volatileEntries == 1, "only nsc.exe is classified as volatile in the fixture");
-    tests.expect(comparison.deterministicEntries == 4, "every remaining package entry is compared byte-for-byte");
+    tests.expect(comparison.deterministicEntries == 5, "every remaining package entry is compared byte-for-byte");
     tests.expect(comparison.differences == 0, "equivalent independent builds have no deterministic difference");
     tests.expect(comparison.report.starts_with("NSREPRO 1\n") &&
                      comparison.report.find("result=reproducible\n") != std::string::npos &&
