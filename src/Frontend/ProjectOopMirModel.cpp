@@ -3002,6 +3002,16 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         {
             return nullptr;
         }
+        // AggregateElement normally uses secondaryImmediate for its scalar byte width.  A
+        // childless AggregateElement owned by AggregateSpread is different: HIR already stored
+        // the source-relative byte offset there while `immediate` remains the destination offset.
+        // Restore that parent-specific meaning after lowering the descriptor; otherwise every
+        // field is copied from `sizeof(field)` (four for int) instead of offsets 0, 4, 8, ... .
+        if (node->kind == ProjectOopHirNodeKind::AggregateSpread &&
+            child->kind == ProjectOopHirNodeKind::AggregateElement && child->children.empty())
+        {
+            lowered->secondaryImmediate = child->secondaryIntegerValue;
+        }
         result->children.push_back(std::move(lowered));
     }
     return result;
