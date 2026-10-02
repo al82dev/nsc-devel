@@ -534,6 +534,16 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(report["status"], "passed")
         self.assertEqual(report["problems"], [])
 
+    def test_canonical_bootstrap_lock_tracks_nslink_3(self) -> None:
+        lock = json.loads(
+            (ROOT / "selfhost" / "bootstrap" / "bootstrap.lock").read_text(encoding="utf-8")
+        )
+        artifacts = {item["id"]: item for item in lock["artifacts"]}
+        nslink = artifacts["nslink"]
+        self.assertEqual(nslink["version_args"], ["--version"])
+        self.assertEqual(nslink["version_contains"], "NSLink 3.0.0")
+        self.assertRegex(nslink["sha256"], r"^[0-9a-f]{64}$")
+
     def test_run_bootstrap_lock_captures_selected_artifacts_only(self) -> None:
         nsc0 = self.root / "nsc0.exe"
         nslink = self.root / "nslink.exe"

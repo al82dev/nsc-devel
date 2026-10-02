@@ -41,9 +41,9 @@
       "id": "nslink",
       "path": "${NSLINK_EXE}",
       "state": "locked",
-      "sha256": "acc4d5042cf9ad334346b957bcba32c452a3abb3cb2809ea0a5e3a8670b05c1a",
+      "sha256": "2e9af3a605b1954f900d3c3fc0d0e1c90e711fce081e19f40c6f89aa7f8f73dd",
       "version_args": ["--version"],
-      "version_contains": "NSLink 0.1.0"
+      "version_contains": "NSLink 3.0.0"
     },
     {
       "id": "python",
