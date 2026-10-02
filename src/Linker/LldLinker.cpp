@@ -158,20 +158,68 @@ std::vector<std::filesystem::path> pathCandidates(std::string_view fileName)
     return result;
 }
 
-std::filesystem::path findLldLink()
+std::string executableName(std::filesystem::path executable)
 {
-    const std::string overridePath = getEnvironmentVariable("NSC_LLD_LINK");
+    std::string name = executable.filename().string();
+    std::ranges::transform(name, name.begin(), [](const unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return name;
+}
+
+bool isNsLinkExecutable(const std::filesystem::path& executable)
+{
+    const std::string name = executableName(executable);
+    return name == "nslink" || name == "nslink.exe";
+}
+
+std::string linkerProductName(const std::filesystem::path& executable)
+{
+    const std::string name = executableName(executable);
+    if (name == "llvm-lib" || name == "llvm-lib.exe") return "llvm-lib";
+    return "NSLink";
+}
+
+std::filesystem::path currentExecutablePath()
+{
+#ifdef _WIN32
+    std::wstring buffer(32768, L'\0');
+    const DWORD length = GetModuleFileNameW(
+        nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (length != 0 && length < buffer.size())
+    {
+        buffer.resize(length);
+        return std::filesystem::path(buffer);
+    }
+#endif
+    return {};
+}
+
+std::filesystem::path findNsLink()
+{
+    const std::string overridePath = getEnvironmentVariable("NSC_LINKER");
     if (!overridePath.empty())
     {
         const std::filesystem::path candidate(overridePath);
-        if (std::filesystem::is_regular_file(candidate))
+        if (isNsLinkExecutable(candidate) && std::filesystem::is_regular_file(candidate))
         {
             return candidate;
         }
         return {};
     }
 
-    for (const std::string_view name : {std::string_view("lld-link"), std::string_view("lld-link.exe")})
+    const std::filesystem::path compiler = currentExecutablePath();
+    if (!compiler.empty())
+    {
+        const std::filesystem::path sibling = compiler.parent_path() / "nslink.exe";
+        std::error_code error;
+        if (std::filesystem::is_regular_file(sibling, error) && !error)
+        {
+            return sibling;
+        }
+    }
+
+    for (const std::string_view name : {std::string_view("nslink"), std::string_view("nslink.exe")})
     {
         for (const std::filesystem::path& candidate : pathCandidates(name))
         {
@@ -183,15 +231,6 @@ std::filesystem::path findLldLink()
         }
     }
     return {};
-}
-
-bool isLldLinkExecutable(const std::filesystem::path& executable)
-{
-    std::string name = executable.filename().string();
-    std::ranges::transform(name, name.begin(), [](const unsigned char character) {
-        return static_cast<char>(std::tolower(character));
-    });
-    return name == "lld-link" || name == "lld-link.exe";
 }
 
 std::filesystem::path findLibrarian(const std::filesystem::path& linker)
@@ -226,9 +265,9 @@ std::filesystem::path findLibrarian(const std::filesystem::path& linker)
         }
     }
 
-    // lld-link implements Microsoft's /lib mode. Alternative PE linkers are not assumed to be
+    // llvm-lib is selected independently. Alternative PE linkers are not assumed to be
     // librarians: treating an archive as an object was the NSLink gate failure fixed in 0.9.
-    return isLldLinkExecutable(linker) ? linker : std::filesystem::path{};
+    return {};
 }
 
 bool writeResponseFile(
@@ -239,7 +278,7 @@ bool writeResponseFile(
     std::ofstream stream(path, std::ios::binary | std::ios::trunc);
     if (!stream)
     {
-        error = "could not create lld-link response file: " + utf8Path(path);
+        error = "could not create linker response file: " + utf8Path(path);
         return false;
     }
     for (const std::string& argument : arguments)
@@ -248,7 +287,7 @@ bool writeResponseFile(
     }
     if (!stream)
     {
-        error = "failed while writing lld-link response file: " + utf8Path(path);
+        error = "failed while writing linker response file: " + utf8Path(path);
         return false;
     }
     return true;
@@ -302,15 +341,15 @@ LldLinker::LldLinker(std::filesystem::path executablePath) noexcept
 std::unique_ptr<LldLinker> LldLinker::discover(std::string& error)
 {
     error.clear();
-    const std::filesystem::path executable = findLldLink();
+    const std::filesystem::path executable = findNsLink();
     if (executable.empty())
     {
-        error = "lld-link was not found in PATH; set NSC_LLD_LINK to its executable path";
+        error = "NSLink was not found beside nsc.exe or in PATH; set NSC_LINKER to nslink.exe";
         return nullptr;
     }
     if (containsQuote(executable))
     {
-        error = "lld-link executable path contains an unsupported quote character";
+        error = "NSLink executable path contains an unsupported quote character";
         return nullptr;
     }
     return std::unique_ptr<LldLinker>(new LldLinker(executable));
@@ -336,7 +375,7 @@ bool LldLinker::runResponseFile(
     error.clear();
     if (containsQuote(responsePath) || containsQuote(logPath))
     {
-        error = "lld-link temporary paths contain an unsupported quote character";
+        error = "linker temporary paths contain an unsupported quote character";
         return false;
     }
 
@@ -355,7 +394,7 @@ bool LldLinker::runResponseFile(
         nullptr);
     if (logHandle == INVALID_HANDLE_VALUE)
     {
-        error = "could not create lld-link log file: " +
+        error = "could not create " + linkerProductName(executablePath_) + " log file: " +
             std::system_category().message(static_cast<int>(GetLastError()));
         return false;
     }
@@ -372,7 +411,7 @@ bool LldLinker::runResponseFile(
     {
         const DWORD lastError = GetLastError();
         CloseHandle(logHandle);
-        error = "could not open NUL for lld-link stdin: " +
+        error = "could not open NUL for " + linkerProductName(executablePath_) + " stdin: " +
             std::system_category().message(static_cast<int>(lastError));
         return false;
     }
@@ -414,7 +453,7 @@ bool LldLinker::runResponseFile(
 
     if (!created)
     {
-        error = "could not start lld-link: " +
+        error = "could not start " + linkerProductName(executablePath_) + ": " +
             std::system_category().message(static_cast<int>(createError));
         return false;
     }
@@ -425,7 +464,7 @@ bool LldLinker::runResponseFile(
         const DWORD waitError = GetLastError();
         CloseHandle(processInfo.hThread);
         CloseHandle(processInfo.hProcess);
-        error = "waiting for lld-link failed: " +
+        error = "waiting for " + linkerProductName(executablePath_) + " failed: " +
             std::system_category().message(static_cast<int>(waitError));
         return false;
     }
@@ -436,7 +475,7 @@ bool LldLinker::runResponseFile(
         const DWORD exitError = GetLastError();
         CloseHandle(processInfo.hThread);
         CloseHandle(processInfo.hProcess);
-        error = "could not obtain lld-link exit code: " +
+        error = "could not obtain " + linkerProductName(executablePath_) + " exit code: " +
             std::system_category().message(static_cast<int>(exitError));
         return false;
     }
@@ -448,7 +487,7 @@ bool LldLinker::runResponseFile(
     if (exitCode != 0)
     {
         std::ostringstream message;
-        message << "lld-link failed with process status " << exitCode;
+        message << linkerProductName(executablePath_) << " failed with process status " << exitCode;
         if (!diagnostic.empty())
         {
             message << ":\n" << diagnostic;
@@ -466,7 +505,7 @@ bool LldLinker::runResponseFile(
     if (status != 0)
     {
         std::ostringstream message;
-        message << "lld-link failed with process status " << status;
+        message << linkerProductName(executablePath_) << " failed with process status " << status;
         if (!diagnostic.empty())
         {
             message << ":\n" << diagnostic;
@@ -556,7 +595,8 @@ bool LldLinker::createImportLibrary(
     }
     if (!std::filesystem::is_regular_file(outputPath))
     {
-        error = "lld-link reported success but did not create the requested import library";
+        error = linkerProductName(executablePath_) +
+            " reported success but did not create the requested import library";
         return false;
     }
     return true;
@@ -581,7 +621,7 @@ bool LldLinker::createStaticLibrary(
     const std::filesystem::path librarianPath = findLibrarian(executablePath_);
     if (librarianPath.empty())
     {
-        error = "static-library generation requires llvm-lib when NSC_LLD_LINK selects a "
+        error = "static-library generation requires llvm-lib when NSC_LINKER selects a "
             "linker without /lib mode; set NSC_LLVM_LIB to the librarian executable";
         return false;
     }
@@ -636,7 +676,7 @@ bool LldLinker::createStaticLibrary(
         responsePath,
         logPath,
         error,
-        isLldLinkExecutable(librarianPath),
+        false,
         workingDirectory);
     if (!keepLinkTemporaries())
     {
@@ -650,7 +690,7 @@ bool LldLinker::createStaticLibrary(
     }
     if (!std::filesystem::is_regular_file(outputPath))
     {
-        error = "lld-link reported success but did not create the requested static library";
+        error = "llvm-lib reported success but did not create the requested static library";
         return false;
     }
     return true;
@@ -702,7 +742,6 @@ bool LldLinker::linkDynamicLibrary(
         responsePathArgument("/out:", outputPath)};
     // NSLink ya fija TimeDateStamp=0 y deliberadamente rechaza switches desconocidos. /Brepro
     // sólo pertenece a lld-link; allí elimina el reloj de pared sin reescribir el PE después.
-    if (isLldLinkExecutable(executablePath_)) arguments.push_back("/Brepro");
     if (!pdbPath.empty())
     {
         arguments.push_back("/debug:full");
@@ -747,7 +786,8 @@ bool LldLinker::linkDynamicLibrary(
     }
     if (!std::filesystem::is_regular_file(outputPath))
     {
-        error = "lld-link reported success but did not create the requested DLL";
+        error = linkerProductName(executablePath_) +
+            " reported success but did not create the requested DLL";
         std::filesystem::remove(outputPath, cleanupError);
         std::filesystem::remove(importLibraryPath, cleanupError);
         if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
@@ -755,7 +795,8 @@ bool LldLinker::linkDynamicLibrary(
     }
     if (!pdbPath.empty() && !std::filesystem::is_regular_file(pdbPath))
     {
-        error = "lld-link reported success but did not create the requested DLL PDB";
+        error = linkerProductName(executablePath_) +
+            " reported success but did not create the requested DLL PDB";
         std::filesystem::remove(outputPath, cleanupError);
         std::filesystem::remove(importLibraryPath, cleanupError);
         std::filesystem::remove(pdbPath, cleanupError);
@@ -763,7 +804,7 @@ bool LldLinker::linkDynamicLibrary(
     }
     if (exportSymbols.empty())
     {
-        // With no exported PE symbols there is no import library for lld-link to
+        // With no exported PE symbols there is no import library for the linker to
         // synthesize. LibraryReference still needs a validated COFF companion for
         // the NSMETA-only product, so archive one producer object without inventing
         // an import thunk or a callable export.
@@ -777,7 +818,8 @@ bool LldLinker::linkDynamicLibrary(
     }
     else if (!std::filesystem::is_regular_file(importLibraryPath))
     {
-        error = "lld-link reported success but did not create the requested import library";
+        error = linkerProductName(executablePath_) +
+            " reported success but did not create the requested import library";
         std::filesystem::remove(outputPath, cleanupError);
         if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
         return false;
@@ -835,7 +877,6 @@ bool LldLinker::linkExecutable(
         "/nxcompat",
         "/highentropyva",
         responsePathArgument("/out:", outputPath)};
-    if (isLldLinkExecutable(executablePath_)) arguments.push_back("/Brepro");
     if (!pdbPath.empty())
     {
         arguments.push_back("/debug:full");
@@ -872,13 +913,15 @@ bool LldLinker::linkExecutable(
     }
     if (!std::filesystem::is_regular_file(outputPath))
     {
-        error = "lld-link reported success but did not create the requested PE executable";
+        error = linkerProductName(executablePath_) +
+            " reported success but did not create the requested PE executable";
         return false;
     }
     if (!pdbPath.empty() && !std::filesystem::is_regular_file(pdbPath))
     {
         std::filesystem::remove(outputPath, cleanupError);
-        error = "lld-link reported success but did not create the requested PDB";
+        error = linkerProductName(executablePath_) +
+            " reported success but did not create the requested PDB";
         return false;
     }
     return true;

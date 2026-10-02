@@ -110,8 +110,8 @@ int main()
         "contract identifies every physical ABI sub-contract");
     tests.expect(contract.find("managed_delegate_cell_size=32\n") != std::string::npos,
         "contract fixes the managed delegate cell size");
-    tests.expect(contract.find("supported_linkers=lld-link,NSLink\n") != std::string::npos,
-        "contract names both supported linker routes");
+    tests.expect(contract.find("supported_linkers=NSLink\n") != std::string::npos,
+        "contract names NSLink as the only NativeSharp program linker");
     tests.expect(contract.find("certified_optimizations=O0,O2\n") != std::string::npos,
         "contract distinguishes certified optimization configurations");
     tests.expect(contract.find("artifact_kinds=exe,static-lib,dll\n") != std::string::npos,

@@ -148,103 +148,35 @@ class BootstrapInfrastructureTests(unittest.TestCase):
             cmake,
         )
 
-    def test_deep_baseline_plan_runs_both_linkers_without_a_third_diagnostic_pass(self) -> None:
-        plan = nscbuilder.make_baseline_plan(
-            4,
-            linkers=["NSLink", "lld-link"],
-        )
-        self.assertEqual(plan.linkers, ["NSLink", "lld-link"])
-        self.assertFalse(plan.lld_diagnostics)
-        self.assertTrue(plan.certify_baseline)
+    def test_baseline_rejects_lld_for_nativesharp_programs(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must be NSLink"):
+            nscbuilder.make_baseline_plan(4, linkers=["NSLink", "lld-link"])
 
     def test_reduced_baseline_plan_cannot_certify(self) -> None:
         plan = nscbuilder.make_baseline_plan(
             4,
-            linkers=["lld-link"],
+            linkers=["NSLink"],
             optimizations=["-O0"],
         )
-        self.assertEqual(plan.linkers, ["lld-link"])
+        self.assertEqual(plan.linkers, ["NSLink"])
         self.assertEqual(plan.optimizations, ["-O0"])
         self.assertFalse(plan.certify_baseline)
         self.assertFalse(plan.lld_diagnostics)
 
-    def test_lld_diagnostic_repeats_only_exact_nslink_failures(self) -> None:
-        plan = nscbuilder.make_baseline_plan(2, lld_diagnostics=True)
-        worker = nscbuilder.PipelineWorker(plan, [])
-        worker.run_dir = self.root / "diagnostic-run"
-        worker.run_dir.mkdir()
-        worker.metadata = {"id": "diagnostic", "stages": [], "cases": [], "failures": []}
-        worker.total_units = 10
-        worker.failed = 3
-        fixture = nscbuilder.CaseSpec("tests/probe.nsproj", "fixture-probe", 42, "fixture")
-        triage = nscbuilder.CaseSpec("tests/triage.nsproj", "triage-probe", 42, "bug triage")
-        with (
-            patch.object(worker, "_ctest", return_value=[]) as ctest,
-            patch.object(worker, "_run_case_group", return_value=[]) as cases,
-            patch.object(worker, "_triage", return_value=[]) as triage_run,
-        ):
-            worker._diagnose_nslink_failures(
-                ["nsc.failed.test"],
-                [(fixture, "-O0")],
-                [(triage, "-O2")],
-            )
-        ctest.assert_called_once_with(
-            "lld-link",
-            selected_ctests=["nsc.failed.test"],
-            build_dir=Path(plan.test_build_dirs["NSLink"]),
-            diagnostic=True,
-        )
-        cases.assert_called_once_with(
-            "lld-link", diagnostic_work=[(fixture, "-O0")]
-        )
-        triage_run.assert_called_once_with(
-            "lld-link", diagnostic_work=[(triage, "-O2")]
-        )
-        self.assertEqual(worker.failed, 3)
-        self.assertEqual(worker.total_units, 13)
-        self.assertEqual(
-            {row["result"] for row in worker.metadata["lld_diagnostics"]},
-            {"nslink-only"},
-        )
+    def test_lld_diagnostics_are_rejected_for_nativesharp_programs(self) -> None:
+        with self.assertRaisesRegex(ValueError, "not supported"):
+            nscbuilder.make_baseline_plan(2, lld_diagnostics=True)
 
-    def test_failed_lld_diagnostic_never_counts_as_a_new_primary_failure(self) -> None:
+    def test_result_channels_contain_only_nslink(self) -> None:
         plan = nscbuilder.make_baseline_plan(1, reuse_results=False)
         worker = nscbuilder.PipelineWorker(plan, [])
-        worker.run_dir = self.root / "ctest-diagnostic"
-        worker.run_dir.mkdir()
-        worker.metadata = {"id": "diagnostic", "stages": [], "cases": [], "failures": []}
-        build = self.root / "shared-ctest"
-        build.mkdir()
-        (build / "CTestTestfile.cmake").write_text("# configured\n")
-        output = "1/1 Test #1: nsc.failed.test ***Failed 0.01 sec\n"
-        with (
-            patch.object(
-                worker,
-                "_ctest_result_cache",
-                return_value=(self.root / "no-cache.json", "diagnostic-id"),
-            ),
-            patch.object(
-                worker,
-                "_run_process",
-                return_value=nscbuilder.ProcessResult(8, 0.01, output),
-            ),
-        ):
-            failed = worker._ctest(
-                "lld-link",
-                selected_ctests=["nsc.failed.test"],
-                build_dir=build,
-                diagnostic=True,
-            )
-        self.assertEqual(failed, ["nsc.failed.test"])
-        self.assertEqual(worker.failed, 0)
-        self.assertEqual(worker.stage_rows[-1]["status"], "failed")
-        self.assertEqual(worker.failure_rows, [])
+        self.assertEqual(worker._result_linkers(), ["NSLink"])
 
     def test_scoped_baseline_never_writes_gate_or_promotes(self) -> None:
         plan = nscbuilder.make_baseline_plan(
             1,
             history_root=self.root / "history",
-            linkers=["lld-link"],
+            linkers=["NSLink"],
             optimizations=["-O0"],
         )
         worker = nscbuilder.PipelineWorker(plan, [])
@@ -298,7 +230,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         worker.run_dir = self.root / "run"
         worker.run_dir.mkdir()
         worker.metadata = {"id": "current", "stages": []}
-        worker.ctest_ready_linkers.add("lld-link")
+        worker.ctest_ready_linkers.add("NSLink")
         cache = self.root / "ctest-cache.json"
         nscbuilder.write_json(
             cache,
@@ -308,7 +240,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
             patch.object(worker, "_ctest_result_cache", return_value=(cache, "exact")),
             patch.object(worker, "_run_process", side_effect=AssertionError("must not run")),
         ):
-            worker._ctest("lld-link")
+            worker._ctest("NSLink")
         self.assertEqual(worker.stage_rows[-1]["status"], "reused")
 
     def test_baseline_staging_is_reset_only_at_the_fixed_a_drive_path(self) -> None:
@@ -335,11 +267,11 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(destination, staging / "bin" / "nslink.exe")
         self.assertEqual(destination.read_bytes(), source.read_bytes())
         self.assertEqual(worker._effective_nslink_executable(), destination.resolve())
-        self.assertEqual(Path(worker._base_environment("NSLink")["NSC_LLD_LINK"]), destination)
+        self.assertEqual(Path(worker._base_environment("NSLink")["NSC_LINKER"]), destination)
 
     def test_builder_disables_only_redundant_automatic_error_logs(self) -> None:
         plan = nscbuilder.make_baseline_plan(1)
-        environment = nscbuilder.PipelineWorker(plan, [])._base_environment("lld-link")
+        environment = nscbuilder.PipelineWorker(plan, [])._base_environment("NSLink")
         self.assertEqual(environment["NSC_NO_ERROR_LOG"], "1")
 
         source = (ROOT / "src/nsc/main.cpp").read_text(encoding="utf-8")
@@ -846,7 +778,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
 
     def test_sh10_reproducible_link_is_requested_without_binary_rewriting(self) -> None:
         source = (ROOT / "src/Linker/LldLinker.cpp").read_text(encoding="utf-8")
-        self.assertGreaterEqual(source.count('\"/Brepro\"'), 2)
+        self.assertNotIn('\"/Brepro\"', source)
         verifier = (ROOT / "selfhost/bootstrap/verify_first_generation.py").read_text()
         self.assertIn("byte_identical_clean_builds", verifier)
         self.assertNotIn("write_bytes", verifier)

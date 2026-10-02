@@ -7,8 +7,8 @@ set(project "${SOURCE_ROOT}/selfhost/tests/host/CompilerHostWorkload/CompilerHos
 set(corpus "${SOURCE_ROOT}/selfhost/tests/host/corpus")
 set(executable "${OUTPUT_DIR}/compiler-host-workload.exe")
 set(active_linker "${LINKER_EXECUTABLE}")
-if(DEFINED ENV{NSC_LLD_LINK} AND EXISTS "$ENV{NSC_LLD_LINK}")
-    set(active_linker "$ENV{NSC_LLD_LINK}")
+if(DEFINED ENV{NSC_LINKER} AND EXISTS "$ENV{NSC_LINKER}")
+    set(active_linker "$ENV{NSC_LINKER}")
 endif()
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 

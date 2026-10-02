@@ -1344,7 +1344,7 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     std::string debug = options.debug.value_or(sidecar.build.debugInformation == "none" ? "-g0" :
         sidecar.build.debugInformation == "line-tables-only" ? "-gline-tables-only" : "-g");
     std::string linker = options.linker.value_or(sidecar.build.linker);
-    if (linker != "NSLink" && linker != "lld-link") return result.failure(error, "linker must be NSLink or lld-link");
+    if (linker != "NSLink") return result.failure(error, "linker must be NSLink");
     if (options.libraryReferenceRoot.has_value() && !options.libraryReferenceRoot->is_absolute())
         return result.failure(error, "library-reference root requires an absolute directory");
     const std::optional<fs::path> libraryReferenceRoot =
@@ -1425,18 +1425,6 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     fs::create_directories(artifact.parent_path(), fileError);
     if (fileError) return result.failure(error, "cannot create build output directory: " + fileError.message(), ExitCode::InternalError);
 
-    std::optional<std::string> linkerPath;
-    if (linker == "NSLink")
-    {
-        const fs::path installed = "C:/native-sharp-3.0/bin/nslink.exe";
-        if (fs::is_regular_file(installed)) linkerPath = installed.string();
-    }
-    else
-    {
-        const fs::path installed = "C:/clang-llvm/bin/lld-link.exe";
-        if (fs::is_regular_file(installed)) linkerPath = installed.string();
-    }
-    EnvironmentOverride linkerEnvironment("NSC_LLD_LINK", linkerPath);
     std::vector<std::string> owned{action, generated.string(), "-" + optimization, debug};
     if (libraryReferenceRoot.has_value())
     {

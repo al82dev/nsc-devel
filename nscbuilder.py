@@ -494,19 +494,19 @@ def make_baseline_plan(
     """Construye el plan inmutable de G0.2 compartido por GUI y consola."""
     selected_linkers = list(dict.fromkeys(linkers))
     selected_optimizations = list(dict.fromkeys(optimizations))
-    valid_linkers = {"lld-link", "NSLink"}
+    valid_linkers = {"NSLink"}
     valid_optimizations = {"-O0", "-O1", "-O2", "-O3"}
     if not selected_linkers or not set(selected_linkers) <= valid_linkers:
-        raise ValueError("baseline linkers must contain lld-link and/or NSLink")
+        raise ValueError("baseline linker must be NSLink")
     if not selected_optimizations or not set(selected_optimizations) <= valid_optimizations:
         raise ValueError("baseline optimizations must contain one or more of -O0..-O3")
     if lld_diagnostics is None:
         lld_diagnostics = False
-    if lld_diagnostics and selected_linkers != ["NSLink"]:
-        raise ValueError("LLD diagnostics require NSLink as the only primary linker")
+    if lld_diagnostics:
+        raise ValueError("LLD diagnostics are not supported for NativeSharp programs")
     certify_baseline = (
         set(selected_optimizations) == valid_optimizations and
-        (selected_linkers == ["NSLink"] or set(selected_linkers) == valid_linkers)
+        selected_linkers == ["NSLink"]
     )
     return RunPlan(
         operation="baseline",
@@ -533,10 +533,7 @@ def make_baseline_plan(
         build_test_trees=True,
         test_build_target="pruebas",
         test_build_mode="incremental",
-        test_build_dirs={
-            "lld-link": str(test_build_lld),
-            "NSLink": str(test_build_nslink),
-        },
+        test_build_dirs={"NSLink": str(test_build_nslink)},
         linkers=selected_linkers,
         optimizations=selected_optimizations,
         jobs=jobs,
@@ -1409,11 +1406,8 @@ class PipelineWorker(QObject):
         self.bootstrap_lock_path: Path | None = None
 
     def _result_linkers(self) -> list[str]:
-        """Primary result channels plus the lazy LLD diagnostic channel, when enabled."""
-        values = list(self.plan.linkers)
-        if self.plan.lld_diagnostics and "lld-link" not in values:
-            values.append("lld-link")
-        return values
+        """NativeSharp result channels. User programs are always linked by NSLink."""
+        return list(self.plan.linkers)
 
     def _reserve_units(self, count: int) -> None:
         """Grow progress only when a failure actually activates lazy diagnostic work."""
@@ -1452,7 +1446,7 @@ class PipelineWorker(QObject):
         build = (build_dir or self._test_build_dir(linker)).resolve()
         compiler = (Path(self.plan.prefix) / "bin" / "nsc.exe").resolve()
         environment = self._base_environment(linker)
-        linker_executable = Path(environment["NSC_LLD_LINK"]).resolve()
+        linker_executable = Path(environment["NSC_LINKER"]).resolve()
         digest = hashlib.sha256(b"nscbuilder-ctest-result-v1\0")
         digest.update(self._source_digest().encode("ascii"))
         digest.update(b"\0")
@@ -1702,6 +1696,7 @@ class PipelineWorker(QObject):
         env = dict(os.environ)
         env.pop("NSC_KEEP_LINK_TEMPS", None)
         env.pop("NSC_LLD_LINK", None)
+        env.pop("NSC_LINKER", None)
         env.pop("NSC_LLVM_LIB", None)
         prefix = Path(self.plan.prefix)
         temp_root = Path(self.plan.temp_root).resolve()
@@ -1730,10 +1725,8 @@ class PipelineWorker(QObject):
         # corrida. Evita que cada invocación esperadamente fallida vuelva a escribir error.log,
         # error1.log, etc. El comportamiento normal de nsc fuera del builder no cambia.
         env["NSC_NO_ERROR_LOG"] = "1"
-        if linker == "lld-link":
-            env["NSC_LLD_LINK"] = str(Path(self.plan.llvm_root) / "bin" / "lld-link.exe")
-        elif linker == "NSLink":
-            env["NSC_LLD_LINK"] = str(self._effective_nslink_executable())
+        if linker is not None:
+            env["NSC_LINKER"] = str(self._effective_nslink_executable())
         # Enlazador y librarian son herramientas distintas. NSLink construye PE, pero no debe
         # recibir /lib ni archivos archive como si fueran objetos COFF.
         env["NSC_LLVM_LIB"] = str(Path(self.plan.llvm_root) / "bin" / "llvm-lib.exe")
@@ -1872,8 +1865,6 @@ class PipelineWorker(QObject):
             # de entrada rechazaria una maquina limpia por no tener todavia lo que va a construir.
             if self.plan.operation != "baseline":
                 required.append(Path(self.plan.prefix) / "bin" / "nsc.exe")
-            if "lld-link" in self.plan.linkers or self.plan.lld_diagnostics:
-                required.append(Path(self.plan.llvm_root) / "bin" / "lld-link.exe")
             if "NSLink" in self.plan.linkers and self.plan.operation != "baseline":
                 required.append(Path(self.plan.nslink_exe))
         if self.plan.operation == "baseline":
@@ -2610,7 +2601,7 @@ class PipelineWorker(QObject):
         env = self._base_environment(linker)
         env["NSC_OPT"] = optimization
         env["NS_LIB_READY"] = "1"
-        env["NSC_CC1_LINKER"] = env.get("NSC_LLD_LINK", "")
+        env["NSC_CC1_LINKER"] = env.get("NSC_LINKER", "")
         prefix = f"[{linker} {case.label} {optimization}]"
         started = time.monotonic()
         actual: int | None = None
@@ -2621,7 +2612,7 @@ class PipelineWorker(QObject):
                 raise FileNotFoundError(f"Proyecto no encontrado: {project}")
             object_command, executable_command = self._case_commands(case, exe, optimization)
             compiler = Path(self.plan.prefix) / "bin" / "nsc.exe"
-            linker_exe = Path(env.get("NSC_LLD_LINK", ""))
+            linker_exe = Path(env.get("NSC_LINKER", ""))
             fingerprint = incremental_fingerprint(
                 project,
                 compiler,
@@ -3909,9 +3900,7 @@ class MainWindow(QMainWindow):
         self.test_build_runner.addItem("CMake", "cmake")
         self.test_build_runner.addItem("Ninja", "ninja")
         self.linker_mode = QComboBox()
-        self.linker_mode.addItem("NSLink (predeterminado)", ["NSLink"])
-        self.linker_mode.addItem("Ambos (validación profunda)", ["NSLink", "lld-link"])
-        self.linker_mode.addItem("LLD-link solamente", ["lld-link"])
+        self.linker_mode.addItem("NSLink", ["NSLink"])
         self.test_jobs = QSpinBox()
         self.test_jobs.setRange(1, 128)
         self.test_jobs.setValue(min(os.cpu_count() or 4, 16))
@@ -3936,8 +3925,8 @@ class MainWindow(QMainWindow):
         linker_note = QLabel(
             "Esta sección NO COMPILA NADA: ni nsc ni ningún ejecutable de prueba. Usa el nsc "
             "ya instalado para "
-            "compilar los programas elegidos. LLD-link y NSLink tienen árboles CTest separados; "
-            "cada enlazador y cada nivel O0/O1/O2/O3 conserva además su propia consola, lista de errores "
+            "compilar los programas elegidos. Todos los programas NativeSharp usan NSLink; "
+            "cada nivel O0/O1/O2/O3 conserva además su propia consola, lista de errores "
             "e informe."
         )
         linker_note.setWordWrap(True)
@@ -4961,20 +4950,7 @@ class MainWindow(QMainWindow):
         )
         if test_runner_index >= 0:
             self.test_build_runner.setCurrentIndex(test_runner_index)
-        linker_policy = str(self.settings.value("linker_policy", ""))
-        if not linker_policy:
-            # Migrate the old positional setting: 0=LLD, 1=NSLink, 2=both.  The combo order is
-            # now different, so reusing the integer directly could silently enable deep mode.
-            legacy_index = int(self.settings.value("linker_index", 1))
-            linker_policy = {0: "lld-only", 1: "nslink-diagnostic", 2: "deep"}.get(
-                legacy_index, "nslink-diagnostic"
-            )
-        linker_values = {
-            "nslink-diagnostic": ["NSLink"],
-            "deep": ["NSLink", "lld-link"],
-            "lld-only": ["lld-link"],
-        }
-        wanted_linkers = linker_values.get(linker_policy, ["NSLink"])
+        wanted_linkers = ["NSLink"]
         for linker_index in range(self.linker_mode.count()):
             if list(self.linker_mode.itemData(linker_index)) == wanted_linkers:
                 self.linker_mode.setCurrentIndex(linker_index)
@@ -5007,12 +4983,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("test_build_runner", self.test_build_runner.currentData())
         self.settings.setValue("linker_index", self.linker_mode.currentIndex())
         selected_linkers = list(self.linker_mode.currentData())
-        linker_policy = (
-            "nslink-diagnostic" if selected_linkers == ["NSLink"] else
-            "deep" if set(selected_linkers) == {"NSLink", "lld-link"} else
-            "lld-only"
-        )
-        self.settings.setValue("linker_policy", linker_policy)
+        self.settings.setValue("linker_policy", "nslink-only")
         self.settings.setValue("operation_tab_index", self.operation_tabs.currentIndex())
         self.settings.setValue("window_geometry", self.saveGeometry())
         self.settings.setValue("dock_state", self.saveState(1))
@@ -5182,21 +5153,14 @@ class MainWindow(QMainWindow):
         certified = QGroupBox("G0.2 — baseline certificado")
         certified_layout = QVBoxLayout(certified)
         certified_note = QLabel(
-            "Usa las rutas de la pestaña Compilador. La ruta normal certifica NSLink en "
-            "O0/O1/O2/O3 y sólo repite con LLD los fallos exactos. La validación profunda "
-            "ejecuta toda la matriz con ambos enlazadores. Los resultados aprobados sólo se "
+            "Usa las rutas de la pestaña Compilador. Certifica NSLink en O0/O1/O2/O3. "
+            "Los resultados aprobados sólo se "
             "reutilizan cuando toda su identidad coincide."
         )
         certified_note.setWordWrap(True)
         certified_layout.addWidget(certified_note)
         self.abi_linker_mode = QComboBox()
-        self.abi_linker_mode.addItem(
-            "NSLink — predeterminado; LLD sólo diagnostica fallos", ["NSLink"]
-        )
-        self.abi_linker_mode.addItem(
-            "NSLink + LLD — validación profunda", ["NSLink", "lld-link"]
-        )
-        self.abi_linker_mode.addItem("LLD-link — diagnóstico aislado", ["lld-link"])
+        self.abi_linker_mode.addItem("NSLink", ["NSLink"])
         certified_layout.addWidget(self.abi_linker_mode)
         abi_optimization_box = QWidget()
         abi_optimization_layout = QHBoxLayout(abi_optimization_box)
@@ -5322,19 +5286,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, APP_NAME, "Selecciona por lo menos un perfil O0–O3.")
             return
         selected_linkers = list(self.abi_linker_mode.currentData())
-        normal_policy = selected_linkers == ["NSLink"]
-        deep_policy = set(selected_linkers) == {"lld-link", "NSLink"}
         complete = (
-            (normal_policy or deep_policy) and
+            selected_linkers == ["NSLink"] and
             set(selected_optimizations) == {"-O0", "-O1", "-O2", "-O3"}
         )
-        policy = (
-            "NSLink como ruta primaria; LLD sólo repetirá los fallos exactos."
-            if normal_policy else
-            "La matriz completa se ejecutará con NSLink y LLD."
-            if deep_policy else
-            "Se ejecutará únicamente LLD como diagnóstico aislado."
-        )
+        policy = "Todos los programas NativeSharp se enlazarán exclusivamente con NSLink."
         outcome = (
             "Si todo pasa, Gate 0 podrá certificarse y desplegarse."
             if complete else
@@ -5355,10 +5311,7 @@ class MainWindow(QMainWindow):
 
     def _make_plan(self, operation: str) -> RunPlan | None:
         compiler_build = Path(self.build_path.text().strip()).resolve()
-        test_build_dirs = {
-            "lld-link": self.test_build_lld_path.text().strip(),
-            "NSLink": self.test_build_nslink_path.text().strip(),
-        }
+        test_build_dirs = {"NSLink": self.test_build_nslink_path.text().strip()}
         resolved_test_builds = {
             linker: Path(path).resolve() for linker, path in test_build_dirs.items()
         }
@@ -5452,13 +5405,6 @@ class MainWindow(QMainWindow):
         selected_cases = self._selected_case_values() if operation == "language" else []
         linkers = list(self.linker_mode.currentData())
         selected_builds = [resolved_test_builds[linker] for linker in linkers]
-        if len(set(selected_builds)) != len(selected_builds):
-            QMessageBox.warning(
-                self,
-                APP_NAME,
-                "LLD-link y NSLink deben usar directorios CTest diferentes.",
-            )
-            return None
         if operation == "baseline":
             baseline_optimizations = [
                 f"-{check.text()}"
@@ -5481,7 +5427,6 @@ class MainWindow(QMainWindow):
                 allowed_write_roots=[],
                 run_id="",
                 build_id_override="",
-                test_build_lld=test_build_dirs["lld-link"],
                 test_build_nslink=test_build_dirs["NSLink"],
                 build_runner=str(self.build_runner.currentData()),
                 linkers=list(self.abi_linker_mode.currentData()),
@@ -6068,7 +6013,7 @@ def main() -> int:
     parser.add_argument("--jobs", type=int, default=min(os.cpu_count() or 4, 16))
     parser.add_argument(
         "--linker",
-        choices=("both", "lld-link", "NSLink"),
+        choices=("NSLink",),
         default="NSLink",
     )
     parser.add_argument(
@@ -6125,7 +6070,7 @@ def main() -> int:
             "  --write-root DIR          raíz autorizada; repetible\n\n"
             "  --run-id ID               identidad estable para evidencia automatizada\n\n"
             "  --build-id HEX16          identidad reproducible para nsc0\n\n"
-            "  --linker VALUE            NSLink (default), both (deep), or lld-link\n"
+            "  --linker VALUE            NSLink (único enlazador de programas NativeSharp)\n"
             "  --optimization OLEVEL     O0..O3; repetible (todas si se omite)\n"
             "  --no-reuse-results        fuerza a repetir resultados idénticos aprobados\n\n"
             "Entorno equivalente: NSC_INSTALL_ROOT, NSC_BASELINE_ROOT, NSC_BUILD_ROOT, "
@@ -6142,9 +6087,7 @@ def main() -> int:
             print("--jobs debe estar entre 1 y 128", file=sys.stderr)
             return 2
         write_roots = args.write_root if args.write_root is not None else configured_write_roots(config)
-        baseline_linkers = (
-            ["lld-link", "NSLink"] if args.linker == "both" else [args.linker]
-        )
+        baseline_linkers = ["NSLink"]
         baseline_optimizations = [
             f"-{value}" for value in (args.optimization or ["O0", "O1", "O2", "O3"])
         ]

@@ -119,7 +119,7 @@ std::string localizeCompilerMessage(std::string_view english)
          "el proyecto ya existe; use --force para reemplazar su configuración"},
         {"configuration must be Debug or Release", "la configuración debe ser Debug o Release"},
         {"optimization must be O0, O1, O2, or O3", "la optimización debe ser O0, O1, O2 u O3"},
-        {"linker must be NSLink or lld-link", "el enlazador debe ser NSLink o lld-link"},
+        {"linker must be NSLink", "el enlazador debe ser NSLink"},
         {"library-reference root requires an absolute directory",
          "la raíz de referencias de bibliotecas requiere un directorio absoluto"},
         {"compiler failed", "el compilador falló"},

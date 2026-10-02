@@ -49,7 +49,7 @@ std::vector<Field> expectedFields() {
       {"delegate_abi", std::to_string(kDelegateAbiVersion)},
       {"exception_abi", std::to_string(kExceptionAbiVersion)},
       {"managed_delegate_cell_size", std::to_string(kManagedDelegateCellSize)},
-      {"supported_linkers", "lld-link,NSLink"},
+        {"supported_linkers", "NSLink"},
       {"certified_optimizations", "O0,O2"},
       {"artifact_kinds", "exe,static-lib,dll"},
       {"installation_files",

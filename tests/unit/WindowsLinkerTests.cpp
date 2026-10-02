@@ -106,12 +106,12 @@ int main()
 
     std::string discoveryError;
     std::unique_ptr<LldLinker> linker = LldLinker::discover(discoveryError);
-    tests.expect(linker != nullptr, "Stage 19 discovers lld-link from the configured toolchain");
-    tests.expect(discoveryError.empty(), "successful lld-link discovery keeps its diagnostic empty");
+    tests.expect(linker != nullptr, "Stage 19 discovers NSLink from the configured toolchain");
+    tests.expect(discoveryError.empty(), "successful NSLink discovery keeps its diagnostic empty");
     if (linker != nullptr)
     {
         tests.expect(std::filesystem::is_regular_file(linker->executablePath()),
-            "discovered lld-link path names a real executable file");
+            "discovered NSLink path names a real executable file");
         tests.expect(std::filesystem::is_regular_file(linker->librarianExecutablePath()),
             "static-library generation resolves an independent librarian executable");
 
@@ -124,7 +124,7 @@ int main()
                 std::span<const std::string_view>(&exitProcess, 1),
                 importLibrary,
                 importError),
-            "lld-link creates a COFF import library from a module-definition file");
+            "NSLink creates a COFF import library from a module-definition file");
         tests.expect(std::filesystem::is_regular_file(importLibrary) &&
                 std::filesystem::file_size(importLibrary) > 0,
             "generated import library exists and is non-empty");
@@ -301,7 +301,7 @@ int main()
             WindowsExecutableBuilder unresolvedBuilder;
             std::string unresolvedError;
             tests.expect(!unresolvedBuilder.build(*unresolvedModule, unresolvedPath, unresolvedError),
-                "lld-link rejects an unresolved external NativeSharp program symbol");
+                "NSLink rejects an unresolved external NativeSharp program symbol");
             tests.expect(unresolvedError.find("MissingNativeSymbol") != std::string::npos,
                 "unresolved-link diagnostic preserves the missing symbol name");
             tests.expect(!std::filesystem::exists(unresolvedPath),

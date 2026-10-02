@@ -21,8 +21,8 @@ int main()
         "final baseline contract has canonical framing");
     for (const std::string_view requirement : {
              "release=3.0.0", "build=clean-release", "staging=verified-A:/native-sharp-3.0-baseline",
-             "install=promotion-target-C:/native-sharp", "linker.001=lld-link",
-             "linker.002=NSLink", "optimization.001=O0", "optimization.002=O2",
+             "install=promotion-target-C:/native-sharp", "linker.001=NSLink",
+             "optimization.001=O0", "optimization.002=O2",
              "ctest=all-no-skips", "fixtures=all", "bug_triage=all", "gate0=landed",
              "source_digest=S0-equals-S1", "compiler_hash=build-equals-install-and-stable",
              "nslink_hash=stable", "interactive_debug=disabled", "message_boxes=forbidden",

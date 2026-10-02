@@ -4954,7 +4954,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc new <console|classlib|dll> -n <name> [-o <directory>] [--force]\n"
            << "  nsc restore [file.nsproj] [--force|--locked-mode|--verify] [--source <directory>]\n"
            << "  nsc build [file.nsproj] [-c Debug|Release] [-O0|-O1|-O2|-O3] "
-              "[-g0|-gline-tables-only|-g] [-j <jobs>] [--linker NSLink|lld-link] [--no-restore] "
+               "[-g0|-gline-tables-only|-g] [-j <jobs>] [--linker NSLink] [--no-restore] "
               "[--precompiled-only] [--dependency-report]\n"
            << "  nsc run [file.nsproj] [build options] [-- program arguments]\n"
            << "  nsc clean [file.nsproj]\n"
@@ -5142,7 +5142,7 @@ void Driver::printHelp(std::ostream &output)
                << "--artifact-cache-max-mb=N limita el almacén y expulsa primero publicaciones antiguas completas.\n"
                << "--library-reference-root <directorio-absoluto> resuelve referencias de biblioteca desde una raíz de configuración.\n"
                << "--profile=debug selecciona O0 con depuración completa; --profile=release selecciona O2 con tablas de líneas.\n"
-               << "NSC_LLD_LINK selecciona el enlazador PE y NSC_LLVM_LIB selecciona el bibliotecario estático.\n"
+               << "NSC_LINKER selecciona NSLink y NSC_LLVM_LIB selecciona el bibliotecario estático.\n"
                << "Este ejecutable pertenece a la línea de desarrollo NativeSharp 3.0; la documentación "
                   "de compatibilidad 2.0 está en share/nativesharp/docs/2.0.\n";
         return;
@@ -5187,7 +5187,7 @@ void Driver::printHelp(std::ostream &output)
               "O2 with line tables. Explicit -O and -g flags override profile defaults.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
               "optimization and currently apply to project OOP object/executable emission.\n"
-           << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently "
+            << "NSC_LINKER selects NSLink; NSC_LLVM_LIB independently "
               "selects the static librarian.\n"
            << "Stage 37 semantics remain preserved: static members, deterministic "
               "initialization, const and readonly.\n"
