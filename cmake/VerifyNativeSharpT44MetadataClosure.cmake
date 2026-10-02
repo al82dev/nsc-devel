@@ -66,7 +66,7 @@ endif()
 # retain the package's private kernel32 import, and make the selected language visible.
 execute_process(
     COMMAND "${NSC_EXECUTABLE}" build "${OUTPUT_DIR}/Consumer/T44Consumer.nsproj"
-        --no-restore --linker nslink -O0 --library-reference-root "${OUTPUT_DIR}"
+        --no-restore --linker NSLink -O0 --library-reference-root "${OUTPUT_DIR}"
     RESULT_VARIABLE consumer_result OUTPUT_VARIABLE consumer_output ERROR_VARIABLE consumer_error)
 if(NOT consumer_result EQUAL 0 OR NOT EXISTS "${consumer_exe}" OR
    NOT consumer_output MATCHES "Build succeeded \\(Language 3\\)")
@@ -93,7 +93,7 @@ if(NOT replacement_result EQUAL 0)
 endif()
 execute_process(
     COMMAND "${NSC_EXECUTABLE}" build "${OUTPUT_DIR}/Consumer/T44Consumer.nsproj"
-        --no-restore --linker nslink -O0 --library-reference-root "${OUTPUT_DIR}"
+        --no-restore --linker NSLink -O0 --library-reference-root "${OUTPUT_DIR}"
     RESULT_VARIABLE mismatch_result OUTPUT_VARIABLE mismatch_output ERROR_VARIABLE mismatch_error)
 if(mismatch_result EQUAL 0 OR NOT mismatch_error MATCHES "ABI fingerprint mismatch")
     message(FATAL_ERROR "T44 incompatible closure was not rejected causally\n${mismatch_output}\n${mismatch_error}")
