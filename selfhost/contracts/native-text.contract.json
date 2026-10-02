@@ -8,9 +8,9 @@
   "expected_exit_code": 42,
   "required_semantic_fragments": [
     "implicit-string-literal-to-char-pointer StringLiteralType<7> -> char*",
-    "StringLiteralType<12> rvalue constant=\"NativeSharp\"",
-    "IndexExpression : char lvalue modifiable addressable",
-    "CharacterLiteralExpression \"'N'\" : char rvalue"
+    "StringLiteralType<12> value constant=\"NativeSharp\"",
+    "IndexExpression : char place modifiable addressable",
+    "CharacterLiteralExpression \"'N'\" : char value"
   ],
   "required_object_fragments": ["Native", "Sharp", "C3A97869"],
   "required_backend_symbols": ["LLVMConstStringInContext2", "LLVMConstNamedStruct", "EmitGlobalString"],

@@ -19,9 +19,9 @@
     "Method op_Addition : (Counter, Counter) -> Counter defined"
   ],
   "required_semantic_fragments": [
-    "ThisExpression \"this\" : Counter lvalue modifiable addressable symbol=Counter",
-    "BaseExpression \"base\" : BaseCounter lvalue modifiable addressable symbol=BaseCounter",
-    "MemberExpression \"BaseValue\" : int lvalue modifiable addressable symbol=BaseValue"
+    "ThisExpression \"this\" : Counter place modifiable addressable symbol=Counter",
+    "BaseExpression \"base\" : BaseCounter place modifiable addressable symbol=BaseCounter",
+    "MemberExpression \"BaseValue\" : int place modifiable addressable symbol=BaseValue"
   ],
   "forbidden_semantic_fragment": ": error",
   "required_native_functions": ["Main", "Probe"],
