@@ -214,6 +214,12 @@ def main() -> int:
         (output / "source-manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8", newline="\n")
+        snapshot_root = output / "snapshot" / "root"
+        stage_sources(root, files, snapshot_root, "ascending")
+        snapshot_files = ordered_files(snapshot_root, contract["source_roots"])
+        snapshot_sha256, snapshot_manifest = source_manifest(snapshot_root, snapshot_files)
+        require(snapshot_sha256 == source_sha256 and snapshot_manifest == manifest,
+                "source tree changed while SH44 snapshot was created")
 
         records: list[dict[str, object]] = []
         artifact_hashes: dict[str, dict[str, object]] = {}
@@ -221,7 +227,8 @@ def main() -> int:
         for variant in contract["variants"]:
             case_root = output / "artifacts" / variant["name"]
             staged_root = output / "staged" / variant["path"] / "root"
-            creation = stage_sources(root, files, staged_root, variant["creation_order"])
+            creation = stage_sources(snapshot_root, snapshot_files, staged_root,
+                                     variant["creation_order"])
             case_root.mkdir(parents=True)
             project = staged_root / contract["compiler_project"]
             environment = os.environ.copy()
@@ -260,6 +267,11 @@ def main() -> int:
                 "timings_seconds": timings,
             })
 
+        final_files = ordered_files(root, contract["source_roots"])
+        final_source_sha256, final_manifest = source_manifest(root, final_files)
+        require(final_source_sha256 == source_sha256 and final_manifest == manifest,
+                "source tree changed during SH44")
+
         input_sha256 = {
             "nsc2": {key: digest(value) for key, value in sorted(candidates.items())},
             "nslink": digest(args.nslink.resolve()),
@@ -269,6 +281,7 @@ def main() -> int:
             "schema": ATTESTATION_SCHEMA, "version": 1, "gate": "SH44", "tanda": 46,
             "machine": machine_identity(), "contract_sha256": digest(args.contract),
             "source_sha256": source_sha256, "source_files": len(files),
+            "snapshot_source_sha256": snapshot_sha256,
             "input_sha256": input_sha256, "artifact_sha256": reference,
             "local_matrix_passed": True, "normalization_applied": [],
             "variants": len(records), "profiles": len(contract["optimizations"]),

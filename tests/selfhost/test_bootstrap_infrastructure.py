@@ -20,6 +20,8 @@ from selfhost.bootstrap import (
     verify_environment,
     verify_llvm_c_contract,
     verify_nsc_next_skeleton,
+    verify_repeated_fixed_point,
+    verify_cross_machine_determinism,
     verify_frontend,
     verify_semantics,
     verify_ir,
@@ -886,6 +888,34 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn("File.Exists(normalized)", source_graph)
         self.assertIn("ProjectLoader.Load(normalized)", source_graph)
         self.assertIn("Path.GetDirectoryName(normalized)", source_graph)
+
+    def test_sh43_sh44_snapshot_helpers_preserve_and_attest_sources(self) -> None:
+        roots = ["selfhost/nsc", "lib/Core"]
+        for relative, contents in (("selfhost/nsc/Main.ns", "main\n"),
+                                   ("lib/Core/Core.ns", "core\n")):
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(contents, encoding="utf-8")
+
+        source_hash = ""
+        for verifier, name in ((verify_repeated_fixed_point, "sh43"),
+                               (verify_cross_machine_determinism, "sh44")):
+            files = verifier.ordered_files(self.root, roots)
+            source_hash, source_records = verifier.source_manifest(self.root, files)
+            snapshot = self.root / name / "root"
+            if verifier is verify_cross_machine_determinism:
+                verifier.stage_sources(self.root, files, snapshot, "ascending")
+            else:
+                verifier.stage_sources(self.root, files, snapshot)
+            snapshot_files = verifier.ordered_files(snapshot, roots)
+            snapshot_hash, snapshot_records = verifier.source_manifest(snapshot, snapshot_files)
+            self.assertEqual((snapshot_hash, snapshot_records), (source_hash, source_records))
+
+        changed = self.root / "selfhost/nsc/Main.ns"
+        changed.write_text("changed\n", encoding="utf-8")
+        changed_hash, _ = verify_repeated_fixed_point.source_manifest(
+            self.root, verify_repeated_fixed_point.ordered_files(self.root, roots))
+        self.assertNotEqual(changed_hash, source_hash)
 
     def test_sh12_fixed_point_contract_separates_local_and_cross_machine_proof(self) -> None:
         contract = json.loads((ROOT / "selfhost/contracts/fixed-point.contract.json").read_text())

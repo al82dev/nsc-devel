@@ -9,6 +9,13 @@
   "linkers": ["nslink"],
   "compiler_project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
   "verification_project": "selfhost/nsc/NativeSharp.Compiler.nsproj",
+  "source_roots": [
+    "selfhost/nsc",
+    "lib/NativeSharp.Core",
+    "lib/NativeSharp.Core.Collections.Generic",
+    "lib/NativeSharp.Core.IO",
+    "lib/NativeSharp.LLVM.C"
+  ],
   "expected_identity": "nsc-next 2.0.0-bootstrap.sh14 (NativeSharp 2.0.0, promotion candidate)",
   "identity_policy": {
     "objects": "byte-identical nsc3/nsc4 and across repetitions",

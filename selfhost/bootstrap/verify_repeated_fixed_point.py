@@ -31,6 +31,35 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def ordered_files(source_root: Path, roots: list[str]) -> list[Path]:
+    files: list[Path] = []
+    for relative in roots:
+        directory = source_root / relative
+        require(directory.is_dir(), f"missing source root: {directory}")
+        files.extend(path for path in directory.rglob("*") if path.is_file())
+    return sorted(set(files), key=lambda path: path.relative_to(source_root).as_posix())
+
+
+def source_manifest(source_root: Path, files: list[Path]) -> tuple[str, list[dict[str, object]]]:
+    records = [{
+        "path": path.relative_to(source_root).as_posix(),
+        "size": path.stat().st_size,
+        "sha256": digest(path),
+    } for path in files]
+    encoded = json.dumps(records, ensure_ascii=False, sort_keys=True,
+                         separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest(), records
+
+
+def stage_sources(source_root: Path, files: list[Path], target: Path) -> None:
+    require(not target.exists(), f"snapshot root is not clean: {target}")
+    target.mkdir(parents=True)
+    for source in files:
+        destination = target / source.relative_to(source_root)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+
+
 def run(command: list[str], environment: dict[str, str] | None = None,
         timeout: int = 900) -> tuple[subprocess.CompletedProcess[str], float]:
     started = time.perf_counter()
@@ -139,7 +168,16 @@ def main() -> int:
         output = args.output_dir.resolve()
         require(not output.exists(), f"SH43 output root is not clean: {output}")
         output.mkdir(parents=True)
-        project = root / contract["compiler_project"]
+        source_roots = contract["source_roots"]
+        files = ordered_files(root, source_roots)
+        source_sha256, source_records = source_manifest(root, files)
+        snapshot_root = output / "snapshot" / "root"
+        stage_sources(root, files, snapshot_root)
+        snapshot_files = ordered_files(snapshot_root, source_roots)
+        snapshot_sha256, snapshot_records = source_manifest(snapshot_root, snapshot_files)
+        require(snapshot_sha256 == source_sha256 and snapshot_records == source_records,
+                "source tree changed while SH43 snapshot was created")
+        project = snapshot_root / contract["compiler_project"]
         candidates = {profile: getattr(args, f"nsc2_{profile.lower()}").resolve()
                       for profile in contract["optimizations"]}
         libraries = [args.runtime_library.resolve(), args.llvm_library.resolve(),
@@ -169,6 +207,11 @@ def main() -> int:
                 require(len({str(item["image_sha256"][route]) for item in selected}) == 1,
                         f"{profile}/{route} image differs across clean repetitions")
 
+        final_files = ordered_files(root, source_roots)
+        final_source_sha256, final_source_records = source_manifest(root, final_files)
+        require(final_source_sha256 == source_sha256 and final_source_records == source_records,
+                "source tree changed during SH43")
+
         report = {
             "schema": REPORT_SCHEMA, "version": 1, "status": "passed",
             "gate": "SH43", "tanda": 45,
@@ -178,6 +221,8 @@ def main() -> int:
             "image_comparisons": len(records) * len(contract["linkers"]) * 2,
             "normalization_applied": [], "raw_byte_identity": True,
             "clean_roots": len(records), "skipped": 0, "problems": [],
+            "source_sha256": source_sha256, "source_files": len(source_records),
+            "snapshot_source_sha256": snapshot_sha256,
             "input_sha256": {profile: digest(path) for profile, path in candidates.items()},
         }
         args.report.parent.mkdir(parents=True, exist_ok=True)
