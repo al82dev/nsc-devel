@@ -112,6 +112,27 @@ void reportSourceProgress(
         phase, detail, completed, total, {}});
 }
 
+bool isMetadataBackedVirtualSource(const std::filesystem::path& path)
+{
+    const std::string sourcePath = path.generic_string();
+    return sourcePath.ends_with(".nsmeta.public-api.ns") ||
+        sourcePath.ends_with(".nsmeta.public-templates.ns");
+}
+
+std::size_t visibleSourceCount(
+    const std::vector<std::unique_ptr<ProjectSyntaxUnit>>& units,
+    const source::SourceManager& sourceManager)
+{
+    std::size_t count = 0;
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
+    {
+        const std::filesystem::path path(sourceManager.getPath(
+            SourceLocation(unit->fileId(), 0U)));
+        if (!isMetadataBackedVirtualSource(path)) ++count;
+    }
+    return count;
+}
+
 bool waitForSyntaxWorkers(
     driver::CompilationWorkerPool& pool,
     std::string_view phase,
@@ -1077,6 +1098,7 @@ bool ProjectCompilation::compileSyntaxCore(
     bool lexicalOk = true;
     {
         const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-lex");
+        const std::size_t progressTotal = visibleSourceCount(units_, sourceManager_);
         std::atomic_size_t completed = 0;
         std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
         localDiagnostics.reserve(units_.size());
@@ -1091,9 +1113,13 @@ bool ProjectCompilation::compileSyntaxCore(
                     throw std::logic_error("syntax unit has no SourceFile slot");
                 }
                 units_[index]->lex(*sourceFile, localDiagnostics[index]);
-                reportSourceProgress(progressSink_, "syntax-lex",
-                    sourceFile->path(),
-                    completed.fetch_add(1, std::memory_order_relaxed) + 1U, units_.size());
+                if (!isMetadataBackedVirtualSource(sourceFile->path()))
+                {
+                    reportSourceProgress(progressSink_, "syntax-lex",
+                        sourceFile->path(),
+                        completed.fetch_add(1, std::memory_order_relaxed) + 1U,
+                        progressTotal);
+                }
             });
         }
         if (!waitForSyntaxWorkers(syntaxWorkers, "lexing", loadError)) return false;
@@ -1107,6 +1133,7 @@ bool ProjectCompilation::compileSyntaxCore(
     {
         const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-parse");
         const std::vector<std::string> knownTypeNames = collectParserKnownTypeNames(units_);
+        const std::size_t progressTotal = visibleSourceCount(units_, sourceManager_);
         std::atomic_size_t parseCompleted = 0;
         bool syntaxOk = lexicalOk;
         std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
@@ -1117,10 +1144,15 @@ bool ProjectCompilation::compileSyntaxCore(
             if (!units_[index]->isLexicallyValid()) continue;
             syntaxWorkers.submit([&, index](std::size_t) {
                 units_[index]->parse(localDiagnostics[index], knownTypeNames);
-                reportSourceProgress(progressSink_, "syntax-parse",
-                    std::filesystem::path(sourceManager_.getPath(
-                        SourceLocation(units_[index]->fileId(), 0U))),
-                    parseCompleted.fetch_add(1, std::memory_order_relaxed) + 1U, units_.size());
+                const std::filesystem::path sourcePath(sourceManager_.getPath(
+                    SourceLocation(units_[index]->fileId(), 0U)));
+                if (!isMetadataBackedVirtualSource(sourcePath))
+                {
+                    reportSourceProgress(progressSink_, "syntax-parse",
+                        sourcePath,
+                        parseCompleted.fetch_add(1, std::memory_order_relaxed) + 1U,
+                        progressTotal);
+                }
             });
         }
         if (!waitForSyntaxWorkers(syntaxWorkers, "parsing", loadError)) return false;
