@@ -50,7 +50,7 @@ namespace NativeSharp.Compiler.Sema
         {
             if (id < 0) { return; } SyntaxNode node = tree.Node(id); SemanticFact fact = model.Fact(id);
             // nsc0 reports conversions attached to declarations, but it does not expose the
-            // declaration's internal lvalue fact.  Keep that fact for lowering while preserving
+            // declaration's internal place fact.  Keep that fact for lowering while preserving
             // the public dump: an ordinary declaration stays silent; one with a conversion emits
             // its node and conversion only.
             bool showPresent = node.Kind() != "VariableDeclarationStatement";
@@ -61,7 +61,7 @@ namespace NativeSharp.Compiler.Sema
                 if (showPresent && fact.Present())
                 {
                     output.Append(" : "); output.Append(model.Types().Get(fact.TypeId()).Display());
-                    output.Append(fact.Category() == ValueCategory.LValue ? " lvalue" : " rvalue");
+                    output.Append(fact.Category() == ValueCategory.LValue ? " place" : " value");
                     if (fact.Modifiable()) { output.Append(" modifiable"); }
                     if (fact.Addressable()) { output.Append(" addressable"); }
                     if (fact.BoundsCheck()) { output.Append(" bounds-check"); }
