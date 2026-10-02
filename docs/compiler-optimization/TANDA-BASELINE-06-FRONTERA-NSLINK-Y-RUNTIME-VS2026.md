@@ -186,9 +186,10 @@ CodeView/PDB continúa validándose con herramientas LLVM y las pruebas T36/T37.
 - Unitarias dirigidas de NSCBuilder, contratos SH41/SH45/SH46/SH47 y runtime VS2026: correctas.
 - Stage 46 DLL NSLink, T36, T37, ABI assembly y ABI vararg: 5/5 correctas en 6.84 s.
 - SH08 LLVM backend: correcto con NSLink.
-- SH03 LLVM estático: el contrato LLVM-C versión 2 pasa; el cierre completo no pudo continuar
-  porque `A:\native-sharp-3.0-baseline` aún contiene el contrato runtime anterior. Se resolverá al
-  reconstruir el staging del baseline; no se copió desde C: ni se recompilaron librerías.
+- SH03 LLVM estático: el contrato LLVM-C versión 2 pasa. La expectativa runtime fuente obsoleta
+  `1.0`/symbol set `2` fue alineada en la corrección 06A con el runtime 3.0 real `1.1`/symbol set
+  `3`; `nsc.selfhost.llvm-c-bridge` pasó 1/1 en 2.67 s. No fue necesario reconstruir staging ni
+  librerías.
 - SH41 completo no se ejecutó de forma aislada porque requiere el paquete precompilado de
   `NativeSharp.Core.IO` que prepara el baseline.
 - Baseline completo: no ejecutado.
