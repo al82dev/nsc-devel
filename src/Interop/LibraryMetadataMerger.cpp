@@ -33,6 +33,12 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
     {
         return std::tie(a.name, a.payloadTypeKey) == std::tie(b.name, b.payloadTypeKey);
     };
+    const auto equalAssociatedItem = [](const LibraryMetadataAssociatedItem& a,
+                                        const LibraryMetadataAssociatedItem& b)
+    {
+        return std::tie(a.kind, a.name, a.typeKey, a.hasDefault, a.valueBits) ==
+            std::tie(b.kind, b.name, b.typeKey, b.hasDefault, b.valueBits);
+    };
     return std::tie(left.kind, left.accessibility, left.flags, left.identityKey,
                left.fullyQualifiedName, left.baseTypeKey, left.interfaceTypeKeys,
                left.size, left.alignment, left.headerSize, left.referenceSize,
@@ -46,6 +52,7 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
                 right.delegateFlags, right.delegateReturnTypeKey,
                 right.delegateParameterTypeKeys, right.traitMethodSignatures) &&
         vectorEqual(left.variantCases, right.variantCases, equalVariantCase) &&
+        vectorEqual(left.associatedItems, right.associatedItems, equalAssociatedItem) &&
         vectorEqual(left.fields, right.fields, equalField);
 }
 
@@ -232,6 +239,11 @@ bool canonicalizeModel(LibraryMetadata& metadata, std::string& error)
     for (LibraryMetadataType& type : metadata.types)
     {
         canonicalizeStrings(type.interfaceTypeKeys);
+        std::sort(type.associatedItems.begin(), type.associatedItems.end(),
+            [](const auto& left, const auto& right)
+            {
+                return std::tie(left.name, left.kind) < std::tie(right.name, right.kind);
+            });
         std::sort(type.fields.begin(), type.fields.end(), [](const auto& left, const auto& right) {
             return std::tie(left.offset, left.name, left.typeKey) <
                 std::tie(right.offset, right.name, right.typeKey);

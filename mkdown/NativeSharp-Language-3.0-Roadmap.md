@@ -520,6 +520,9 @@ primera vez la depurabilidad de las features T00–T14.
 
 **Commit:** `ns3(t05-f03): associated-items`
 
+**Estado 2026-10-03:** `TERMINADA`. Proyecciones, defaults genéricos, igualdad, ciclos,
+constantes y round-trip NSMETA 1.29 están cubiertos por 16 checks dirigidos O0/NSLink.
+
 - **Implementación:** proyecciones `T.Item`, normalización por solver y constraints de igualdad; evitar ciclos y proyecciones ambiguas.
 - **Pruebas dirigidas:** iteradores, proyecciones encadenadas, defaults, ciclos, const associated y diagnóstico de normalización.
 - **Markdown ES/EN:** resolución y ejemplos de APIs genéricas.

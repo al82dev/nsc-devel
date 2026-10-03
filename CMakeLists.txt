@@ -1478,6 +1478,21 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_ns3_t05_impl_coherence_tests)
 
     add_executable(
+        nsc_ns3_t05_associated_item_tests
+        tests/unit/NativeSharp3T05AssociatedItemTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t05_associated_item_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_ns3_t05_associated_item_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_ns3_t05_associated_item_tests
+        PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t05_associated_item_tests)
+    add_test(
+        NAME nsc.ns3.t05.associated-items
+        COMMAND nsc_ns3_t05_associated_item_tests)
+
+    add_executable(
         nsc_ns3_t06_ownership_tests
         tests/unit/NativeSharp3T06OwnershipTests.cpp)
     target_link_libraries(nsc_ns3_t06_ownership_tests PRIVATE nsc_compilation)

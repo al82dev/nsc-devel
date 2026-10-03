@@ -1197,17 +1197,36 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
         }
         const lexer::Token& parameter = consume();
         ast::GenericConstraintClause clause;
-        clause.parameterName = std::string(parameter.lexeme());
+        const std::string rootParameter(parameter.lexeme());
+        clause.parameterName = rootParameter;
         clause.parameterRange = parameter.range();
+        while (consumeIf(TokenKind::Dot))
+        {
+            if (!at(TokenKind::Identifier))
+            {
+                expect(TokenKind::Identifier, "associated item name after '.'");
+                return false;
+            }
+            const lexer::Token& item = consume();
+            clause.parameterName += '.';
+            clause.parameterName += item.lexeme();
+            clause.parameterRange = join(clause.parameterRange, item.range());
+        }
+        const bool associatedEquality = clause.parameterName != rootParameter;
+        if (associatedEquality)
+        {
+            clause.associatedProjection = arena_.make<ast::TypeSyntax>(
+                clause.parameterRange, TokenKind::Identifier, clause.parameterName);
+        }
 
         const std::vector<std::string>& declared = declaration->genericParameters();
         const bool known =
-            std::find(declared.begin(), declared.end(), clause.parameterName) != declared.end();
+            std::find(declared.begin(), declared.end(), rootParameter) != declared.end();
         const auto syntax = std::ranges::find_if(
             declaration->genericParameterSyntaxes(),
             [&](const ast::GenericParameterSyntax& item)
             {
-                return item.name == clause.parameterName;
+                return item.name == rootParameter;
             });
         if (!known)
         {
@@ -1215,7 +1234,7 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
                 diagnostics::DiagnosticId::UnknownIdentifier,
                 diagnostics::DiagnosticSeverity::Error,
                 parameter.range(),
-                "'" + clause.parameterName +
+                "'" + rootParameter +
                     "' is not a generic type parameter of this declaration");
             ok = false;
         }
@@ -1320,6 +1339,16 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
             continue;
         }
 
+        if (associatedEquality)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                clause.parameterRange,
+                "an associated type projection constraint requires '=='");
+            synchronizeGlobal();
+            return false;
+        }
         if (syntax != declaration->genericParameterSyntaxes().end() &&
             syntax->kind != ast::GenericParameterSyntaxKind::Type)
         {
@@ -3728,7 +3757,18 @@ ast::AstNode* Parser::parseClassDeclaration(
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
         const std::size_t before = index_;
-        ast::AstNode* member = parseClassMember(className);
+        ast::AstNode* member = nullptr;
+        if (atContextualKeyword("associated") &&
+            (peek().kind() == TokenKind::KwConst ||
+             (peek().kind() == TokenKind::Identifier && peek().lexeme() == "type")))
+        {
+            consume();
+            member = parseAssociatedItem(true);
+        }
+        else
+        {
+            member = parseClassMember(className);
+        }
         if (member != nullptr)
         {
             const bool nestedType = member->kind() == ast::AstNodeKind::ClassDeclaration ||
@@ -3821,10 +3861,18 @@ ast::AstNode* Parser::parseTraitImplementationDeclaration()
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
         const std::size_t before = index_;
-        ast::AstNode* member = parseClassMember(node->text());
+        ast::AstNode* member =
+            ((atContextualKeyword("type") && peek().kind() == TokenKind::Identifier) ||
+             at(TokenKind::KwConst))
+            ? parseAssociatedItem(true)
+            : parseClassMember(node->text());
         if (member != nullptr)
         {
-            const bool allowed = member->kind() == ast::AstNodeKind::MethodDeclaration ||
+            const bool associated =
+                member->kind() == ast::AstNodeKind::AssociatedTypeDeclaration ||
+                member->kind() == ast::AstNodeKind::AssociatedConstantDeclaration;
+            const bool allowed = associated ||
+                member->kind() == ast::AstNodeKind::MethodDeclaration ||
                 member->kind() == ast::AstNodeKind::PropertyDeclaration ||
                 member->kind() == ast::AstNodeKind::IndexerDeclaration;
             if (!allowed)
@@ -3834,6 +3882,10 @@ ast::AstNode* Parser::parseTraitImplementationDeclaration()
                     diagnostics::DiagnosticSeverity::Error,
                     member->range(),
                     "an impl block may contain only methods, properties, indexers, and operators");
+            }
+            else if (associated)
+            {
+                node->addChild(member);
             }
             else
             {
@@ -3919,7 +3971,12 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial, bool isTrait)
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
         const std::size_t before = index_;
-        if (ast::AstNode* member = parseInterfaceMember(isTrait); member != nullptr)
+        ast::AstNode* parsedMember = isTrait &&
+            ((atContextualKeyword("type") && peek().kind() == TokenKind::Identifier) ||
+             at(TokenKind::KwConst))
+            ? parseAssociatedItem(false)
+            : parseInterfaceMember(isTrait);
+        if (ast::AstNode* member = parsedMember; member != nullptr)
         {
             if (isTrait && member->kind() == ast::AstNodeKind::MethodDeclaration &&
                 !member->genericParameters().empty())
@@ -3941,6 +3998,76 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial, bool isTrait)
     expect(TokenKind::RightBrace, "'}'");
     node->setRange(tokenRangeFrom(beginIndex));
     return node;
+}
+
+ast::AstNode* Parser::parseAssociatedItem(bool implementation)
+{
+    const std::size_t beginIndex = index_;
+    const bool associatedType = atContextualKeyword("type");
+    const SourceRange feature = current().range();
+    requireEdition3(feature, "trait associated items");
+    consume(); // contextual type / const
+
+    ast::TypeSyntax* declaredType = nullptr;
+    if (!associatedType)
+    {
+        declaredType = parseType();
+        if (declaredType == nullptr)
+        {
+            synchronizeStatement();
+            return nullptr;
+        }
+    }
+    if (!at(TokenKind::Identifier))
+    {
+        expect(TokenKind::Identifier,
+            associatedType ? "associated type name" : "associated constant name");
+        synchronizeStatement();
+        return nullptr;
+    }
+    const lexer::Token& name = consume();
+    ast::AstNode* item = arena_.make<ast::AstNode>(
+        associatedType ? ast::AstNodeKind::AssociatedTypeDeclaration
+                       : ast::AstNodeKind::AssociatedConstantDeclaration,
+        name.range());
+    item->setText(std::string(name.lexeme()));
+
+    bool hasDefinition = false;
+    if (consumeIf(TokenKind::Equal))
+    {
+        hasDefinition = true;
+        if (associatedType)
+            item->setTypeSyntax(parseType());
+        else
+            item->setFirst(parseExpression());
+    }
+    else if (!associatedType)
+    {
+        item->setTypeSyntax(declaredType);
+    }
+    if (!associatedType && hasDefinition) item->setTypeSyntax(declaredType);
+
+    if (implementation && !hasDefinition)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            item->range(),
+            associatedType
+                ? "an impl must define an associated type with '= Type'"
+                : "an impl must define an associated constant with '= expression'");
+    }
+    if (associatedType && hasDefinition && item->typeSyntax() == nullptr)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedType,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "expected associated type definition after '='");
+    }
+    expect(TokenKind::Semicolon, "';' after associated item");
+    item->setRange(tokenRangeFrom(beginIndex));
+    return item;
 }
 
 ast::AstNode* Parser::parseInterfaceMember(bool isTrait)

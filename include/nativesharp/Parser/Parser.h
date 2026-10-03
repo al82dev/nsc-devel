@@ -105,6 +105,7 @@ private:
     ast::AstNode* parseInterfaceDeclaration(bool isPartial, bool isTrait = false);
     ast::AstNode* parseDelegateDeclaration();
     ast::AstNode* parseInterfaceMember(bool isTrait);
+    ast::AstNode* parseAssociatedItem(bool implementation);
     ast::AstNode* parseClassMember(
         std::string_view className,
         bool allowUnresolvedNamedTypes = false,

@@ -58,6 +58,10 @@ struct GenericConstraintClause
     // marker as a const-generic argument; a type/parameter uses ordinary type syntax and is
     // substituted by the generic cloner.
     TypeSyntax* equalityConstraint = nullptr;
+    // T05-F03. Left side of `where T.Item == Type`. Null for ordinary parameter equality
+    // (`where T == U`). The generic cloner normalizes this projection after substituting T and
+    // exposes the resulting concrete type through substitutedArgument.
+    TypeSyntax* associatedProjection = nullptr;
     // La clase base y las interfaces, en el orden escrito. Cual es cual no se decide aqui: eso
     // necesita saber que declara cada nombre, y el parser no lo sabe.
     std::vector<TypeSyntax*> typeConstraints;

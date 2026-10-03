@@ -307,8 +307,12 @@ void ProjectGenericConstraintModel::validateTemplateClauses(
         std::vector<std::string> templateAtoms;
         for (const ast::GenericConstraintClause& clause : templateRecord.constraints)
         {
+            const std::size_t projectionSeparator = clause.parameterName.find('.');
+            const std::string_view constrainedParameter = projectionSeparator == std::string::npos
+                ? std::string_view(clause.parameterName)
+                : std::string_view(clause.parameterName).substr(0, projectionSeparator);
             const auto parameter = std::ranges::find(
-                templateRecord.parameters, clause.parameterName);
+                templateRecord.parameters, constrainedParameter);
             const std::size_t parameterOrdinal = parameter == templateRecord.parameters.end()
                 ? templateRecord.parameters.size()
                 : static_cast<std::size_t>(parameter - templateRecord.parameters.begin());

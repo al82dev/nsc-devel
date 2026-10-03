@@ -103,6 +103,15 @@ Surface sourceSurface(const LibraryMetadata& metadata)
             field(contract, variantCase.payloadTypeKey);
         }
         strings(contract, type.traitMethodSignatures, false);
+        number(contract, type.associatedItems.size());
+        for (const LibraryMetadataAssociatedItem& item : type.associatedItems)
+        {
+            number(contract, item.kind);
+            field(contract, item.name);
+            field(contract, item.typeKey);
+            number(contract, item.hasDefault);
+            number(contract, item.valueBits);
+        }
         result.emplace("type:" + type.identityKey, std::move(contract));
     }
 
@@ -232,6 +241,15 @@ Surface abiSurface(const LibraryMetadata& metadata)
             field(contract, variantCase.payloadTypeKey);
         }
         strings(contract, type.traitMethodSignatures, false);
+        number(contract, type.associatedItems.size());
+        for (const LibraryMetadataAssociatedItem& item : type.associatedItems)
+        {
+            number(contract, item.kind);
+            field(contract, item.name);
+            field(contract, item.typeKey);
+            number(contract, item.hasDefault);
+            number(contract, item.valueBits);
+        }
         number(contract, type.fields.size());
         for (const LibraryMetadataField& fieldRecord : type.fields)
         {

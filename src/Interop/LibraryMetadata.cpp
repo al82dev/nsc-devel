@@ -11,6 +11,7 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
+#include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
@@ -832,6 +833,25 @@ bool buildMetadataModel(
                         addedPublishedType = publishedRootTypes.insert(interfaceOrdinal).second ||
                             addedPublishedType;
             }
+            if (typeOrdinal < types.size())
+            {
+                for (const frontend::NamedTypeDeclarationPart& part : types[typeOrdinal].parts)
+                {
+                    if (part.syntax == nullptr) continue;
+                    for (const ast::AstNode* item : part.syntax->children())
+                    {
+                        if (item == nullptr ||
+                            (item->kind() != ast::AstNodeKind::AssociatedTypeDeclaration &&
+                             item->kind() != ast::AstNodeKind::AssociatedConstantDeclaration) ||
+                            item->typeSyntax() == nullptr)
+                            continue;
+                        addedPublishedType = includeTypeKey(
+                            compilation.memberModel()->canonicalTypeKey(
+                                item->typeSyntax(), *compilation.nameLookup())) ||
+                            addedPublishedType;
+                    }
+                }
+            }
             // A delegate is a nominal type whose signature owns additional type edges.  Those
             // edges are not ClassMemberSymbols and do not appear in an object layout, so walking
             // only members and fields stops one node too early.  Preserve the complete transitive
@@ -932,6 +952,49 @@ bool buildMetadataModel(
                         }
                     }
                 }
+            }
+        }
+        for (const frontend::NamedTypeDeclarationPart& part : type.parts)
+        {
+            if (part.syntax == nullptr) continue;
+            for (const ast::AstNode* item : part.syntax->children())
+            {
+                if (item == nullptr ||
+                    (item->kind() != ast::AstNodeKind::AssociatedTypeDeclaration &&
+                     item->kind() != ast::AstNodeKind::AssociatedConstantDeclaration))
+                    continue;
+                LibraryMetadataAssociatedItem associated;
+                associated.name = item->text();
+                if (item->kind() == ast::AstNodeKind::AssociatedTypeDeclaration)
+                {
+                    associated.kind = LibraryMetadataAssociatedItemKind::Type;
+                    associated.hasDefault = item->typeSyntax() != nullptr;
+                    if (associated.hasDefault)
+                    {
+                        associated.typeKey = compilation.memberModel()->canonicalTypeKey(
+                            item->typeSyntax(), *compilation.nameLookup());
+                    }
+                }
+                else
+                {
+                    associated.kind = LibraryMetadataAssociatedItemKind::Constant;
+                    associated.typeKey = compilation.memberModel()->canonicalTypeKey(
+                        item->typeSyntax(), *compilation.nameLookup());
+                    associated.hasDefault = item->first() != nullptr;
+                    if (associated.hasDefault)
+                    {
+                        const std::optional<frontend::ProjectIntegerValue> value =
+                            frontend::ProjectIntegerEvaluator(nullptr).evaluate(item->first());
+                        if (!value.has_value())
+                        {
+                            error = "associated constant '" + type.identity.key() + "." +
+                                item->text() + "' is not an integral compile-time value";
+                            return false;
+                        }
+                        associated.valueBits = value->bits;
+                    }
+                }
+                record.associatedItems.push_back(std::move(associated));
             }
         }
         std::sort(record.interfaceTypeKeys.begin(), record.interfaceTypeKeys.end());
@@ -1456,6 +1519,8 @@ bool buildMetadataModel(
         for (const std::string& parameterTypeKey : type.delegateParameterTypeKeys) rememberType(parameterTypeKey);
         for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
             rememberType(variantCase.payloadTypeKey);
+        for (const LibraryMetadataAssociatedItem& item : type.associatedItems)
+            rememberType(item.typeKey);
     }
     for (const LibraryMetadataMember& member : metadata.members)
     {
@@ -1795,6 +1860,18 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         }
         if (metadata.formatMinor >= 28)
             writeStringVector(writer, type.traitMethodSignatures);
+        if (metadata.formatMinor >= 29)
+        {
+            writer.u32(static_cast<std::uint32_t>(type.associatedItems.size()));
+            for (const LibraryMetadataAssociatedItem& item : type.associatedItems)
+            {
+                writer.u8(static_cast<std::uint8_t>(item.kind));
+                writer.text(item.name);
+                writer.text(item.typeKey);
+                writer.u8(item.hasDefault ? 1U : 0U);
+                writer.u64(item.valueBits);
+            }
+        }
         writer.u32(static_cast<std::uint32_t>(type.fields.size()));
         for (const LibraryMetadataField& field : type.fields)
         {
@@ -2049,6 +2126,29 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
         const std::vector<std::uint8_t>& bytes = catalogue.bytes();
         projection.insert(projection.end(), bytes.begin(), bytes.end());
     }
+    const bool hasAssociatedItems = std::ranges::any_of(
+        metadata.types,
+        [](const LibraryMetadataType& type) { return !type.associatedItems.empty(); });
+    if (hasAssociatedItems)
+    {
+        ByteWriter catalogue;
+        catalogue.u32(static_cast<std::uint32_t>(metadata.types.size()));
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            catalogue.text(type.identityKey);
+            catalogue.u32(static_cast<std::uint32_t>(type.associatedItems.size()));
+            for (const LibraryMetadataAssociatedItem& item : type.associatedItems)
+            {
+                catalogue.u8(static_cast<std::uint8_t>(item.kind));
+                catalogue.text(item.name);
+                catalogue.text(item.typeKey);
+                catalogue.u8(item.hasDefault ? 1U : 0U);
+                catalogue.u64(item.valueBits);
+            }
+        }
+        const std::vector<std::uint8_t>& bytes = catalogue.bytes();
+        projection.insert(projection.end(), bytes.begin(), bytes.end());
+    }
     return projection;
 }
 
@@ -2142,6 +2242,35 @@ bool decodePayload(
         {
             error = "truncated metadata trait method catalogue";
             return false;
+        }
+        if (metadata.formatMinor >= 29)
+        {
+            std::uint32_t associatedCount = 0;
+            if (!readCount(reader, associatedCount))
+            {
+                error = "invalid metadata associated item count";
+                return false;
+            }
+            type.associatedItems.reserve(associatedCount);
+            for (std::uint32_t itemIndex = 0; itemIndex < associatedCount; ++itemIndex)
+            {
+                LibraryMetadataAssociatedItem item;
+                std::uint8_t kind = 0;
+                std::uint8_t hasDefault = 0;
+                if (!reader.u8(kind) ||
+                    kind > static_cast<std::uint8_t>(
+                        LibraryMetadataAssociatedItemKind::Constant) ||
+                    !reader.text(item.name) || !reader.text(item.typeKey) ||
+                    !reader.u8(hasDefault) || hasDefault > 1U ||
+                    !reader.u64(item.valueBits))
+                {
+                    error = "truncated or invalid metadata associated item catalogue";
+                    return false;
+                }
+                item.kind = static_cast<LibraryMetadataAssociatedItemKind>(kind);
+                item.hasDefault = hasDefault != 0U;
+                type.associatedItems.push_back(std::move(item));
+            }
         }
         std::uint32_t fieldCount = 0;
         if (!readCount(reader, fieldCount)) { error = "invalid metadata field count"; return false; }
@@ -2795,6 +2924,17 @@ bool LibraryMetadataCodec::writeModelImpl(
             }
         }
     }
+    if (metadata.formatMinor < 29)
+    {
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            if (!type.associatedItems.empty())
+            {
+                error = "NativeSharp metadata before 1.29 cannot represent associated items";
+                return false;
+            }
+        }
+    }
     if (metadata.formatMinor < 25 &&
         (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))
     {
@@ -3056,6 +3196,51 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             {
                 error = "metadata trait '" + type.fullyQualifiedName +
                     "' contains an empty or duplicate method signature";
+                return false;
+            }
+        }
+        if (metadata.formatMinor < 29 && !type.associatedItems.empty())
+        {
+            error = "metadata before NSMETA 1.29 contains associated items on type '" +
+                type.fullyQualifiedName + "'";
+            return false;
+        }
+        if (!type.associatedItems.empty() &&
+            type.kind != LibraryMetadataTypeKind::Class &&
+            type.kind != LibraryMetadataTypeKind::Struct && !isTrait)
+        {
+            error = "metadata type '" + type.fullyQualifiedName +
+                "' cannot own associated items";
+            return false;
+        }
+        std::unordered_set<std::string> associatedNames;
+        for (const LibraryMetadataAssociatedItem& item : type.associatedItems)
+        {
+            if (item.name.empty() || !associatedNames.insert(item.name).second)
+            {
+                error = "metadata type '" + type.fullyQualifiedName +
+                    "' contains an empty or duplicate associated item name";
+                return false;
+            }
+            if (item.kind == LibraryMetadataAssociatedItemKind::Type)
+            {
+                if (item.hasDefault != !item.typeKey.empty() || item.valueBits != 0U)
+                {
+                    error = "metadata associated type '" + type.fullyQualifiedName + "." +
+                        item.name + "' has inconsistent default data";
+                    return false;
+                }
+            }
+            else if (item.typeKey.empty() || (!item.hasDefault && item.valueBits != 0U))
+            {
+                error = "metadata associated constant '" + type.fullyQualifiedName + "." +
+                    item.name + "' has inconsistent type/default data";
+                return false;
+            }
+            if (!isTrait && !item.hasDefault)
+            {
+                error = "metadata implementation type '" + type.fullyQualifiedName +
+                    "' contains an undefined associated item '" + item.name + "'";
                 return false;
             }
         }

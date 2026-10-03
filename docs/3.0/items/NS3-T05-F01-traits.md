@@ -33,7 +33,8 @@ precompilado versionado, sin introducir layout ni un runtime paralelo.
 - `src/Interop/LibraryMetadataMerger.cpp`, `src/Interop/LibraryAbiReport.cpp`,
   `src/Interop/LibraryApiDiff.cpp`: merge, reporte y compatibilidad del nuevo contrato.
 - `src/Driver/Driver.cpp`: rehidratación fiel de traits precompilados.
-- Contratos de migración/freeze y sus pruebas: versión actual NSMETA 1.28.
+- Contratos de migración/freeze y sus pruebas: versión actual NSMETA 1.29; el marcador y los slots
+  de traits siguen siendo la sección introducida por NSMETA 1.28.
 - `CMakeLists.txt`: target dirigido de F01.
 
 ## Archivos nuevos y por qué

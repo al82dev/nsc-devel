@@ -617,6 +617,11 @@ bool ProjectGenericModel::build(
         built_ = true;
         return false;
     }
+    if (!collectAssociatedItems(units, diagnostics))
+    {
+        built_ = true;
+        return false;
+    }
 
     for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
     {
@@ -946,6 +951,332 @@ bool ProjectGenericModel::mergeTraitImplementations(
         for (ast::AstNode* member : impl->children()) owner->addChild(member);
         traitImplExtensions_[owner].push_back(impl);
     }
+    return ok;
+}
+
+bool ProjectGenericModel::registerAssociatedItems(
+    const ast::AstNode* owner,
+    std::string_view ownerName,
+    diagnostics::DiagnosticEngine* diagnostics)
+{
+    if (owner == nullptr || ownerName.empty()) return true;
+    bool ok = true;
+    for (const ast::AstNode* item : owner->children())
+    {
+        if (item == nullptr) continue;
+        const bool associatedType =
+            item->kind() == ast::AstNodeKind::AssociatedTypeDeclaration;
+        const bool associatedConstant =
+            item->kind() == ast::AstNodeKind::AssociatedConstantDeclaration;
+        if ((!associatedType && !associatedConstant) ||
+            (associatedType && item->typeSyntax() == nullptr) ||
+            (associatedConstant && item->first() == nullptr))
+            continue;
+
+        const std::string key = std::string(ownerName) + "." + item->text();
+        const ast::AstNode* previous = nullptr;
+        if (associatedType)
+        {
+            const auto [position, inserted] = associatedTypes_.emplace(key, item->typeSyntax());
+            if (inserted || position->second == item->typeSyntax()) continue;
+            for (const ast::AstNode* candidate : owner->children())
+            {
+                if (candidate != nullptr && candidate != item &&
+                    candidate->kind() == ast::AstNodeKind::AssociatedTypeDeclaration &&
+                    candidate->text() == item->text() &&
+                    candidate->typeSyntax() == position->second)
+                {
+                    previous = candidate;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            const auto [position, inserted] = associatedConstants_.emplace(key, item);
+            if (inserted || position->second == item) continue;
+            previous = position->second;
+        }
+
+        if (diagnostics != nullptr)
+        {
+            diagnostics->report(
+                diagnostics::DiagnosticId::DuplicateSymbol,
+                diagnostics::DiagnosticSeverity::Error,
+                item->range(),
+                "duplicate associated item '" + key + "'");
+            if (previous != nullptr)
+            {
+                diagnostics->report(
+                    diagnostics::DiagnosticId::PreviousDeclaration,
+                    diagnostics::DiagnosticSeverity::Note,
+                    previous->range(),
+                    "previous associated item definition is here");
+            }
+        }
+        ok = false;
+    }
+    return ok;
+}
+
+bool ProjectGenericModel::collectAssociatedItems(
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    struct LocatedNode final
+    {
+        ProjectSyntaxUnit* unit = nullptr;
+        ast::AstNode* syntax = nullptr;
+        std::string namespaceName;
+    };
+    std::vector<LocatedNode> traits;
+    std::vector<LocatedNode> owners;
+    const auto collect = [&](auto&& self,
+                             ast::AstNode* node,
+                             const std::string& parentNamespace) -> void
+    {
+        if (node == nullptr) return;
+        std::string currentNamespace = parentNamespace;
+        if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+            currentNamespace = namespaceAppend(parentNamespace, node->text());
+        if (node->kind() == ast::AstNodeKind::InterfaceDeclaration &&
+            (node->auxiliaryText() == "ns3-trait" ||
+             node->auxiliaryText().find("nsc-meta:ns3-trait") != std::string::npos))
+            traits.push_back(LocatedNode{nullptr, node, currentNamespace});
+        else if (node->kind() == ast::AstNodeKind::ClassDeclaration ||
+                 node->kind() == ast::AstNodeKind::StructDeclaration)
+            owners.push_back(LocatedNode{nullptr, node, currentNamespace});
+        for (ast::AstNode* child : node->children())
+            self(self, child, currentNamespace);
+    };
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
+    {
+        if (unit == nullptr) continue;
+        const std::size_t traitBegin = traits.size();
+        const std::size_t ownerBegin = owners.size();
+        collect(collect, unit->syntaxTree(), "");
+        for (std::size_t index = traitBegin; index < traits.size(); ++index)
+            traits[index].unit = unit.get();
+        for (std::size_t index = ownerBegin; index < owners.size(); ++index)
+            owners[index].unit = unit.get();
+    }
+
+    std::unordered_map<std::string, const ast::AstNode*> traitTypes;
+    std::unordered_map<std::string, const ast::AstNode*> traitConstants;
+    std::unordered_map<std::string, const LocatedNode*> traitsByName;
+    bool ok = true;
+    for (const LocatedNode& trait : traits)
+    {
+        const std::string traitName = namespaceAppend(
+            trait.namespaceName, trait.syntax->text());
+        traitsByName.emplace(traitName, &trait);
+        std::unordered_set<std::string> localNames;
+        for (const ast::AstNode* item : trait.syntax->children())
+        {
+            if (item == nullptr ||
+                (item->kind() != ast::AstNodeKind::AssociatedTypeDeclaration &&
+                 item->kind() != ast::AstNodeKind::AssociatedConstantDeclaration))
+                continue;
+            if (!localNames.insert(item->text()).second)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::DuplicateSymbol,
+                    diagnostics::DiagnosticSeverity::Error,
+                    item->range(),
+                    "trait '" + traitName + "' declares associated item '" +
+                        item->text() + "' more than once");
+                ok = false;
+                continue;
+            }
+            const std::string key = traitName + "." + item->text();
+            if (item->kind() == ast::AstNodeKind::AssociatedTypeDeclaration)
+                traitTypes.emplace(key, item);
+            else
+                traitConstants.emplace(key, item);
+        }
+    }
+
+    for (const LocatedNode& owner : owners)
+    {
+        const std::string ownerName = namespaceAppend(
+            owner.namespaceName, owner.syntax->text());
+        std::unordered_set<std::string> directTypeKeys;
+        std::unordered_set<std::string> directConstantKeys;
+        for (const ast::AstNode* item : owner.syntax->children())
+        {
+            if (item == nullptr) continue;
+            const std::string key = ownerName + "." + item->text();
+            if (item->kind() == ast::AstNodeKind::AssociatedTypeDeclaration &&
+                item->typeSyntax() != nullptr)
+                directTypeKeys.insert(key);
+            else if (item->kind() == ast::AstNodeKind::AssociatedConstantDeclaration &&
+                     item->first() != nullptr)
+                directConstantKeys.insert(key);
+        }
+        ok = registerAssociatedItems(owner.syntax, ownerName, &diagnostics) && ok;
+
+        for (const ast::TypeSyntax* base : owner.syntax->typeSyntaxes())
+        {
+            if (base == nullptr) continue;
+            std::string traitName = base->baseName();
+            if (!traitsByName.contains(traitName) &&
+                traitName.find('.') == std::string::npos &&
+                traitName.find("::") == std::string::npos &&
+                !owner.namespaceName.empty())
+            {
+                const std::string qualified = namespaceAppend(owner.namespaceName, traitName);
+                if (traitsByName.contains(qualified)) traitName = qualified;
+            }
+            const auto traitRecord = traitsByName.find(traitName);
+            if (traitRecord == traitsByName.end()) continue;
+            std::unordered_map<std::string, const ast::TypeSyntax*> traitSubstitutions;
+            const auto& traitParameters = traitRecord->second->syntax->genericParameters();
+            const std::size_t substitutedCount = std::min(
+                traitParameters.size(), base->typeArguments().size());
+            for (std::size_t index = 0; index < substitutedCount; ++index)
+                traitSubstitutions.emplace(
+                    traitParameters[index], base->typeArguments()[index]);
+            const std::string traitPrefix = traitName + ".";
+            for (const auto& [key, item] : traitTypes)
+            {
+                if (!key.starts_with(traitPrefix) || item == nullptr ||
+                    item->typeSyntax() == nullptr)
+                    continue;
+                const std::string ownerKey = ownerName + key.substr(traitName.size());
+                const ast::TypeSyntax* defaultType = item->typeSyntax();
+                if (!traitSubstitutions.empty() && owner.unit != nullptr)
+                    defaultType = cloneType(
+                        owner.unit->arena(), item->typeSyntax(), traitSubstitutions);
+                const auto [position, inserted] =
+                    associatedTypes_.emplace(ownerKey, defaultType);
+                if (!inserted && position->second != defaultType &&
+                    !directTypeKeys.contains(ownerKey))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        owner.syntax->range(),
+                        "associated type '" + ownerKey +
+                            "' has competing inherited defaults; define it explicitly");
+                    ok = false;
+                }
+            }
+            for (const auto& [key, item] : traitConstants)
+            {
+                if (!key.starts_with(traitPrefix) || item == nullptr || item->first() == nullptr)
+                    continue;
+                const std::string ownerKey = ownerName + key.substr(traitName.size());
+                const ast::AstNode* defaultConstant = item;
+                if (!traitSubstitutions.empty() && owner.unit != nullptr)
+                    defaultConstant = cloneNode(
+                        owner.unit->arena(), item, traitSubstitutions, "", "");
+                const auto [position, inserted] =
+                    associatedConstants_.emplace(ownerKey, defaultConstant);
+                if (!inserted && position->second != defaultConstant &&
+                    !directConstantKeys.contains(ownerKey))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        owner.syntax->range(),
+                        "associated constant '" + ownerKey +
+                            "' has competing inherited defaults; define it explicitly");
+                    ok = false;
+                }
+            }
+
+            for (const ast::AstNode* requirement : traitRecord->second->syntax->children())
+            {
+                if (requirement == nullptr) continue;
+                const std::string ownerKey = ownerName + "." + requirement->text();
+                if (requirement->kind() == ast::AstNodeKind::AssociatedTypeDeclaration)
+                {
+                    if (!associatedTypes_.contains(ownerKey))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidType,
+                            diagnostics::DiagnosticSeverity::Error,
+                            owner.syntax->range(),
+                            "type '" + ownerName + "' does not define required associated type '" +
+                                requirement->text() + "' from trait '" + traitName + "'");
+                        ok = false;
+                    }
+                }
+                else if (requirement->kind() ==
+                         ast::AstNodeKind::AssociatedConstantDeclaration)
+                {
+                    const auto definition = associatedConstants_.find(ownerKey);
+                    if (definition == associatedConstants_.end())
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidType,
+                            diagnostics::DiagnosticSeverity::Error,
+                            owner.syntax->range(),
+                            "type '" + ownerName +
+                                "' does not define required associated constant '" +
+                                requirement->text() + "' from trait '" + traitName + "'");
+                        ok = false;
+                        continue;
+                    }
+                    const ast::AstNode* value = definition->second;
+                    const ast::TypeSyntax* requiredType = requirement->typeSyntax();
+                    if (requiredType != nullptr && !traitSubstitutions.empty() &&
+                        owner.unit != nullptr)
+                        requiredType = cloneType(
+                            owner.unit->arena(), requiredType, traitSubstitutions);
+                    if (value != nullptr && requiredType != nullptr &&
+                        value->typeSyntax() != nullptr &&
+                        typeSpelling(value->typeSyntax()) != typeSpelling(requiredType))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidType,
+                            diagnostics::DiagnosticSeverity::Error,
+                            value->range(),
+                            "associated constant '" + ownerKey + "' has type '" +
+                                typeSpelling(value->typeSyntax()) + "', but trait '" + traitName +
+                                "' requires '" + typeSpelling(requiredType) + "'");
+                        ok = false;
+                    }
+                    if (value != nullptr && value->first() != nullptr &&
+                        !ProjectIntegerEvaluator(nullptr).evaluate(value->first()).has_value())
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidType,
+                            diagnostics::DiagnosticSeverity::Error,
+                            value->first()->range(),
+                            "associated constant '" + ownerKey +
+                                "' must have a compile-time constant value");
+                        ok = false;
+                    }
+                }
+            }
+        }
+    }
+
+    std::unordered_map<std::string, unsigned> projectionState;
+    const auto visitProjection = [&](auto&& self, const std::string& key) -> bool
+    {
+        unsigned& state = projectionState[key];
+        if (state == 2U) return true;
+        if (state == 1U)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                associatedTypes_.at(key)->range(),
+                "associated type normalization cycle reaches '" + key + "'");
+            return false;
+        }
+        state = 1U;
+        const ast::TypeSyntax* definition = associatedTypes_.at(key);
+        if (definition != nullptr && associatedTypes_.contains(definition->baseName()) &&
+            !self(self, definition->baseName()))
+            return false;
+        state = 2U;
+        return true;
+    };
+    for (const auto& [key, definition] : associatedTypes_)
+        if (definition != nullptr && !visitProjection(visitProjection, key)) ok = false;
     return ok;
 }
 
@@ -1431,10 +1762,6 @@ void ProjectGenericModel::processNode(
     {
         currentNamespace = namespaceAppend(namespaceName, node->text());
     }
-    if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
-        node->auxiliaryText() == "ns3-trait-impl")
-        return;
-
     // LOS `using` DE ESTE AMBITO, recogidos como los recoge ProjectNameLookup::bindScope: del
     // mismo AST, en el mismo sitio, y heredando los de fuera.
     GenericLookupScope currentScope = scope;
@@ -3114,6 +3441,9 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     const auto callerPackSubstitutions = activePackSubstitutions_;
     const std::string callerPackError = packMaterializationError_;
     const SourceRange callerPackErrorRange = packMaterializationErrorRange_;
+    const auto callerAssociatedProjections = activeAssociatedProjections_;
+    const std::string callerAssociatedError = associatedProjectionError_;
+    const SourceRange callerAssociatedErrorRange = associatedProjectionErrorRange_;
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
@@ -3194,23 +3524,33 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     }
     packMaterializationError_.clear();
     packMaterializationErrorRange_ = {};
+    activeAssociatedProjections_.clear();
+    associatedProjectionError_.clear();
+    associatedProjectionErrorRange_ = {};
 
     ast::AstNode* clone = cloneNode(
         state.unit->arena(), state.syntax, substitutions, specializedName, state.record.name);
     const std::string packError = packMaterializationError_;
     const SourceRange packErrorRange = packMaterializationErrorRange_;
+    const std::string associatedError = associatedProjectionError_;
+    const SourceRange associatedErrorRange = associatedProjectionErrorRange_;
     packMaterializationError_ = callerPackError;
     packMaterializationErrorRange_ = callerPackErrorRange;
     activePackSubstitutions_ = callerPackSubstitutions;
-    if (!packError.empty())
+    activeAssociatedProjections_ = callerAssociatedProjections;
+    associatedProjectionError_ = callerAssociatedError;
+    associatedProjectionErrorRange_ = callerAssociatedErrorRange;
+    if (!packError.empty() || !associatedError.empty())
     {
         specializationByKey_.erase(key);
         specializations_.pop_back();
         diagnostics.report(
-            diagnostics::DiagnosticId::InvalidArgumentCount,
+            associatedError.empty()
+                ? diagnostics::DiagnosticId::InvalidArgumentCount
+                : diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
-            packErrorRange,
-            packError);
+            associatedError.empty() ? packErrorRange : associatedErrorRange,
+            associatedError.empty() ? packError : associatedError);
         currentInstantiationProjectOrdinal_ = callerProjectOrdinal;
         currentInstantiationNamespace_ = callerNamespace;
         currentInstantiationRange_ = callerRange;
@@ -3232,6 +3572,10 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     state.parent->addChild(clone);
     specializations_[ordinal].specializedSyntax = clone;
     specializationBySyntax_[clone] = ordinal;
+    registerAssociatedItems(
+        clone,
+        namespaceAppend(state.record.namespaceName, specializedName),
+        &diagnostics);
 
     processNode(
         *state.unit, clone, state.record.namespaceName, specializedName,
@@ -3262,6 +3606,9 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     const auto callerPackSubstitutions = activePackSubstitutions_;
     const std::string callerPackError = packMaterializationError_;
     const SourceRange callerPackErrorRange = packMaterializationErrorRange_;
+    const auto callerAssociatedProjections = activeAssociatedProjections_;
+    const std::string callerAssociatedError = associatedProjectionError_;
+    const SourceRange callerAssociatedErrorRange = associatedProjectionErrorRange_;
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
@@ -3361,22 +3708,32 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     }
     packMaterializationError_.clear();
     packMaterializationErrorRange_ = {};
+    activeAssociatedProjections_.clear();
+    associatedProjectionError_.clear();
+    associatedProjectionErrorRange_ = {};
 
     ast::AstNode* clone = cloneNode(state.unit->arena(), state.syntax, substitutions, "", "");
     const std::string packError = packMaterializationError_;
     const SourceRange packErrorRange = packMaterializationErrorRange_;
+    const std::string associatedError = associatedProjectionError_;
+    const SourceRange associatedErrorRange = associatedProjectionErrorRange_;
     packMaterializationError_ = callerPackError;
     packMaterializationErrorRange_ = callerPackErrorRange;
     activePackSubstitutions_ = callerPackSubstitutions;
-    if (!packError.empty())
+    activeAssociatedProjections_ = callerAssociatedProjections;
+    associatedProjectionError_ = callerAssociatedError;
+    associatedProjectionErrorRange_ = callerAssociatedErrorRange;
+    if (!packError.empty() || !associatedError.empty())
     {
         specializationByKey_.erase(key);
         specializations_.pop_back();
         diagnostics.report(
-            diagnostics::DiagnosticId::InvalidArgumentCount,
+            associatedError.empty()
+                ? diagnostics::DiagnosticId::InvalidArgumentCount
+                : diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
-            packErrorRange,
-            packError);
+            associatedError.empty() ? packErrorRange : associatedErrorRange,
+            associatedError.empty() ? packError : associatedError);
         currentInstantiationProjectOrdinal_ = callerProjectOrdinal;
         currentInstantiationNamespace_ = callerNamespace;
         currentInstantiationRange_ = callerRange;
@@ -3473,6 +3830,105 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions)
 {
     if (source == nullptr) return nullptr;
+
+    // T05-F03. Normalize `T.Item` only when the leftmost component is an active generic
+    // substitution. Ordinary dotted namespace/type names remain untouched. Chained projections
+    // are consumed one component at a time.
+    const std::size_t projectionSeparator = source->baseName().find('.');
+    if (projectionSeparator != std::string::npos)
+    {
+        const std::string root = source->baseName().substr(0, projectionSeparator);
+        if (const auto substitution = substitutions.find(root);
+            substitution != substitutions.end())
+        {
+            const ast::TypeSyntax* current = substitution->second;
+            std::size_t begin = projectionSeparator + 1U;
+            while (begin < source->baseName().size())
+            {
+                const std::size_t end = source->baseName().find('.', begin);
+                const std::string item = source->baseName().substr(
+                    begin, end == std::string::npos ? std::string::npos : end - begin);
+                const std::string owner = typeSpelling(current);
+                std::vector<std::string> candidates{owner + "." + item};
+                if (current != nullptr)
+                {
+                    if (const auto identity = resolvedTypeIdentityBySyntax_.find(current);
+                        identity != resolvedTypeIdentityBySyntax_.end())
+                    {
+                        const std::size_t moduleSeparator = identity->second.find("::");
+                        if (moduleSeparator != std::string::npos)
+                            candidates.push_back(identity->second.substr(moduleSeparator + 2U) +
+                                "." + item);
+                    }
+                }
+                if (current != nullptr && current->originNamespace().has_value() &&
+                    !current->originNamespace()->empty())
+                    candidates.push_back(namespaceAppend(
+                        *current->originNamespace(), owner) + "." + item);
+                if (!currentInstantiationNamespace_.empty())
+                    candidates.push_back(namespaceAppend(
+                        currentInstantiationNamespace_, owner) + "." + item);
+
+                const ast::TypeSyntax* definition = nullptr;
+                std::string selectedKey;
+                for (const std::string& candidate : candidates)
+                {
+                    if (const auto found = associatedTypes_.find(candidate);
+                        found != associatedTypes_.end())
+                    {
+                        definition = found->second;
+                        selectedKey = candidate;
+                        break;
+                    }
+                }
+                if (definition == nullptr)
+                {
+                    if (associatedProjectionError_.empty())
+                    {
+                        associatedProjectionError_ =
+                            "cannot normalize associated type projection '" +
+                            source->baseName() + "' for concrete type '" + owner +
+                            "': no associated type definition is available";
+                        associatedProjectionErrorRange_ = source->range();
+                    }
+                    return arena.make<ast::TypeSyntax>(
+                        source->range(), lexer::TokenKind::KwInt, "int");
+                }
+                if (!activeAssociatedProjections_.insert(selectedKey).second)
+                {
+                    if (associatedProjectionError_.empty())
+                    {
+                        associatedProjectionError_ =
+                            "associated type normalization cycle reaches '" + selectedKey + "'";
+                        associatedProjectionErrorRange_ = source->range();
+                    }
+                    return arena.make<ast::TypeSyntax>(
+                        source->range(), lexer::TokenKind::KwInt, "int");
+                }
+                current = cloneType(arena, definition, substitutions);
+                activeAssociatedProjections_.erase(selectedKey);
+                if (end == std::string::npos) break;
+                begin = end + 1U;
+            }
+
+            ast::TypeSyntax* result = cloneType(arena, current, {});
+            for (const ast::TypeModifierSyntax& modifier : source->modifiers())
+            {
+                result->addModifier(ast::TypeModifierSyntax{
+                    modifier.kind,
+                    cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
+                    modifier.range,
+                    modifier.arrayRank});
+            }
+            result->setOwnershipQualifier(source->ownershipQualifier());
+            result->setDynamicTrait(source->isDynamicTrait());
+            result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
+            result->setPointeeConst(source->isPointeeConst());
+            result->setPackExpansion(source->isPackExpansion());
+            result->setRange(source->range());
+            return result;
+        }
+    }
 
     if (source->baseName() == "packtype" && source->typeArguments().size() == 2U)
     {
@@ -3701,6 +4157,59 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     std::string_view originalContainingTypeName)
 {
     if (source == nullptr) return nullptr;
+    if (source->kind() == ast::AstNodeKind::MemberExpression &&
+        source->first() != nullptr &&
+        source->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto substitution = substitutions.find(source->first()->text());
+        if (substitution != substitutions.end())
+        {
+            const ast::TypeSyntax* ownerType = substitution->second;
+            const std::string owner = typeSpelling(ownerType);
+            std::vector<std::string> candidates{owner + "." + source->text()};
+            if (ownerType != nullptr)
+            {
+                if (const auto identity = resolvedTypeIdentityBySyntax_.find(ownerType);
+                    identity != resolvedTypeIdentityBySyntax_.end())
+                {
+                    const std::size_t moduleSeparator = identity->second.find("::");
+                    if (moduleSeparator != std::string::npos)
+                        candidates.push_back(identity->second.substr(moduleSeparator + 2U) +
+                            "." + source->text());
+                }
+            }
+            if (ownerType != nullptr && ownerType->originNamespace().has_value() &&
+                !ownerType->originNamespace()->empty())
+                candidates.push_back(namespaceAppend(
+                    *ownerType->originNamespace(), owner) + "." + source->text());
+            if (!currentInstantiationNamespace_.empty())
+                candidates.push_back(namespaceAppend(
+                    currentInstantiationNamespace_, owner) + "." + source->text());
+            for (const std::string& candidate : candidates)
+            {
+                const auto found = associatedConstants_.find(candidate);
+                if (found == associatedConstants_.end() || found->second == nullptr ||
+                    found->second->first() == nullptr)
+                    continue;
+                const std::string activeKey = "const:" + candidate;
+                if (!activeAssociatedProjections_.insert(activeKey).second)
+                {
+                    if (associatedProjectionError_.empty())
+                    {
+                        associatedProjectionError_ =
+                            "associated constant normalization cycle reaches '" + candidate + "'";
+                        associatedProjectionErrorRange_ = source->range();
+                    }
+                    break;
+                }
+                ast::AstNode* result = cloneNode(
+                    arena, found->second->first(), substitutions,
+                    rewrittenContainingTypeName, originalContainingTypeName);
+                activeAssociatedProjections_.erase(activeKey);
+                return result;
+            }
+        }
+    }
     if (source->kind() == ast::AstNodeKind::CallExpression &&
         source->first() != nullptr &&
         source->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
@@ -3885,13 +4394,21 @@ ast::AstNode* ProjectGenericModel::cloneNode(
         copy.requiresUnmanaged = clause.requiresUnmanaged;
         copy.requiresNotNull = clause.requiresNotNull;
         copy.equalityConstraint = cloneType(arena, clause.equalityConstraint, substitutions);
+        copy.associatedProjection = cloneType(
+            arena, clause.associatedProjection, substitutions);
         copy.range = clause.range;
         for (const ast::TypeSyntax* constraint : clause.typeConstraints)
             copy.typeConstraints.push_back(cloneType(arena, constraint, substitutions));
         // El argumento con el que se cerro este parametro, colgado de la clausula para que la
         // resolucion de nombres lo alcance. Ver GenericConstraintClause::substitutedArgument.
-        if (const auto found = substitutions.find(clause.parameterName);
-            found != substitutions.end())
+        if (copy.associatedProjection != nullptr)
+        {
+            copy.substitutedArgument = copy.associatedProjection;
+            preserveOrAttachInstantiationOrigin(
+                const_cast<ast::TypeSyntax*>(copy.substitutedArgument));
+        }
+        else if (const auto found = substitutions.find(clause.parameterName);
+                 found != substitutions.end())
         {
             ast::TypeSyntax* substitutedArgument = cloneType(arena, found->second, substitutions);
             preserveOrAttachInstantiationOrigin(substitutedArgument);

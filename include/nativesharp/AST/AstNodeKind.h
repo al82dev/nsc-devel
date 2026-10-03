@@ -139,7 +139,12 @@ enum class AstNodeKind
     TupleExpression,
     // NativeSharp 3.0 T02-F03. `var (a, _, b) = tuple;`: first() is the source expression and
     // children are identifier bindings/discards in textual order.
-    DeconstructionDeclarationStatement
+    DeconstructionDeclarationStatement,
+    // NativeSharp 3.0 T05-F03. Logical trait items: neither node introduces object storage nor a
+    // callable ABI entry. typeSyntax() is the optional/default associated type; for a constant it
+    // is the declared value type and first() is the optional/default constant expression.
+    AssociatedTypeDeclaration,
+    AssociatedConstantDeclaration
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

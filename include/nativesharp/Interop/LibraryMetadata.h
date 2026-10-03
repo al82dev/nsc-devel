@@ -22,6 +22,8 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 29 (2026-10-03): trait and implementing type records preserve associated type/constant
+// requirements, defaults, definitions, and normalized integral values across LibraryReference.
 // MINOR 28 (2026-10-03): interface-kind type records can identify NativeSharp 3 traits so a
 // consumer reconstructs default methods and static property/operator requirements faithfully.
 // MINOR 27 (2026-10-03): tagged variants preserve nominal identity plus their ordered case and
@@ -72,7 +74,7 @@ namespace nativesharp::interop
 // MINOR 23 (2026-09-29): modules preserve their NativeSharp language edition.
 // MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 28;
+inline constexpr std::uint16_t kMetadataFormatMinor = 29;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -187,6 +189,24 @@ struct LibraryMetadataVariantCase final
     std::string payloadTypeKey;
 };
 
+enum class LibraryMetadataAssociatedItemKind : std::uint8_t
+{
+    Type = 0,
+    Constant = 1
+};
+
+struct LibraryMetadataAssociatedItem final
+{
+    LibraryMetadataAssociatedItemKind kind = LibraryMetadataAssociatedItemKind::Type;
+    std::string name;
+    // Associated type: canonical default/definition type key, empty for a requirement.
+    // Associated constant: canonical declared value type key.
+    std::string typeKey;
+    bool hasDefault = false;
+    // Normalized typed integral/boolean bits for a constant default/definition. Zero otherwise.
+    std::uint64_t valueBits = 0;
+};
+
 struct LibraryMetadataType final
 {
     LibraryMetadataTypeKind kind = LibraryMetadataTypeKind::Struct;
@@ -226,6 +246,9 @@ struct LibraryMetadataType final
     // Default method bodies compiled by the producer use these ordinals, so a consumer must not
     // reconstruct the trait from the signature-sorted public member catalogue.
     std::vector<std::string> traitMethodSignatures;
+    // NSMETA 1.29. Ordered as declared. These are logical compile-time items and never fields,
+    // vtable slots, or exported storage.
+    std::vector<LibraryMetadataAssociatedItem> associatedItems;
     std::vector<LibraryMetadataField> fields;
 };
 

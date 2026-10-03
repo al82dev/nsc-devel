@@ -1,8 +1,9 @@
 # Tanda 05 — Traits, interfaces estáticas y despacho / Traits and dispatch
 
-> **Estado 2026-10-03:** `IMPLEMENTING`. `NS3-T05-F01` y `NS3-T05-F02` están terminados:
+> **Estado 2026-10-03:** `IMPLEMENTING`. `NS3-T05-F01`–`NS3-T05-F03` están terminados:
 > declaraciones, defaults, requisitos estáticos, bloques `impl`, coherencia sellada, impls
-> condicionales y transporte NSMETA. F03–F07 permanecen pendientes. No se ejecutó baseline.
+> condicionales, tipos/constantes asociados y transporte NSMETA. F04–F07 permanecen pendientes.
+> No se ejecutó baseline.
 
 ## Resultado / Outcome
 
@@ -12,7 +13,8 @@ conserva el despacho por tabla de interfaces. NSMETA 1.28 conserva identidad y o
 
 EN: `trait` declares nominal storage-free contracts in edition 3. It supports required/default
 methods plus static property/operator requirements. Concrete constraints are monomorphized while
-`dyn Trait` preserves interface-table dispatch. NSMETA 1.28 preserves identity and slot order.
+`dyn Trait` preserves interface-table dispatch. Associated types/constants normalize statically.
+NSMETA 1.29 preserves identity, slot order, requirements, defaults, and concrete definitions.
 
 ## Archivos y cambios / Files and changes
 
@@ -25,13 +27,15 @@ methods plus static property/operator requirements. Concrete constraints are mon
 - `NativeSharp3T05TraitDeclarationTests` cubre 14 casos, incluido productor/consumidor separado.
 - `NativeSharp3T05ImplCoherenceTests` cubre ownership, duplicados, privacidad, condicionales y
   round-trip genérico productor/consumidor.
+- `NativeSharp3T05AssociatedItemTests` cubre 16 casos de proyección, defaults, igualdad, ciclos,
+  constantes, genéricos y productor/consumidor NSMETA 1.29.
 
 ## Mejora / Improvement
 
 ES: Un trait no altera layout ni crea un runtime paralelo. Un bloque `impl` sólo puede extender una
 clase propiedad del módulo; el constraint especializado hace llamada directa y `dyn` hace
-`interface-instance-call`. Defaults, requisitos e impls genéricos cruzan `.nsmeta` sin reordenar
-slots ni delegar coherence al runtime.
+`interface-instance-call`. Tipos y constantes asociados se normalizan antes del backend. Defaults,
+requisitos e impls genéricos cruzan `.nsmeta` sin reordenar slots ni delegar coherence al runtime.
 
 EN: Traits add no layout or parallel runtime. Sealed coherence lets an impl extend only a class
 owned by its module; specialized constraints use direct calls and `dyn` uses
@@ -40,16 +44,18 @@ reordering or runtime coherence.
 
 ## Límite / Boundary
 
-F01+F02 no equivalen al gate T05. Associated items, opaque results, object-safety completa,
-extension lookup y operadores resueltos mediante traits siguen abiertos en F03–F07.
+F01–F03 no equivalen al gate T05. Opaque results, object-safety completa, extension lookup y
+operadores resueltos mediante traits siguen abiertos en F04–F07.
 
 ## Validación / Validation
 
-`nsc` O0; c62 exit 42; MIR static/dynamic; batería F01 14/14; batería F02 11/11; productor
-`.lib/.nsmeta` y consumidores con default/impl genérico exit 42. Sin baseline, CTest general,
-O1/O2/O3, instalación ni deploy.
+`nsc` O0; c62 exit 42; MIR static/dynamic; batería F01 14/14; batería F02 11/11; batería F03
+16/16; productor `.lib/.nsmeta` y consumidores con defaults, impl genérico y asociados exit 42.
+Sin baseline, CTest general, O1/O2/O3, instalación ni deploy.
 
 Detalle: [trait-declarations.md](language/trait-declarations.md),
 [trait-implementations.md](language/trait-implementations.md),
+[associated-items.md](language/associated-items.md),
 [NS3-T05-F01-traits.md](items/NS3-T05-F01-traits.md) y
-[NS3-T05-F02-impl-coherence.md](items/NS3-T05-F02-impl-coherence.md).
+[NS3-T05-F02-impl-coherence.md](items/NS3-T05-F02-impl-coherence.md) y
+[NS3-T05-F03-associated-items.md](items/NS3-T05-F03-associated-items.md).

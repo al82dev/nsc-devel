@@ -1452,6 +1452,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 collectMaterializedContractTypes(metadata, interfaceTypeKey, contractTypeIdentities);
             for (const interop::LibraryMetadataField &field : type.fields)
                 collectMaterializedContractTypes(metadata, field.typeKey, contractTypeIdentities);
+            for (const interop::LibraryMetadataAssociatedItem& item : type.associatedItems)
+                collectMaterializedContractTypes(metadata, item.typeKey, contractTypeIdentities);
         }
     }
     for (const interop::LibraryMetadataMember &member : metadata.members)
@@ -1582,6 +1584,48 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         {
             if (!member.parameters.empty()) generated << ", ";
             generated << "...";
+        }
+        return true;
+    };
+    const auto emitAssociatedItems = [&](const interop::LibraryMetadataType& owner) -> bool {
+        for (const interop::LibraryMetadataAssociatedItem& item : owner.associatedItems)
+        {
+            generated << "    ";
+            if (owner.kind != interop::LibraryMetadataTypeKind::Interface)
+                generated << "associated ";
+            if (item.kind == interop::LibraryMetadataAssociatedItemKind::Type)
+            {
+                generated << "type " << item.name;
+                if (item.hasDefault)
+                {
+                    std::string associatedType;
+                    if (!sourceTypeForMetadataKey(
+                            metadata, item.typeKey, associatedType, error))
+                        return false;
+                    generated << " = " << associatedType;
+                }
+                generated << ";\n";
+                continue;
+            }
+
+            std::string constantType;
+            if (!sourceTypeForMetadataKey(metadata, item.typeKey, constantType, error))
+                return false;
+            generated << "const " << constantType << ' ' << item.name;
+            if (item.hasDefault)
+            {
+                generated << " = ";
+                if (item.typeKey == "builtin:bool")
+                    generated << (item.valueBits == 0U ? "false" : "true");
+                else if (item.typeKey == "builtin:sbyte" ||
+                         item.typeKey == "builtin:short" ||
+                         item.typeKey == "builtin:int" ||
+                         item.typeKey == "builtin:long")
+                    generated << static_cast<std::int64_t>(item.valueBits);
+                else
+                    generated << item.valueBits;
+            }
+            generated << ";\n";
         }
         return true;
     };
@@ -1896,6 +1940,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 generated << baseInterface;
             }
             generated << "\n{\n";
+            if (!emitAssociatedItems(type)) return false;
             constexpr std::uint8_t kMethodKind = 2U;
             constexpr std::uint32_t kStatic = 1U << 0U;
             constexpr std::uint32_t kAbstract = 1U << 5U;
@@ -2043,6 +2088,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             }
         }
         generated << "\n{\n";
+
+        if (!emitAssociatedItems(type)) return false;
 
         std::set<const interop::LibraryMetadataMember *> materializedEvents;
         std::set<const interop::LibraryMetadataMember *> materializedAccessors;

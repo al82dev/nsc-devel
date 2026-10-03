@@ -226,6 +226,13 @@ private:
     bool mergeTraitImplementations(
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool collectAssociatedItems(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool registerAssociatedItems(
+        const ast::AstNode* owner,
+        std::string_view ownerName,
+        diagnostics::DiagnosticEngine* diagnostics);
 
     void discoverTemplateDependencies(
         ProjectSyntaxUnit& unit,
@@ -490,6 +497,11 @@ private:
     std::unordered_map<const ast::AstNode*, ast::TypeSyntax*> inferredCallReturnTypes_;
     std::unordered_map<const ast::AstNode*, std::vector<const ast::AstNode*>>
         traitImplExtensions_;
+    std::unordered_map<std::string, const ast::TypeSyntax*> associatedTypes_;
+    std::unordered_map<std::string, const ast::AstNode*> associatedConstants_;
+    std::unordered_set<std::string> activeAssociatedProjections_;
+    std::string associatedProjectionError_;
+    SourceRange associatedProjectionErrorRange_{};
     std::vector<std::vector<std::size_t>> visibleProjects_;
     std::vector<std::string> projectModuleNames_;
     // Available before name binding because generic materialization itself runs before name

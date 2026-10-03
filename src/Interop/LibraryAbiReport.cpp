@@ -167,6 +167,19 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
         for (std::size_t ordinal = 0; ordinal < type->traitMethodSignatures.size(); ++ordinal)
             output << "    trait-slot #" << ordinal
                    << " signature=" << type->traitMethodSignatures[ordinal] << '\n';
+        for (std::size_t ordinal = 0; ordinal < type->associatedItems.size(); ++ordinal)
+        {
+            const LibraryMetadataAssociatedItem& item = type->associatedItems[ordinal];
+            output << "    associated-item #" << ordinal
+                   << " kind=" << (item.kind == LibraryMetadataAssociatedItemKind::Type
+                           ? "type" : "constant")
+                   << " name=" << item.name
+                   << " type=" << (item.typeKey.empty() ? "<required>" : item.typeKey)
+                   << " default=" << (item.hasDefault ? "yes" : "no");
+            if (item.kind == LibraryMetadataAssociatedItemKind::Constant && item.hasDefault)
+                output << " bits=" << item.valueBits;
+            output << '\n';
+        }
         std::vector<const LibraryMetadataField*> fields;
         for (const LibraryMetadataField& field : type->fields) fields.push_back(&field);
         std::ranges::sort(fields, [](const LibraryMetadataField* left, const LibraryMetadataField* right)
