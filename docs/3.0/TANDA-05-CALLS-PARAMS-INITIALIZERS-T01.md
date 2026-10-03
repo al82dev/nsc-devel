@@ -124,9 +124,11 @@ segura:
 - agregados con destructor o campos `owned`: rechazados con diagnóstico causal y recomendación de
   constructor.
 
-La ampliación a cleanup parcial real se reabre junto con `NS3-T06-F02/F05/F08`. Los protocolos de
-colección estática se integrarán después de que T05 defina traits/interfaces estáticas; esta tanda
-no inventa un protocolo ad hoc antes de su autoridad semántica.
+La ampliación a cleanup parcial real se reabre junto con `NS3-T06-F02/F05/F08`. El protocolo de
+colección estática que sí es productivo en esta tanda es el de `T[N]`: `Element` y `Count` se
+resuelven en compilación, la cardinalidad se valida antes del lowering y no existe crecimiento ni
+asignación implícita. Las colecciones de usuario no adoptan un nombre mágico como `Add`; su
+extensión queda bajo los traits estáticos nominales de T05 para evitar dos contratos rivales.
 
 ## 3. Versiones de contrato
 
@@ -240,6 +242,6 @@ baseline final de Alberto.
 
 - drop flags y cleanup parcial para aggregates no triviales: T06;
 - spreads move-only/copy-by-trait: T06/T05;
-- collection initializer por protocolo estático: T05 después de traits;
+- adopción del protocolo de initializer por colecciones de usuario: T05, sobre traits nominales;
 - explicación de overload/pack en LSP y visualización específica en debugger: tanda de tooling;
 - baseline integral y promoción: Tanda 32, bajo control de Alberto.
