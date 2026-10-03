@@ -1283,6 +1283,39 @@ bool ProjectMethodBodyModel::typeKeyCarriesLifetime(std::string_view typeKey) co
     return isReferenceTypeKey(typeKey);
 }
 
+bool ProjectMethodBodyModel::expressionUsesExpandedParameterPack(
+    const ast::AstNode* expression) const noexcept
+{
+    if (expression == nullptr) return false;
+
+    for (auto iterator = calls_.rbegin(); iterator != calls_.rend(); ++iterator)
+    {
+        if (iterator->syntax == expression &&
+            iterator->resolution == MethodCallResolutionKind::Resolved &&
+            iterator->selectedUsesExpandedParameterPack)
+        {
+            return true;
+        }
+    }
+    if (const NamespaceFunctionCallBinding* call = namespaceFunctionCall(expression);
+        call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+        call->selectedUsesExpandedParameterPack)
+    {
+        return true;
+    }
+
+    const auto containsPack = [&](const ast::AstNode* child)
+    {
+        return expressionUsesExpandedParameterPack(child);
+    };
+    if (containsPack(expression->first()) || containsPack(expression->second()) ||
+        containsPack(expression->third()))
+    {
+        return true;
+    }
+    return std::ranges::any_of(expression->children(), containsPack);
+}
+
 // SHR-013 "vistas y tiempo de vida" -- EL ANALISIS DE ENRAIZAMIENTO.
 //
 // La pregunta: esta expresion toma prestado de un local de ESTE metodo? Si la respuesta es que
@@ -4422,6 +4455,12 @@ void ProjectMethodBodyModel::analyzeVariable(
         const std::optional<std::string> root =
             viewRootLocalOfExpression(variable->first(), scopeOrdinal);
         if (root.has_value()) local.viewRootLocalName = *root;
+        else if (expressionUsesExpandedParameterPack(variable->first()))
+        {
+            // The backing array is an alloca in this method. Naming the view local as its own
+            // root reuses the ordinary SHR-013 return check and gives the user a useful name.
+            local.viewRootLocalName = local.name;
+        }
     }
 
     const std::optional<ScopeName> outer = lookupScopeName(scopeOrdinal, variable->text());
@@ -5186,6 +5225,16 @@ void ProjectMethodBodyModel::analyzeReturn(
                 "view of type '" + method->declaredTypeKey + "' borrows from local '" + *root +
                     "' and cannot be returned: the local dies when the method returns. Take the "
                     "view from a parameter, a field, or return a copy that owns its storage");
+            return;
+        }
+        if (expressionUsesExpandedParameterPack(statement->first()))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->first()->range(),
+                "view returned from an expanded parameter pack refers to temporary caller "
+                "stack storage and cannot escape the current method");
             return;
         }
     }

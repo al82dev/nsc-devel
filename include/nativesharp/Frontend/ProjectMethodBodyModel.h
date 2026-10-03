@@ -1946,6 +1946,10 @@ private:
     std::optional<std::string> viewRootLocalOfExpression(
         const ast::AstNode* expression,
         std::size_t scopeOrdinal) const;
+    // T01-F02. An expanded params ReadOnlySpan<T> owns no heap storage: its elements live in an
+    // entry-block stack slot in the caller. A view returned by the callee must therefore retain
+    // that frame-bound origin instead of looking like an unrooted borrowed-returning call.
+    bool expressionUsesExpandedParameterPack(const ast::AstNode* expression) const noexcept;
     std::optional<std::size_t> variableArrayRootLocalOfExpression(
         const ast::AstNode* expression,
         std::size_t scopeOrdinal) const;
