@@ -84,7 +84,9 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // callable signatures retain the explicit `dyn` marker across LibraryReference boundaries.
 // MINOR 30 (2026-10-03): declaration-scoped opaque result identities publish their one-field
 // in-place representation and implemented trait as a closed native contract.
-inline constexpr std::uint16_t kMetadataFormatMinor = 34;
+// MINOR 34 (2026-10-03): named lifetime binders and outlives edges cross module boundaries.
+// MINOR 35 (2026-10-03): per-parameter interprocedural escape summaries are public contracts.
+inline constexpr std::uint16_t kMetadataFormatMinor = 35;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -320,6 +322,15 @@ struct LibraryMetadataParameter final
     std::string defaultValueText;
 };
 
+enum class LibraryMetadataEscapeClass : std::uint8_t
+{
+    NoEscape = 0,
+    Return = 1,
+    CallerOwned = 2,
+    Global = 3,
+    Unknown = 4
+};
+
 struct LibraryMetadataMember final
 {
     std::uint8_t kind = 0;
@@ -336,6 +347,9 @@ struct LibraryMetadataMember final
     std::string returnLifetimeName;
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
+    // NSMETA 1.35. One entry per parameter. Missing contracts in older metadata are treated as
+    // Unknown by edition-3 consumers rather than silently assuming that a borrow cannot escape.
+    std::vector<LibraryMetadataEscapeClass> parameterEscapeSummary;
     std::uint8_t constantKind = 0;
     std::uint64_t constantBits = 0;
     // NSMETA 1.9. Payload UTF-8 de una constante string; vacio para los demas kinds.
@@ -363,6 +377,7 @@ struct LibraryMetadataNamespaceFunction final
     std::string returnLifetimeName;
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
+    std::vector<LibraryMetadataEscapeClass> parameterEscapeSummary;
 };
 
 enum class LibraryMetadataNamespaceStateInitializerKind : std::uint8_t

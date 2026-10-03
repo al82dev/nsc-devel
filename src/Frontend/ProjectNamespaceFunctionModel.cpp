@@ -1151,6 +1151,46 @@ bool ProjectNamespaceFunctionModel::build(
     return built_;
 }
 
+bool ProjectNamespaceFunctionModel::bindPrecompiledEscapeSummaries(
+    std::span<const PrecompiledNamespaceFunctionIdentity> identities,
+    std::string& error)
+{
+    error.clear();
+    if (!built_)
+    {
+        error = "precompiled namespace-function escape summaries require a completed model";
+        return false;
+    }
+    for (NamespaceFunctionSymbol& function : functions_)
+    {
+        if (!function.isPrecompiled) continue;
+        const auto match = std::ranges::find_if(identities, [&](const auto& identity)
+        {
+            return identity.moduleName == function.moduleName &&
+                identity.namespaceName == function.namespaceName &&
+                identity.name == function.name &&
+                identity.signatureKey == function.signatureKey;
+        });
+        if (match == identities.end())
+        {
+            error = "precompiled namespace function '" + function.moduleName + "::" +
+                function.namespaceName + "." + function.signatureKey +
+                "' has no escape contract in NSMETA";
+            return false;
+        }
+        function.parameterEscapeSummary = match->parameterEscapeSummary;
+        if (!function.parameterEscapeSummary.empty() &&
+            function.parameterEscapeSummary.size() != function.parameters.size())
+        {
+            error = "precompiled namespace function '" + function.moduleName + "::" +
+                function.namespaceName + "." + function.signatureKey +
+                "' has an invalid escape-summary parameter count";
+            return false;
+        }
+    }
+    return true;
+}
+
 std::span<const NamespaceFunctionSymbol> ProjectNamespaceFunctionModel::functions() const noexcept
 {
     return functions_;

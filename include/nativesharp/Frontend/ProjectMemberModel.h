@@ -7,6 +7,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Frontend/InliningPolicy.h"
+#include "nativesharp/Language/OwnershipSemantics.h"
 #include "nativesharp/Sema/OwnershipKind.h"
 #include "nativesharp/Sema/EffectContext.h"
 
@@ -146,6 +147,9 @@ struct ClassMemberSymbol final
     std::string returnLifetimeName;
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
+    // NativeSharp 3.0 T06-F07. One stable interprocedural escape contract per parameter.
+    // Empty means that no producer contract was available and consumers must fail closed.
+    std::vector<language::EscapeClass> parameterEscapeSummary;
     // Item 308. A volatile field is an observable memory location: every load/store survives
     // optimization, but it gains neither atomicity nor inter-thread ordering.
     bool isVolatile = false;
@@ -263,6 +267,7 @@ struct PrecompiledMemberIdentity final
     std::string name;
     std::string signatureKey;
     std::string mangledName;
+    std::vector<language::EscapeClass> parameterEscapeSummary;
 };
 
 enum class MemberBodyBindingKind

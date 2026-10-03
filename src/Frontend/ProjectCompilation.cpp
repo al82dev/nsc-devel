@@ -638,8 +638,20 @@ bool ProjectCompilation::compileProjectMembers(
     }
 
     namespaceFunctionModel_ = std::make_unique<ProjectNamespaceFunctionModel>();
-    return namespaceFunctionModel_->build(
-        *nameLookup_, *memberModel_, units_, diagnostics_, genericModel_.get());
+    if (!namespaceFunctionModel_->build(
+            *nameLookup_, *memberModel_, units_, diagnostics_, genericModel_.get()))
+    {
+        return false;
+    }
+    std::vector<PrecompiledNamespaceFunctionIdentity> precompiledNamespaceFunctions;
+    for (const PrecompiledSyntaxModule& module : precompiledModules_)
+    {
+        precompiledNamespaceFunctions.insert(
+            precompiledNamespaceFunctions.end(),
+            module.namespaceFunctions.begin(), module.namespaceFunctions.end());
+    }
+    return namespaceFunctionModel_->bindPrecompiledEscapeSummaries(
+        precompiledNamespaceFunctions, loadError);
 }
 
 

@@ -261,7 +261,7 @@ namespace LifetimeApi
             return member.name == "Narrow";
         });
     tests.expect(
-        metadataRead && metadata.formatMinor == 34 &&
+        metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             view != metadata.types.end() && view->lifetimeParameters == std::vector<std::string>{"a"} &&
             view->fields.size() == 1U && view->fields[0].lifetimeName == "a" &&
             selector != metadata.types.end() && selector->delegateReferenceReturn &&
@@ -273,7 +273,7 @@ namespace LifetimeApi
                 std::vector<std::pair<std::string, std::string>>({{"longer", "shorter"}}) &&
             narrow->parameters.size() == 1U &&
             narrow->parameters[0].lifetimeName == "longer",
-        "NSMETA 1.34 preserves type, field, delegate and callable lifetime contracts (" +
+        "current NSMETA preserves the 1.34 type, field, delegate and callable lifetime contracts (" +
             error + output + metadataError + ")");
 
     nativesharp::interop::LibraryMetadata downlevel = metadata;

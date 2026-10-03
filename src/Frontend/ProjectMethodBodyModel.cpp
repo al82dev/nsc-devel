@@ -654,12 +654,36 @@ bool ProjectMethodBodyModel::build(
         adapter.returnLifetimeName = function.returnLifetimeName;
         adapter.lifetimeParameters = function.lifetimeParameters;
         adapter.lifetimeOutlivesConstraints = function.lifetimeOutlivesConstraints;
+        adapter.parameterEscapeSummary = function.parameterEscapeSummary;
         adapter.isVariadic = function.isVariadic;
         adapter.inliningPolicy = function.inliningPolicy;
         namespaceCallableAdapters_.push_back(std::move(adapter));
     }
     inheritanceModel_ = &inheritanceModel;
     interfaceModel_ = &interfaceModel;
+
+    parameterEscapeSummaries_.clear();
+    parameterEscapeSummaries_.resize(
+        memberModel.members().size() + namespaceCallableAdapters_.size());
+    for (std::size_t callableOrdinal = 0;
+         callableOrdinal < parameterEscapeSummaries_.size(); ++callableOrdinal)
+    {
+        const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
+        if (callable == nullptr) continue;
+        std::vector<language::EscapeClass>& summary =
+            parameterEscapeSummaries_[callableOrdinal];
+        if (callable->parameterEscapeSummary.size() == callable->parameters.size())
+        {
+            summary = callable->parameterEscapeSummary;
+            continue;
+        }
+        const bool hasBody = callable->syntax != nullptr && callable->syntax->first() != nullptr;
+        const bool conservative = callable->isPrecompiled || callable->isImportedC ||
+            callable->isExternC || !hasBody || callable->genericTemplateOrdinal.has_value() ||
+            !callable->genericTemplateKey.empty();
+        summary.assign(callable->parameters.size(),
+            conservative ? language::EscapeClass::Unknown : language::EscapeClass::NoEscape);
+    }
 
     // NSC-LIMIT-018. A closed generic type materializes all of its member SIGNATURES so normal
     // lookup and overload resolution can see the complete API. Its ordinary method BODIES remain
@@ -1117,6 +1141,7 @@ bool ProjectMethodBodyModel::build(
         }
     }
 
+    finalizeEscapeSummaries(diagnostics);
     built_ = true;
     return !diagnostics.hasErrors();
 }
@@ -2595,6 +2620,15 @@ bool ProjectMethodBodyModel::namespaceFunctionBodyAnalyzed(
     std::size_t functionOrdinal) const noexcept
 {
     return analyzedCallableMembers_.contains(namespaceCallableBase_ + functionOrdinal);
+}
+
+std::span<const language::EscapeClass> ProjectMethodBodyModel::parameterEscapeSummary(
+    std::size_t callableOrdinal) const noexcept
+{
+    static const std::vector<language::EscapeClass> empty;
+    return callableOrdinal < parameterEscapeSummaries_.size()
+        ? std::span<const language::EscapeClass>(parameterEscapeSummaries_[callableOrdinal])
+        : std::span<const language::EscapeClass>(empty);
 }
 
 bool ProjectMethodBodyModel::isBuilt() const noexcept
@@ -6488,6 +6522,11 @@ void ProjectMethodBodyModel::analyzeReturn(
                     "'; add or correct an outlives constraint");
             return;
         }
+        if (escape.ordinal.has_value())
+        {
+            noteParameterEscape(
+                methodMemberOrdinal, *escape.ordinal, language::EscapeClass::Return);
+        }
         return;
     }
 
@@ -6605,6 +6644,19 @@ void ProjectMethodBodyModel::analyzeReturn(
             statement->first()->range(),
             "return would discard pointer pointee constness; declare the return type as 'T const*' or use const_cast explicitly");
         return;
+    }
+
+    if (method->declaredTypeKey.ends_with("*") ||
+        method->declaredOwnership == sema::OwnershipKind::Borrowed ||
+        typeKeyIsViewLike(method->declaredTypeKey))
+    {
+        const MethodEscapeOrigin escape =
+            referenceEscapeOriginOfExpression(statement->first(), scopeOrdinal);
+        const std::optional<std::size_t> parameterOrdinal = escape.ordinal.has_value()
+            ? escape.ordinal : value.ownershipSourceParameterOrdinal;
+        if (parameterOrdinal.has_value())
+            noteParameterEscape(methodMemberOrdinal, *parameterOrdinal,
+                language::EscapeClass::Return);
     }
 
     // Stage 52: a generic method's declared "owned T"/"borrowed T" return type may monomorphize
@@ -12294,6 +12346,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     call.selectedFunctionOrdinal = functionOrdinal;
     call.selectedConversions = selected.conversions;
     call.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
+    call.selectedArgumentSyntaxes.assign(argumentSyntaxes.begin(), argumentSyntaxes.end());
     call.selectedParameterPackElements = selected.parameterPackElements;
     call.selectedParameterPackOrdinal = selected.parameterPackOrdinal;
     call.selectedUsesExpandedParameterPack = selected.usesExpandedParameterPack;
@@ -13521,6 +13574,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     call.selectedMemberOrdinal = selected.memberOrdinal;
     call.selectedConversions = selected.conversions;
     call.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
+    call.selectedArgumentSyntaxes.reserve(selected.argumentParameterOrdinals.size());
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
+    {
+        call.selectedArgumentSyntaxes.push_back(resolvedArgumentSyntax(argumentOrdinal));
+    }
     call.selectedParameterPackElements = selected.parameterPackElements;
     call.selectedParameterPackOrdinal = selected.parameterPackOrdinal;
     call.selectedUsesExpandedParameterPack = selected.usesExpandedParameterPack;
@@ -18123,6 +18182,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             else
                 activeUnionMembers_.erase(*assignedUnionStorage);
         }
+        const MethodEscapeOrigin sourceEscape =
+            referenceEscapeOriginOfExpression(expression->second(), scopeOrdinal);
+        if (sourceEscape.ordinal.has_value() &&
+            (sourceEscape.kind == MethodEscapeOriginKind::ExternalStorage ||
+             sourceEscape.kind == MethodEscapeOriginKind::CurrentFrameParameter))
+        {
+            const MethodEscapeOrigin destinationEscape =
+                referenceEscapeOriginOfExpression(expression->first(), scopeOrdinal);
+            if (destinationEscape.kind == MethodEscapeOriginKind::ExternalStorage &&
+                !destinationEscape.ordinal.has_value())
+            {
+                noteParameterEscape(methodMemberOrdinal, *sourceEscape.ordinal,
+                    language::EscapeClass::Global);
+            }
+            else if (destinationEscape.kind == MethodEscapeOriginKind::CurrentReceiver ||
+                     (destinationEscape.kind == MethodEscapeOriginKind::ExternalStorage &&
+                      destinationEscape.ordinal.has_value()))
+            {
+                noteParameterEscape(methodMemberOrdinal, *sourceEscape.ordinal,
+                    language::EscapeClass::CallerOwned);
+            }
+        }
         left.ownsStorageDestination = ownsStorageDestination;
         left.assignable = false;
         return left;
@@ -19702,6 +19783,196 @@ std::string ProjectMethodBodyModel::implicitThisTypeKey(std::size_t methodMember
         return "<error>";
     }
     return "type:" + nameLookup_->namedTypes()[method->declaringTypeOrdinal].identity.key();
+}
+
+bool ProjectMethodBodyModel::parameterMayCarryEscape(
+    const MethodParameterSymbol& parameter) const noexcept
+{
+    return parameter.passKind != ParameterPassKind::Value ||
+        parameter.ownership == sema::OwnershipKind::Borrowed ||
+        parameter.typeKey.ends_with("*") || !parameter.lifetimeName.empty() ||
+        typeKeyIsViewLike(parameter.typeKey);
+}
+
+void ProjectMethodBodyModel::noteParameterEscape(
+    std::size_t callableOrdinal,
+    std::size_t parameterOrdinal,
+    language::EscapeClass escapeClass)
+{
+    if (callableOrdinal >= parameterEscapeSummaries_.size()) return;
+    std::vector<language::EscapeClass>& summary = parameterEscapeSummaries_[callableOrdinal];
+    if (parameterOrdinal >= summary.size()) return;
+    const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
+    if (callable == nullptr || parameterOrdinal >= callable->parameters.size() ||
+        !parameterMayCarryEscape(callable->parameters[parameterOrdinal]))
+    {
+        return;
+    }
+    const auto rank = [](language::EscapeClass item) noexcept
+    {
+        switch (item)
+        {
+            case language::EscapeClass::NoEscape: return 0;
+            case language::EscapeClass::Return: return 1;
+            case language::EscapeClass::CallerOwned: return 2;
+            case language::EscapeClass::Global: return 3;
+            case language::EscapeClass::Unknown: return 4;
+        }
+        return 4;
+    };
+    if (rank(escapeClass) > rank(summary[parameterOrdinal]))
+        summary[parameterOrdinal] = escapeClass;
+}
+
+void ProjectMethodBodyModel::finalizeEscapeSummaries(
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    // A closure value can be returned, stored or passed onward. Until T08 gives captures an
+    // explicit non-escaping callable type, a captured parameter is a global/heap escape.
+    for (const MethodLambdaBinding& lambda : lambdaBindings_)
+    {
+        for (const MethodLambdaCapture& capture : lambda.captures)
+        {
+            if (capture.kind == MethodLambdaCaptureKind::Parameter &&
+                capture.parameterOrdinal.has_value())
+            {
+                noteParameterEscape(lambda.ownerMemberOrdinal, *capture.parameterOrdinal,
+                    language::EscapeClass::Global);
+            }
+        }
+    }
+
+    const auto propagate = [&](std::size_t callerOrdinal,
+                               std::size_t scopeOrdinal,
+                               std::size_t calleeOrdinal,
+                               std::span<const std::size_t> parameterOrdinals,
+                               std::span<const ast::AstNode* const> argumentSyntaxes) -> bool
+    {
+        if (calleeOrdinal >= parameterEscapeSummaries_.size()) return false;
+        const ClassMemberSymbol* caller = methodSymbol(callerOrdinal);
+        if (caller == nullptr) return false;
+        const std::vector<language::EscapeClass>& callee =
+            parameterEscapeSummaries_[calleeOrdinal];
+        bool changed = false;
+        for (std::size_t argumentOrdinal = 0;
+             argumentOrdinal < parameterOrdinals.size() &&
+             argumentOrdinal < argumentSyntaxes.size(); ++argumentOrdinal)
+        {
+            const std::size_t targetParameter = parameterOrdinals[argumentOrdinal];
+            if (targetParameter >= callee.size() || argumentSyntaxes[argumentOrdinal] == nullptr)
+                continue;
+            const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
+                argumentSyntaxes[argumentOrdinal], scopeOrdinal);
+            if (!origin.ordinal.has_value() ||
+                (origin.kind != MethodEscapeOriginKind::ExternalStorage &&
+                 origin.kind != MethodEscapeOriginKind::CurrentFrameParameter) ||
+                *origin.ordinal >= caller->parameters.size() ||
+                !parameterMayCarryEscape(caller->parameters[*origin.ordinal]))
+            {
+                continue;
+            }
+            const language::EscapeClass before =
+                parameterEscapeSummaries_[callerOrdinal][*origin.ordinal];
+            noteParameterEscape(callerOrdinal, *origin.ordinal, callee[targetParameter]);
+            changed = changed ||
+                before != parameterEscapeSummaries_[callerOrdinal][*origin.ordinal];
+        }
+        return changed;
+    };
+
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        for (const MethodCallBinding& call : calls_)
+        {
+            if (call.resolution != MethodCallResolutionKind::Resolved ||
+                !call.selectedMemberOrdinal.has_value()) continue;
+            changed = propagate(call.callerMethodMemberOrdinal, call.scopeOrdinal,
+                *call.selectedMemberOrdinal, call.selectedArgumentParameterOrdinals,
+                call.selectedArgumentSyntaxes) || changed;
+        }
+        for (const NamespaceFunctionCallBinding& call : namespaceFunctionCalls_)
+        {
+            if (call.resolution != MethodCallResolutionKind::Resolved ||
+                !call.selectedFunctionOrdinal.has_value()) continue;
+            changed = propagate(call.callerCallableOrdinal, call.scopeOrdinal,
+                namespaceCallableBase_ + *call.selectedFunctionOrdinal,
+                call.selectedArgumentParameterOrdinals,
+                call.selectedArgumentSyntaxes) || changed;
+        }
+    }
+
+    // Edition 2 keeps its historical raw-pointer behavior. It still produces summaries so a
+    // 3.0 consumer can reason about a 2.x library, but only edition 3 turns a proven retained
+    // current-frame address into a language diagnostic.
+    if (languageEdition_ != language::LanguageEdition::V3) return;
+
+    const auto validate = [&](std::size_t scopeOrdinal,
+                              std::string_view calleeName,
+                              std::size_t calleeOrdinal,
+                              std::span<const std::size_t> parameterOrdinals,
+                              std::span<const ast::AstNode* const> argumentSyntaxes)
+    {
+        if (calleeOrdinal >= parameterEscapeSummaries_.size()) return;
+        const std::vector<language::EscapeClass>& callee =
+            parameterEscapeSummaries_[calleeOrdinal];
+        for (std::size_t argumentOrdinal = 0;
+             argumentOrdinal < parameterOrdinals.size() &&
+             argumentOrdinal < argumentSyntaxes.size(); ++argumentOrdinal)
+        {
+            const std::size_t targetParameter = parameterOrdinals[argumentOrdinal];
+            if (targetParameter >= callee.size() || argumentSyntaxes[argumentOrdinal] == nullptr)
+                continue;
+            const language::EscapeClass contract = callee[targetParameter];
+            if (contract != language::EscapeClass::Global &&
+                contract != language::EscapeClass::Unknown) continue;
+            const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
+                argumentSyntaxes[argumentOrdinal], scopeOrdinal);
+            if (origin.kind != MethodEscapeOriginKind::CurrentFrameLocal &&
+                origin.kind != MethodEscapeOriginKind::VariableLengthArray)
+                continue;
+            // Unknown is fail-closed only for an actual borrow whose lifetime is compiler
+            // managed. Ordinary raw `&local` FFI remains an explicit unsafe-style operation and
+            // is not retroactively forbidden; a published Global contract is precise enough to
+            // reject every current-frame address.
+            if (contract == language::EscapeClass::Unknown &&
+                origin.kind == MethodEscapeOriginKind::CurrentFrameLocal &&
+                origin.ordinal.has_value() && *origin.ordinal < locals_.size())
+            {
+                const MethodLocalSymbol& local = locals_[*origin.ordinal];
+                if (!local.isReference && !local.isPinned &&
+                    local.ownership != sema::OwnershipKind::Borrowed &&
+                    !typeKeyIsViewLike(local.typeKey))
+                    continue;
+            }
+            diagnostics.report(
+                diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                diagnostics::DiagnosticSeverity::Error,
+                argumentSyntaxes[argumentOrdinal]->range(),
+                "argument " + std::to_string(argumentOrdinal + 1U) + " of '" +
+                    std::string(calleeName) + "' refers to current-frame storage, but parameter " +
+                    std::to_string(targetParameter + 1U) +
+                    (contract == language::EscapeClass::Global
+                        ? " is retained by the callee's published escape contract"
+                        : " has no proven non-escaping contract"));
+        }
+    };
+    for (const MethodCallBinding& call : calls_)
+    {
+        if (call.resolution == MethodCallResolutionKind::Resolved &&
+            call.selectedMemberOrdinal.has_value())
+            validate(call.scopeOrdinal, call.methodName, *call.selectedMemberOrdinal,
+                call.selectedArgumentParameterOrdinals, call.selectedArgumentSyntaxes);
+    }
+    for (const NamespaceFunctionCallBinding& call : namespaceFunctionCalls_)
+    {
+        if (call.resolution == MethodCallResolutionKind::Resolved &&
+            call.selectedFunctionOrdinal.has_value())
+            validate(call.scopeOrdinal, call.writtenName,
+                namespaceCallableBase_ + *call.selectedFunctionOrdinal,
+                call.selectedArgumentParameterOrdinals, call.selectedArgumentSyntaxes);
+    }
 }
 
 bool ProjectMethodBodyModel::isClassReferenceTypeKey(std::string_view typeKey) const noexcept

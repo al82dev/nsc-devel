@@ -1299,6 +1299,13 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     {
         LibraryMetadata historical = metadata;
         historical.formatMinor = minor;
+        if (minor < 35)
+        {
+            for (auto& member : historical.members)
+                member.parameterEscapeSummary.clear();
+            for (auto& function : historical.namespaceFunctions)
+                function.parameterEscapeSummary.clear();
+        }
         const auto historicalPath = directory / ("historical-1." + std::to_string(minor) + ".nsmeta");
         error.clear();
         const bool wrote = codec.writeModel(historical, historicalPath, error);

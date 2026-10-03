@@ -43,6 +43,7 @@ struct PrecompiledSyntaxModule final
     std::string sourceText;
     std::string templateSourceText;
     std::vector<PrecompiledMemberIdentity> members;
+    std::vector<PrecompiledNamespaceFunctionIdentity> namespaceFunctions;
     std::vector<PrecompiledGenericSpecialization> genericSpecializations;
     language::LanguageEdition languageEdition = language::LanguageEdition::V2;
 };

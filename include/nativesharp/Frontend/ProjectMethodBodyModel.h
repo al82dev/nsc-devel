@@ -1372,6 +1372,9 @@ struct MethodCallBinding final
     bool selectedSynthesizesEmptyParameterPack = false;
     std::vector<const ast::AstNode*> selectedDefaultArguments;
     std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
+    // Source expressions in the same order as selectedArgumentParameterOrdinals. Retained so
+    // T06-F07 can propagate escape contracts after the complete call graph has been analyzed.
+    std::vector<const ast::AstNode*> selectedArgumentSyntaxes;
     std::string resultTypeKey;
 };
 
@@ -1396,6 +1399,7 @@ struct NamespaceFunctionCallBinding final
     bool selectedSynthesizesEmptyParameterPack = false;
     std::vector<const ast::AstNode*> selectedDefaultArguments;
     std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
+    std::vector<const ast::AstNode*> selectedArgumentSyntaxes;
     std::string resultTypeKey;
 };
 
@@ -1463,6 +1467,8 @@ public:
     // in their exported closed types. HIR uses this exact set so an unbound body is never lowered.
     bool callableBodyAnalyzed(std::size_t memberOrdinal) const noexcept;
     bool namespaceFunctionBodyAnalyzed(std::size_t functionOrdinal) const noexcept;
+    std::span<const language::EscapeClass> parameterEscapeSummary(
+        std::size_t callableOrdinal) const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -2030,6 +2036,12 @@ private:
         const std::vector<ExpressionResult>& arguments,
         diagnostics::DiagnosticEngine& diagnostics,
         std::span<const std::size_t> parameterOrdinals = {}) const;
+    bool parameterMayCarryEscape(const MethodParameterSymbol& parameter) const noexcept;
+    void noteParameterEscape(
+        std::size_t callableOrdinal,
+        std::size_t parameterOrdinal,
+        language::EscapeClass escapeClass);
+    void finalizeEscapeSummaries(diagnostics::DiagnosticEngine& diagnostics);
     // C4 "language references": (method member ordinal, parameter ordinal) pairs an `out`
     // parameter was assigned through. See verifyOutParameterAssignments for what is checked with
     // it and for the precise limit of that check.
@@ -2263,6 +2275,7 @@ private:
     std::vector<MethodCallBinding> calls_;
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
     std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;
+    std::vector<std::vector<language::EscapeClass>> parameterEscapeSummaries_;
     bool built_ = false;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };

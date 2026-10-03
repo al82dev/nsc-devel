@@ -56,12 +56,22 @@ struct NamespaceFunctionSymbol final
     std::string returnLifetimeName;
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
+    std::vector<language::EscapeClass> parameterEscapeSummary;
     bool isVariadic = false;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExternC = false;
     bool isExportedC = false;
     bool isPrecompiled = false;
     bool isExtension = false;
+};
+
+struct PrecompiledNamespaceFunctionIdentity final
+{
+    std::string moduleName;
+    std::string namespaceName;
+    std::string name;
+    std::string signatureKey;
+    std::vector<language::EscapeClass> parameterEscapeSummary;
 };
 
 enum class NamespaceStateInitializerKind
@@ -134,6 +144,9 @@ public:
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics,
         const ProjectGenericModel* genericModel = nullptr);
+    bool bindPrecompiledEscapeSummaries(
+        std::span<const PrecompiledNamespaceFunctionIdentity> identities,
+        std::string& error);
 
     std::span<const NamespaceFunctionSymbol> functions() const noexcept;
     std::span<const NamespaceStateSymbol> states() const noexcept;

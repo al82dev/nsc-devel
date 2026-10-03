@@ -30,7 +30,7 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 | T06-F04 | **CERRADO**: lifetimes nombrados/inferidos, elisión determinista, `this`/`static`, outlives transitivo, equivalencia alfa de traits, cierre de escapes y NSMETA 1.34 cross-module | Los tipos función HRTB generales y captures prestados parametrizados pertenecen a T08; F04 cubre binder universal por método sin dejar escape inseguro |
 | T06-F05 | **CERRADO**: `defer` edición 3 con capturas explícitas `ref`/`move`, registro léxico, orden LIFO y lowering al grafo único `finally`/RAII para salida normal y exits estructurados | El spelling y perfiles de panic pertenecen a T07; F05 ya comparte el cleanup de unwind y documenta que abort inmediato no ejecuta acciones posteriores |
 | T06-F06 | **CERRADO**: `pin raii` y `pin ref`, places estáticos, placement autorreferencial, cleanup object-only, frontera conservadora de containers y bit pinned transportado por HIR/MIR para T09/T10 | Los state machines de `yield`/`async` pertenecen a T09/T10; F06 ya entrega la obligación que deben consumir, sin simular esas features |
-| T06-F07 | Escape checks locales existentes; helper `escape-v1` aislado | Summary público/NSMETA, closures/globals/threads y cadena causal en tanda 14 |
+| T06-F07 | **CERRADO**: summaries por parámetro, fixed-point interprocedural, returns/globals/closures, NSMETA 1.35, fingerprint e hidratación fail-closed | Los tipos callable explícitos de T08 podrán reemplazar el fallback conservador de callbacks/genéricos |
 | T06-F08 | Descriptor/drop entry del productor cruza NSMETA/DLL, validación fail-closed y witness O0 exactamente una vez | Glue genérico de arrays/variants y summaries de layout/destrucción indirecta |
 
 ## Invariantes de la vertical
@@ -64,6 +64,9 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 - `nsc.ns3.t06.pinning`: 8/8 checks; `pin raii`, `pin ref`, placement autorreferencial,
   destructor object-only, MIR/caché y rechazos de relocation/escape/container dinámico en O0
   mediante NSLink.
+- `nsc.ns3.t06.escape-summaries`: 8/8 checks; inferencia local/transitiva/closure, NSMETA 1.35,
+  invalidación por fingerprint, lectura 1.34, metadata corrupta, diagnóstico causal y compatibilidad
+  de edición 2. Ejecutada de forma aislada; no se corrió suite ni baseline.
 - Matriz dirigida F02: 7/7 tests verdes incluyendo inicializadores, records, F01, ABI struct de
   edición 2, ownership Stage 50.11 y C6 struct members.
 - Regresiones dirigidas: T04 constraints y T05 opaque/trait objects/extensions/operator traits,
@@ -75,8 +78,8 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 - Negativos dirigidos rechazan field desde owner local prestado, field desde parámetro `owned`
   prestado y elemento de array desde owner prestado con diagnóstico causal.
 
-El gate T06 completo no se declara verde: todavía requiere F07-F08, interacción
+El gate T06 completo no se declara verde: todavía requiere F08, interacción
 con T07, matriz CFG/DLL exhaustiva, debugger y baseline final ejecutado por Alberto.
 
-La tanda operativa 14 cerró una vertical de F06 y la frontera DLL de F08, pero no F07 ni el glue
-genérico completo. El gate T06 sigue abierto por las deudas de ambas tandas operativas.
+La tanda operativa 14 cerró una vertical de F06 y la frontera DLL de F08. F07 quedó cerrado con
+NSMETA 1.35; el gate T06 sigue abierto por el glue genérico completo de F08.

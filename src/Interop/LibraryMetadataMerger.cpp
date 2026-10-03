@@ -85,13 +85,15 @@ bool equalMember(const LibraryMetadataMember& left, const LibraryMetadataMember&
                left.declaredOwnership, left.cAbiName, left.mangledName,
                left.constantKind, left.constantBits, left.constantText,
                left.importDllName, left.inlineSourceText, left.returnLifetimeName,
-               left.lifetimeParameters, left.lifetimeOutlivesConstraints) ==
+               left.lifetimeParameters, left.lifetimeOutlivesConstraints,
+               left.parameterEscapeSummary) ==
             std::tie(right.kind, right.accessibility, right.flags, right.declaringTypeKey,
                 right.name, right.signatureKey, right.declaredTypeKey,
                 right.declaredOwnership, right.cAbiName, right.mangledName,
                 right.constantKind, right.constantBits, right.constantText,
                 right.importDllName, right.inlineSourceText, right.returnLifetimeName,
-                right.lifetimeParameters, right.lifetimeOutlivesConstraints) &&
+                right.lifetimeParameters, right.lifetimeOutlivesConstraints,
+                right.parameterEscapeSummary) &&
         vectorEqual(left.parameters, right.parameters, equalParameter);
 }
 
@@ -102,11 +104,11 @@ bool equalNamespaceFunction(
     return std::tie(left.accessibility, left.flags, left.namespaceName, left.name,
                left.signatureKey, left.declaredTypeKey, left.declaredOwnership,
                left.mangledName, left.returnLifetimeName, left.lifetimeParameters,
-               left.lifetimeOutlivesConstraints) ==
+               left.lifetimeOutlivesConstraints, left.parameterEscapeSummary) ==
             std::tie(right.accessibility, right.flags, right.namespaceName, right.name,
                 right.signatureKey, right.declaredTypeKey, right.declaredOwnership,
                 right.mangledName, right.returnLifetimeName, right.lifetimeParameters,
-                right.lifetimeOutlivesConstraints) &&
+                right.lifetimeOutlivesConstraints, right.parameterEscapeSummary) &&
         vectorEqual(left.parameters, right.parameters, equalParameter);
 }
 

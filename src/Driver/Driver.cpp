@@ -3142,7 +3142,31 @@ bool configurePrecompiledModules(
                             member.declaringTypeKey,
                             member.name,
                             member.signatureKey,
-                            member.mangledName});
+                            member.mangledName,
+                            [&]() {
+                                std::vector<language::EscapeClass> summary;
+                                summary.reserve(member.parameterEscapeSummary.size());
+                                for (const interop::LibraryMetadataEscapeClass item :
+                                     member.parameterEscapeSummary)
+                                    summary.push_back(static_cast<language::EscapeClass>(item));
+                                return summary;
+                            }()});
+                    }
+                    return result;
+                }(),
+                [&]() {
+                    std::vector<frontend::PrecompiledNamespaceFunctionIdentity> result;
+                    result.reserve(metadata.namespaceFunctions.size());
+                    for (const interop::LibraryMetadataNamespaceFunction& function :
+                         metadata.namespaceFunctions)
+                    {
+                        std::vector<language::EscapeClass> summary;
+                        summary.reserve(function.parameterEscapeSummary.size());
+                        for (const interop::LibraryMetadataEscapeClass item :
+                             function.parameterEscapeSummary)
+                            summary.push_back(static_cast<language::EscapeClass>(item));
+                        result.push_back({metadata.moduleName, function.namespaceName,
+                            function.name, function.signatureKey, std::move(summary)});
                     }
                     return result;
                 }(),

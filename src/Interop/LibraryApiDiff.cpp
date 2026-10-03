@@ -75,6 +75,14 @@ void lifetimeSourceContract(std::string& output, const Callable& callable)
     }
 }
 
+template <typename Callable>
+void escapeSourceContract(std::string& output, const Callable& callable)
+{
+    number(output, callable.parameterEscapeSummary.size());
+    for (const LibraryMetadataEscapeClass item : callable.parameterEscapeSummary)
+        number(output, item);
+}
+
 void parameterAbiContract(std::string& output, const LibraryMetadataParameter& parameter)
 {
     field(output, parameter.typeKey);
@@ -177,6 +185,7 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         for (const LibraryMetadataParameter& parameter : member.parameters)
             parameterSourceContract(contract, parameter);
         lifetimeSourceContract(contract, member);
+        escapeSourceContract(contract, member);
         result.emplace(
             "member:" + member.declaringTypeKey + ":" +
                 std::to_string(member.kind) + ":" + member.signatureKey,
@@ -194,6 +203,7 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         for (const LibraryMetadataParameter& parameter : function.parameters)
             parameterSourceContract(contract, parameter);
         lifetimeSourceContract(contract, function);
+        escapeSourceContract(contract, function);
         result.emplace(
             "namespace-function:" + function.namespaceName + ":" + function.signatureKey,
             std::move(contract));

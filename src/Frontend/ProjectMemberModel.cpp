@@ -881,6 +881,14 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
             return false;
         }
         member.precompiledMangledName = match.identity->mangledName;
+        member.parameterEscapeSummary = match.identity->parameterEscapeSummary;
+        if (!member.parameterEscapeSummary.empty() &&
+            member.parameterEscapeSummary.size() != member.parameters.size())
+        {
+            error = "precompiled callable '" + declaringTypeKey + "." + signatureKey +
+                "' has an invalid escape-summary parameter count";
+            return false;
+        }
     }
     return true;
 }

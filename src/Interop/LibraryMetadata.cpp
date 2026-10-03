@@ -357,6 +357,11 @@ LibraryMetadataParameterPassKind metadataPassKind(frontend::ParameterPassKind pa
     return LibraryMetadataParameterPassKind::Value;
 }
 
+LibraryMetadataEscapeClass metadataEscapeClass(language::EscapeClass escapeClass) noexcept
+{
+    return static_cast<LibraryMetadataEscapeClass>(escapeClass);
+}
+
 bool metadataDefaultValue(
     const ast::AstNode* syntax,
     LibraryMetadataParameter& parameter,
@@ -744,7 +749,7 @@ bool buildMetadataModel(
         compilation.nameLookup() == nullptr || compilation.genericModel() == nullptr ||
         compilation.memberModel() == nullptr || compilation.inheritanceModel() == nullptr ||
         compilation.interfaceModel() == nullptr || compilation.objectLayoutModel() == nullptr ||
-        compilation.oopMirModel() == nullptr)
+        compilation.methodBodyModel() == nullptr || compilation.oopMirModel() == nullptr)
     {
         error = "Stage 48.2 metadata requires the complete project semantic/MIR model";
         return false;
@@ -1286,6 +1291,9 @@ bool buildMetadataModel(
             record.lifetimeParameters = member.lifetimeParameters;
             record.lifetimeOutlivesConstraints = member.lifetimeOutlivesConstraints;
         }
+        for (const language::EscapeClass escapeClass :
+             compilation.methodBodyModel()->parameterEscapeSummary(ordinal))
+            record.parameterEscapeSummary.push_back(metadataEscapeClass(escapeClass));
         record.cAbiName = member.cAbiName;
         record.importDllName = member.importDllName;
         const frontend::ProjectOopMirFunction* function =
@@ -1422,6 +1430,12 @@ bool buildMetadataModel(
                 record.lifetimeParameters = function.lifetimeParameters;
                 record.lifetimeOutlivesConstraints = function.lifetimeOutlivesConstraints;
             }
+            const std::size_t callableOrdinal = members.size() +
+                static_cast<std::size_t>(&function -
+                    compilation.namespaceFunctionModel()->functions().data());
+            for (const language::EscapeClass escapeClass :
+                 compilation.methodBodyModel()->parameterEscapeSummary(callableOrdinal))
+                record.parameterEscapeSummary.push_back(metadataEscapeClass(escapeClass));
             for (const frontend::MethodParameterSymbol& parameter : function.parameters)
             {
                 LibraryMetadataParameter parameterRecord;
@@ -2246,6 +2260,21 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
                 writer.text(parameter.lifetimeName);
         }
     }
+    if (metadata.formatMinor >= 35)
+    {
+        const auto writeEscapeSummary = [&](const auto& callable)
+        {
+            writer.u32(static_cast<std::uint32_t>(callable.parameterEscapeSummary.size()));
+            for (const LibraryMetadataEscapeClass item : callable.parameterEscapeSummary)
+                writer.u8(static_cast<std::uint8_t>(item));
+        };
+        writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
+        for (const LibraryMetadataMember& member : metadata.members)
+            writeEscapeSummary(member);
+        writer.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
+        for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+            writeEscapeSummary(function);
+    }
     return writer.bytes();
 }
 
@@ -2334,6 +2363,24 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
                 catalogue.u64(item.valueBits);
             }
         }
+        const std::vector<std::uint8_t>& bytes = catalogue.bytes();
+        projection.insert(projection.end(), bytes.begin(), bytes.end());
+    }
+    if (metadata.formatMinor >= 35)
+    {
+        ByteWriter catalogue;
+        const auto writeEscapeSummary = [&](const auto& callable)
+        {
+            catalogue.u32(static_cast<std::uint32_t>(callable.parameterEscapeSummary.size()));
+            for (const LibraryMetadataEscapeClass item : callable.parameterEscapeSummary)
+                catalogue.u8(static_cast<std::uint8_t>(item));
+        };
+        catalogue.u32(static_cast<std::uint32_t>(metadata.members.size()));
+        for (const LibraryMetadataMember& member : metadata.members)
+            writeEscapeSummary(member);
+        catalogue.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
+        for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+            writeEscapeSummary(function);
         const std::vector<std::uint8_t>& bytes = catalogue.bytes();
         projection.insert(projection.end(), bytes.begin(), bytes.end());
     }
@@ -2990,6 +3037,51 @@ bool decodePayload(
             }
         }
     }
+    if (metadata.formatMinor >= 35)
+    {
+        const auto readEscapeSummary = [&](auto& callable, std::string_view kind) -> bool
+        {
+            std::uint32_t parameterCount = 0;
+            if (!readCount(reader, parameterCount) ||
+                parameterCount != callable.parameters.size())
+            {
+                error = "invalid metadata " + std::string(kind) +
+                    " escape-summary parameter count";
+                return false;
+            }
+            callable.parameterEscapeSummary.reserve(parameterCount);
+            for (std::uint32_t index = 0; index < parameterCount; ++index)
+            {
+                std::uint8_t raw = 0;
+                if (!reader.u8(raw) ||
+                    raw > static_cast<std::uint8_t>(LibraryMetadataEscapeClass::Unknown))
+                {
+                    error = "truncated or invalid metadata " + std::string(kind) +
+                        " escape summary";
+                    return false;
+                }
+                callable.parameterEscapeSummary.push_back(
+                    static_cast<LibraryMetadataEscapeClass>(raw));
+            }
+            return true;
+        };
+        std::uint32_t catalogueCount = 0;
+        if (!readCount(reader, catalogueCount) || catalogueCount != metadata.members.size())
+        {
+            error = "invalid metadata member escape-summary catalogue count";
+            return false;
+        }
+        for (LibraryMetadataMember& member : metadata.members)
+            if (!readEscapeSummary(member, "member")) return false;
+        if (!readCount(reader, catalogueCount) ||
+            catalogueCount != metadata.namespaceFunctions.size())
+        {
+            error = "invalid metadata namespace-function escape-summary catalogue count";
+            return false;
+        }
+        for (LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+            if (!readEscapeSummary(function, "namespace-function")) return false;
+    }
     if (!reader.atEnd())
     {
         error = "metadata payload has trailing bytes";
@@ -3153,6 +3245,28 @@ bool LibraryMetadataCodec::writeModelImpl(
                 type.delegateParameterLifetimeNames.resize(
                     type.delegateParameterTypeKeys.size());
         }
+    }
+    if (metadata.formatMinor >= 35)
+    {
+        const auto normalizeEscapeSummary = [&](auto& callable, std::string_view kind) -> bool
+        {
+            if (callable.parameterEscapeSummary.empty())
+            {
+                callable.parameterEscapeSummary.resize(
+                    callable.parameters.size(), LibraryMetadataEscapeClass::Unknown);
+            }
+            if (callable.parameterEscapeSummary.size() != callable.parameters.size())
+            {
+                error = "metadata " + std::string(kind) +
+                    " escape-summary parameter count does not match its signature";
+                return false;
+            }
+            return true;
+        };
+        for (LibraryMetadataMember& member : metadata.members)
+            if (!normalizeEscapeSummary(member, "member")) return false;
+        for (LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+            if (!normalizeEscapeSummary(function, "namespace-function")) return false;
     }
     // EL OBJETIVO SE VALIDA, NO SE SUSTITUYE. Escribir la constante por encima de
     // lo que el modelo diga es exactamente lo que hacia el encabezado con el
@@ -3448,6 +3562,20 @@ bool LibraryMetadataCodec::writeModelImpl(
             std::ranges::any_of(metadata.namespaceFunctions, callableHasLifetime))
         {
             error = "NativeSharp metadata before 1.34 cannot represent named lifetime contracts";
+            return false;
+        }
+    }
+    if (metadata.formatMinor < 35)
+    {
+        const auto hasEscapeSummary = [](const auto& callable)
+        {
+            return !callable.parameterEscapeSummary.empty();
+        };
+        if (std::ranges::any_of(metadata.members, hasEscapeSummary) ||
+            std::ranges::any_of(metadata.namespaceFunctions, hasEscapeSummary))
+        {
+            error = "NativeSharp metadata before 1.35 cannot represent interprocedural "
+                "escape summaries";
             return false;
         }
     }
