@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace nativesharp::diagnostics
@@ -52,6 +53,9 @@ struct NamespaceFunctionSymbol final
     const ast::AstNode* definitionSyntax = nullptr;
     std::vector<NamespaceFunctionPart> parts;
     bool isReferenceReturn = false;
+    std::string returnLifetimeName;
+    std::vector<std::string> lifetimeParameters;
+    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
     bool isVariadic = false;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExternC = false;

@@ -766,6 +766,7 @@ bool Parser::parseQualifiedName(std::string& name, SourceRange& range)
 ast::TypeSyntax* Parser::parseType()
 {
     ast::OwnershipQualifierSyntaxKind ownershipQualifier = ast::OwnershipQualifierSyntaxKind::None;
+    std::string lifetimeName;
     SourceRange qualifierRange = current().range();
     if (lexer::isOwnershipQualifierKeyword(current().kind()))
     {
@@ -783,6 +784,17 @@ ast::TypeSyntax* Parser::parseType()
                 current().range(),
                 "an ownership-qualified type accepts exactly one qualifier");
             return nullptr;
+        }
+        if (ownershipQualifier == ast::OwnershipQualifierSyntaxKind::Borrowed)
+            lifetimeName = parseOptionalLifetimeAnnotation("borrowed type");
+        else if (at(TokenKind::LeftBracket))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "only a borrowed type may carry a named lifetime annotation");
+            parseOptionalLifetimeAnnotation("owned type");
         }
     }
 
@@ -836,6 +848,7 @@ ast::TypeSyntax* Parser::parseType()
         ast::TypeSyntax* tuple = arena_.make<ast::TypeSyntax>(open, TokenKind::Invalid, "$tuple");
         tuple->setTuple();
         tuple->setOwnershipQualifier(ownershipQualifier);
+        tuple->setLifetimeName(lifetimeName);
         if (dynamicTrait)
         {
             diagnostics_.report(
@@ -907,6 +920,7 @@ ast::TypeSyntax* Parser::parseType()
     ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
         completeRange, baseKind, std::move(baseName));
     type->setOwnershipQualifier(ownershipQualifier);
+    type->setLifetimeName(std::move(lifetimeName));
     type->setDynamicTrait(dynamicTrait);
     type->setOpaqueResult(opaqueResult);
     if (opaqueResult) type->setOpaqueResultTraitName(type->baseName());
@@ -1066,6 +1080,19 @@ ast::TypeSyntax* Parser::parseType()
     return type;
 }
 
+std::string Parser::parseOptionalLifetimeAnnotation(std::string_view context)
+{
+    if (!consumeIf(TokenKind::LeftBracket)) return {};
+    requireEdition3(tokens_[index_ - 1].range(), "named lifetime annotations");
+    std::string result;
+    if (at(TokenKind::Identifier) || at(TokenKind::KwThis) || at(TokenKind::KwStatic))
+        result = std::string(consume().lexeme());
+    else
+        expect(TokenKind::Identifier, ("lifetime name in " + std::string(context)).c_str());
+    expect(TokenKind::RightBracket, "']' after lifetime name");
+    return result;
+}
+
 ast::TypeSyntax* Parser::parseAllocationElementType()
 {
     if (!lexer::isBuiltinTypeKeyword(current().kind()) && !at(TokenKind::Identifier))
@@ -1130,7 +1157,12 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
     {
         ast::GenericParameterSyntax syntax;
         const std::size_t parameterBegin = index_;
-        if (at(TokenKind::KwConst))
+        const bool lifetimeParameter = atContextualKeyword("lifetime");
+        if (lifetimeParameter)
+        {
+            requireEdition3(consume().range(), "named lifetime parameters");
+        }
+        else if (at(TokenKind::KwConst))
         {
             const SourceRange feature = consume().range();
             requireEdition3(feature, "const generic parameters");
@@ -1203,7 +1235,9 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
         if (!names.insert(name).second)
         {
             const std::string parameterKind =
-                syntax.kind == ast::GenericParameterSyntaxKind::Constant ||
+                lifetimeParameter
+                ? "lifetime parameter"
+                : syntax.kind == ast::GenericParameterSyntaxKind::Constant ||
                     syntax.kind == ast::GenericParameterSyntaxKind::ConstantPack
                 ? "const generic parameter"
                 : "generic type parameter";
@@ -1215,7 +1249,10 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
         }
         syntax.name = name;
         syntax.range = tokenRangeFrom(parameterBegin);
-        declaration->addGenericParameter(std::move(syntax));
+        if (lifetimeParameter)
+            declaration->addLifetimeParameter(ast::LifetimeParameterSyntax{name, syntax.range});
+        else
+            declaration->addGenericParameter(std::move(syntax));
         if (!consumeIf(TokenKind::Comma)) break;
     }
     const auto& parameters = declaration->genericParameterSyntaxes();
@@ -1288,8 +1325,16 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
         }
 
         const std::vector<std::string>& declared = declaration->genericParameters();
-        const bool known =
+        const bool knownGeneric =
             std::find(declared.begin(), declared.end(), rootParameter) != declared.end();
+        const auto lifetimeSyntax = std::ranges::find_if(
+            declaration->lifetimeParameters(),
+            [&](const ast::LifetimeParameterSyntax& item)
+            {
+                return item.name == rootParameter;
+            });
+        const bool knownLifetime = lifetimeSyntax != declaration->lifetimeParameters().end();
+        const bool known = knownGeneric || knownLifetime;
         const auto syntax = std::ranges::find_if(
             declaration->genericParameterSyntaxes(),
             [&](const ast::GenericParameterSyntax& item)
@@ -1302,8 +1347,8 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
                 diagnostics::DiagnosticId::UnknownIdentifier,
                 diagnostics::DiagnosticSeverity::Error,
                 parameter.range(),
-                "'" + rootParameter +
-                    "' is not a generic type parameter of this declaration");
+                    "'" + rootParameter +
+                    "' is not a generic or lifetime parameter of this declaration");
             ok = false;
         }
         else if (!constrained.insert(clause.parameterName).second)
@@ -1315,6 +1360,74 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
                 "duplicate 'where' clause for generic type parameter '" +
                     clause.parameterName + "'");
             ok = false;
+        }
+
+        if (knownLifetime)
+        {
+            if (associatedEquality)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    clause.parameterRange,
+                    "a lifetime parameter cannot name an associated item");
+                synchronizeGlobal();
+                return false;
+            }
+            if (!expect(TokenKind::Colon, "':' after the constrained lifetime parameter"))
+                return false;
+            std::unordered_set<std::string> written;
+            while (true)
+            {
+                if (!at(TokenKind::Identifier) && !at(TokenKind::KwStatic))
+                {
+                    expect(TokenKind::Identifier, "lifetime name after ':'");
+                    return false;
+                }
+                const lexer::Token& shorter = consume();
+                const std::string shorterName(shorter.lexeme());
+                const bool isStatic = shorterName == "static";
+                const bool declaredLifetime = std::ranges::any_of(
+                    declaration->lifetimeParameters(),
+                    [&](const ast::LifetimeParameterSyntax& item)
+                    {
+                        return item.name == shorterName;
+                    });
+                if (!isStatic && !declaredLifetime)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::UnknownIdentifier,
+                        diagnostics::DiagnosticSeverity::Error,
+                        shorter.range(),
+                        "'" + shorterName + "' is not a lifetime parameter of this declaration");
+                    ok = false;
+                }
+                if (shorterName == rootParameter)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::DuplicateSymbol,
+                        diagnostics::DiagnosticSeverity::Error,
+                        shorter.range(),
+                        "lifetime outlives constraint for '" + rootParameter + "' is tautological");
+                    ok = false;
+                }
+                if (!written.insert(shorterName).second)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::DuplicateSymbol,
+                        diagnostics::DiagnosticSeverity::Error,
+                        shorter.range(),
+                        "duplicate outlives constraint '" + rootParameter + ":" + shorterName + "'");
+                    ok = false;
+                }
+                if ((isStatic || declaredLifetime) && shorterName != rootParameter)
+                {
+                    declaration->addLifetimeOutlivesConstraint(ast::LifetimeOutlivesConstraint{
+                        rootParameter, shorterName, join(parameter.range(), shorter.range())});
+                }
+                if (!consumeIf(TokenKind::Comma)) break;
+            }
+            continue;
         }
 
         if (consumeIf(TokenKind::EqualEqual))
@@ -2948,6 +3061,14 @@ ast::AstNode* Parser::parseDelegateDeclaration()
     const std::size_t beginIndex = index_;
     consume(); // delegate
 
+    const bool isReferenceReturn = atContextualKeyword("ref") &&
+        (canStartTypeAt(index_ + 1U) || peek().kind() == TokenKind::LeftBracket);
+    std::string returnLifetime;
+    if (isReferenceReturn)
+    {
+        consume();
+        returnLifetime = parseOptionalLifetimeAnnotation("delegate ref return");
+    }
     if (!canStartTypeAt(index_))
     {
         diagnostics_.report(
@@ -2970,6 +3091,8 @@ ast::AstNode* Parser::parseDelegateDeclaration()
     ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::DelegateDeclaration, name.range());
     node->setText(std::string(name.lexeme()));
     node->setTypeSyntax(returnType);
+    node->setReference(isReferenceReturn);
+    node->setLifetimeName(std::move(returnLifetime));
     node->setAuxiliaryText("delegate");
     parseGenericParameterList(node);
     KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
@@ -4406,8 +4529,14 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
         consume();
     }
 
-    const bool isReferenceReturn = atContextualKeyword("ref") && canStartTypeAt(index_ + 1);
-    if (isReferenceReturn) consume();
+    const bool isReferenceReturn = atContextualKeyword("ref") &&
+        (canStartTypeAt(index_ + 1U) || peek().kind() == TokenKind::LeftBracket);
+    std::string returnLifetime;
+    if (isReferenceReturn)
+    {
+        consume();
+        returnLifetime = parseOptionalLifetimeAnnotation("ref return");
+    }
 
     // A generic parameter is intentionally not a globally known type name. As in class members,
     // accept an identifier-shaped type here and let name lookup decide whether it names this
@@ -4477,6 +4606,7 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
         if (method != nullptr)
         {
             method->setReference(isReferenceReturn);
+            method->setLifetimeName(std::move(returnLifetime));
             if (isTrait && sawStatic)
             {
                 diagnostics_.report(
@@ -5653,8 +5783,14 @@ ast::AstNode* Parser::parseClassMember(
             beginIndex);
     }
 
-    const bool isReferenceReturn = atContextualKeyword("ref") && canStartTypeAt(index_ + 1);
-    if (isReferenceReturn) consume();
+    const bool isReferenceReturn = atContextualKeyword("ref") &&
+        (canStartTypeAt(index_ + 1U) || peek().kind() == TokenKind::LeftBracket);
+    std::string returnLifetime;
+    if (isReferenceReturn)
+    {
+        consume();
+        returnLifetime = parseOptionalLifetimeAnnotation("ref return");
+    }
 
     // A method-scoped generic parameter is declared after the method name, so the return type
     // lookahead cannot know `T` yet in `owned T Transfer<T>(...)`. The ownership keyword is an
@@ -5871,7 +6007,11 @@ ast::AstNode* Parser::parseClassMember(
         }
         if (isReadonly && structContext && !isStatic && method != nullptr)
             method->addModifier(TokenKind::KwReadonly);
-        if (method != nullptr) method->setReference(isReferenceReturn);
+        if (method != nullptr)
+        {
+            method->setReference(isReferenceReturn);
+            method->setLifetimeName(std::move(returnLifetime));
+        }
         return method;
     }
 
@@ -7288,8 +7428,14 @@ ast::AstNode* Parser::parseFunctionOrGlobalVariable()
 {
     const std::size_t beginIndex = index_;
     const bool isConst = consumeIf(TokenKind::KwConst);
-    const bool isReferenceReturn = !isConst && atContextualKeyword("ref") && canStartTypeAt(index_ + 1);
-    if (isReferenceReturn) consume();
+    const bool isReferenceReturn = !isConst && atContextualKeyword("ref") &&
+        (canStartTypeAt(index_ + 1U) || peek().kind() == TokenKind::LeftBracket);
+    std::string returnLifetime;
+    if (isReferenceReturn)
+    {
+        consume();
+        returnLifetime = parseOptionalLifetimeAnnotation("ref return");
+    }
     ast::TypeSyntax* type = parseType();
 
     if (!at(TokenKind::Identifier))
@@ -7303,7 +7449,11 @@ ast::AstNode* Parser::parseFunctionOrGlobalVariable()
     if (!isConst && (at(TokenKind::LeftParen) || at(TokenKind::Less)))
     {
         ast::AstNode* function = parseFunctionTail(type, name, false);
-        if (function != nullptr) function->setReference(isReferenceReturn);
+        if (function != nullptr)
+        {
+            function->setReference(isReferenceReturn);
+            function->setLifetimeName(std::move(returnLifetime));
+        }
         return function;
     }
 
@@ -7483,11 +7633,14 @@ ast::AstNode* Parser::parseParameter()
     // second calling convention. Which of the three it is stays on the node, because the
     // difference between them is a matter of rules, not of representation.
     std::string passKind;
+    std::string lifetimeName;
     if ((atContextualKeyword("ref") || atContextualKeyword("out") || at(TokenKind::KwIn)) &&
-        (peek().kind() == TokenKind::Identifier || lexer::isBuiltinTypeKeyword(peek().kind())))
+        (peek().kind() == TokenKind::Identifier || lexer::isBuiltinTypeKeyword(peek().kind()) ||
+         peek().kind() == TokenKind::LeftBracket))
     {
         passKind = at(TokenKind::KwIn) ? "in" : std::string(current().lexeme());
         consume();
+        lifetimeName = parseOptionalLifetimeAnnotation("by-reference parameter");
     }
     ast::TypeSyntax* type = parseType();
     if (type != nullptr && !passKind.empty())
@@ -7507,6 +7660,7 @@ ast::AstNode* Parser::parseParameter()
         tokenRangeFrom(beginIndex));
     parameter->setTypeSyntax(type);
     parameter->setText(std::string(name.lexeme()));
+    parameter->setLifetimeName(std::move(lifetimeName));
     if (parameterPack && !passKind.empty())
     {
         diagnostics_.report(

@@ -47,6 +47,19 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
         }
         output << '>';
     }
+    if (!node->lifetimeParameters().empty())
+    {
+        output << " lifetime=<";
+        for (std::size_t index = 0; index < node->lifetimeParameters().size(); ++index)
+        {
+            if (index != 0) output << ',';
+            output << node->lifetimeParameters()[index].name;
+        }
+        output << '>';
+    }
+    for (const LifetimeOutlivesConstraint& constraint : node->lifetimeOutlivesConstraints())
+        output << " outlives=" << constraint.longer << ':' << constraint.shorter;
+    if (!node->lifetimeName().empty()) output << " lifetime-name=" << node->lifetimeName();
 
     // NSC-LIMIT-007: `where T : class, IFoo` se vuelca junto a los parametros, porque es parte
     // de la firma generica y no de los hijos. Sin esto, una clausula perdida en el parser no se
@@ -125,7 +138,9 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
 {
     if (typeSyntax->ownershipQualifier() != OwnershipQualifierSyntaxKind::None)
     {
-        output << ownershipQualifierSyntaxKindName(typeSyntax->ownershipQualifier()) << ' ';
+        output << ownershipQualifierSyntaxKindName(typeSyntax->ownershipQualifier());
+        if (!typeSyntax->lifetimeName().empty()) output << '[' << typeSyntax->lifetimeName() << ']';
+        output << ' ';
     }
     if (typeSyntax->isDynamicTrait()) output << "dyn ";
     if (typeSyntax->isTuple())

@@ -79,6 +79,7 @@ void ProjectMethodBodyModelDumper::dump(
             switch (local.referenceEscapeOrigin.kind)
             {
                 case MethodEscapeOriginKind::ExternalStorage: output << "external"; break;
+                case MethodEscapeOriginKind::CurrentReceiver: output << "receiver"; break;
                 case MethodEscapeOriginKind::CurrentFrameLocal: output << "frame-local"; break;
                 case MethodEscapeOriginKind::CurrentFrameParameter: output << "frame-parameter"; break;
                 case MethodEscapeOriginKind::VariableLengthArray: output << "vla"; break;
@@ -87,6 +88,8 @@ void ProjectMethodBodyModelDumper::dump(
                 output << ':' << *local.referenceEscapeOrigin.ordinal;
             if (local.referenceEscapeOrigin.maximumValidScopeOrdinal.has_value())
                 output << " max-scope=" << *local.referenceEscapeOrigin.maximumValidScopeOrdinal;
+            if (!local.referenceEscapeOrigin.lifetimeName.empty())
+                output << " lifetime=" << local.referenceEscapeOrigin.lifetimeName;
             if (local.referenceLifetimeScopeOrdinal.has_value())
                 output << " alias-scope=" << *local.referenceLifetimeScopeOrdinal;
             if (!local.referencePlaceKey.empty())

@@ -33,6 +33,8 @@ void TypeSyntax::setOwnershipQualifier(OwnershipQualifierSyntaxKind qualifier) n
 {
     ownershipQualifier_ = qualifier;
 }
+const std::string& TypeSyntax::lifetimeName() const noexcept { return lifetimeName_; }
+void TypeSyntax::setLifetimeName(std::string name) { lifetimeName_ = std::move(name); }
 bool TypeSyntax::isDynamicTrait() const noexcept { return isDynamicTrait_; }
 void TypeSyntax::setDynamicTrait(bool value) noexcept { isDynamicTrait_ = value; }
 bool TypeSyntax::isOpaqueResult() const noexcept { return isOpaqueResult_; }

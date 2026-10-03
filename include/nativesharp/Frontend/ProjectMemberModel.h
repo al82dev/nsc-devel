@@ -19,6 +19,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace nativesharp::diagnostics
@@ -86,6 +87,9 @@ struct MethodParameterSymbol final
     FileId fileId;
     SourceRange range;
     const ast::AstNode* syntax = nullptr;
+    // T06-F04. Empty for value/out parameters. Elided ref/in parameters receive a stable
+    // declaration-local synthetic name so a ref return can still bind to exactly one input.
+    std::string lifetimeName;
     // NativeSharp 3.0 T01. A typed pack is always the final ReadOnlySpan<T> parameter. This bit
     // changes call-site binding only; the physical ABI remains one ordinary span value.
     bool isParameterPack = false;
@@ -139,6 +143,9 @@ struct ClassMemberSymbol final
     // Item 313. declaredTypeKey remains the referent T; this bit makes the callable result an
     // lvalue and changes only its physical ABI carrier to T*.
     bool isReferenceReturn = false;
+    std::string returnLifetimeName;
+    std::vector<std::string> lifetimeParameters;
+    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
     // Item 308. A volatile field is an observable memory location: every load/store survives
     // optimization, but it gains neither atomicity nor inter-thread ordering.
     bool isVolatile = false;

@@ -53,6 +53,48 @@ ParameterPassKind parameterPassKind(const ast::AstNode& parameter) noexcept
     return ParameterPassKind::In;
 }
 
+bool declaresLifetime(const ast::AstNode& declaration, std::string_view name) noexcept
+{
+    return std::ranges::any_of(
+        declaration.lifetimeParameters(),
+        [&](const ast::LifetimeParameterSyntax& parameter)
+        {
+            return parameter.name == name;
+        });
+}
+
+bool lifetimeOutlives(
+    std::span<const std::pair<std::string, std::string>> constraints,
+    std::string_view longer,
+    std::string_view shorter)
+{
+    if (longer == shorter || longer == "static") return true;
+    std::unordered_set<std::string> visited;
+    std::vector<std::string> pending{std::string(longer)};
+    while (!pending.empty())
+    {
+        std::string current = std::move(pending.back());
+        pending.pop_back();
+        if (!visited.insert(current).second) continue;
+        for (const auto& [declaredLonger, declaredShorter] : constraints)
+        {
+            if (declaredLonger != current) continue;
+            if (declaredShorter == shorter) return true;
+            pending.push_back(declaredShorter);
+        }
+    }
+    return false;
+}
+
+std::optional<std::pair<std::string, std::string>> lifetimeCycle(
+    std::span<const std::pair<std::string, std::string>> constraints)
+{
+    for (const auto& [longer, shorter] : constraints)
+        if (longer == shorter || lifetimeOutlives(constraints, shorter, longer))
+            return std::pair{longer, shorter};
+    return std::nullopt;
+}
+
 std::string nameLookupKey(
     std::size_t projectOrdinal,
     std::string_view namespaceName,
@@ -287,6 +329,15 @@ bool ProjectNamespaceFunctionModel::build(
         candidate.declarationSyntax = declaration.syntax;
         candidate.definitionSyntax = declaration.hasBody ? declaration.syntax : nullptr;
         candidate.isReferenceReturn = syntax.isReference();
+        candidate.returnLifetimeName = syntax.lifetimeName();
+        for (const ast::LifetimeParameterSyntax& parameter : syntax.lifetimeParameters())
+            candidate.lifetimeParameters.push_back(parameter.name);
+        for (const ast::LifetimeOutlivesConstraint& constraint :
+             syntax.lifetimeOutlivesConstraints())
+        {
+            candidate.lifetimeOutlivesConstraints.emplace_back(
+                constraint.longer, constraint.shorter);
+        }
         candidate.isVariadic = syntax.isVariadic();
         candidate.inliningPolicy = syntax.hasModifier(lexer::TokenKind::KwForceInline)
             ? InliningPolicy::Required
@@ -390,6 +441,41 @@ bool ProjectNamespaceFunctionModel::build(
                     ? parameter.typeKey
                     : parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
             }
+            if (!parameterNode->lifetimeName().empty())
+            {
+                parameter.lifetimeName = parameterNode->lifetimeName();
+                if (parameter.passKind == ParameterPassKind::Out)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        parameter.range,
+                        "out parameter '" + parameter.name +
+                            "' initializes storage and cannot carry an input lifetime");
+                }
+                else if (parameter.passKind == ParameterPassKind::Value)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        parameter.range,
+                        "only ref or in parameters may carry a named lifetime");
+                }
+                else if (!declaresLifetime(syntax, parameter.lifetimeName))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::UnknownIdentifier,
+                        diagnostics::DiagnosticSeverity::Error,
+                        parameter.range,
+                        "parameter '" + parameter.name + "' names undeclared lifetime '" +
+                            parameter.lifetimeName + "'");
+                }
+            }
+            else if (parameter.passKind == ParameterPassKind::Ref ||
+                     parameter.passKind == ParameterPassKind::In)
+            {
+                parameter.lifetimeName = "$p" + std::to_string(candidate.parameters.size());
+            }
 
             const auto [previous, inserted] = parameterNames.emplace(parameter.name, parameterNode);
             if (!inserted)
@@ -407,6 +493,95 @@ bool ProjectNamespaceFunctionModel::build(
                     "previous parameter declaration is here");
             }
             candidate.parameters.push_back(std::move(parameter));
+        }
+
+        if (candidate.isReferenceReturn)
+        {
+            if (candidate.returnLifetimeName.empty())
+            {
+                std::unordered_set<std::string> inputs;
+                for (const MethodParameterSymbol& parameter : candidate.parameters)
+                {
+                    if (parameter.passKind == ParameterPassKind::Ref ||
+                        parameter.passKind == ParameterPassKind::In)
+                        inputs.insert(parameter.lifetimeName);
+                }
+                if (inputs.size() == 1U)
+                    candidate.returnLifetimeName = *inputs.begin();
+                else if (inputs.empty())
+                    candidate.returnLifetimeName = "static";
+                else
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidReturn,
+                        diagnostics::DiagnosticSeverity::Error,
+                        candidate.range,
+                        "ref-returning function '" + candidate.name +
+                            "' has multiple input lifetimes; write ref[a] and bind the "
+                            "intended ref/in parameters to lifetime a");
+                }
+            }
+            else if (candidate.returnLifetimeName == "this")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidReturn,
+                    diagnostics::DiagnosticSeverity::Error,
+                    candidate.range,
+                    "lifetime 'this' is unavailable on a namespace function");
+            }
+            else if (candidate.returnLifetimeName != "static" &&
+                     !declaresLifetime(syntax, candidate.returnLifetimeName))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::UnknownIdentifier,
+                    diagnostics::DiagnosticSeverity::Error,
+                    candidate.range,
+                    "ref return of '" + candidate.name + "' names undeclared lifetime '" +
+                        candidate.returnLifetimeName + "'");
+            }
+            if (candidate.returnLifetimeName != "static" &&
+                candidate.returnLifetimeName != "this" &&
+                !candidate.returnLifetimeName.empty())
+            {
+                const bool hasSource = std::ranges::any_of(
+                    candidate.parameters,
+                    [&](const MethodParameterSymbol& parameter)
+                    {
+                        return (parameter.passKind == ParameterPassKind::Ref ||
+                                parameter.passKind == ParameterPassKind::In) &&
+                            lifetimeOutlives(
+                                candidate.lifetimeOutlivesConstraints,
+                                parameter.lifetimeName,
+                                candidate.returnLifetimeName);
+                    });
+                if (!hasSource)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidReturn,
+                        diagnostics::DiagnosticSeverity::Error,
+                        candidate.range,
+                        "ref return lifetime '" + candidate.returnLifetimeName +
+                            "' has no ref/in parameter whose lifetime outlives it");
+                }
+            }
+            if (const auto cycle = lifetimeCycle(candidate.lifetimeOutlivesConstraints))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    candidate.range,
+                    "lifetime constraints contain a cycle between '" + cycle->first +
+                        "' and '" + cycle->second + "'");
+            }
+        }
+        else if (const auto cycle = lifetimeCycle(candidate.lifetimeOutlivesConstraints))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                candidate.range,
+                "lifetime constraints contain a cycle between '" + cycle->first +
+                    "' and '" + cycle->second + "'");
         }
 
         candidate.signatureKey = candidate.name + '(';

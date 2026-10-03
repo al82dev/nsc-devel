@@ -28,6 +28,21 @@ struct GenericParameterSyntax
     SourceRange range;
 };
 
+// NativeSharp 3.0 T06-F04. Lifetime parameters are erased semantic parameters: unlike
+// type/const generics they never contribute to ABI identity or request monomorphization.
+struct LifetimeParameterSyntax
+{
+    std::string name;
+    SourceRange range;
+};
+
+struct LifetimeOutlivesConstraint
+{
+    std::string longer;
+    std::string shorter;
+    SourceRange range;
+};
+
 // NSC-LIMIT-007. Una clausula `where T : class, Base, IFoo` tal como se escribio.
 //
 // SE GUARDA SIN RESOLVER, y esa es la decision: los tipos quedan como `TypeSyntax*`, no como
@@ -117,6 +132,16 @@ public:
     const std::vector<GenericParameterSyntax>& genericParameterSyntaxes() const noexcept;
     void clearGenericParameters() noexcept;
 
+    void addLifetimeParameter(LifetimeParameterSyntax parameter);
+    const std::vector<LifetimeParameterSyntax>& lifetimeParameters() const noexcept;
+    void addLifetimeOutlivesConstraint(LifetimeOutlivesConstraint constraint);
+    const std::vector<LifetimeOutlivesConstraint>& lifetimeOutlivesConstraints() const noexcept;
+
+    // For a parameter this names the lifetime carried by ref/in. For a callable it names the
+    // lifetime of its ref return. Empty means that ordinary elision must infer the binding.
+    const std::string& lifetimeName() const noexcept;
+    void setLifetimeName(std::string name);
+
     // NSC-LIMIT-007. Las clausulas `where` de esta declaracion, en el orden escrito.
     void addGenericConstraint(GenericConstraintClause clause);
     const std::vector<GenericConstraintClause>& genericConstraints() const noexcept;
@@ -165,6 +190,9 @@ private:
     std::vector<TypeSyntax*> typeSyntaxes_;
     std::vector<std::string> genericParameters_;
     std::vector<GenericParameterSyntax> genericParameterSyntaxes_;
+    std::vector<LifetimeParameterSyntax> lifetimeParameters_;
+    std::vector<LifetimeOutlivesConstraint> lifetimeOutlivesConstraints_;
+    std::string lifetimeName_;
     std::vector<GenericConstraintClause> genericConstraints_;
     AstNode* first_ = nullptr;
     AstNode* second_ = nullptr;

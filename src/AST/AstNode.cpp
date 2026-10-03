@@ -60,6 +60,24 @@ void AstNode::clearGenericParameters() noexcept
     genericParameters_.clear();
     genericParameterSyntaxes_.clear();
 }
+void AstNode::addLifetimeParameter(LifetimeParameterSyntax parameter)
+{
+    lifetimeParameters_.push_back(std::move(parameter));
+}
+const std::vector<LifetimeParameterSyntax>& AstNode::lifetimeParameters() const noexcept
+{
+    return lifetimeParameters_;
+}
+void AstNode::addLifetimeOutlivesConstraint(LifetimeOutlivesConstraint constraint)
+{
+    lifetimeOutlivesConstraints_.push_back(std::move(constraint));
+}
+const std::vector<LifetimeOutlivesConstraint>& AstNode::lifetimeOutlivesConstraints() const noexcept
+{
+    return lifetimeOutlivesConstraints_;
+}
+const std::string& AstNode::lifetimeName() const noexcept { return lifetimeName_; }
+void AstNode::setLifetimeName(std::string name) { lifetimeName_ = std::move(name); }
 void AstNode::addGenericConstraint(GenericConstraintClause clause) { genericConstraints_.push_back(std::move(clause)); }
 const std::vector<GenericConstraintClause>& AstNode::genericConstraints() const noexcept { return genericConstraints_; }
 void AstNode::clearGenericConstraints() noexcept { genericConstraints_.clear(); }

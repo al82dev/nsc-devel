@@ -51,6 +51,7 @@ private:
     bool looksLikeParenthesizedType() const noexcept;
     bool parseQualifiedName(std::string& name, SourceRange& range);
     ast::TypeSyntax* parseType();
+    std::string parseOptionalLifetimeAnnotation(std::string_view context);
     ast::TypeSyntax* parseAllocationElementType();
     bool parseGenericParameterList(ast::AstNode* declaration);
     // NSC-LIMIT-007. Cero o mas clausulas `where T : class, Base, IFoo`, en la posicion donde el

@@ -35,6 +35,30 @@ namespace nativesharp::frontend
 namespace
 {
 constexpr std::string_view kGenericRawNewAuxiliary = "stage52-generic-raw-new";
+
+bool declaredLifetimeOutlives(
+    const ClassMemberSymbol& callable,
+    std::string_view longer,
+    std::string_view shorter)
+{
+    if (longer == shorter || longer == "static") return true;
+    std::unordered_set<std::string> visited;
+    std::vector<std::string> pending{std::string(longer)};
+    while (!pending.empty())
+    {
+        std::string current = std::move(pending.back());
+        pending.pop_back();
+        if (!visited.insert(current).second) continue;
+        for (const auto& [declaredLonger, declaredShorter] :
+             callable.lifetimeOutlivesConstraints)
+        {
+            if (declaredLonger != current) continue;
+            if (declaredShorter == shorter) return true;
+            pending.push_back(declaredShorter);
+        }
+    }
+    return false;
+}
 }
 
 // NSC-LIMIT-010. LA REGLA DE COMPATIBILIDAD DE PROPIEDAD, ESCRITA UNA SOLA VEZ.
@@ -627,6 +651,9 @@ bool ProjectMethodBodyModel::build(
         adapter.hasImplicitThis = false;
         adapter.isStatic = true;
         adapter.isReferenceReturn = function.isReferenceReturn;
+        adapter.returnLifetimeName = function.returnLifetimeName;
+        adapter.lifetimeParameters = function.lifetimeParameters;
+        adapter.lifetimeOutlivesConstraints = function.lifetimeOutlivesConstraints;
         adapter.isVariadic = function.isVariadic;
         adapter.inliningPolicy = function.inliningPolicy;
         namespaceCallableAdapters_.push_back(std::move(adapter));
@@ -1625,11 +1652,30 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
                 iterator->selectedMemberOrdinal.has_value()) return &*iterator;
         return nullptr;
     };
+    if (expression->kind() == ast::AstNodeKind::ThisExpression ||
+        expression->kind() == ast::AstNodeKind::BaseExpression)
+    {
+        return {MethodEscapeOriginKind::CurrentReceiver, std::nullopt, std::nullopt, "this"};
+    }
 
     if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
     {
         const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
-        if (!name.has_value()) return {};
+        if (!name.has_value())
+        {
+            for (auto iterator = nameBindings_.rbegin(); iterator != nameBindings_.rend(); ++iterator)
+            {
+                if (iterator->syntax != expression) continue;
+                if (iterator->kind == MethodNameBindingKind::ImplicitField)
+                    return {MethodEscapeOriginKind::CurrentReceiver,
+                        std::nullopt, std::nullopt, "this"};
+                if (iterator->kind == MethodNameBindingKind::StaticField)
+                    return {MethodEscapeOriginKind::ExternalStorage,
+                        std::nullopt, std::nullopt, "static"};
+                break;
+            }
+            return {};
+        }
         if (name->kind == ScopeNameKind::Local && name->semanticOrdinal < locals_.size())
         {
             const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
@@ -1640,11 +1686,11 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
                     local.variableLengthArrayRootLocalOrdinal,
                     root < locals_.size()
                         ? std::optional<std::size_t>(locals_[root].scopeOrdinal)
-                        : std::nullopt};
+                        : std::nullopt, {}};
             }
             if (local.isReference) return local.referenceEscapeOrigin;
             return {MethodEscapeOriginKind::CurrentFrameLocal, name->semanticOrdinal,
-                local.scopeOrdinal};
+                local.scopeOrdinal, {}};
         }
         if (name->kind == ScopeNameKind::Parameter)
         {
@@ -1660,13 +1706,14 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
                     while (rootScope < scopes_.size() &&
                         scopes_[rootScope].parentScopeOrdinal.has_value())
                         rootScope = *scopes_[rootScope].parentScopeOrdinal;
-                    return {MethodEscapeOriginKind::ExternalStorage, name->semanticOrdinal, rootScope};
+                    return {MethodEscapeOriginKind::ExternalStorage, name->semanticOrdinal, rootScope,
+                        method->parameters[name->semanticOrdinal].lifetimeName};
                 }
                 std::size_t rootScope = scopeOrdinal;
                 while (rootScope < scopes_.size() &&
                     scopes_[rootScope].parentScopeOrdinal.has_value())
                     rootScope = *scopes_[rootScope].parentScopeOrdinal;
-                return {MethodEscapeOriginKind::CurrentFrameParameter, name->semanticOrdinal, rootScope};
+                return {MethodEscapeOriginKind::CurrentFrameParameter, name->semanticOrdinal, rootScope, {}};
             }
         }
         return {};
@@ -1675,6 +1722,10 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
     if (expression->kind() == ast::AstNodeKind::MemberExpression)
     {
         const ast::AstNode* receiver = expression->first();
+        if (receiver != nullptr &&
+            (receiver->kind() == ast::AstNodeKind::ThisExpression ||
+             receiver->kind() == ast::AstNodeKind::BaseExpression))
+            return {MethodEscapeOriginKind::CurrentReceiver, std::nullopt, std::nullopt, "this"};
         if (typeKeyIsStruct(typeKeyOf(receiver)))
             return referenceEscapeOriginOfExpression(receiver, scopeOrdinal);
         return {};
@@ -1687,8 +1738,25 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
             *call->selectedMemberOrdinal < memberModel_->members().size() &&
             memberModel_->members()[*call->selectedMemberOrdinal].isReferenceReturn)
         {
-            if (typeKeyIsStruct(call->receiverTypeKey))
+            const ClassMemberSymbol& callee =
+                memberModel_->members()[*call->selectedMemberOrdinal];
+            if (callee.returnLifetimeName == "this")
                 return referenceEscapeOriginOfExpression(call->receiverSyntax, scopeOrdinal);
+            if (callee.returnLifetimeName != "static")
+            {
+                for (std::size_t index = 0; index < expression->children().size(); ++index)
+                {
+                    const std::size_t parameterIndex = index < call->selectedArgumentParameterOrdinals.size()
+                        ? call->selectedArgumentParameterOrdinals[index] : index;
+                    if (parameterIndex < callee.parameters.size() &&
+                        declaredLifetimeOutlives(
+                            callee,
+                            callee.parameters[parameterIndex].lifetimeName,
+                            callee.returnLifetimeName))
+                        return referenceEscapeOriginOfExpression(
+                            expression->children()[index], scopeOrdinal);
+                }
+            }
             return {};
         }
         if (const std::optional<std::size_t> vla =
@@ -1697,7 +1765,7 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
             return {MethodEscapeOriginKind::VariableLengthArray, vla,
                 *vla < locals_.size()
                     ? std::optional<std::size_t>(locals_[*vla].scopeOrdinal)
-                    : std::nullopt};
+                    : std::nullopt, {}};
         const std::string_view baseType = typeKeyOf(expression->first());
         if (ProjectMemberModel::fixedArrayElementTypeKey(baseType).has_value() ||
             ProjectMemberModel::flexibleArrayElementTypeKey(baseType).has_value())
@@ -1712,22 +1780,24 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
             *call->selectedMemberOrdinal >= memberModel_->members().size()) return {};
         const ClassMemberSymbol& callee = memberModel_->members()[*call->selectedMemberOrdinal];
         if (!callee.isReferenceReturn) return {};
-        if (!call->staticCall && typeKeyIsStruct(call->receiverTypeKey))
+        if (callee.returnLifetimeName == "this")
         {
-            const MethodEscapeOrigin receiver =
-                referenceEscapeOriginOfExpression(call->receiverSyntax, scopeOrdinal);
-            if (receiver.kind != MethodEscapeOriginKind::ExternalStorage) return receiver;
+            return referenceEscapeOriginOfExpression(call->receiverSyntax, scopeOrdinal);
         }
+        if (callee.returnLifetimeName == "static") return {};
         for (std::size_t index = 0; index < expression->children().size(); ++index)
         {
             const std::size_t parameterIndex = index < call->selectedArgumentParameterOrdinals.size()
                 ? call->selectedArgumentParameterOrdinals[index] : index;
             if (parameterIndex >= callee.parameters.size()) continue;
-            const ParameterPassKind passKind = callee.parameters[parameterIndex].passKind;
-            if (passKind != ParameterPassKind::Ref && passKind != ParameterPassKind::Out) continue;
+            if (!declaredLifetimeOutlives(
+                    callee,
+                    callee.parameters[parameterIndex].lifetimeName,
+                    callee.returnLifetimeName)) continue;
             const MethodEscapeOrigin argument =
                 referenceEscapeOriginOfExpression(expression->children()[index], scopeOrdinal);
-            if (argument.kind != MethodEscapeOriginKind::ExternalStorage) return argument;
+            if (argument.kind != MethodEscapeOriginKind::ExternalStorage ||
+                !argument.lifetimeName.empty()) return argument;
         }
         return {};
     }
@@ -1741,7 +1811,7 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
             return {MethodEscapeOriginKind::VariableLengthArray, vla,
                 *vla < locals_.size()
                     ? std::optional<std::size_t>(locals_[*vla].scopeOrdinal)
-                    : std::nullopt};
+                    : std::nullopt, {}};
         // The pointer slot may live in this frame while its pointee does not. Without explicit
         // pointer provenance, treating the slot as the referent would be an unsound false claim.
         return {};
@@ -2884,6 +2954,80 @@ std::optional<std::string> ProjectMethodBodyModel::storagePlaceKey(
             if (iterator->syntax == syntax) return iterator->typeKey;
         return {};
     };
+
+    // F04: a reference-returning call borrows the place named by its lifetime contract. Keep the
+    // old conservative unknown-place fallback when several eligible arguments name different
+    // places; a single string key must never pretend that a conditional return has one origin.
+    if (expression->kind() == ast::AstNodeKind::CallExpression ||
+        expression->kind() == ast::AstNodeKind::IndexExpression)
+    {
+        const MethodCallBinding* binding = nullptr;
+        for (auto iterator = calls_.rbegin(); iterator != calls_.rend(); ++iterator)
+        {
+            if (iterator->syntax == expression &&
+                iterator->resolution == MethodCallResolutionKind::Resolved &&
+                iterator->selectedMemberOrdinal.has_value())
+            {
+                binding = &*iterator;
+                break;
+            }
+        }
+        if (binding != nullptr && memberModel_ != nullptr &&
+            *binding->selectedMemberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& callee =
+                memberModel_->members()[*binding->selectedMemberOrdinal];
+            if (callee.isReferenceReturn)
+            {
+                if (callee.returnLifetimeName == "this")
+                {
+                    const std::optional<std::string> receiver =
+                        storagePlaceKey(binding->receiverSyntax, scopeOrdinal, precise);
+                    if (!receiver.has_value() && precise != nullptr) *precise = false;
+                    return receiver;
+                }
+                if (callee.returnLifetimeName == "static")
+                {
+                    if (precise != nullptr) *precise = false;
+                    return std::nullopt;
+                }
+
+                std::optional<std::string> result;
+                bool resultPrecise = true;
+                for (std::size_t index = 0; index < expression->children().size(); ++index)
+                {
+                    const std::size_t parameterIndex =
+                        index < binding->selectedArgumentParameterOrdinals.size()
+                        ? binding->selectedArgumentParameterOrdinals[index] : index;
+                    if (parameterIndex >= callee.parameters.size() ||
+                        !declaredLifetimeOutlives(
+                            callee,
+                            callee.parameters[parameterIndex].lifetimeName,
+                            callee.returnLifetimeName))
+                        continue;
+
+                    bool argumentPrecise = true;
+                    const std::optional<std::string> argument = storagePlaceKey(
+                        expression->children()[index], scopeOrdinal, &argumentPrecise);
+                    if (!argument.has_value() || !argumentPrecise ||
+                        (result.has_value() && *result != *argument))
+                    {
+                        if (precise != nullptr) *precise = false;
+                        return std::nullopt;
+                    }
+                    result = *argument;
+                    resultPrecise = resultPrecise && argumentPrecise;
+                }
+                if (result.has_value())
+                {
+                    if (precise != nullptr) *precise = resultPrecise;
+                    return result;
+                }
+                if (precise != nullptr) *precise = false;
+                return std::nullopt;
+            }
+        }
+    }
 
     switch (expression->kind())
     {
@@ -6257,6 +6401,47 @@ void ProjectMethodBodyModel::analyzeReturn(
                 "ref return cannot expose a by-value or readonly parameter");
             return;
         }
+        const auto lifetimeOutlives = [&](std::string_view longer, std::string_view shorter)
+        {
+            if (longer == shorter || longer == "static") return true;
+            std::unordered_set<std::string> visited;
+            std::vector<std::string> pending{std::string(longer)};
+            while (!pending.empty())
+            {
+                std::string current = std::move(pending.back());
+                pending.pop_back();
+                if (!visited.insert(current).second) continue;
+                for (const auto& [declaredLonger, declaredShorter] :
+                     method->lifetimeOutlivesConstraints)
+                {
+                    if (declaredLonger != current) continue;
+                    if (declaredShorter == shorter) return true;
+                    pending.push_back(declaredShorter);
+                }
+            }
+            return false;
+        };
+        const std::string_view targetLifetime = method->returnLifetimeName;
+        bool lifetimeMatches = true;
+        if (targetLifetime == "this")
+            lifetimeMatches = escape.kind == MethodEscapeOriginKind::CurrentReceiver;
+        else if (targetLifetime == "static")
+            lifetimeMatches = escape.lifetimeName.empty() || escape.lifetimeName == "static";
+        else if (!targetLifetime.empty() && !escape.lifetimeName.empty())
+            lifetimeMatches = lifetimeOutlives(escape.lifetimeName, targetLifetime);
+        if (!lifetimeMatches)
+        {
+            const std::string sourceLifetime = escape.lifetimeName.empty()
+                ? std::string("unknown") : escape.lifetimeName;
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->first()->range(),
+                "ref return requires lifetime '" + std::string(targetLifetime) +
+                    "' but the returned storage has lifetime '" + sourceLifetime +
+                    "'; add or correct an outlives constraint");
+            return;
+        }
         return;
     }
 
@@ -7759,11 +7944,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 }
                 if (hasActiveBorrowOfOwnedParameter(source->semanticOrdinal, scopeOrdinal))
                 {
+                    const std::string parameterKind =
+                        parameter.ownership == sema::OwnershipKind::Owned
+                        ? "owned parameter '"
+                        : "parameter '";
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "cannot move parameter '" + parameter.name +
+                        "cannot move " + parameterKind + parameter.name +
                             "' while a borrowed local is alive");
                     break;
                 }
@@ -18799,6 +18988,16 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                             "' cannot be captured by a lambda because the delegate may outlive its source owner"
                         : "owned parameter '" + parameter.name +
                             "' cannot be captured by a lambda because the delegate may outlive the owner");
+                safe = false;
+            }
+            if (parameter.passKind != ParameterPassKind::Value)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    name.syntax->range(),
+                    "reference parameter '" + parameter.name +
+                        "' cannot be captured by a lambda because the delegate may outlive the referenced storage");
                 safe = false;
             }
             MethodLambdaCapture captureDescription{

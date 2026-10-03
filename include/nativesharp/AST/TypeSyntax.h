@@ -63,6 +63,11 @@ public:
     OwnershipQualifierSyntaxKind ownershipQualifier() const noexcept;
     void setOwnershipQualifier(OwnershipQualifierSyntaxKind qualifier) noexcept;
 
+    // T06-F04: `borrowed[a] T` binds a borrowed field/view to named lifetime `a` without
+    // changing the physical type identity.
+    const std::string& lifetimeName() const noexcept;
+    void setLifetimeName(std::string name);
+
     // NativeSharp 3.0 source-level cost marker. `dyn Trait` intentionally shares the canonical
     // interface type/ABI, but retaining the spelling lets name lookup reject non-interface
     // targets and diagnostics/dumps keep dynamic dispatch explicit.
@@ -159,6 +164,7 @@ private:
     lexer::TokenKind baseTokenKind_;
     std::string baseName_;
     OwnershipQualifierSyntaxKind ownershipQualifier_ = OwnershipQualifierSyntaxKind::None;
+    std::string lifetimeName_;
     bool isDynamicTrait_ = false;
     bool isOpaqueResult_ = false;
     std::string opaqueResultTraitName_;

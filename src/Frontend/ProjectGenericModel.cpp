@@ -4023,6 +4023,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
                     modifier.arrayRank});
             }
             selected->setOwnershipQualifier(source->ownershipQualifier());
+            selected->setLifetimeName(source->lifetimeName());
             selected->setDynamicTrait(source->isDynamicTrait());
             selected->setOpaqueResult(source->isOpaqueResult());
             selected->setOpaqueResultTraitName(source->opaqueResultTraitName());
@@ -4148,6 +4149,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     // argument requires an owned parameter". Carry it over unconditionally, exactly like the
     // pointer/array modifiers just above.
     result->setOwnershipQualifier(source->ownershipQualifier());
+    result->setLifetimeName(source->lifetimeName());
     result->setDynamicTrait(source->isDynamicTrait());
     result->setOpaqueResult(source->isOpaqueResult());
     result->setOpaqueResultTraitName(source->opaqueResultTraitName());
@@ -4403,6 +4405,7 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     result->setTokenKind(source->tokenKind());
     result->setFlag(source->flag());
     result->setReference(source->isReference());
+    result->setLifetimeName(source->lifetimeName());
     result->setVariadic(source->isVariadic());
     result->setIntegerValue(source->integerValue());
     result->setFloatingValue(source->floatingValue());
@@ -4427,6 +4430,10 @@ ast::AstNode* ProjectGenericModel::cloneNode(
         copy.constantType = cloneType(arena, parameter.constantType, substitutions);
         result->addGenericParameter(std::move(copy));
     }
+    for (const ast::LifetimeParameterSyntax& parameter : source->lifetimeParameters())
+        result->addLifetimeParameter(parameter);
+    for (const ast::LifetimeOutlivesConstraint& constraint : source->lifetimeOutlivesConstraints())
+        result->addLifetimeOutlivesConstraint(constraint);
     // NSC-LIMIT-007. Las clausulas se clonan con la sustitucion aplicada a sus tipos, igual que
     // cualquier otro TypeSyntax del nodo. Copiar los punteros originales dejaria la
     // especializacion apuntando a sintaxis de la PLANTILLA -- viva, pero de otro arbol, y con `T`

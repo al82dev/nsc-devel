@@ -612,6 +612,10 @@ evidencia del commit: `docs/3.0/items/NS3-T06-F01-move-only-defaults.md`.
 
 **Commit:** `ns3(t06-f04): lifetime-parameters`
 
+**Estado:** `TERMINADA` (2026-10-03). Contrato normativo:
+`docs/3.0/language/named-inferred-lifetimes.md`; evidencia del commit:
+`docs/3.0/items/NS3-T06-F04-lifetime-parameters.md`.
+
 - **Implementación:** parámetros de lifetime en APIs donde la elisión es ambigua; reglas de elisión simples; constraints outlives integrados al solver.
 - **Pruebas dirigidas:** retorno ligado a receiver/parámetro, structs prestados, traits, closures, HRTB limitado y escapes a global.
 - **Markdown ES/EN:** sintaxis, elisión y mensajes de corrección.

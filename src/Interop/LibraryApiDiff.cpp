@@ -55,10 +55,24 @@ void parameterSourceContract(std::string& output, const LibraryMetadataParameter
     number(output, parameter.passKind);
     number(output, parameter.isParameterPack);
     number(output, parameter.isDynamicTrait);
+    field(output, parameter.lifetimeName);
     number(output, parameter.defaultValueKind);
     number(output, parameter.defaultValueFlags);
     number(output, parameter.defaultValueBits);
     field(output, parameter.defaultValueText);
+}
+
+template <typename Callable>
+void lifetimeSourceContract(std::string& output, const Callable& callable)
+{
+    field(output, callable.returnLifetimeName);
+    strings(output, callable.lifetimeParameters, false);
+    number(output, callable.lifetimeOutlivesConstraints.size());
+    for (const auto& [longer, shorter] : callable.lifetimeOutlivesConstraints)
+    {
+        field(output, longer);
+        field(output, shorter);
+    }
 }
 
 void parameterAbiContract(std::string& output, const LibraryMetadataParameter& parameter)
@@ -102,6 +116,25 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         number(contract, type.delegateParameterDynamicTraits.size());
         for (const std::uint8_t dynamicTrait : type.delegateParameterDynamicTraits)
             number(contract, dynamicTrait);
+        strings(contract, type.lifetimeParameters, false);
+        number(contract, type.lifetimeOutlivesConstraints.size());
+        for (const auto& [longer, shorter] : type.lifetimeOutlivesConstraints)
+        {
+            field(contract, longer);
+            field(contract, shorter);
+        }
+        number(contract, type.delegateReferenceReturn);
+        field(contract, type.delegateReturnLifetimeName);
+        number(contract, type.delegateParameterPassKinds.size());
+        for (const LibraryMetadataParameterPassKind pass : type.delegateParameterPassKinds)
+            number(contract, pass);
+        strings(contract, type.delegateParameterLifetimeNames, false);
+        number(contract, type.fields.size());
+        for (const LibraryMetadataField& metadataField : type.fields)
+        {
+            field(contract, metadataField.name);
+            field(contract, metadataField.lifetimeName);
+        }
         number(contract, type.variantCases.size());
         for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
         {
@@ -143,6 +176,7 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         number(contract, member.parameters.size());
         for (const LibraryMetadataParameter& parameter : member.parameters)
             parameterSourceContract(contract, parameter);
+        lifetimeSourceContract(contract, member);
         result.emplace(
             "member:" + member.declaringTypeKey + ":" +
                 std::to_string(member.kind) + ":" + member.signatureKey,
@@ -159,6 +193,7 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         number(contract, function.parameters.size());
         for (const LibraryMetadataParameter& parameter : function.parameters)
             parameterSourceContract(contract, parameter);
+        lifetimeSourceContract(contract, function);
         result.emplace(
             "namespace-function:" + function.namespaceName + ":" + function.signatureKey,
             std::move(contract));

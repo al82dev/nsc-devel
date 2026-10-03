@@ -74,6 +74,8 @@ namespace nativesharp::interop
 // MINOR 23 (2026-09-29): modules preserve their NativeSharp language edition.
 // MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
+// MINOR 34 (2026-10-03): public borrowed types and callable signatures preserve erased lifetime
+// parameters, parameter/result bindings, and normalized outlives edges across LibraryReference.
 // MINOR 33 (2026-10-03): edition-3 value types preserve their explicit Copy capability across
 // LibraryReference boundaries; an absent bit keeps the move-only default.
 // MINOR 32 (2026-10-03): public extension methods preserve their receiver contract and extension
@@ -82,7 +84,7 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // callable signatures retain the explicit `dyn` marker across LibraryReference boundaries.
 // MINOR 30 (2026-10-03): declaration-scoped opaque result identities publish their one-field
 // in-place representation and implemented trait as a closed native contract.
-inline constexpr std::uint16_t kMetadataFormatMinor = 33;
+inline constexpr std::uint16_t kMetadataFormatMinor = 34;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -203,6 +205,7 @@ struct LibraryMetadataField final
     std::string name;
     std::string typeKey;
     LibraryMetadataOwnershipKind ownership = LibraryMetadataOwnershipKind::None;
+    std::string lifetimeName;
     std::uint64_t offset = 0;
     std::uint64_t size = 0;
     std::uint64_t alignment = 1;
@@ -288,6 +291,12 @@ struct LibraryMetadataType final
     std::uint8_t traitObjectFlags = 0;
     std::uint8_t traitObjectWordCount = 0;
     std::vector<LibraryMetadataField> fields;
+    std::vector<std::string> lifetimeParameters;
+    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
+    bool delegateReferenceReturn = false;
+    std::string delegateReturnLifetimeName;
+    std::vector<LibraryMetadataParameterPassKind> delegateParameterPassKinds;
+    std::vector<std::string> delegateParameterLifetimeNames;
 };
 
 struct LibraryMetadataParameter final
@@ -301,6 +310,7 @@ struct LibraryMetadataParameter final
     bool isParameterPack = false;
     // NSMETA 1.31. Source-level dynamic dispatch marker; physical typeKey is unchanged.
     bool isDynamicTrait = false;
+    std::string lifetimeName;
     // NSMETA 1.3. `defaultValueBits` stores the integer/character magnitude, a boolean bit, or
     // the IEEE-754 bits of the parsed double literal. Strings use `defaultValueText`; null has no
     // payload. Bit 0 of `defaultValueFlags` preserves a unary minus for integer literals.
@@ -323,6 +333,9 @@ struct LibraryMetadataMember final
     std::string cAbiName;
     std::string mangledName;
     std::vector<LibraryMetadataParameter> parameters;
+    std::string returnLifetimeName;
+    std::vector<std::string> lifetimeParameters;
+    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
     std::uint8_t constantKind = 0;
     std::uint64_t constantBits = 0;
     // NSMETA 1.9. Payload UTF-8 de una constante string; vacio para los demas kinds.
@@ -347,6 +360,9 @@ struct LibraryMetadataNamespaceFunction final
     LibraryMetadataOwnershipKind declaredOwnership = LibraryMetadataOwnershipKind::None;
     std::string mangledName;
     std::vector<LibraryMetadataParameter> parameters;
+    std::string returnLifetimeName;
+    std::vector<std::string> lifetimeParameters;
+    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
 };
 
 enum class LibraryMetadataNamespaceStateInitializerKind : std::uint8_t

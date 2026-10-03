@@ -20,9 +20,9 @@ bool vectorEqual(const std::vector<T>& left, const std::vector<T>& right, Equal 
 
 bool equalField(const LibraryMetadataField& left, const LibraryMetadataField& right)
 {
-    return std::tie(left.name, left.typeKey, left.ownership, left.offset, left.size,
+    return std::tie(left.name, left.typeKey, left.ownership, left.lifetimeName, left.offset, left.size,
                left.alignment, left.flags, left.bitOffset, left.bitWidth) ==
-        std::tie(right.name, right.typeKey, right.ownership, right.offset, right.size,
+        std::tie(right.name, right.typeKey, right.ownership, right.lifetimeName, right.offset, right.size,
             right.alignment, right.flags, right.bitOffset, right.bitWidth);
 }
 
@@ -46,7 +46,10 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
                left.delegateFlags, left.delegateReturnTypeKey,
                left.delegateParameterTypeKeys, left.delegateReturnDynamicTrait,
                left.delegateParameterDynamicTraits, left.traitMethodSignatures,
-               left.traitObjectFlags, left.traitObjectWordCount) ==
+               left.traitObjectFlags, left.traitObjectWordCount,
+               left.lifetimeParameters, left.lifetimeOutlivesConstraints,
+               left.delegateReferenceReturn, left.delegateReturnLifetimeName,
+               left.delegateParameterPassKinds, left.delegateParameterLifetimeNames) ==
             std::tie(right.kind, right.accessibility, right.flags, right.identityKey,
                 right.fullyQualifiedName, right.baseTypeKey, right.interfaceTypeKeys,
                 right.size, right.alignment, right.headerSize, right.referenceSize,
@@ -54,7 +57,10 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
                 right.delegateFlags, right.delegateReturnTypeKey,
                 right.delegateParameterTypeKeys, right.delegateReturnDynamicTrait,
                 right.delegateParameterDynamicTraits, right.traitMethodSignatures,
-                right.traitObjectFlags, right.traitObjectWordCount) &&
+                right.traitObjectFlags, right.traitObjectWordCount,
+                right.lifetimeParameters, right.lifetimeOutlivesConstraints,
+                right.delegateReferenceReturn, right.delegateReturnLifetimeName,
+                right.delegateParameterPassKinds, right.delegateParameterLifetimeNames) &&
         vectorEqual(left.variantCases, right.variantCases, equalVariantCase) &&
         vectorEqual(left.associatedItems, right.associatedItems, equalAssociatedItem) &&
         vectorEqual(left.fields, right.fields, equalField);
@@ -63,11 +69,11 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
 bool equalParameter(const LibraryMetadataParameter& left, const LibraryMetadataParameter& right)
 {
     return std::tie(left.name, left.typeKey, left.ownership, left.passKind,
-               left.isParameterPack, left.isDynamicTrait,
+               left.isParameterPack, left.isDynamicTrait, left.lifetimeName,
                left.defaultValueKind, left.defaultValueFlags, left.defaultValueBits,
                left.defaultValueText) ==
         std::tie(right.name, right.typeKey, right.ownership, right.passKind,
-            right.isParameterPack, right.isDynamicTrait,
+            right.isParameterPack, right.isDynamicTrait, right.lifetimeName,
             right.defaultValueKind, right.defaultValueFlags, right.defaultValueBits,
             right.defaultValueText);
 }
@@ -78,12 +84,14 @@ bool equalMember(const LibraryMetadataMember& left, const LibraryMetadataMember&
                left.name, left.signatureKey, left.declaredTypeKey,
                left.declaredOwnership, left.cAbiName, left.mangledName,
                left.constantKind, left.constantBits, left.constantText,
-               left.importDllName, left.inlineSourceText) ==
+               left.importDllName, left.inlineSourceText, left.returnLifetimeName,
+               left.lifetimeParameters, left.lifetimeOutlivesConstraints) ==
             std::tie(right.kind, right.accessibility, right.flags, right.declaringTypeKey,
                 right.name, right.signatureKey, right.declaredTypeKey,
                 right.declaredOwnership, right.cAbiName, right.mangledName,
                 right.constantKind, right.constantBits, right.constantText,
-                right.importDllName, right.inlineSourceText) &&
+                right.importDllName, right.inlineSourceText, right.returnLifetimeName,
+                right.lifetimeParameters, right.lifetimeOutlivesConstraints) &&
         vectorEqual(left.parameters, right.parameters, equalParameter);
 }
 
@@ -93,10 +101,12 @@ bool equalNamespaceFunction(
 {
     return std::tie(left.accessibility, left.flags, left.namespaceName, left.name,
                left.signatureKey, left.declaredTypeKey, left.declaredOwnership,
-               left.mangledName) ==
+               left.mangledName, left.returnLifetimeName, left.lifetimeParameters,
+               left.lifetimeOutlivesConstraints) ==
             std::tie(right.accessibility, right.flags, right.namespaceName, right.name,
                 right.signatureKey, right.declaredTypeKey, right.declaredOwnership,
-                right.mangledName) &&
+                right.mangledName, right.returnLifetimeName, right.lifetimeParameters,
+                right.lifetimeOutlivesConstraints) &&
         vectorEqual(left.parameters, right.parameters, equalParameter);
 }
 

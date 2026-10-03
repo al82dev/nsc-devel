@@ -464,6 +464,22 @@ std::string ownershipPrefix(interop::LibraryMetadataOwnershipKind ownership)
     return {};
 }
 
+std::string lifetimeAnnotation(std::string_view lifetime)
+{
+    if (lifetime.empty() || lifetime.starts_with("$p")) return {};
+    return "[" + std::string(lifetime) + "]";
+}
+
+std::string ownershipPrefix(
+    interop::LibraryMetadataOwnershipKind ownership,
+    std::string_view lifetime)
+{
+    if (ownership != interop::LibraryMetadataOwnershipKind::Borrowed ||
+        lifetimeAnnotation(lifetime).empty())
+        return ownershipPrefix(ownership);
+    return "borrowed" + lifetimeAnnotation(lifetime) + " ";
+}
+
 // DLL-P4 publication rule. A member that legal consumer source can name directly must have an
 // importable entry. Public members qualify everywhere; protected members qualify through a
 // consumer-owned derived class (including `base.Foo()`). Internal/private implementation details
@@ -1231,16 +1247,21 @@ std::string_view metadataOperatorToken(std::string_view name) noexcept
     return {};
 }
 
-std::string_view parameterPassPrefix(interop::LibraryMetadataParameterPassKind passKind) noexcept
+std::string parameterPassPrefix(
+    interop::LibraryMetadataParameterPassKind passKind,
+    std::string_view lifetime = {})
 {
+    std::string result;
     switch (passKind)
     {
-        case interop::LibraryMetadataParameterPassKind::Value: return {};
-        case interop::LibraryMetadataParameterPassKind::Ref: return "ref ";
-        case interop::LibraryMetadataParameterPassKind::Out: return "out ";
-        case interop::LibraryMetadataParameterPassKind::In: return "in ";
+        case interop::LibraryMetadataParameterPassKind::Value: return result;
+        case interop::LibraryMetadataParameterPassKind::Ref: result = "ref"; break;
+        case interop::LibraryMetadataParameterPassKind::Out: result = "out"; break;
+        case interop::LibraryMetadataParameterPassKind::In: result = "in"; break;
     }
-    return {};
+    result += lifetimeAnnotation(lifetime);
+    result.push_back(' ');
+    return result;
 }
 
 std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &metadata)
@@ -1589,6 +1610,23 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         }
         return sourceTypeForMetadataKey(metadata, typeKey, sourceType, error);
     };
+    const auto emitLifetimeParameters = [&](const std::vector<std::string>& lifetimes)
+    {
+        if (lifetimes.empty()) return;
+        generated << '<';
+        for (std::size_t index = 0; index < lifetimes.size(); ++index)
+        {
+            if (index != 0U) generated << ", ";
+            generated << "lifetime " << lifetimes[index];
+        }
+        generated << '>';
+    };
+    const auto emitLifetimeConstraints =
+        [&](const std::vector<std::pair<std::string, std::string>>& constraints)
+    {
+        for (const auto& [longer, shorter] : constraints)
+            generated << " where " << longer << " : " << shorter;
+    };
     const auto emitParameter = [&](const interop::LibraryMetadataParameter &parameter,
                                    const std::string &memberName,
                                    const std::size_t index) -> bool {
@@ -1607,7 +1645,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             }
             if (!sourceTypeForMetadataKey(metadata, sourceTypeKey, parameterType, error)) return false;
             generated << (parameter.isParameterPack ? "params " : "")
-                      << parameterPassPrefix(parameter.passKind) << ownershipPrefix(parameter.ownership)
+                      << parameterPassPrefix(parameter.passKind, parameter.lifetimeName)
+                      << ownershipPrefix(parameter.ownership)
                       << (parameter.isDynamicTrait ? "dyn " : "")
                       << parameterType << ' '
                       << (parameter.name.empty() ? "arg" + std::to_string(index) : parameter.name);
@@ -1830,7 +1869,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 else if ((shape.flags & kAbstract) != 0U) generated << "abstract ";
                 else if ((shape.flags & kVirtual) != 0U) generated << "virtual ";
             }
-            if ((shape.flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
+            if ((shape.flags & interop::kMetadataMemberReferenceReturn) != 0U)
+                generated << "ref" << lifetimeAnnotation(shape.returnLifetimeName) << ' ';
             generated << ownershipPrefix(declaredOwnership)
                       << ((shape.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
                       << declaredType << ' ';
@@ -1943,21 +1983,46 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             if ((type.delegateFlags & 1U) != 0U)
                 generated << (((type.delegateFlags & 2U) != 0U) ? "extern vectorcall " : "extern C ");
             generated << "delegate ";
+            if (type.delegateReferenceReturn)
+                generated << "ref" << lifetimeAnnotation(type.delegateReturnLifetimeName) << ' ';
             if (type.delegateReturnDynamicTrait) generated << "dyn ";
-            generated << returnType << ' ' << typeName << '(';
+            generated << returnType << ' ' << typeName;
+            emitLifetimeParameters(type.lifetimeParameters);
+            generated << '(';
             for (std::size_t parameterIndex = 0; parameterIndex < type.delegateParameterTypeKeys.size();
                 ++parameterIndex)
             {
                 if (parameterIndex != 0) generated << ", ";
                 std::string parameterType;
-                if (!sourceTypeForMetadataKey(metadata, type.delegateParameterTypeKeys[parameterIndex], parameterType, error))
+                std::string parameterTypeKey = type.delegateParameterTypeKeys[parameterIndex];
+                const interop::LibraryMetadataParameterPassKind passKind =
+                    parameterIndex < type.delegateParameterPassKinds.size()
+                    ? type.delegateParameterPassKinds[parameterIndex]
+                    : interop::LibraryMetadataParameterPassKind::Value;
+                if (passKind != interop::LibraryMetadataParameterPassKind::Value)
+                {
+                    if (parameterTypeKey.empty() || !parameterTypeKey.ends_with('*'))
+                    {
+                        error = "metadata delegate by-reference parameter has no pointer carrier";
+                        return false;
+                    }
+                    parameterTypeKey.pop_back();
+                }
+                if (!sourceTypeForMetadataKey(metadata, parameterTypeKey, parameterType, error))
                     return false;
+                generated << parameterPassPrefix(
+                    passKind,
+                    parameterIndex < type.delegateParameterLifetimeNames.size()
+                        ? std::string_view(type.delegateParameterLifetimeNames[parameterIndex])
+                        : std::string_view{});
                 if (parameterIndex < type.delegateParameterDynamicTraits.size() &&
                     type.delegateParameterDynamicTraits[parameterIndex] != 0U)
                     generated << "dyn ";
                 generated << parameterType << " arg" << parameterIndex;
             }
-            generated << ");\n";
+            generated << ')';
+            emitLifetimeConstraints(type.lifetimeOutlivesConstraints);
+            generated << ";\n";
             if (topLevel && !namespaceName.empty()) generated << "}\n";
             return true;
         }
@@ -1997,6 +2062,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             const bool isTrait = metadata.formatMinor >= 28 &&
                 (type.flags & interop::kMetadataTypeTrait) != 0U;
             generated << typeAccessibility << (isTrait ? " trait " : " interface ") << typeName;
+            emitLifetimeParameters(type.lifetimeParameters);
             if (!type.interfaceTypeKeys.empty()) generated << " : ";
             for (std::size_t index = 0; index < type.interfaceTypeKeys.size(); ++index)
             {
@@ -2005,6 +2071,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if (!sourceBaseType(type.interfaceTypeKeys[index], baseInterface)) return false;
                 generated << baseInterface;
             }
+            emitLifetimeConstraints(type.lifetimeOutlivesConstraints);
             generated << "\n{\n";
             if (!emitAssociatedItems(type)) return false;
             constexpr std::uint8_t kMethodKind = 2U;
@@ -2037,12 +2104,17 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 }
                 if (isTrait && (member->flags & kStatic) != 0U) generated << "static ";
                 if ((member->flags & interop::kMetadataMemberNoHeap) != 0U) generated << "noheap ";
-                if ((member->flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
+                if ((member->flags & interop::kMetadataMemberReferenceReturn) != 0U)
+                    generated << "ref" << lifetimeAnnotation(member->returnLifetimeName) << ' ';
                 generated << ownershipPrefix(member->declaredOwnership)
                           << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
-                          << returnType << ' ' << member->name << '(';
+                          << returnType << ' ' << member->name;
+                emitLifetimeParameters(member->lifetimeParameters);
+                generated << '(';
                 if (!emitParameters(*member)) return false;
-                generated << (isTrait && (member->flags & kAbstract) == 0U ? ") { }\n" : ");\n");
+                generated << ')';
+                emitLifetimeConstraints(member->lifetimeOutlivesConstraints);
+                generated << (isTrait && (member->flags & kAbstract) == 0U ? " { }\n" : ";\n");
             }
             generated << "}\n";
             if (topLevel && !namespaceName.empty()) generated << "}\n";
@@ -2119,6 +2191,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             generated << "class ";
         }
         generated << typeName;
+        emitLifetimeParameters(type.lifetimeParameters);
         if (type.kind == interop::LibraryMetadataTypeKind::Struct &&
             metadata.formatMinor >= 26 &&
             (type.flags & interop::kMetadataTypeRecord) != 0U)
@@ -2166,6 +2239,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 wroteBase = true;
             }
         }
+        emitLifetimeConstraints(type.lifetimeOutlivesConstraints);
         generated << "\n{\n";
 
         if (!emitAssociatedItems(type)) return false;
@@ -2235,7 +2309,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if ((child.flags & (1U << 1U)) != 0U || (nested.flags & (1U << 6U)) != 0U)
                     generated << "readonly ";
                 if ((child.flags & interop::kMetadataMemberVolatile) != 0U) generated << "volatile ";
-                generated << ownershipPrefix(child.ownership)
+                generated << ownershipPrefix(child.ownership, child.lifetimeName)
                           << ((child.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
                           << childType;
                 if (!childUnnamedBitField) generated << ' ' << childName;
@@ -2290,7 +2364,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if ((field.flags & (1U << 1U)) != 0U || (type.flags & (1U << 6U)) != 0U)
                     generated << "readonly ";
                 if ((field.flags & interop::kMetadataMemberVolatile) != 0U) generated << "volatile ";
-                generated << ownershipPrefix(field.ownership)
+                generated << ownershipPrefix(field.ownership, field.lifetimeName)
                           << ((field.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
                           << fieldType;
                 if (!unnamedBitField) generated << ' ' << fieldName;
@@ -2352,9 +2426,13 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             {
                 generated << "    " << sourceAccessibility(member->accessibility) << ' ';
                 if ((member->flags & interop::kMetadataMemberNoHeap) != 0U) generated << "noheap ";
-                generated << typeName << '(';
+                generated << typeName;
+                emitLifetimeParameters(member->lifetimeParameters);
+                generated << '(';
                 if (!emitParameters(*member)) return false;
-                generated << ") { }\n";
+                generated << ')';
+                emitLifetimeConstraints(member->lifetimeOutlivesConstraints);
+                generated << " { }\n";
                 continue;
             }
             if (member->kind != kMethodKind) continue;
@@ -2433,15 +2511,20 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 interop::kMetadataMemberInliningShift;
             if (inlining == 3U) generated << "noinline ";
             if ((member->flags & interop::kMetadataMemberNoHeap) != 0U) generated << "noheap ";
-            if ((member->flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
+            if ((member->flags & interop::kMetadataMemberReferenceReturn) != 0U)
+                generated << "ref" << lifetimeAnnotation(member->returnLifetimeName) << ' ';
             generated << ownershipPrefix(member->declaredOwnership)
                       << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
-                      << returnType << ' ' << member->name << '(';
+                      << returnType << ' ' << member->name;
+            emitLifetimeParameters(member->lifetimeParameters);
+            generated << '(';
             if (!emitParameters(*member)) return false;
             // The empty body is an implementation detail of the generated syntax.
             // Precompiled units are skipped by body analysis and lowered as external
             // NativeSharp declarations.
-            generated << (((member->flags & kAbstract) != 0U) ? ");\n" : ") { }\n");
+            generated << ')';
+            emitLifetimeConstraints(member->lifetimeOutlivesConstraints);
+            generated << (((member->flags & kAbstract) != 0U) ? ";\n" : " { }\n");
         }
         const auto children = nestedChildren.find(type.fullyQualifiedName);
         if (children != nestedChildren.end())
@@ -2508,7 +2591,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                         function.name + "' has no materialized receiver alias";
                 return false;
             }
-            generated << "extension " << parameterPassPrefix(receiver.passKind)
+            generated << "extension " << parameterPassPrefix(receiver.passKind, receiver.lifetimeName)
                       << ownershipPrefix(receiver.ownership)
                       << (receiver.isDynamicTrait ? "dyn " : "") << receiverAlias->second
                       << std::endl << '{' << std::endl;
@@ -2516,10 +2599,13 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         if ((function.flags & 8U) != 0U)
             generated << "extern C" << std::endl << '{' << std::endl;
         generated << "public ";
-        if ((function.flags & 1U) != 0U) generated << "ref ";
+        if ((function.flags & 1U) != 0U)
+            generated << "ref" << lifetimeAnnotation(function.returnLifetimeName) << ' ';
         generated << ownershipPrefix(function.declaredOwnership)
                   << ((function.flags & 16U) != 0U ? "dyn " : "") << returnType << ' '
-                  << function.name << '(';
+                  << function.name;
+        emitLifetimeParameters(function.lifetimeParameters);
+        generated << '(';
         const std::size_t firstExplicitParameter = extension ? 1U : 0U;
         if (!emitParameterSlice(
                 function,
@@ -2531,7 +2617,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             if (function.parameters.size() > firstExplicitParameter) generated << ", ";
             generated << "...";
         }
-        generated << ");" << std::endl;
+        generated << ')';
+        emitLifetimeConstraints(function.lifetimeOutlivesConstraints);
+        generated << ';' << std::endl;
         if ((function.flags & 8U) != 0U) generated << '}' << std::endl;
         if (extension) generated << '}' << std::endl;
         if (!function.namespaceName.empty()) generated << '}' << std::endl;

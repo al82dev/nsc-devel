@@ -78,6 +78,168 @@ bool namedTypeIsBorrowedView(const NamedTypeDeclaration* type) noexcept
         type->syntax->auxiliaryText().find("borrowedview") != std::string::npos;
 }
 
+bool declaresLifetime(const ast::AstNode* declaration, std::string_view name) noexcept
+{
+    return declaration != nullptr && std::ranges::any_of(
+        declaration->lifetimeParameters(),
+        [&](const ast::LifetimeParameterSyntax& parameter)
+        {
+            return parameter.name == name;
+        });
+}
+
+ParameterPassKind lifetimeParameterPassKind(const ast::AstNode& parameter) noexcept
+{
+    if (parameter.auxiliaryText() == "pass:ref") return ParameterPassKind::Ref;
+    if (parameter.auxiliaryText() == "pass:out") return ParameterPassKind::Out;
+    if (parameter.auxiliaryText() == "pass:in") return ParameterPassKind::In;
+    return ParameterPassKind::Value;
+}
+
+bool lifetimeOutlives(
+    std::span<const std::pair<std::string, std::string>> constraints,
+    std::string_view longer,
+    std::string_view shorter)
+{
+    if (longer == shorter || longer == "static") return true;
+    std::unordered_set<std::string> visited;
+    std::vector<std::string> pending{std::string(longer)};
+    while (!pending.empty())
+    {
+        std::string current = std::move(pending.back());
+        pending.pop_back();
+        if (!visited.insert(current).second) continue;
+        for (const auto& [declaredLonger, declaredShorter] : constraints)
+        {
+            if (declaredLonger != current) continue;
+            if (declaredShorter == shorter) return true;
+            pending.push_back(declaredShorter);
+        }
+    }
+    return false;
+}
+
+std::optional<std::pair<std::string, std::string>> lifetimeCycle(
+    std::span<const std::pair<std::string, std::string>> constraints)
+{
+    for (const auto& [longer, shorter] : constraints)
+        if (longer == shorter || lifetimeOutlives(constraints, shorter, longer))
+            return std::pair{longer, shorter};
+    return std::nullopt;
+}
+
+void validateDelegateLifetimeContract(
+    const NamedTypeDeclaration& type,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (type.syntax == nullptr) return;
+    std::vector<std::pair<std::string, std::string>> constraints;
+    for (const ast::LifetimeOutlivesConstraint& constraint :
+         type.syntax->lifetimeOutlivesConstraints())
+        constraints.emplace_back(constraint.longer, constraint.shorter);
+    if (const auto cycle = lifetimeCycle(constraints))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            type.syntax->range(),
+            "lifetime constraints contain a cycle between '" + cycle->first +
+                "' and '" + cycle->second + "'");
+    }
+
+    std::unordered_set<std::string> inputLifetimes;
+    std::size_t parameterOrdinal = 0;
+    for (const ast::AstNode* parameter : type.syntax->children())
+    {
+        if (parameter == nullptr || parameter->kind() != ast::AstNodeKind::ParameterDeclaration)
+            continue;
+        const ParameterPassKind passKind = lifetimeParameterPassKind(*parameter);
+        std::string lifetime = parameter->lifetimeName();
+        if (!lifetime.empty())
+        {
+            if (passKind == ParameterPassKind::Out)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    parameter->range(),
+                    "out delegate parameter '" + parameter->text() +
+                        "' initializes storage and cannot carry an input lifetime");
+            }
+            else if (passKind == ParameterPassKind::Value)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    parameter->range(),
+                    "only ref or in delegate parameters may carry a named lifetime");
+            }
+            else if (!declaresLifetime(type.syntax, lifetime))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::UnknownIdentifier,
+                    diagnostics::DiagnosticSeverity::Error,
+                    parameter->range(),
+                    "delegate parameter '" + parameter->text() +
+                        "' names undeclared lifetime '" + lifetime + "'");
+            }
+        }
+        else if (passKind == ParameterPassKind::Ref || passKind == ParameterPassKind::In)
+        {
+            lifetime = "$p" + std::to_string(parameterOrdinal);
+        }
+        if (!lifetime.empty() && passKind != ParameterPassKind::Out)
+            inputLifetimes.insert(std::move(lifetime));
+        ++parameterOrdinal;
+    }
+
+    if (!type.syntax->isReference()) return;
+    const std::string& resultLifetime = type.syntax->lifetimeName();
+    if (resultLifetime.empty() && inputLifetimes.size() > 1U)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidReturn,
+            diagnostics::DiagnosticSeverity::Error,
+            type.syntax->range(),
+            "ref-returning delegate '" + type.identity.name() +
+                "' has multiple input lifetimes; write ref[a] and bind the intended "
+                "ref/in parameters to lifetime a");
+    }
+    else if (resultLifetime == "this")
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidReturn,
+            diagnostics::DiagnosticSeverity::Error,
+            type.syntax->range(),
+            "lifetime 'this' is unavailable on a delegate");
+    }
+    else if (!resultLifetime.empty() && resultLifetime != "static" &&
+             !declaresLifetime(type.syntax, resultLifetime))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::UnknownIdentifier,
+            diagnostics::DiagnosticSeverity::Error,
+            type.syntax->range(),
+            "ref return of delegate '" + type.identity.name() +
+                "' names undeclared lifetime '" + resultLifetime + "'");
+    }
+    else if (!resultLifetime.empty() && resultLifetime != "static" &&
+             !std::ranges::any_of(
+                 inputLifetimes,
+                 [&](const std::string& input)
+                 {
+                     return lifetimeOutlives(constraints, input, resultLifetime);
+                 }))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidReturn,
+            diagnostics::DiagnosticSeverity::Error,
+            type.syntax->range(),
+            "delegate ref return lifetime '" + resultLifetime +
+                "' has no ref/in parameter whose lifetime outlives it");
+    }
+}
+
 bool typeKeyIsViewLike(std::string_view typeKey, const ProjectNameLookup& nameLookup) noexcept
 {
     std::string_view key = typeKey;
@@ -335,6 +497,7 @@ bool ProjectMemberModel::build(
         const NamedTypeDeclaration& type = nameLookup.namedTypes()[typeOrdinal];
         if (type.kind == NamedTypeDeclarationKind::Delegate)
         {
+            validateDelegateLifetimeContract(type, diagnostics);
             if (type.syntax != nullptr)
             {
                 std::unordered_map<std::string, const ast::AstNode*> parameterNames;
@@ -1266,6 +1429,24 @@ bool ProjectMemberModel::collectTypeMembers(
     std::unordered_map<std::string, const ast::AstNode*> propertyDeclarations;
     std::unordered_map<std::string, const ast::AstNode*> ordinaryDeclarations;
 
+    if (type.syntax != nullptr)
+    {
+        std::vector<std::pair<std::string, std::string>> constraints;
+        for (const ast::LifetimeOutlivesConstraint& constraint :
+             type.syntax->lifetimeOutlivesConstraints())
+            constraints.emplace_back(constraint.longer, constraint.shorter);
+        if (const auto cycle = lifetimeCycle(constraints))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                type.syntax->range(),
+                "lifetime constraints contain a cycle between '" + cycle->first +
+                    "' and '" + cycle->second + "'");
+        }
+
+    }
+
     for (std::size_t partOrdinal = 0; partOrdinal < type.parts.size(); ++partOrdinal)
     {
         const NamedTypeDeclarationPart& part = type.parts[partOrdinal];
@@ -1418,6 +1599,15 @@ bool ProjectMemberModel::collectTypeMembers(
                 ? sema::OwnershipKind::None
                 : ownershipKindFromSyntax(memberNode->typeSyntax());
             symbol.isReferenceReturn = symbol.kind == ClassMemberKind::Method && memberNode->isReference();
+            symbol.returnLifetimeName = memberNode->lifetimeName();
+            for (const ast::LifetimeParameterSyntax& parameter : memberNode->lifetimeParameters())
+                symbol.lifetimeParameters.push_back(parameter.name);
+            for (const ast::LifetimeOutlivesConstraint& constraint :
+                 memberNode->lifetimeOutlivesConstraints())
+            {
+                symbol.lifetimeOutlivesConstraints.emplace_back(
+                    constraint.longer, constraint.shorter);
+            }
             if (symbol.isReferenceReturn && symbol.declaredTypeKey == "builtin:void")
             {
                 diagnostics.report(
@@ -1436,7 +1626,9 @@ bool ProjectMemberModel::collectTypeMembers(
                         "' cannot combine ref with owned or borrowed return ownership");
             }
             if (symbol.kind == ClassMemberKind::Field &&
-                symbol.declaredOwnership == sema::OwnershipKind::Borrowed)
+                symbol.declaredOwnership == sema::OwnershipKind::Borrowed &&
+                (symbol.declaredTypeSyntax == nullptr ||
+                 symbol.declaredTypeSyntax->lifetimeName().empty()))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidType,
@@ -1444,6 +1636,29 @@ bool ProjectMemberModel::collectTypeMembers(
                     symbol.range,
                     "borrowed field '" + symbol.name +
                         "' is rejected in Stage 50 because its lifetime may outlive its source owner");
+            }
+            if (symbol.kind == ClassMemberKind::Field && symbol.declaredTypeSyntax != nullptr &&
+                !symbol.declaredTypeSyntax->lifetimeName().empty())
+            {
+                const std::string& lifetime = symbol.declaredTypeSyntax->lifetimeName();
+                if (!namedTypeIsBorrowedView(&type))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        symbol.range,
+                        "field '" + symbol.name + "' carries lifetime '" + lifetime +
+                            "' but its containing struct is not declared 'borrowed struct'");
+                }
+                else if (!declaresLifetime(type.syntax, lifetime))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::UnknownIdentifier,
+                        diagnostics::DiagnosticSeverity::Error,
+                        symbol.range,
+                        "field '" + symbol.name + "' names undeclared lifetime '" + lifetime +
+                            "' on borrowed view '" + type.identity.name() + "'");
+                }
             }
             // SHR-013: un CAMPO de tipo vista, o de arreglo de vistas, dentro de algo que no es
             // una vista. Es el mismo defecto que la linea de arriba y por eso esta pegado a ella,
@@ -1835,6 +2050,43 @@ bool ProjectMemberModel::collectTypeMembers(
                             : parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
                     }
 
+                    if (!parameterNode->lifetimeName().empty())
+                    {
+                        parameter.lifetimeName = parameterNode->lifetimeName();
+                        if (parameter.passKind == ParameterPassKind::Out)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidType,
+                                diagnostics::DiagnosticSeverity::Error,
+                                parameter.range,
+                                "out parameter '" + parameter.name +
+                                    "' initializes storage and cannot carry an input lifetime");
+                        }
+                        else if (parameter.passKind == ParameterPassKind::Value)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidType,
+                                diagnostics::DiagnosticSeverity::Error,
+                                parameter.range,
+                                "only ref or in parameters may carry a named lifetime");
+                        }
+                        else if (!declaresLifetime(memberNode, parameter.lifetimeName) &&
+                                 !declaresLifetime(type.syntax, parameter.lifetimeName))
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::UnknownIdentifier,
+                                diagnostics::DiagnosticSeverity::Error,
+                                parameter.range,
+                                "parameter '" + parameter.name + "' names undeclared lifetime '" +
+                                    parameter.lifetimeName + "'");
+                        }
+                    }
+                    else if (parameter.passKind == ParameterPassKind::Ref ||
+                             parameter.passKind == ParameterPassKind::In)
+                    {
+                        parameter.lifetimeName = "$p" + std::to_string(symbol.parameters.size());
+                    }
+
                     if (parameter.defaultValueSyntax != nullptr)
                     {
                         sawOptionalParameter = true;
@@ -1963,6 +2215,106 @@ bool ProjectMemberModel::collectTypeMembers(
                         parameterNames.emplace(parameter.name, parameterNode);
                     }
                     symbol.parameters.push_back(std::move(parameter));
+                }
+
+                if (symbol.isReferenceReturn)
+                {
+                    if (symbol.returnLifetimeName.empty())
+                    {
+                        if (symbol.hasImplicitThis)
+                        {
+                            symbol.returnLifetimeName = "this";
+                        }
+                        else
+                        {
+                            std::unordered_set<std::string> inputs;
+                            for (const MethodParameterSymbol& parameter : symbol.parameters)
+                            {
+                                if (parameter.passKind == ParameterPassKind::Ref ||
+                                    parameter.passKind == ParameterPassKind::In)
+                                    inputs.insert(parameter.lifetimeName);
+                            }
+                            if (inputs.size() == 1U)
+                                symbol.returnLifetimeName = *inputs.begin();
+                            else if (inputs.empty())
+                                symbol.returnLifetimeName = "static";
+                            else
+                            {
+                                diagnostics.report(
+                                    diagnostics::DiagnosticId::InvalidReturn,
+                                    diagnostics::DiagnosticSeverity::Error,
+                                    symbol.range,
+                                    "ref-returning method '" + symbol.name +
+                                        "' has multiple input lifetimes; write ref[a] and bind "
+                                        "the intended ref/in parameters to lifetime a");
+                            }
+                        }
+                    }
+                    else if (symbol.returnLifetimeName == "this")
+                    {
+                        if (!symbol.hasImplicitThis)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidReturn,
+                                diagnostics::DiagnosticSeverity::Error,
+                                symbol.range,
+                                "lifetime 'this' is available only on instance ref returns");
+                        }
+                    }
+                    else if (symbol.returnLifetimeName != "static" &&
+                             !declaresLifetime(memberNode, symbol.returnLifetimeName) &&
+                             !declaresLifetime(type.syntax, symbol.returnLifetimeName))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::UnknownIdentifier,
+                            diagnostics::DiagnosticSeverity::Error,
+                            symbol.range,
+                            "ref return of '" + symbol.name + "' names undeclared lifetime '" +
+                                symbol.returnLifetimeName + "'");
+                    }
+                    if (symbol.returnLifetimeName != "this" &&
+                        symbol.returnLifetimeName != "static" &&
+                        !symbol.returnLifetimeName.empty())
+                    {
+                        const bool hasSource = std::ranges::any_of(
+                            symbol.parameters,
+                            [&](const MethodParameterSymbol& parameter)
+                            {
+                                return (parameter.passKind == ParameterPassKind::Ref ||
+                                        parameter.passKind == ParameterPassKind::In) &&
+                                    lifetimeOutlives(
+                                        symbol.lifetimeOutlivesConstraints,
+                                        parameter.lifetimeName,
+                                        symbol.returnLifetimeName);
+                            });
+                        if (!hasSource)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidReturn,
+                                diagnostics::DiagnosticSeverity::Error,
+                                symbol.range,
+                                "ref return lifetime '" + symbol.returnLifetimeName +
+                                    "' has no ref/in parameter whose lifetime outlives it");
+                        }
+                    }
+                    if (const auto cycle = lifetimeCycle(symbol.lifetimeOutlivesConstraints))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidType,
+                            diagnostics::DiagnosticSeverity::Error,
+                            symbol.range,
+                            "lifetime constraints contain a cycle between '" + cycle->first +
+                                "' and '" + cycle->second + "'");
+                    }
+                }
+                else if (const auto cycle = lifetimeCycle(symbol.lifetimeOutlivesConstraints))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        symbol.range,
+                        "lifetime constraints contain a cycle between '" + cycle->first +
+                            "' and '" + cycle->second + "'");
                 }
 
                 // C4: a by-reference parameter is part of the signature. `F(int)` and

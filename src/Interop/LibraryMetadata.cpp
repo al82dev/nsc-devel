@@ -767,6 +767,7 @@ bool buildMetadataModel(
     metadata.targetTriple = std::string(kTargetTriple);
     metadata.languageEdition = static_cast<std::uint8_t>(
         compilation.projectGraph()->rootProject()->languageEdition());
+    const bool publishLifetimeContracts = metadata.languageEdition >= 3U;
 
     const auto types = compilation.nameLookup()->namedTypes();
     const auto members = compilation.memberModel()->members();
@@ -918,6 +919,15 @@ bool buildMetadataModel(
         record.fullyQualifiedName = type.identity.fullyQualifiedName();
         const std::string canonicalTypeKey = typeKeyForOrdinal(types, typeOrdinal);
         record.stableTypeId = stableTypeId(canonicalTypeKey);
+        if (publishLifetimeContracts && type.syntax != nullptr)
+        {
+            for (const ast::LifetimeParameterSyntax& lifetime : type.syntax->lifetimeParameters())
+                record.lifetimeParameters.push_back(lifetime.name);
+            for (const ast::LifetimeOutlivesConstraint& constraint :
+                 type.syntax->lifetimeOutlivesConstraints())
+                record.lifetimeOutlivesConstraints.emplace_back(
+                    constraint.longer, constraint.shorter);
+        }
         if ((record.flags & kMetadataTypeTrait) != 0U)
         {
             if (const frontend::TraitObjectContract* object =
@@ -1057,6 +1067,8 @@ bool buildMetadataModel(
                     const frontend::ClassMemberSymbol& member = members[fieldLayout.memberOrdinal];
                     field.name = member.name;
                     field.flags = memberFlags(member);
+                    if (publishLifetimeContracts && member.declaredTypeSyntax != nullptr)
+                        field.lifetimeName = member.declaredTypeSyntax->lifetimeName();
                 }
                 field.typeKey = fieldLayout.typeKey;
                 if (fieldLayout.memberOrdinal < members.size())
@@ -1086,6 +1098,8 @@ bool buildMetadataModel(
                     const frontend::ClassMemberSymbol& member = members[fieldLayout.memberOrdinal];
                     field.name = member.name;
                     field.flags = memberFlags(member);
+                    if (publishLifetimeContracts && member.declaredTypeSyntax != nullptr)
+                        field.lifetimeName = member.declaredTypeSyntax->lifetimeName();
                 }
                 field.typeKey = fieldLayout.typeKey;
                 if (fieldLayout.memberOrdinal < members.size())
@@ -1144,6 +1158,11 @@ bool buildMetadataModel(
             record.delegateReturnDynamicTrait =
                 type.syntax->typeSyntax() != nullptr &&
                 type.syntax->typeSyntax()->isDynamicTrait();
+            if (publishLifetimeContracts)
+            {
+                record.delegateReferenceReturn = type.syntax->isReference();
+                record.delegateReturnLifetimeName = type.syntax->lifetimeName();
+            }
             for (const ast::AstNode* parameter : type.syntax->children())
             {
                 if (parameter != nullptr && parameter->kind() == ast::AstNodeKind::ParameterDeclaration)
@@ -1155,6 +1174,19 @@ bool buildMetadataModel(
                             parameter->typeSyntax()->isDynamicTrait()
                         ? 1U
                         : 0U);
+                    if (publishLifetimeContracts)
+                    {
+                        LibraryMetadataParameterPassKind passKind =
+                            LibraryMetadataParameterPassKind::Value;
+                        if (parameter->auxiliaryText() == "pass:ref")
+                            passKind = LibraryMetadataParameterPassKind::Ref;
+                        else if (parameter->auxiliaryText() == "pass:out")
+                            passKind = LibraryMetadataParameterPassKind::Out;
+                        else if (parameter->auxiliaryText() == "pass:in")
+                            passKind = LibraryMetadataParameterPassKind::In;
+                        record.delegateParameterPassKinds.push_back(passKind);
+                        record.delegateParameterLifetimeNames.push_back(parameter->lifetimeName());
+                    }
                 }
             }
         }
@@ -1248,6 +1280,12 @@ bool buildMetadataModel(
         record.signatureKey = member.signatureKey;
         record.declaredTypeKey = member.declaredTypeKey;
         record.declaredOwnership = metadataOwnership(member.declaredOwnership);
+        if (publishLifetimeContracts)
+        {
+            record.returnLifetimeName = member.returnLifetimeName;
+            record.lifetimeParameters = member.lifetimeParameters;
+            record.lifetimeOutlivesConstraints = member.lifetimeOutlivesConstraints;
+        }
         record.cAbiName = member.cAbiName;
         record.importDllName = member.importDllName;
         const frontend::ProjectOopMirFunction* function =
@@ -1294,6 +1332,8 @@ bool buildMetadataModel(
             parameterRecord.isParameterPack = parameter.isParameterPack;
             parameterRecord.isDynamicTrait =
                 parameter.typeSyntax != nullptr && parameter.typeSyntax->isDynamicTrait();
+            if (publishLifetimeContracts)
+                parameterRecord.lifetimeName = parameter.lifetimeName;
             if (!metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
             {
                 error = "could not encode default value for parameter '" + parameter.name +
@@ -1376,6 +1416,12 @@ bool buildMetadataModel(
             record.declaredTypeKey = function.declaredTypeKey;
             record.declaredOwnership = metadataOwnership(function.declaredOwnership);
             record.mangledName = function.mangledName;
+            if (publishLifetimeContracts)
+            {
+                record.returnLifetimeName = function.returnLifetimeName;
+                record.lifetimeParameters = function.lifetimeParameters;
+                record.lifetimeOutlivesConstraints = function.lifetimeOutlivesConstraints;
+            }
             for (const frontend::MethodParameterSymbol& parameter : function.parameters)
             {
                 LibraryMetadataParameter parameterRecord;
@@ -1386,6 +1432,8 @@ bool buildMetadataModel(
                 parameterRecord.isParameterPack = parameter.isParameterPack;
                 parameterRecord.isDynamicTrait =
                     parameter.typeSyntax != nullptr && parameter.typeSyntax->isDynamicTrait();
+                if (publishLifetimeContracts)
+                    parameterRecord.lifetimeName = parameter.lifetimeName;
                 if (!metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
                 {
                     error = "could not encode default value for parameter '" + parameter.name +
@@ -2152,6 +2200,52 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
             writer.text(importRecord.symbolName);
         }
     }
+    if (metadata.formatMinor >= 34)
+    {
+        const auto writeConstraints = [&](const auto& constraints)
+        {
+            writer.u32(static_cast<std::uint32_t>(constraints.size()));
+            for (const auto& [longer, shorter] : constraints)
+            {
+                writer.text(longer);
+                writer.text(shorter);
+            }
+        };
+        writer.u32(static_cast<std::uint32_t>(metadata.types.size()));
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            writeStringVector(writer, type.lifetimeParameters);
+            writeConstraints(type.lifetimeOutlivesConstraints);
+            writer.u8(type.delegateReferenceReturn ? 1U : 0U);
+            writer.text(type.delegateReturnLifetimeName);
+            writer.u32(static_cast<std::uint32_t>(type.delegateParameterPassKinds.size()));
+            for (const LibraryMetadataParameterPassKind passKind : type.delegateParameterPassKinds)
+                writer.u8(static_cast<std::uint8_t>(passKind));
+            writeStringVector(writer, type.delegateParameterLifetimeNames);
+            writer.u32(static_cast<std::uint32_t>(type.fields.size()));
+            for (const LibraryMetadataField& field : type.fields) writer.text(field.lifetimeName);
+        }
+        writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            writer.text(member.returnLifetimeName);
+            writeStringVector(writer, member.lifetimeParameters);
+            writeConstraints(member.lifetimeOutlivesConstraints);
+            writer.u32(static_cast<std::uint32_t>(member.parameters.size()));
+            for (const LibraryMetadataParameter& parameter : member.parameters)
+                writer.text(parameter.lifetimeName);
+        }
+        writer.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
+        for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+        {
+            writer.text(function.returnLifetimeName);
+            writeStringVector(writer, function.lifetimeParameters);
+            writeConstraints(function.lifetimeOutlivesConstraints);
+            writer.u32(static_cast<std::uint32_t>(function.parameters.size()));
+            for (const LibraryMetadataParameter& parameter : function.parameters)
+                writer.text(parameter.lifetimeName);
+        }
+    }
     return writer.bytes();
 }
 
@@ -2761,6 +2855,141 @@ bool decodePayload(
             metadata.platformImports.push_back(std::move(importRecord));
         }
     }
+    if (metadata.formatMinor >= 34)
+    {
+        const auto readConstraints = [&](auto& constraints) -> bool
+        {
+            std::uint32_t constraintCount = 0;
+            if (!readCount(reader, constraintCount)) return false;
+            constraints.clear();
+            constraints.reserve(constraintCount);
+            for (std::uint32_t index = 0; index < constraintCount; ++index)
+            {
+                std::string longer;
+                std::string shorter;
+                if (!reader.text(longer) || !reader.text(shorter)) return false;
+                constraints.emplace_back(std::move(longer), std::move(shorter));
+            }
+            return true;
+        };
+        std::uint32_t catalogueCount = 0;
+        if (!readCount(reader, catalogueCount) || catalogueCount != metadata.types.size())
+        {
+            error = "invalid metadata lifetime type catalogue count";
+            return false;
+        }
+        for (LibraryMetadataType& type : metadata.types)
+        {
+            std::uint8_t referenceReturn = 0;
+            if (!readStringVector(reader, type.lifetimeParameters) ||
+                !readConstraints(type.lifetimeOutlivesConstraints) ||
+                !reader.u8(referenceReturn) || referenceReturn > 1U ||
+                !reader.text(type.delegateReturnLifetimeName))
+            {
+                error = "truncated or invalid metadata lifetime type contract";
+                return false;
+            }
+            type.delegateReferenceReturn = referenceReturn != 0U;
+            std::uint32_t passCount = 0;
+            if (!readCount(reader, passCount))
+            {
+                error = "invalid metadata delegate pass-kind count";
+                return false;
+            }
+            type.delegateParameterPassKinds.clear();
+            type.delegateParameterPassKinds.reserve(passCount);
+            for (std::uint32_t index = 0; index < passCount; ++index)
+            {
+                std::uint8_t passKind = 0;
+                if (!reader.u8(passKind) ||
+                    passKind > static_cast<std::uint8_t>(LibraryMetadataParameterPassKind::In))
+                {
+                    error = "truncated or invalid metadata delegate pass kind";
+                    return false;
+                }
+                type.delegateParameterPassKinds.push_back(
+                    static_cast<LibraryMetadataParameterPassKind>(passKind));
+            }
+            if (!readStringVector(reader, type.delegateParameterLifetimeNames))
+            {
+                error = "truncated metadata delegate lifetime bindings";
+                return false;
+            }
+            std::uint32_t fieldCount = 0;
+            if (!readCount(reader, fieldCount) || fieldCount != type.fields.size())
+            {
+                error = "invalid metadata field lifetime count";
+                return false;
+            }
+            for (LibraryMetadataField& field : type.fields)
+            {
+                if (!reader.text(field.lifetimeName))
+                {
+                    error = "truncated metadata field lifetime binding";
+                    return false;
+                }
+            }
+        }
+        if (!readCount(reader, catalogueCount) || catalogueCount != metadata.members.size())
+        {
+            error = "invalid metadata member lifetime catalogue count";
+            return false;
+        }
+        for (LibraryMetadataMember& member : metadata.members)
+        {
+            if (!reader.text(member.returnLifetimeName) ||
+                !readStringVector(reader, member.lifetimeParameters) ||
+                !readConstraints(member.lifetimeOutlivesConstraints))
+            {
+                error = "truncated metadata member lifetime contract";
+                return false;
+            }
+            std::uint32_t parameterCount = 0;
+            if (!readCount(reader, parameterCount) || parameterCount != member.parameters.size())
+            {
+                error = "invalid metadata member parameter lifetime count";
+                return false;
+            }
+            for (LibraryMetadataParameter& parameter : member.parameters)
+            {
+                if (!reader.text(parameter.lifetimeName))
+                {
+                    error = "truncated metadata member parameter lifetime binding";
+                    return false;
+                }
+            }
+        }
+        if (!readCount(reader, catalogueCount) ||
+            catalogueCount != metadata.namespaceFunctions.size())
+        {
+            error = "invalid metadata namespace-function lifetime catalogue count";
+            return false;
+        }
+        for (LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+        {
+            if (!reader.text(function.returnLifetimeName) ||
+                !readStringVector(reader, function.lifetimeParameters) ||
+                !readConstraints(function.lifetimeOutlivesConstraints))
+            {
+                error = "truncated metadata namespace-function lifetime contract";
+                return false;
+            }
+            std::uint32_t parameterCount = 0;
+            if (!readCount(reader, parameterCount) || parameterCount != function.parameters.size())
+            {
+                error = "invalid metadata namespace-function parameter lifetime count";
+                return false;
+            }
+            for (LibraryMetadataParameter& parameter : function.parameters)
+            {
+                if (!reader.text(parameter.lifetimeName))
+                {
+                    error = "truncated metadata namespace-function parameter lifetime binding";
+                    return false;
+                }
+            }
+        }
+    }
     if (!reader.atEnd())
     {
         error = "metadata payload has trailing bytes";
@@ -2907,6 +3136,22 @@ bool LibraryMetadataCodec::writeModelImpl(
                 type.delegateParameterDynamicTraits.resize(
                     type.delegateParameterTypeKeys.size(), 0U);
             }
+        }
+    }
+    if (metadata.formatMinor >= 34)
+    {
+        for (LibraryMetadataType& type : metadata.types)
+        {
+            if (type.kind != LibraryMetadataTypeKind::Delegate) continue;
+            if (type.delegateParameterPassKinds.empty())
+            {
+                type.delegateParameterPassKinds.resize(
+                    type.delegateParameterTypeKeys.size(),
+                    LibraryMetadataParameterPassKind::Value);
+            }
+            if (type.delegateParameterLifetimeNames.empty())
+                type.delegateParameterLifetimeNames.resize(
+                    type.delegateParameterTypeKeys.size());
         }
     }
     // EL OBJETIVO SE VALIDA, NO SE SUSTITUYE. Escribir la constante por encima de
@@ -3160,6 +3405,50 @@ bool LibraryMetadataCodec::writeModelImpl(
                 error = "NativeSharp metadata before 1.33 cannot represent explicit Copy value types";
                 return false;
             }
+        }
+    }
+    if (metadata.formatMinor < 34)
+    {
+        const auto parameterHasLifetime = [](const auto& callable)
+        {
+            return std::ranges::any_of(
+                callable.parameters,
+                [](const LibraryMetadataParameter& parameter)
+                {
+                    return !parameter.lifetimeName.empty();
+                });
+        };
+        const auto callableHasLifetime = [&](const auto& callable)
+        {
+            return !callable.returnLifetimeName.empty() ||
+                !callable.lifetimeParameters.empty() ||
+                !callable.lifetimeOutlivesConstraints.empty() ||
+                parameterHasLifetime(callable);
+        };
+        const bool typeLifetime = std::ranges::any_of(
+            metadata.types,
+            [](const LibraryMetadataType& type)
+            {
+                return !type.lifetimeParameters.empty() ||
+                    !type.lifetimeOutlivesConstraints.empty() ||
+                    type.delegateReferenceReturn ||
+                    !type.delegateReturnLifetimeName.empty() ||
+                    std::ranges::any_of(
+                        type.delegateParameterLifetimeNames,
+                        [](const std::string& lifetime) { return !lifetime.empty(); }) ||
+                    std::ranges::any_of(
+                        type.delegateParameterPassKinds,
+                        [](LibraryMetadataParameterPassKind pass)
+                        { return pass != LibraryMetadataParameterPassKind::Value; }) ||
+                    std::ranges::any_of(type.fields,
+                        [](const LibraryMetadataField& field)
+                        { return !field.lifetimeName.empty(); });
+            });
+        if (typeLifetime || std::ranges::any_of(metadata.members, callableHasLifetime) ||
+            std::ranges::any_of(metadata.namespaceFunctions, callableHasLifetime))
+        {
+            error = "NativeSharp metadata before 1.34 cannot represent named lifetime contracts";
+            return false;
         }
     }
     if (metadata.formatMinor < 25 &&
@@ -4240,6 +4529,55 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                         function.signatureKey + "'"))
                 return false;
         }
+    }
+    if (metadata.formatMinor >= 34)
+    {
+        const auto verifyLifetimeContract = [&](const auto& callable, std::string_view owner)
+        {
+            std::unordered_set<std::string> declared;
+            for (const std::string& lifetime : callable.lifetimeParameters)
+            {
+                if (lifetime.empty() || !declared.insert(lifetime).second)
+                {
+                    error = "metadata " + std::string(owner) +
+                        " contains an empty or duplicate lifetime parameter";
+                    return false;
+                }
+            }
+            for (const auto& [longer, shorter] : callable.lifetimeOutlivesConstraints)
+            {
+                if (!declared.contains(longer) ||
+                    (shorter != "static" && !declared.contains(shorter)))
+                {
+                    error = "metadata " + std::string(owner) +
+                        " contains an undeclared lifetime outlives edge";
+                    return false;
+                }
+            }
+            return true;
+        };
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            if (!verifyLifetimeContract(type, "type '" + type.identityKey + "'")) return false;
+            if (type.kind == LibraryMetadataTypeKind::Delegate &&
+                (type.delegateParameterPassKinds.size() != type.delegateParameterTypeKeys.size() ||
+                 type.delegateParameterLifetimeNames.size() != type.delegateParameterTypeKeys.size()))
+            {
+                error = "metadata delegate '" + type.identityKey +
+                    "' has inconsistent lifetime parameter vectors";
+                return false;
+            }
+        }
+        for (const LibraryMetadataMember& member : metadata.members)
+            if (!verifyLifetimeContract(
+                    member, "member '" + member.declaringTypeKey + "." +
+                        member.signatureKey + "'"))
+                return false;
+        for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+            if (!verifyLifetimeContract(
+                    function, "namespace function '" + function.namespaceName + "." +
+                        function.signatureKey + "'"))
+                return false;
     }
     return true;
 }

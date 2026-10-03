@@ -60,6 +60,7 @@ struct MethodScope final
 enum class MethodEscapeOriginKind
 {
     ExternalStorage,
+    CurrentReceiver,
     CurrentFrameLocal,
     CurrentFrameParameter,
     VariableLengthArray
@@ -72,6 +73,8 @@ struct MethodEscapeOrigin final
     // Item 316. The broadest lexical scope in which the referenced storage is guaranteed live.
     // Every alias declaration must be nested in this scope.
     std::optional<std::size_t> maximumValidScopeOrdinal;
+    // T06-F04. `this`, `static`, a declared name, or a synthetic `$pN` produced by elision.
+    std::string lifetimeName;
 };
 
 struct MethodLocalSymbol final

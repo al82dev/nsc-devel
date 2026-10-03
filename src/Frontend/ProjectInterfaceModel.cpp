@@ -48,6 +48,30 @@ bool declarationIsTrait(const NamedTypeDeclaration& type)
             metadata.find("nsc-meta:ns3-trait") != std::string_view::npos;
     });
 }
+
+std::string lifetimeContractKey(const ClassMemberSymbol& method)
+{
+    std::unordered_map<std::string, std::string> canonical;
+    for (std::size_t index = 0; index < method.lifetimeParameters.size(); ++index)
+        canonical.emplace(method.lifetimeParameters[index], "L" + std::to_string(index));
+    const auto name = [&](std::string_view value)
+    {
+        if (value.empty() || value == "this" || value == "static" || value.starts_with("$p"))
+            return std::string(value);
+        const auto found = canonical.find(std::string(value));
+        return found == canonical.end() ? "?" + std::string(value) : found->second;
+    };
+    std::string result = "ret=" + name(method.returnLifetimeName) + ";params=";
+    for (const MethodParameterSymbol& parameter : method.parameters)
+        result += name(parameter.lifetimeName) + ',';
+    std::vector<std::string> constraints;
+    for (const auto& [longer, shorter] : method.lifetimeOutlivesConstraints)
+        constraints.push_back(name(longer) + ':' + name(shorter));
+    std::ranges::sort(constraints);
+    result += ";where=";
+    for (const std::string& constraint : constraints) result += constraint + ',';
+    return result;
+}
 }
 
 bool ProjectInterfaceModel::build(
@@ -462,7 +486,8 @@ bool ProjectInterfaceModel::visitInterface(
             {
                 const ClassMemberSymbol& previous = memberModel_->members()[found->second];
                 if (previous.declaredTypeKey != method.declaredTypeKey ||
-                    previous.isReferenceReturn != method.isReferenceReturn)
+                    previous.isReferenceReturn != method.isReferenceReturn ||
+                    lifetimeContractKey(previous) != lifetimeContractKey(method))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOverride,
@@ -599,7 +624,8 @@ bool ProjectInterfaceModel::visitInterface(
         {
             const ClassMemberSymbol& previous = memberModel_->members()[found->second];
             if (previous.declaredTypeKey != method.declaredTypeKey ||
-                previous.isReferenceReturn != method.isReferenceReturn)
+                previous.isReferenceReturn != method.isReferenceReturn ||
+                lifetimeContractKey(previous) != lifetimeContractKey(method))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOverride,
@@ -944,7 +970,9 @@ std::optional<std::size_t> ProjectInterfaceModel::findImplementation(
             }
             if (candidate.isStatic || candidate.accessibility != ClassMemberAccessibility::Public ||
                 candidate.declaredTypeKey != interfaceMethod.declaredTypeKey ||
-                candidate.isReferenceReturn != interfaceMethod.isReferenceReturn || candidate.isAbstract)
+                candidate.isReferenceReturn != interfaceMethod.isReferenceReturn ||
+                lifetimeContractKey(candidate) != lifetimeContractKey(interfaceMethod) ||
+                candidate.isAbstract)
             {
                 return std::nullopt;
             }
@@ -973,6 +1001,7 @@ std::optional<std::size_t> ProjectInterfaceModel::findStaticImplementation(
                 candidate.accessibility != ClassMemberAccessibility::Public ||
                 candidate.declaredTypeKey != requirement.declaredTypeKey ||
                 candidate.isReferenceReturn != requirement.isReferenceReturn ||
+                lifetimeContractKey(candidate) != lifetimeContractKey(requirement) ||
                 candidate.isAbstract)
                 return std::nullopt;
             return memberOrdinal;

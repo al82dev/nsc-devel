@@ -289,8 +289,10 @@ namespace CopyApi
         if (type.fullyQualifiedName == "CopyApi.Point" &&
             (type.flags & nativesharp::interop::kMetadataTypeCopy) != 0U)
             publishedCopy = true;
-    tests.expect(readMetadata && metadata.formatMinor == 33U && publishedCopy,
-        "NSMETA 1.33 publishes the explicit Copy capability (" + producerError +
+    tests.expect(
+        readMetadata &&
+            metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor && publishedCopy,
+        "the current NSMETA format preserves the 1.33 Copy capability (" + producerError +
             producerOutput + readError + ")");
 
     const std::filesystem::path consumer = writeProject(

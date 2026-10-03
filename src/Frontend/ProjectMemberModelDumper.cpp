@@ -39,6 +39,8 @@ void ProjectMemberModelDumper::dump(
                    << " static=" << (member.isStatic ? "true" : "false")
                    << " readonly=" << (member.isReadonly ? "true" : "false")
                    << " ref-return=" << (member.isReferenceReturn ? "true" : "false")
+                   << " return-lifetime=" <<
+                        (member.returnLifetimeName.empty() ? "none" : member.returnLifetimeName)
                    << " volatile=" << (member.isVolatile ? "true" : "false")
                    << " const=" << (member.isConst ? "true" : "false");
             if (member.kind == ClassMemberKind::Method || member.kind == ClassMemberKind::Constructor ||
@@ -54,6 +56,17 @@ void ProjectMemberModelDumper::dump(
                        << " override=" << (member.isOverride ? "true" : "false")
                        << " abstract=" << (member.isAbstract ? "true" : "false")
                        << " sealed=" << (member.isSealed ? "true" : "false");
+                if (!member.lifetimeParameters.empty())
+                {
+                    output << " lifetimes=";
+                    for (std::size_t index = 0; index < member.lifetimeParameters.size(); ++index)
+                    {
+                        if (index != 0) output << ',';
+                        output << member.lifetimeParameters[index];
+                    }
+                }
+                for (const auto& [longer, shorter] : member.lifetimeOutlivesConstraints)
+                    output << " outlives=" << longer << ':' << shorter;
             }
             if (member.isBitField)
             {
@@ -67,7 +80,11 @@ void ProjectMemberModelDumper::dump(
             {
                 output << "    parameter " << parameter.name
                        << " type=" << parameter.typeKey
-                       << " ownership=" << sema::ownershipKindName(parameter.ownership) << '\n';
+                       << " ownership=" << sema::ownershipKindName(parameter.ownership)
+                       << " pass=" << parameterPassKindName(parameter.passKind)
+                       << " lifetime=" <<
+                            (parameter.lifetimeName.empty() ? "none" : parameter.lifetimeName)
+                       << '\n';
             }
         }
         for (const std::size_t memberOrdinal : model.promotedMembersOfType(typeOrdinal))
