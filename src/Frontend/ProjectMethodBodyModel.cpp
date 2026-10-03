@@ -6684,15 +6684,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         }
         case ast::AstNodeKind::TupleExpression:
         {
-            if (expression->children().size() < 2)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->range(),
-                    "a tuple literal requires at least two elements");
-                break;
-            }
             std::vector<std::string> elementTypeKeys;
             elementTypeKeys.reserve(expression->children().size());
             MethodAggregateInitializerBinding binding;

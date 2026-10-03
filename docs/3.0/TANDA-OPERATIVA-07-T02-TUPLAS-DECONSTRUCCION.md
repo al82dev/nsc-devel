@@ -21,6 +21,8 @@ podía declarar, retornar, pasar, convertir ni ejecutar una tupla.
 - `TypeSyntax` marca tuplas y conserva nombres de elementos por posición.
 - Los nombres no participan en identidad: `(int x, long y)` y `(int a, long b)` comparten clave.
 - La clave `tuple:(longitud:tipo,...)` permite nesting sin ambigüedad.
+- `()` y `(T,)` son identidades completas: la primera usa un carrier inerte de 1 byte y la segunda
+  conserva el layout natural de T. `(T)` continúa siendo agrupación, no un tipo tupla.
 - El parser reconoce tipos tupla en returns, parámetros, locals, genéricos y tuplas anidadas.
 - Name lookup trata la tupla como estructural y resuelve recursivamente cada elemento.
 - La clonación/especialización genérica conserva estructura y nombres sin interpretar `$tuple`
@@ -35,6 +37,8 @@ podía declarar, retornar, pasar, convertir ni ejecutar una tupla.
 - Agregados de 1/2/4/8 bytes usan carrier entero directo; los demás usan parámetro indirecto y
   retorno `sret`, igual que structs bajo la ABI x64 de Microsoft.
 - La fixture comprueba 8 bytes directos, 16 bytes indirectos y tuplas anidadas de 12/24 bytes.
+- La prueba dedicada adicional recorre aridades 0–16 y 64, incluyendo retorno/paso directo e
+  indirecto con NSLink.
 
 ### Literales y conversiones
 
@@ -67,6 +71,9 @@ podía declarar, retornar, pasar, convertir ni ejecutar una tupla.
 
 - `tests/cc1/c57_ns3_tuples/c57_ns3_tuples.nsproj`: proyecto Language 3 permanente.
 - `tests/cc1/c57_ns3_tuples/Main.ns`: ejecución O0 de tipos/literales/conversiones/ABI/deconstrucción.
+- `tests/unit/NativeSharp3T02NativeTupleTests.cpp`: contrato dirigido de aridad, identidad, layout,
+  genéricos, ABI, ejecución y frontera move-only.
+- `docs/3.0/language/native-tuples.md`: contrato normativo bilingüe de identidad/layout/ABI.
 - Este documento: evidencia completa de la tanda y de sus fronteras.
 
 ## Archivos modificados

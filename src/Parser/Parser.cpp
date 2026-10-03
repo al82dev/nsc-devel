@@ -397,7 +397,7 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
         std::size_t cursor = tokenIndex + 1;
         std::size_t elementCount = 0;
         bool sawComma = false;
-        while (cursor < tokens_.size())
+        while (cursor < tokens_.size() && tokens_[cursor].kind() != TokenKind::RightParen)
         {
             std::size_t afterElement = cursor;
             if (!scanTypeAt(cursor, afterElement)) return false;
@@ -414,37 +414,41 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
             {
                 sawComma = true;
                 ++cursor;
+                if (cursor < tokens_.size() &&
+                    tokens_[cursor].kind() == TokenKind::RightParen) break;
                 continue;
             }
-            if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::RightParen)
-                return false;
-            ++cursor;
-            if (!sawComma || elementCount < 2) return false;
-            if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::KwConst)
-                ++cursor;
-            while (cursor < tokens_.size())
-            {
-                if (tokens_[cursor].kind() == TokenKind::Star)
-                {
-                    ++cursor;
-                    continue;
-                }
-                if (tokens_[cursor].kind() != TokenKind::LeftBracket) break;
-                int depth = 1;
-                ++cursor;
-                while (cursor < tokens_.size() && depth != 0)
-                {
-                    if (tokens_[cursor].kind() == TokenKind::LeftBracket) ++depth;
-                    else if (tokens_[cursor].kind() == TokenKind::RightBracket) --depth;
-                    else if (tokens_[cursor].kind() == TokenKind::EndOfFile) return false;
-                    ++cursor;
-                }
-                if (depth != 0) return false;
-            }
-            afterType = cursor;
-            return true;
+            break;
         }
-        return false;
+        if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::RightParen)
+            return false;
+        // `(T)` remains ordinary grouping and is not a type spelling. `(T,)` is the unary tuple;
+        // `()` is the unit tuple. Arity >= 2 necessarily encountered a separator comma.
+        if (elementCount == 1 && !sawComma) return false;
+        ++cursor;
+        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::KwConst)
+            ++cursor;
+        while (cursor < tokens_.size())
+        {
+            if (tokens_[cursor].kind() == TokenKind::Star)
+            {
+                ++cursor;
+                continue;
+            }
+            if (tokens_[cursor].kind() != TokenKind::LeftBracket) break;
+            int depth = 1;
+            ++cursor;
+            while (cursor < tokens_.size() && depth != 0)
+            {
+                if (tokens_[cursor].kind() == TokenKind::LeftBracket) ++depth;
+                else if (tokens_[cursor].kind() == TokenKind::RightBracket) --depth;
+                else if (tokens_[cursor].kind() == TokenKind::EndOfFile) return false;
+                ++cursor;
+            }
+            if (depth != 0) return false;
+        }
+        afterType = cursor;
+        return true;
     }
     const lexer::Token& token = tokens_[tokenIndex];
     const bool builtin = lexer::isBuiltinTypeKeyword(token.kind());
@@ -769,6 +773,7 @@ ast::TypeSyntax* Parser::parseType()
     {
         const SourceRange open = consume().range();
         ast::TypeSyntax* tuple = arena_.make<ast::TypeSyntax>(open, TokenKind::Invalid, "$tuple");
+        tuple->setTuple();
         tuple->setOwnershipQualifier(ownershipQualifier);
         if (dynamicTrait)
         {
@@ -780,7 +785,7 @@ ast::TypeSyntax* Parser::parseType()
         }
         if (ownershipQualifier != ast::OwnershipQualifierSyntaxKind::None)
             qualifierRange = join(qualifierRange, open);
-        while (true)
+        while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile))
         {
             ast::TypeSyntax* elementType = parseType();
             if (elementType == nullptr) return nullptr;
@@ -790,18 +795,10 @@ ast::TypeSyntax* Parser::parseType()
                 elementName = std::string(consume().lexeme());
             tuple->addTupleElement(elementType, std::move(elementName));
             if (!consumeIf(TokenKind::Comma)) break;
+            if (at(TokenKind::RightParen)) break;
         }
         const SourceRange close = current().range();
         if (!expect(TokenKind::RightParen, "')' after tuple type")) return nullptr;
-        if (tuple->typeArguments().size() < 2)
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                join(open, close),
-                "a tuple type requires at least two elements");
-            return nullptr;
-        }
         tuple->setRange(join(
             ownershipQualifier == ast::OwnershipQualifierSyntaxKind::None ? open : qualifierRange,
             close));

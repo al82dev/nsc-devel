@@ -262,6 +262,16 @@ std::optional<language::AggregateLayout> ProjectObjectLayoutModel::tupleLayoutFo
     const std::optional<std::vector<std::string>> elements =
         ProjectTypeConversion::tupleElementTypeKeys(typeKey);
     if (!elements.has_value()) return std::nullopt;
+    // LLVM and the Microsoft x64 ABI need an addressable carrier for every value.  Give the unit
+    // tuple one inert byte: it has no observable elements, but can be stored, passed and returned
+    // with the ordinary direct-aggregate rule instead of introducing a zero-sized ABI extension.
+    if (elements->empty())
+    {
+        language::AggregateLayout unit;
+        unit.size = 1;
+        unit.alignment = 1;
+        return unit;
+    }
     std::vector<language::AggregateFieldLayout> fields;
     fields.reserve(elements->size());
     for (const std::string& element : *elements)

@@ -660,8 +660,10 @@ std::optional<std::vector<std::string>> ProjectTypeConversion::tupleElementTypeK
         if (typeKey[cursor] != ',') return std::nullopt;
         ++cursor;
     }
-    return result.size() >= 2 ? std::optional<std::vector<std::string>>(std::move(result))
-                              : std::nullopt;
+    // Arity is part of the structural identity, including the unit tuple `()` and the
+    // single-element tuple `(T,)`.  The trailing comma belongs only to source spelling; the
+    // length-prefixed key remains unambiguous without storing punctuation.
+    return result;
 }
 
 const char* projectConversionKindName(ProjectConversionKind kind) noexcept
