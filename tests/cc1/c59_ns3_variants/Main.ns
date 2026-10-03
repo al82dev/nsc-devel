@@ -56,12 +56,10 @@ namespace c59ns3variants
                     match (NestedSource(2))
                     {
                         Value(inner) => { answer = value * 10 + inner; },
-                        Idle => { answer = 1; },
-                        _ => { answer = 2; }
+                        Idle => { answer = 1; }
                     }
                 },
-                Error(error) => { answer = error; },
-                _ => { answer = 3; }
+                Error(error) => { answer = error; }
             }
 
             if (trace != 42) { return 4; }
@@ -76,8 +74,7 @@ namespace c59ns3variants
                     var (left, right) = pair;
                     if (left + right != 42) { return 8; }
                 },
-                None => { return 9; },
-                _ => { return 10; }
+                None => { return 9; }
             }
 
             Wide wide = Wide.Large(42L);
@@ -86,8 +83,7 @@ namespace c59ns3variants
             match (Nested.Number(42))
             {
                 Number(number) => { if (number != 42) { return 13; } },
-                Empty => { return 14; },
-                _ => { return 15; }
+                Empty => { return 14; }
             }
 
             // A wildcard-only match is a valid total decision and still evaluates its source once.

@@ -13,6 +13,7 @@
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
+#include "nativesharp/Language/SumTypeSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -2913,6 +2914,152 @@ void ProjectMethodBodyModel::analyzeBlock(
             activeCleanupRegions_[index - 1], block, methodMemberOrdinal, activeScope);
     }
     activeCleanupRegions_.resize(cleanupDepthAtEntry);
+
+    constexpr std::string_view matchCoveragePrefix = "match-coverage:v1:";
+    if (block->auxiliaryText().starts_with(matchCoveragePrefix) && !block->text().empty())
+    {
+        std::vector<language::MatchArmCoverage> arms;
+        std::string_view encoded(block->auxiliaryText());
+        encoded.remove_prefix(matchCoveragePrefix.size());
+        std::size_t begin = 0;
+        while (begin <= encoded.size())
+        {
+            const std::size_t end = encoded.find(';', begin);
+            const std::string_view armText = encoded.substr(
+                begin, end == std::string_view::npos ? encoded.size() - begin : end - begin);
+            language::MatchArmCoverage arm;
+            arm.wildcard = armText == "*";
+            std::string_view casesText = armText;
+            if (!casesText.empty() && casesText.front() == '~')
+            {
+                arm.hasGuard = true;
+                casesText.remove_prefix(1);
+            }
+            if (!arm.wildcard && casesText != "?")
+            {
+                std::size_t caseBegin = 0;
+                while (caseBegin <= casesText.size())
+                {
+                    const std::size_t caseEnd = casesText.find('|', caseBegin);
+                    const std::string_view name = casesText.substr(
+                        caseBegin,
+                        caseEnd == std::string_view::npos
+                            ? casesText.size() - caseBegin : caseEnd - caseBegin);
+                    if (!name.empty()) arm.cases.emplace_back(name);
+                    if (caseEnd == std::string_view::npos) break;
+                    caseBegin = caseEnd + 1;
+                }
+            }
+            arms.push_back(std::move(arm));
+            if (end == std::string_view::npos) break;
+            begin = end + 1;
+        }
+
+        std::vector<std::string> domain;
+        if (const std::optional<ScopeName> source =
+                lookupScopeNameInScope(activeScope, block->text());
+            source.has_value() && source->kind == ScopeNameKind::Local &&
+            source->semanticOrdinal < locals_.size() && nameLookup_ != nullptr)
+        {
+            const std::optional<std::size_t> typeOrdinal =
+                namedTypeOrdinalForTypeKey(locals_[source->semanticOrdinal].typeKey);
+            if (typeOrdinal.has_value() && *typeOrdinal < nameLookup_->namedTypes().size())
+            {
+                const ast::AstNode* declaration = nameLookup_->namedTypes()[*typeOrdinal].syntax;
+                constexpr std::string_view casesMarker = "cases=";
+                if (declaration != nullptr && declaration->auxiliaryText().starts_with("variant,"))
+                {
+                    const std::string_view metadata(declaration->auxiliaryText());
+                    const std::size_t casesBegin = metadata.find(casesMarker);
+                    if (casesBegin != std::string_view::npos)
+                    {
+                        std::string_view cases = metadata.substr(casesBegin + casesMarker.size());
+                        std::size_t caseBegin = 0;
+                        while (caseBegin <= cases.size())
+                        {
+                            const std::size_t caseEnd = cases.find('|', caseBegin);
+                            std::string_view item = cases.substr(
+                                caseBegin,
+                                caseEnd == std::string_view::npos
+                                    ? cases.size() - caseBegin : caseEnd - caseBegin);
+                            if (const std::size_t payload = item.find(':');
+                                payload != std::string_view::npos) item = item.substr(0, payload);
+                            if (!item.empty()) domain.emplace_back(item);
+                            if (caseEnd == std::string_view::npos) break;
+                            caseBegin = caseEnd + 1;
+                        }
+                    }
+                }
+                // Closed generic variants and NSMETA-rehydrated declarations may expose their
+                // concrete API through generated members even when the aggregate syntax attached
+                // to the specialized type no longer carries the original compact marker. The
+                // factory marker is part of the same compiler-owned contract used by metadata.
+                if (domain.empty() && memberModel_ != nullptr)
+                {
+                    constexpr std::string_view factoryPrefix = "variant-case-factory:";
+                    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
+                    {
+                        if (memberOrdinal >= memberModel_->members().size()) continue;
+                        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+                        if (member.syntax == nullptr ||
+                            !member.syntax->auxiliaryText().starts_with(factoryPrefix)) continue;
+                        std::string_view marker(member.syntax->auxiliaryText());
+                        marker.remove_prefix(factoryPrefix.size());
+                        if (const std::size_t tag = marker.rfind(':');
+                            tag != std::string_view::npos) marker = marker.substr(0, tag);
+                        if (!marker.empty() &&
+                            std::ranges::find(domain, marker) == domain.end())
+                            domain.emplace_back(marker);
+                    }
+                }
+            }
+        }
+
+        if (domain.empty())
+        {
+            if (!std::ranges::any_of(arms, [](const language::MatchArmCoverage& arm)
+                {
+                    return arm.wildcard;
+                }))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    block->range(),
+                    "match over an open or unresolved domain requires a final wildcard or "
+                    "binding arm");
+            }
+        }
+        else
+        {
+            const language::ExhaustivenessResult result =
+                language::analyzeClosedMatch(domain, arms);
+            for (const std::size_t arm : result.unreachableArms)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    block->range(),
+                    "match arm #" + std::to_string(arm + 1) +
+                        " is unreachable for the closed variant domain");
+            }
+            if (!result.exhaustive)
+            {
+                std::string message = "non-exhaustive match; missing variant case";
+                message += result.missingCases.size() == 1 ? ": " : "s: ";
+                for (std::size_t index = 0; index < result.missingCases.size(); ++index)
+                {
+                    if (index != 0) message += ", ";
+                    message += result.missingCases[index];
+                }
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    block->range(),
+                    std::move(message));
+            }
+        }
+    }
 }
 
 void ProjectMethodBodyModel::analyzeStatement(

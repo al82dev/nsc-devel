@@ -8083,16 +8083,6 @@ ast::AstNode* Parser::parseMatchStatement()
             matchKeyword.range(),
             "a match statement requires at least one arm");
     }
-    if (!sawCatchAll)
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::InvalidOperand,
-            diagnostics::DiagnosticSeverity::Error,
-            matchKeyword.range(),
-            "a match statement requires a final wildcard or binding arm until closed-domain "
-            "exhaustiveness is available across metadata");
-    }
-
     // Early lowering deliberately uses only ordinary statement/expression nodes. This makes the
     // evaluation and allocation contract visible to all existing dumps: the governing expression
     // appears once, and every branch reads the hidden local.
@@ -8103,6 +8093,57 @@ ast::AstNode* Parser::parseMatchStatement()
         matchKeyword.range(), TokenKind::KwVar, "var");
     const std::string temporary =
         "$__nsc_match_" + std::to_string(nextMatchTemporary_++);
+    // Keep the source-level arm coverage attached to the lowered block. Semantic analysis knows
+    // the governing type (including variants reconstructed from NSMETA), while the parser knows
+    // the pattern shape. This compact bridge lets the canonical closed-domain algorithm combine
+    // both facts without introducing a second match AST/backend representation.
+    std::string coverage = "match-coverage:v1:";
+    std::function<void(const Pattern&, std::vector<std::string>&, bool&, bool&)> coveredCases =
+        [&](const Pattern& pattern, std::vector<std::string>& cases, bool& wildcard, bool& partial)
+    {
+        if (pattern.kind == PatternKind::Wildcard || pattern.kind == PatternKind::Binding)
+        {
+            wildcard = true;
+            return;
+        }
+        if (pattern.kind == PatternKind::Variant)
+        {
+            cases.push_back(pattern.name);
+            if (!pattern.children.empty() && !isCatchAll(pattern.children.front())) partial = true;
+            return;
+        }
+        if (pattern.kind == PatternKind::Or)
+            for (const Pattern& child : pattern.children)
+                coveredCases(child, cases, wildcard, partial);
+    };
+    for (std::size_t armIndex = 0; armIndex < arms.size(); ++armIndex)
+    {
+        if (armIndex != 0) coverage += ';';
+        std::vector<std::string> cases;
+        bool wildcard = false;
+        bool partial = false;
+        coveredCases(arms[armIndex].pattern, cases, wildcard, partial);
+        if (wildcard)
+        {
+            coverage += '*';
+            continue;
+        }
+        std::ranges::sort(cases);
+        cases.erase(std::unique(cases.begin(), cases.end()), cases.end());
+        if (cases.empty())
+        {
+            coverage += '?';
+            continue;
+        }
+        if (partial) coverage += '~';
+        for (std::size_t caseIndex = 0; caseIndex < cases.size(); ++caseIndex)
+        {
+            if (caseIndex != 0) coverage += '|';
+            coverage += cases[caseIndex];
+        }
+    }
+    lowered->setText(temporary);
+    lowered->setAuxiliaryText(std::move(coverage));
     const bool hasReferenceBinding = std::ranges::any_of(
         arms,
         [&](const ParsedArm& arm)

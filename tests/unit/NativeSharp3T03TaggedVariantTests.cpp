@@ -103,8 +103,7 @@ namespace TaggedVariants
             match (result)
             {
                 Ok(value) => { answer = value + 2; },
-                Error(error) => { return error; },
-                _ => { return 1; }
+                Error(error) => { return error; }
             }
             if (!Recursive.End().IsEnd() || Recursive.End().CaseTag() != 0) { return 2; }
             if (!OptionalPointer.None().IsNone() || OptionalPointer.None().CaseTag() != 0)
@@ -314,8 +313,7 @@ class Program
         match (alpha)
         {
             Alpha(value) => { return value; },
-            Zulu => { return 4; },
-            _ => { return 3; }
+            Zulu => { return 4; }
         }
     }
 }

@@ -60,7 +60,8 @@ brazo conservan su destino original.
 - Rangos vacíos/invertidos y rangos enteros solapados se diagnostican antes del lowering.
 - Alternativas OR con nombres o modos de binding distintos se rechazan como incompatibles.
 - Un brazo posterior a `_` o a un binding total es inalcanzable.
-- Hasta T03-F03, todo `match` statement requiere un brazo final total (`_` o binding).
+- Un dominio abierto exige un brazo final total (`_` o binding). Un variant cerrado puede omitirlo
+  cuando todos sus casos quedan cubiertos; esa comprobación pertenece a T03-F03.
 
 ## English
 
@@ -96,5 +97,5 @@ targets.
 Float literals are rejected because NaN and signed zero do not define a closed equality domain.
 Empty/reversed integer ranges and overlaps are diagnosed before lowering. OR alternatives must
 bind identical names and modes, and binding-bearing OR patterns wait for T03-F03. An arm following
-a total wildcard/binding arm is unreachable. Until T03-F03 provides closed-domain exhaustiveness,
-a match statement requires a final total arm.
+a total wildcard/binding arm is unreachable. An open domain requires a final total arm; a closed
+variant may omit it when T03-F03 proves every case covered.

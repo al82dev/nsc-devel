@@ -78,8 +78,11 @@ ExhaustivenessResult analyzeClosedMatch(
     for (std::size_t index = 0; index < arms.size(); ++index)
     {
         const MatchArmCoverage& arm = arms[index];
-        const bool useful = !unguardedWildcard && (arm.wildcard || std::ranges::any_of(
-            arm.cases, [&](const std::string& value) { return !covered.contains(value); }));
+        const bool domainAlreadyCovered = std::ranges::all_of(
+            domain, [&](const std::string& value) { return covered.contains(value); });
+        const bool useful = !unguardedWildcard &&
+            (arm.wildcard ? !domainAlreadyCovered : std::ranges::any_of(
+                arm.cases, [&](const std::string& value) { return !covered.contains(value); }));
         if (!useful) result.unreachableArms.push_back(index);
         if (arm.hasGuard) continue;
         if (arm.wildcard) unguardedWildcard = true;
