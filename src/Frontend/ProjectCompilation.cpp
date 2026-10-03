@@ -719,7 +719,10 @@ bool ProjectCompilation::compileProjectMethodBodies(
     if (!methodBodyModel_->build(
         *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_,
         genericModel_.get(), diagnostics_,
-        genericConstraintModel_.get(), publicSurfaceProjectOrdinal)) return false;
+        genericConstraintModel_.get(), publicSurfaceProjectOrdinal,
+        projectGraph_.has_value() && projectGraph_->rootProject() != nullptr
+            ? projectGraph_->rootProject()->languageEdition()
+            : language::LanguageEdition::V2)) return false;
     if (!enterStage(CompilationStage::TypeChecking, loadError)) return false;
     return enterStage(CompilationStage::Comptime, loadError);
 }

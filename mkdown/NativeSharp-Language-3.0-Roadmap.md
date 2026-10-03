@@ -600,6 +600,10 @@ evidencia del commit: `docs/3.0/items/NS3-T06-F01-move-only-defaults.md`.
 
 **Commit:** `ns3(t06-f03): reborrow-split`
 
+**Estado:** `TERMINADA` (2026-10-03). Contrato normativo:
+`docs/3.0/language/reborrow-split-borrows.md`; evidencia del commit:
+`docs/3.0/items/NS3-T06-F03-reborrow-split.md`.
+
 - **Implementación:** reborrow implícito de referencias mutables cuando no transfiere ownership; préstamos disjuntos de campos/índices demostrables; fallback conservador.
 - **Pruebas dirigidas:** campos hermanos, arrays con índices const, slices, loops, calls, aliasing y rechazo de solapamiento.
 - **Markdown ES/EN:** reglas gráficas de exclusividad y duración.

@@ -89,6 +89,10 @@ void ProjectMethodBodyModelDumper::dump(
                 output << " max-scope=" << *local.referenceEscapeOrigin.maximumValidScopeOrdinal;
             if (local.referenceLifetimeScopeOrdinal.has_value())
                 output << " alias-scope=" << *local.referenceLifetimeScopeOrdinal;
+            if (!local.referencePlaceKey.empty())
+                output << " borrow-place=" << local.referencePlaceKey;
+            if (local.referenceReborrowSourceLocalOrdinal.has_value())
+                output << " reborrow-source-local=" << *local.referenceReborrowSourceLocalOrdinal;
         }
         if (local.localBorrowBindingOrdinal.has_value())
         {

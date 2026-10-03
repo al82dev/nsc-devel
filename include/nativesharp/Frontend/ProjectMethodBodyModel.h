@@ -10,6 +10,7 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
+#include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
 
 #include <cstddef>
@@ -107,6 +108,14 @@ struct MethodLocalSymbol final
     // the return site and also propagates through reference-returning calls.
     MethodEscapeOrigin referenceEscapeOrigin;
     std::optional<std::size_t> referenceLifetimeScopeOrdinal;
+    // NativeSharp 3.0 T06-F03. Mutable reference locals are exclusive borrows of a canonical
+    // storage place.  The key is rooted in a local/parameter (L#/P#) and contains field/index
+    // projections.  "U" represents an origin that cannot be proven and therefore overlaps
+    // every other live mutable borrow; empty is reserved for non-reference locals.
+    std::string referencePlaceKey;
+    // A reborrow does not create a second independent alias.  It temporarily suspends this
+    // source reference while the child reference is live, and preserves the original place.
+    std::optional<std::size_t> referenceReborrowSourceLocalOrdinal;
     bool isConst = false;
     // T42: volatile local storage uses the same observable-load/store contract as volatile
     // fields. It is not atomic and supplies no inter-thread ordering.
@@ -1404,7 +1413,8 @@ public:
         const ProjectGenericModel* genericModel,
         diagnostics::DiagnosticEngine& diagnostics,
         const ProjectGenericConstraintModel* genericConstraintModel = nullptr,
-        std::optional<std::size_t> publicSurfaceProjectOrdinal = std::nullopt);
+        std::optional<std::size_t> publicSurfaceProjectOrdinal = std::nullopt,
+        language::LanguageEdition languageEdition = language::LanguageEdition::V2);
 
     std::span<const MethodScope> scopes() const noexcept;
     std::span<const MethodLocalSymbol> locals() const noexcept;
@@ -1619,7 +1629,23 @@ private:
         const ast::AstNode* expression,
         std::size_t scopeOrdinal,
         std::vector<std::string>* fieldPath = nullptr) const;
+    std::optional<std::string> storagePlaceKey(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal,
+        bool* precise = nullptr) const;
     static bool placeContains(std::string_view ancestor, std::string_view descendant) noexcept;
+    static bool placesOverlap(std::string_view left, std::string_view right) noexcept;
+    std::optional<std::size_t> referenceRootLocalOrdinal(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal) const noexcept;
+    bool referenceLocalDescendsFrom(
+        std::size_t localOrdinal,
+        std::size_t possibleAncestorOrdinal) const noexcept;
+    std::optional<std::size_t> conflictingMutableReference(
+        std::string_view place,
+        std::size_t scopeOrdinal,
+        std::optional<std::size_t> accessThroughReference = std::nullopt,
+        std::optional<std::size_t> reborrowSource = std::nullopt) const noexcept;
     bool placeOrAncestorIsPartiallyMoved(std::string_view place) const;
     bool placeOrAncestorIsMaybePartiallyMoved(std::string_view place) const;
     bool placeHasMovedDescendant(std::string_view place) const;
@@ -1628,8 +1654,14 @@ private:
     MethodBorrowState localBorrowFlowState(std::size_t borrowOrdinal) const noexcept;
     void invalidateHistoricalBorrowsOfOwnerLocal(std::size_t localOrdinal);
     void invalidateHistoricalBorrowsOfOwnedParameter(std::size_t parameterOrdinal);
-    bool hasActiveBorrowOfOwnerLocal(std::size_t localOrdinal, std::size_t scopeOrdinal) const noexcept;
-    bool hasActiveBorrowOfOwnedParameter(std::size_t parameterOrdinal, std::size_t scopeOrdinal) const noexcept;
+    bool hasActiveBorrowOfOwnerLocal(
+        std::size_t localOrdinal,
+        std::size_t scopeOrdinal,
+        std::optional<std::string_view> accessedPlace = std::nullopt) const noexcept;
+    bool hasActiveBorrowOfOwnedParameter(
+        std::size_t parameterOrdinal,
+        std::size_t scopeOrdinal,
+        std::optional<std::string_view> accessedPlace = std::nullopt) const noexcept;
     void seedParameters(
         std::size_t methodMemberOrdinal,
         std::size_t rootScopeOrdinal,
@@ -2214,6 +2246,7 @@ private:
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
     std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;
     bool built_ = false;
+    language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };
 
 const char* methodScopeKindName(MethodScopeKind kind) noexcept;

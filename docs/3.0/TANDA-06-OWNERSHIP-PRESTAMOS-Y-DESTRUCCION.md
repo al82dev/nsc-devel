@@ -1,6 +1,6 @@
 # Tanda 06 — Ownership, préstamos y destrucción / Ownership, borrows, and destruction
 
-> **Estado 2026-10-03:** `IMPLEMENTING`; F01 y F02 están cerrados de forma dirigida, el gate T06 completo sigue abierto.
+> **Estado 2026-10-03:** `IMPLEMENTING`; F01, F02 y F03 están cerrados de forma dirigida, el gate T06 completo sigue abierto.
 
 ## Resultado productivo actual
 
@@ -26,7 +26,7 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 |---|---|---|
 | T06-F01 | **CERRADO**: tipos valor de edición 3 move-only por defecto, `copy` explícito, consumo con `move(...)`, joins CFG, arrays/genéricos y NSMETA 1.33 | Los moves parciales de fields/variants pertenecen expresamente a F02 |
 | T06-F02 | **CERRADO**: estado moved/maybe-moved por ruta nominal, hermanos vivos, reinicialización, joins/back-edges, value-drop recursivo y destructor personalizado con guard optimizable | Payload activo de variants queda ligado al cierre de T03/F08; no debilita el contrato F02 |
-| T06-F03 | Exclusividad conservadora del owner completo, incluidas proyecciones field/index | Reborrow mutable y préstamos divididos demostrablemente disjuntos para fields/índices/slices |
+| T06-F03 | **CERRADO**: place graph, reborrow mutable, suspensión del alias padre, split fields/índices constantes, slices half-open representables y fallback fail-closed | Lifetimes nombrados y procedencia cross-module pertenecen a F04/F07 |
 | T06-F04 | Lifetimes léxicos inferidos de borrowed locals y procedencia local/parámetro | Sintaxis nombrada, outlives/subtyping, returns prestados y metadata cross-module |
 | T06-F05 | Destructor y cleanup LIFO existentes para owners locales y parámetros en salidas estructuradas | `defer`, panic/propagation T07, fallos parciales y destructor que falla |
 | T06-F06 | Vertical `pin raii T` edition 3: owner prestable, inamovible, irreemplazable y con cleanup léxico | Proyección pinned de campos, stack/in-place self-reference, async y FFI completos |
@@ -36,13 +36,13 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 ## Invariantes de la vertical
 
 - Un movimiento total invalida el owner nombrado y cualquier préstamo histórico derivado.
-- Un movimiento parcial no consume el contenedor, pero sí modifica su storage; por eso exige cero
-  préstamos activos del root owner.
+- Un movimiento parcial no consume el contenedor, pero sí modifica su storage; exige cero
+  préstamos solapados. Un préstamo de un hermano demostrado disjunto no lo bloquea.
 - El valor extraído obtiene ownership y la ranura fuente queda nula para que el cleanup posterior
   no produzca double drop.
 - Un tipo por valor puede atravesar la misma sintaxis sin null-store de puntero.
-- El análisis es deliberadamente conservador: todavía no intenta demostrar que dos proyecciones son
-  disjuntas. Esa precisión pertenece a T06-F03 completo, no debe simularse relajando el chequeo.
+- La disjunción se demuestra solo para fields nominales y storage array/pointer estructural con
+  índices/slices constantes. Indexers, unions, offsets explícitos e índices dinámicos usan wildcard.
 - El helper `OwnershipSemantics` sigue siendo oráculo/diseño; no sustituye al frontend productivo.
 
 ## Evidencia
@@ -53,6 +53,8 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 - `nsc.ns3.t06.partial-moves`: 7/7 checks; field movido con hermano vivo y reinicialización,
   double move, join, back-edge, restricción de destructor y destrucción exacta por scope, parámetro,
   early return y unwind nativo en O0/NSLink.
+- `nsc.ns3.t06.reborrow-split`: 11/11 checks; fields hermanos, índices constantes, loop, calls,
+  reborrow/suspensión, solapamientos, fallback dinámico/indexer, whole move y compatibilidad 2.x.
 - Matriz dirigida F02: 7/7 tests verdes incluyendo inicializadores, records, F01, ABI struct de
   edición 2, ownership Stage 50.11 y C6 struct members.
 - Regresiones dirigidas: T04 constraints y T05 opaque/trait objects/extensions/operator traits,

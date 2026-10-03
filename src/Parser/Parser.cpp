@@ -8334,6 +8334,14 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
     ast::TypeSyntax* type;
     if (at(TokenKind::KwVar))
     {
+        if (isReferenceLocal)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "reference locals require an explicit element type");
+        }
         const lexer::Token& varToken = consume();
         type = arena_.make<ast::TypeSyntax>(varToken.range(), TokenKind::KwVar, std::string("var"));
     }
