@@ -1068,6 +1068,21 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_ns3_t02_promoted_field_tests)
 
     add_executable(
+        nsc_ns3_t02_aggregate_spread_tests
+        tests/unit/NativeSharp3T02AggregateSpreadTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t02_aggregate_spread_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_ns3_t02_aggregate_spread_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_ns3_t02_aggregate_spread_tests
+        PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t02_aggregate_spread_tests)
+    add_test(
+        NAME nsc.ns3.t02.aggregate-spreads
+        COMMAND nsc_ns3_t02_aggregate_spread_tests)
+
+    add_executable(
         nsc_ns3_t29_procedural_ergonomics_tests
         tests/unit/NativeSharp3T29ProceduralErgonomicsTests.cpp)
     target_link_libraries(nsc_ns3_t29_procedural_ergonomics_tests PRIVATE nsc_driver)

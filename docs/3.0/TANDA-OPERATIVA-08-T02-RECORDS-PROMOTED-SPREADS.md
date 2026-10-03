@@ -188,3 +188,12 @@ produce campos y constructor ordinarios, conserva orden, defaults, `readonly`, a
 genéricos, layout y nombres CodeView, y rechaza colisiones u ownership invisible. La batería
 exclusiva `nsc_ns3_t02_promoted_field_tests` pasa 11/11 con O0 y NSLink local. F06 conserva su
 tracking independiente y no se da por terminado mediante este cierre.
+
+## Avance itemizado F06 — 2026-10-03
+
+La mitad `Copy` quedó endurecida de parser a LLVM y la batería exclusiva
+`nsc_ns3_t02_aggregate_spread_tests` pasa 10/10 con O0 y NSLink local. También se cerró una fuga de
+encapsulación: las entradas explícitas ya no pueden inicializar campos privados por nombre ni por
+posición, aunque el spread opaco del valor completo sigue siendo válido. La mitad move-only queda
+en `IMPLEMENTANDO`, ligada expresamente a los drop flags y drop glue de T06-F01/F02/F08; aceptar
+antes un agregado con `owned` produciría ownership duplicado o leaks.

@@ -1906,6 +1906,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
         return result;
     }
 
+    // T02-F06. A spread copies the value as a whole and therefore does not expose private
+    // representation, but every explicitly written entry is a direct field initialization and
+    // must obey the same accessibility rule as `receiver.Field = value`. Keep the member
+    // ordinals parallel to aggregateElementNames/aggregateElementTypeKeys so both named and
+    // positional entries are checked; tuples and fixed arrays deliberately have no member gate.
+    std::vector<std::optional<std::size_t>> elementMemberOrdinals(elements->size());
+    std::optional<std::size_t> targetTypeOrdinal;
+    if (inheritanceModel_ != nullptr && targetTypeKey.starts_with("type:"))
+        targetTypeOrdinal = inheritanceModel_->typeOrdinalForTypeKey(targetTypeKey);
+    if (targetTypeOrdinal.has_value() && memberModel_ != nullptr)
+    {
+        std::size_t elementOrdinal = 0;
+        for (const std::size_t memberOrdinal : memberModel_->membersOfType(*targetTypeOrdinal))
+        {
+            if (memberOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+            if (member.kind != ClassMemberKind::Field || member.isStatic || member.isConst ||
+                member.isUnnamedBitField) continue;
+            if (elementOrdinal < elementMemberOrdinals.size())
+                elementMemberOrdinals[elementOrdinal] = memberOrdinal;
+            ++elementOrdinal;
+            if (elementOrdinal >= elementMemberOrdinals.size()) break;
+        }
+    }
+
     MethodAggregateInitializerBinding binding;
     binding.syntax = syntax;
     binding.targetTypeKey = targetTypeKey;
@@ -2055,6 +2080,32 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
             valid = false;
             binding.entries.push_back(std::move(entry));
             continue;
+        }
+        if (*target < elementMemberOrdinals.size() &&
+            elementMemberOrdinals[*target].has_value() &&
+            memberModel_ != nullptr &&
+            methodMemberOrdinal < memberModel_->members().size() &&
+            targetTypeOrdinal.has_value() && nameLookup_ != nullptr &&
+            inheritanceModel_ != nullptr)
+        {
+            const ClassMemberSymbol& field =
+                memberModel_->members()[*elementMemberOrdinals[*target]];
+            const ClassMemberSymbol& caller = memberModel_->members()[methodMemberOrdinal];
+            if (!ProjectMemberAccessibility::isAccessible(
+                    field,
+                    caller.declaringTypeOrdinal,
+                    *targetTypeOrdinal,
+                    *nameLookup_,
+                    *inheritanceModel_))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InaccessibleMember,
+                    diagnostics::DiagnosticSeverity::Error,
+                    element->range(),
+                    "aggregate member '" + field.name +
+                        "' is not accessible in this initializer context");
+                valid = false;
+            }
         }
         assigned[*target] = true;
         entry.targetElementOrdinals.push_back(*target);
