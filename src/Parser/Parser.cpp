@@ -8399,6 +8399,7 @@ ast::AstNode* Parser::parseMatchStatement()
     {
         Pattern pattern;
         SourceRange range;
+        ast::AstNode* guard = nullptr;
         ast::AstNode* body = nullptr;
     };
 
@@ -8509,6 +8510,28 @@ ast::AstNode* Parser::parseMatchStatement()
         arm.range = arm.pattern.range;
         validateBindingModes(arm.pattern, true);
         validateOrBindings(arm.pattern);
+        if (atContextualKeyword("when"))
+        {
+            consume();
+            // The arm's `=>` is a delimiter, not the start of a single-parameter lambda.
+            // Guards are pure conditions: assignments and lambda literals are intentionally not
+            // part of this grammar, so the conditional-expression level is the exact boundary.
+            arm.guard = parseConditionalExpression();
+        }
+        const bool guardAlwaysTrue = arm.guard == nullptr ||
+            (arm.guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+             arm.guard->tokenKind() == TokenKind::KwTrue);
+        const bool guardAlwaysFalse = arm.guard != nullptr &&
+            arm.guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+            arm.guard->tokenKind() == TokenKind::KwFalse;
+        if (guardAlwaysFalse)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                arm.guard->range(),
+                "match arm is unreachable because its guard is the constant false");
+        }
         const bool catchAll = isCatchAll(arm.pattern);
         if (sawCatchAll)
         {
@@ -8518,7 +8541,7 @@ ast::AstNode* Parser::parseMatchStatement()
                 arm.range,
                 "match arm is unreachable after a catch-all wildcard or binding arm");
         }
-        if (catchAll) sawCatchAll = true;
+        if (catchAll && guardAlwaysTrue) sawCatchAll = true;
 
         std::vector<std::pair<std::int64_t, std::int64_t>> currentRanges;
         std::function<bool(const Pattern&)> collectIntervals = [&](const Pattern& pattern)
@@ -8575,20 +8598,9 @@ ast::AstNode* Parser::parseMatchStatement()
                     break;
                 }
             }
-            coveredIntegerRanges.insert(
-                coveredIntegerRanges.end(), currentRanges.begin(), currentRanges.end());
-        }
-
-        if (atContextualKeyword("when"))
-        {
-            const SourceRange guard = consume().range();
-            parseExpression();
-            diagnostics_.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                guard,
-                "match guards require the T03 guarded decision-tree continuation; "
-                "use an if inside the arm in this vertical");
+            if (guardAlwaysTrue)
+                coveredIntegerRanges.insert(
+                    coveredIntegerRanges.end(), currentRanges.begin(), currentRanges.end());
         }
         expect(TokenKind::FatArrow, "'=>' after match pattern");
         if (at(TokenKind::LeftBrace))
@@ -8660,8 +8672,12 @@ ast::AstNode* Parser::parseMatchStatement()
         bool wildcard = false;
         bool partial = false;
         coveredCases(arms[armIndex].pattern, cases, wildcard, partial);
+        const bool guardRestrictsCoverage = arms[armIndex].guard != nullptr &&
+            !(arms[armIndex].guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+              arms[armIndex].guard->tokenKind() == TokenKind::KwTrue);
         if (wildcard)
         {
+            if (guardRestrictsCoverage) coverage += '~';
             coverage += '*';
             continue;
         }
@@ -8672,7 +8688,8 @@ ast::AstNode* Parser::parseMatchStatement()
             coverage += '?';
             continue;
         }
-        if (partial) coverage += '~';
+        if (partial || guardRestrictsCoverage)
+            coverage += '~';
         for (std::size_t caseIndex = 0; caseIndex < cases.size(); ++caseIndex)
         {
             if (caseIndex != 0) coverage += '|';
@@ -8732,7 +8749,20 @@ ast::AstNode* Parser::parseMatchStatement()
         {
             return makeIdentifierExpression(armRange, temporary);
         };
-        ast::AstNode* matcher = lowerPattern(arm.pattern, root, selectedBody, temporary);
+        ast::AstNode* continuation = selectedBody;
+        if (arm.guard != nullptr)
+        {
+            ast::AstNode* guarded = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::IfStatement, arm.guard->range());
+            guarded->setFirst(arm.guard);
+            guarded->setSecond(selectedBody);
+            ast::AstNode* guardedBlock = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::BlockStatement, arm.guard->range());
+            guardedBlock->addChild(guarded);
+            continuation = guardedBlock;
+        }
+        ast::AstNode* matcher = lowerPattern(
+            arm.pattern, root, continuation, temporary);
         ast::AstNode* guardedBody = arena_.make<ast::AstNode>(
             ast::AstNodeKind::BlockStatement, arm.range);
         guardedBody->addChild(matcher);

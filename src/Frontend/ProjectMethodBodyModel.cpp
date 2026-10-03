@@ -2928,13 +2928,13 @@ void ProjectMethodBodyModel::analyzeBlock(
             const std::string_view armText = encoded.substr(
                 begin, end == std::string_view::npos ? encoded.size() - begin : end - begin);
             language::MatchArmCoverage arm;
-            arm.wildcard = armText == "*";
             std::string_view casesText = armText;
             if (!casesText.empty() && casesText.front() == '~')
             {
                 arm.hasGuard = true;
                 casesText.remove_prefix(1);
             }
+            arm.wildcard = casesText == "*";
             if (!arm.wildcard && casesText != "?")
             {
                 std::size_t caseBegin = 0;
@@ -3019,7 +3019,7 @@ void ProjectMethodBodyModel::analyzeBlock(
         {
             if (!std::ranges::any_of(arms, [](const language::MatchArmCoverage& arm)
                 {
-                    return arm.wildcard;
+                    return arm.wildcard && !arm.hasGuard;
                 }))
             {
                 diagnostics.report(
