@@ -4082,15 +4082,6 @@ void ProjectMethodBodyModel::analyzeVariable(
     std::string varInferredTypeKey;
     if (isVarInferred)
     {
-        if (isReferenceLocal)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                variable->range(),
-                "reference locals require an explicit element type; 'ref var' is not supported");
-            return;
-        }
         if (variable->first() == nullptr)
         {
             diagnostics.report(
@@ -4100,6 +4091,11 @@ void ProjectMethodBodyModel::analyzeVariable(
                 "'var' requires an initializer");
             return;
         }
+        // Pattern lowering is the one compiler-owned producer of `ref var`: it cannot spell the
+        // element type before semantic analysis, but it still passes through the ordinary exact-
+        // type, mutable-address and escape checks below. Source declarations continue to require
+        // `ref <Type> name = ref storage` in the parser, so this inference does not widen syntax.
+        //
         // C7 "aggregate initializer": a braced initializer is filled AGAINST a declared type; it
         // has no type of its own to infer from, exactly like a bare lambda or a method group.
         if (variable->first()->kind() == ast::AstNodeKind::AggregateInitializerExpression)
