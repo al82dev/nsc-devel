@@ -3,6 +3,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -107,6 +108,174 @@ bool isReferenceTypeArgument(
         declaration->kind == NamedTypeDeclarationKind::Delegate;
 }
 
+bool isValueTypeArgument(
+    const ast::TypeSyntax* syntax,
+    const NamedTypeDeclaration* declaration)
+{
+    if (syntax == nullptr) return false;
+    if (!syntax->modifiers().empty())
+    {
+        const ast::TypeModifierSyntaxKind outermost = syntax->modifiers().back().kind;
+        return outermost != ast::TypeModifierSyntaxKind::DynamicArray &&
+            outermost != ast::TypeModifierSyntaxKind::RangeArray;
+    }
+    if (syntax->baseTokenKind() == lexer::TokenKind::KwVoid ||
+        syntax->baseTokenKind() == lexer::TokenKind::KwString)
+        return false;
+    if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind())) return true;
+    return declaration != nullptr &&
+        (declaration->kind == NamedTypeDeclarationKind::Struct ||
+         declaration->kind == NamedTypeDeclarationKind::Enum);
+}
+
+const NamedTypeDeclaration* declarationForKey(
+    const ProjectNameLookup& nameLookup,
+    std::string_view typeKey,
+    std::size_t& ordinalOut)
+{
+    return declarationForTypeKey(nameLookup, typeKey, ordinalOut);
+}
+
+bool typeKeyIsCopyable(
+    std::string_view typeKey,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    std::unordered_set<std::size_t>& visiting)
+{
+    if (typeKey.empty() || typeKey == "builtin:void") return false;
+    if (typeKey.starts_with("builtin:") || typeKey.ends_with("*") || typeKey.ends_with("[]"))
+        return true;
+    if (const auto element = ProjectMemberModel::fixedArrayElementTypeKey(typeKey); element.has_value())
+        return typeKeyIsCopyable(*element, nameLookup, memberModel, visiting);
+    std::size_t ordinal = 0;
+    const NamedTypeDeclaration* declaration = declarationForKey(nameLookup, typeKey, ordinal);
+    if (declaration == nullptr) return false;
+    if (declaration->kind != NamedTypeDeclarationKind::Struct) return true;
+    if (!visiting.insert(ordinal).second) return true;
+    for (const std::size_t memberOrdinal : memberModel.membersOfType(ordinal))
+    {
+        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Field || member.isStatic || member.isConst) continue;
+        if (member.declaredOwnership == sema::OwnershipKind::Owned ||
+            !typeKeyIsCopyable(member.declaredTypeKey, nameLookup, memberModel, visiting))
+        {
+            visiting.erase(ordinal);
+            return false;
+        }
+    }
+    visiting.erase(ordinal);
+    return true;
+}
+
+bool typeKeyIsUnmanaged(
+    std::string_view typeKey,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    std::unordered_set<std::size_t>& visiting)
+{
+    if (typeKey.empty() || typeKey == "builtin:void" || typeKey == "builtin:string" ||
+        typeKey.ends_with("[]"))
+        return false;
+    if (typeKey.starts_with("builtin:") || typeKey.ends_with("*")) return true;
+    if (const auto element = ProjectMemberModel::fixedArrayElementTypeKey(typeKey); element.has_value())
+        return typeKeyIsUnmanaged(*element, nameLookup, memberModel, visiting);
+    std::size_t ordinal = 0;
+    const NamedTypeDeclaration* declaration = declarationForKey(nameLookup, typeKey, ordinal);
+    if (declaration == nullptr) return false;
+    if (declaration->kind == NamedTypeDeclarationKind::Enum) return true;
+    if (declaration->kind != NamedTypeDeclarationKind::Struct) return false;
+    if (!visiting.insert(ordinal).second) return true;
+    for (const std::size_t memberOrdinal : memberModel.membersOfType(ordinal))
+    {
+        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Field || member.isStatic || member.isConst) continue;
+        if (member.declaredOwnership != sema::OwnershipKind::None ||
+            !typeKeyIsUnmanaged(member.declaredTypeKey, nameLookup, memberModel, visiting))
+        {
+            visiting.erase(ordinal);
+            return false;
+        }
+    }
+    visiting.erase(ordinal);
+    return true;
+}
+
+bool hasPublicDefaultConstructor(
+    const ast::TypeSyntax* syntax,
+    const NamedTypeDeclaration* declaration,
+    std::size_t declarationOrdinal,
+    const ProjectMemberModel& memberModel)
+{
+    if (isValueTypeArgument(syntax, declaration)) return true;
+    if (declaration == nullptr || declaration->kind != NamedTypeDeclarationKind::Class) return false;
+    bool hasExplicitConstructor = false;
+    for (const std::size_t memberOrdinal : memberModel.membersOfType(declarationOrdinal))
+    {
+        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Constructor || member.isStatic) continue;
+        hasExplicitConstructor = true;
+        if (member.accessibility == ClassMemberAccessibility::Public && member.parameters.empty())
+            return true;
+    }
+    return !hasExplicitConstructor;
+}
+
+bool hasTrackedLifetime(
+    const ast::TypeSyntax* syntax,
+    const NamedTypeDeclaration* declaration)
+{
+    if (syntax == nullptr) return false;
+    if (syntax->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::None) return true;
+    if (!syntax->modifiers().empty())
+    {
+        const ast::TypeModifierSyntaxKind outermost = syntax->modifiers().back().kind;
+        return outermost == ast::TypeModifierSyntaxKind::Pointer ||
+            outermost == ast::TypeModifierSyntaxKind::DynamicArray ||
+            outermost == ast::TypeModifierSyntaxKind::RangeArray;
+    }
+    if (syntax->baseTokenKind() == lexer::TokenKind::KwString) return true;
+    if (declaration == nullptr) return false;
+    if (declaration->kind == NamedTypeDeclarationKind::Class ||
+        declaration->kind == NamedTypeDeclarationKind::Interface ||
+        declaration->kind == NamedTypeDeclarationKind::Delegate)
+        return true;
+    return declaration->syntax != nullptr &&
+        declaration->syntax->auxiliaryText().find("borrowedview") != std::string::npos;
+}
+
+bool isDefinitelyNonNull(
+    const ast::TypeSyntax* syntax,
+    const NamedTypeDeclaration* declaration)
+{
+    if (syntax == nullptr) return false;
+    if (!syntax->modifiers().empty())
+    {
+        const ast::TypeModifierSyntaxKind outermost = syntax->modifiers().back().kind;
+        return outermost == ast::TypeModifierSyntaxKind::Array ||
+            outermost == ast::TypeModifierSyntaxKind::FlexibleArray;
+    }
+    if (syntax->baseTokenKind() == lexer::TokenKind::KwString) return false;
+    if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
+        return syntax->baseTokenKind() != lexer::TokenKind::KwVoid;
+    return declaration != nullptr &&
+        (declaration->kind == NamedTypeDeclarationKind::Struct ||
+         declaration->kind == NamedTypeDeclarationKind::Enum);
+}
+
+std::string normalizedArgumentIdentity(
+    const ast::TypeSyntax* syntax,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel)
+{
+    if (syntax == nullptr) return "<missing>";
+    std::string constantType;
+    std::string constantValue;
+    if (language::parseConstGenericArgumentMarker(
+            syntax->baseName(), constantType, constantValue))
+        return "const:" + constantType + "=" + constantValue;
+    return memberModel.canonicalTypeKey(syntax, nameLookup);
+}
+
 // Un diagnostico ya redactado que TODAVIA no se emitio. Existe por las sobrecargas: cuando varias
 // plantillas comparten nombre y aridad se materializan todas, y que una incumpla no dice nada del
 // programa hasta saber que ninguna otra servia.
@@ -135,8 +304,29 @@ void ProjectGenericConstraintModel::validateTemplateClauses(
     for (std::size_t templateOrdinal = 0; templateOrdinal < templates.size(); ++templateOrdinal)
     {
         const GenericTemplateRecord& templateRecord = templates[templateOrdinal];
+        std::vector<std::string> templateAtoms;
         for (const ast::GenericConstraintClause& clause : templateRecord.constraints)
         {
+            const auto parameter = std::ranges::find(
+                templateRecord.parameters, clause.parameterName);
+            const std::size_t parameterOrdinal = parameter == templateRecord.parameters.end()
+                ? templateRecord.parameters.size()
+                : static_cast<std::size_t>(parameter - templateRecord.parameters.begin());
+            std::vector<std::string> clauseAtoms;
+            if (clause.requiresClass) clauseAtoms.emplace_back("class");
+            if (clause.requiresValueType) clauseAtoms.emplace_back("struct");
+            if (clause.requiresDefaultConstructor) clauseAtoms.emplace_back("new()");
+            if (clause.requiresCopy) clauseAtoms.emplace_back("copy");
+            if (clause.requiresMove) clauseAtoms.emplace_back("move");
+            if (clause.requiresTrackedLifetime) clauseAtoms.emplace_back("lifetime");
+            if (clause.requiresUnmanaged) clauseAtoms.emplace_back("unmanaged");
+            if (clause.requiresNotNull) clauseAtoms.emplace_back("notnull");
+            if (clause.equalityConstraint != nullptr)
+            {
+                clauseAtoms.push_back(
+                    "eq:" + normalizedArgumentIdentity(
+                        clause.equalityConstraint, nameLookup, memberModel));
+            }
             // Identidad -> primera escritura que la nombro. El parser ya rechaza dos veces el
             // MISMO texto; esto coge las dos escrituras DISTINTAS del mismo tipo --un alias, un
             // nombre corto frente a uno calificado-- que alli eran indistinguibles, porque
@@ -152,6 +342,7 @@ void ProjectGenericConstraintModel::validateTemplateClauses(
                 if (constraintSyntax == nullptr) continue;
                 const std::string constraintKey =
                     memberModel.canonicalTypeKey(constraintSyntax, nameLookup);
+                clauseAtoms.push_back("type:" + constraintKey);
                 std::size_t constraintOrdinal = 0;
                 const NamedTypeDeclaration* constraint =
                     declarationForTypeKey(nameLookup, constraintKey, constraintOrdinal);
@@ -205,6 +396,30 @@ void ProjectGenericConstraintModel::validateTemplateClauses(
                 ++acceptedConstraints;
             }
 
+            language::ConstraintSet normalized;
+            std::string normalizationError;
+            if (!language::normalizeConstraints(clauseAtoms, normalized, normalizationError))
+            {
+                violations_.push_back(GenericConstraintViolation{
+                    GenericConstraintViolationKind::InvalidConstraintCombination,
+                    templateOrdinal,
+                    clause.parameterName,
+                    std::string(),
+                    normalized.canonical,
+                    true});
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    clause.range,
+                    "invalid constraints for generic parameter '" + clause.parameterName +
+                        "': " + normalizationError);
+            }
+            for (const std::string& atom : normalized.atoms)
+            {
+                templateAtoms.push_back(
+                    "p" + std::to_string(parameterOrdinal) + ":" + atom);
+            }
+
             // LA REGLA DE CONSTRAINT PRIMARIO, que es la de C# y no es cosmetica.
             //
             // Una clausula dice DOS cosas de distinta naturaleza: QUE ES el parametro --a lo sumo
@@ -252,6 +467,11 @@ void ProjectGenericConstraintModel::validateTemplateClauses(
                         clause.parameterName + "', before any interface");
             }
         }
+        language::ConstraintSet normalizedTemplate;
+        std::string ignoredError;
+        language::normalizeConstraints(templateAtoms, normalizedTemplate, ignoredError);
+        if (templateOrdinal < normalizedConstraintIdentities_.size())
+            normalizedConstraintIdentities_[templateOrdinal] = std::move(normalizedTemplate.canonical);
     }
 }
 
@@ -285,8 +505,10 @@ bool ProjectGenericConstraintModel::build(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     violations_.clear();
+    deferredBySpecialization_.clear();
     invalidSpecializations_.clear();
     invalidTemplateOrdinals_.clear();
+    normalizedConstraintIdentities_.assign(genericModel.templates().size(), {});
     built_ = true;
 
     // PRIMERA PASADA: lo que esta mal escrito en la declaracion, se instancie o no.
@@ -352,6 +574,101 @@ bool ProjectGenericConstraintModel::build(
             const std::string argumentName = argument != nullptr
                 ? shortName(argumentKey)
                 : writtenSpelling(argumentSyntax);
+
+            const auto requireCapability = [&](bool required, bool satisfied,
+                                               GenericConstraintViolationKind kind,
+                                               std::string_view spelling,
+                                               std::string_view expectation)
+            {
+                if (!required || satisfied) return;
+                pending.push_back(PendingDiagnostic{
+                    diagnostics::DiagnosticId::InvalidType,
+                    specialization.instantiationRange,
+                    "generic parameter '" + clause.parameterName + "' of '" +
+                        templateRecord.name + "' requires " + std::string(expectation) +
+                        " ('where " + clause.parameterName + " : " +
+                        std::string(spelling) + "'), but the argument '" + argumentName +
+                        "' does not satisfy it" + templateModuleSuffix,
+                    GenericConstraintViolation{
+                        kind,
+                        specialization.cacheOrdinal,
+                        clause.parameterName,
+                        argumentKey,
+                        std::string(spelling),
+                        false}});
+            };
+
+            std::unordered_set<std::size_t> copyVisiting;
+            std::unordered_set<std::size_t> unmanagedVisiting;
+            requireCapability(
+                clause.requiresValueType,
+                isValueTypeArgument(argumentSyntax, argument),
+                GenericConstraintViolationKind::RequiresValueType,
+                "struct",
+                "a value type");
+            requireCapability(
+                clause.requiresDefaultConstructor,
+                hasPublicDefaultConstructor(
+                    argumentSyntax, argument, argumentOrdinal, memberModel),
+                GenericConstraintViolationKind::RequiresDefaultConstructor,
+                "new()",
+                "a public parameterless or implicit default constructor");
+            requireCapability(
+                clause.requiresCopy,
+                typeKeyIsCopyable(argumentKey, nameLookup, memberModel, copyVisiting),
+                GenericConstraintViolationKind::RequiresCopy,
+                "copy",
+                "copyable storage");
+            requireCapability(
+                clause.requiresMove,
+                argumentKey != "builtin:void" && !argumentKey.empty(),
+                GenericConstraintViolationKind::RequiresMove,
+                "move",
+                "movable storage");
+            requireCapability(
+                clause.requiresTrackedLifetime,
+                hasTrackedLifetime(argumentSyntax, argument),
+                GenericConstraintViolationKind::RequiresTrackedLifetime,
+                "lifetime",
+                "a type with an explicit tracked lifetime");
+            requireCapability(
+                clause.requiresUnmanaged,
+                typeKeyIsUnmanaged(argumentKey, nameLookup, memberModel, unmanagedVisiting),
+                GenericConstraintViolationKind::RequiresUnmanaged,
+                "unmanaged",
+                "recursively unmanaged storage");
+            requireCapability(
+                clause.requiresNotNull,
+                isDefinitelyNonNull(argumentSyntax, argument),
+                GenericConstraintViolationKind::RequiresNotNull,
+                "notnull",
+                "a representation that cannot be null");
+
+            if (clause.equalityConstraint != nullptr)
+            {
+                const std::string requiredIdentity = normalizedArgumentIdentity(
+                    clause.equalityConstraint, nameLookup, memberModel);
+                const std::string argumentIdentity = normalizedArgumentIdentity(
+                    argumentSyntax, nameLookup, memberModel);
+                if (requiredIdentity != argumentIdentity)
+                {
+                    pending.push_back(PendingDiagnostic{
+                        diagnostics::DiagnosticId::InvalidType,
+                        specialization.instantiationRange,
+                        "generic parameter '" + clause.parameterName + "' of '" +
+                            templateRecord.name + "' requires equality with '" +
+                            shortName(requiredIdentity) + "', but the argument '" +
+                            argumentName + "' has identity '" + shortName(argumentIdentity) +
+                            "'" + templateModuleSuffix,
+                        GenericConstraintViolation{
+                            GenericConstraintViolationKind::EqualityMismatch,
+                            specialization.cacheOrdinal,
+                            clause.parameterName,
+                            argumentIdentity,
+                            requiredIdentity,
+                            false}});
+                }
+            }
 
             // `class`: el argumento tiene que ser un tipo REFERENCIA -- clase, interfaz, delegado,
             // `string` o arreglo. El calificador de propiedad del uso no entra aqui y no se toca:
@@ -541,5 +858,13 @@ std::span<const GenericConstraintViolation> ProjectGenericConstraintModel::viola
 bool ProjectGenericConstraintModel::isBuilt() const noexcept
 {
     return built_;
+}
+
+std::string_view ProjectGenericConstraintModel::normalizedConstraintIdentity(
+    std::size_t templateOrdinal) const noexcept
+{
+    return templateOrdinal < normalizedConstraintIdentities_.size()
+        ? std::string_view(normalizedConstraintIdentities_[templateOrdinal])
+        : std::string_view{};
 }
 }

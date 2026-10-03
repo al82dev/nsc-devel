@@ -25,6 +25,16 @@ bool normalizeConstraints(
         error = "a generic parameter cannot require both copy and move-only";
         return false;
     }
+    if (has("class") && has("struct"))
+    {
+        error = "a generic parameter cannot require both class and struct";
+        return false;
+    }
+    if (has("class") && has("unmanaged"))
+    {
+        error = "a generic parameter cannot require both class and unmanaged";
+        return false;
+    }
     result.canonical.clear();
     for (const std::string& atom : result.atoms)
     {

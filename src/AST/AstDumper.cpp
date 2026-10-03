@@ -53,13 +53,30 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
     // veria en ningun volcado.
     for (const GenericConstraintClause& clause : node->genericConstraints())
     {
-        output << " where " << clause.parameterName << ':';
-        bool first = true;
-        if (clause.requiresClass)
+        output << " where " << clause.parameterName;
+        if (clause.equalityConstraint != nullptr)
         {
-            output << "class";
-            first = false;
+            output << "==";
+            dumpType(clause.equalityConstraint, output);
+            continue;
         }
+        output << ':';
+        bool first = true;
+        const auto capability = [&](bool enabled, std::string_view spelling)
+        {
+            if (!enabled) return;
+            if (!first) output << ',';
+            output << spelling;
+            first = false;
+        };
+        capability(clause.requiresClass, "class");
+        capability(clause.requiresValueType, "struct");
+        capability(clause.requiresDefaultConstructor, "new()");
+        capability(clause.requiresCopy, "copy");
+        capability(clause.requiresMove, "move");
+        capability(clause.requiresTrackedLifetime, "lifetime");
+        capability(clause.requiresUnmanaged, "unmanaged");
+        capability(clause.requiresNotNull, "notnull");
         for (const TypeSyntax* constraint : clause.typeConstraints)
         {
             if (!first) output << ',';

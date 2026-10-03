@@ -1177,8 +1177,6 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
             {
                 return item.name == clause.parameterName;
             });
-        const bool constraintCapable = syntax == declaration->genericParameterSyntaxes().end() ||
-            syntax->kind == ast::GenericParameterSyntaxKind::Type;
         if (!known)
         {
             diagnostics_.report(
@@ -1187,16 +1185,6 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
                 parameter.range(),
                 "'" + clause.parameterName +
                     "' is not a generic type parameter of this declaration");
-            ok = false;
-        }
-        else if (!constraintCapable)
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::ExpectedDeclaration,
-                diagnostics::DiagnosticSeverity::Error,
-                parameter.range(),
-                "a 'where' clause currently applies only to an ordinary generic type parameter; '" +
-                    clause.parameterName + "' is a const generic or type pack");
             ok = false;
         }
         else if (!constrained.insert(clause.parameterName).second)
@@ -1210,68 +1198,187 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
             ok = false;
         }
 
-        if (!expect(TokenKind::Colon, "':' after the constrained type parameter")) return false;
+        if (consumeIf(TokenKind::EqualEqual))
+        {
+            requireEdition3(parameter.range(), "generic equality constraints");
+            const bool parameterIsConstant =
+                syntax != declaration->genericParameterSyntaxes().end() &&
+                syntax->kind == ast::GenericParameterSyntaxKind::Constant;
+            if (syntax != declaration->genericParameterSyntaxes().end() &&
+                (syntax->kind == ast::GenericParameterSyntaxKind::TypePack ||
+                 syntax->kind == ast::GenericParameterSyntaxKind::ConstantPack))
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    parameter.range(),
+                    "a generic pack cannot be the left side of an equality constraint");
+                ok = false;
+            }
+
+            if (at(TokenKind::IntegerLiteral))
+            {
+                const lexer::Token& literal = consume();
+                const auto* value = std::get_if<std::uint64_t>(&literal.value());
+                const std::uint64_t normalized = value == nullptr ? 0 : *value;
+                const std::string typeKey = parameterIsConstant && syntax->constantType != nullptr
+                    ? "builtin:" + syntax->constantType->baseName()
+                    : std::string(frontend::builtins::integerLiteralTypeKey(
+                          literal.lexeme(), normalized, false));
+                clause.equalityConstraint = arena_.make<ast::TypeSyntax>(
+                    literal.range(), TokenKind::Invalid,
+                    language::constGenericArgumentMarker(typeKey, std::to_string(normalized)));
+            }
+            else if (at(TokenKind::KwTrue) || at(TokenKind::KwFalse))
+            {
+                const lexer::Token& literal = consume();
+                clause.equalityConstraint = arena_.make<ast::TypeSyntax>(
+                    literal.range(), TokenKind::Invalid,
+                    language::constGenericArgumentMarker(
+                        "builtin:bool", literal.kind() == TokenKind::KwTrue ? "true" : "false"));
+            }
+            else
+            {
+                clause.equalityConstraint = parseType();
+                if (clause.equalityConstraint == nullptr) return false;
+            }
+
+            std::string equalityConstantType;
+            std::string equalityConstantValue;
+            const bool equalityIsConstant = language::parseConstGenericArgumentMarker(
+                clause.equalityConstraint->baseName(), equalityConstantType, equalityConstantValue);
+            if (parameterIsConstant != equalityIsConstant)
+            {
+                const auto otherParameter = std::ranges::find_if(
+                    declaration->genericParameterSyntaxes(),
+                    [&](const ast::GenericParameterSyntax& item)
+                    {
+                        return item.name == clause.equalityConstraint->baseName();
+                    });
+                const bool otherIsMatchingParameter =
+                    otherParameter != declaration->genericParameterSyntaxes().end() &&
+                    ((parameterIsConstant &&
+                      otherParameter->kind == ast::GenericParameterSyntaxKind::Constant) ||
+                     (!parameterIsConstant &&
+                      otherParameter->kind == ast::GenericParameterSyntaxKind::Type));
+                if (!otherIsMatchingParameter)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        clause.equalityConstraint->range(),
+                        parameterIsConstant
+                            ? "a const generic equality requires another const parameter or a compile-time value"
+                            : "a type generic equality requires another type parameter or a type");
+                    ok = false;
+                }
+            }
+            if (clause.equalityConstraint->baseName() == clause.parameterName)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::DuplicateSymbol,
+                    diagnostics::DiagnosticSeverity::Error,
+                    clause.equalityConstraint->range(),
+                    "generic equality constraint for '" + clause.parameterName +
+                        "' is tautological");
+                ok = false;
+            }
+            clause.range = tokenRangeFrom(clauseBegin);
+            if (known) declaration->addGenericConstraint(std::move(clause));
+            continue;
+        }
+
+        if (syntax != declaration->genericParameterSyntaxes().end() &&
+            syntax->kind != ast::GenericParameterSyntaxKind::Type)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                parameter.range(),
+                "a capability or trait 'where' clause applies only to an ordinary generic type parameter; '" +
+                    clause.parameterName + "' is a const generic or type pack");
+            ok = false;
+        }
+        if (!expect(TokenKind::Colon, "':' or '==' after the constrained generic parameter"))
+            return false;
 
         std::unordered_set<std::string> written;
         bool firstConstraint = true;
         while (true)
         {
-            // Las cuatro formas que esta entrega no implementa. `class` no esta en la lista: es la
-            // que SI se admite, y se distingue por ser palabra clave y no identificador.
             const bool isKeywordClass = at(TokenKind::KwClass);
-            const char* unsupported = nullptr;
-            if (at(TokenKind::KwStruct)) unsupported = "struct";
-            else if (at(TokenKind::KwNew)) unsupported = "new()";
-            else if (atContextualKeyword("unmanaged")) unsupported = "unmanaged";
-            else if (atContextualKeyword("notnull")) unsupported = "notnull";
-            if (unsupported != nullptr)
-            {
-                diagnostics_.report(
-                    diagnostics::DiagnosticId::ExpectedDeclaration,
-                    diagnostics::DiagnosticSeverity::Error,
-                    current().range(),
-                    std::string("the '") + unsupported +
-                        "' generic constraint is not supported yet; this compiler implements "
-                        "'class', a base class and interfaces");
-                synchronizeStatement();
-                return false;
-            }
-            if (isKeywordClass)
+            const bool isKeywordStruct = at(TokenKind::KwStruct);
+            const bool isKeywordNew = at(TokenKind::KwNew);
+            const bool isCopy = atContextualKeyword("copy");
+            const bool isMove = at(TokenKind::KwMove) || atContextualKeyword("move");
+            const bool isLifetime = atContextualKeyword("lifetime");
+            const bool isUnmanaged = atContextualKeyword("unmanaged");
+            const bool isNotNull = atContextualKeyword("notnull");
+            if (isKeywordClass || isKeywordStruct || isKeywordNew || isCopy || isMove ||
+                isLifetime || isUnmanaged || isNotNull)
             {
                 const lexer::Token& keyword = consume();
-                if (!firstConstraint)
+                if (!isKeywordClass && languageEdition_ != language::LanguageEdition::V3)
                 {
-                    // La regla de C#, y no es cosmetica: `class` dice de que CLASE de tipo se
-                    // trata, y los demas dicen de que deriva. Mezclado en medio, un lector ya no
-                    // puede leer la lista de izquierda a derecha.
                     diagnostics_.report(
                         diagnostics::DiagnosticId::ExpectedDeclaration,
                         diagnostics::DiagnosticSeverity::Error,
                         keyword.range(),
-                        "'class' must be the first constraint of its 'where' clause");
+                        "the '" + std::string(keyword.lexeme()) +
+                            "' generic constraint is not supported yet; this compiler implements "
+                            "'class', a base class and interfaces in language edition 2; select "
+                            "Language 3 for declarative capability constraints");
                     ok = false;
                 }
-                if (clause.requiresClass)
+                const bool conflictsWithEarlierPrimary =
+                    (isKeywordClass && (clause.requiresValueType || clause.requiresUnmanaged)) ||
+                    (isKeywordStruct && clause.requiresClass);
+                if ((isKeywordClass || isKeywordStruct) && !firstConstraint &&
+                    !conflictsWithEarlierPrimary)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        keyword.range(),
+                        isKeywordClass
+                            ? "'class' must be the first constraint of its 'where' clause"
+                            : "primary generic constraint '" + std::string(keyword.lexeme()) +
+                                  "' must be first in its 'where' clause");
+                    ok = false;
+                }
+                bool* flag = nullptr;
+                std::string_view spelling;
+                if (isKeywordClass) { flag = &clause.requiresClass; spelling = "class"; }
+                else if (isKeywordStruct) { flag = &clause.requiresValueType; spelling = "struct"; }
+                else if (isKeywordNew)
+                {
+                    flag = &clause.requiresDefaultConstructor;
+                    spelling = "new()";
+                    if (!expect(TokenKind::LeftParen, "'(' after new in a generic constraint") ||
+                        !expect(TokenKind::RightParen, "')' after new( in a generic constraint"))
+                        return false;
+                }
+                else if (isCopy) { flag = &clause.requiresCopy; spelling = "copy"; }
+                else if (isMove) { flag = &clause.requiresMove; spelling = "move"; }
+                else if (isLifetime) { flag = &clause.requiresTrackedLifetime; spelling = "lifetime"; }
+                else if (isUnmanaged) { flag = &clause.requiresUnmanaged; spelling = "unmanaged"; }
+                else { flag = &clause.requiresNotNull; spelling = "notnull"; }
+                if (*flag)
                 {
                     diagnostics_.report(
                         diagnostics::DiagnosticId::DuplicateSymbol,
                         diagnostics::DiagnosticSeverity::Error,
                         keyword.range(),
-                        "duplicate 'class' constraint for '" + clause.parameterName + "'");
+                        "duplicate '" + std::string(spelling) + "' constraint for '" +
+                            clause.parameterName + "'");
                     ok = false;
                 }
-                clause.requiresClass = true;
+                *flag = true;
             }
             else
             {
                 ast::TypeSyntax* constraint = parseType();
                 if (constraint == nullptr) return false;
-                // `where T : U` con `U` otro parametro de la MISMA declaracion. C# lo admite; este
-                // compilador no, y la razon esta en la fase que valida: monomorfiza, de modo que
-                // «U» ya no existe cuando se comprueba, y lo unico que quedaria por comparar seria
-                // el tipo con el que se cerro U -- que es otra regla, no esta. Se rechaza aqui
-                // para que la resolucion de nombres no acabe diciendo «unknown type name 'U'»,
-                // que manda al lector a buscar un tipo que nunca hubo.
                 if (std::find(declared.begin(), declared.end(), std::string(constraint->baseName())) !=
                     declared.end())
                 {
@@ -1281,8 +1388,9 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
                         constraint->range(),
                         "'" + std::string(constraint->baseName()) +
                             "' is a generic type parameter of this declaration and cannot be used "
-                            "as a constraint; this compiler implements 'class', a base class and "
-                            "interfaces");
+                            "as a constraint; use 'where " + clause.parameterName +
+                            " == " + std::string(constraint->baseName()) +
+                            "' for equality instead of a trait/base constraint");
                     ok = false;
                 }
                 // El texto escrito es lo unico comparable sin resolver nombres. Dos escrituras

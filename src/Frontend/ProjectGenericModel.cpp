@@ -667,6 +667,12 @@ bool ProjectGenericModel::expandAliasesInNode(
                 stack.clear();
                 ok = expandTypeAliases(unit, constraint, currentScope, diagnostics, stack) && ok;
             }
+            if (clause.equalityConstraint != nullptr)
+            {
+                stack.clear();
+                ok = expandTypeAliases(
+                    unit, clause.equalityConstraint, currentScope, diagnostics, stack) && ok;
+            }
         }
     }
 
@@ -941,9 +947,18 @@ void ProjectGenericModel::processNode(
             processTypeSyntax(
                 unit, const_cast<ast::TypeSyntax*>(constraint), currentNamespace, currentScope,
                 diagnostics);
-        processTypeSyntax(
-            unit, const_cast<ast::TypeSyntax*>(clause.substitutedArgument), currentNamespace,
-            currentScope, diagnostics);
+        std::string substitutedConstantType;
+        std::string substitutedConstantValue;
+        if (clause.substitutedArgument != nullptr &&
+            !language::parseConstGenericArgumentMarker(
+                clause.substitutedArgument->baseName(),
+                substitutedConstantType,
+                substitutedConstantValue))
+        {
+            processTypeSyntax(
+                unit, const_cast<ast::TypeSyntax*>(clause.substitutedArgument), currentNamespace,
+                currentScope, diagnostics);
+        }
     }
     if (templateNode || insideTemplate) return;
 
@@ -2639,6 +2654,14 @@ ast::AstNode* ProjectGenericModel::cloneNode(
         copy.parameterName = clause.parameterName;
         copy.parameterRange = clause.parameterRange;
         copy.requiresClass = clause.requiresClass;
+        copy.requiresValueType = clause.requiresValueType;
+        copy.requiresDefaultConstructor = clause.requiresDefaultConstructor;
+        copy.requiresCopy = clause.requiresCopy;
+        copy.requiresMove = clause.requiresMove;
+        copy.requiresTrackedLifetime = clause.requiresTrackedLifetime;
+        copy.requiresUnmanaged = clause.requiresUnmanaged;
+        copy.requiresNotNull = clause.requiresNotNull;
+        copy.equalityConstraint = cloneType(arena, clause.equalityConstraint, substitutions);
         copy.range = clause.range;
         for (const ast::TypeSyntax* constraint : clause.typeConstraints)
             copy.typeConstraints.push_back(cloneType(arena, constraint, substitutions));
@@ -3199,6 +3222,8 @@ void ProjectGenericModel::collectTemplateDependencies(
     {
         for (const ast::TypeSyntax* constraint : clause.typeConstraints)
             collectTypeDependency(root, unit, constraint, currentNamespace, currentScope);
+        collectTypeDependency(
+            root, unit, clause.equalityConstraint, currentNamespace, currentScope);
         collectTypeDependency(
             root, unit, clause.substitutedArgument, currentNamespace, currentScope);
     }

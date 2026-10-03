@@ -17,6 +17,10 @@ int main()
     const std::array<std::string, 2> contradiction = {"copy", "move-only"};
     tests.expect(!normalizeConstraints(contradiction, constraints, error),
         "contradictory ownership constraints are rejected");
+    const std::array<std::string, 2> representationContradiction = {"struct", "class"};
+    tests.expect(!normalizeConstraints(representationContradiction, constraints, error) &&
+            error.find("both class and struct") != std::string::npos,
+        "contradictory representation constraints report a stable cause");
 
     const ConstGenericValue four{ConstGenericKind::Integer, "builtin:int", "4"};
     tests.expect(validateConstGeneric(four, error) && genericInstantiationIdentity(

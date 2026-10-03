@@ -9,6 +9,7 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
+#include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -1109,6 +1110,22 @@ void ProjectNameLookup::bindNode(
             {
                 bindTypeSyntax(unit, constraint, namespaceSegments, environment, diagnostics, index);
             }
+            if (clause.equalityConstraint != nullptr &&
+                std::find(
+                    node->genericParameters().begin(), node->genericParameters().end(),
+                    std::string(clause.equalityConstraint->baseName())) ==
+                    node->genericParameters().end())
+            {
+                std::string constantType;
+                std::string constantValue;
+                if (!language::parseConstGenericArgumentMarker(
+                        clause.equalityConstraint->baseName(), constantType, constantValue))
+                {
+                    bindTypeSyntax(
+                        unit, clause.equalityConstraint, namespaceSegments, environment,
+                        diagnostics, index);
+                }
+            }
         }
         return;
     }
@@ -1171,7 +1188,24 @@ void ProjectNameLookup::bindNode(
         {
             bindTypeSyntax(unit, constraint, namespaceSegments, scope, diagnostics, index);
         }
-        if (clause.substitutedArgument != nullptr)
+        if (clause.equalityConstraint != nullptr)
+        {
+            std::string constantType;
+            std::string constantValue;
+            if (!language::parseConstGenericArgumentMarker(
+                    clause.equalityConstraint->baseName(), constantType, constantValue))
+            {
+                bindTypeSyntax(
+                    unit, clause.equalityConstraint, namespaceSegments, scope, diagnostics, index);
+            }
+        }
+        std::string substitutedConstantType;
+        std::string substitutedConstantValue;
+        if (clause.substitutedArgument != nullptr &&
+            !language::parseConstGenericArgumentMarker(
+                clause.substitutedArgument->baseName(),
+                substitutedConstantType,
+                substitutedConstantValue))
         {
             bindTypeSyntax(
                 unit, clause.substitutedArgument, namespaceSegments, scope, diagnostics, index);

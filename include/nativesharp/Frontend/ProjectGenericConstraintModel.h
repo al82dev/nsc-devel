@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -39,7 +40,16 @@ enum class GenericConstraintViolationKind
     DuplicateConstraint,
     // La clausula infringe la regla de constraint PRIMARIO: `class` junto a una clase base, dos
     // clases base, o una clase base detras de una interfaz.
-    InvalidPrimaryConstraint
+    InvalidPrimaryConstraint,
+    RequiresValueType,
+    RequiresDefaultConstructor,
+    RequiresCopy,
+    RequiresMove,
+    RequiresTrackedLifetime,
+    RequiresUnmanaged,
+    RequiresNotNull,
+    EqualityMismatch,
+    InvalidConstraintCombination
 };
 
 struct GenericConstraintViolation final
@@ -84,6 +94,7 @@ public:
 
     std::span<const GenericConstraintViolation> violations() const noexcept;
     bool isBuilt() const noexcept;
+    std::string_view normalizedConstraintIdentity(std::size_t templateOrdinal) const noexcept;
 
     // LO QUE UNA ESPECIALIZACION DE UN GRUPO DE SOBRECARGAS NO PUEDE DECIDIR SOLA.
     //
@@ -177,6 +188,9 @@ private:
     // `specializationOrdinal`. Recolectarlo de ahi hace que una regla de declaracion que se
     // anada manana entre sola, sin que nadie se acuerde de tocar este conjunto.
     std::unordered_set<std::size_t> invalidTemplateOrdinals_;
+    // Parameter ordinals plus sorted semantic atoms. This is stable under source reordering and
+    // is the identity consumed by diagnostics/metadata/cache-facing tests.
+    std::vector<std::string> normalizedConstraintIdentities_;
     bool built_ = false;
 };
 }

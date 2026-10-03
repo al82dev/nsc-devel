@@ -45,6 +45,19 @@ struct GenericConstraintClause
     // `class` escrito en primera posicion. Es el unico constraint que NO es un tipo, y por eso
     // viaja como bandera y no dentro de `typeConstraints`.
     bool requiresClass = false;
+    // NativeSharp 3 declarative capability constraints. They remain orthogonal flags so their
+    // canonical identity is independent of source order and spelling duplication.
+    bool requiresValueType = false;
+    bool requiresDefaultConstructor = false;
+    bool requiresCopy = false;
+    bool requiresMove = false;
+    bool requiresTrackedLifetime = false;
+    bool requiresUnmanaged = false;
+    bool requiresNotNull = false;
+    // `where T == U` and `where N == 4`. A const value uses the same deterministic TypeSyntax
+    // marker as a const-generic argument; a type/parameter uses ordinary type syntax and is
+    // substituted by the generic cloner.
+    TypeSyntax* equalityConstraint = nullptr;
     // La clase base y las interfaces, en el orden escrito. Cual es cual no se decide aqui: eso
     // necesita saber que declara cada nombre, y el parser no lo sabe.
     std::vector<TypeSyntax*> typeConstraints;
