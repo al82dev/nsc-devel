@@ -5892,10 +5892,14 @@ private:
             return fail(error, "Stage 49 RAII cleanup has no class-descriptor destruction ABI");
         }
         LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, value, "raii.descriptor");
-        const unsigned destructionEntryIndex = node->stackPromotedObject ? 7U : 5U;
+        const bool destroysObjectInPlace =
+            node->stackPromotedObject || node->placementConstructed ||
+            (node->objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+             node->storageOwnership == sema::OwnershipKind::Borrowed);
+        const unsigned destructionEntryIndex = destroysObjectInPlace ? 7U : 5U;
         LLVMValueRef entryAddress = LLVMBuildStructGEP2(
             builder_, descriptorType_, descriptor, destructionEntryIndex,
-            node->stackPromotedObject ? "raii.object.entry.addr" : "raii.entry.addr");
+            destroysObjectInPlace ? "raii.object.entry.addr" : "raii.entry.addr");
         LLVMValueRef destructionEntry = LLVMBuildLoad2(
             builder_, ptr, entryAddress, "raii.entry");
         LLVMValueRef arguments[] = {value};

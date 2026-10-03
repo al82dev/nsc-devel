@@ -515,6 +515,9 @@ struct ProjectOopHirNode final
     // Item 312. Set on LocalDeclaration when its physical slot stores an alias address rather
     // than a value of typeKey.
     bool referenceLocal = false;
+    // NativeSharp 3.0 T06-F06. The local's storage/address is statically pinned for its lexical
+    // lifetime. Kept in HIR so coroutine/debug/FFI consumers never infer it from source syntax.
+    bool pinnedStorage = false;
     // Item 313. A call with this bit produces an address although typeKey names the referent.
     // Value contexts add PointerLoad; address contexts preserve the call itself.
     bool referenceResult = false;

@@ -636,6 +636,10 @@ evidencia del commit: `docs/3.0/items/NS3-T06-F01-move-only-defaults.md`.
 
 **Commit:** `ns3(t06-f06): pinning`
 
+**Estado:** `TERMINADA` (2026-10-03). Contrato normativo:
+`docs/3.0/language/pinning-and-stable-addresses.md`; evidencia del commit:
+`docs/3.0/items/NS3-T06-F06-pinning.md`.
+
 - **Implementación:** `pin ref T`/protocolo equivalente para objetos que no pueden moverse; construcción in-place y proyección segura de campos aprobados.
 - **Pruebas dirigidas:** self-references, coroutines, placement, containers, moves rechazados y destrucción in-place.
 - **Markdown ES/EN:** invariantes, operaciones seguras e integración con FFI.

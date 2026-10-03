@@ -4950,8 +4950,11 @@ void ProjectMethodBodyModel::analyzeVariable(
         return;
     }
 
-    const bool isReferenceLocal = variable->auxiliaryText() == "local:ref";
-    const bool isPinnedLocal = variable->auxiliaryText() == "local:pinned";
+    const bool isPinnedReferenceLocal = variable->auxiliaryText() == "local:pinned-ref";
+    const bool isReferenceLocal =
+        variable->auxiliaryText() == "local:ref" || isPinnedReferenceLocal;
+    const bool isPinnedLocal =
+        variable->auxiliaryText() == "local:pinned" || isPinnedReferenceLocal;
     const bool isDeferValueCapture =
         variable->auxiliaryText() == "local:defer-value-capture";
     const bool isForeachEnumerator =
@@ -5400,6 +5403,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         const bool ownedReturningInitializer = initializer.valid &&
             initializer.ownership == sema::OwnershipKind::Owned && initializer.ownershipTransfer;
         if (isRaii && variable->first()->kind() != ast::AstNodeKind::ObjectCreationExpression &&
+            variable->first()->kind() != ast::AstNodeKind::PlacementConstructionExpression &&
             variable->first()->kind() != ast::AstNodeKind::NewExpression &&
             variable->first()->kind() != ast::AstNodeKind::MoveExpression &&
             variable->first()->kind() != ast::AstNodeKind::NullLiteralExpression &&
@@ -5450,11 +5454,21 @@ void ProjectMethodBodyModel::analyzeVariable(
             if (initializer.addressable && initializer.assignable && initializer.typeKey == typeKey &&
                 languageEdition_ == language::LanguageEdition::V3)
             {
+                bool placeIsPrecise = true;
                 const std::optional<std::string> place = storagePlaceKey(
-                    variable->first(), scopeOrdinal);
+                    variable->first(), scopeOrdinal, &placeIsPrecise);
                 pendingReferenceReborrowSourceLocalOrdinal = referenceRootLocalOrdinal(
                     variable->first(), scopeOrdinal);
                 pendingReferencePlaceKey = place.value_or("U");
+                if (isPinnedReferenceLocal && (!place.has_value() || !placeIsPrecise))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error,
+                        variable->first()->range(),
+                        "pin ref requires a statically stable storage place; dynamic or "
+                        "unknown projections may relocate their elements");
+                }
                 if (const std::optional<std::size_t> conflict = conflictingMutableReference(
                         pendingReferencePlaceKey,
                         scopeOrdinal,

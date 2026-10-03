@@ -7826,7 +7826,9 @@ ast::AstNode* Parser::parseStatement()
     // Sin esto, `canStartTypeAt` decia "declaracion", `parseVariableDeclaration` leia el tipo y
     // pedia un nombre de variable, y el error era "expected variable name, found '.'": un
     // diagnostico que no menciona ni genericos ni miembros estaticos y manda a mirar donde no es.
-    if ((atContextualKeyword("pin") && peek().kind() == TokenKind::KwRaii) ||
+    if ((atContextualKeyword("pin") &&
+         (peek().kind() == TokenKind::KwRaii ||
+          (peek().kind() == TokenKind::Identifier && peek().lexeme() == "ref"))) ||
         at(TokenKind::KwRaii) || at(TokenKind::KwConst) || at(TokenKind::KwVolatile) || at(TokenKind::KwVar) ||
         (atContextualKeyword("ref") &&
          (canStartTypeAt(index_ + 1) || peek().kind() == TokenKind::KwVar ||
@@ -8473,10 +8475,14 @@ std::string Parser::parseInlineAssemblyConstraint(
 ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
 {
     const std::size_t beginIndex = index_;
-    const bool isPinned = atContextualKeyword("pin") && peek().kind() == TokenKind::KwRaii;
+    const bool isPinnedReferenceSyntax = atContextualKeyword("pin") &&
+        peek().kind() == TokenKind::Identifier && peek().lexeme() == "ref";
+    const bool isPinned = isPinnedReferenceSyntax ||
+        (atContextualKeyword("pin") && peek().kind() == TokenKind::KwRaii);
     if (isPinned)
     {
-        requireEdition3(current().range(), "pin raii locals");
+        requireEdition3(
+            current().range(), isPinnedReferenceSyntax ? "pin ref locals" : "pin raii locals");
         consume();
     }
     const bool isReferenceLocal = atContextualKeyword("ref") &&
@@ -8539,7 +8545,8 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
     variable->setFlag(isConst);
     if (isRaii) variable->addModifier(TokenKind::KwRaii);
     if (isVolatile) variable->addModifier(TokenKind::KwVolatile);
-    if (isReferenceLocal) variable->setAuxiliaryText("local:ref");
+    if (isReferenceLocal)
+        variable->setAuxiliaryText(isPinned ? "local:pinned-ref" : "local:ref");
     else if (isPinned) variable->setAuxiliaryText("local:pinned");
 
     if (consumeIf(TokenKind::Equal))

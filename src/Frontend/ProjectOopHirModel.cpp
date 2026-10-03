@@ -2493,6 +2493,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             auto node = makeNode(ProjectOopHirNodeKind::LocalDeclaration, statement, local->typeKey);
             node->stringValue = local->name;
             node->referenceLocal = local->isReference;
+            node->pinnedStorage = local->isPinned;
             node->ownership = local->ownership;
             node->automaticDestruction = local->isRaii || local->requiresValueDrop;
             node->objectLifetimeOwnership = local->objectLifetimeOwnership;

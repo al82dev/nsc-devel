@@ -1627,6 +1627,19 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.t06.deterministic-cleanup COMMAND nsc_ns3_t06_deterministic_cleanup_tests)
 
     add_executable(
+        nsc_ns3_t06_pinning_tests
+        tests/unit/NativeSharp3T06PinningTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t06_pinning_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_ns3_t06_pinning_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_ns3_t06_pinning_tests
+        PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t06_pinning_tests)
+    add_test(NAME nsc.ns3.t06.pinning COMMAND nsc_ns3_t06_pinning_tests)
+
+    add_executable(
         nsc_ns3_t07_error_tests
         tests/unit/NativeSharp3T07ErrorTests.cpp)
     target_link_libraries(nsc_ns3_t07_error_tests PRIVATE nsc_compilation)
