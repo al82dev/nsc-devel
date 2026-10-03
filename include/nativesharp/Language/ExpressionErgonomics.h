@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -87,5 +88,30 @@ struct InterpolationPart final
 bool parseStaticInterpolation(
     std::string_view contents,
     std::vector<InterpolationPart>& parts,
+    std::string& error);
+
+// T01-F06. Interpolation parsing and handler selection are deliberately separate. The parser
+// freezes literal/hole order; a compile-time handler decides which hole spellings it accepts and
+// appends their representation. The handler is supplied by reference, so selecting a custom
+// handler does not imply target-side allocation or a dependency on NativeSharp.Core.String.
+class StaticInterpolationHandler
+{
+public:
+    virtual ~StaticInterpolationHandler() = default;
+    virtual bool appendLiteral(std::string_view text, std::string& error) = 0;
+    virtual bool appendHole(const InterpolationPart& hole, std::string& error) = 0;
+};
+
+bool renderStaticInterpolation(
+    std::span<const InterpolationPart> parts,
+    StaticInterpolationHandler& handler,
+    std::string& error);
+
+// Built-in handler selected for an ordinary $"..." whose holes are bool/integer constants.
+// Its result is emitted as immutable program data; it does not call String or observe a locale.
+bool builtinStaticInterpolationHoleSupported(const InterpolationPart& part) noexcept;
+bool renderBuiltinStaticInterpolation(
+    std::span<const InterpolationPart> parts,
+    std::string& result,
     std::string& error);
 }

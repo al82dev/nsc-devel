@@ -16,6 +16,32 @@
 
 namespace
 {
+class UserValueInterpolationHandler final
+    : public nativesharp::language::StaticInterpolationHandler
+{
+public:
+    bool appendLiteral(std::string_view text, std::string&) override
+    {
+        result.append(text);
+        return true;
+    }
+
+    bool appendHole(
+        const nativesharp::language::InterpolationPart& hole,
+        std::string& error) override
+    {
+        if (hole.text != "user" || hole.format != "tag")
+        {
+            error = "unexpected user interpolation hole";
+            return false;
+        }
+        result += "<user-value>";
+        return true;
+    }
+
+    std::string result;
+};
+
 struct Parsed final
 {
     nativesharp::source::SourceManager sources;
@@ -85,6 +111,22 @@ int main()
     tests.expect(!language::parseStaticInterpolation("bad={}", parts, interpolationError) &&
             !interpolationError.empty(),
         "static interpolation rejects an empty hole deterministically");
+
+    tests.expect(language::parseStaticInterpolation(
+            "value={-42:D5}; hex={31:X4}; zero={-0:D2}", parts, interpolationError),
+        "built-in static handler input parses");
+    std::string rendered;
+    tests.expect(language::renderBuiltinStaticInterpolation(parts, rendered, interpolationError) &&
+            rendered == "value=-0042; hex=001F; zero=00",
+        "built-in static handler owns sign-aware width, casing, and canonical zero");
+
+    tests.expect(language::parseStaticInterpolation(
+            "left={user:tag};right", parts, interpolationError),
+        "custom compile-time handler input parses");
+    UserValueInterpolationHandler userHandler;
+    tests.expect(language::renderStaticInterpolation(parts, userHandler, interpolationError) &&
+            userHandler.result == "left=<user-value>;right",
+        "a stack-selected user handler formats a user value without String or runtime culture");
 
     constexpr std::string_view source = R"ns(
 struct Box { public int Value; }

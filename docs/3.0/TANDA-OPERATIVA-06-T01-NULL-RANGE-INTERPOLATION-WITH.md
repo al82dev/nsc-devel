@@ -67,11 +67,15 @@ oculto o duplicar efectos. Las dependencias se registran al final de este docume
 
 - El parser compartido separa literales, holes y formatos constantes.
 - Holes `bool` e integer literal admiten formato vacío y `D/d/X/x` con ancho constante.
+- `StaticInterpolationHandler` es la única autoridad de recorrido: recibe literales y holes en
+  orden textual y permite seleccionar en compile time un handler de tipo usuario sin depender de
+  `NativeSharp.Core.String` ni de cultura global.
 - El resultado se pliega a un `string-literal` internado; HIR/MIR/LLVM usan la ruta existente de
   literal y no `String.Concat`.
-- Un hole runtime se rechaza indicando que falta un formatting handler explícito. El AST actual
-  conserva el texto completo del token, no subárboles de expresión; fingir soporte aquí evaluaría
-  texto fuera del parser o perdería source ranges. El handler runtime queda ligado a la tanda 26.
+- El handler built-in comparte clasificación y rendering entre parser y binder; `-42:D5` produce
+  `-0042`, `-0` se canoniza como cero y `X` conserva casing sin consultar locale.
+- Los holes runtime se desazucaran a la superficie explícita de `NativeSharp.Core.String` cerrada
+  por T29. Un proyecto que no suministra esa superficie falla cerrado en vez de ocultar heap.
 
 ### `source with { Field = value }`
 
@@ -148,7 +152,7 @@ oculto o duplicar efectos. Las dependencias se registran al final de este docume
 | resultado valor de `?.` | 17 | `Optional<T> ??` ya usa el protocolo público; falta producir el carrier desde acceso condicional |
 | properties/métodos/cadenas de `?.` | 17 | necesita conditional-call + `Optional<T>` estable |
 | protocolo general `Length/Slice` y ranges prestados | 21 | depende de iterators/ranges y views con lifetime comprobable |
-| holes runtime y formatting handler stack/noheap | 26 | depende del subsystem de formatting y AST de holes reales |
+| holes runtime y formatting handler stack/noheap | cerrada en T29/F06 | runtime usa Core explícito; compile time usa `StaticInterpolationHandler` sin Core |
 | `with` sobre owning/move-only y cleanup en fallo | 13–14 | depende de move/borrow/drop flags y clone explícito |
 | tooling completo de todas las formas | 29 | LSP/debugger deben consumir la semántica final, no inferirla |
 

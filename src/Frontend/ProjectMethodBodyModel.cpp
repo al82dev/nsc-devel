@@ -6085,82 +6085,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     std::move(parseError));
                 break;
             }
-            bool valid = true;
             std::string rendered;
-            for (const language::InterpolationPart& part : parts)
+            std::string renderError;
+            if (!language::renderBuiltinStaticInterpolation(parts, rendered, renderError))
             {
-                if (part.kind == language::InterpolationPartKind::Literal)
-                {
-                    rendered += part.text;
-                    continue;
-                }
-                if (part.text == "true" || part.text == "false")
-                {
-                    if (!part.format.empty()) valid = false;
-                    else rendered += part.text;
-                    continue;
-                }
-
-                bool negative = false;
-                std::string_view digits = part.text;
-                if (!digits.empty() && digits.front() == '-')
-                {
-                    negative = true;
-                    digits.remove_prefix(1);
-                }
-                std::uint64_t value = 0;
-                const auto parsed = std::from_chars(
-                    digits.data(), digits.data() + digits.size(), value, 10);
-                const bool integer = !digits.empty() && parsed.ec == std::errc{} &&
-                    parsed.ptr == digits.data() + digits.size();
-                char mode = 'D';
-                std::size_t width = 0;
-                bool formatValid = part.format.empty();
-                if (!part.format.empty() &&
-                    (part.format.front() == 'D' || part.format.front() == 'd' ||
-                     part.format.front() == 'X' || part.format.front() == 'x'))
-                {
-                    mode = part.format.front();
-                    std::string_view widthText(part.format);
-                    widthText.remove_prefix(1);
-                    formatValid = widthText.empty();
-                    if (!widthText.empty())
-                    {
-                        const auto widthResult = std::from_chars(
-                            widthText.data(), widthText.data() + widthText.size(), width, 10);
-                        formatValid = widthResult.ec == std::errc{} &&
-                            widthResult.ptr == widthText.data() + widthText.size() && width <= 64U;
-                    }
-                }
-                if (!integer || !formatValid ||
-                    (negative && (mode == 'X' || mode == 'x')))
-                {
-                    valid = false;
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidStringLiteral,
-                        diagnostics::DiagnosticSeverity::Error,
-                        expression->range(),
-                        "static interpolation hole '" + part.text +
-                            "' must be a bool or integer literal with constant D/d/X/x format; "
-                            "runtime holes require an explicit formatting handler");
-                    continue;
-                }
-                char buffer[96] = {};
-                const int base = (mode == 'X' || mode == 'x') ? 16 : 10;
-                const auto converted = std::to_chars(buffer, buffer + sizeof(buffer), value, base);
-                std::string text(buffer, converted.ptr);
-                if (mode == 'X')
-                {
-                    for (char& ch : text)
-                    {
-                        ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-                    }
-                }
-                if (text.size() < width) text.insert(0, width - text.size(), '0');
-                if (negative) text.insert(text.begin(), '-');
-                rendered += text;
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidStringLiteral,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    std::move(renderError));
+                break;
             }
-            if (!valid) break;
             staticInterpolationValues_[expression] = std::move(rendered);
             result.typeKey = "string-literal";
             result.valid = true;

@@ -104,29 +104,7 @@ private:
 
 bool isStaticInterpolationHole(const language::InterpolationPart& part) noexcept
 {
-    if (part.kind != language::InterpolationPartKind::Hole) return true;
-    if (part.text == "true" || part.text == "false") return part.format.empty();
-
-    std::size_t cursor = 0;
-    const bool negative = !part.text.empty() && part.text.front() == '-';
-    if (negative) ++cursor;
-    if (cursor == part.text.size()) return false;
-    for (; cursor < part.text.size(); ++cursor)
-        if (!std::isdigit(static_cast<unsigned char>(part.text[cursor]))) return false;
-    if (part.format.empty()) return true;
-
-    const char mode = part.format.front();
-    if (mode != 'D' && mode != 'd' && mode != 'X' && mode != 'x') return false;
-    if (negative && (mode == 'X' || mode == 'x')) return false;
-    std::size_t width = 0;
-    for (std::size_t index = 1; index < part.format.size(); ++index)
-    {
-        const unsigned char byte = static_cast<unsigned char>(part.format[index]);
-        if (!std::isdigit(byte)) return false;
-        width = width * 10U + static_cast<std::size_t>(byte - '0');
-        if (width > 64U) return false;
-    }
-    return true;
+    return language::builtinStaticInterpolationHoleSupported(part);
 }
 
 bool isInvalidVoidObjectType(const ast::TypeSyntax* type) noexcept
