@@ -2531,7 +2531,13 @@ ast::AstNode* Parser::parseStructDeclaration(
     // that its fields all start at the same place. Rather than a parallel declaration kind
     // rippling through every switch over NamedTypeDeclarationKind, the difference is recorded
     // here as a layout marker and honoured in exactly one place: ProjectObjectLayoutModel.
-    if (form == StructLayoutForm::Union) node->setAuxiliaryText("union");
+    if (form == StructLayoutForm::Union)
+    {
+        node->setAuxiliaryText(
+            languageEdition_ == language::LanguageEdition::V3
+                ? "union,active-member-safe"
+                : "union");
+    }
     // SHR-013: la marca de vista viaja por el MISMO canal que "union"/"pack="/"align=" -- el
     // texto auxiliar de la declaracion, separado por comas -- porque es exactamente la misma
     // clase de dato: una propiedad del agregado que un modelo aguas abajo vuelve a leer, sin
@@ -6459,6 +6465,14 @@ ast::AstNode* Parser::parseBlock()
 ast::AstNode* Parser::parseStatement()
 {
     if (at(TokenKind::LeftBrace)) return parseBlock();
+    if (atContextualKeyword("unsafe") && peek().kind() == TokenKind::LeftBrace)
+    {
+        const SourceRange unsafeRange = consume().range();
+        requireEdition3(unsafeRange, "unsafe blocks");
+        ast::AstNode* block = parseBlock();
+        block->setAuxiliaryText("unsafe-block");
+        return block;
+    }
     if (atContextualKeyword("asm") && peek().kind() == TokenKind::LeftBrace)
         return parseInlineAssemblyStatement();
     const auto beginsConditionalPattern = [&]() noexcept

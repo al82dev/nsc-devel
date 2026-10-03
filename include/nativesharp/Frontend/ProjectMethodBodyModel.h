@@ -1467,6 +1467,9 @@ private:
         // C7 "definite assignment". Unlike every other set here it is a MUST set, not a MAY set:
         // joining two paths keeps only what both agree on. joinOwnershipFlow intersects it.
         std::unordered_set<std::size_t> assignedLocals;
+        // T03-F06. A raw union storage key maps to the one field proven active on this path.
+        // Joins keep an entry only when both reachable paths name the same field.
+        std::unordered_map<std::size_t, std::size_t> activeUnionMembers;
         // How many locals existed when this snapshot was taken. Local ordinals only ever grow, so
         // this separates "not assigned" from "did not exist yet" -- see restoreOwnershipFlow.
         std::size_t localCount = 0;
@@ -1970,6 +1973,7 @@ private:
     // C8 "type root": a union takes no compiler-provided Equals/GetHashCode -- see the refusal in
     // analyzeCall for why.
     bool aggregateIsUnion(std::string_view typeKey) const noexcept;
+    bool aggregateRequiresActiveMember(std::string_view typeKey) const noexcept;
     // NSC-LIMIT-004. ¿Esta clave nombra un STRUCT? Ni una clase, ni una interfaz, ni un enum, ni
     // un delegado, ni un `T[N]`.
     //
@@ -2128,6 +2132,7 @@ private:
     // exactly the same control-flow discipline -- it is joined by INTERSECTION at every merge, so
     // a local assigned on only one arm of an `if` is not assigned after it.
     std::unordered_set<std::size_t> assignedLocals_;
+    std::unordered_map<std::size_t, std::size_t> activeUnionMembers_;
     // State on each truth edge of a boolean expression. A collapsed post-expression snapshot is
     // insufficient for `if (a || Fill(out x)) return; use(x);`: the continuing false edge proves
     // the RHS ran even though the join of true+false does not. Entries are private analysis
@@ -2137,6 +2142,8 @@ private:
     // analyzes its own left-hand side through the ordinary expression path, so without this the
     // very statement that assigns a local would be reported as a read of it.
     const ast::AstNode* definiteAssignmentWriteTarget_ = nullptr;
+    const ast::AstNode* activeUnionWriteTarget_ = nullptr;
+    std::size_t unsafeBlockDepth_ = 0;
     // One diagnostic per offending read: a statement can be analyzed more than once (the
     // unreachable-code probe in analyzeBlock does exactly that), and that must not multiply the
     // same message.

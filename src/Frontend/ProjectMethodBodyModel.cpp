@@ -755,9 +755,12 @@ bool ProjectMethodBodyModel::build(
         invalidLocalBorrows_.clear();
         maybeInvalidLocalBorrows_.clear();
         assignedLocals_.clear();
+        activeUnionMembers_.clear();
         conditionFlowBySyntax_.clear();
         inUnevaluatedOperand_ = false;
         definiteAssignmentWriteTarget_ = nullptr;
+        activeUnionWriteTarget_ = nullptr;
+        unsafeBlockDepth_ = 0;
         ownershipFlowReachable_ = true;
         throwFlowStates_.clear();
         const std::size_t rootScopeOrdinal = createScope(
@@ -1160,6 +1163,18 @@ bool ProjectMethodBodyModel::aggregateIsUnion(std::string_view typeKey) const no
     {
         if (type.identity.key() != identity || type.syntax == nullptr) continue;
         return type.syntax->auxiliaryText().find("union") != std::string::npos;
+    }
+    return false;
+}
+
+bool ProjectMethodBodyModel::aggregateRequiresActiveMember(std::string_view typeKey) const noexcept
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+    const std::string_view identity = typeKey.substr(5);
+    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    {
+        if (type.identity.key() != identity || type.syntax == nullptr) continue;
+        return type.syntax->auxiliaryText().find("active-member-safe") != std::string::npos;
     }
     return false;
 }
@@ -2526,6 +2541,7 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwn
     state.invalidLocalBorrows = invalidLocalBorrows_;
     state.maybeInvalidLocalBorrows = maybeInvalidLocalBorrows_;
     state.assignedLocals = assignedLocals_;
+    state.activeUnionMembers = activeUnionMembers_;
     state.localCount = locals_.size();
     return state;
 }
@@ -2558,6 +2574,14 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
     }
     assignedLocals_ = state.assignedLocals;
     assignedLocals_.insert(declaredAfterSnapshot.begin(), declaredAfterSnapshot.end());
+    std::vector<std::pair<std::size_t, std::size_t>> activeAfterSnapshot;
+    for (const auto& [storage, member] : activeUnionMembers_)
+    {
+        if ((storage & 1U) == 0U && storage / 2U >= state.localCount)
+            activeAfterSnapshot.emplace_back(storage, member);
+    }
+    activeUnionMembers_ = state.activeUnionMembers;
+    activeUnionMembers_.insert(activeAfterSnapshot.begin(), activeAfterSnapshot.end());
 }
 
 // CC1-200. El patron de rama, en un solo sitio. Ver la declaracion en el header para el porque.
@@ -2666,6 +2690,21 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwners
         {
             result.assignedLocals.insert(ordinal);
         }
+    }
+    for (const auto& [storage, member] : left.activeUnionMembers)
+    {
+        const auto rightMember = right.activeUnionMembers.find(storage);
+        const bool localCreatedAfterRight =
+            (storage & 1U) == 0U && storage / 2U >= right.localCount;
+        if ((rightMember != right.activeUnionMembers.end() && rightMember->second == member) ||
+            localCreatedAfterRight)
+            result.activeUnionMembers.emplace(storage, member);
+    }
+    for (const auto& [storage, member] : right.activeUnionMembers)
+    {
+        const bool localCreatedAfterLeft =
+            (storage & 1U) == 0U && storage / 2U >= left.localCount;
+        if (localCreatedAfterLeft) result.activeUnionMembers.emplace(storage, member);
     }
     return result;
 }
@@ -2873,6 +2912,8 @@ void ProjectMethodBodyModel::analyzeBlock(
         return;
     }
 
+    const bool unsafeBlock = block->auxiliaryText() == "unsafe-block";
+    if (unsafeBlock) ++unsafeBlockDepth_;
     std::size_t activeScope = scopeOrdinal;
     if (createNestedScope)
     {
@@ -2914,6 +2955,7 @@ void ProjectMethodBodyModel::analyzeBlock(
             activeCleanupRegions_[index - 1], block, methodMemberOrdinal, activeScope);
     }
     activeCleanupRegions_.resize(cleanupDepthAtEntry);
+    if (unsafeBlock) --unsafeBlockDepth_;
 
     constexpr std::string_view matchCoveragePrefix = "match-coverage:v1:";
     if (block->auxiliaryText().starts_with(matchCoveragePrefix) && !block->text().empty())
@@ -5029,6 +5071,39 @@ void ProjectMethodBodyModel::analyzeVariable(
     else
     {
         assignedLocals_.erase(localOrdinal);
+    }
+    if (variable->first() != nullptr &&
+        variable->first()->kind() == ast::AstNodeKind::AggregateInitializerExpression &&
+        aggregateRequiresActiveMember(typeKey))
+    {
+        const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(typeKey);
+        if (typeOrdinal.has_value())
+        {
+            for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
+            {
+                const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+                if (member.kind != ClassMemberKind::Field || member.isStatic || member.isConst ||
+                    member.isUnnamedBitField) continue;
+                activeUnionMembers_[localOrdinal * 2U] = memberOrdinal;
+                break;
+            }
+        }
+    }
+    else if (variable->first() != nullptr &&
+        variable->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        aggregateRequiresActiveMember(typeKey))
+    {
+        const std::optional<ScopeName> source =
+            lookupScopeName(scopeOrdinal, variable->first()->text());
+        if (source.has_value() &&
+            (source->kind == ScopeNameKind::Local || source->kind == ScopeNameKind::Parameter))
+        {
+            const std::size_t sourceKey = source->semanticOrdinal * 2U +
+                (source->kind == ScopeNameKind::Parameter ? 1U : 0U);
+            const auto active = activeUnionMembers_.find(sourceKey);
+            if (active != activeUnionMembers_.end())
+                activeUnionMembers_[localOrdinal * 2U] = active->second;
+        }
     }
     if (pendingLocalBorrow.has_value())
     {
@@ -10309,6 +10384,39 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.valid = true;
         result.assignmentMemberOrdinal = fields.front();
         const ClassMemberSymbol& field = memberModel_->members()[fields.front()];
+        if (!typeReceiver && aggregateRequiresActiveMember(receiver.typeKey))
+        {
+            std::optional<std::size_t> storageKey;
+            if (expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const std::optional<ScopeName> storage =
+                    lookupScopeName(scopeOrdinal, expression->first()->text());
+                if (storage.has_value() &&
+                    (storage->kind == ScopeNameKind::Local ||
+                     storage->kind == ScopeNameKind::Parameter))
+                {
+                    storageKey = storage->semanticOrdinal * 2U +
+                        (storage->kind == ScopeNameKind::Parameter ? 1U : 0U);
+                }
+            }
+            const bool writing = expression == activeUnionWriteTarget_;
+            const bool activeMemberProven = storageKey.has_value() &&
+                activeUnionMembers_.contains(*storageKey) &&
+                activeUnionMembers_.at(*storageKey) == fields.front();
+            if (!writing && !language::canReadCUnionMember(
+                    activeMemberProven, unsafeBlockDepth_ != 0))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidMemberAccess,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "reading C union member '" + expression->text() +
+                        "' requires a preceding write that proves it active on every path, "
+                        "or an explicit unsafe { ... } block");
+                result.valid = false;
+                return result;
+            }
+        }
         const bool readonlyOnThis = field.isReadonly && !typeReceiver &&
             expression->first()->kind() == ast::AstNodeKind::ThisExpression &&
             readonlyFieldAssignable(field, methodMemberOrdinal);
@@ -15379,9 +15487,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // markAssignmentTarget must run BEFORE the left-hand side is analyzed, because analyzing it is
     // what would otherwise report the target as a read of an unassigned local.
     const ast::AstNode* const previousWriteTarget = definiteAssignmentWriteTarget_;
+    const ast::AstNode* const previousUnionWriteTarget = activeUnionWriteTarget_;
     if (expression->tokenKind() == TokenKind::Equal)
     {
         markAssignmentTarget(expression->first(), scopeOrdinal);
+        activeUnionWriteTarget_ = expression->first();
     }
     if (!left.valid)
     {
@@ -15390,9 +15500,61 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             false, true, false, expression->tokenKind() == TokenKind::Equal);
     }
     definiteAssignmentWriteTarget_ = previousWriteTarget;
+    activeUnionWriteTarget_ = previousUnionWriteTarget;
     if (!left.valid)
     {
         return {};
+    }
+
+    std::optional<std::size_t> assignedUnionStorage;
+    std::optional<std::size_t> assignedUnionMember;
+    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr)
+    {
+        const ast::AstNode* storageSyntax = expression->first();
+        if (storageSyntax->kind() == ast::AstNodeKind::MemberExpression)
+        {
+            if (left.assignmentMemberOrdinal.has_value())
+                assignedUnionMember = *left.assignmentMemberOrdinal;
+            storageSyntax = storageSyntax->first();
+        }
+        const std::optional<ScopeName> storage = storageSyntax != nullptr &&
+                storageSyntax->kind() == ast::AstNodeKind::IdentifierExpression
+            ? lookupScopeName(scopeOrdinal, storageSyntax->text())
+            : std::nullopt;
+        if (storage.has_value() &&
+            (storage->kind == ScopeNameKind::Local || storage->kind == ScopeNameKind::Parameter))
+        {
+            const std::size_t storageKey = storage->semanticOrdinal * 2U +
+                (storage->kind == ScopeNameKind::Parameter ? 1U : 0U);
+            std::string storageTypeKey;
+            if (storage->kind == ScopeNameKind::Local && storage->semanticOrdinal < locals_.size())
+                storageTypeKey = locals_[storage->semanticOrdinal].typeKey;
+            else if (storage->kind == ScopeNameKind::Parameter)
+            {
+                const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+                if (method != nullptr && storage->semanticOrdinal < method->parameters.size())
+                    storageTypeKey = method->parameters[storage->semanticOrdinal].typeKey;
+            }
+            if (aggregateRequiresActiveMember(storageTypeKey))
+                assignedUnionStorage = storageKey;
+        }
+        if (assignedUnionStorage.has_value() && !assignedUnionMember.has_value() &&
+            expression->second() != nullptr &&
+            expression->second()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const std::optional<ScopeName> source =
+                lookupScopeName(scopeOrdinal, expression->second()->text());
+            if (source.has_value() &&
+                (source->kind == ScopeNameKind::Local ||
+                 source->kind == ScopeNameKind::Parameter))
+            {
+                const std::size_t sourceKey = source->semanticOrdinal * 2U +
+                    (source->kind == ScopeNameKind::Parameter ? 1U : 0U);
+                const auto active = activeUnionMembers_.find(sourceKey);
+                if (active != activeUnionMembers_.end())
+                    assignedUnionMember = active->second;
+            }
+        }
     }
 
     // Stage 52: a plain (non-RAII-local) assignment target may still be a legitimate move(...)
@@ -16452,6 +16614,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         {
             movedRaiiLocals_.erase(*raiiTargetLocal);
             maybeMovedRaiiLocals_.erase(*raiiTargetLocal);
+        }
+        if (assignedUnionStorage.has_value())
+        {
+            if (assignedUnionMember.has_value())
+                activeUnionMembers_[*assignedUnionStorage] = *assignedUnionMember;
+            else
+                activeUnionMembers_.erase(*assignedUnionStorage);
         }
         left.ownsStorageDestination = ownsStorageDestination;
         left.assignable = false;
