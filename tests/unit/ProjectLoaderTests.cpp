@@ -396,6 +396,8 @@ void testBuildSettings(TestContext& tests, const std::filesystem::path& root)
         "<OutputPath>../products/Configured.lib</OutputPath>"
         "<LibraryReferenceRoot>../dependencies/O0</LibraryReferenceRoot>"
         "<CompilerJobs>12</CompilerJobs>"
+        "<GenericInstantiationDepth>96</GenericInstantiationDepth>"
+        "<GenericInstantiationLimit>32768</GenericInstantiationLimit>"
         "</PropertyGroup></Project>\n");
 
     ProjectLoader loader;
@@ -408,6 +410,9 @@ void testBuildSettings(TestContext& tests, const std::filesystem::path& root)
             "OptimizationLevel is parsed as the requested LLVM level");
         tests.expect(settings->compilerJobs == 12U,
             "CompilerJobs is parsed as the requested concurrency");
+        tests.expect(settings->genericInstantiationDepth == 96U &&
+                settings->genericInstantiationCount == 32768U,
+            "generic instantiation budgets are parsed as project defaults");
         tests.expect(settings->outputPath == (root / "products" / "Configured.lib").lexically_normal(),
             "relative OutputPath resolves from the project directory");
         tests.expect(settings->libraryReferenceRoot ==
@@ -432,6 +437,15 @@ void testBuildSettings(TestContext& tests, const std::filesystem::path& root)
     tests.expect(!loader.loadBuildSettings(directory / "BadJobs.nsproj", error).has_value() &&
             error.find("1 through 1024") != std::string::npos,
         "invalid project job count has a deterministic diagnostic");
+
+    writeFile(
+        directory / "BadGenericBudget.nsproj",
+        "<Project><PropertyGroup><GenericInstantiationDepth>0</GenericInstantiationDepth>"
+        "</PropertyGroup></Project>\n");
+    tests.expect(!loader.loadBuildSettings(
+            directory / "BadGenericBudget.nsproj", error).has_value() &&
+            error.find("GenericInstantiationDepth must be") != std::string::npos,
+        "invalid project generic budgets have deterministic diagnostics");
 }
 }
 

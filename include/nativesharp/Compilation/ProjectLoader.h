@@ -10,6 +10,9 @@
 
 namespace nativesharp::compilation
 {
+inline constexpr std::size_t MaximumGenericInstantiationDepth = 4096;
+inline constexpr std::size_t MaximumGenericInstantiationCount = 1'048'576;
+
 struct ProjectLoadOptions final
 {
     // Relative LibraryReference Include, Metadata, and Runtime paths are
@@ -21,6 +24,11 @@ struct ProjectLoadOptions final
     // LibraryReference that already exists beside its project keeps that local meaning; only a
     // missing project-relative artifact is searched below this directory.
     std::optional<std::filesystem::path> libraryReferenceFallbackRoot;
+
+    // Frontend resource budgets. The driver fills these from explicit CLI options or from the
+    // root project's build settings. An absent value selects the language's normative defaults.
+    std::optional<std::size_t> genericInstantiationDepth;
+    std::optional<std::size_t> genericInstantiationCount;
 };
 
 // Build defaults declared by the root .nsproj. The driver applies explicit
@@ -32,6 +40,8 @@ struct ProjectBuildSettings final
     std::optional<std::filesystem::path> outputPath;
     std::optional<std::filesystem::path> libraryReferenceRoot;
     std::optional<std::size_t> compilerJobs;
+    std::optional<std::size_t> genericInstantiationDepth;
+    std::optional<std::size_t> genericInstantiationCount;
 };
 
 struct ProjectLoaderStatistics final

@@ -1,10 +1,10 @@
 # Tanda 04 — Genéricos 3.0 / Generics 3.0
 
-> **Estado 2026-10-03:** `IMPLEMENTING`. F01–F04 están terminadas. Const generics cubre enteros,
+> **Estado 2026-10-03:** `TERMINADA`. F01–F07 están terminadas. Const generics cubre enteros,
 > bool, enums, tuplas estructurales, expresiones deterministas, inferencia exacta, layout e identidad
 > Win64. Packs cubre tipos/valores, zip, índices, folds, forwarding, `.nsmeta` y límites. La
-> inferencia bidireccional propaga contexto exacto a llamadas anidadas, tuples y lambdas. F05–F07
-> continúan su secuencia propia.
+> inferencia bidireccional propaga contexto exacto a llamadas anidadas, tuples y lambdas. Alias
+> transparentes/opacos, especialización controlada y presupuestos configurables cierran T04.
 
 ## Resultado / Outcome
 
@@ -23,7 +23,9 @@ dictionaries. Materialization has independent depth, count, and expansion limits
 - `c60_ns3_generic_solver` prueba el camino NativeSharp→MIR→LLVM→PE x64 O0 y devuelve 42.
 - `c61_ns3_const_generics_packs` prueba valores const, layouts, packs y forwarding hasta PE O0.
 - El source template público de const/packs se rehidrata desde `.nsmeta` en un consumidor separado.
-- Los helpers de aliases opacos y especialización continúan siendo contrato aislado.
+- Alias opacos y especialización controlada están conectados al compilador productivo.
+- `GenericInstantiationDepth`/`GenericInstantiationLimit` y sus overrides CLI configuran el único
+  presupuesto usado por checks, dumps y emisión.
 
 ## Mejora / Improvement
 
@@ -41,10 +43,11 @@ with a stable diagnostic at depth 64. Exact repeats reuse the cache and appear i
 ES/EN: La inferencia const sigue siendo exacta/directa y no prueba conversiones arbitrarias. Las
 tuplas son los únicos valores estructurales aprobados; structs nominales requieren primero un
 contrato estable de igualdad estructural. Lambdas sin tipo y method groups requieren un destino
-delegate único; el solver no explora conversiones. Opaque aliases y especialización controlada
-pertenecen a F05–F07 y continúan abiertas.
+delegate único; el solver no explora conversiones. Los defaults normativos de monomorfización son
+64/16384; reducirlos requiere configuración explícita.
 
 ## Validación / Validation
 
 Compilación Debug/O0 de `nsc`; `c60` y `c61` emitidos/ejecutados con exit 42; dumps deterministas;
-layouts 16/32; productor `.lib/.nsmeta` → consumidor exit 42; rechazos dirigidos. Sin baseline.
+layouts 16/32; productor `.lib/.nsmeta` → consumidor exit 42; límites configurables, cache hits,
+expansión ramificada y backtraces reproducibles cubiertos por pruebas dirigidas. Sin baseline.

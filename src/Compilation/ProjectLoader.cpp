@@ -344,6 +344,38 @@ bool parsePropertyGroup(
             }
             descriptor.buildSettings.compilerJobs = jobs;
         }
+        else if (property.name == "GenericInstantiationDepth")
+        {
+            if (descriptor.buildSettings.genericInstantiationDepth.has_value())
+            {
+                error = "project property 'GenericInstantiationDepth' is declared more than once";
+                return false;
+            }
+            std::size_t depth = 0;
+            if (!parsePositiveDecimal(value, MaximumGenericInstantiationDepth, depth))
+            {
+                error = "GenericInstantiationDepth must be an integer from 1 through " +
+                    std::to_string(MaximumGenericInstantiationDepth);
+                return false;
+            }
+            descriptor.buildSettings.genericInstantiationDepth = depth;
+        }
+        else if (property.name == "GenericInstantiationLimit")
+        {
+            if (descriptor.buildSettings.genericInstantiationCount.has_value())
+            {
+                error = "project property 'GenericInstantiationLimit' is declared more than once";
+                return false;
+            }
+            std::size_t count = 0;
+            if (!parsePositiveDecimal(value, MaximumGenericInstantiationCount, count))
+            {
+                error = "GenericInstantiationLimit must be an integer from 1 through " +
+                    std::to_string(MaximumGenericInstantiationCount);
+                return false;
+            }
+            descriptor.buildSettings.genericInstantiationCount = count;
+        }
         else
         {
             error = "unsupported project property '" + property.name + "'";

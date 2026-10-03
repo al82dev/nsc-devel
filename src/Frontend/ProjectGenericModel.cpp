@@ -24,6 +24,13 @@
 
 namespace nativesharp::frontend
 {
+ProjectGenericModel::ProjectGenericModel(
+    std::size_t maximumInstantiationDepth,
+    std::size_t maximumInstantiationCount) noexcept
+    : instantiationBudget_(maximumInstantiationDepth, maximumInstantiationCount)
+{
+}
+
 namespace
 {
 constexpr std::string_view kGenericRawNewAuxiliary = "stage52-generic-raw-new";

@@ -3427,6 +3427,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool artifactCacheMaximumSeen = false;
     std::uintmax_t artifactCacheMaximumBytes = 0;
     bool libraryReferenceRootSeen = false;
+    bool genericInstantiationDepthSeen = false;
+    bool genericInstantiationCountSeen = false;
     llvm_backend::LinkTimeOptimizationMode linkTimeOptimization =
         llvm_backend::LinkTimeOptimizationMode::None;
     bool linkTimeOptimizationSeen = false;
@@ -3821,6 +3823,54 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             executionScope.projectLoadOptions.libraryReferenceRoot = root.lexically_normal();
             continue;
         }
+        static constexpr std::string_view genericDepthPrefix = "--generic-depth-limit=";
+        if (argument.starts_with(genericDepthPrefix))
+        {
+            if (genericInstantiationDepthSeen)
+            {
+                error << "nsc: error: " << compilerText(
+                    "duplicate generic instantiation depth limit\n",
+                    "el límite de profundidad de instanciación genérica está repetido\n");
+                return ExitCode::CommandLineError;
+            }
+            genericInstantiationDepthSeen = true;
+            std::size_t depth = 0;
+            if (!parseBoundedDecimal(
+                    argument.substr(genericDepthPrefix.size()),
+                    compilation::MaximumGenericInstantiationDepth, depth) || depth == 0)
+            {
+                error << "nsc: error: " << compilerText(
+                    "generic instantiation depth limit must be between 1 and 4096\n",
+                    "el límite de profundidad de instanciación genérica debe estar entre 1 y 4096\n");
+                return ExitCode::CommandLineError;
+            }
+            executionScope.projectLoadOptions.genericInstantiationDepth = depth;
+            continue;
+        }
+        static constexpr std::string_view genericCountPrefix = "--generic-instantiation-limit=";
+        if (argument.starts_with(genericCountPrefix))
+        {
+            if (genericInstantiationCountSeen)
+            {
+                error << "nsc: error: " << compilerText(
+                    "duplicate generic instantiation count limit\n",
+                    "el límite de cantidad de instanciaciones genéricas está repetido\n");
+                return ExitCode::CommandLineError;
+            }
+            genericInstantiationCountSeen = true;
+            std::size_t count = 0;
+            if (!parseBoundedDecimal(
+                    argument.substr(genericCountPrefix.size()),
+                    compilation::MaximumGenericInstantiationCount, count) || count == 0)
+            {
+                error << "nsc: error: " << compilerText(
+                    "generic instantiation count limit must be between 1 and 1048576\n",
+                    "el límite de cantidad de instanciaciones genéricas debe estar entre 1 y 1048576\n");
+                return ExitCode::CommandLineError;
+            }
+            executionScope.projectLoadOptions.genericInstantiationCount = count;
+            continue;
+        }
         static constexpr std::string_view timeoutPrefix = "--timeout-ms=";
         if (argument.starts_with(timeoutPrefix))
         {
@@ -4009,7 +4059,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             action == "--emit-project-oop-lib" ||
             action == "--emit-project-oop-dll";
     };
-    if (normalizedArguments.size() >= 2U && isProjectBuildAction(normalizedArguments[0]))
+    const bool projectBuildAction = normalizedArguments.size() >= 2U &&
+        isProjectBuildAction(normalizedArguments[0]);
+    const bool projectSettingsAction = normalizedArguments.size() >= 2U &&
+        std::filesystem::path(std::string(normalizedArguments[1])).extension() == ".nsproj";
+    if (projectSettingsAction)
     {
         std::string settingsError;
         const std::optional<compilation::ProjectBuildSettings> projectSettings =
@@ -4057,7 +4111,20 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             }
             std::free(environmentRoot);
         }
-        if (normalizedArguments.size() == 2U && projectSettings->outputPath.has_value())
+        if (!genericInstantiationDepthSeen &&
+            projectSettings->genericInstantiationDepth.has_value())
+        {
+            executionScope.projectLoadOptions.genericInstantiationDepth =
+                projectSettings->genericInstantiationDepth;
+        }
+        if (!genericInstantiationCountSeen &&
+            projectSettings->genericInstantiationCount.has_value())
+        {
+            executionScope.projectLoadOptions.genericInstantiationCount =
+                projectSettings->genericInstantiationCount;
+        }
+        if (projectBuildAction && normalizedArguments.size() == 2U &&
+            projectSettings->outputPath.has_value())
         {
             std::error_code directoryError;
             const std::filesystem::path parent = projectSettings->outputPath->parent_path();
@@ -5063,7 +5130,8 @@ void Driver::printHelp(std::ostream &output)
               "<file.dll> [--profile=debug|release] [-g0|-gline-tables-only|-g] "
               "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>]\n"
            << "  Project defaults: OptimizationLevel, OutputPath, LibraryReferenceRoot, "
-              "CompilerJobs (explicit CLI options override them).\n"
+              "CompilerJobs, GenericInstantiationDepth, GenericInstantiationLimit "
+              "(explicit CLI options override them).\n"
            << "  nsc --emit-project-host-header <file.nsproj> -o <file.h>\n"
            << "  nsc --emit-project-library-metadata <file.nsproj> -o "
               "<file.nsmeta>\n"
@@ -5192,6 +5260,8 @@ void Driver::printHelp(std::ostream &output)
                << "--artifact-cache=<directorio-absoluto> habilita reutilización verificada por contenido.\n"
                << "--artifact-cache-max-mb=N limita el almacén y expulsa primero publicaciones antiguas completas.\n"
                << "--library-reference-root <directorio-absoluto> resuelve referencias de biblioteca desde una raíz de configuración.\n"
+               << "--generic-depth-limit=N y --generic-instantiation-limit=N ajustan los presupuestos de monomorfización; "
+                  "sin ellos se conservan los mínimos normativos 64 y 16384.\n"
                << "--profile=debug selecciona O0 con depuración completa; --profile=release selecciona O2 con tablas de líneas.\n"
                << "NSC_LINKER selecciona NSLink y NSC_LLVM_LIB selecciona el bibliotecario estático.\n"
                << "Este ejecutable pertenece a la línea de desarrollo NativeSharp 3.0; la documentación "
@@ -5234,6 +5304,8 @@ void Driver::printHelp(std::ostream &output)
            << "--artifact-cache-max-mb=N bounds the store and evicts complete oldest publications first.\n"
            << "--library-reference-root <absolute-directory> resolves relative LibraryReference "
               "Include, Metadata, and Runtime paths from one configuration-specific directory.\n"
+           << "--generic-depth-limit=N and --generic-instantiation-limit=N configure "
+              "monomorphization budgets; omitted options preserve the normative 64 and 16384 defaults.\n"
            << "--profile=debug selects O0 with full debug information; --profile=release selects "
               "O2 with line tables. Explicit -O and -g flags override profile defaults.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "

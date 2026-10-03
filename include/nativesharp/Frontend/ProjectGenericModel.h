@@ -156,6 +156,10 @@ public:
     static constexpr std::size_t DefaultMaximumInstantiationCount = 16384;
     static constexpr std::size_t DefaultMaximumPackExpansionCount = 1024;
 
+    explicit ProjectGenericModel(
+        std::size_t maximumInstantiationDepth = DefaultMaximumInstantiationDepth,
+        std::size_t maximumInstantiationCount = DefaultMaximumInstantiationCount) noexcept;
+
     bool build(
         const compilation::ProjectGraph& graph,
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
@@ -504,8 +508,7 @@ private:
     // NSC-LIMIT-007. El grupo de sobrecargas que se esta materializando, o 0 fuera de uno.
     std::size_t currentOverloadGroup_ = 0;
     std::size_t nextOverloadGroup_ = 0;
-    language::InstantiationBudget instantiationBudget_{
-        DefaultMaximumInstantiationDepth, DefaultMaximumInstantiationCount};
+    language::InstantiationBudget instantiationBudget_;
     std::size_t instantiationCacheHitCount_ = 0;
     // Active only while cloneNode/cloneType expands one specialization. A trailing type pack maps
     // to zero or more arguments; the map is saved/restored around recursive materialization.

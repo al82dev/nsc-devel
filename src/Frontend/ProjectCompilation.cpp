@@ -560,7 +560,11 @@ bool ProjectCompilation::compileProjectGenerics(
     if (cancellationRequested(loadError, "generics")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "generics");
-    genericModel_ = std::make_unique<ProjectGenericModel>();
+    genericModel_ = std::make_unique<ProjectGenericModel>(
+        projectLoadOptions_.genericInstantiationDepth.value_or(
+            ProjectGenericModel::DefaultMaximumInstantiationDepth),
+        projectLoadOptions_.genericInstantiationCount.value_or(
+            ProjectGenericModel::DefaultMaximumInstantiationCount));
     std::vector<PrecompiledGenericSpecialization> precompiledSpecializations;
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
