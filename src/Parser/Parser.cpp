@@ -2372,6 +2372,33 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         }
         declaration = parseVariantDeclaration();
     }
+    else if (atContextualKeyword("opaque") &&
+             peek().kind() == TokenKind::Identifier && peek().lexeme() == "type")
+    {
+        if (isPartial || isAbstract || isSealed || isStatic || isRecordStruct ||
+            isBorrowedView || isReadonlyType)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                tokens_[declarationBeginIndex].range(),
+                "opaque type declarations cannot be partial, abstract, sealed, static, record, "
+                "borrowed, or readonly");
+        }
+        if (layoutPack.has_value() || layoutAlign.has_value() || layoutSize.has_value())
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                tokens_[declarationBeginIndex].range(),
+                "an opaque type inherits the size and alignment of its representation and cannot "
+                "override pack, align, or size");
+            layoutPack.reset();
+            layoutAlign.reset();
+            layoutSize.reset();
+        }
+        declaration = parseOpaqueTypeDeclaration();
+    }
     else if (at(TokenKind::KwStruct) ||
              (atContextualKeyword("union") && peek().kind() == TokenKind::Identifier))
     {
@@ -3360,6 +3387,142 @@ ast::AstNode* Parser::parseVariantDeclaration()
         if (cases[index].payloadType != nullptr) metadata += ":payload";
     }
     node->setAuxiliaryText(std::move(metadata));
+    node->setRange(tokenRangeFrom(beginIndex));
+    return node;
+}
+
+ast::AstNode* Parser::parseOpaqueTypeDeclaration()
+{
+    const std::size_t beginIndex = index_;
+    const lexer::Token& opaqueKeyword = consume();
+    requireEdition3(opaqueKeyword.range(), "opaque type declarations");
+    if (!(at(TokenKind::Identifier) && current().lexeme() == "type"))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "expected 'type' after 'opaque'");
+        synchronizeGlobal();
+        return nullptr;
+    }
+    consume();
+
+    if (!at(TokenKind::Identifier))
+    {
+        expect(TokenKind::Identifier, "opaque type name");
+        synchronizeGlobal();
+        return nullptr;
+    }
+    const lexer::Token& name = consume();
+    const std::string typeName(name.lexeme());
+    knownTypeNames_.insert(typeName);
+
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::StructDeclaration, name.range());
+    node->setText(typeName);
+    node->setAuxiliaryText("opaque-type");
+    parseGenericParameterList(node);
+    KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
+
+    if (!expect(TokenKind::Equal, "'='"))
+    {
+        synchronizeGlobal();
+        node->setRange(tokenRangeFrom(beginIndex));
+        return node;
+    }
+    if (!canStartTypeAt(index_))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedType,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "opaque type requires a representation type after '='");
+        synchronizeGlobal();
+        node->setRange(tokenRangeFrom(beginIndex));
+        return node;
+    }
+    ast::TypeSyntax* representation = parseType();
+    parseGenericConstraintClauses(node);
+    expect(TokenKind::Semicolon, "';'");
+
+    const auto makeSelfType = [&]()
+    {
+        ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
+            name.range(), TokenKind::Identifier, typeName);
+        for (const std::string& parameter : node->genericParameters())
+        {
+            type->addTypeArgument(arena_.make<ast::TypeSyntax>(
+                name.range(), TokenKind::Identifier, parameter));
+        }
+        return type;
+    };
+    const auto markInternal = [](ast::AstNode* member)
+    {
+        member->setTokenKind(TokenKind::KwInternal);
+        member->addModifier(TokenKind::KwInternal);
+    };
+    const auto makeReturn = [&](ast::AstNode* expression)
+    {
+        ast::AstNode* statement = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::ReturnStatement, expression->range());
+        statement->setFirst(expression);
+        return statement;
+    };
+
+    constexpr std::string_view representationField = "__nsc_opaque_value";
+    ast::AstNode* field = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::FieldDeclaration, name.range());
+    field->setText(std::string(representationField));
+    field->setTypeSyntax(representation);
+    field->setAuxiliaryText("opaque-representation");
+    field->setTokenKind(TokenKind::KwPrivate);
+    field->addModifier(TokenKind::KwPrivate);
+    node->addChild(field);
+
+    ast::AstNode* from = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::MethodDeclaration, name.range());
+    from->setText("FromRepresentation");
+    from->setTypeSyntax(makeSelfType());
+    from->setAuxiliaryText("opaque-boundary:from");
+    markInternal(from);
+    from->addModifier(TokenKind::KwStatic);
+    ast::AstNode* parameter = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::ParameterDeclaration, name.range());
+    parameter->setText("value");
+    parameter->setTypeSyntax(representation);
+    from->addChild(parameter);
+    ast::AstNode* fromBody = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, name.range());
+    ast::AstNode* defaultValue = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::DefaultValueExpression, name.range());
+    defaultValue->setTypeSyntax(makeSelfType());
+    fromBody->addChild(makeVariableDeclaration(
+        makeSelfType(), "__nsc_opaque_result", defaultValue, false));
+    fromBody->addChild(makeExpressionStatement(makeAssignmentExpression(
+        makeMemberExpression(
+            makeIdentifierExpression(name.range(), "__nsc_opaque_result"),
+            std::string(representationField)),
+        makeIdentifierExpression(name.range(), "value"))));
+    fromBody->addChild(makeReturn(
+        makeIdentifierExpression(name.range(), "__nsc_opaque_result")));
+    from->setFirst(fromBody);
+    node->addChild(from);
+
+    ast::AstNode* to = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::MethodDeclaration, name.range());
+    to->setText("ToRepresentation");
+    to->setTypeSyntax(representation);
+    to->setAuxiliaryText("opaque-boundary:to");
+    markInternal(to);
+    to->addModifier(TokenKind::KwReadonly);
+    ast::AstNode* toBody = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, name.range());
+    toBody->addChild(makeReturn(makeIdentifierExpression(
+        name.range(), std::string(representationField))));
+    to->setFirst(toBody);
+    node->addChild(to);
+
     node->setRange(tokenRangeFrom(beginIndex));
     return node;
 }

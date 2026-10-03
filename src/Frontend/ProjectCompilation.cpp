@@ -304,14 +304,19 @@ void collectTypeSeedsInScope(
             continue;
         }
 
+        const bool opaqueType = tokens[index].kind() == TokenKind::Identifier &&
+            tokens[index].lexeme() == "opaque" && index + 1U < tokens.size() &&
+            tokens[index + 1U].kind() == TokenKind::Identifier &&
+            tokens[index + 1U].lexeme() == "type";
         if (tokens[index].kind() == TokenKind::KwStruct ||
             (tokens[index].kind() == TokenKind::Identifier &&
              tokens[index].lexeme() == "union") ||
+            opaqueType ||
             tokens[index].kind() == TokenKind::KwClass ||
             tokens[index].kind() == TokenKind::KwInterface ||
             tokens[index].kind() == TokenKind::KwEnum)
         {
-            ++index;
+            index += opaqueType ? 2U : 1U;
             std::vector<std::string> chain = containingTypes;
             if (index < tokens.size() && tokens[index].kind() == TokenKind::Identifier)
             {

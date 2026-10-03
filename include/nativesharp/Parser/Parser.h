@@ -84,6 +84,11 @@ private:
     // means name lookup, generics, layout, HIR, MIR and LLVM all consume the same productive AST
     // shapes they already understand instead of a second, partially integrated backend path.
     ast::AstNode* parseVariantDeclaration();
+    // NativeSharp 3.0 T04-F05. An opaque alias is represented by the ordinary nominal
+    // single-field struct machinery. The parser synthesizes the private representation and the
+    // module-internal explicit boundary operations, so every later phase sees one productive
+    // value type rather than a parallel alias-only backend path.
+    ast::AstNode* parseOpaqueTypeDeclaration();
     ast::AstNode* parseStructBody(
         ast::AstNode* declaration,
         std::string_view structName,
