@@ -314,7 +314,28 @@ private:
         const std::string& ownerName,
         const GenericLookupScope& scope,
         diagnostics::DiagnosticEngine& diagnostics,
-        const ast::TypeSyntax* expectedType = nullptr);
+        const ast::TypeSyntax* expectedType = nullptr,
+        bool reportFailure = true,
+        std::size_t inferenceDepth = 0);
+
+    bool applyExpectedTypeToExpression(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* expression,
+        const ast::TypeSyntax* expectedType,
+        const std::string& namespaceName,
+        const std::string& ownerName,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::size_t inferenceDepth = 0);
+
+    bool inferLambdaTypeArguments(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* lambda,
+        const ast::TypeSyntax* delegatePattern,
+        const GenericTemplateRecord& methodRecord,
+        const std::unordered_set<std::string>& methodParameters,
+        const GenericLookupScope& scope,
+        std::unordered_map<std::string, ast::TypeSyntax*>& inferred);
 
     ast::TypeSyntax* inferExpressionType(
         ProjectSyntaxUnit& unit,

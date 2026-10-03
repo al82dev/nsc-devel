@@ -1456,6 +1456,24 @@ bool Parser::parseTypeArgumentList(std::vector<ast::TypeSyntax*>& arguments)
     if (consumeGenericGreater()) return true;
     while (true)
     {
+        bool tupleTypeArgument = false;
+        if (at(TokenKind::LeftParen))
+        {
+            std::size_t afterType = index_;
+            if (scanTypeAt(index_, afterType) && afterType < tokens_.size())
+            {
+                const TokenKind following = tokens_[afterType].kind();
+                tupleTypeArgument = following == TokenKind::Comma ||
+                    following == TokenKind::Greater || following == TokenKind::GreaterGreater;
+            }
+        }
+        if (tupleTypeArgument)
+        {
+            ast::TypeSyntax* argument = parseType();
+            if (argument != nullptr) arguments.push_back(argument);
+            if (!consumeIf(TokenKind::Comma)) break;
+            continue;
+        }
         if (at(TokenKind::LeftParen) || at(TokenKind::Plus) || at(TokenKind::Minus) ||
             at(TokenKind::Tilde) || at(TokenKind::Bang))
         {

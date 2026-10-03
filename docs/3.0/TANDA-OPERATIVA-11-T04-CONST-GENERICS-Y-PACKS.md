@@ -163,7 +163,8 @@ No se ejecutó baseline, CTest general, O1/O2/O3, instalación, deploy ni operac
 - Opaque aliases y especialización controlada siguen siendo contratos aislados. No se publica una
   sintaxis parcial porque aún faltan privacidad de representación/metadata para el primero y
   coherence/orden parcial cross-module para la segunda.
-- Lambdas, tuples/method groups y propagación contextual profunda permanecen como deuda F04.
+- La deuda contextual de lambdas, tuples, method groups y llamadas anidadas fue cerrada por F04;
+  el contrato vigente está en `docs/3.0/language/bidirectional-inference.md`.
 
 La tanda operativa 11 queda cerrada con una vertical real F02/F03; T04 maestro permanece
-`IMPLEMENTING` mientras F04–F07 continúan su secuencia independiente.
+`IMPLEMENTING` mientras F05–F07 continúan su secuencia independiente.

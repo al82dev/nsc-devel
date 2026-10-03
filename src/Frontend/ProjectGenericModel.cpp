@@ -675,9 +675,22 @@ ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
     {
         result = arena.make<ast::TypeSyntax>(
             source->range(), source->baseTokenKind(), source->baseName());
-        for (const ast::TypeSyntax* argument : source->typeArguments())
-            result->addTypeArgument(
-                cloneAliasType(arena, argument, substitutions, ownershipConflict));
+        result->setTuple(source->isTuple());
+        for (std::size_t index = 0; index < source->typeArguments().size(); ++index)
+        {
+            ast::TypeSyntax* argument = cloneAliasType(
+                arena, source->typeArguments()[index], substitutions, ownershipConflict);
+            if (source->isTuple())
+            {
+                const std::string name = index < source->tupleElementNames().size()
+                    ? source->tupleElementNames()[index] : std::string{};
+                result->addTupleElement(argument, name);
+            }
+            else
+            {
+                result->addTypeArgument(argument);
+            }
+        }
         if (source->originProjectOrdinal().has_value())
             result->setOriginProjectOrdinal(source->originProjectOrdinal().value());
         if (source->originNamespace().has_value())
@@ -701,6 +714,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
     }
     result->setPackExpansion(source->isPackExpansion());
     result->setDynamicTrait(source->isDynamicTrait());
+    result->setPointeeConst(source->isPointeeConst());
     return result;
 }
 
@@ -1269,14 +1283,10 @@ void ProjectGenericModel::processNode(
         contextualCall = node->second();
         contextualType = inferExpressionType(unit, node->first(), currentScope);
     }
-    if (contextualCall != nullptr && contextualType != nullptr &&
-        contextualCall->kind() == ast::AstNodeKind::CallExpression &&
-        contextualCall->typeSyntaxes().empty() && !contextualCall->flag())
-    {
-        inferGenericCall(
-            unit, contextualCall, currentNamespace, ownerName, currentScope, diagnostics,
-            contextualType);
-    }
+    if (contextualCall != nullptr && contextualType != nullptr)
+        applyExpectedTypeToExpression(
+            unit, contextualCall, contextualType, currentNamespace, ownerName, currentScope,
+            diagnostics);
     const auto processChild = [&](ast::AstNode* child)
     {
         processNode(unit, child, currentNamespace, ownerName, currentScope, false, diagnostics);
@@ -1588,6 +1598,22 @@ ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
                 return nullptr;
             return left;
         }
+        case ast::AstNodeKind::TupleExpression:
+        {
+            ast::TypeSyntax* tuple = unit.arena().make<ast::TypeSyntax>(
+                expression->range(), lexer::TokenKind::Invalid, "$tuple");
+            tuple->setTuple();
+            for (const ast::AstNode* element : expression->children())
+            {
+                if (element == nullptr ||
+                    element->kind() == ast::AstNodeKind::SpreadElementExpression)
+                    return nullptr;
+                ast::TypeSyntax* elementType = inferExpressionType(unit, element, scope);
+                if (elementType == nullptr) return nullptr;
+                tuple->addTupleElement(elementType);
+            }
+            return tuple;
+        }
         case ast::AstNodeKind::CallExpression:
         {
             const auto found = inferredCallReturnTypes_.find(expression);
@@ -1686,9 +1712,29 @@ bool ProjectGenericModel::inferTypeArguments(
             actual->range(), actual->baseTokenKind(), actual->baseName());
         if (pattern->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::None)
             value->setOwnershipQualifier(actual->ownershipQualifier());
+        value->setTuple(actual->isTuple());
+        value->setDynamicTrait(actual->isDynamicTrait());
+        value->setPointeeConst(actual->isPointeeConst());
+        if (actual->originProjectOrdinal().has_value())
+            value->setOriginProjectOrdinal(*actual->originProjectOrdinal());
+        if (actual->originNamespace().has_value())
+            value->setOriginNamespace(*actual->originNamespace());
         bool conflict = false;
-        for (const ast::TypeSyntax* argument : actual->typeArguments())
-            value->addTypeArgument(cloneAliasType(unit.arena(), argument, {}, conflict));
+        for (std::size_t index = 0; index < actual->typeArguments().size(); ++index)
+        {
+            ast::TypeSyntax* argument = cloneAliasType(
+                unit.arena(), actual->typeArguments()[index], {}, conflict);
+            if (actual->isTuple())
+            {
+                const std::string name = index < actual->tupleElementNames().size()
+                    ? actual->tupleElementNames()[index] : std::string{};
+                value->addTupleElement(argument, name);
+            }
+            else
+            {
+                value->addTypeArgument(argument);
+            }
+        }
         for (std::size_t index = 0; index < modifierPrefix; ++index)
             value->addModifier(actual->modifiers()[index]);
         const auto prior = inferred.find(pattern->baseName());
@@ -1955,6 +2001,149 @@ bool ProjectGenericModel::normalizeGenericArguments(
     return true;
 }
 
+bool ProjectGenericModel::applyExpectedTypeToExpression(
+    ProjectSyntaxUnit& unit,
+    ast::AstNode* expression,
+    const ast::TypeSyntax* expectedType,
+    const std::string& namespaceName,
+    const std::string& ownerName,
+    const GenericLookupScope& scope,
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::size_t inferenceDepth)
+{
+    if (expression == nullptr || expectedType == nullptr ||
+        inferenceDepth > DefaultMaximumInstantiationDepth)
+        return false;
+
+    if (expression->kind() == ast::AstNodeKind::CallExpression)
+    {
+        if (!expression->typeSyntaxes().empty() || expression->flag()) return true;
+        if (!inferGenericCall(
+                unit, expression, namespaceName, ownerName, scope, diagnostics, expectedType,
+                true, inferenceDepth + 1U))
+            return false;
+        if (!expression->typeSyntaxes().empty() || expression->flag())
+            return processGenericCall(
+                unit, expression, namespaceName, ownerName, scope, diagnostics);
+        return true;
+    }
+
+    if (expression->kind() == ast::AstNodeKind::ConditionalExpression)
+    {
+        const bool whenTrue = applyExpectedTypeToExpression(
+            unit, expression->second(), expectedType, namespaceName, ownerName, scope,
+            diagnostics, inferenceDepth + 1U);
+        const bool whenFalse = applyExpectedTypeToExpression(
+            unit, expression->third(), expectedType, namespaceName, ownerName, scope,
+            diagnostics, inferenceDepth + 1U);
+        return whenTrue && whenFalse;
+    }
+
+    if (expression->kind() == ast::AstNodeKind::TupleExpression && expectedType->isTuple() &&
+        expression->children().size() == expectedType->typeArguments().size())
+    {
+        bool valid = true;
+        for (std::size_t index = 0; index < expression->children().size(); ++index)
+        {
+            ast::AstNode* element = expression->children()[index];
+            if (element == nullptr || element->kind() == ast::AstNodeKind::SpreadElementExpression)
+            {
+                valid = false;
+                continue;
+            }
+            valid = applyExpectedTypeToExpression(
+                unit, element, expectedType->typeArguments()[index], namespaceName, ownerName,
+                scope, diagnostics, inferenceDepth + 1U) && valid;
+        }
+        return valid;
+    }
+
+    if (expression->kind() == ast::AstNodeKind::MoveExpression)
+        return applyExpectedTypeToExpression(
+            unit, expression->first(), expectedType, namespaceName, ownerName, scope,
+            diagnostics, inferenceDepth + 1U);
+
+    return true;
+}
+
+bool ProjectGenericModel::inferLambdaTypeArguments(
+    ProjectSyntaxUnit& unit,
+    const ast::AstNode* lambda,
+    const ast::TypeSyntax* delegatePattern,
+    const GenericTemplateRecord& methodRecord,
+    const std::unordered_set<std::string>& methodParameters,
+    const GenericLookupScope& scope,
+    std::unordered_map<std::string, ast::TypeSyntax*>& inferred)
+{
+    if (lambda == nullptr || lambda->kind() != ast::AstNodeKind::LambdaExpression ||
+        delegatePattern == nullptr || delegatePattern->modifiers().size() != 0U)
+        return true;
+
+    TemplateState* delegate = nullptr;
+    for (TemplateState& state : templateStates_)
+    {
+        if (state.record.kind != GenericTemplateKind::Delegate ||
+            state.record.parameters.size() != delegatePattern->typeArguments().size() ||
+            !templateVisible(unit.projectOrdinal(), state.record))
+            continue;
+        const std::string qualified = qualifiedName(
+            state.record.namespaceName, state.record.qualifiedTypeName);
+        if (state.record.name != delegatePattern->baseName() &&
+            qualified != delegatePattern->baseName())
+            continue;
+        if (delegate != nullptr) return true;
+        delegate = &state;
+    }
+    if (delegate == nullptr || delegate->syntax == nullptr) return true;
+
+    std::vector<const ast::AstNode*> delegateParameters;
+    for (const ast::AstNode* child : delegate->syntax->children())
+        if (child != nullptr && child->kind() == ast::AstNodeKind::ParameterDeclaration)
+            delegateParameters.push_back(child);
+    if (delegateParameters.size() != lambda->children().size()) return false;
+
+    std::unordered_map<std::string, const ast::TypeSyntax*> delegateArguments;
+    for (std::size_t index = 0; index < delegate->record.parameters.size(); ++index)
+        delegateArguments.emplace(
+            delegate->record.parameters[index], delegatePattern->typeArguments()[index]);
+
+    GenericLookupScope lambdaScope = scope;
+    for (std::size_t index = 0; index < lambda->children().size(); ++index)
+    {
+        const ast::AstNode* lambdaParameter = lambda->children()[index];
+        bool conflict = false;
+        ast::TypeSyntax* signaturePattern = cloneAliasType(
+            unit.arena(), delegateParameters[index]->typeSyntax(), delegateArguments, conflict);
+        if (conflict || signaturePattern == nullptr) return false;
+        if (lambdaParameter != nullptr && lambdaParameter->typeSyntax() != nullptr)
+        {
+            if (!inferTypeArguments(
+                    unit, signaturePattern, lambdaParameter->typeSyntax(), methodRecord,
+                    methodParameters, inferred))
+                return false;
+            lambdaScope.valueTypes[lambdaParameter->text()] = lambdaParameter->typeSyntax();
+        }
+    }
+
+    if (!lambda->flag() && lambda->first() != nullptr && delegate->syntax->typeSyntax() != nullptr)
+    {
+        std::unordered_map<std::string, const ast::TypeSyntax*> methodArguments;
+        for (const auto& [name, type] : inferred) methodArguments.emplace(name, type);
+        bool conflict = false;
+        ast::TypeSyntax* returnPattern = cloneAliasType(
+            unit.arena(), delegate->syntax->typeSyntax(), delegateArguments, conflict);
+        if (conflict || returnPattern == nullptr) return false;
+        returnPattern = cloneAliasType(
+            unit.arena(), returnPattern, methodArguments, conflict);
+        ast::TypeSyntax* bodyType = inferExpressionType(unit, lambda->first(), lambdaScope);
+        if (!conflict && bodyType != nullptr &&
+            !inferTypeArguments(
+                unit, returnPattern, bodyType, methodRecord, methodParameters, inferred))
+            return false;
+    }
+    return true;
+}
+
 bool ProjectGenericModel::inferGenericCall(
     ProjectSyntaxUnit& unit,
     ast::AstNode* call,
@@ -1962,10 +2151,24 @@ bool ProjectGenericModel::inferGenericCall(
     const std::string& ownerName,
     const GenericLookupScope& scope,
     diagnostics::DiagnosticEngine& diagnostics,
-    const ast::TypeSyntax* expectedType)
+    const ast::TypeSyntax* expectedType,
+    bool reportFailure,
+    std::size_t inferenceDepth)
 {
     if (call == nullptr || call->kind() != ast::AstNodeKind::CallExpression ||
         !call->typeSyntaxes().empty()) return true;
+    if (inferenceDepth > DefaultMaximumInstantiationDepth)
+    {
+        if (reportFailure)
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error,
+                call->range(),
+                "generic inference exceeded the bounded expression depth (" +
+                    std::to_string(DefaultMaximumInstantiationDepth) +
+                    "); write type arguments explicitly");
+        return false;
+    }
     ast::AstNode* callee = methodCalleeSyntax(call);
     const std::string methodName = methodCalleeName(call);
     if (callee == nullptr || methodName.empty()) return true;
@@ -1989,21 +2192,23 @@ bool ProjectGenericModel::inferGenericCall(
         unit, site, requestedOwner, methodName, kAny, kAny);
     if (named.empty()) return true;
 
-    // Infer inner calls first so `Identity(Identity(42))` has a concrete argument type at the
-    // outer site.  The later ordinary AST walk may visit the inner node again, but its callee has
-    // already been rewritten to a non-template specialization and the cache prevents duplication.
+    // First collect bottom-up evidence without diagnosing a missing context. A later candidate may
+    // provide an exact parameter type to the inner call (for example `int x = Id(Make())`).
+    // The source AST is finite and inferenceDepth applies the same public bound as materialization.
     for (ast::AstNode* argument : call->children())
     {
         if (argument == nullptr || argument->kind() != ast::AstNodeKind::CallExpression ||
             (!argument->typeSyntaxes().empty() || argument->flag())) continue;
-        inferGenericCall(unit, argument, namespaceName, ownerName, scope, diagnostics, nullptr);
+        inferGenericCall(
+            unit, argument, namespaceName, ownerName, scope, diagnostics, nullptr, false,
+            inferenceDepth + 1U);
         if (!argument->typeSyntaxes().empty())
             processGenericCall(unit, argument, namespaceName, ownerName, scope, diagnostics);
     }
 
-    // A non-generic overload in the same owner remains an ordinary overload-resolution problem.
-    // This early phase cannot compare its conversions with a synthesized generic candidate, so it
-    // leaves the call untouched; explicit `<...>` remains available when the generic is intended.
+    // A potentially applicable non-generic overload remains an ordinary overload-resolution
+    // problem. An exact expected type can, however, prove an overload irrelevant by return type;
+    // adding such an unrelated declaration must not disable otherwise deterministic inference.
     for (const TemplateState* candidate : named)
     {
         if (candidate == nullptr || candidate->parent == nullptr) continue;
@@ -2012,7 +2217,11 @@ bool ProjectGenericModel::inferGenericCall(
             if (sibling != nullptr && sibling->kind() == ast::AstNodeKind::MethodDeclaration &&
                 sibling->genericParameters().empty() && sibling->text() == methodName &&
                 valueParameterCount(sibling) == call->children().size())
-                return true;
+            {
+                if (expectedType == nullptr || sibling->typeSyntax() == nullptr ||
+                    typeSpelling(sibling->typeSyntax()) == typeSpelling(expectedType))
+                    return true;
+            }
         }
     }
 
@@ -2092,11 +2301,61 @@ bool ProjectGenericModel::inferGenericCall(
                 viable = inferTypeArguments(
                     unit, pattern, actual, candidate->record, genericParameters, inferred);
             }
+            else if (call->children()[index] != nullptr &&
+                     call->children()[index]->kind() == ast::AstNodeKind::LambdaExpression)
+            {
+                viable = inferLambdaTypeArguments(
+                    unit, call->children()[index], pattern, candidate->record,
+                    genericParameters, scope, inferred);
+            }
         }
         if (viable && expectedType != nullptr && candidate->syntax->typeSyntax() != nullptr)
             viable = inferTypeArguments(
                 unit, candidate->syntax->typeSyntax(), expectedType,
                 candidate->record, genericParameters, inferred);
+
+        // With one visible generic template there is no candidate-state leak: any parameter type
+        // made fully concrete by the first pass is safe context for an unresolved nested
+        // expression. This is the top-down half of the ordered bidirectional algorithm.
+        if (viable && named.size() == 1U)
+        {
+            const std::function<bool(const ast::TypeSyntax*)> containsOpenParameter =
+                [&](const ast::TypeSyntax* syntax)
+                {
+                    if (syntax == nullptr) return false;
+                    if (genericParameters.contains(syntax->baseName()) &&
+                        syntax->typeArguments().empty())
+                        return true;
+                    return std::ranges::any_of(
+                        syntax->typeArguments(), containsOpenParameter);
+                };
+            std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
+            for (const auto& [name, type] : inferred) substitutions.emplace(name, type);
+            for (std::size_t index = 0; viable && index < call->children().size(); ++index)
+            {
+                if (inferExpressionType(unit, call->children()[index], scope) != nullptr) continue;
+                bool conflict = false;
+                ast::TypeSyntax* contextualParameter = cloneAliasType(
+                    unit.arena(), parameters[*mapping[index]]->typeSyntax(), substitutions,
+                    conflict);
+                if (conflict || contextualParameter == nullptr ||
+                    containsOpenParameter(contextualParameter))
+                    continue;
+                if (!applyExpectedTypeToExpression(
+                        unit, call->children()[index], contextualParameter, namespaceName,
+                        ownerName, scope, diagnostics, inferenceDepth + 1U))
+                {
+                    viable = false;
+                    break;
+                }
+                ast::TypeSyntax* actual = inferExpressionType(
+                    unit, call->children()[index], scope);
+                if (actual != nullptr)
+                    viable = inferTypeArguments(
+                        unit, parameters[*mapping[index]]->typeSyntax(), actual,
+                        candidate->record, genericParameters, inferred);
+            }
+        }
         if (!viable || inferred.size() != candidate->record.parameters.size()) continue;
         Inference success;
         success.candidate = candidate;
@@ -2110,13 +2369,14 @@ bool ProjectGenericModel::inferGenericCall(
 
     if (successes.empty())
     {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidCall,
-            diagnostics::DiagnosticSeverity::Error,
-            call->range(),
-            "type arguments for generic method '" + methodName +
-                "' cannot be inferred from the local call arguments or exact expected type; "
-                "write them explicitly");
+        if (reportFailure)
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error,
+                call->range(),
+                "type arguments for generic method '" + methodName +
+                    "' cannot be inferred from the local call arguments or exact expected type; "
+                    "write them explicitly");
         return false;
     }
     const std::size_t bestSpecificity = std::ranges::max_element(
@@ -2160,12 +2420,13 @@ bool ProjectGenericModel::inferGenericCall(
 
     if (!std::ranges::all_of(successes, sameArguments))
     {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidCall,
-            diagnostics::DiagnosticSeverity::Error,
-            call->range(),
-            "generic method call '" + methodName +
-                "' has equally specific but incompatible type inferences; write type arguments explicitly");
+        if (reportFailure)
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error,
+                call->range(),
+                "generic method call '" + methodName +
+                    "' has equally specific but incompatible type inferences; write type arguments explicitly");
         return false;
     }
 

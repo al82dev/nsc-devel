@@ -1,5 +1,10 @@
 # Tanda operativa 10 — T04 constraint solver, inferencia y budgets
 
+> **Actualización 2026-10-03:** `NS3-T04-F04` cerró la deuda contextual original. El solver ahora
+> propaga tipos exactos a llamadas anidadas, condicionales y tuples; usa parámetros escritos de
+> lambdas como evidencia y mantiene method groups/lambdas sin tipo bajo un destino delegate único.
+> El contrato vigente está en `docs/3.0/language/bidirectional-inference.md`.
+
 ## Objetivo
 
 Conectar al compilador real tres piezas de T04 que no podían quedarse como helpers aislados:
@@ -156,8 +161,8 @@ No se ejecutó baseline, CTest general, O1/O2/O3, instalación, deploy ni operac
 
 ## Límites y dependencias explícitas
 
-- Lambdas, tuplas contextuales, method groups y contexto propagado a llamadas genéricas anidadas:
-  deuda de inferencia T04, no afirmada por esta entrega.
+- F04 cerró lambdas tipadas, tuples contextuales, destino único para method groups/lambdas sin tipo
+  y contexto propagado a llamadas genéricas anidadas. No se infiere mediante conversiones.
 - Const generics, packs, opaque aliases y partial specialization: tanda operativa 11.
 - Configuración pública de budgets por `.nsproj`/CLI: candidata posterior; los límites actuales son
   contrato fijo y visible del compilador Windows x64.
