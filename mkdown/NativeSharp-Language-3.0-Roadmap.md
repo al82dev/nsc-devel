@@ -40,6 +40,7 @@ Al promover 3.0, el lenguaje debe ofrecer:
 7. **Diagnóstico determinista / Deterministic diagnostics.** El mismo programa, versión y configuración producen el mismo resultado y las mismas categorías de error.
 8. **Evolución controlada / Controlled evolution.** Las rupturas exigen edición de lenguaje, guía de migración y diagnóstico accionable.
 9. **Implementación independiente / Independently implementable.** Cada ítem del roadmap tiene un ID, un commit lógico propio y criterios de aceptación aislables.
+10. **Depurabilidad semántica / Semantic debuggability.** Toda feature define desde su propia tanda qué nombres, valores, scopes, lifetimes, sequence points y estados optimizados publica. Un PDB que contiene nombres pero muestra valores falsos no es conforme.
 
 ---
 
@@ -57,6 +58,7 @@ Al promover 3.0, el lenguaje debe ofrecer:
 - módulos y visibilidad como conceptos del lenguaje;
 - modelo de memoria, layout, ABI y FFI expresados por el lenguaje;
 - reglas normativas de lowering cuando afectan comportamiento observable;
+- nombres, lifetimes y sequence points observables que el backend debe preservar para una depuración conforme;
 - especificación, pruebas de conformidad y política de compatibilidad del lenguaje.
 
 ### 2.2 Fuera del lenguaje / Explicitly outside the language
@@ -73,6 +75,11 @@ Al promover 3.0, el lenguaje debe ofrecer:
 | Reflection con registro global de tipos | Runtime | No se añade; solo introspección estática en `comptime` |
 
 Una tarea auxiliar de SDK/runtime/toolchain puede aparecer como **dependencia de integración**, pero nunca se contabiliza como feature de lenguaje 3.0.
+
+La interfaz del debugger permanece fuera del lenguaje. No obstante, el significado observable de
+un local, su comienzo y fin de vida, el nombre fuente de un binding, los puntos lógicos de parada y
+la clasificación de código generado sí forman parte del contrato semántico que el compilador debe
+entregar al backend. La sección 11 consolida el contrato PDB/Debug transversal.
 
 ### 2.3 Gate previo obligatorio de NSC 2.0 / Mandatory NSC 2.0 gate
 
@@ -103,7 +110,10 @@ Una feature solo está terminada cuando incluye:
 - pruebas dirigidas, de interacción y de regresión;
 - ejemplos y documentación Markdown equivalentes en español e inglés;
 - nota de compatibilidad y, si cambia 2.x, migración o fix-it;
-- ausencia de heap, RTTI o runtime oculto demostrada cuando se prometa costo cero.
+- ausencia de heap, RTTI o runtime oculto demostrada cuando se prometa costo cero;
+- contrato Debug/PDB de la feature: nombres, tipos, scopes, lifetimes, sequence points, código
+  generado y comportamiento O0/O2 aplicable;
+- prueba de que ningún valor falso se publica como disponible.
 
 ### 3.3 Tipos mínimos de prueba / Minimum test classes
 
@@ -117,18 +127,44 @@ Cada carpeta de feature usa, según corresponda:
 - `compile-fail` con código y span de diagnóstico;
 - `interop-c` o `interop-cpp`;
 - `consteval`, `layout`, `drop-order`, `borrow`, `concurrency`;
+- `debug-mir`, `debug-ir`, `debug-pdb` y `debug-session` cuando la feature produzca estado
+  observable, bindings, control de flujo o procedimientos;
 - `compat-2x` y `migration`.
 
 ### 3.4 Regla de baseline / Baseline rule
 
-El baseline de cada tanda se etiqueta `lang-3.0-tNN-baseline`. Para crearlo deben pasar:
+Las tandas de desarrollo no ejecutan automáticamente el baseline general. Cada commit construye
+lo necesario y corre solamente sus pruebas dirigidas. Las subsecciones “Baseline TNN” expresan
+criterios de aceptación acumulados, no autorizan por sí solas una corrida completa.
 
-1. todas las pruebas nuevas de la tanda;
+Un baseline se crea únicamente en un milestone autorizado expresamente. En ese momento deben pasar:
+
+1. todas las pruebas nuevas de las tandas incluidas;
 2. toda la suite acumulada 2.x y 3.0;
 3. build limpio e incremental en Debug y Release para Win64;
 4. determinismo de salida en dos builds desde directorios distintos;
-5. cero regresiones ABI no aprobadas;
+5. cero regresiones ABI o Debug/PDB no aprobadas;
 6. paridad de documentación ES/EN y ejemplos compilables.
+
+Hasta esa autorización no se instala ningún artefacto experimental sobre la instalación estable de
+C:\native-sharp.
+
+### 3.5 Contrato Debug/PDB transversal / Cross-cutting Debug/PDB contract
+
+Cada feature que cree variables, bindings, tipos, control de flujo, procedimientos o código
+generado debe definir y probar desde su tanda:
+
+- qué nombres fuente son visibles y cuáles son internos;
+- cuándo comienza y termina la vida observable de cada valor;
+- qué sequence points existen y dónde liga un breakpoint;
+- cómo se representan parámetros, locals, constantes, capturas y temporales;
+- qué ocurre después de move, destrucción, optimización o suspensión;
+- cómo se clasifican thunks, helpers, funclets, inline sites y state machines;
+- qué garantías ofrece O0 y qué degradaciones honestas admite O2;
+- cómo se inspeccionan MIR, LLVM IR, CodeView/PDB y una sesión real.
+
+NS3-T15-F05 es la auditoría final de este contrato. No es el momento en que se implementa por
+primera vez la depurabilidad de las features T00–T14.
 
 ---
 
@@ -1158,9 +1194,17 @@ El baseline de cada tanda se etiqueta `lang-3.0-tNN-baseline`. Para crearlo debe
 
 **Commit:** `ns3(t15-f05): debug-semantics`
 
-- **Implementación:** definir nombres/lifetimes observables para closures, variants, coroutines y temporales; esto es contrato para tooling, no implementación del debugger.
-- **Pruebas dirigidas:** PDB inspection automatizada, optimized stepping invariants, variant display metadata y async state names.
-- **Markdown ES/EN:** qué información debe exponer un compilador conforme.
+- **Implementación:** auditar el contrato transversal iniciado en T00 y aplicado por T01–T14:
+  nombres, tipos, valores, scopes, lifetimes, sequence points, código generado, inline sites,
+  closures, variants, ownership, exceptions, coroutines y temporales. Verificar que O0 prioriza
+  fidelidad fuente y que O2 nunca inventa valores. Esto define la evidencia que debe producir el
+  compilador; la interfaz del debugger sigue perteneciendo a tooling.
+- **Pruebas dirigidas:** inspección estructural MIR/LLVM/PDB, sesión DAP real, invariantes de
+  stepping O0/O2, valores exactos, ausencia antes de declaración, fin de vida, variant display
+  metadata, async state names, SEH/RAII y módulos DLL. Incluir obligatoriamente la reproducción
+  local-SEH descrita en la sección 11.
+- **Markdown ES/EN:** contrato de información observable, estados de disponibilidad, clasificación
+  de código generado, degradaciones permitidas bajo optimización y matriz por feature.
 
 ## NS3-T15-F06 — Auditoría de costos ocultos / Hidden-cost audit
 
@@ -1175,6 +1219,7 @@ El baseline de cada tanda se etiqueta `lang-3.0-tNN-baseline`. Para crearlo debe
 - Corpus completo compila y ejecuta en Win64 sin CLR.
 - Cero regresiones críticas en rendimiento/size respecto al código manual equivalente.
 - Matriz de interacciones no tiene combinaciones P0/P1 pendientes.
+- Auditoría Debug/PDB no contiene valores falsos, scopes prematuros ni sequence points O0 faltantes.
 - Cost audit publicado en ES/EN.
 - Etiqueta: `lang-3.0-t15-baseline`.
 
@@ -1355,6 +1400,10 @@ Requiere fixtures binarios conservados desde RC1 para:
 - typed errors y coroutine frames públicos;
 - symbols, mangling, metadata y PDB contract.
 
+El PDB contract congelado incluye semántica observable, no sólo la existencia física del archivo:
+líneas, columnas cuando apliquen, scopes, tipos, valores, location ranges, inline sites y
+clasificación de procedimientos generados.
+
 ### 4.5 Documentation freeze
 
 Cada cláusula normativa debe tener ID y versión. La edición española y la inglesa tienen la misma autoridad; discrepancias bloquean promoción hasta resolverse.
@@ -1408,6 +1457,7 @@ NativeSharp Language 3.0.0 solo se promueve si se cumplen todos:
 | Regresión | Suite 2.x dentro de la meta de compatibilidad aprobada |
 | Ownership | Cero fallos conocidos de soundness; corpus negativo rechazado |
 | ABI | Win64 congelada y validada contra fixtures/MSVC donde aplique |
+| Debug/PDB | O0 fiel a fuente; O2 honesto; cero valores falsos; SEH/RAII/inline/DLL certificados |
 | Rendimiento | Sin costos ocultos; presupuestos T15 cumplidos |
 | Determinismo | Builds y `comptime` reproducibles bajo perfil hermético |
 | Interop | DLL/C callbacks/layout/errors probados end-to-end |
@@ -1460,6 +1510,7 @@ T13 ABI/unsafe y T14 numéricos pueden avanzar tras T00, cerrando después de T0
 T15 integración requiere T01–T14
 T16 migración requiere semántica candidata
 T17 congelamiento requiere todos los baselines
+`Debug/PDB` cruza T00–T17: cada feature entrega su contrato y T15/T17 sólo lo certifican
 ```
 
 Las tandas expresan dependencias y puntos de estabilización, no fechas. Se permite trabajo paralelo siempre que cada commit conserve pruebas independientes y no se cree un baseline con dependencias incompletas.
@@ -1477,6 +1528,9 @@ Las tandas expresan dependencias y puntos de estabilización, no fechas. Se perm
 - [ ] Casos positivos y negativos
 - [ ] MIR/codegen/ABI checks cuando aplique
 - [ ] Ownership/drop/noheap checks cuando aplique
+- [ ] Contrato Debug/PDB: nombres, tipos, valores, scopes, lifetimes y sequence points
+- [ ] Inspección MIR/LLVM/PDB y sesión real cuando exista estado observable
+- [ ] O0 no pierde fidelidad por SEH; O2 no inventa valores
 - [ ] Interacciones con al menos dos features previas
 - [ ] Compatibilidad 2.x y nota de migración
 - [ ] Markdown ES y EN con clause IDs equivalentes
@@ -1500,3 +1554,413 @@ NativeSharp Language 3.0 no es “C# sin CLR” ni “C++ con otra sintaxis”. 
 - evolución por ediciones y contratos medibles.
 
 La versión 3.0 queda completa cuando esas propiedades están simultáneamente especificadas, implementadas, probadas, documentadas en ambos idiomas y congeladas; no cuando alcanza un número arbitrario de features.
+
+---
+
+## 11. Contrato maestro PDB y modo Debug / Master PDB and Debug contract
+
+Esta sección consolida la auditoría de PDB realizada el 2 de octubre de 2026. Es parte normativa
+del roadmap, no una lista opcional posterior a la implementación del lenguaje.
+
+### 11.1 Veredicto de la auditoría
+
+El caso real de al82dev demostró que un PDB puede:
+
+- ser nuevo;
+- coincidir con el SHA-256 del fuente;
+- corresponder al ejecutable correcto;
+- contener procedimientos, líneas y nombres;
+- y aun así publicar estado fuente falso.
+
+El PDB inspeccionado registró Program.ns con SHA-256:
+
+    865E076969C05A38ABF8A3A65598C9599C8E5048AA0EF06701784A652AF216E8
+
+La identidad fuente era correcta. La información semántica no:
+
+| Local | Registro CodeView observado | Valor publicado | Valor correcto |
+|---|---|---:|---:|
+| a | S_CONSTANT | 10 | 10 |
+| b | S_CONSTANT | 90 | 90 |
+| c | S_CONSTANT | 10 | 100 |
+| x | S_CONSTANT | 1 | 1, solamente después de declararse |
+
+Las declaraciones de a, b, c y x tampoco tenían sitios ejecutables propios en la tabla de líneas.
+Por tanto, éste no es un problema de “rebuild” ni de PDB obsoleto: es un defecto del productor.
+
+### 11.2 Cadena causal confirmada
+
+1. Program.Main contiene try/catch.
+2. El lowering marca la función con personalidad Windows SEH.
+3. La ruta especial O0 ejecuta mem2reg sobre toda la función para evitar la corrupción histórica
+   de frame B-001.
+4. Los locals ordinarios se habían descrito sólo con dbg.declare asociado a allocas.
+5. mem2reg elimina los slots, transforma valores a SSA/constantes y puede eliminar las únicas
+   instrucciones que sostenían las líneas de declaración.
+6. No existe assignment tracking completo para cada inicialización y asignación de local ordinario.
+7. CodeView publica constantes sin rangos equivalentes a los S_DEFRANGE esperados.
+8. nsdbg recibe x con valor presente y no tiene evidencia suficiente para ocultarlo antes de su
+   declaración.
+
+La corrección histórica B-001 sigue siendo obligatoria. El roadmap prohíbe “arreglar” la
+depuración reintroduciendo corrupción de ejecución.
+
+### 11.3 Grieta exacta en las pruebas existentes
+
+| Prueba | Lo que demuestra | Lo que no cruza |
+|---|---|---|
+| DebugScopesT36 | scopes ordinarios, local tardío, dos variables i | no contiene SEH; no ejecuta mem2reg especial |
+| DebugValuesT37 | parámetros, out, catch tipado y globals | locals ricos y SEH están en funciones distintas |
+| DebugPdb | catálogo amplio y control de excepciones | no exige valores/lifetimes exactos en cada dirección |
+| DebugExtreme | nombres y tipos de muchas features | presencia no demuestra valor, rango ni stepping |
+| K&R Fahrenheit | valores, scopes y Console stepping | no envuelve los locals en try/catch/finally |
+
+La nueva regla es: ninguna capacidad se declara cubierta sólo porque su nombre aparezca en
+llvm-pdbutil. La evidencia debe probar interacción y comportamiento de una sesión real.
+
+### 11.4 Estados normativos de una variable
+
+El compilador y sus artefactos deben permitir distinguir:
+
+1. **No declarada:** no aparece en el scope activo.
+2. **Inicializándose:** ausente o marcada not initialized; nunca contiene bytes accidentales.
+3. **Disponible:** ubicación y valor válidos en la dirección actual.
+4. **Constante válida:** valor correcto limitado a su scope y rango semántico.
+5. **Optimizada:** nombre conocido, valor imposible de reconstruir.
+6. **Fuera de vida:** no aparece como local activo.
+7. **Movida:** estado moved-from conforme a la semántica del tipo.
+8. **Destruida:** no se presenta como objeto vivo.
+9. **Metadata del productor insuficiente:** distinto de optimized out.
+10. **Ubicación no soportada por el consumidor:** distinto de los estados anteriores.
+
+Un valor falso bloquea release. Mostrar unavailable cuando no hay evidencia es aceptable bajo el
+perfil documentado; inventar una ubicación o un valor no lo es.
+
+### 11.5 Sequence points normativos
+
+O0 debe definir una política determinista para:
+
+- declaración con initializer;
+- asignación;
+- llamada simple y llamada anidada;
+- return;
+- condición de if, while, for y match;
+- incremento de for;
+- break, continue y propagación de error;
+- throw y rethrow;
+- entrada de catch y cuerpo de finally;
+- construcción, move y destrucción RAII;
+- defer;
+- await y yield;
+- macro expansion y código generado.
+
+No se exige trabajo observable falso por línea. Se exige que el usuario pueda predecir dónde liga
+el breakpoint, en qué estado están los valores y cuál es el siguiente stop lógico.
+
+Las columnas y una política equivalente a discriminadores son obligatorias cuando dos operaciones
+fuente comparten línea o una expresión contiene llamadas anidadas.
+
+### 11.6 Política de código generado
+
+Cada procedimiento o rango ejecutable se clasifica como:
+
+- user code;
+- compiler-generated visible;
+- compiler-generated hidden;
+- ABI thunk;
+- cleanup/destruction helper;
+- SEH filter o funclet;
+- inline site;
+- coroutine/generator state machine.
+
+Prologues, epilogues, guardas y housekeeping no deben secuestrar Step Over. Un helper con semántica
+que el usuario deba comprender puede ser visible, pero siempre identificado como generado.
+
+### 11.7 Solución técnica obligatoria para O0 + SEH
+
+El orden de preferencia es:
+
+1. corregir la forma de IR/funclets que obliga al workaround y eliminar mem2reg completo en O0;
+2. si no es posible, promover únicamente allocas indispensables para la corrección SEH;
+3. si toda la función debe seguir en SSA, emitir seguimiento completo de asignaciones y valores,
+   además de sequence points resistentes a la promoción.
+
+La solución debe demostrar simultáneamente:
+
+- el crash histórico B-001 no regresa;
+- los locals no relacionados conservan fidelidad O0;
+- c = a + b publica 100;
+- x no existe antes de su declaración;
+- cada declaración exigida tiene breakpoint exacto o una reubicación explícita y documentada.
+
+### 11.8 Assignment tracking
+
+Todo local susceptible de promoción necesita:
+
+- asociación entre cada store semántico y su variable;
+- resultado SSA real de la expresión;
+- actualización después de cada asignación;
+- terminación de ubicación al salir del scope;
+- soporte para ramas y PHI;
+- fragmentos de agregados;
+- cambios stack/register;
+- constantes limitadas a su vida.
+
+Se evaluará dbg.assign/DIAssignID. Si la API C de LLVM no expone lo necesario, se permite ampliar
+el shim, introducir una capa C++ mínima o emitir dbg.value controlado. La elección se acepta por el
+PDB final y la sesión real, no únicamente por la forma del IR.
+
+### 11.9 Fixture mínimo obligatorio
+
+NSC debe poseer un fixture equivalente a:
+
+    int Main()
+    {
+        int a = 10;
+        int b = 90;
+        int c = a + b;
+        int x = 1;
+        try
+        {
+            Consume(c);
+        }
+        catch (Exception error)
+        {
+            Consume(error);
+        }
+        return c;
+    }
+
+El gate dirigido exige:
+
+- breakpoint exacto en cada declaración;
+- ausencia antes de declaración;
+- a = 10, b = 90, c = 100 y x = 1;
+- valores exactos después de mutaciones;
+- catch parameter con tipo, categoría y lifetime correctos;
+- salida semántica correcta;
+- conservación de EXE/PDB después de detener y relanzar.
+
+### 11.10 Evidencia de cuatro capas
+
+Cada caso Debug/PDB importante conserva:
+
+1. **MIR:** variable, scope, initializer, assignments, moves y cleanups.
+2. **LLVM antes/después de pases:** dbg.declare/value/assign, locations, PHI y transforms.
+3. **CodeView/PDB:** procedimiento, lexical parent, símbolo, tipo, constante, ranges y líneas.
+4. **Sesión real:** breakpoint, stepping, scopes y valores mediante nsdbg/DAP.
+
+Los verificadores de texto siguen siendo smoke tests. La aceptación semántica requiere un inspector
+estructural que pueda preguntar, por ejemplo: “x está ausente en la dirección de la declaración de
+a y vale 1 después de su propia declaración”.
+
+### 11.11 Matriz Debug/PDB por feature
+
+| Tanda | Obligación Debug/PDB |
+|---|---|
+| T00 | estados de variable, sequence points, user/generated code y categorías de error |
+| T01 | orden de evaluación, named args, rangos, null operators e interpolación |
+| T02 | elementos de tuple/record, deconstrucción, temporales y partial moves |
+| T03 | discriminante, payload activo, pattern bindings, guards y ramas |
+| T04 | nombres genéricos cerrados, const generics y especializaciones |
+| T05 | tipo concreto, trait object, dispatch y ausencia de frames falsos |
+| T06 | move, borrow, reborrow, drop, defer, pinning y lifetimes |
+| T07 | Result, operador de propagación, throws, catch, finally, never y panic |
+| T08 | capturas, receiver, lambdas genéricas, delegate cell, inline y tail calls |
+| T09 | iterator state, yield, comprehension y locals por iteración |
+| T10 | await/yield sites, frame suspendido, cancelación y logical stack |
+| T11 | macro backtrace, fuente original, generated code y atributos de debugger |
+| T12 | módulo dueño, re-export, fuentes duplicadas y package symbols |
+| T13 | layout, bitfields, pointers, calling conventions, FFI y SIMD |
+| T14 | valor exacto, overflow mode, FP mode y constant evaluation |
+| T15 | matriz combinatoria y auditoría final |
+| T16 | convivencia 2.x/3.0, source mapping y migración |
+| T17 | congelamiento del contrato Windows x64 Debug/PDB |
+
+### 11.12 Superficie de valores y tipos
+
+La certificación acumulada cubre:
+
+- parámetros value/ref/borrowed/owned/out/variadic y this;
+- locals escalares, constantes, agregados, temporales y capturas;
+- shadowing, homónimos, loop variables, catch variables y pattern bindings;
+- enteros, bool, char, float/double, enums, structs, unions y bitfields;
+- clases, interfaces, trait objects y herencia;
+- arrays fijos/dinámicos/multidimensionales/VLA, spans, slices y strings;
+- pointers, references, function pointers, delegates y native handles;
+- tuples, records, variants, Result y optional;
+- generics, const generics, SIMD, closures y coroutine frames;
+- fragments, múltiples location ranges, gaps y optimized-out.
+
+### 11.13 Ownership, excepciones e interop
+
+El PDB debe describir de forma honesta:
+
+- owned, borrowed, raii y move-only;
+- comienzo después de construcción exitosa;
+- estado tras move y final después de destrucción;
+- partial moves y drop flags sin contaminar Locals;
+- cleanup por return, break, continue y excepción;
+- catch tipado, throw, rethrow y finally;
+- filtros artificiales sin frames fuente falsos;
+- callbacks C/COM y fronteras de excepción;
+- assembly integrado;
+- EXE/DLL, carga tardía, unload y breakpoints pendientes.
+
+### 11.14 Breakpoints y stepping
+
+Cuando una línea solicitada no tiene sitio físico, nsdbg/DAP debe publicar:
+
+- requestedLine;
+- actualLine;
+- si el breakpoint fue exacto o ajustado;
+- la causa del ajuste.
+
+Nunca se cruza silenciosamente a otra función o scope. En los gates estrictos de O0, una declaración
+ejecutable ajustada se considera defecto del productor.
+
+Step Over usa la siguiente ubicación lógica de usuario, no únicamente la siguiente dirección o
+línea distinta. Las llamadas Console, runtime, cleanup y helpers tienen presupuesto acotado y no
+pueden congelar la sesión.
+
+### 11.15 Atributos de experiencia de depuración
+
+Cuando T11 disponga de atributos definidos por usuario, se evaluará una biblioteca sin nuevas
+keywords:
+
+- DebuggerDisplay;
+- DebuggerBrowsable;
+- DebuggerHidden;
+- DebuggerStepThrough;
+- DebuggerNonUserCode;
+- DebuggerTypeProxy.
+
+No introducen reflection runtime, heap ni dependencia de nsdbg. Su efecto sobre stepping y
+presentación debe especificarse por separado.
+
+### 11.16 Tandas operativas Debug/PDB
+
+Cada tanda es un commit, incluye su Markdown y ejecuta sólo sus pruebas dirigidas.
+
+#### NS3-DBG-01 — Contrato y reproducción
+
+- fixture local-SEH basado en al82dev;
+- dumps MIR/IR/PDB;
+- escenario DAP exacto;
+- reproducción roja antes del fix.
+
+#### NS3-DBG-02 — O0 SEH sin degradación global
+
+- rebisección del workaround B-001;
+- reducir o eliminar mem2reg completo;
+- gate de ejecución y gate de slots/locales.
+
+#### NS3-DBG-03 — Assignment tracking y SSA
+
+- inicializaciones, assignments, PHI y ramas;
+- valor c = 100;
+- constantes con vida acotada.
+
+#### NS3-DBG-04 — Sequence points O0
+
+- declaraciones, asignaciones, condiciones, increments, calls y returns;
+- líneas y columnas;
+- breakpoint exacto.
+
+#### NS3-DBG-05 — Lifetimes y scopes
+
+- antes de declaración, fin de scope, shadowing y back-edges;
+- x ausente antes de su línea;
+- cero inferencia textual en el debugger.
+
+#### NS3-DBG-06 — Console y stepping
+
+- llamadas simples y anidadas;
+- Step In/Over/Out;
+- Write, WriteLine, ToString y ToStringFixed;
+- cero congelamientos.
+
+#### NS3-DBG-07 — SEH, RAII y ownership
+
+- catch/finally/rethrow/nested catch;
+- construcción, move, cleanup y destrucción;
+- catch parameter correcto.
+
+#### NS3-DBG-08 — Tipos y visualización
+
+- scalars, enums, strings, arrays, structs, classes, delegates, pointers, SIMD y generics;
+- tamaños, offsets y valores exactos.
+
+#### NS3-DBG-09 — Features nuevas 3.0
+
+- tuples, records, variants, patterns, traits y Result;
+- contrato Debug entregado con la feature.
+
+#### NS3-DBG-10 — Closures, inline y optimización
+
+- capturas e inline frames;
+- tail calls;
+- O0 fiel y O2 honesto.
+
+#### NS3-DBG-11 — Async, generators y módulos
+
+- estados suspendidos y logical stacks;
+- EXE/DLL, carga tardía y PDB identity.
+
+#### NS3-DBG-12 — nsdbg y VS Code
+
+- breakpoint relocation visible;
+- estados de disponibilidad distintos;
+- diagnóstico de identidad y metadata;
+- UI consistente con DAP.
+
+#### NS3-DBG-13 — Certificación dirigida
+
+- toda la matriz Debug/PDB;
+- evidencia y tiempos por caso;
+- sin baseline general;
+- sin instalación en C:/native-sharp.
+
+#### NS3-DBG-14 — Milestone autorizado
+
+Sólo mediante autorización expresa:
+
+- build limpio;
+- suites acumuladas y baseline general;
+- corrección de regresiones;
+- paquete, VSIX e instalación en C:/native-sharp;
+- prueba manual y tag.
+
+### 11.17 Criterios de aceptación del milestone
+
+1. al82dev liga correctamente las declaraciones consecutivas.
+2. c se muestra como 100.
+3. x no aparece antes de declararse.
+4. B-001 no regresa.
+5. Step Over en Console no se congela.
+6. detener y relanzar no borra el ejecutable.
+7. PE/PDB coinciden por GUID+age.
+8. checksum fuente coincide.
+9. catch/finally/RAII conservan líneas y lifetimes.
+10. O0 nunca muestra valores falsos.
+11. O2 usa unavailable/optimized out cuando no puede reconstruir.
+12. DLL y módulos conservan identidad.
+13. VS Code muestra la ubicación real de breakpoints ajustados.
+14. no se instala en C:/native-sharp antes de autorización.
+
+### 11.18 Prohibiciones
+
+- no atribuir automáticamente al debugger un defecto observado en VS Code;
+- no ocultar todas las S_CONSTANT;
+- no desactivar excepciones para conservar debugging;
+- no eliminar B-001 sin su reproducción;
+- no aceptar presencia de nombre como prueba de valor correcto;
+- no tratar O0 como O2;
+- no añadir sintaxis para compensar defectos del backend;
+- no modificar proyectos reales para hacer pasar una prueba;
+- no ejecutar baseline en cada tanda;
+- no reemplazar la instalación estable durante desarrollo.
+
+La definición de éxito es concreta: en el breakpoint exacto solicitado, el depurador muestra
+solamente las variables que existen, con los valores que realmente tienen, y Next avanza a la
+siguiente operación fuente sin congelarse ni mentir.
