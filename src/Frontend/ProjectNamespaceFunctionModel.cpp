@@ -172,6 +172,12 @@ void reportPrevious(
         "previous declaration of namespace function '" + previous.signatureKey + "' is here");
 }
 
+bool isExtensionDeclaration(const ast::AstNode& syntax) noexcept
+{
+    return syntax.auxiliaryText() == "ns3-extension" ||
+        syntax.auxiliaryText().find("nsc-meta:ns3-extension") != std::string::npos;
+}
+
 bool compatibleDeclarations(
     const NamespaceFunctionSymbol& symbol,
     const NamespaceFunctionDeclaration& declaration,
@@ -186,7 +192,10 @@ bool compatibleDeclarations(
         symbol.isVariadic == syntax->isVariadic() &&
         symbol.isExternC ==
             (syntax->flag() || syntax->hasModifier(lexer::TokenKind::KwExtern)) &&
-        symbol.isExportedC == syntax->hasModifier(lexer::TokenKind::KwExport);
+        symbol.isExportedC == syntax->hasModifier(lexer::TokenKind::KwExport) &&
+        // Extension-ness is part of the declaration contract: merging an ordinary free
+        // function with an extension declaration would make lookup depend on source order.
+        symbol.isExtension == isExtensionDeclaration(*syntax);
 }
 
 struct FunctionLookupEnvironment final
@@ -250,6 +259,8 @@ bool ProjectNamespaceFunctionModel::build(
     functionsByName_.clear();
     referenceBindings_.clear();
     referenceBindingBySyntax_.clear();
+    extensionBindings_.clear();
+    extensionBindingBySyntax_.clear();
     built_ = false;
     const std::size_t initialErrorCount = diagnostics.errorCount();
     std::unordered_map<std::string, std::size_t> symbolByIdentity;
@@ -288,6 +299,7 @@ bool ProjectNamespaceFunctionModel::build(
             syntax.flag() || syntax.hasModifier(lexer::TokenKind::KwExtern);
         candidate.isExportedC = syntax.hasModifier(lexer::TokenKind::KwExport);
         candidate.isPrecompiled = declaration.isPrecompiled;
+        candidate.isExtension = isExtensionDeclaration(syntax);
         candidate.parts.push_back(NamespaceFunctionPart{
             declaration.accessibility,
             declaration.sourceOrdinal,
@@ -624,6 +636,18 @@ bool ProjectNamespaceFunctionModel::build(
         candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
         return candidates;
     };
+    auto extensionCandidatesInNamespace = [&](std::size_t projectOrdinal,
+                                               std::string_view namespaceName,
+                                               std::string_view functionName)
+    {
+        std::vector<std::size_t> candidates = candidatesInNamespace(
+            projectOrdinal, namespaceName, functionName);
+        std::erase_if(candidates, [&](std::size_t ordinal)
+        {
+            return ordinal >= functions_.size() || !functions_[ordinal].isExtension;
+        });
+        return candidates;
+    };
     auto stateCandidatesInNamespace = [&](std::size_t projectOrdinal,
                                           std::string_view namespaceName,
                                           std::string_view stateName)
@@ -731,6 +755,38 @@ bool ProjectNamespaceFunctionModel::build(
                 }
                 walkScope(node, nestedNamespace, environment);
                 return;
+            }
+
+            if (node->kind() == ast::AstNodeKind::MemberExpression &&
+                node->first() != nullptr && !node->text().empty())
+            {
+                std::vector<std::size_t> candidates = extensionCandidatesInNamespace(
+                    unit.projectOrdinal(), lexicalNamespace, node->text());
+                for (const std::string& imported : environment.importedNamespaces)
+                {
+                    std::vector<std::size_t> importedCandidates =
+                        extensionCandidatesInNamespace(
+                            unit.projectOrdinal(), imported, node->text());
+                    candidates.insert(candidates.end(), importedCandidates.begin(),
+                                      importedCandidates.end());
+                }
+                std::sort(candidates.begin(), candidates.end());
+                candidates.erase(
+                    std::unique(candidates.begin(), candidates.end()), candidates.end());
+                if (!candidates.empty())
+                {
+                    NamespaceFunctionReferenceBinding binding;
+                    binding.calleeSyntax = node;
+                    binding.projectOrdinal = unit.projectOrdinal();
+                    binding.fileId = unit.fileId();
+                    binding.lexicalNamespace = lexicalNamespace;
+                    binding.writtenName = node->text();
+                    binding.candidateFunctionOrdinals = std::move(candidates);
+                    binding.extension = true;
+                    binding.receiverSyntax = node->first();
+                    extensionBindingBySyntax_.emplace(node, extensionBindings_.size());
+                    extensionBindings_.push_back(std::move(binding));
+                }
             }
 
             if (node->kind() == ast::AstNodeKind::CallExpression && node->first() != nullptr)
@@ -956,6 +1012,14 @@ const NamespaceFunctionReferenceBinding* ProjectNamespaceFunctionModel::referenc
     const auto found = referenceBindingBySyntax_.find(callSyntax);
     if (found == referenceBindingBySyntax_.end()) return nullptr;
     return &referenceBindings_[found->second];
+}
+
+const NamespaceFunctionReferenceBinding* ProjectNamespaceFunctionModel::extensionBinding(
+    const ast::AstNode* memberSyntax) const noexcept
+{
+    const auto found = extensionBindingBySyntax_.find(memberSyntax);
+    if (found == extensionBindingBySyntax_.end()) return nullptr;
+    return &extensionBindings_[found->second];
 }
 
 std::span<const NamespaceFunctionReferenceBinding>

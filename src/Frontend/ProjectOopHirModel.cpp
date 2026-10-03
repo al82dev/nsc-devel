@@ -5334,36 +5334,74 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     functionOrdinal;
                 bool hasOwnedTemporary = false;
                 ProjectOopHirNode* expandedPack = nullptr;
+                std::size_t argumentOffset = 0;
+                if (namespaceCall->forwardedReceiver)
+                {
+                    if (namespaceCall->receiverSyntax == nullptr || target.parameters.empty() ||
+                        namespaceCall->selectedArgumentParameterOrdinals.empty())
+                    {
+                        error = "extension call lost its synthetic receiver contract";
+                        return nullptr;
+                    }
+                    const std::size_t parameterOrdinal =
+                        namespaceCall->selectedArgumentParameterOrdinals.front();
+                    if (parameterOrdinal >= target.parameters.size())
+                    {
+                        error = "extension receiver has no matching parameter";
+                        return nullptr;
+                    }
+                    const bool addressReceiver =
+                        target.parameters[parameterOrdinal].passKind != ParameterPassKind::Value;
+                    auto receiver = lowerExpression(
+                        namespaceCall->receiverSyntax, memberOrdinal, addressReceiver, error);
+                    if (receiver == nullptr) return nullptr;
+                    if (!addressReceiver && !namespaceCall->selectedConversions.empty() &&
+                        namespaceCall->selectedConversions.front().kind !=
+                            ProjectConversionKind::Identity)
+                    {
+                        receiver = wrapImplicitConversion(
+                            std::move(receiver), namespaceCall->selectedConversions.front(),
+                            namespaceCall->receiverSyntax);
+                    }
+                    receiver = wrapCallArgumentBorrow(
+                        std::move(receiver), namespaceCall->receiverSyntax,
+                        targetCallableOrdinal, parameterOrdinal, hasOwnedTemporary);
+                    node->children.push_back(std::move(receiver));
+                    node->argumentParameterOrdinals.push_back(parameterOrdinal);
+                    node->argumentTypeKeys.push_back(target.parameters[parameterOrdinal].typeKey);
+                    argumentOffset = 1;
+                }
                 for (std::size_t index = 0; index < expression->children().size(); ++index)
                 {
                     const ast::AstNode* argumentSyntax = expression->children()[index];
                     auto argument = lowerExpression(
                         argumentSyntax, memberOrdinal, false, error);
                     if (argument == nullptr) return nullptr;
-                    if (index >= namespaceCall->selectedArgumentParameterOrdinals.size())
+                    const std::size_t selectedIndex = index + argumentOffset;
+                    if (selectedIndex >= namespaceCall->selectedArgumentParameterOrdinals.size())
                     {
                         error = "namespace function argument has no selected parameter ordinal";
                         return nullptr;
                     }
                     const std::size_t parameterOrdinal =
-                        namespaceCall->selectedArgumentParameterOrdinals[index];
+                        namespaceCall->selectedArgumentParameterOrdinals[selectedIndex];
                     if (parameterOrdinal >= target.parameters.size())
                     {
                         error = "namespace function argument has no matching parameter";
                         return nullptr;
                     }
-                    if (index < namespaceCall->selectedConversions.size() &&
-                        namespaceCall->selectedConversions[index].kind !=
+                    if (selectedIndex < namespaceCall->selectedConversions.size() &&
+                        namespaceCall->selectedConversions[selectedIndex].kind !=
                             ProjectConversionKind::Identity)
                     {
                         argument = wrapImplicitConversion(
                             std::move(argument),
-                            namespaceCall->selectedConversions[index],
+                            namespaceCall->selectedConversions[selectedIndex],
                             argumentSyntax);
                     }
                     const bool packElement =
-                        index < namespaceCall->selectedParameterPackElements.size() &&
-                        namespaceCall->selectedParameterPackElements[index];
+                        selectedIndex < namespaceCall->selectedParameterPackElements.size() &&
+                        namespaceCall->selectedParameterPackElements[selectedIndex];
                     if (packElement)
                     {
                         const std::string& elementType =

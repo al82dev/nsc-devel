@@ -10235,6 +10235,72 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         }
     }
 
+    const auto bindExtension = [&]() -> bool
+    {
+        if (typeReceiver || namespaceFunctionModel_ == nullptr) return false;
+        const NamespaceFunctionReferenceBinding* extension =
+            namespaceFunctionModel_->extensionBinding(expression);
+        if (extension == nullptr) return false;
+
+        std::vector<std::size_t> methods;
+        for (const std::size_t functionOrdinal : extension->candidateFunctionOrdinals)
+        {
+            if (functionOrdinal >= namespaceCallableAdapters_.size()) continue;
+            const ClassMemberSymbol& candidate = namespaceCallableAdapters_[functionOrdinal];
+            if (candidate.parameters.empty()) continue;
+            const MethodParameterSymbol& receiverParameter = candidate.parameters.front();
+            const std::string& receiverTarget =
+                receiverParameter.passKind == ParameterPassKind::Value
+                ? receiverParameter.typeKey : receiverParameter.pointeeTypeKey;
+            const ProjectImplicitConversion receiverConversion = classifyImplicit(
+                receiver.typeKey, receiverTarget, receiver.integerConstant);
+            if (!receiverConversion.exists()) continue;
+            const ParameterPassKind pass = receiverParameter.passKind;
+            if (pass != ParameterPassKind::Value &&
+                receiverConversion.kind != ProjectConversionKind::Identity)
+                continue;
+            if (pass != ParameterPassKind::Value && !receiver.addressable) continue;
+            if (pass == ParameterPassKind::Ref && receiver.readonlyReceiver) continue;
+            methods.push_back(namespaceCallableBase_ + functionOrdinal);
+        }
+        if (methods.empty()) return false;
+
+        result = receiver;
+        result.typeKey = "<extension-method-group>";
+        result.valid = allowMethodGroup;
+        result.methodGroup = true;
+        result.extensionMethodGroup = true;
+        result.methodCandidates = methods;
+        result.receiverSyntax = expression->first();
+        result.receiverTypeKey = receiver.typeKey;
+        result.receiverTypeOrdinal = receiver.receiverTypeOrdinal;
+        result.assignable = false;
+        nameBindings_.push_back(MethodNameBinding{
+            MethodNameBindingKind::ExplicitObjectMethodGroup,
+            expression,
+            methodMemberOrdinal,
+            scopeOrdinal,
+            expression->text(),
+            "<extension-method-group>",
+            std::nullopt,
+            std::nullopt,
+            methods,
+            expression->first(),
+            receiver.typeKey,
+            receiver.receiverTypeOrdinal,
+            false});
+        if (!allowMethodGroup)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "extension method group '" + expression->text() +
+                    "' can only be used as a call target");
+        }
+        return true;
+    };
+
     const std::optional<std::size_t> receiverType = receiver.receiverTypeOrdinal;
     const bool receiverIsStruct = receiverType.has_value() && nameLookup_ != nullptr &&
         *receiverType < nameLookup_->namedTypes().size() &&
@@ -10256,6 +10322,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
          !receiverIsEnumValue &&
          (interfaceModel_ == nullptr || !interfaceModel_->isInterface(*receiverType))))
     {
+        if (bindExtension()) return result;
+        if (!typeReceiver && namespaceFunctionModel_ != nullptr &&
+            namespaceFunctionModel_->extensionBinding(expression) != nullptr)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::UnknownMember,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "receiver/type '" + receiver.typeKey +
+                    "' has no compatible member named '" + expression->text() + "'");
+            return result;
+        }
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidMemberAccess,
             diagnostics::DiagnosticSeverity::Error,
@@ -10650,6 +10728,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         return result;
     }
 
+    // NativeSharp 3.0 T05-F06. Extension lookup is deliberately the last member lookup step:
+    // real fields/properties/methods and compiler-provided root members always win. The
+    // namespace model has already limited the set to the lexical namespace or explicit using
+    // imports, so the receiver's namespace never participates accidentally (no ADL).
+    if (!inaccessibleFound && bindExtension()) return result;
+
     diagnostics.report(
         inaccessibleFound ? diagnostics::DiagnosticId::InaccessibleMember
                           : diagnostics::DiagnosticId::UnknownMember,
@@ -10712,7 +10796,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     const NamespaceFunctionReferenceBinding& reference,
     std::size_t callerCallableOrdinal,
     std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ExpressionResult* forwardedReceiver)
 {
     ExpressionResult result;
     NamespaceFunctionCallBinding call;
@@ -10720,6 +10805,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     call.callerCallableOrdinal = callerCallableOrdinal;
     call.scopeOrdinal = scopeOrdinal;
     call.writtenName = reference.writtenName;
+    call.forwardedReceiver = forwardedReceiver != nullptr;
+    call.receiverSyntax = forwardedReceiver != nullptr ? reference.receiverSyntax : nullptr;
     call.candidateFunctionOrdinals = reference.candidateFunctionOrdinals;
     const auto store = [&]()
     {
@@ -10727,8 +10814,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         namespaceFunctionCalls_.push_back(call);
     };
 
+    std::vector<ast::AstNode*> argumentSyntaxes;
+    argumentSyntaxes.reserve(expression->children().size() + (forwardedReceiver != nullptr ? 1U : 0U));
+    if (forwardedReceiver != nullptr)
+        argumentSyntaxes.push_back(const_cast<ast::AstNode*>(reference.receiverSyntax));
+    argumentSyntaxes.insert(
+        argumentSyntaxes.end(), expression->children().begin(), expression->children().end());
+
     std::vector<ExpressionResult> arguments;
-    arguments.reserve(expression->children().size());
+    arguments.reserve(argumentSyntaxes.size());
+    if (forwardedReceiver != nullptr)
+    {
+        ExpressionResult receiverArgument = *forwardedReceiver;
+        receiverArgument.typeKey = forwardedReceiver->receiverTypeKey;
+        receiverArgument.methodGroup = false;
+        receiverArgument.extensionMethodGroup = false;
+        receiverArgument.valid = true;
+        arguments.push_back(std::move(receiverArgument));
+    }
     bool argumentsValid = true;
     for (std::size_t argumentOrdinal = 0;
          argumentOrdinal < expression->children().size(); ++argumentOrdinal)
@@ -10745,11 +10848,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                 if (functionOrdinal >= namespaceCallableAdapters_.size()) continue;
                 const ClassMemberSymbol& candidate = namespaceCallableAdapters_[functionOrdinal];
                 const NamedArgumentMap mapping =
-                    mapArgumentsToParameters(expression->children(), candidate);
-                if (!mapping.valid || argumentOrdinal >= mapping.explicitParameterOrdinals.size())
+                    mapArgumentsToParameters(argumentSyntaxes, candidate);
+                const std::size_t mappedArgumentOrdinal =
+                    argumentOrdinal + (forwardedReceiver != nullptr ? 1U : 0U);
+                if (!mapping.valid ||
+                    mappedArgumentOrdinal >= mapping.explicitParameterOrdinals.size())
                     continue;
                 const std::size_t parameterOrdinal =
-                    mapping.explicitParameterOrdinals[argumentOrdinal];
+                    mapping.explicitParameterOrdinals[mappedArgumentOrdinal];
                 if (parameterOrdinal >= candidate.parameters.size()) continue;
                 const std::string& target = candidate.parameters[parameterOrdinal].typeKey;
                 if (methodGroupExactlyMatchesDelegate(analyzed, target) &&
@@ -10793,7 +10899,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         MethodCallCandidate evaluated;
         evaluated.memberOrdinal = functionOrdinal;
         evaluated.isVariadicCandidate = candidate.isVariadic;
-        const NamedArgumentMap mapping = mapArgumentsToParameters(expression->children(), candidate);
+        const NamedArgumentMap mapping = mapArgumentsToParameters(argumentSyntaxes, candidate);
         if (!mapping.valid)
         {
             call.evaluatedCandidates.push_back(std::move(evaluated));
@@ -10844,7 +10950,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             else
             {
                 const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
-                std::string conversionTarget = parameter.typeKey;
+                std::string conversionTarget =
+                    forwardedReceiver != nullptr && argumentOrdinal == 0 &&
+                        parameter.passKind != ParameterPassKind::Value
+                    ? parameter.pointeeTypeKey
+                    : parameter.typeKey;
                 const bool packElement = argumentOrdinal < evaluated.parameterPackElements.size() &&
                     evaluated.parameterPackElements[argumentOrdinal];
                 if (packElement)
@@ -10866,8 +10976,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                     arguments[argumentOrdinal].pointerPointeeReadonly &&
                     ProjectTypeConversion::isPointer(parameter.typeKey) &&
                     !parameter.pointerPointeeReadonly;
+                const bool implicitExtensionReceiverPass =
+                    forwardedReceiver != nullptr && argumentOrdinal == 0;
                 if (!conversion.exists() || discardsPointeeConst ||
-                    parameter.passKind != arguments[argumentOrdinal].argumentPassKind)
+                    (!implicitExtensionReceiverPass &&
+                     parameter.passKind != arguments[argumentOrdinal].argumentPassKind))
                 {
                     evaluated.viable = false;
                 }
@@ -10916,7 +11029,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
             "no overload of namespace function '" + reference.writtenName + "' accepts " +
-                std::to_string(arguments.size()) + " argument(s)");
+                std::to_string(expression->children().size()) + " argument(s)");
         store();
         return result;
     }
@@ -10984,13 +11097,30 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             return result;
         }
     }
-    checkArgumentPassKinds(
-        expression,
-        callable.name,
-        namespaceCallableBase_ + functionOrdinal,
-        arguments,
-        diagnostics,
-        selected.argumentParameterOrdinals);
+    if (forwardedReceiver == nullptr)
+    {
+        checkArgumentPassKinds(
+            expression,
+            callable.name,
+            namespaceCallableBase_ + functionOrdinal,
+            arguments,
+            diagnostics,
+            selected.argumentParameterOrdinals);
+    }
+    else
+    {
+        std::vector<ExpressionResult> explicitArguments(arguments.begin() + 1, arguments.end());
+        const std::span<const std::size_t> parameterOrdinals(
+            selected.argumentParameterOrdinals.data() + 1,
+            selected.argumentParameterOrdinals.size() - 1);
+        checkArgumentPassKinds(
+            expression,
+            callable.name,
+            namespaceCallableBase_ + functionOrdinal,
+            explicitArguments,
+            diagnostics,
+            parameterOrdinals);
+    }
     call.resolution = MethodCallResolutionKind::Resolved;
     call.selectedFunctionOrdinal = functionOrdinal;
     call.selectedConversions = selected.conversions;
@@ -11008,7 +11138,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         }
         MethodBorrowBinding borrow;
         borrow.kind = MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter;
-        borrow.syntax = expression->children()[argumentOrdinal];
+        borrow.syntax = argumentOrdinal < argumentSyntaxes.size()
+            ? argumentSyntaxes[argumentOrdinal] : expression;
         borrow.methodMemberOrdinal = callerCallableOrdinal;
         borrow.scopeOrdinal = scopeOrdinal;
         borrow.targetMemberOrdinal = namespaceCallableBase_ + functionOrdinal;
@@ -11130,6 +11261,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression
             ? expression->first()->text()
             : "<expression>";
+    }
+
+    if (callee.extensionMethodGroup && namespaceFunctionModel_ != nullptr)
+    {
+        if (const NamespaceFunctionReferenceBinding* extension =
+                namespaceFunctionModel_->extensionBinding(expression->first());
+            extension != nullptr)
+        {
+            return analyzeNamespaceFunctionCall(
+                expression, *extension, methodMemberOrdinal, scopeOrdinal, diagnostics, &callee);
+        }
     }
 
     // C8 "type root", struct half. The member access above resolved to a synthesized struct

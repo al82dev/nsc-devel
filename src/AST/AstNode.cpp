@@ -70,6 +70,7 @@ void AstNode::setFirst(AstNode* node) noexcept { first_ = node; }
 void AstNode::setSecond(AstNode* node) noexcept { second_ = node; }
 void AstNode::setThird(AstNode* node) noexcept { third_ = node; }
 void AstNode::addChild(AstNode* node) { children_.push_back(node); }
+void AstNode::prependChild(AstNode* node) { children_.insert(children_.begin(), node); }
 const std::vector<AstNode*>& AstNode::children() const noexcept { return children_; }
 bool AstNode::flag() const noexcept { return flag_; }
 void AstNode::setFlag(bool value) noexcept { flag_ = value; }

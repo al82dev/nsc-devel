@@ -641,6 +641,15 @@ void ProjectNameLookup::predeclareNode(
             unit.isPrecompiled()});
         return;
     }
+    if (node->kind() == ast::AstNodeKind::ExtensionDeclaration)
+    {
+        for (const ast::AstNode* child : node->children())
+        {
+            predeclareNode(
+                unit, child, namespaceSegments, containingTypes, sourcePath, index);
+        }
+        return;
+    }
     if (isNamedTypeDeclaration(node->kind()))
     {
         const bool isNested = !containingTypes.empty();

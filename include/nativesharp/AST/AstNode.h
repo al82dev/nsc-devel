@@ -130,6 +130,7 @@ public:
     void setThird(AstNode* node) noexcept;
 
     void addChild(AstNode* node);
+    void prependChild(AstNode* node);
     const std::vector<AstNode*>& children() const noexcept;
 
     bool flag() const noexcept;

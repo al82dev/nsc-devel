@@ -57,6 +57,7 @@ struct NamespaceFunctionSymbol final
     bool isExternC = false;
     bool isExportedC = false;
     bool isPrecompiled = false;
+    bool isExtension = false;
 };
 
 enum class NamespaceStateInitializerKind
@@ -105,6 +106,8 @@ struct NamespaceFunctionReferenceBinding final
     std::string writtenName;
     bool qualified = false;
     std::vector<std::size_t> candidateFunctionOrdinals;
+    bool extension = false;
+    const ast::AstNode* receiverSyntax = nullptr;
 };
 
 struct NamespaceStateReferenceBinding final
@@ -140,6 +143,8 @@ public:
         std::string_view name) const noexcept;
     const NamespaceFunctionReferenceBinding* referenceBinding(
         const ast::AstNode* callSyntax) const noexcept;
+    const NamespaceFunctionReferenceBinding* extensionBinding(
+        const ast::AstNode* memberSyntax) const noexcept;
     std::span<const NamespaceFunctionReferenceBinding> referenceBindings() const noexcept;
     const NamespaceStateReferenceBinding* stateReferenceBinding(
         const ast::AstNode* expressionSyntax) const noexcept;
@@ -153,6 +158,8 @@ private:
     std::unordered_map<std::string, std::vector<std::size_t>> functionsByName_;
     std::vector<NamespaceFunctionReferenceBinding> referenceBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> referenceBindingBySyntax_;
+    std::vector<NamespaceFunctionReferenceBinding> extensionBindings_;
+    std::unordered_map<const ast::AstNode*, std::size_t> extensionBindingBySyntax_;
     std::vector<NamespaceStateReferenceBinding> stateReferenceBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> stateReferenceBindingBySyntax_;
     bool built_ = false;

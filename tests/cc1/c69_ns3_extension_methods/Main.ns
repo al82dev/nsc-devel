@@ -1,0 +1,36 @@
+namespace c69ns3extensionmethods
+{
+    public struct Point
+    {
+        public int X;
+        public int Y;
+    }
+
+    extension Point
+    {
+        public int Sum()
+        {
+            return this.X + this.Y;
+        }
+    }
+
+    extension ref Point
+    {
+        public void AddX(int value)
+        {
+            this.X += value;
+        }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            Point point;
+            point.X = 19;
+            point.Y = 22;
+            point.AddX(1);
+            return point.Sum();
+        }
+    }
+}

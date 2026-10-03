@@ -1360,6 +1360,8 @@ struct NamespaceFunctionCallBinding final
     std::size_t callerCallableOrdinal = 0;
     std::size_t scopeOrdinal = 0;
     std::string writtenName;
+    bool forwardedReceiver = false;
+    const ast::AstNode* receiverSyntax = nullptr;
     std::vector<std::size_t> candidateFunctionOrdinals;
     std::vector<MethodCallCandidate> evaluatedCandidates;
     std::vector<std::size_t> viableCandidateFunctionOrdinals;
@@ -1531,6 +1533,7 @@ private:
         std::string receiverTypeKey;
         std::optional<std::size_t> receiverTypeOrdinal;
         bool baseReceiver = false;
+        bool extensionMethodGroup = false;
         std::optional<std::size_t> eventMemberOrdinal;
         std::optional<std::size_t> assignmentMemberOrdinal;
         // C4 "language references": the `ref`/`out`/`in` keyword written at THIS argument
@@ -1785,7 +1788,8 @@ private:
         const NamespaceFunctionReferenceBinding& reference,
         std::size_t callerCallableOrdinal,
         std::size_t scopeOrdinal,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ExpressionResult* forwardedReceiver = nullptr);
     ExpressionResult analyzeNamespaceFunctionGroup(
         const ast::AstNode* expression,
         const NamespaceFunctionReferenceBinding& reference,

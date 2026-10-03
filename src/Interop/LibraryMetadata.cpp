@@ -1368,6 +1368,7 @@ bool buildMetadataModel(
             if (function.declaredTypeSyntax != nullptr &&
                 function.declaredTypeSyntax->isDynamicTrait())
                 record.flags |= 16U;
+            if (function.isExtension) record.flags |= kMetadataNamespaceFunctionExtension;
             record.namespaceName = function.namespaceName;
             record.name = function.name;
             record.signatureKey = function.signatureKey;
@@ -2613,7 +2614,8 @@ bool decodePayload(
             LibraryMetadataNamespaceFunction function;
             if (!reader.u8(function.accessibility) || !reader.u8(function.flags) ||
                 function.accessibility > 1U ||
-                function.flags > (metadata.formatMinor >= 31 ? 31U : 15U) ||
+                function.flags > (metadata.formatMinor >= 32 ? 63U :
+                                      (metadata.formatMinor >= 31 ? 31U : 15U)) ||
                 !reader.text(function.namespaceName) || !reader.text(function.name) ||
                 !reader.text(function.signatureKey) || !reader.text(function.declaredTypeKey))
             {
@@ -3137,6 +3139,16 @@ bool LibraryMetadataCodec::writeModelImpl(
             error = "NativeSharp metadata before 1.31 cannot represent explicit dyn signatures";
             return false;
         }
+    }
+    if (metadata.formatMinor < 32 &&
+        std::ranges::any_of(metadata.namespaceFunctions,
+            [](const LibraryMetadataNamespaceFunction& function)
+            {
+                return (function.flags & kMetadataNamespaceFunctionExtension) != 0U;
+            }))
+    {
+        error = "NativeSharp metadata before 1.32 cannot represent extension methods";
+        return false;
     }
     if (metadata.formatMinor < 25 &&
         (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))

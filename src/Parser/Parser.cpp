@@ -52,6 +52,35 @@ bool contains(std::span<const TokenKind> values, TokenKind kind) noexcept
     return false;
 }
 
+ast::TypeSyntax* cloneParsedType(ast::AstArena& arena, const ast::TypeSyntax* source)
+{
+    if (source == nullptr) return nullptr;
+    ast::TypeSyntax* result = arena.make<ast::TypeSyntax>(
+        source->range(), source->baseTokenKind(), source->baseName());
+    result->setOwnershipQualifier(source->ownershipQualifier());
+    result->setDynamicTrait(source->isDynamicTrait());
+    result->setOpaqueResult(source->isOpaqueResult());
+    result->setOpaqueResultTraitName(source->opaqueResultTraitName());
+    result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
+    result->setPointeeConst(source->isPointeeConst());
+    result->setTuple(source->isTuple());
+    result->setPackExpansion(source->isPackExpansion());
+    for (std::size_t index = 0; index < source->typeArguments().size(); ++index)
+    {
+        ast::TypeSyntax* argument = cloneParsedType(arena, source->typeArguments()[index]);
+        if (source->isTuple())
+        {
+            const std::string name = index < source->tupleElementNames().size()
+                ? source->tupleElementNames()[index] : std::string{};
+            result->addTupleElement(argument, name);
+        }
+        else result->addTypeArgument(argument);
+    }
+    for (const ast::TypeModifierSyntax& modifier : source->modifiers())
+        result->addModifier(modifier);
+    return result;
+}
+
 void reportDeferredLanguage3(
     diagnostics::DiagnosticEngine& diagnostics,
     SourceRange range,
@@ -1837,27 +1866,7 @@ ast::AstNode* Parser::parseNamespaceMember()
     }
     if (atContextualKeyword("extension"))
     {
-        reportDeferredLanguage3(
-            diagnostics_, current().range(), language::Language3Feature::ExtensionMethods);
-        std::size_t braceDepth = 0;
-        bool sawBody = false;
-        while (!at(TokenKind::EndOfFile))
-        {
-            if (at(TokenKind::LeftBrace))
-            {
-                sawBody = true;
-                ++braceDepth;
-            }
-            else if (at(TokenKind::RightBrace))
-            {
-                if (braceDepth == 0) break;
-                --braceDepth;
-            }
-            const TokenKind consumed = consume().kind();
-            if (consumed == TokenKind::Semicolon && braceDepth == 0) break;
-            if (sawBody && braceDepth == 0) break;
-        }
-        return nullptr;
+        return parseExtensionDeclaration();
     }
     if (at(TokenKind::KwUsing))
     {
@@ -1868,6 +1877,83 @@ ast::AstNode* Parser::parseNamespaceMember()
         return parseNamespaceDeclaration();
     }
     return parseGlobalDeclaration();
+}
+
+ast::AstNode* Parser::parseExtensionDeclaration()
+{
+    const std::size_t beginIndex = index_;
+    const SourceRange keywordRange = consume().range();
+    requireEdition3(keywordRange, "extension method declarations");
+
+    TokenKind receiverPass = TokenKind::Invalid;
+    if (atContextualKeyword("ref"))
+    {
+        receiverPass = consume().kind();
+    }
+    else if (at(TokenKind::KwIn))
+    {
+        receiverPass = consume().kind();
+    }
+
+    ast::TypeSyntax* receiverType = parseType();
+    if (receiverType == nullptr)
+    {
+        synchronizeGlobal();
+        return nullptr;
+    }
+
+    ast::AstNode* extension = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::ExtensionDeclaration, keywordRange);
+    extension->setTypeSyntax(receiverType);
+    extension->setAuxiliaryText(
+        receiverPass == TokenKind::Invalid ? "value" :
+        receiverPass == TokenKind::KwIn ? "in" : "ref");
+
+    if (!expect(TokenKind::LeftBrace, "'{' after extension receiver type"))
+    {
+        synchronizeGlobal();
+        extension->setRange(tokenRangeFrom(beginIndex));
+        return extension;
+    }
+
+    const bool previousExtensionContext = parsingExtensionBody_;
+    parsingExtensionBody_ = true;
+    while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+    {
+        const std::size_t before = index_;
+        ast::AstNode* member = parseGlobalDeclaration();
+        if (member != nullptr && member->kind() == ast::AstNodeKind::FunctionDeclaration)
+        {
+            ast::AstNode* receiver = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::ParameterDeclaration, receiverType->range());
+            receiver->setText("__nsc_extension_this");
+            ast::TypeSyntax* parameterType = cloneParsedType(arena_, receiverType);
+            if (receiverPass != TokenKind::Invalid)
+            {
+                parameterType->addModifier(ast::TypeModifierSyntax{
+                    ast::TypeModifierSyntaxKind::Pointer, nullptr, parameterType->range()});
+                receiver->setAuxiliaryText(
+                    receiverPass == TokenKind::KwIn ? "pass:in" : "pass:ref");
+            }
+            receiver->setTypeSyntax(parameterType);
+            member->prependChild(receiver);
+            member->setAuxiliaryText("ns3-extension");
+            extension->addChild(member);
+        }
+        else if (member != nullptr)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                member->range(),
+                "an extension block may contain only namespace-function declarations");
+        }
+        if (index_ == before) consume();
+    }
+    parsingExtensionBody_ = previousExtensionContext;
+    expect(TokenKind::RightBrace, "'}' after extension block");
+    extension->setRange(tokenRangeFrom(beginIndex));
+    return extension;
 }
 
 ast::AstNode* Parser::parseNamespaceDeclaration()
@@ -11354,7 +11440,11 @@ ast::AstNode* Parser::parsePrimaryExpression()
         case TokenKind::KwTrue:
         case TokenKind::KwFalse: kind = ast::AstNodeKind::BooleanLiteralExpression; break;
         case TokenKind::KwNull: kind = ast::AstNodeKind::NullLiteralExpression; break;
-        case TokenKind::KwThis: kind = ast::AstNodeKind::ThisExpression; break;
+        case TokenKind::KwThis:
+            kind = parsingExtensionBody_
+                ? ast::AstNodeKind::IdentifierExpression
+                : ast::AstNodeKind::ThisExpression;
+            break;
         case TokenKind::KwBase: kind = ast::AstNodeKind::BaseExpression; break;
         case TokenKind::LeftParen:
         {
@@ -11420,6 +11510,8 @@ ast::AstNode* Parser::parsePrimaryExpression()
     consume();
     SourceRange nodeRange = token.range();
     std::string nodeText(token.lexeme());
+    if (token.kind() == TokenKind::KwThis && parsingExtensionBody_)
+        nodeText = "__nsc_extension_this";
     // Non-generic static receivers use the ordinary postfix member chain.  Preserve the module
     // prefix in its first identifier so ProjectNameLookup sees one canonical spelling while the
     // following dots remain normal MemberExpression nodes.

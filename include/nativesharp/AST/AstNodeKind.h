@@ -144,7 +144,10 @@ enum class AstNodeKind
     // callable ABI entry. typeSyntax() is the optional/default associated type; for a constant it
     // is the declared value type and first() is the optional/default constant expression.
     AssociatedTypeDeclaration,
-    AssociatedConstantDeclaration
+    AssociatedConstantDeclaration,
+    // NativeSharp 3.0 T05-F06. Container only: productive extension members are lowered by the
+    // parser to ordinary namespace functions with a synthetic receiver parameter.
+    ExtensionDeclaration
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

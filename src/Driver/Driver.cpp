@@ -1278,6 +1278,17 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &
             }
         }
     }
+    for (const interop::LibraryMetadataNamespaceFunction &function :
+         metadata.namespaceFunctions)
+    {
+        constexpr std::uint8_t kPublicAccessibility = 1U;
+        constexpr std::uint8_t kExternC = 1U << 2U;
+        if (function.accessibility == kPublicAccessibility &&
+            (function.flags & kExternC) == 0U && !function.mangledName.empty())
+        {
+            symbols.push_back(function.mangledName);
+        }
+    }
     constexpr std::uint8_t kPublicAccessibility = 3U;
     for (const interop::LibraryMetadataDispatch &dispatch : metadata.dispatchTables)
     {
@@ -1531,7 +1542,43 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         for (const std::string &interfaceTypeKey : type.interfaceTypeKeys)
             if (!collectBaseAlias(interfaceTypeKey)) return false;
     }
-    if (!baseAliases.empty()) generated << '\n';
+    std::map<std::string, std::string> extensionReceiverAliases;
+    for (const interop::LibraryMetadataNamespaceFunction &function : metadata.namespaceFunctions)
+    {
+        if ((function.flags & interop::kMetadataNamespaceFunctionExtension) == 0U) continue;
+        if (function.parameters.empty())
+        {
+            error = "metadata extension method '" + function.namespaceName + "." +
+                    function.name + "' has no receiver";
+            return false;
+        }
+        const interop::LibraryMetadataParameter &receiver = function.parameters.front();
+        if (receiver.passKind == interop::LibraryMetadataParameterPassKind::Out)
+        {
+            error = "metadata extension method '" + function.namespaceName + "." +
+                    function.name + "' has an out receiver";
+            return false;
+        }
+        std::string receiverTypeKey = receiver.typeKey;
+        if (receiver.passKind != interop::LibraryMetadataParameterPassKind::Value)
+        {
+            if (receiverTypeKey.empty() || !receiverTypeKey.ends_with('*'))
+            {
+                error = "metadata extension method '" + function.namespaceName + "." +
+                        function.name + "' has no pointer receiver carrier";
+                return false;
+            }
+            receiverTypeKey.pop_back();
+        }
+        if (extensionReceiverAliases.contains(receiverTypeKey)) continue;
+        std::string sourceType;
+        if (!sourceTypeForMetadataKey(metadata, receiverTypeKey, sourceType, error)) return false;
+        const std::string alias =
+            "__NscMetadataExtensionReceiver" + std::to_string(extensionReceiverAliases.size());
+        extensionReceiverAliases.emplace(receiverTypeKey, alias);
+        generated << "using " << alias << " = " << sourceType << ";\n";
+    }
+    if (!baseAliases.empty() || !extensionReceiverAliases.empty()) generated << '\n';
     const auto sourceBaseType = [&](const std::string &typeKey, std::string &sourceType) -> bool {
         const std::string baseKey = metadataBaseTypeKey(typeKey);
         const auto alias = baseAliases.find(baseKey);
@@ -1569,9 +1616,11 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             if (!defaultValue.empty()) generated << " = " << defaultValue;
             return true;
     };
-    const auto emitParameterRange = [&](const auto &member,
+    const auto emitParameterSlice = [&](const auto &member,
+                                        const std::size_t begin,
                                         const std::size_t count) -> bool {
-        if (count > member.parameters.size())
+        if (begin > member.parameters.size() ||
+            count > member.parameters.size() - begin)
         {
             error = "metadata member '" + member.name + "' has an invalid parameter range";
             return false;
@@ -1579,9 +1628,14 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         for (std::size_t index = 0; index < count; ++index)
         {
             if (index != 0) generated << ", ";
-            if (!emitParameter(member.parameters[index], member.name, index)) return false;
+            if (!emitParameter(member.parameters[begin + index], member.name, begin + index))
+                return false;
         }
         return true;
+    };
+    const auto emitParameterRange = [&](const auto &member,
+                                        const std::size_t count) -> bool {
+        return emitParameterSlice(member, 0U, count);
     };
     const auto emitParameters = [&](const interop::LibraryMetadataMember &member) -> bool {
         if (!emitParameterRange(member, member.parameters.size())) return false;
@@ -2404,6 +2458,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
          metadata.namespaceFunctions)
     {
         if (function.accessibility != 1U) continue;
+        const bool extension =
+            (function.flags & interop::kMetadataNamespaceFunctionExtension) != 0U;
         std::string returnType;
         if (!sourceTypeForMetadataKey(
                 metadata, function.declaredTypeKey, returnType, error))
@@ -2412,6 +2468,44 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         }
         if (!function.namespaceName.empty())
             generated << "namespace " << function.namespaceName << std::endl << '{' << std::endl;
+        if (extension)
+        {
+            if (function.parameters.empty())
+            {
+                error = "metadata extension method '" + function.namespaceName + "." +
+                        function.name + "' has no receiver";
+                return false;
+            }
+            const interop::LibraryMetadataParameter &receiver = function.parameters.front();
+            if (receiver.passKind == interop::LibraryMetadataParameterPassKind::Out)
+            {
+                error = "metadata extension method '" + function.namespaceName + "." +
+                        function.name + "' has an out receiver";
+                return false;
+            }
+            std::string receiverTypeKey = receiver.typeKey;
+            if (receiver.passKind != interop::LibraryMetadataParameterPassKind::Value)
+            {
+                if (receiverTypeKey.empty() || !receiverTypeKey.ends_with('*'))
+                {
+                    error = "metadata extension method '" + function.namespaceName + "." +
+                            function.name + "' has no pointer receiver carrier";
+                    return false;
+                }
+                receiverTypeKey.pop_back();
+            }
+            const auto receiverAlias = extensionReceiverAliases.find(receiverTypeKey);
+            if (receiverAlias == extensionReceiverAliases.end())
+            {
+                error = "metadata extension method '" + function.namespaceName + "." +
+                        function.name + "' has no materialized receiver alias";
+                return false;
+            }
+            generated << "extension " << parameterPassPrefix(receiver.passKind)
+                      << ownershipPrefix(receiver.ownership)
+                      << (receiver.isDynamicTrait ? "dyn " : "") << receiverAlias->second
+                      << std::endl << '{' << std::endl;
+        }
         if ((function.flags & 8U) != 0U)
             generated << "extern C" << std::endl << '{' << std::endl;
         generated << "public ";
@@ -2419,14 +2513,20 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         generated << ownershipPrefix(function.declaredOwnership)
                   << ((function.flags & 16U) != 0U ? "dyn " : "") << returnType << ' '
                   << function.name << '(';
-        if (!emitParameterRange(function, function.parameters.size())) return false;
+        const std::size_t firstExplicitParameter = extension ? 1U : 0U;
+        if (!emitParameterSlice(
+                function,
+                firstExplicitParameter,
+                function.parameters.size() - firstExplicitParameter))
+            return false;
         if ((function.flags & 2U) != 0U)
         {
-            if (!function.parameters.empty()) generated << ", ";
+            if (function.parameters.size() > firstExplicitParameter) generated << ", ";
             generated << "...";
         }
         generated << ");" << std::endl;
         if ((function.flags & 8U) != 0U) generated << '}' << std::endl;
+        if (extension) generated << '}' << std::endl;
         if (!function.namespaceName.empty()) generated << '}' << std::endl;
     }
     for (const interop::LibraryMetadataNamespaceState &state :

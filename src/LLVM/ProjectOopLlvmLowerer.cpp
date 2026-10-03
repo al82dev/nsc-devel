@@ -3043,9 +3043,17 @@ private:
             {
                 parameters.push_back(LLVMPointerTypeInContext(context_, 0));
             }
-            for (const std::string& parameter : function.parameterTypeKeys)
+            for (std::size_t parameterOrdinal = 0;
+                 parameterOrdinal < function.parameterTypeKeys.size(); ++parameterOrdinal)
             {
-                LLVMTypeRef type = abiParameterType(parameter, error);
+                const std::string& parameter = function.parameterTypeKeys[parameterOrdinal];
+                const frontend::ParameterPassKind passKind =
+                    parameterOrdinal < function.parameterPassKinds.size()
+                    ? function.parameterPassKinds[parameterOrdinal]
+                    : frontend::ParameterPassKind::Value;
+                LLVMTypeRef type = passKind == frontend::ParameterPassKind::Value
+                    ? abiParameterType(parameter, error)
+                    : LLVMPointerTypeInContext(context_, 0);
                 if (type == nullptr || type == LLVMVoidTypeInContext(context_))
                 {
                     if (error.empty()) error = "invalid Stage 34 method parameter type: " + parameter;

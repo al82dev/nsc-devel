@@ -847,6 +847,14 @@ int main(int argc, char** argv)
         "tests/cc1/c62_ns3_traits_dispatch/c62_ns3_traits_dispatch.nsproj",
         "cc1-c62-ns3-traits-dispatch", 42);
 
+    // NativeSharp 3.0 T05-F06: extension lookup forwards the receiver to a static namespace
+    // function. Value and ref receivers share the ordinary O0/NSLink ABI and execute without
+    // boxing, allocation, receiver-type mutation, or linker-specific behavior.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c69_ns3_extension_methods/c69_ns3_extension_methods.nsproj",
+        "cc1-c69-ns3-extension-methods", 42);
+
     // NativeSharp 3.0 T06-F01..F05. A partial move keeps the containing owner alive, empties
     // exactly one owned field and transfers that value to a new owner; scope cleanup must destroy
     // both payloads exactly once. Borrow-conflict variants remain directed negative probes.

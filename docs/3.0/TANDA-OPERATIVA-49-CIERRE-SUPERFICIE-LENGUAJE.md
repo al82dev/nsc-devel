@@ -10,6 +10,11 @@
 
 **Baseline:** no ejecutado; reservado para la tanda 53 y operado por Alberto
 
+> **Actualización 2026-10-03:** `NS3-T05-F06` completó la vertical productiva de métodos de
+> extensión y reemplazó su disposición por `implemented`. El resto de este documento conserva la
+> evidencia del cierre original de T49. Contrato vigente:
+> [extension-methods.md](language/extension-methods.md).
+
 ## Resultado
 
 La superficie de lenguaje 3.0 deja de confundir una idea documentada con una característica
@@ -18,10 +23,10 @@ tanda como implementado, diferido a 4.0 o rechazado para 3.0. Las formas diferid
 puede reconocer fallan con el código estable `NS3049` y explican la dependencia técnica que falta;
 no se aceptan como sintaxis decorativa ni se simulan mediante helpers desconectados.
 
-La única característica nueva que sí entra al lenguaje es `raw string literals`. Su vertical es
-real: lexer, selección de edición, AST, semántica ya existente para `string`, HIR, MIR, LLVM y objeto
-COFF O0. Los `record struct` y constructores primarios ya habían cerrado su vertical productiva en
-la tanda 08 (`8509f71f9`) y ahora aparecen formalmente como parte del contrato congelable 3.0.
+En el cierre original, la única característica nueva incorporada fue `raw string literals`. F06
+incorpora posteriormente métodos de extensión con parser, lookup, HIR, LLVM y NSMETA productivos.
+Los `record struct` y constructores primarios ya habían cerrado su vertical en la tanda 08
+(`8509f71f9`) y aparecen formalmente como parte del contrato congelable 3.0.
 
 ## Decisiones terminales
 
@@ -37,7 +42,7 @@ la tanda 08 (`8509f71f9`) y ahora aparecen formalmente como parte del contrato c
 | List patterns | Diferidos a 4.0 | Faltan usefulness/exhaustiveness y su integración con borrow/move. |
 | Constructores estáticos | Diferidos a 4.0 | Falta inicialización once thread-safe, reentrancia y modelo de fallo. |
 | `decimal` | Diferido a 4.0 | Falta ABI de valor y contratos de aritmética, overflow, conversión y formato. |
-| Métodos de extensión | Diferidos a 4.0 | Faltan lookup/import deterministas, coherence, metadata y LSP. |
+| Métodos de extensión | Implementados | Lookup/import deterministas, prioridad de miembros reales, lowering directo y NSMETA 1.32. |
 | `long double` | Rechazado en 3.0 | El ABI MSVC de Windows x64 lo iguala a `double`; 3.0 exige escribir `double`. |
 | Declaraciones en condiciones | Diferidas a 4.0 | Faltan alcance, definite assignment y cleanup en aristas true/false. |
 | Locales `static` | Diferidas a 4.0 | Faltan once thread-safe, reentrancia, destrucción y lifetime de módulo. |
@@ -68,7 +73,6 @@ Se añadió `NS3049DeferredLanguageSurface`. El parser lo produce en contextos i
 - list pattern después de `case`;
 - constructor `static`;
 - tipo `decimal` y secuencia `long double`;
-- bloque `extension` a nivel de namespace;
 - declaración en condición de `if`, `while` o `switch`;
 - local `static`.
 
@@ -124,14 +128,16 @@ el límite causal de este cambio de lenguaje.
 
 - El usuario recibe una respuesta estable y accionable en vez de errores genéricos de parser.
 - Tooling, documentación y gates pueden consultar una fuente mecánica de verdad.
-- NativeSharp 3.0 deja de prometer async, generators, decimal o extensions a medias.
+- NativeSharp 3.0 deja de prometer async, generators o decimal a medias; extensions ya tiene una
+  vertical productiva propia.
 - Raw strings permiten transportar texto, JSON, rutas y fragmentos multilínea sin duplicar cada
   backslash, manteniendo un solo tipo y ABI de string.
 - El freeze futuro puede comparar exactamente la superficie `NSLANGSURFACE 3.0`.
 
 ## Fuera de alcance
 
-- No se implementaron state machines, runtime decimal, extensión de lookup ni type initialization.
+- En la entrega original no se implementaron state machines, runtime decimal, extensión de lookup
+  ni type initialization; F06 cerró posteriormente sólo la extensión de lookup.
 - No se cambió el ABI Win64, NSMETA ni el runtime instalado.
 - No se ejecutaron optimizaciones O1/O2/O3.
 - No se tocó ni instaló nada en `C:\native-sharp`.

@@ -8,6 +8,9 @@
 > [NS3-T05-F01-traits.md](items/NS3-T05-F01-traits.md). `NS3-T05-F02` cerró después bloques
 > `impl`, coherencia sellada, impl condicional y transporte NSMETA; véase
 > [NS3-T05-F02-impl-coherence.md](items/NS3-T05-F02-impl-coherence.md).
+> `NS3-T05-F06` cerró posteriormente extensiones estáticas, lookup explícito y NSMETA 1.32; véase
+> [NS3-T05-F06-extension-methods.md](items/NS3-T05-F06-extension-methods.md). Las frases históricas
+> que dejan extension methods abiertas describen solamente el alcance de esta primera vertical.
 
 ## Objetivo
 

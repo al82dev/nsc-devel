@@ -295,7 +295,8 @@ Surface abiSurface(const LibraryMetadata& metadata)
     for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
     {
         std::string contract;
-        number(contract, function.flags & static_cast<std::uint8_t>(~16U));
+        number(contract, function.flags & static_cast<std::uint8_t>(
+            ~(16U | kMetadataNamespaceFunctionExtension)));
         field(contract, function.declaredTypeKey);
         field(contract, function.mangledName);
         number(contract, function.parameters.size());

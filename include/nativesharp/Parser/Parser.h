@@ -66,6 +66,7 @@ private:
 
     ast::AstNode* parseNamespaceMember();
     ast::AstNode* parseNamespaceDeclaration();
+    ast::AstNode* parseExtensionDeclaration();
     ast::AstNode* parseUsingDirective();
     ast::AstNode* parseGlobalDeclaration();
     // C2.2 "union and explicit layout": a union is parsed by the same routine as a struct --
@@ -363,6 +364,7 @@ private:
     std::size_t index_ = 0;
     std::size_t pendingGenericGreater_ = 0;
     std::size_t nextMatchTemporary_ = 0;
+    bool parsingExtensionBody_ = false;
     std::unordered_set<std::string> knownTypeNames_;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };

@@ -75,13 +75,14 @@ int main()
             manifest.find("target=x86_64-pc-windows-msvc") != std::string::npos &&
             manifest.find("raw-string-literals=implemented") != std::string::npos &&
             manifest.find("record-structs=implemented") != std::string::npos &&
-            manifest.find("primary-constructors=implemented") != std::string::npos,
+            manifest.find("primary-constructors=implemented") != std::string::npos &&
+            manifest.find("extension-methods=implemented") != std::string::npos,
         "the frozen 3.0 manifest publishes the productive language surface");
     constexpr std::array deferred = {
         "async-await=deferred-4.0", "async-streams=deferred-4.0",
         "yield-generators=deferred-4.0", "default-interface-implementations=deferred-4.0",
         "list-patterns=deferred-4.0", "static-constructors=deferred-4.0",
-        "decimal=deferred-4.0", "extension-methods=deferred-4.0",
+        "decimal=deferred-4.0",
         "condition-declarations=deferred-4.0", "static-locals=deferred-4.0",
         "long-double=rejected-3.0"};
     for (const std::string_view entry : deferred)
@@ -119,9 +120,9 @@ int main()
     tests.expect(hasDeferredDiagnostic(
         "decimal Work() { return 0; }", "decimal"),
         "decimal fails with NS3049 and an ABI rationale");
-    tests.expect(hasDeferredDiagnostic(
+    tests.expect(!hasDeferredDiagnostic(
         "extension Text { int Size() { return 0; } }", "extension-methods"),
-        "extension blocks fail with NS3049 and a lookup/coherence rationale");
+        "extension blocks are part of the productive NativeSharp 3 language surface");
     tests.expect(hasDeferredDiagnostic(
         "long double Work() { return 0.0; }", "long-double"),
         "long double fails with NS3049 and the Windows x64 ABI rationale");

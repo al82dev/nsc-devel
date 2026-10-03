@@ -74,11 +74,13 @@ namespace nativesharp::interop
 // MINOR 23 (2026-09-29): modules preserve their NativeSharp language edition.
 // MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
+// MINOR 32 (2026-10-03): public extension methods preserve their receiver contract and extension
+// lookup identity across LibraryReference boundaries.
 // MINOR 31 (2026-10-03): traits publish the descriptor-backed one-word dyn-object ABI and public
 // callable signatures retain the explicit `dyn` marker across LibraryReference boundaries.
 // MINOR 30 (2026-10-03): declaration-scoped opaque result identities publish their one-field
 // in-place representation and implemented trait as a closed native contract.
-inline constexpr std::uint16_t kMetadataFormatMinor = 31;
+inline constexpr std::uint16_t kMetadataFormatMinor = 32;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -130,6 +132,12 @@ inline constexpr std::uint32_t kMetadataMemberVariadic = 1U << 29U;
 // NSMETA 1.31. The canonical key intentionally remains the trait/interface key because dyn uses
 // that ABI. This semantic bit preserves the explicit dynamic-dispatch spelling for consumers.
 inline constexpr std::uint32_t kMetadataMemberDynamicTrait = 1U << 30U;
+
+// NSMETA 1.32. LibraryMetadataNamespaceFunction::flags bit 5 marks the declaration as an
+// extension method. Its first parameter is the implicit receiver and retains Value/ref/in in the
+// normal parameter record; consumers must reconstruct an extension block rather than publishing
+// the synthetic receiver as an ordinary free-function parameter.
+inline constexpr std::uint8_t kMetadataNamespaceFunctionExtension = 1U << 5U;
 
 inline constexpr std::uint8_t kMetadataTraitObjectObjectSafe = 1U << 0U;
 inline constexpr std::uint8_t kMetadataTraitObjectDescriptorMap = 1U << 1U;
