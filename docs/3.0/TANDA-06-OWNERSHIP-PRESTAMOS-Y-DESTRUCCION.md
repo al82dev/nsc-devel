@@ -1,6 +1,6 @@
 # Tanda 06 — Ownership, préstamos y destrucción / Ownership, borrows, and destruction
 
-> **Estado 2026-10-03:** `IMPLEMENTING`; F01–F04 están cerrados de forma dirigida, el gate T06 completo sigue abierto.
+> **Estado 2026-10-03:** `IMPLEMENTING`; F01–F05 están cerrados de forma dirigida, el gate T06 completo sigue abierto.
 
 ## Resultado productivo actual
 
@@ -28,7 +28,7 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 | T06-F02 | **CERRADO**: estado moved/maybe-moved por ruta nominal, hermanos vivos, reinicialización, joins/back-edges, value-drop recursivo y destructor personalizado con guard optimizable | Payload activo de variants queda ligado al cierre de T03/F08; no debilita el contrato F02 |
 | T06-F03 | **CERRADO**: place graph, reborrow mutable, suspensión del alias padre, split fields/índices constantes, slices half-open representables y fallback fail-closed | Lifetimes nombrados y procedencia cross-module pertenecen a F04/F07 |
 | T06-F04 | **CERRADO**: lifetimes nombrados/inferidos, elisión determinista, `this`/`static`, outlives transitivo, equivalencia alfa de traits, cierre de escapes y NSMETA 1.34 cross-module | Los tipos función HRTB generales y captures prestados parametrizados pertenecen a T08; F04 cubre binder universal por método sin dejar escape inseguro |
-| T06-F05 | Destructor y cleanup LIFO existentes para owners locales y parámetros en salidas estructuradas | `defer`, panic/propagation T07, fallos parciales y destructor que falla |
+| T06-F05 | **CERRADO**: `defer` edición 3 con capturas explícitas `ref`/`move`, registro léxico, orden LIFO y lowering al grafo único `finally`/RAII para salida normal y exits estructurados | El spelling y perfiles de panic pertenecen a T07; F05 ya comparte el cleanup de unwind y documenta que abort inmediato no ejecuta acciones posteriores |
 | T06-F06 | Vertical `pin raii T` edition 3: owner prestable, inamovible, irreemplazable y con cleanup léxico | Proyección pinned de campos, stack/in-place self-reference, async y FFI completos |
 | T06-F07 | Escape checks locales existentes; helper `escape-v1` aislado | Summary público/NSMETA, closures/globals/threads y cadena causal en tanda 14 |
 | T06-F08 | Descriptor/drop entry del productor cruza NSMETA/DLL, validación fail-closed y witness O0 exactamente una vez | Glue genérico de arrays/variants y summaries de layout/destrucción indirecta |
@@ -58,6 +58,9 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 - `nsc.ns3.t06.lifetime-parameters`: 19/19 checks; sintaxis/edición, elisión, receiver, outlives,
   traits con renombrado alfa, rechazo de escapes por retorno/closure, NSMETA 1.34 y consumo separado
   O0 mediante NSLink.
+- `nsc.ns3.t06.deterministic-cleanup`: 7/7 checks; LIFO en fallthrough/return/continue/break,
+  captura move-only, destrucción única, grafo de cleanup y diagnósticos de captura/edición en
+  O0 mediante NSLink.
 - Matriz dirigida F02: 7/7 tests verdes incluyendo inicializadores, records, F01, ABI struct de
   edición 2, ownership Stage 50.11 y C6 struct members.
 - Regresiones dirigidas: T04 constraints y T05 opaque/trait objects/extensions/operator traits,
@@ -69,7 +72,7 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 - Negativos dirigidos rechazan field desde owner local prestado, field desde parámetro `owned`
   prestado y elemento de array desde owner prestado con diagnóstico causal.
 
-El gate T06 completo no se declara verde: todavía requiere F05-F08, interacción
+El gate T06 completo no se declara verde: todavía requiere F06-F08, interacción
 con T07, matriz CFG/DLL exhaustiva, debugger y baseline final ejecutado por Alberto.
 
 La tanda operativa 14 cerró una vertical de F06 y la frontera DLL de F08, pero no F07 ni el glue

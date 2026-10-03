@@ -1593,6 +1593,16 @@ private:
         std::size_t loopDepthAtEntry = 0;
     };
 
+    // T06-F05. The parser lowers defer to try/finally, but the source capture boundary remains
+    // normative: a deferred body may only reach outer locals/parameters named in its explicit
+    // capture list. Generated aliases live immediately outside the marked body scope.
+    struct DeferCaptureContext final
+    {
+        std::size_t boundaryScopeOrdinal = 0;
+        std::unordered_set<std::string> allowedNames;
+        bool capturesThis = false;
+    };
+
     std::size_t createScope(
         MethodScopeKind kind,
         std::size_t methodMemberOrdinal,
@@ -2149,6 +2159,10 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         const ExpressionResult& result);
+    bool deferCaptureAllowsLocal(
+        std::string_view name, std::size_t localScopeOrdinal) const noexcept;
+    bool deferCaptureAllowsParameter(std::string_view name) const noexcept;
+    bool deferCaptureAllowsThis() const noexcept;
     void reportPrevious(
         SourceRange range,
         diagnostics::DiagnosticEngine& diagnostics,
@@ -2233,6 +2247,7 @@ private:
     std::vector<std::size_t> activeCleanupRegions_;
     std::vector<LoopContext> loopStack_;
     std::vector<FinallyContext> finallyStack_;
+    std::vector<DeferCaptureContext> deferCaptureStack_;
     std::vector<MethodLambdaBinding> lambdaBindings_;
     std::vector<MethodLambdaValueBinding> lambdaValueBindings_;
     std::vector<MethodLambdaBinding*> activeLambdaBindings_;

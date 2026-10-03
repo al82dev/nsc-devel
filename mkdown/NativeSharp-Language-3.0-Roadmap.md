@@ -624,6 +624,10 @@ evidencia del commit: `docs/3.0/items/NS3-T06-F01-move-only-defaults.md`.
 
 **Commit:** `ns3(t06-f05): deterministic-cleanup`
 
+**Estado:** `TERMINADA` (2026-10-03). Contrato normativo:
+`docs/3.0/language/deterministic-cleanup-and-defer.md`; evidencia del commit:
+`docs/3.0/items/NS3-T06-F05-deterministic-cleanup.md`.
+
 - **Implementación:** un único modelo de cleanup para scope exit, `return`, `break`, `continue`, propagation y panic nativo; `defer` captura por referencia/valor de forma explícita.
 - **Pruebas dirigidas:** nesting, múltiples exits, captures move-only, unwind/abort profiles, goto restringido y snapshots MIR.
 - **Markdown ES/EN:** orden exacto y diferencias entre destructor y `defer`.

@@ -322,6 +322,10 @@ private:
     ast::AstNode* makeVariableDeclaration(
         ast::TypeSyntax* type, std::string name, ast::AstNode* initializer, bool isRaii, bool isConst = false);
     ast::AstNode* parseReturnStatement();
+    // NativeSharp 3.0 T06-F05. `defer [ref x, move y] { ... }` is lowered while parsing the
+    // enclosing block to nested try/finally regions. This deliberately reuses the one cleanup
+    // pipeline already used by finally, using, RAII and structured exits.
+    ast::AstNode* parseDeferStatement();
     ast::AstNode* parseTryStatement();
     ast::AstNode* parseCatchClause();
     ast::AstNode* parseThrowStatement();
@@ -367,6 +371,7 @@ private:
     std::size_t index_ = 0;
     std::size_t pendingGenericGreater_ = 0;
     std::size_t nextMatchTemporary_ = 0;
+    std::size_t nextDeferTemporary_ = 0;
     bool parsingExtensionBody_ = false;
     std::unordered_set<std::string> knownTypeNames_;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;

@@ -3576,6 +3576,27 @@ void ProjectMethodBodyModel::analyzeBlock(
         activeScope = createScope(MethodScopeKind::Block, methodMemberOrdinal, scopeOrdinal);
     }
 
+    const bool deferCaptureBoundary =
+        block->auxiliaryText() == "defer-capture-boundary";
+    if (deferCaptureBoundary)
+    {
+        DeferCaptureContext context;
+        context.boundaryScopeOrdinal = activeScope;
+        std::string_view names(block->text());
+        std::size_t begin = 0;
+        while (begin <= names.size())
+        {
+            const std::size_t end = names.find(',', begin);
+            const std::string_view name = names.substr(
+                begin, end == std::string_view::npos ? names.size() - begin : end - begin);
+            if (name == "this") context.capturesThis = true;
+            else if (!name.empty()) context.allowedNames.emplace(name);
+            if (end == std::string_view::npos) break;
+            begin = end + 1;
+        }
+        deferCaptureStack_.push_back(std::move(context));
+    }
+
     const std::size_t cleanupDepthAtEntry = activeCleanupRegions_.size();
     for (const ast::AstNode* statement : block->children())
     {
@@ -3611,6 +3632,7 @@ void ProjectMethodBodyModel::analyzeBlock(
             activeCleanupRegions_[index - 1], block, methodMemberOrdinal, activeScope);
     }
     activeCleanupRegions_.resize(cleanupDepthAtEntry);
+    if (deferCaptureBoundary) deferCaptureStack_.pop_back();
     if (unsafeBlock) --unsafeBlockDepth_;
 
     constexpr std::string_view matchCoveragePrefix = "match-coverage:v1:";
@@ -4930,6 +4952,8 @@ void ProjectMethodBodyModel::analyzeVariable(
 
     const bool isReferenceLocal = variable->auxiliaryText() == "local:ref";
     const bool isPinnedLocal = variable->auxiliaryText() == "local:pinned";
+    const bool isDeferValueCapture =
+        variable->auxiliaryText() == "local:defer-value-capture";
     const bool isForeachEnumerator =
         variable->auxiliaryText() == "local:foreach-enumerator";
 
@@ -5183,15 +5207,18 @@ void ProjectMethodBodyModel::analyzeVariable(
     // value-shaped results are ordinary stack locals and therefore allocate nothing.
     const bool foreachEnumeratorNeedsRaii = isForeachEnumerator &&
         (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
+    const bool deferCaptureNeedsRaii = isDeferValueCapture &&
+        (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
     const bool isRaii = variable->hasModifier(TokenKind::KwRaii) || ownedQualifierOwnsStorage ||
-        foreachEnumeratorNeedsRaii;
+        foreachEnumeratorNeedsRaii || deferCaptureNeedsRaii;
     const bool isVolatile = variable->hasModifier(TokenKind::KwVolatile);
     // Wording helper: every owner diagnostic below has to name the spelling the user actually
     // wrote, otherwise an `owned` local reports errors about "raii local" and sends them looking at
     // the wrong keyword.
     const char* const ownerSpelling = ownedQualifierOwnsStorage
         ? "owned local"
-        : (isForeachEnumerator ? "foreach enumerator" : "raii local");
+        : (isForeachEnumerator ? "foreach enumerator"
+            : (isDeferValueCapture ? "defer value capture" : "raii local"));
     std::optional<MethodLocalBorrowBinding> pendingLocalBorrow;
     MethodEscapeOrigin pendingReferenceEscapeOrigin;
     std::string pendingReferencePlaceKey;
@@ -5339,7 +5366,12 @@ void ProjectMethodBodyModel::analyzeVariable(
                         "' cannot be copied into a non-owning local; Stage 49 requires ownership transfer with move(...)");
             }
         }
-        if (variable->first()->kind() == ast::AstNodeKind::MoveExpression && !isRaii && !isMoveOnly)
+        const bool isCompilerGeneratedDeferCopy =
+            isDeferValueCapture &&
+            variable->first()->kind() == ast::AstNodeKind::MoveExpression &&
+            variable->first()->auxiliaryText() == "defer-value-capture";
+        if (variable->first()->kind() == ast::AstNodeKind::MoveExpression &&
+            !isRaii && !isMoveOnly && !isCompilerGeneratedDeferCopy)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
@@ -7361,6 +7393,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 allowConstructorPropertyWrite);
             break;
         case ast::AstNodeKind::ThisExpression:
+            if (!deferCaptureAllowsThis())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "defer body uses this without an explicit 'ref this' capture");
+                break;
+            }
             if (!contextHasImplicitThis(methodMemberOrdinal))
             {
                 diagnostics.report(
@@ -7805,11 +7846,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 break;
             }
 
+            const bool deferValueCapture =
+                expression->auxiliaryText() == "defer-value-capture";
+            bool copiedForDefer = false;
             if (source->kind == ScopeNameKind::Local)
             {
-                if (source->semanticOrdinal >= locals_.size() ||
-                    (!locals_[source->semanticOrdinal].isRaii &&
-                     !locals_[source->semanticOrdinal].isMoveOnly))
+                if (source->semanticOrdinal >= locals_.size())
+                {
+                    break;
+                }
+                const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
+                const bool sourceRequiresMove = local.isRaii || local.isMoveOnly;
+                copiedForDefer = deferValueCapture && !sourceRequiresMove;
+                if (!sourceRequiresMove && !copiedForDefer)
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
@@ -7819,8 +7868,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         "local/parameter");
                     break;
                 }
-                const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
-                if (local.isPinned)
+                if (sourceRequiresMove && local.isPinned)
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
@@ -7830,7 +7878,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             "'; it must remain at a stable address until lexical destruction");
                     break;
                 }
-                if (movedRaiiLocals_.contains(source->semanticOrdinal))
+                if (sourceRequiresMove && movedRaiiLocals_.contains(source->semanticOrdinal))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
@@ -7841,7 +7889,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             local.name + "'");
                     break;
                 }
-                if (maybeMovedRaiiLocals_.contains(source->semanticOrdinal))
+                if (sourceRequiresMove && maybeMovedRaiiLocals_.contains(source->semanticOrdinal))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
@@ -7852,7 +7900,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             "' after a control-flow join");
                     break;
                 }
-                if (hasActiveBorrowOfOwnerLocal(source->semanticOrdinal, scopeOrdinal))
+                if (sourceRequiresMove &&
+                    hasActiveBorrowOfOwnerLocal(source->semanticOrdinal, scopeOrdinal))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
@@ -7881,8 +7930,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 move.scopeOrdinal = scopeOrdinal;
                 move.sourceLocalOrdinal = source->semanticOrdinal;
                 move.typeKey = local.typeKey;
-                if (placeHasMovedDescendant("L" + std::to_string(source->semanticOrdinal)) ||
+                if (sourceRequiresMove &&
+                    (placeHasMovedDescendant("L" + std::to_string(source->semanticOrdinal)) ||
                     placeHasMaybeMovedDescendant("L" + std::to_string(source->semanticOrdinal)))
+                    )
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::NS3020InvalidValueCategory,
@@ -7892,14 +7943,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             "' after one of its fields was moved; reinitialize the field first");
                     break;
                 }
-                move.clearSourceStorage =
-                    isReferenceTypeKey(local.typeKey) || local.typeKey == "builtin:string" ||
-                    ProjectTypeConversion::isNativeArray(local.typeKey) ||
-                    memberModel_->typeRequiresValueDrop(local.typeKey);
+                move.clearSourceStorage = sourceRequiresMove &&
+                    (isReferenceTypeKey(local.typeKey) || local.typeKey == "builtin:string" ||
+                     ProjectTypeConversion::isNativeArray(local.typeKey) ||
+                     memberModel_->typeRequiresValueDrop(local.typeKey));
                 moveBindings_.push_back(std::move(move));
-                maybeMovedRaiiLocals_.erase(source->semanticOrdinal);
-                movedRaiiLocals_.insert(source->semanticOrdinal);
-                invalidateHistoricalBorrowsOfOwnerLocal(source->semanticOrdinal);
+                if (sourceRequiresMove)
+                {
+                    maybeMovedRaiiLocals_.erase(source->semanticOrdinal);
+                    movedRaiiLocals_.insert(source->semanticOrdinal);
+                    invalidateHistoricalBorrowsOfOwnerLocal(source->semanticOrdinal);
+                }
                 result.typeKey = local.typeKey;
                 result.ownershipSourceLocalOrdinal = source->semanticOrdinal;
                 result.objectLifetimeOwnership = local.objectLifetimeOwnership;
@@ -7908,11 +7962,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             else
             {
                 const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
-                if (method == nullptr || source->semanticOrdinal >= method->parameters.size() ||
-                    (method->parameters[source->semanticOrdinal].ownership != sema::OwnershipKind::Owned &&
-                     !(method->parameters[source->semanticOrdinal].passKind == ParameterPassKind::Value &&
-                       memberModel_->typeIsMoveOnly(
-                           method->parameters[source->semanticOrdinal].typeKey))))
+                if (method == nullptr || source->semanticOrdinal >= method->parameters.size())
+                {
+                    break;
+                }
+                const MethodParameterSymbol& parameter = method->parameters[source->semanticOrdinal];
+                const bool sourceRequiresMove =
+                    parameter.ownership == sema::OwnershipKind::Owned ||
+                    (parameter.passKind == ParameterPassKind::Value &&
+                     memberModel_->typeIsMoveOnly(parameter.typeKey));
+                copiedForDefer = deferValueCapture && !sourceRequiresMove;
+                if (!sourceRequiresMove && !copiedForDefer)
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
@@ -7922,8 +7982,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         "local/parameter");
                     break;
                 }
-                const MethodParameterSymbol& parameter = method->parameters[source->semanticOrdinal];
-                if (movedOwnedParameters_.contains(source->semanticOrdinal))
+                if (sourceRequiresMove && movedOwnedParameters_.contains(source->semanticOrdinal))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
@@ -7932,7 +7991,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         "cannot move from already moved-from parameter '" + parameter.name + "'");
                     break;
                 }
-                if (maybeMovedOwnedParameters_.contains(source->semanticOrdinal))
+                if (sourceRequiresMove && maybeMovedOwnedParameters_.contains(source->semanticOrdinal))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
@@ -7942,7 +8001,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             "' after a control-flow join");
                     break;
                 }
-                if (hasActiveBorrowOfOwnedParameter(source->semanticOrdinal, scopeOrdinal))
+                if (sourceRequiresMove &&
+                    hasActiveBorrowOfOwnedParameter(source->semanticOrdinal, scopeOrdinal))
                 {
                     const std::string parameterKind =
                         parameter.ownership == sema::OwnershipKind::Owned
@@ -7976,8 +8036,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 move.scopeOrdinal = scopeOrdinal;
                 move.sourceParameterOrdinal = source->semanticOrdinal;
                 move.typeKey = parameter.typeKey;
-                if (placeHasMovedDescendant("P" + std::to_string(source->semanticOrdinal)) ||
+                if (sourceRequiresMove &&
+                    (placeHasMovedDescendant("P" + std::to_string(source->semanticOrdinal)) ||
                     placeHasMaybeMovedDescendant("P" + std::to_string(source->semanticOrdinal)))
+                    )
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::NS3020InvalidValueCategory,
@@ -7987,14 +8049,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             "' after one of its fields was moved; reinitialize the field first");
                     break;
                 }
-                move.clearSourceStorage =
-                    isReferenceTypeKey(parameter.typeKey) || parameter.typeKey == "builtin:string" ||
-                    ProjectTypeConversion::isNativeArray(parameter.typeKey) ||
-                    memberModel_->typeRequiresValueDrop(parameter.typeKey);
+                move.clearSourceStorage = sourceRequiresMove &&
+                    (isReferenceTypeKey(parameter.typeKey) || parameter.typeKey == "builtin:string" ||
+                     ProjectTypeConversion::isNativeArray(parameter.typeKey) ||
+                     memberModel_->typeRequiresValueDrop(parameter.typeKey));
                 moveBindings_.push_back(std::move(move));
-                maybeMovedOwnedParameters_.erase(source->semanticOrdinal);
-                movedOwnedParameters_.insert(source->semanticOrdinal);
-                invalidateHistoricalBorrowsOfOwnedParameter(source->semanticOrdinal);
+                if (sourceRequiresMove)
+                {
+                    maybeMovedOwnedParameters_.erase(source->semanticOrdinal);
+                    movedOwnedParameters_.insert(source->semanticOrdinal);
+                    invalidateHistoricalBorrowsOfOwnedParameter(source->semanticOrdinal);
+                }
                 result.typeKey = parameter.typeKey;
                 result.ownershipSourceParameterOrdinal = source->semanticOrdinal;
                 result.objectLifetimeOwnership = sema::OwnershipKind::Owned;
@@ -8003,8 +8068,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
             result.valid = true;
             result.assignable = false;
-            result.ownership = sema::OwnershipKind::Owned;
-            result.ownershipTransfer = true;
+            result.ownership = copiedForDefer
+                ? sema::OwnershipKind::None : sema::OwnershipKind::Owned;
+            result.ownershipTransfer = !copiedForDefer;
+            if (copiedForDefer)
+            {
+                result.ownershipSourceLocalOrdinal.reset();
+                result.ownershipSourceParameterOrdinal.reset();
+                result.objectLifetimeOwnership = sema::OwnershipKind::None;
+                result.storageOwnership = sema::OwnershipKind::None;
+            }
             break;
         }
         case ast::AstNodeKind::NullConditionalMemberExpression:
@@ -10219,6 +10292,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             if (scopeName->semanticOrdinal < locals_.size())
             {
                 const MethodLocalSymbol& local = locals_[scopeName->semanticOrdinal];
+                if (!deferCaptureAllowsLocal(expression->text(), local.scopeOrdinal))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "defer body uses outer local '" + expression->text() +
+                            "' without an explicit ref or move capture");
+                    return result;
+                }
                 // C7 "definite assignment": this is the one place a local name becomes a READ of
                 // its value, so it is the one place the check belongs. It runs before the
                 // ownership diagnostics below on purpose -- an unassigned local is the more
@@ -10375,6 +10458,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         if (method != nullptr && scopeName->semanticOrdinal < method->parameters.size())
         {
             const MethodParameterSymbol& parameter = method->parameters[scopeName->semanticOrdinal];
+            if (!deferCaptureAllowsParameter(expression->text()))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "defer body uses parameter '" + expression->text() +
+                        "' without an explicit ref or move capture");
+                return result;
+            }
             const bool moveTrackedParameter =
                 parameter.ownership == sema::OwnershipKind::Owned ||
                 (parameter.passKind == ParameterPassKind::Value &&
@@ -10528,6 +10621,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
     std::vector<std::size_t> events;
     std::vector<std::size_t> methods;
     bool inaccessibleFound = false;
+    bool uncapturedReceiverFound = false;
     for (const std::size_t candidate : candidates)
     {
         if (candidate >= memberModel_->members().size())
@@ -10541,6 +10635,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         }
         if (staticContext && !member.isStatic)
         {
+            continue;
+        }
+        if (!member.isStatic && !deferCaptureAllowsThis())
+        {
+            uncapturedReceiverFound = true;
             continue;
         }
         if (!ProjectMemberAccessibility::isAccessible(
@@ -10565,6 +10664,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         {
             methods.push_back(candidate);
         }
+    }
+    if (fields.empty() && events.empty() && methods.empty() && uncapturedReceiverFound)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "defer body uses an instance member through this without an explicit 'ref this' capture");
+        return result;
     }
 
     if (!events.empty())
@@ -19975,6 +20083,33 @@ bool ProjectMethodBodyModel::betterCandidate(
         }
     }
     return strictlyBetter;
+}
+
+bool ProjectMethodBodyModel::deferCaptureAllowsLocal(
+    std::string_view name, std::size_t localScopeOrdinal) const noexcept
+{
+    if (deferCaptureStack_.empty()) return true;
+    const DeferCaptureContext& context = deferCaptureStack_.back();
+    if (context.allowedNames.contains(std::string(name))) return true;
+
+    std::optional<std::size_t> current = localScopeOrdinal;
+    while (current.has_value() && *current < scopes_.size())
+    {
+        if (*current == context.boundaryScopeOrdinal) return true;
+        current = scopes_[*current].parentScopeOrdinal;
+    }
+    return false;
+}
+
+bool ProjectMethodBodyModel::deferCaptureAllowsParameter(std::string_view name) const noexcept
+{
+    return deferCaptureStack_.empty() ||
+        deferCaptureStack_.back().allowedNames.contains(std::string(name));
+}
+
+bool ProjectMethodBodyModel::deferCaptureAllowsThis() const noexcept
+{
+    return deferCaptureStack_.empty() || deferCaptureStack_.back().capturesThis;
 }
 
 void ProjectMethodBodyModel::recordExpressionType(
