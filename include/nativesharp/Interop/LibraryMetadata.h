@@ -74,9 +74,11 @@ namespace nativesharp::interop
 // MINOR 23 (2026-09-29): modules preserve their NativeSharp language edition.
 // MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
+// MINOR 31 (2026-10-03): traits publish the descriptor-backed one-word dyn-object ABI and public
+// callable signatures retain the explicit `dyn` marker across LibraryReference boundaries.
 // MINOR 30 (2026-10-03): declaration-scoped opaque result identities publish their one-field
 // in-place representation and implemented trait as a closed native contract.
-inline constexpr std::uint16_t kMetadataFormatMinor = 30;
+inline constexpr std::uint16_t kMetadataFormatMinor = 31;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -125,6 +127,14 @@ inline constexpr std::uint32_t kMetadataFieldBitField = 1U << 27U;
 inline constexpr std::uint32_t kMetadataFieldUnnamedBitField = 1U << 28U;
 // Item 331. Bit 29 belongs only to imported-C method records and preserves the terminal `...`.
 inline constexpr std::uint32_t kMetadataMemberVariadic = 1U << 29U;
+// NSMETA 1.31. The canonical key intentionally remains the trait/interface key because dyn uses
+// that ABI. This semantic bit preserves the explicit dynamic-dispatch spelling for consumers.
+inline constexpr std::uint32_t kMetadataMemberDynamicTrait = 1U << 30U;
+
+inline constexpr std::uint8_t kMetadataTraitObjectObjectSafe = 1U << 0U;
+inline constexpr std::uint8_t kMetadataTraitObjectDescriptorMap = 1U << 1U;
+inline constexpr std::uint8_t kMetadataTraitObjectNullIsZero = 1U << 2U;
+inline constexpr std::uint8_t kMetadataTraitObjectNoConversionAllocation = 1U << 3U;
 
 // Contrato binario de NativeSharp 1.0. Son numeros, no nombres decorativos: entran en el
 // fingerprint ABI, se verifican antes de compilar al consumidor y sólo cambian cuando cambia una
@@ -246,6 +256,11 @@ struct LibraryMetadataType final
     std::uint8_t delegateFlags = 0;
     std::string delegateReturnTypeKey;
     std::vector<std::string> delegateParameterTypeKeys;
+    // NSMETA 1.31. `dyn` is a source-level trait-object contract. It uses the same
+    // physical reference ABI as the nominal interface key, but must survive source
+    // materialization and API-diff round trips.
+    bool delegateReturnDynamicTrait = false;
+    std::vector<std::uint8_t> delegateParameterDynamicTraits;
     // NSMETA 1.27. Declaration order is deliberately retained because it defines CaseTag().
     std::vector<LibraryMetadataVariantCase> variantCases;
     // NSMETA 1.28. Effective instance-method signatures in their normative trait-dispatch order.
@@ -255,6 +270,10 @@ struct LibraryMetadataType final
     // NSMETA 1.29. Ordered as declared. These are logical compile-time items and never fields,
     // vtable slots, or exported storage.
     std::vector<LibraryMetadataAssociatedItem> associatedItems;
+    // NSMETA 1.31. Zero for non-traits. NativeSharp's Windows x64 representation is one
+    // object-reference word; dispatch is selected through the object's descriptor/interface map.
+    std::uint8_t traitObjectFlags = 0;
+    std::uint8_t traitObjectWordCount = 0;
     std::vector<LibraryMetadataField> fields;
 };
 
@@ -267,6 +286,8 @@ struct LibraryMetadataParameter final
     // NSMETA 1.24. The final parameter keeps its `params ReadOnlySpan<T>` call-site contract
     // across a LibraryReference boundary; the physical type and ABI remain unchanged.
     bool isParameterPack = false;
+    // NSMETA 1.31. Source-level dynamic dispatch marker; physical typeKey is unchanged.
+    bool isDynamicTrait = false;
     // NSMETA 1.3. `defaultValueBits` stores the integer/character magnitude, a boolean bit, or
     // the IEEE-754 bits of the parsed double literal. Strings use `defaultValueText`; null has no
     // payload. Bit 0 of `defaultValueFlags` preserves a unary minus for integer literals.

@@ -38,10 +38,11 @@ int main()
             std::array<TraitMethod, 1>{{{"Map<T>(self)", false, true, false}}}, error),
         "dyn Trait rejects methods that cannot occupy a stable vtable slot");
     const auto object = windowsX64TraitObjectLayout();
-    tests.expect(object.size == 16 && object.alignment == 8 &&
+    tests.expect(object.size == 8 && object.alignment == 8 && object.descriptorInterfaceMap &&
+            object.nullIsZero && !object.conversionAllocates &&
             dispatchMetadata(DispatchKind::Static, "Demo.Hash") == "static:Demo.Hash" &&
             dispatchMetadata(DispatchKind::Dynamic, "Demo.Hash") == "dyn:Demo.Hash",
-        "Win64 trait objects are explicit fat pointers and metadata preserves dispatch kind");
+        "Win64 trait objects are declared descriptor-backed references and metadata preserves dispatch kind");
     tests.expect(resolveExtension(true, 2) == ExtensionResolution::InstanceMember &&
             resolveExtension(false, 1) == ExtensionResolution::UniqueExtension &&
             resolveExtension(false, 2) == ExtensionResolution::Ambiguous,

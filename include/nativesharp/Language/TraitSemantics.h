@@ -51,7 +51,14 @@ bool validateOpaqueResultTypes(std::span<const std::string> concreteReturns, std
 bool isObjectSafe(std::span<const TraitMethod> methods, std::string& error);
 
 enum class DispatchKind { Static, Dynamic };
-struct TraitObjectLayout final { std::size_t size; std::size_t alignment; };
+struct TraitObjectLayout final
+{
+    std::size_t size;
+    std::size_t alignment;
+    bool descriptorInterfaceMap;
+    bool nullIsZero;
+    bool conversionAllocates;
+};
 TraitObjectLayout windowsX64TraitObjectLayout() noexcept;
 std::string dispatchMetadata(DispatchKind kind, std::string_view traitIdentity);
 

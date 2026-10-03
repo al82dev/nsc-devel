@@ -29,7 +29,7 @@ int main()
             "ledger entry contains required field " + std::string(field));
     }
     tests.expect(ledger.find("runtime-abi:1.1") != std::string::npos &&
-            ledger.find("nsmeta:1.30") != std::string::npos,
+            ledger.find("nsmeta:1.31") != std::string::npos,
         "ledger records the 3.0 runtime and metadata migration");
 
     const std::filesystem::path root =

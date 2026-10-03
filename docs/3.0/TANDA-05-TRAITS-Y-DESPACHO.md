@@ -1,8 +1,8 @@
 # Tanda 05 — Traits, interfaces estáticas y despacho / Traits and dispatch
 
-> **Estado 2026-10-03:** `IMPLEMENTING`. `NS3-T05-F01`–`NS3-T05-F04` están terminados:
+> **Estado 2026-10-03:** `IMPLEMENTING`. `NS3-T05-F01`–`NS3-T05-F05` están terminados:
 > declaraciones, defaults, requisitos estáticos, bloques `impl`, coherencia sellada, impls
-> condicionales, tipos/constantes asociados, resultados opacos y transporte NSMETA. F05–F07
+> condicionales, tipos/constantes asociados, resultados opacos, objetos trait y transporte NSMETA. F06–F07
 > permanecen pendientes.
 > No se ejecutó baseline.
 
@@ -15,7 +15,7 @@ conserva el despacho por tabla de interfaces. NSMETA 1.28 conserva identidad y o
 EN: `trait` declares nominal storage-free contracts in edition 3. It supports required/default
 methods plus static property/operator requirements. Concrete constraints are monomorphized while
 `dyn Trait` preserves interface-table dispatch. Associated types/constants normalize statically.
-NSMETA 1.30 also preserves declaration-scoped opaque result identity and in-place layout.
+NSMETA 1.31 also preserves declaration-scoped opaque results plus explicit one-word trait objects.
 
 ## Archivos y cambios / Files and changes
 
@@ -32,6 +32,8 @@ NSMETA 1.30 also preserves declaration-scoped opaque result identity and in-plac
   constantes, genéricos y productor/consumidor NSMETA 1.29.
 - `NativeSharp3T05OpaqueResultTests` cubre 14 casos de identidad, representación única, herencia,
   asociados, inferencia genérica, módulos separados y NSMETA 1.30.
+- `NativeSharp3T05TraitObjectTests` cubre 12 casos de object-safety, ownership, no-boxing,
+  upcast, null, DLL y NSMETA 1.31.
 
 ## Mejora / Improvement
 
@@ -47,21 +49,23 @@ reordering or runtime coherence.
 
 ## Límite / Boundary
 
-F01–F04 no equivalen al gate T05. Object-safety completa, extension lookup y operadores resueltos
-mediante traits siguen abiertos en F05–F07.
+F01–F05 no equivalen al gate T05. Extension lookup y operadores resueltos mediante traits siguen
+abiertos en F06–F07.
 
 ## Validación / Validation
 
 `nsc` O0; c62 exit 42; MIR static/dynamic; batería F01 14/14; batería F02 11/11; batería F03
-16/16; F04 14/14; productor `.lib/.nsmeta` y consumidores con defaults, impl genérico, asociados y
-resultados opacos exit 42.
+16/16; F04 14/14; F05 12/12; productor `.lib/.nsmeta` y consumidores con defaults, impl genérico,
+asociados, resultados opacos y objetos trait exit 42.
 Sin baseline, CTest general, O1/O2/O3, instalación ni deploy.
 
 Detalle: [trait-declarations.md](language/trait-declarations.md),
 [trait-implementations.md](language/trait-implementations.md),
 [associated-items.md](language/associated-items.md),
 [opaque-result-types.md](language/opaque-result-types.md),
+[trait-objects.md](language/trait-objects.md),
 [NS3-T05-F01-traits.md](items/NS3-T05-F01-traits.md) y
 [NS3-T05-F02-impl-coherence.md](items/NS3-T05-F02-impl-coherence.md) y
 [NS3-T05-F03-associated-items.md](items/NS3-T05-F03-associated-items.md) y
-[NS3-T05-F04-opaque-result-types.md](items/NS3-T05-F04-opaque-result-types.md).
+[NS3-T05-F04-opaque-result-types.md](items/NS3-T05-F04-opaque-result-types.md) y
+[NS3-T05-F05-trait-objects.md](items/NS3-T05-F05-trait-objects.md).

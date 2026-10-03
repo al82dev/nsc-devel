@@ -37,6 +37,22 @@ struct ClassInterfaceTablePlan final
     std::vector<std::optional<std::size_t>> implementationMemberOrdinals;
 };
 
+// NativeSharp 3.0 T05-F05. A `dyn Trait` is deliberately not a boxed value and not a
+// Rust-style two-word fat pointer. On Windows x64 it is the existing one-word object reference;
+// the object's class descriptor owns the stable interface map that resolves the trait table.
+// Keeping this as an explicit frontend contract prevents documentation/metadata/backend code
+// from inventing different representations for the same source type.
+struct TraitObjectContract final
+{
+    std::size_t traitTypeOrdinal = 0;
+    std::uint64_t size = 8;
+    std::uint64_t alignment = 8;
+    bool objectSafe = false;
+    bool descriptorInterfaceMap = true;
+    bool nullIsZero = true;
+    bool conversionAllocates = false;
+};
+
 class ProjectInterfaceModel final
 {
 public:
@@ -61,6 +77,8 @@ public:
     const ClassInterfaceTablePlan* tablePlan(
         std::size_t classTypeOrdinal,
         std::size_t interfaceTypeOrdinal) const noexcept;
+    const TraitObjectContract* traitObjectContract(
+        std::size_t traitTypeOrdinal) const noexcept;
     std::optional<std::size_t> typeOrdinalForTypeKey(std::string_view typeKey) const noexcept;
     std::string typeKeyForOrdinal(std::size_t typeOrdinal) const;
     bool isBuilt() const noexcept;
@@ -80,6 +98,7 @@ private:
         std::vector<VisitState>& states,
         diagnostics::DiagnosticEngine& diagnostics);
     bool buildClassPlans(diagnostics::DiagnosticEngine& diagnostics);
+    bool buildTraitObjectContracts(diagnostics::DiagnosticEngine& diagnostics);
     std::optional<std::size_t> findImplementation(
         std::size_t classTypeOrdinal,
         const ClassMemberSymbol& interfaceMethod) const noexcept;
@@ -95,6 +114,7 @@ private:
     std::vector<std::optional<std::size_t>> interfaceInfoByType_;
     std::vector<std::vector<std::size_t>> interfacesByClass_;
     std::vector<ClassInterfaceTablePlan> tablePlans_;
+    std::vector<TraitObjectContract> traitObjectContracts_;
     bool built_ = false;
 };
 }

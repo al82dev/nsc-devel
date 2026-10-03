@@ -1561,6 +1561,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             if (!sourceTypeForMetadataKey(metadata, sourceTypeKey, parameterType, error)) return false;
             generated << (parameter.isParameterPack ? "params " : "")
                       << parameterPassPrefix(parameter.passKind) << ownershipPrefix(parameter.ownership)
+                      << (parameter.isDynamicTrait ? "dyn " : "")
                       << parameterType << ' '
                       << (parameter.name.empty() ? "arg" + std::to_string(index) : parameter.name);
             std::string defaultValue;
@@ -1776,7 +1777,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 else if ((shape.flags & kVirtual) != 0U) generated << "virtual ";
             }
             if ((shape.flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
-            generated << ownershipPrefix(declaredOwnership) << declaredType << ' ';
+            generated << ownershipPrefix(declaredOwnership)
+                      << ((shape.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
+                      << declaredType << ' ';
             if (contract.isIndexer)
             {
                 generated << "this[";
@@ -1885,7 +1888,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             generated << typeAccessibility << ' ';
             if ((type.delegateFlags & 1U) != 0U)
                 generated << (((type.delegateFlags & 2U) != 0U) ? "extern vectorcall " : "extern C ");
-            generated << "delegate " << returnType << ' ' << typeName << '(';
+            generated << "delegate ";
+            if (type.delegateReturnDynamicTrait) generated << "dyn ";
+            generated << returnType << ' ' << typeName << '(';
             for (std::size_t parameterIndex = 0; parameterIndex < type.delegateParameterTypeKeys.size();
                 ++parameterIndex)
             {
@@ -1893,6 +1898,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 std::string parameterType;
                 if (!sourceTypeForMetadataKey(metadata, type.delegateParameterTypeKeys[parameterIndex], parameterType, error))
                     return false;
+                if (parameterIndex < type.delegateParameterDynamicTraits.size() &&
+                    type.delegateParameterDynamicTraits[parameterIndex] != 0U)
+                    generated << "dyn ";
                 generated << parameterType << " arg" << parameterIndex;
             }
             generated << ");\n";
@@ -1967,6 +1975,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                         return false;
                     }
                     generated << "static " << ownershipPrefix(member->declaredOwnership)
+                              << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
                               << returnType << " operator " << token << '(';
                     if (!emitParameters(*member)) return false;
                     generated << ");\n";
@@ -1975,8 +1984,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if (isTrait && (member->flags & kStatic) != 0U) generated << "static ";
                 if ((member->flags & interop::kMetadataMemberNoHeap) != 0U) generated << "noheap ";
                 if ((member->flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
-                generated << ownershipPrefix(member->declaredOwnership) << returnType << ' '
-                          << member->name << '(';
+                generated << ownershipPrefix(member->declaredOwnership)
+                          << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
+                          << returnType << ' ' << member->name << '(';
                 if (!emitParameters(*member)) return false;
                 generated << (isTrait && (member->flags & kAbstract) == 0U ? ") { }\n" : ");\n");
             }
@@ -2164,7 +2174,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if ((child.flags & (1U << 1U)) != 0U || (nested.flags & (1U << 6U)) != 0U)
                     generated << "readonly ";
                 if ((child.flags & interop::kMetadataMemberVolatile) != 0U) generated << "volatile ";
-                generated << ownershipPrefix(child.ownership) << childType;
+                generated << ownershipPrefix(child.ownership)
+                          << ((child.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
+                          << childType;
                 if (!childUnnamedBitField) generated << ' ' << childName;
                 if (childBitField) generated << " : " << child.bitWidth;
                 generated << ";\n";
@@ -2190,8 +2202,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 {
                     generated << "    " << sourceAccessibility(event->accessibility) << ' ';
                     if ((event->flags & (1U << 0U)) != 0U) generated << "static ";
-                    generated << "event " << ownershipPrefix(event->declaredOwnership) << fieldType << ' '
-                              << event->name << ";\n";
+                    generated << "event " << ownershipPrefix(event->declaredOwnership)
+                              << ((event->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
+                              << fieldType << ' ' << event->name << ";\n";
                     materializedEvents.insert(event);
                     continue;
                 }
@@ -2216,7 +2229,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if ((field.flags & (1U << 1U)) != 0U || (type.flags & (1U << 6U)) != 0U)
                     generated << "readonly ";
                 if ((field.flags & interop::kMetadataMemberVolatile) != 0U) generated << "volatile ";
-                generated << ownershipPrefix(field.ownership) << fieldType;
+                generated << ownershipPrefix(field.ownership)
+                          << ((field.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
+                          << fieldType;
                 if (!unnamedBitField) generated << ' ' << fieldName;
                 if (bitField) generated << " : " << field.bitWidth;
                 generated << ";\n";
@@ -2242,6 +2257,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                     std::string value;
                     if (!metadataConstantSource(*member, value, error)) return false;
                     generated << "    " << sourceAccessibility(member->accessibility) << " const "
+                              << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
                               << fieldType << ' ' << member->name << " = " << value << ";\n";
                 }
                 else
@@ -2249,7 +2265,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                     generated << "    " << sourceAccessibility(member->accessibility) << " static ";
                     if ((member->flags & (1U << 1U)) != 0U) generated << "readonly ";
                     if ((member->flags & interop::kMetadataMemberVolatile) != 0U) generated << "volatile ";
-                    generated << fieldType << ' ' << member->name << ";\n";
+                    generated << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
+                              << fieldType << ' ' << member->name << ";\n";
                 }
                 continue;
             }
@@ -2260,8 +2277,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if (!sourceTypeForMetadataKey(metadata, member->declaredTypeKey, eventType, error)) return false;
                 generated << "    " << sourceAccessibility(member->accessibility) << ' ';
                 if ((member->flags & (1U << 0U)) != 0U) generated << "static ";
-                generated << "event " << ownershipPrefix(member->declaredOwnership) << eventType << ' '
-                          << member->name << ";\n";
+                generated << "event " << ownershipPrefix(member->declaredOwnership)
+                          << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
+                          << eventType << ' ' << member->name << ";\n";
                 continue;
             }
             if (member->kind == kDestructorKind)
@@ -2307,7 +2325,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if (!member->importDllName.empty())
                     generated << " from " << escapedStringLiteral(member->importDllName);
                 generated << "\n    {\n        " << sourceAccessibility(member->accessibility) << ' '
-                          << ownershipPrefix(member->declaredOwnership) << returnType << ' ' << member->name << '(';
+                          << ownershipPrefix(member->declaredOwnership)
+                          << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
+                          << returnType << ' ' << member->name << '(';
                 if (!emitParameters(*member)) return false;
                 generated << ");\n    }\n";
                 continue;
@@ -2321,7 +2341,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                     return false;
                 }
                 generated << "    " << sourceAccessibility(member->accessibility) << " static "
-                          << ownershipPrefix(member->declaredOwnership) << returnType << " operator " << token << '(';
+                          << ownershipPrefix(member->declaredOwnership)
+                          << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
+                          << returnType << " operator " << token << '(';
                 if (!emitParameters(*member)) return false;
                 generated << ") { }\n";
                 continue;
@@ -2330,7 +2352,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             {
                 generated << "    " << sourceAccessibility(member->accessibility) << " static "
                           << ((member->flags & kImplicitConversion) != 0U ? "implicit" : "explicit")
-                          << " operator " << ownershipPrefix(member->declaredOwnership) << returnType << '(';
+                          << " operator " << ownershipPrefix(member->declaredOwnership)
+                          << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
+                          << returnType << '(';
                 if (!emitParameters(*member)) return false;
                 generated << ") { }\n";
                 continue;
@@ -2349,7 +2373,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             if (inlining == 3U) generated << "noinline ";
             if ((member->flags & interop::kMetadataMemberNoHeap) != 0U) generated << "noheap ";
             if ((member->flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
-            generated << ownershipPrefix(member->declaredOwnership) << returnType << ' ' << member->name << '(';
+            generated << ownershipPrefix(member->declaredOwnership)
+                      << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
+                      << returnType << ' ' << member->name << '(';
             if (!emitParameters(*member)) return false;
             // The empty body is an implementation detail of the generated syntax.
             // Precompiled units are skipped by body analysis and lowered as external
@@ -2390,7 +2416,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             generated << "extern C" << std::endl << '{' << std::endl;
         generated << "public ";
         if ((function.flags & 1U) != 0U) generated << "ref ";
-        generated << ownershipPrefix(function.declaredOwnership) << returnType << ' '
+        generated << ownershipPrefix(function.declaredOwnership)
+                  << ((function.flags & 16U) != 0U ? "dyn " : "") << returnType << ' '
                   << function.name << '(';
         if (!emitParameterRange(function, function.parameters.size())) return false;
         if ((function.flags & 2U) != 0U)
@@ -2417,6 +2444,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         generated << "public ";
         const bool isConst = (state.flags & 1U) != 0U;
         if (isConst) generated << "const ";
+        if ((state.flags & 2U) != 0U) generated << "dyn ";
         generated << typeSource << ' ' << state.name;
         if (isConst)
         {

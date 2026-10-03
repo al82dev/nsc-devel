@@ -544,6 +544,8 @@ std::uint32_t memberFlags(const frontend::ClassMemberSymbol& member) noexcept
     if (member.isReferenceReturn) flags |= kMetadataMemberReferenceReturn;
     if (member.isNoHeap) flags |= kMetadataMemberNoHeap;
     if (member.isVariadic) flags |= kMetadataMemberVariadic;
+    if (member.declaredTypeSyntax != nullptr && member.declaredTypeSyntax->isDynamicTrait())
+        flags |= kMetadataMemberDynamicTrait;
     return flags;
 }
 
@@ -915,6 +917,22 @@ bool buildMetadataModel(
         record.fullyQualifiedName = type.identity.fullyQualifiedName();
         const std::string canonicalTypeKey = typeKeyForOrdinal(types, typeOrdinal);
         record.stableTypeId = stableTypeId(canonicalTypeKey);
+        if ((record.flags & kMetadataTypeTrait) != 0U)
+        {
+            if (const frontend::TraitObjectContract* object =
+                    compilation.interfaceModel()->traitObjectContract(typeOrdinal))
+            {
+                if (object->objectSafe)
+                    record.traitObjectFlags |= kMetadataTraitObjectObjectSafe;
+                if (object->descriptorInterfaceMap)
+                    record.traitObjectFlags |= kMetadataTraitObjectDescriptorMap;
+                if (object->nullIsZero)
+                    record.traitObjectFlags |= kMetadataTraitObjectNullIsZero;
+                if (!object->conversionAllocates)
+                    record.traitObjectFlags |= kMetadataTraitObjectNoConversionAllocation;
+                record.traitObjectWordCount = static_cast<std::uint8_t>(object->size / 8U);
+            }
+        }
 
         if (!type.isStatic)
         {
@@ -1122,12 +1140,20 @@ bool buildMetadataModel(
             record.referenceAlignment = kPointerAlignment;
             record.delegateReturnTypeKey =
                 compilation.memberModel()->canonicalTypeKey(type.syntax->typeSyntax(), *compilation.nameLookup());
+            record.delegateReturnDynamicTrait =
+                type.syntax->typeSyntax() != nullptr &&
+                type.syntax->typeSyntax()->isDynamicTrait();
             for (const ast::AstNode* parameter : type.syntax->children())
             {
                 if (parameter != nullptr && parameter->kind() == ast::AstNodeKind::ParameterDeclaration)
                 {
                     record.delegateParameterTypeKeys.push_back(
                         compilation.memberModel()->canonicalTypeKey(parameter->typeSyntax(), *compilation.nameLookup()));
+                    record.delegateParameterDynamicTraits.push_back(
+                        parameter->typeSyntax() != nullptr &&
+                            parameter->typeSyntax()->isDynamicTrait()
+                        ? 1U
+                        : 0U);
                 }
             }
         }
@@ -1265,6 +1291,8 @@ bool buildMetadataModel(
             parameterRecord.ownership = metadataOwnership(parameter.ownership);
             parameterRecord.passKind = metadataPassKind(parameter.passKind);
             parameterRecord.isParameterPack = parameter.isParameterPack;
+            parameterRecord.isDynamicTrait =
+                parameter.typeSyntax != nullptr && parameter.typeSyntax->isDynamicTrait();
             if (!metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
             {
                 error = "could not encode default value for parameter '" + parameter.name +
@@ -1337,6 +1365,9 @@ bool buildMetadataModel(
             if (function.isVariadic) record.flags |= 2U;
             if (function.isExternC) record.flags |= 4U;
             if (function.isExportedC) record.flags |= 8U;
+            if (function.declaredTypeSyntax != nullptr &&
+                function.declaredTypeSyntax->isDynamicTrait())
+                record.flags |= 16U;
             record.namespaceName = function.namespaceName;
             record.name = function.name;
             record.signatureKey = function.signatureKey;
@@ -1351,6 +1382,8 @@ bool buildMetadataModel(
                 parameterRecord.ownership = metadataOwnership(parameter.ownership);
                 parameterRecord.passKind = metadataPassKind(parameter.passKind);
                 parameterRecord.isParameterPack = parameter.isParameterPack;
+                parameterRecord.isDynamicTrait =
+                    parameter.typeSyntax != nullptr && parameter.typeSyntax->isDynamicTrait();
                 if (!metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
                 {
                     error = "could not encode default value for parameter '" + parameter.name +
@@ -1384,6 +1417,9 @@ bool buildMetadataModel(
             LibraryMetadataNamespaceState record;
             record.accessibility = 1U;
             if (state.isConst) record.flags |= 1U;
+            if (state.declaredTypeSyntax != nullptr &&
+                state.declaredTypeSyntax->isDynamicTrait())
+                record.flags |= 2U;
             record.initializerKind =
                 static_cast<LibraryMetadataNamespaceStateInitializerKind>(
                     state.initializerKind);
@@ -1873,6 +1909,21 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
             writer.u8(type.delegateFlags);
             writer.text(type.delegateReturnTypeKey);
             writeStringVector(writer, type.delegateParameterTypeKeys);
+            if (metadata.formatMinor >= 31)
+            {
+                writer.u8(type.delegateReturnDynamicTrait ? 1U : 0U);
+                writer.u32(static_cast<std::uint32_t>(
+                    type.delegateParameterTypeKeys.size()));
+                for (std::size_t parameterIndex = 0;
+                     parameterIndex < type.delegateParameterTypeKeys.size();
+                     ++parameterIndex)
+                {
+                    writer.u8(parameterIndex <
+                                      type.delegateParameterDynamicTraits.size()
+                                  ? type.delegateParameterDynamicTraits[parameterIndex]
+                                  : 0U);
+                }
+            }
         }
         if (metadata.formatMinor >= 27)
         {
@@ -1896,6 +1947,11 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
                 writer.u8(item.hasDefault ? 1U : 0U);
                 writer.u64(item.valueBits);
             }
+        }
+        if (metadata.formatMinor >= 31)
+        {
+            writer.u8(type.traitObjectFlags);
+            writer.u8(type.traitObjectWordCount);
         }
         writer.u32(static_cast<std::uint32_t>(type.fields.size()));
         for (const LibraryMetadataField& field : type.fields)
@@ -1950,6 +2006,10 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
             if (metadata.formatMinor >= 24)
             {
                 writer.u8(parameter.isParameterPack ? 1U : 0U);
+            }
+            if (metadata.formatMinor >= 31)
+            {
+                writer.u8(parameter.isDynamicTrait ? 1U : 0U);
             }
             if (metadata.formatMinor >= 3)
             {
@@ -2046,6 +2106,8 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
                 writer.u8(static_cast<std::uint8_t>(parameter.passKind));
                 if (metadata.formatMinor >= 24)
                     writer.u8(parameter.isParameterPack ? 1U : 0U);
+                if (metadata.formatMinor >= 31)
+                    writer.u8(parameter.isDynamicTrait ? 1U : 0U);
                 writer.u8(static_cast<std::uint8_t>(parameter.defaultValueKind));
                 writer.u8(parameter.defaultValueFlags);
                 writer.u64(parameter.defaultValueBits);
@@ -2147,6 +2209,11 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
         {
             catalogue.text(type.identityKey);
             writeStringVector(catalogue, type.traitMethodSignatures);
+            if (metadata.formatMinor >= 31)
+            {
+                catalogue.u8(type.traitObjectFlags);
+                catalogue.u8(type.traitObjectWordCount);
+            }
         }
         const std::vector<std::uint8_t>& bytes = catalogue.bytes();
         projection.insert(projection.end(), bytes.begin(), bytes.end());
@@ -2242,6 +2309,32 @@ bool decodePayload(
             error = "truncated or invalid metadata delegate signature";
             return false;
         }
+        if (metadata.formatMinor >= 31)
+        {
+            std::uint8_t returnDynamicTrait = 0;
+            std::uint32_t parameterDynamicTraitCount = 0;
+            if (!reader.u8(returnDynamicTrait) || returnDynamicTrait > 1U ||
+                !readCount(reader, parameterDynamicTraitCount) ||
+                parameterDynamicTraitCount != type.delegateParameterTypeKeys.size())
+            {
+                error = "truncated or invalid metadata delegate dyn signature";
+                return false;
+            }
+            type.delegateReturnDynamicTrait = returnDynamicTrait != 0U;
+            type.delegateParameterDynamicTraits.reserve(
+                parameterDynamicTraitCount);
+            for (std::uint32_t dynamicIndex = 0;
+                 dynamicIndex < parameterDynamicTraitCount; ++dynamicIndex)
+            {
+                std::uint8_t dynamicTrait = 0;
+                if (!reader.u8(dynamicTrait) || dynamicTrait > 1U)
+                {
+                    error = "truncated or invalid metadata delegate dyn parameter";
+                    return false;
+                }
+                type.delegateParameterDynamicTraits.push_back(dynamicTrait);
+            }
+        }
         if (metadata.formatMinor >= 27)
         {
             std::uint32_t variantCaseCount = 0;
@@ -2296,6 +2389,13 @@ bool decodePayload(
                 item.hasDefault = hasDefault != 0U;
                 type.associatedItems.push_back(std::move(item));
             }
+        }
+        if (metadata.formatMinor >= 31 &&
+            (!reader.u8(type.traitObjectFlags) ||
+             !reader.u8(type.traitObjectWordCount)))
+        {
+            error = "truncated metadata trait-object ABI contract";
+            return false;
         }
         std::uint32_t fieldCount = 0;
         if (!readCount(reader, fieldCount)) { error = "invalid metadata field count"; return false; }
@@ -2369,6 +2469,16 @@ bool decodePayload(
                     return false;
                 }
                 parameter.isParameterPack = parameterPack != 0U;
+            }
+            if (metadata.formatMinor >= 31)
+            {
+                std::uint8_t dynamicTrait = 0;
+                if (!reader.u8(dynamicTrait) || dynamicTrait > 1U)
+                {
+                    error = "truncated or invalid metadata dynamic-trait parameter flag";
+                    return false;
+                }
+                parameter.isDynamicTrait = dynamicTrait != 0U;
             }
             if (metadata.formatMinor >= 3)
             {
@@ -2502,7 +2612,8 @@ bool decodePayload(
         {
             LibraryMetadataNamespaceFunction function;
             if (!reader.u8(function.accessibility) || !reader.u8(function.flags) ||
-                function.accessibility > 1U || function.flags > 15U ||
+                function.accessibility > 1U ||
+                function.flags > (metadata.formatMinor >= 31 ? 31U : 15U) ||
                 !reader.text(function.namespaceName) || !reader.text(function.name) ||
                 !reader.text(function.signatureKey) || !reader.text(function.declaredTypeKey))
             {
@@ -2534,6 +2645,7 @@ bool decodePayload(
                 std::uint8_t parameterOwnership = 0;
                 std::uint8_t passKind = 0;
                 std::uint8_t parameterPack = 0;
+                std::uint8_t dynamicTrait = 0;
                 std::uint8_t defaultKind = 0;
                 if (!reader.text(parameter.name) || !reader.text(parameter.typeKey) ||
                     !reader.u8(parameterOwnership) ||
@@ -2544,6 +2656,8 @@ bool decodePayload(
                         LibraryMetadataParameterPassKind::In) ||
                     (metadata.formatMinor >= 24 &&
                      (!reader.u8(parameterPack) || parameterPack > 1U)) ||
+                    (metadata.formatMinor >= 31 &&
+                     (!reader.u8(dynamicTrait) || dynamicTrait > 1U)) ||
                     !reader.u8(defaultKind) ||
                     defaultKind > static_cast<std::uint8_t>(
                         LibraryMetadataDefaultValueKind::String) ||
@@ -2560,6 +2674,7 @@ bool decodePayload(
                 parameter.passKind =
                     static_cast<LibraryMetadataParameterPassKind>(passKind);
                 parameter.isParameterPack = parameterPack != 0U;
+                parameter.isDynamicTrait = dynamicTrait != 0U;
                 parameter.defaultValueKind =
                     static_cast<LibraryMetadataDefaultValueKind>(defaultKind);
                 function.parameters.push_back(std::move(parameter));
@@ -2582,7 +2697,8 @@ bool decodePayload(
             LibraryMetadataNamespaceState state;
             std::uint8_t initializerKind = 0;
             if (!reader.u8(state.accessibility) || state.accessibility > 1U ||
-                !reader.u8(state.flags) || state.flags > 1U ||
+                !reader.u8(state.flags) ||
+                state.flags > (metadata.formatMinor >= 31 ? 3U : 1U) ||
                 !reader.u8(initializerKind) ||
                 initializerKind > static_cast<std::uint8_t>(
                     LibraryMetadataNamespaceStateInitializerKind::Null) ||
@@ -2778,6 +2894,18 @@ bool LibraryMetadataCodec::writeModelImpl(
             std::to_string(metadata.formatMajor) + "." + std::to_string(metadata.formatMinor);
         return false;
     }
+    if (metadata.formatMinor >= 31)
+    {
+        for (LibraryMetadataType& type : metadata.types)
+        {
+            if (type.kind == LibraryMetadataTypeKind::Delegate &&
+                type.delegateParameterDynamicTraits.empty())
+            {
+                type.delegateParameterDynamicTraits.resize(
+                    type.delegateParameterTypeKeys.size(), 0U);
+            }
+        }
+    }
     // EL OBJETIVO SE VALIDA, NO SE SUSTITUYE. Escribir la constante por encima de
     // lo que el modelo diga es exactamente lo que hacia el encabezado con el
     // minor: dos fuentes de verdad para el mismo campo. Y aqui seria peor, porque
@@ -2969,6 +3097,45 @@ bool LibraryMetadataCodec::writeModelImpl(
                 error = "NativeSharp metadata before 1.30 cannot represent opaque result types";
                 return false;
             }
+        }
+    }
+    if (metadata.formatMinor < 31)
+    {
+        const auto hasDynamicParameter = [](const auto& callable)
+        {
+            return std::ranges::any_of(callable.parameters,
+                [](const LibraryMetadataParameter& parameter)
+                { return parameter.isDynamicTrait; });
+        };
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            if (type.traitObjectFlags != 0U || type.traitObjectWordCount != 0U ||
+                type.delegateReturnDynamicTrait ||
+                std::ranges::any_of(type.delegateParameterDynamicTraits,
+                    [](std::uint8_t value) { return value != 0U; }) ||
+                std::ranges::any_of(type.fields, [](const LibraryMetadataField& field)
+                { return (field.flags & kMetadataMemberDynamicTrait) != 0U; }))
+            {
+                error = "NativeSharp metadata before 1.31 cannot represent the dyn trait-object ABI";
+                return false;
+            }
+        }
+        if (std::ranges::any_of(metadata.members, [&](const LibraryMetadataMember& member)
+            {
+                return (member.flags & kMetadataMemberDynamicTrait) != 0U ||
+                    hasDynamicParameter(member);
+            }) ||
+            std::ranges::any_of(metadata.namespaceFunctions,
+                [&](const LibraryMetadataNamespaceFunction& function)
+                {
+                    return (function.flags & 16U) != 0U || hasDynamicParameter(function);
+                }) ||
+            std::ranges::any_of(metadata.namespaceStates,
+                [](const LibraryMetadataNamespaceState& state)
+                { return (state.flags & 2U) != 0U; }))
+        {
+            error = "NativeSharp metadata before 1.31 cannot represent explicit dyn signatures";
+            return false;
         }
     }
     if (metadata.formatMinor < 25 &&
@@ -3243,6 +3410,38 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                 "' must use the interface ABI kind";
             return false;
         }
+        constexpr std::uint8_t kKnownTraitObjectFlags =
+            kMetadataTraitObjectObjectSafe |
+            kMetadataTraitObjectDescriptorMap |
+            kMetadataTraitObjectNullIsZero |
+            kMetadataTraitObjectNoConversionAllocation;
+        if (metadata.formatMinor < 31 &&
+            (type.traitObjectFlags != 0U || type.traitObjectWordCount != 0U))
+        {
+            error = "metadata before NSMETA 1.31 contains a trait-object ABI contract on type '" +
+                type.fullyQualifiedName + "'";
+            return false;
+        }
+        if (!isTrait && (type.traitObjectFlags != 0U || type.traitObjectWordCount != 0U))
+        {
+            error = "metadata non-trait '" + type.fullyQualifiedName +
+                "' publishes a trait-object ABI contract";
+            return false;
+        }
+        if (isTrait && metadata.formatMinor >= 31 &&
+            ((type.traitObjectFlags & ~kKnownTraitObjectFlags) != 0U ||
+             (type.traitObjectFlags & (kMetadataTraitObjectDescriptorMap |
+                                       kMetadataTraitObjectNullIsZero |
+                                       kMetadataTraitObjectNoConversionAllocation)) !=
+                 (kMetadataTraitObjectDescriptorMap |
+                  kMetadataTraitObjectNullIsZero |
+                  kMetadataTraitObjectNoConversionAllocation) ||
+             type.traitObjectWordCount != 1U))
+        {
+            error = "metadata trait '" + type.fullyQualifiedName +
+                "' has an invalid Windows x64 dyn representation";
+            return false;
+        }
         if (!isTrait && !type.traitMethodSignatures.empty())
         {
             error = "metadata non-trait '" + type.fullyQualifiedName +
@@ -3370,6 +3569,33 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             error = "metadata delegate '" + type.fullyQualifiedName +
                 "' does not provide its callable signature";
             return false;
+        }
+        if (metadata.formatMinor >= 31)
+        {
+            const bool isDelegate = type.kind == LibraryMetadataTypeKind::Delegate;
+            const bool dynSignaturePresent = type.delegateReturnDynamicTrait ||
+                !type.delegateParameterDynamicTraits.empty();
+            if (!isDelegate && dynSignaturePresent)
+            {
+                error = "metadata non-delegate '" + type.fullyQualifiedName +
+                    "' publishes a delegate dyn signature";
+                return false;
+            }
+            if (isDelegate &&
+                type.delegateParameterDynamicTraits.size() !=
+                    type.delegateParameterTypeKeys.size())
+            {
+                error = "metadata delegate '" + type.fullyQualifiedName +
+                    "' has an incomplete dyn parameter catalogue";
+                return false;
+            }
+            if (std::ranges::any_of(type.delegateParameterDynamicTraits,
+                    [](std::uint8_t value) { return value > 1U; }))
+            {
+                error = "metadata delegate '" + type.fullyQualifiedName +
+                    "' contains an invalid dyn parameter marker";
+                return false;
+            }
         }
     }
     if (metadata.formatMinor >= 6)

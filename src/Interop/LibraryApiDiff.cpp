@@ -21,7 +21,8 @@ constexpr std::uint8_t kProtectedAccessibility = 1U;
 constexpr std::uint8_t kPublicAccessibility = 3U;
 constexpr std::uint16_t kPartialTypeFlag = 1U << 0U;
 constexpr std::uint32_t kSemanticOnlyMemberFlags =
-    kMetadataMemberInliningMask | kMetadataMemberNoHeap;
+    kMetadataMemberInliningMask | kMetadataMemberNoHeap |
+    kMetadataMemberDynamicTrait;
 
 void field(std::string& output, std::string_view value)
 {
@@ -53,6 +54,7 @@ void parameterSourceContract(std::string& output, const LibraryMetadataParameter
     number(output, parameter.ownership);
     number(output, parameter.passKind);
     number(output, parameter.isParameterPack);
+    number(output, parameter.isDynamicTrait);
     number(output, parameter.defaultValueKind);
     number(output, parameter.defaultValueFlags);
     number(output, parameter.defaultValueBits);
@@ -96,6 +98,10 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         number(contract, type.delegateFlags);
         field(contract, type.delegateReturnTypeKey);
         strings(contract, type.delegateParameterTypeKeys, false);
+        number(contract, type.delegateReturnDynamicTrait);
+        number(contract, type.delegateParameterDynamicTraits.size());
+        for (const std::uint8_t dynamicTrait : type.delegateParameterDynamicTraits)
+            number(contract, dynamicTrait);
         number(contract, type.variantCases.size());
         for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
         {
@@ -112,6 +118,8 @@ Surface sourceSurface(const LibraryMetadata& metadata)
             number(contract, item.hasDefault);
             number(contract, item.valueBits);
         }
+        number(contract, type.traitObjectFlags);
+        number(contract, type.traitObjectWordCount);
         result.emplace("type:" + type.identityKey, std::move(contract));
     }
 
@@ -250,6 +258,8 @@ Surface abiSurface(const LibraryMetadata& metadata)
             number(contract, item.hasDefault);
             number(contract, item.valueBits);
         }
+        number(contract, type.traitObjectFlags);
+        number(contract, type.traitObjectWordCount);
         number(contract, type.fields.size());
         for (const LibraryMetadataField& fieldRecord : type.fields)
         {
@@ -285,7 +295,7 @@ Surface abiSurface(const LibraryMetadata& metadata)
     for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
     {
         std::string contract;
-        number(contract, function.flags);
+        number(contract, function.flags & static_cast<std::uint8_t>(~16U));
         field(contract, function.declaredTypeKey);
         field(contract, function.mangledName);
         number(contract, function.parameters.size());
@@ -299,7 +309,7 @@ Surface abiSurface(const LibraryMetadata& metadata)
     for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
     {
         std::string contract;
-        number(contract, state.flags);
+        number(contract, state.flags & static_cast<std::uint8_t>(~2U));
         field(contract, state.declaredTypeKey);
         field(contract, state.storageName);
         field(contract, state.accessorName);

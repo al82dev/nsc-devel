@@ -44,13 +44,17 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
                left.size, left.alignment, left.headerSize, left.referenceSize,
                left.referenceAlignment, left.stableTypeId, left.enumUnderlyingTypeKey,
                left.delegateFlags, left.delegateReturnTypeKey,
-               left.delegateParameterTypeKeys, left.traitMethodSignatures) ==
+               left.delegateParameterTypeKeys, left.delegateReturnDynamicTrait,
+               left.delegateParameterDynamicTraits, left.traitMethodSignatures,
+               left.traitObjectFlags, left.traitObjectWordCount) ==
             std::tie(right.kind, right.accessibility, right.flags, right.identityKey,
                 right.fullyQualifiedName, right.baseTypeKey, right.interfaceTypeKeys,
                 right.size, right.alignment, right.headerSize, right.referenceSize,
                 right.referenceAlignment, right.stableTypeId, right.enumUnderlyingTypeKey,
                 right.delegateFlags, right.delegateReturnTypeKey,
-                right.delegateParameterTypeKeys, right.traitMethodSignatures) &&
+                right.delegateParameterTypeKeys, right.delegateReturnDynamicTrait,
+                right.delegateParameterDynamicTraits, right.traitMethodSignatures,
+                right.traitObjectFlags, right.traitObjectWordCount) &&
         vectorEqual(left.variantCases, right.variantCases, equalVariantCase) &&
         vectorEqual(left.associatedItems, right.associatedItems, equalAssociatedItem) &&
         vectorEqual(left.fields, right.fields, equalField);
@@ -59,11 +63,11 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
 bool equalParameter(const LibraryMetadataParameter& left, const LibraryMetadataParameter& right)
 {
     return std::tie(left.name, left.typeKey, left.ownership, left.passKind,
-               left.isParameterPack,
+               left.isParameterPack, left.isDynamicTrait,
                left.defaultValueKind, left.defaultValueFlags, left.defaultValueBits,
                left.defaultValueText) ==
         std::tie(right.name, right.typeKey, right.ownership, right.passKind,
-            right.isParameterPack,
+            right.isParameterPack, right.isDynamicTrait,
             right.defaultValueKind, right.defaultValueFlags, right.defaultValueBits,
             right.defaultValueText);
 }

@@ -258,7 +258,7 @@ namespace OpaqueResultApi
     {
         return type.fullyQualifiedName.find("__nsc_some_") != std::string::npos;
     });
-    tests.expect(metadataRead && metadata.formatMinor == 30U &&
+    tests.expect(metadataRead && metadata.formatMinor == 31U &&
             wrapper != metadata.types.end() &&
             wrapper->kind == nativesharp::interop::LibraryMetadataTypeKind::Struct &&
             (wrapper->flags & nativesharp::interop::kMetadataTypeOpaqueResult) != 0U &&
@@ -268,7 +268,7 @@ namespace OpaqueResultApi
             wrapper->associatedItems.front().hasDefault &&
             wrapper->size == wrapper->fields.front().size &&
             wrapper->alignment == wrapper->fields.front().alignment,
-        "NSMETA 1.30 publishes one-field in-place layout and one trait for the "
+        "the current NSMETA publishes the 1.30 one-field opaque-result contract and one trait for the "
         "declaration-scoped opaque identity (" +
             metadataError + diagnostic + ")");
 

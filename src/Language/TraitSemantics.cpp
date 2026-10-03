@@ -72,7 +72,13 @@ bool isObjectSafe(std::span<const TraitMethod> methods, std::string& error)
     return true;
 }
 
-TraitObjectLayout windowsX64TraitObjectLayout() noexcept { return {16, 8}; }
+TraitObjectLayout windowsX64TraitObjectLayout() noexcept
+{
+    // The reference points at the concrete object. Its first word points at the class descriptor,
+    // whose interface map selects the stable trait method table. Conversion is therefore a
+    // pointer-preserving view operation: no box, no retain cell, and no heap allocation.
+    return {8, 8, true, true, false};
+}
 
 std::string dispatchMetadata(DispatchKind kind, std::string_view traitIdentity)
 {

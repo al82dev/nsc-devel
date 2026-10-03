@@ -97,6 +97,10 @@ bool ProjectInterfaceModel::build(
     {
         ok = false;
     }
+    if (!buildTraitObjectContracts(diagnostics))
+    {
+        ok = false;
+    }
 
     built_ = true;
     return ok && !diagnostics.hasErrors();
@@ -176,6 +180,106 @@ const ClassInterfaceTablePlan* ProjectInterfaceModel::tablePlan(
         }
     }
     return nullptr;
+}
+
+const TraitObjectContract* ProjectInterfaceModel::traitObjectContract(
+    std::size_t traitTypeOrdinal) const noexcept
+{
+    const auto found = std::ranges::find(
+        traitObjectContracts_, traitTypeOrdinal, &TraitObjectContract::traitTypeOrdinal);
+    return found == traitObjectContracts_.end() ? nullptr : &*found;
+}
+
+bool ProjectInterfaceModel::buildTraitObjectContracts(
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    bool ok = true;
+    traitObjectContracts_.clear();
+    traitObjectContracts_.reserve(interfaces_.size());
+
+    for (const InterfaceTypeInfo& info : interfaces_)
+    {
+        TraitObjectContract contract;
+        contract.traitTypeOrdinal = info.typeOrdinal;
+        contract.objectSafe = true;
+
+        for (const std::size_t memberOrdinal : info.effectiveMethodMemberOrdinals)
+        {
+            if (memberOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+            if (member.syntax != nullptr && !member.syntax->genericParameters().empty())
+            {
+                contract.objectSafe = false;
+                break;
+            }
+        }
+
+        // Associated requirements have no single runtime identity unless the trait fixes a
+        // default. Implementations may still override a default for static dispatch, but a bare
+        // requirement cannot be named through one erased `dyn Trait` surface.
+        const auto declarationHasUnboundAssociatedItem = [&](std::size_t ordinal) -> bool
+        {
+            if (ordinal >= nameLookup_->namedTypes().size()) return true;
+            const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[ordinal];
+            for (const NamedTypeDeclarationPart& part : declaration.parts)
+            {
+                if (part.syntax == nullptr) continue;
+                for (const ast::AstNode* child : part.syntax->children())
+                {
+                    if (child == nullptr) continue;
+                    if (child->kind() == ast::AstNodeKind::AssociatedTypeDeclaration &&
+                        child->typeSyntax() == nullptr)
+                        return true;
+                    if (child->kind() == ast::AstNodeKind::AssociatedConstantDeclaration &&
+                        child->first() == nullptr)
+                        return true;
+                }
+            }
+            return false;
+        };
+        if (contract.objectSafe)
+        {
+            contract.objectSafe = !declarationHasUnboundAssociatedItem(info.typeOrdinal);
+            for (const std::size_t base : info.transitiveBaseInterfaceOrdinals)
+                if (declarationHasUnboundAssociatedItem(base))
+                {
+                    contract.objectSafe = false;
+                    break;
+                }
+        }
+        traitObjectContracts_.push_back(contract);
+    }
+
+    for (const TypeNameBinding& binding : nameLookup_->bindings())
+    {
+        if (binding.syntax == nullptr || !binding.syntax->isDynamicTrait() ||
+            !binding.targetTypeOrdinal.has_value())
+            continue;
+        const std::size_t target = *binding.targetTypeOrdinal;
+        const TraitObjectContract* contract = traitObjectContract(target);
+        if (contract == nullptr) continue; // Name lookup already diagnoses non-interface targets.
+        if (!binding.syntax->modifiers().empty())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                binding.syntax->range(),
+                "'dyn Trait' is already a reference representation and cannot carry pointer or array modifiers");
+            ok = false;
+        }
+        if (!contract->objectSafe)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                binding.syntax->range(),
+                "trait or interface '" + nameLookup_->namedTypes()[target].identity.key() +
+                    "' is not object-safe: dyn dispatch requires non-generic instance slots and "
+                    "fully defaulted associated items");
+            ok = false;
+        }
+    }
+    return ok;
 }
 
 std::optional<std::size_t> ProjectInterfaceModel::typeOrdinalForTypeKey(

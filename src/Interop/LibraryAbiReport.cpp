@@ -97,7 +97,8 @@ void writeParameters(
                << " type=" << parameter.typeKey
                << " pass=" << passName(parameter.passKind)
                << " ownership=" << ownershipName(parameter.ownership)
-               << " pack=" << (parameter.isParameterPack ? "yes" : "no") << '\n';
+               << " pack=" << (parameter.isParameterPack ? "yes" : "no")
+               << " dyn=" << (parameter.isDynamicTrait ? "yes" : "no") << '\n';
     }
 }
 }
@@ -150,10 +151,17 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
         if (type->kind == LibraryMetadataTypeKind::Delegate)
         {
             output << "    delegate calling-convention=" << delegateConvention(*type)
-                   << " return=" << type->delegateReturnTypeKey << '\n';
+                   << " return="
+                   << (type->delegateReturnDynamicTrait ? "dyn:" : "")
+                   << type->delegateReturnTypeKey << '\n';
             for (std::size_t ordinal = 0; ordinal < type->delegateParameterTypeKeys.size(); ++ordinal)
                 output << "      parameter #" << ordinal
-                       << " type=" << type->delegateParameterTypeKeys[ordinal] << '\n';
+                       << " type="
+                       << (ordinal < type->delegateParameterDynamicTraits.size() &&
+                                   type->delegateParameterDynamicTraits[ordinal] != 0U
+                               ? "dyn:"
+                               : "")
+                       << type->delegateParameterTypeKeys[ordinal] << '\n';
         }
         if ((type->flags & kMetadataTypeVariant) != 0U)
         {
@@ -169,6 +177,12 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
         for (std::size_t ordinal = 0; ordinal < type->traitMethodSignatures.size(); ++ordinal)
             output << "    trait-slot #" << ordinal
                    << " signature=" << type->traitMethodSignatures[ordinal] << '\n';
+        if ((type->flags & kMetadataTypeTrait) != 0U)
+            output << "    trait-object representation=descriptor-reference"
+                   << " words=" << static_cast<unsigned>(type->traitObjectWordCount)
+                   << " object-safe=" <<
+                       ((type->traitObjectFlags & kMetadataTraitObjectObjectSafe) != 0U ? "yes" : "no")
+                   << " null=zero conversion-allocation=none\n";
         for (std::size_t ordinal = 0; ordinal < type->associatedItems.size(); ++ordinal)
         {
             const LibraryMetadataAssociatedItem& item = type->associatedItems[ordinal];
@@ -219,7 +233,9 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
                << " access=" << static_cast<unsigned>(member->accessibility)
                << " flags=" << flagsHex(member->flags)
                << " calling-convention=" << memberConvention(*member)
-               << " return=" << member->declaredTypeKey
+               << " return="
+               << ((member->flags & kMetadataMemberDynamicTrait) != 0U ? "dyn:" : "")
+               << member->declaredTypeKey
                << " return-ownership=" << ownershipName(member->declaredOwnership)
                << " mangled=" << member->mangledName;
         if (!member->cAbiName.empty()) output << " c-name=" << member->cAbiName;
