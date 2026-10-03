@@ -444,6 +444,13 @@ std::uint16_t typeFlags(const frontend::NamedTypeDeclaration& type) noexcept
         flags |= 1U << 5U;
     if (type.syntax != nullptr && type.syntax->hasModifier(lexer::TokenKind::KwReadonly))
         flags |= 1U << 6U;
+    if (type.kind == frontend::NamedTypeDeclarationKind::Interface && type.syntax != nullptr)
+    {
+        const std::string_view metadata = type.syntax->auxiliaryText();
+        if (metadata == "ns3-trait" ||
+            metadata.find("nsc-meta:ns3-trait") != std::string_view::npos)
+            flags |= kMetadataTypeTrait;
+    }
     if (type.syntax != nullptr)
     {
         const std::string_view metadata = type.syntax->auxiliaryText();
@@ -892,6 +899,15 @@ bool buildMetadataModel(
                     {
                         record.interfaceTypeKeys.push_back(
                             typeKeyForOrdinal(types, interfaceOrdinal));
+                    }
+                    if (interfaceInfo->isTrait)
+                    {
+                        for (const std::size_t memberOrdinal :
+                             interfaceInfo->effectiveMethodMemberOrdinals)
+                        {
+                            record.traitMethodSignatures.push_back(
+                                signatureForMember(members, memberOrdinal));
+                        }
                     }
                 }
             }
@@ -1755,6 +1771,8 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
                 writer.text(variantCase.payloadTypeKey);
             }
         }
+        if (metadata.formatMinor >= 28)
+            writeStringVector(writer, type.traitMethodSignatures);
         writer.u32(static_cast<std::uint32_t>(type.fields.size()));
         for (const LibraryMetadataField& field : type.fields)
         {
@@ -1991,6 +2009,24 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
         const std::vector<std::uint8_t>& bytes = catalogue.bytes();
         projection.insert(projection.end(), bytes.begin(), bytes.end());
     }
+    const bool hasTrait = std::ranges::any_of(
+        metadata.types,
+        [](const LibraryMetadataType& type)
+        {
+            return (type.flags & kMetadataTypeTrait) != 0U;
+        });
+    if (hasTrait)
+    {
+        ByteWriter catalogue;
+        catalogue.u32(static_cast<std::uint32_t>(metadata.types.size()));
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            catalogue.text(type.identityKey);
+            writeStringVector(catalogue, type.traitMethodSignatures);
+        }
+        const std::vector<std::uint8_t>& bytes = catalogue.bytes();
+        projection.insert(projection.end(), bytes.begin(), bytes.end());
+    }
     return projection;
 }
 
@@ -2078,6 +2114,12 @@ bool decodePayload(
                 }
                 type.variantCases.push_back(std::move(variantCase));
             }
+        }
+        if (metadata.formatMinor >= 28 &&
+            !readStringVector(reader, type.traitMethodSignatures))
+        {
+            error = "truncated metadata trait method catalogue";
+            return false;
         }
         std::uint32_t fieldCount = 0;
         if (!readCount(reader, fieldCount)) { error = "invalid metadata field count"; return false; }
@@ -2719,6 +2761,18 @@ bool LibraryMetadataCodec::writeModelImpl(
             }
         }
     }
+    if (metadata.formatMinor < 28)
+    {
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            if ((type.flags & kMetadataTypeTrait) != 0U ||
+                !type.traitMethodSignatures.empty())
+            {
+                error = "NativeSharp metadata before 1.28 cannot represent trait declarations";
+                return false;
+            }
+        }
+    }
     if (metadata.formatMinor < 25 &&
         (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))
     {
@@ -2954,6 +3008,35 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             return false;
         }
         const bool isVariant = (type.flags & kMetadataTypeVariant) != 0U;
+        const bool isTrait = (type.flags & kMetadataTypeTrait) != 0U;
+        if (metadata.formatMinor < 28 && isTrait)
+        {
+            error = "metadata before NSMETA 1.28 contains a trait flag on type '" +
+                type.fullyQualifiedName + "'";
+            return false;
+        }
+        if (isTrait && type.kind != LibraryMetadataTypeKind::Interface)
+        {
+            error = "metadata trait '" + type.fullyQualifiedName +
+                "' must use the interface ABI kind";
+            return false;
+        }
+        if (!isTrait && !type.traitMethodSignatures.empty())
+        {
+            error = "metadata non-trait '" + type.fullyQualifiedName +
+                "' contains a trait method catalogue";
+            return false;
+        }
+        std::unordered_set<std::string> traitSignatures;
+        for (const std::string& signature : type.traitMethodSignatures)
+        {
+            if (signature.empty() || !traitSignatures.insert(signature).second)
+            {
+                error = "metadata trait '" + type.fullyQualifiedName +
+                    "' contains an empty or duplicate method signature";
+                return false;
+            }
+        }
         if (metadata.formatMinor < 27 && (isVariant || !type.variantCases.empty()))
         {
             error = "metadata before NSMETA 1.27 contains tagged-variant data on type '" +

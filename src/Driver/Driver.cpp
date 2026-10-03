@@ -1596,6 +1596,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
     };
     const auto emitAccessorContracts = [&](const std::vector<const interop::LibraryMetadataMember *> &members,
                                            const bool interfaceContext,
+                                           const bool preserveStatic,
                                            std::set<const interop::LibraryMetadataMember *> &materialized) -> bool {
         constexpr std::uint32_t kStatic = 1U << 0U;
         constexpr std::uint32_t kReadonly = 1U << 1U;
@@ -1715,9 +1716,10 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             // Interface membership is the semantic contract. Older and third-party NSMETA may
             // preserve virtual-style dispatch flags without kAbstract; none of those class
             // implementation modifiers is valid in Stage 38 interface source.
+            if (preserveStatic && (shape.flags & kStatic) != 0U) generated << "static ";
             if (!interfaceContext)
             {
-                if ((shape.flags & kStatic) != 0U) generated << "static ";
+                if (!preserveStatic && (shape.flags & kStatic) != 0U) generated << "static ";
                 if ((shape.flags & kReadonly) != 0U) generated << "readonly ";
                 if ((shape.flags & kSealed) != 0U) generated << "sealed ";
                 if ((shape.flags & kNewSlot) != 0U) generated << "new ";
@@ -1793,6 +1795,14 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 return candidate.typeKey == declaringTypeKey;
             });
         const auto dispatchRank = [&](const interop::LibraryMetadataMember *member) {
+            if ((type.flags & interop::kMetadataTypeTrait) != 0U)
+            {
+                const auto slot = std::ranges::find(
+                    type.traitMethodSignatures, member->signatureKey);
+                if (slot != type.traitMethodSignatures.end())
+                    return static_cast<std::size_t>(
+                        slot - type.traitMethodSignatures.begin());
+            }
             if (dispatch != metadata.dispatchTables.end())
             {
                 const auto slot = std::ranges::find(dispatch->slotSignatures, member->signatureKey);
@@ -1874,7 +1884,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
 
         if (type.kind == interop::LibraryMetadataTypeKind::Interface)
         {
-            generated << typeAccessibility << " interface " << typeName;
+            const bool isTrait = metadata.formatMinor >= 28 &&
+                (type.flags & interop::kMetadataTypeTrait) != 0U;
+            generated << typeAccessibility << (isTrait ? " trait " : " interface ") << typeName;
             if (!type.interfaceTypeKeys.empty()) generated << " : ";
             for (std::size_t index = 0; index < type.interfaceTypeKeys.size(); ++index)
             {
@@ -1885,20 +1897,39 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             }
             generated << "\n{\n";
             constexpr std::uint8_t kMethodKind = 2U;
+            constexpr std::uint32_t kStatic = 1U << 0U;
+            constexpr std::uint32_t kAbstract = 1U << 5U;
+            constexpr std::uint32_t kUserOperator = 1U << 16U;
             std::set<const interop::LibraryMetadataMember *> materializedAccessors;
-            if (!emitAccessorContracts(orderedMethods, true, materializedAccessors)) return false;
+            if (!emitAccessorContracts(orderedMethods, true, isTrait, materializedAccessors)) return false;
             for (const interop::LibraryMetadataMember *member : orderedMethods)
             {
                 if (member->kind != kMethodKind || materializedAccessors.contains(member)) continue;
                 std::string returnType;
                 if (!sourceTypeForMetadataKey(metadata, member->declaredTypeKey, returnType, error)) return false;
                 generated << "    public ";
+                if (isTrait && (member->flags & kUserOperator) != 0U)
+                {
+                    const std::string_view token = metadataOperatorToken(member->name);
+                    if (token.empty())
+                    {
+                        error = "metadata-backed trait cannot spell operator requirement '" +
+                            member->name + "'";
+                        return false;
+                    }
+                    generated << "static " << ownershipPrefix(member->declaredOwnership)
+                              << returnType << " operator " << token << '(';
+                    if (!emitParameters(*member)) return false;
+                    generated << ");\n";
+                    continue;
+                }
+                if (isTrait && (member->flags & kStatic) != 0U) generated << "static ";
                 if ((member->flags & interop::kMetadataMemberNoHeap) != 0U) generated << "noheap ";
                 if ((member->flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
                 generated << ownershipPrefix(member->declaredOwnership) << returnType << ' '
                           << member->name << '(';
                 if (!emitParameters(*member)) return false;
-                generated << ");\n";
+                generated << (isTrait && (member->flags & kAbstract) == 0U ? ") { }\n" : ");\n");
             }
             generated << "}\n";
             if (topLevel && !namespaceName.empty()) generated << "}\n";
@@ -2137,7 +2168,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             }
         }
 
-        if (!emitAccessorContracts(orderedMethods, false, materializedAccessors)) return false;
+        if (!emitAccessorContracts(orderedMethods, false, false, materializedAccessors)) return false;
 
         for (const interop::LibraryMetadataMember *member : orderedMethods)
         {

@@ -100,7 +100,7 @@ private:
         bool isStatic = false);
     ast::AstNode* parseInterfaceDeclaration(bool isPartial, bool isTrait = false);
     ast::AstNode* parseDelegateDeclaration();
-    ast::AstNode* parseInterfaceMember();
+    ast::AstNode* parseInterfaceMember(bool isTrait);
     ast::AstNode* parseClassMember(
         std::string_view className,
         bool allowUnresolvedNamedTypes = false,
@@ -169,7 +169,8 @@ private:
         ast::TypeSyntax* returnType,
         lexer::TokenKind accessibility,
         bool isStatic,
-        std::size_t beginIndex);
+        std::size_t beginIndex,
+        bool allowBodyless = false);
     ast::AstNode* parseConversionOperatorTail(
         bool implicitConversion,
         lexer::TokenKind accessibility,
@@ -214,7 +215,8 @@ private:
         bool isForceInline,
         bool isNoInline,
         bool isNoHeap,
-        std::size_t beginIndex);
+        std::size_t beginIndex,
+        bool allowBodyless = false);
     ast::AstNode* parseEnumDeclaration();
     ast::AstNode* parseExternCDeclaration();
     ast::AstNode* parseFunctionOrGlobalVariable();

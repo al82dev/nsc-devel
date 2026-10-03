@@ -129,7 +129,9 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
     for (const LibraryMetadataType* type : types)
     {
         output << "  type " << type->identityKey
-               << " kind=" << typeKindName(type->kind)
+               << " kind=" << (((type->flags & kMetadataTypeTrait) != 0U)
+                       ? "trait"
+                       : typeKindName(type->kind))
                << " access=" << static_cast<unsigned>(type->accessibility)
                << " flags=" << flagsHex(type->flags)
                << " size=" << type->size
@@ -162,6 +164,9 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
                 output << '\n';
             }
         }
+        for (std::size_t ordinal = 0; ordinal < type->traitMethodSignatures.size(); ++ordinal)
+            output << "    trait-slot #" << ordinal
+                   << " signature=" << type->traitMethodSignatures[ordinal] << '\n';
         std::vector<const LibraryMetadataField*> fields;
         for (const LibraryMetadataField& field : type->fields) fields.push_back(&field);
         std::ranges::sort(fields, [](const LibraryMetadataField* left, const LibraryMetadataField* right)

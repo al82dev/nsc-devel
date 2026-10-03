@@ -9,11 +9,18 @@ void ProjectInterfaceModelDumper::dump(const ProjectInterfaceModel& model, std::
     output << "project-interfaces\n";
     for (const InterfaceTypeInfo& info : model.interfaces())
     {
-        output << "  interface " << model.typeKeyForOrdinal(info.typeOrdinal) << '\n';
+        output << "  " << (info.isTrait ? "trait " : "interface ")
+               << model.typeKeyForOrdinal(info.typeOrdinal) << '\n';
         output << "    bases:";
         for (const std::size_t base : info.directBaseInterfaceOrdinals)
         {
             output << ' ' << model.typeKeyForOrdinal(base);
+        }
+        output << '\n';
+        output << "    required-static-members:";
+        for (const std::size_t member : info.requiredStaticMemberOrdinals)
+        {
+            output << ' ' << member;
         }
         output << '\n';
         output << "    effective-methods:";

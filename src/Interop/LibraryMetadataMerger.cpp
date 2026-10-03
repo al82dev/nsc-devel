@@ -38,13 +38,13 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
                left.size, left.alignment, left.headerSize, left.referenceSize,
                left.referenceAlignment, left.stableTypeId, left.enumUnderlyingTypeKey,
                left.delegateFlags, left.delegateReturnTypeKey,
-               left.delegateParameterTypeKeys) ==
+               left.delegateParameterTypeKeys, left.traitMethodSignatures) ==
             std::tie(right.kind, right.accessibility, right.flags, right.identityKey,
                 right.fullyQualifiedName, right.baseTypeKey, right.interfaceTypeKeys,
                 right.size, right.alignment, right.headerSize, right.referenceSize,
                 right.referenceAlignment, right.stableTypeId, right.enumUnderlyingTypeKey,
                 right.delegateFlags, right.delegateReturnTypeKey,
-                right.delegateParameterTypeKeys) &&
+                right.delegateParameterTypeKeys, right.traitMethodSignatures) &&
         vectorEqual(left.variantCases, right.variantCases, equalVariantCase) &&
         vectorEqual(left.fields, right.fields, equalField);
 }

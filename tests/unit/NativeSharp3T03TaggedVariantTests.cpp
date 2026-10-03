@@ -222,7 +222,7 @@ namespace VariantApi
             return type.fullyQualifiedName == "VariantApi.Signal";
         });
     tests.expect(
-        metadataRead && metadata.formatMinor == 27 && signal != metadata.types.end() &&
+        metadataRead && metadata.formatMinor >= 27 && signal != metadata.types.end() &&
             (signal->flags & kMetadataTypeVariant) != 0U && signal->variantCases.size() == 2U &&
             signal->variantCases[0].name == "Zulu" &&
             signal->variantCases[0].payloadTypeKey.empty() &&

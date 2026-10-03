@@ -21,9 +21,11 @@ namespace nativesharp::frontend
 struct InterfaceTypeInfo final
 {
     std::size_t typeOrdinal = 0;
+    bool isTrait = false;
     std::vector<std::size_t> directBaseInterfaceOrdinals;
     std::vector<std::size_t> transitiveBaseInterfaceOrdinals;
     std::vector<std::size_t> effectiveMethodMemberOrdinals;
+    std::vector<std::size_t> requiredStaticMemberOrdinals;
 };
 
 struct ClassInterfaceTablePlan final
@@ -81,6 +83,9 @@ private:
     std::optional<std::size_t> findImplementation(
         std::size_t classTypeOrdinal,
         const ClassMemberSymbol& interfaceMethod) const noexcept;
+    std::optional<std::size_t> findStaticImplementation(
+        std::size_t classTypeOrdinal,
+        const ClassMemberSymbol& requirement) const noexcept;
     static std::uint64_t stableTypeId(std::string_view value) noexcept;
 
     const ProjectNameLookup* nameLookup_ = nullptr;

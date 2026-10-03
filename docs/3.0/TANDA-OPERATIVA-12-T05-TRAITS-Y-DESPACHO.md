@@ -1,5 +1,12 @@
 # Tanda operativa 12 — T05 traits y despacho explícito
 
+> **Actualización 2026-10-03:** este documento conserva la evidencia histórica de la primera
+> vertical. `NS3-T05-F01` cerró después métodos default, requisitos `static`, conflictos y el
+> marcador/orden de slots en NSMETA 1.28. Las frases posteriores que los describen como deuda se
+> leen como estado de aquella entrega, no como estado actual. Véanse
+> [TANDA-05-TRAITS-Y-DESPACHO.md](TANDA-05-TRAITS-Y-DESPACHO.md) y
+> [NS3-T05-F01-traits.md](items/NS3-T05-F01-traits.md).
+
 ## Objetivo
 
 Conectar una primera vertical segura de T05 al compilador productivo Windows x64: declaraciones

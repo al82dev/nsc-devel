@@ -41,7 +41,7 @@ int main()
                      baseline.find("target_release=3.0.0\n") != std::string::npos &&
                      baseline.find("status=pending-final-baseline\n") != std::string::npos,
         "migration baseline identifies its frozen source, current target and pending gate");
-    tests.expect(baseline.find("nsmeta=1.27\n") != std::string::npos &&
+    tests.expect(baseline.find("nsmeta=1.28\n") != std::string::npos &&
                      baseline.find("native_abi=1.0\n") != std::string::npos &&
                      baseline.find("runtime_abi=1.1\n") != std::string::npos &&
                      baseline.find("runtime_symbol_set=3\n") != std::string::npos &&

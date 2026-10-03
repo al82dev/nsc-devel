@@ -3804,7 +3804,7 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial, bool isTrait)
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
         const std::size_t before = index_;
-        if (ast::AstNode* member = parseInterfaceMember(); member != nullptr)
+        if (ast::AstNode* member = parseInterfaceMember(isTrait); member != nullptr)
         {
             if (isTrait && member->kind() == ast::AstNodeKind::MethodDeclaration &&
                 !member->genericParameters().empty())
@@ -3828,7 +3828,7 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial, bool isTrait)
     return node;
 }
 
-ast::AstNode* Parser::parseInterfaceMember()
+ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
 {
     const std::size_t beginIndex = index_;
     if (atContextualKeyword("async"))
@@ -3841,8 +3841,10 @@ ast::AstNode* Parser::parseInterfaceMember()
     bool sawPublic = false;
     bool sawAbstract = false;
     bool sawNoHeap = false;
+    bool sawStatic = false;
 
-    while (at(TokenKind::KwPublic) || at(TokenKind::KwAbstract) || at(TokenKind::KwNoHeap))
+    while (at(TokenKind::KwPublic) || at(TokenKind::KwAbstract) || at(TokenKind::KwNoHeap) ||
+           at(TokenKind::KwStatic))
     {
         const TokenKind modifier = consume().kind();
         if (modifier == TokenKind::KwPublic)
@@ -3869,7 +3871,7 @@ ast::AstNode* Parser::parseInterfaceMember()
             }
             sawAbstract = true;
         }
-        else
+        else if (modifier == TokenKind::KwNoHeap)
         {
             if (sawNoHeap)
             {
@@ -3880,6 +3882,26 @@ ast::AstNode* Parser::parseInterfaceMember()
                     "duplicate noheap modifier on interface member");
             }
             sawNoHeap = true;
+        }
+        else
+        {
+            if (sawStatic)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    tokens_[index_ - 1].range(),
+                    "duplicate static modifier on trait member");
+            }
+            sawStatic = true;
+            if (!isTrait)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    tokens_[index_ - 1].range(),
+                    "static interface members require a NativeSharp 3 trait declaration");
+            }
         }
     }
 
@@ -3913,6 +3935,30 @@ ast::AstNode* Parser::parseInterfaceMember()
     }
     ast::TypeSyntax* returnType = parseType();
 
+    if (at(TokenKind::KwOperator))
+    {
+        if (!isTrait)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "operator requirements are valid only in a NativeSharp 3 trait");
+        }
+        ast::AstNode* requirement = parseOperatorTail(
+            returnType, accessibility, sawStatic, beginIndex, isTrait);
+        if (requirement != nullptr && requirement->first() != nullptr)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                requirement->range(),
+                "trait operator requirements declare no body; provide the implementation on "
+                "the conforming type");
+        }
+        return requirement;
+    }
+
     if (at(TokenKind::KwThis))
     {
         return parseIndexerTail(
@@ -3931,12 +3977,22 @@ ast::AstNode* Parser::parseInterfaceMember()
     {
         ast::AstNode* method = parseMethodTail(
             returnType, name, accessibility,
-            false, false, false, false, true, false, false, false, false, false, false, sawNoHeap,
-            beginIndex);
+            false, sawStatic, false, false, isTrait ? sawAbstract : true,
+            false, false, false, false, false, false,
+            sawNoHeap, beginIndex, isTrait);
         if (method != nullptr)
         {
             method->setReference(isReferenceReturn);
-            if (method->first() != nullptr)
+            if (isTrait && sawStatic)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    method->range(),
+                    "ordinary static trait methods are not part of T05-F01; declare a static "
+                    "property or operator requirement");
+            }
+            if (!isTrait && method->first() != nullptr)
             {
                 reportDeferredLanguage3(
                     diagnostics_, method->first()->range(),
@@ -3955,9 +4011,17 @@ ast::AstNode* Parser::parseInterfaceMember()
                 name.range(),
                 "ref return is valid only on a method in item 313");
         }
+        if (isTrait && !sawStatic)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                name.range(),
+                "trait properties in T05-F01 are static requirements; add 'static'");
+        }
         return parsePropertyTail(
             returnType, name, accessibility,
-            false, false, false, false, true, false, beginIndex, true);
+            false, sawStatic, false, false, true, false, beginIndex, true);
     }
 
     diagnostics_.report(
@@ -6026,7 +6090,8 @@ ast::AstNode* Parser::parseOperatorTail(
     ast::TypeSyntax* returnType,
     TokenKind accessibility,
     bool isStatic,
-    std::size_t beginIndex)
+    std::size_t beginIndex,
+    bool allowBodyless)
 {
     const SourceRange operatorKeywordRange = consume().range(); // operator
     if (!isStage38OperatorToken(current().kind()))
@@ -6107,6 +6172,10 @@ ast::AstNode* Parser::parseOperatorTail(
     }
 
     if (at(TokenKind::LeftBrace)) method->setFirst(parseBlock());
+    else if (allowBodyless && consumeIf(TokenKind::Semicolon))
+    {
+        method->addModifier(TokenKind::KwAbstract);
+    }
     else
     {
         diagnostics_.report(
@@ -6373,7 +6442,8 @@ ast::AstNode* Parser::parseMethodTail(
     bool isForceInline,
     bool isNoInline,
     bool isNoHeap,
-    std::size_t beginIndex)
+    std::size_t beginIndex,
+    bool allowBodyless)
 {
     ast::AstNode* method = arena_.make<ast::AstNode>(
         ast::AstNodeKind::MethodDeclaration,
@@ -6477,6 +6547,11 @@ ast::AstNode* Parser::parseMethodTail(
     else if (at(TokenKind::LeftBrace))
     {
         method->setFirst(parseBlock());
+    }
+    else if (allowBodyless)
+    {
+        expect(TokenKind::Semicolon, "';'");
+        method->addModifier(TokenKind::KwAbstract);
     }
     else
     {

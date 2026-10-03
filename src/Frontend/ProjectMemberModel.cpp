@@ -293,6 +293,17 @@ bool isInvalidVoidObjectType(const ast::TypeSyntax* type) noexcept
         modifiers.front().kind == ast::TypeModifierSyntaxKind::RangeArray ||
         modifiers.front().kind == ast::TypeModifierSyntaxKind::FlexibleArray;
 }
+
+bool isTraitDeclaration(const NamedTypeDeclaration& type)
+{
+    return std::ranges::any_of(type.parts, [](const NamedTypeDeclarationPart& part)
+    {
+        if (part.syntax == nullptr) return false;
+        const std::string_view metadata = part.syntax->auxiliaryText();
+        return metadata == "ns3-trait" ||
+            metadata.find("nsc-meta:ns3-trait") != std::string_view::npos;
+    });
+}
 }
 
 bool ProjectMemberModel::build(
@@ -1972,7 +1983,7 @@ bool ProjectMemberModel::collectTypeMembers(
                 {
                     containsContainingType = containsContainingType || parameter.typeKey == containingTypeKey;
                 }
-                if (!containsContainingType)
+                if (!containsContainingType && !(symbol.isAbstract && isTraitDeclaration(type)))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidType,
