@@ -87,7 +87,7 @@
 //   an i32-typed alloca as a pointer produced a call-parameter type mismatch that the LLVM
 //   verifier rejected outright. Fixed by loading/storing using the move's real typeKey (like
 //   MoveArrayElement already did) and gating the null-store on a new reference-like flag,
-//   threaded through MethodMoveBinding::elementIsReferenceLike (now computed for every move()
+//   threaded through MethodMoveBinding::clearSourceStorage (now computed for every move()
 //   source shape, not just an array element).
 //
 // Known, pre-existing, and deliberately UN-fixed limitation discovered while writing

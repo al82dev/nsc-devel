@@ -1863,7 +1863,7 @@ void testPlainAliasIntoOwnedArrayElementIsRejected(
 // POR QUE ES EL MISMO CASO Y NO UNO NUEVO. Lo unico que la bajada necesita de este ligado es la
 // DIRECCION de la ranura, y el HIR ya la sabe dar para un elemento de arreglo fijo (caso
 // RawElement, "C2.1 fixed arrays"). `MoveArrayElement` recibe esa direccion y hace el
-// load-and-null de siempre, gobernado por `elementIsReferenceLike`, que sale del tipo del
+// load-and-empty de siempre, gobernado por `clearSourceStorage`, que sale del tipo del
 // ELEMENTO. Un arreglo fijo de un tipo por valor sigue siendo el no-op que ya era.
 //
 // EL CONTRATO ES EL DEL ARREGLO NATIVO, no el del campo `owned`: nada destruye los elementos

@@ -1636,7 +1636,8 @@ bool ProjectOopHirModel::buildImpl(
         {
             const MethodCleanupRegion& region = methodBodyModel.cleanupRegions()[cleanupOrdinal];
             if (region.methodMemberOrdinal != memberOrdinal ||
-                region.kind != MethodCleanupRegionKind::OwnedParameterDestroy ||
+                (region.kind != MethodCleanupRegionKind::OwnedParameterDestroy &&
+                 region.kind != MethodCleanupRegionKind::ValueParameterDrop) ||
                 !region.resourceParameterOrdinal.has_value())
             {
                 continue;
@@ -1654,6 +1655,8 @@ bool ProjectOopHirModel::buildImpl(
                 member.parameters[parameterOrdinal].typeKey);
             cleanup->parameterOrdinal = parameterOrdinal;
             cleanup->cleanupRegionOrdinal = cleanupOrdinal;
+            cleanup->automaticDestruction =
+                region.kind == MethodCleanupRegionKind::ValueParameterDrop;
             ownedParameterCleanupNodes.push_back(std::move(cleanup));
         }
 
@@ -2055,7 +2058,8 @@ bool ProjectOopHirModel::buildImpl(
             {
                 const MethodCleanupRegion& region = methodBodyModel.cleanupRegions()[cleanupOrdinal];
                 if (region.methodMemberOrdinal != callableOrdinal ||
-                    region.kind != MethodCleanupRegionKind::OwnedParameterDestroy ||
+                    (region.kind != MethodCleanupRegionKind::OwnedParameterDestroy &&
+                     region.kind != MethodCleanupRegionKind::ValueParameterDrop) ||
                     !region.resourceParameterOrdinal.has_value())
                 {
                     continue;
@@ -2073,6 +2077,8 @@ bool ProjectOopHirModel::buildImpl(
                     symbol.parameters[parameterOrdinal].typeKey);
                 cleanup->parameterOrdinal = parameterOrdinal;
                 cleanup->cleanupRegionOrdinal = cleanupOrdinal;
+                cleanup->automaticDestruction =
+                    region.kind == MethodCleanupRegionKind::ValueParameterDrop;
                 ownedParameterCleanupNodes.push_back(std::move(cleanup));
             }
 
@@ -2488,23 +2494,23 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             node->stringValue = local->name;
             node->referenceLocal = local->isReference;
             node->ownership = local->ownership;
-            node->automaticDestruction = local->isRaii;
+            node->automaticDestruction = local->isRaii || local->requiresValueDrop;
             node->objectLifetimeOwnership = local->objectLifetimeOwnership;
             node->storageOwnership = local->storageOwnership;
             const auto localIndex = static_cast<std::size_t>(local - methodBodyModel_->locals().data());
             node->localOrdinal = localIndex;
-            if (local->isRaii)
+            if (local->isRaii || local->requiresValueDrop)
             {
                 const MethodCleanupRegion* region = cleanupRegion(statement);
                 if (region == nullptr)
                 {
-                    error = "Stage 49 RAII local is missing its lexical cleanup region";
+                    error = "drop-bearing local is missing its lexical cleanup region";
                     return nullptr;
                 }
                 node->cleanupRegionOrdinal = cleanupOrdinalFor(region);
                 if (!node->cleanupRegionOrdinal.has_value())
                 {
-                    error = "Stage 49 RAII cleanup region has no stable ordinal";
+                    error = "drop-bearing local cleanup region has no stable ordinal";
                     return nullptr;
                 }
             }
@@ -5097,7 +5103,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 const MethodNameBinding* targetBinding = nameBinding(expression->first());
                 if (targetBinding != nullptr && targetBinding->localOrdinal.has_value() &&
                     *targetBinding->localOrdinal < methodBodyModel_->locals().size() &&
-                    methodBodyModel_->locals()[*targetBinding->localOrdinal].isRaii)
+                    (methodBodyModel_->locals()[*targetBinding->localOrdinal].isRaii ||
+                     methodBodyModel_->locals()[*targetBinding->localOrdinal].requiresValueDrop))
                 {
                     node->booleanValue = true;
                     node->localOrdinal = *targetBinding->localOrdinal;
@@ -5256,7 +5263,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
                 if (address == nullptr) return nullptr;
                 auto node = makeNode(ProjectOopHirNodeKind::MoveArrayElement, expression, move->typeKey);
-                node->booleanValue = move->elementIsReferenceLike;
+                node->booleanValue = move->clearSourceStorage;
                 node->children.push_back(std::move(address));
                 return node;
             }
@@ -5270,7 +5277,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
                 if (address == nullptr) return nullptr;
                 auto node = makeNode(ProjectOopHirNodeKind::MoveOwnedField, expression, move->typeKey);
-                node->booleanValue = move->elementIsReferenceLike;
+                node->booleanValue = move->clearSourceStorage;
                 node->children.push_back(std::move(address));
                 return node;
             }
@@ -5279,9 +5286,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             node->parameterOrdinal = move->sourceParameterOrdinal;
             // Stage 52: whether the source is actually reference-like (needs the load+null-store
             // treatment) or a plain value type closed over a generic T -- see
-            // MethodMoveBinding::elementIsReferenceLike's comment and the MoveValue LLVM
+            // MethodMoveBinding::clearSourceStorage's comment and the MoveValue LLVM
             // lowering case for the bug this fixes.
-            node->booleanValue = move->elementIsReferenceLike;
+            node->booleanValue = move->clearSourceStorage;
             if (node->localOrdinal.has_value() == node->parameterOrdinal.has_value())
             {
                 error = "Stage 50.8 move value must identify exactly one owner source";

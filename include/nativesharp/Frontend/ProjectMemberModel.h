@@ -308,6 +308,13 @@ public:
     // `owned`, which callers check separately.
     bool typeTransitivelyOwnsStorage(std::string_view typeKey) const;
 
+    // NativeSharp 3.0 T06-F02. A custom value destructor is a semantic barrier for partial
+    // moves: it is written against the complete value and cannot observe a fabricated mixture
+    // of live and moved fields. The query is transitive through tuples, fixed arrays and struct
+    // fields so one outer drop flag can guard an entire value tree.
+    bool typeTransitivelyHasCustomDestructor(std::string_view typeKey) const;
+    bool typeRequiresValueDrop(std::string_view typeKey) const;
+
     // NativeSharp 3.0 T06-F01. Scalars and reference-shaped values remain Copy. Edition-3
     // structs are move-only unless their declaration carries the explicit `copy` contract;
     // edition-2 structs retain the legacy structural rule. Fixed arrays inherit the element

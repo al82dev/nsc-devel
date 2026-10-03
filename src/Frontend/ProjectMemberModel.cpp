@@ -435,6 +435,16 @@ bool ProjectMemberModel::build(
         {
             if (memberOrdinal >= members_.size()) continue;
             const ClassMemberSymbol& field = members_[memberOrdinal];
+            if (field.kind == ClassMemberKind::Destructor)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    field.range,
+                    "copy type '" + type.identity.key() +
+                        "' cannot declare a destructor; destructible values are move-only");
+                continue;
+            }
             if (field.kind != ClassMemberKind::Field || field.isStatic || field.isConst) continue;
             if (field.declaredOwnership == sema::OwnershipKind::Owned ||
                 !typeIsImplicitlyCopyable(field.declaredTypeKey))
@@ -769,6 +779,56 @@ bool ProjectMemberModel::typeTransitivelyOwnsStorage(std::string_view typeKey) c
         return result;
     };
     return owns(typeKey);
+}
+
+bool ProjectMemberModel::typeTransitivelyHasCustomDestructor(std::string_view typeKey) const
+{
+    if (nameLookup_ == nullptr) return false;
+
+    std::unordered_set<std::size_t> visiting;
+    std::function<bool(std::string_view)> hasDestructor =
+        [&](std::string_view candidate) -> bool
+    {
+        if (const std::optional<std::vector<std::string>> tuple =
+                ProjectTypeConversion::tupleElementTypeKeys(candidate))
+            return std::ranges::any_of(*tuple, [&](const std::string& element)
+            {
+                return hasDestructor(element);
+            });
+        std::string current(candidate);
+        while (const std::optional<std::string> element = fixedArrayElementTypeKey(current))
+            current = *element;
+        const std::optional<std::size_t> ordinal = typeOrdinalForKey(current);
+        if (!ordinal.has_value() ||
+            nameLookup_->namedTypes()[*ordinal].kind != NamedTypeDeclarationKind::Struct)
+            return false;
+        if (!visiting.insert(*ordinal).second) return false;
+        for (const std::size_t memberOrdinal : membersByType_[*ordinal])
+        {
+            if (memberOrdinal >= members_.size()) continue;
+            const ClassMemberSymbol& member = members_[memberOrdinal];
+            if (member.kind == ClassMemberKind::Destructor)
+            {
+                visiting.erase(*ordinal);
+                return true;
+            }
+            if (member.kind == ClassMemberKind::Field && !member.isStatic &&
+                hasDestructor(member.declaredTypeKey))
+            {
+                visiting.erase(*ordinal);
+                return true;
+            }
+        }
+        visiting.erase(*ordinal);
+        return false;
+    };
+    return hasDestructor(typeKey);
+}
+
+bool ProjectMemberModel::typeRequiresValueDrop(std::string_view typeKey) const
+{
+    return typeTransitivelyOwnsStorage(typeKey) ||
+        typeTransitivelyHasCustomDestructor(typeKey);
 }
 
 bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) const

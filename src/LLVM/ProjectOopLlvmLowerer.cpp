@@ -2734,6 +2734,8 @@ private:
             constructionThisOverride_ = nullptr;
             parameterStorage_.clear();
             localStorage_.clear();
+            parameterValueDropFlags_.clear();
+            localValueDropFlags_.clear();
             activeCatchExceptions_.clear();
             loopStack_.clear();
             exceptionDispatchBlocks_.clear();
@@ -2854,6 +2856,8 @@ private:
             constructionThisOverride_ = nullptr;
             parameterStorage_.clear();
             localStorage_.clear();
+            parameterValueDropFlags_.clear();
+            localValueDropFlags_.clear();
                 activeCatchExceptions_.clear();
             loopStack_.clear();
             exceptionDispatchBlocks_.clear();
@@ -4626,6 +4630,8 @@ private:
             constructionThisOverride_ = nullptr;
             parameterStorage_.clear();
             localStorage_.clear();
+            parameterValueDropFlags_.clear();
+            localValueDropFlags_.clear();
                 activeCatchExceptions_.clear();
             loopStack_.clear();
             exceptionDispatchBlocks_.clear();
@@ -4817,6 +4823,8 @@ private:
                     context_, 0, 0, currentDebugSubprogram_, nullptr));
         parameterStorage_.clear();
         localStorage_.clear();
+        parameterValueDropFlags_.clear();
+        localValueDropFlags_.clear();
         stackObjectStorage_.clear();
         parameterCaptureCells_.clear();
         localCaptureCells_.clear();
@@ -4947,6 +4955,27 @@ private:
             if (cleanup.action == nullptr)
                 return fail(error, "OOP MIR cleanup contract contains a null action");
             cleanupRegions_.emplace(cleanup.ordinal, cleanup.action);
+            if (memberModel_ != nullptr && cleanup.action->automaticDestruction &&
+                memberModel_->typeTransitivelyHasCustomDestructor(cleanup.typeKey))
+            {
+                LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+                if (cleanup.localOrdinal.has_value())
+                {
+                    LLVMValueRef flag = LLVMBuildAlloca(
+                        builder_, flagType,
+                        ("drop.flag.l" + std::to_string(*cleanup.localOrdinal)).c_str());
+                    LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag);
+                    localValueDropFlags_[*cleanup.localOrdinal] = flag;
+                }
+                else if (cleanup.parameterOrdinal.has_value())
+                {
+                    LLVMValueRef flag = LLVMBuildAlloca(
+                        builder_, flagType,
+                        ("drop.flag.p" + std::to_string(*cleanup.parameterOrdinal)).c_str());
+                    LLVMBuildStore(builder_, LLVMConstInt(flagType, 1, 0), flag);
+                    parameterValueDropFlags_[*cleanup.parameterOrdinal] = flag;
+                }
+            }
         }
         const bool hasExceptionalControl = function.exceptionFlow.requiresPersonality;
         if (hasExceptionalControl || !ownedCaptureCells_.empty())
@@ -5670,6 +5699,119 @@ private:
         return true;
     }
 
+    bool emitValueDropAddress(
+        LLVMValueRef address,
+        std::string_view typeKey,
+        std::string_view stem,
+        std::string& error)
+    {
+        if (address == nullptr || memberModel_ == nullptr)
+            return fail(error, "NativeSharp 3.0 value drop has no address/member model");
+
+        if (const std::optional<std::string> element =
+                frontend::ProjectMemberModel::fixedArrayElementTypeKey(typeKey))
+        {
+            const std::optional<std::uint64_t> count =
+                frontend::ProjectMemberModel::fixedArrayCount(typeKey);
+            if (!count.has_value())
+                return fail(error, "NativeSharp 3.0 value drop lost fixed-array extent");
+            const auto [elementSize, ignoredAlignment] = captureValueLayout(*element, error);
+            (void)ignoredAlignment;
+            if (!error.empty() || elementSize == 0) return false;
+            for (std::uint64_t index = *count; index-- > 0;)
+            {
+                LLVMValueRef elementAddress = byteOffset(
+                    address, index * elementSize,
+                    (std::string(stem) + ".element.addr").c_str());
+                if (!emitValueDropAddress(
+                        elementAddress, *element,
+                        std::string(stem) + ".element", error)) return false;
+            }
+            return true;
+        }
+
+        const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
+        if (layout == nullptr) return true;
+        if (layout->isUnion)
+            return fail(error, "NativeSharp 3.0 value drop requires an active-member discriminator for union '" +
+                std::string(typeKey) + "'");
+
+        for (const std::size_t memberOrdinal : memberModel_->membersOfType(layout->typeOrdinal))
+        {
+            if (memberOrdinal >= memberModel_->members().size()) continue;
+            const frontend::ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+            if (member.kind != frontend::ClassMemberKind::Destructor) continue;
+            const frontend::ProjectOopMirFunction* destructor = mirModel_.functionForMember(memberOrdinal);
+            if (destructor == nullptr)
+                return fail(error, "NativeSharp 3.0 value destructor has no MIR function");
+            const auto target = functions_.find(destructor->mangledName);
+            if (target == functions_.end())
+                return fail(error, "NativeSharp 3.0 value destructor was not declared: " +
+                    destructor->mangledName);
+            LLVMValueRef arguments[] = {address};
+            buildNoUnwindCall(
+                target->second.functionType, target->second.function, arguments, 1, "");
+            break;
+        }
+
+        for (auto iterator = layout->fields.rbegin(); iterator != layout->fields.rend(); ++iterator)
+        {
+            const frontend::ObjectFieldLayout& field = *iterator;
+            if (field.memberOrdinal >= memberModel_->members().size()) continue;
+            const frontend::ClassMemberSymbol& symbol = memberModel_->members()[field.memberOrdinal];
+            if (symbol.kind != frontend::ClassMemberKind::Field || symbol.isStatic) continue;
+            LLVMValueRef fieldAddress = byteOffset(
+                address, field.offset, (std::string(stem) + ".field.addr").c_str());
+            const bool ownedPointer = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
+                (requiresOwnedDestruction(field.typeKey) ||
+                 frontend::ProjectTypeConversion::isNativeArray(field.typeKey));
+            if (ownedPointer)
+            {
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef value = LLVMBuildLoad2(
+                    builder_, ptr, fieldAddress,
+                    (std::string(stem) + ".field.load").c_str());
+                LLVMBuildStore(builder_, LLVMConstNull(ptr), fieldAddress);
+                if (!emitOwnedPointerDestroy(
+                        value, field.typeKey,
+                        std::string(stem) + ".field.destroy", error)) return false;
+            }
+            else if (memberModel_->typeRequiresValueDrop(field.typeKey))
+            {
+                if (!emitValueDropAddress(
+                        fieldAddress, field.typeKey,
+                        std::string(stem) + ".field", error)) return false;
+            }
+        }
+        return true;
+    }
+
+    bool emitValueDrop(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef storage,
+        LLVMValueRef flag,
+        std::string_view stem,
+        std::string& error)
+    {
+        if (node == nullptr || storage == nullptr)
+            return fail(error, "NativeSharp 3.0 value cleanup is missing storage");
+        if (flag == nullptr)
+            return emitValueDropAddress(storage, node->typeKey, stem, error);
+
+        LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+        LLVMValueRef live = LLVMBuildLoad2(
+            builder_, flagType, flag, (std::string(stem) + ".live").c_str());
+        LLVMBasicBlockRef destroyBlock = appendBlock(std::string(stem) + ".destroy");
+        LLVMBasicBlockRef doneBlock = appendBlock(std::string(stem) + ".done");
+        LLVMBuildCondBr(builder_, live, destroyBlock, doneBlock);
+        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag);
+        if (!emitValueDropAddress(storage, node->typeKey, stem, error)) return false;
+        if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        return true;
+    }
+
     bool emitRaiiDestroy(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr ||
@@ -5683,6 +5825,14 @@ private:
         if (found == localStorage_.end() || found->second == nullptr)
         {
             return fail(error, "Stage 49 RAII cleanup cannot find owner local storage");
+        }
+        if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(node->typeKey))
+        {
+            const auto flag = localValueDropFlags_.find(*node->localOrdinal);
+            return emitValueDrop(
+                node, found->second,
+                flag != localValueDropFlags_.end() ? flag->second : nullptr,
+                "value.local", error);
         }
         // Defense in depth (closure checklist P1 item 5/6): semantic analysis already restricts a
         // `raii` local to a class/interface reference or `builtin:string` (see
@@ -5771,6 +5921,14 @@ private:
         if (found == parameterStorage_.end() || found->second == nullptr)
         {
             return fail(error, "Stage 50.8 owned-parameter cleanup cannot find parameter storage");
+        }
+        if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(node->typeKey))
+        {
+            const auto flag = parameterValueDropFlags_.find(*node->parameterOrdinal);
+            return emitValueDrop(
+                node, found->second,
+                flag != parameterValueDropFlags_.end() ? flag->second : nullptr,
+                "value.param", error);
         }
         // Foreach-driven regression find (52_x_nativesharp_foreach.md): an `owned` PARAMETER,
         // unlike a `raii` LOCAL, is legitimately allowed to be a value type (int, bool, a plain
@@ -6638,6 +6796,16 @@ private:
                     initialized = emitDefaultLocalStorage(node, error);
                 }
                 if (!initialized) return false;
+                if (node->localOrdinal.has_value())
+                {
+                    const auto dropFlag = localValueDropFlags_.find(*node->localOrdinal);
+                    if (dropFlag != localValueDropFlags_.end())
+                    {
+                        LLVMBuildStore(
+                            builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
+                            dropFlag->second);
+                    }
+                }
 
                 // A local becomes debugger-visible only after its initializer has completed.
                 // Emitting dbg.declare before the store lets CodeView extend the location into
@@ -7381,6 +7549,22 @@ private:
                 if (node->booleanValue)
                 {
                     LLVMBuildStore(builder_, LLVMConstNull(valueType), storage);
+                }
+                if (node->localOrdinal.has_value())
+                {
+                    const auto flag = localValueDropFlags_.find(*node->localOrdinal);
+                    if (flag != localValueDropFlags_.end())
+                        LLVMBuildStore(
+                            builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0),
+                            flag->second);
+                }
+                else if (node->parameterOrdinal.has_value())
+                {
+                    const auto flag = parameterValueDropFlags_.find(*node->parameterOrdinal);
+                    if (flag != parameterValueDropFlags_.end())
+                        LLVMBuildStore(
+                            builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0),
+                            flag->second);
                 }
                 return value;
             }
@@ -9956,6 +10140,14 @@ private:
                 }
                 LLVMValueRef store = LLVMBuildStore(builder_, value, address);
                 if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+                if (node->localOrdinal.has_value())
+                {
+                    const auto flag = localValueDropFlags_.find(*node->localOrdinal);
+                    if (flag != localValueDropFlags_.end())
+                        LLVMBuildStore(
+                            builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
+                            flag->second);
+                }
                 return value;
             }
             case frontend::ProjectOopMirNodeKind::Convert:
@@ -15254,6 +15446,10 @@ private:
     LLVMValueRef constructionThisOverride_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> parameterStorage_;
     std::unordered_map<std::size_t, LLVMValueRef> localStorage_;
+    // Only custom-destructor aggregates need an explicit guard. Aggregates whose drop consists
+    // solely of owned fields use the cleared field slots themselves as optimized drop flags.
+    std::unordered_map<std::size_t, LLVMValueRef> parameterValueDropFlags_;
+    std::unordered_map<std::size_t, LLVMValueRef> localValueDropFlags_;
     // Item 323. Backing bytes for promoted class objects, separate from each local's pointer slot.
     std::unordered_map<std::size_t, LLVMValueRef> stackObjectStorage_;
     std::unordered_map<std::size_t, LLVMValueRef> parameterCaptureCells_;

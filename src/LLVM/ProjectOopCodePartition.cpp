@@ -150,12 +150,50 @@ bool ProjectOopCodePartition::build(
 
     std::unordered_map<std::string_view, std::vector<std::size_t>> functionsByName;
     std::unordered_map<std::size_t, std::size_t> functionByMember;
+    std::unordered_map<std::size_t, std::size_t> destructorFunctionByType;
+    std::unordered_map<std::string_view, const frontend::ProjectOopMirStructLayout*> structLayoutByType;
     for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
     {
         functionsByName[functions[ordinal].mangledName].push_back(ordinal);
         if (!functions[ordinal].isLambda && !functions[ordinal].namespaceFunctionOrdinal.has_value())
             functionByMember.emplace(functions[ordinal].memberOrdinal, ordinal);
+        if (functions[ordinal].destructor)
+            destructorFunctionByType.emplace(functions[ordinal].declaringTypeOrdinal, ordinal);
     }
+    for (const frontend::ProjectOopMirStructLayout& layout : mirModel.structLayouts())
+        structLayoutByType.emplace(layout.typeKey, &layout);
+
+    const auto fixedArrayElement = [](std::string_view typeKey) -> std::string_view
+    {
+        if (typeKey.size() < 3 || typeKey.back() != ']') return {};
+        const std::size_t open = typeKey.rfind('[');
+        if (open == std::string_view::npos || open == 0 || open + 1 >= typeKey.size() - 1)
+            return {};
+        for (std::size_t index = open + 1; index + 1 < typeKey.size(); ++index)
+            if (typeKey[index] < '0' || typeKey[index] > '9') return {};
+        return typeKey.substr(0, open);
+    };
+    const auto addValueDestructorDependencies = [&](const auto& self,
+                                                     std::string_view typeKey,
+                                                     auto& dependencies,
+                                                     auto& visiting) -> void
+    {
+        if (const std::string_view element = fixedArrayElement(typeKey); !element.empty())
+        {
+            self(self, element, dependencies, visiting);
+            return;
+        }
+        const auto layoutFound = structLayoutByType.find(typeKey);
+        if (layoutFound == structLayoutByType.end()) return;
+        const frontend::ProjectOopMirStructLayout& layout = *layoutFound->second;
+        if (!visiting.insert(layout.typeOrdinal).second) return;
+        if (const auto destructor = destructorFunctionByType.find(layout.typeOrdinal);
+            destructor != destructorFunctionByType.end())
+            dependencies.insert(destructor->second);
+        for (const frontend::ObjectFieldLayout& field : layout.fields)
+            self(self, field.typeKey, dependencies, visiting);
+        visiting.erase(layout.typeOrdinal);
+    };
     const auto addMember = [&](std::optional<std::size_t> member, auto& dependencies)
     {
         if (!member.has_value()) return;
@@ -175,6 +213,12 @@ bool ProjectOopCodePartition::build(
         addMember(node->memberOrdinal, dependencies);
         addMember(node->secondaryMemberOrdinal, dependencies);
         addMember(node->disposeImplementationMemberOrdinal, dependencies);
+        if (node->automaticDestruction)
+        {
+            std::unordered_set<std::size_t> visiting;
+            addValueDestructorDependencies(
+                addValueDestructorDependencies, node->typeKey, dependencies, visiting);
+        }
         for (const auto& child : node->children) self(self, child.get(), dependencies);
     };
     for (ProjectOopCodeUnit& unit : units_)

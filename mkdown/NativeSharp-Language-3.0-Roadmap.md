@@ -588,6 +588,10 @@ evidencia del commit: `docs/3.0/items/NS3-T06-F01-move-only-defaults.md`.
 
 **Commit:** `ns3(t06-f02): partial-moves`
 
+**Estado:** `TERMINADA` (2026-10-03). Contrato normativo:
+`docs/3.0/language/partial-moves-drop-flags.md`; evidencia del commit:
+`docs/3.0/items/NS3-T06-F02-partial-moves.md`.
+
 - **Implementación:** análisis campo por campo; drop flags solo cuando sean necesarios y optimizables; tipos con destructor personalizado pueden restringir moves parciales.
 - **Pruebas dirigidas:** structs nested, match, excepciones nativas si existen, early returns, loops y conteo exacto de destructores.
 - **Markdown ES/EN:** estados de inicialización y costo potencial de flags.

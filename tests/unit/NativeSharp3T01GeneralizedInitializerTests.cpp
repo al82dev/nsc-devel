@@ -191,8 +191,9 @@ class Program { public static int Main() { Pair value = { X = 42 }; return value
         rejected(root / "destructor", R"NS(
 struct Guard { public int Value; ~Guard() { } }
 class Program { public static int Main() { Guard value = { Value = 42 }; return value.Value; } }
-)NS", "a struct cannot declare a destructor", diagnostic),
-        "a destructor-bearing value cannot enter partial aggregate construction (" +
+)NS", "requires a trivially destructible target", diagnostic),
+        "a destructor-bearing value cannot bypass its constructor/drop contract through an "
+        "aggregate initializer (" +
             diagnostic + ")");
 
     diagnostic.clear();

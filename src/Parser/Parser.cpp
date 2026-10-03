@@ -3639,7 +3639,10 @@ ast::AstNode* Parser::parseVariantDeclaration()
     tagMethod->setFirst(tagBody);
     node->addChild(tagMethod);
 
-    std::string metadata = "variant,tag=" + tagTypeName + ",cases=";
+    const bool explicitCopyVariant = node->auxiliaryText().find("copy") != std::string::npos;
+    std::string metadata = "variant,ns3-value";
+    if (explicitCopyVariant) metadata += ",copy";
+    metadata += ",tag=" + tagTypeName + ",cases=";
     for (std::size_t index = 0; index < cases.size(); ++index)
     {
         if (index != 0) metadata += '|';
@@ -3829,28 +3832,51 @@ ast::AstNode* Parser::parseStructBody(
             //     compiler has emitted since Stage 40. Measured by lifting the gate: it compiled
             //     and called the getter correctly.
             //   * Some needed a small, bounded piece of work -- operators, indexers, constructors.
-            //   * And TWO of them must stay refused for reasons that are not about effort at all.
-            //     Those two get their own message here, because "unsupported" would be a lie: with
-            //     the gate lifted they COMPILE AND SILENTLY MISBEHAVE, which is worse than being
-            //     rejected. Measured, both of them:
+            //   * Two forms required explicit semantic contracts rather than merely lifting the
+            //     old gate. Virtual value methods remain invalid; destructors are now admitted
+            //     only for edition-3 move-only structs, whose unique-owner/drop-flag model gives
+            //     them the final-destruction point edition 2 lacked.
             //
-            //       - a struct DESTRUCTOR emits its body and is never called. A value type has no
-            //         owner and is copied freely; there is no moment this compiler can point to as
-            //         "this is the last copy, run it now". RAII lives on `raii` class locals and on
-            //         `owned` fields, which have exactly that moment.
+            //       - an edition-2/copy/union struct DESTRUCTOR still has no unique final owner and
+            //         remains rejected. An edition-3 move-only struct has one, and T06-F02 threads
+            //         its destructor through value-drop cleanup.
             //       - `virtual`/`override`/`abstract`/`sealed` on a struct degrades to a DIRECT
             //         call. A value has no vtable pointer and no place to put one without changing
             //         its layout -- and its layout is the contract it crosses the C boundary with.
             //         Polymorphism is what classes are for.
             if (member->kind() == ast::AstNodeKind::DestructorDeclaration)
             {
-                diagnostics_.report(
-                    diagnostics::DiagnosticId::ExpectedDeclaration,
-                    diagnostics::DiagnosticSeverity::Error,
-                    member->range(),
-                    "a struct cannot declare a destructor: a value type has no owner and is copied "
-                    "freely, so there is no last copy to run it on; use a raii class, or an owned "
-                    "field, for a resource with a lifetime");
+                const std::string_view markers = node->auxiliaryText();
+                const bool moveOnlyEdition3 = languageEdition_ == language::LanguageEdition::V3 &&
+                    markers.find("ns3-value") != std::string_view::npos &&
+                    markers.find("copy") == std::string_view::npos &&
+                    markers.find("union") == std::string_view::npos;
+                if (!moveOnlyEdition3)
+                {
+                    if (languageEdition_ != language::LanguageEdition::V3)
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::ExpectedDeclaration,
+                            diagnostics::DiagnosticSeverity::Error,
+                            member->range(),
+                            "a struct cannot declare a destructor: a value type has no owner and is "
+                            "copied freely, so there is no last copy to run it on; use a raii class, "
+                            "or an owned field, for a resource with a lifetime");
+                    }
+                    else
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::ExpectedDeclaration,
+                            diagnostics::DiagnosticSeverity::Error,
+                            member->range(),
+                            "a struct destructor requires a move-only edition-3 value type; copy and "
+                            "raw-union values have no unique final owner");
+                    }
+                }
+                else
+                {
+                    node->addChild(member);
+                }
             }
             else if (member->kind() == ast::AstNodeKind::MethodDeclaration &&
                      (member->hasModifier(TokenKind::KwVirtual) ||

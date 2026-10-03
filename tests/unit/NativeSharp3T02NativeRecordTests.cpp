@@ -198,8 +198,8 @@ class Program { public static Owner Copy(Owner value) { return value.Clone(); } 
         rejected(root / "destructor_clone", R"NS(
 record struct Resource derive(Clone) { ~Resource() { } }
 class Program { public static Resource Copy(Resource value) { return value.Clone(); } }
-)NS", "a struct cannot declare a destructor", diagnostic),
-        "the value-type boundary rejects a destructor before Clone can bypass it (" +
+)NS", "generated Clone is a plain value copy and would duplicate a non-trivial lifetime", diagnostic),
+        "Clone rejects a destructor-bearing record instead of duplicating its lifetime (" +
             diagnostic + ")");
 
     const std::filesystem::path producer = root / "producer";

@@ -784,6 +784,8 @@ bool ProjectMethodBodyModel::build(
         maybeMovedRaiiLocals_.clear();
         movedOwnedParameters_.clear();
         maybeMovedOwnedParameters_.clear();
+        partiallyMovedPlaces_.clear();
+        maybePartiallyMovedPlaces_.clear();
         invalidLocalBorrows_.clear();
         maybeInvalidLocalBorrows_.clear();
         assignedLocals_.clear();
@@ -794,6 +796,7 @@ bool ProjectMethodBodyModel::build(
         activeUnionWriteTarget_ = nullptr;
         unsafeBlockDepth_ = 0;
         ownershipFlowReachable_ = true;
+        partialProjectionReceiverDepth_ = 0;
         throwFlowStates_.clear();
         const std::size_t rootScopeOrdinal = createScope(
             rootKind,
@@ -801,19 +804,25 @@ bool ProjectMethodBodyModel::build(
             std::nullopt);
         seedParameters(memberOrdinal, rootScopeOrdinal, diagnostics);
 
-        // Stage 50.8: an `owned` parameter is an owner whose lifetime belongs to the callee.
+        // An `owned` reference parameter and a move-only value parameter with drop-bearing
+        // storage both belong to the callee. Keep their cleanup active for the entire callable.
         // Keep its cleanup active for the entire callable so returns and exceptional exits
         // destroy it exactly once. A later move nulls the parameter storage in LLVM, making
         // this cleanup naturally idempotent.
         std::vector<std::size_t> ownedParameterCleanupOrdinals;
         for (std::size_t parameterOrdinal = 0; parameterOrdinal < member.parameters.size(); ++parameterOrdinal)
         {
-            if (member.parameters[parameterOrdinal].ownership != sema::OwnershipKind::Owned)
+            const MethodParameterSymbol& parameter = member.parameters[parameterOrdinal];
+            const bool valueDrop = parameter.passKind == ParameterPassKind::Value &&
+                memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(parameter.typeKey);
+            if (parameter.ownership != sema::OwnershipKind::Owned && !valueDrop)
             {
                 continue;
             }
             const std::size_t cleanupOrdinal = createCleanupRegion(
-                MethodCleanupRegionKind::OwnedParameterDestroy,
+                valueDrop
+                    ? MethodCleanupRegionKind::ValueParameterDrop
+                    : MethodCleanupRegionKind::OwnedParameterDestroy,
                 member.syntax,
                 member.syntax,
                 memberOrdinal,
@@ -2570,6 +2579,8 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwn
     state.maybeMovedRaiiLocals = maybeMovedRaiiLocals_;
     state.movedOwnedParameters = movedOwnedParameters_;
     state.maybeMovedOwnedParameters = maybeMovedOwnedParameters_;
+    state.partiallyMovedPlaces = partiallyMovedPlaces_;
+    state.maybePartiallyMovedPlaces = maybePartiallyMovedPlaces_;
     state.invalidLocalBorrows = invalidLocalBorrows_;
     state.maybeInvalidLocalBorrows = maybeInvalidLocalBorrows_;
     state.assignedLocals = assignedLocals_;
@@ -2585,6 +2596,8 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
     maybeMovedRaiiLocals_ = state.maybeMovedRaiiLocals;
     movedOwnedParameters_ = state.movedOwnedParameters;
     maybeMovedOwnedParameters_ = state.maybeMovedOwnedParameters;
+    partiallyMovedPlaces_ = state.partiallyMovedPlaces;
+    maybePartiallyMovedPlaces_ = state.maybePartiallyMovedPlaces;
     invalidLocalBorrows_ = state.invalidLocalBorrows;
     maybeInvalidLocalBorrows_ = state.maybeInvalidLocalBorrows;
     // C7: a snapshot cannot say anything about a local that did not exist when it was taken, and
@@ -2695,6 +2708,30 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwners
         right.maybeMovedOwnedParameters,
         result.movedOwnedParameters,
         result.maybeMovedOwnedParameters);
+    const auto joinPartialState = [](
+        const std::unordered_set<std::string>& leftDefinite,
+        const std::unordered_set<std::string>& leftMaybe,
+        const std::unordered_set<std::string>& rightDefinite,
+        const std::unordered_set<std::string>& rightMaybe,
+        std::unordered_set<std::string>& outDefinite,
+        std::unordered_set<std::string>& outMaybe)
+    {
+        for (const std::string& place : leftDefinite)
+            if (rightDefinite.contains(place)) outDefinite.insert(place);
+        std::unordered_set<std::string> possible = leftDefinite;
+        possible.insert(leftMaybe.begin(), leftMaybe.end());
+        possible.insert(rightDefinite.begin(), rightDefinite.end());
+        possible.insert(rightMaybe.begin(), rightMaybe.end());
+        for (const std::string& place : possible)
+            if (!outDefinite.contains(place)) outMaybe.insert(place);
+    };
+    joinPartialState(
+        left.partiallyMovedPlaces,
+        left.maybePartiallyMovedPlaces,
+        right.partiallyMovedPlaces,
+        right.maybePartiallyMovedPlaces,
+        result.partiallyMovedPlaces,
+        result.maybePartiallyMovedPlaces);
     joinTriState(
         left.invalidLocalBorrows,
         left.maybeInvalidLocalBorrows,
@@ -2751,6 +2788,106 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwners
         result = joinOwnershipFlow(result, state);
     }
     return result;
+}
+
+std::optional<std::string> ProjectMethodBodyModel::partialMovePlaceKey(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal,
+    std::vector<std::string>* fieldPath) const
+{
+    if (fieldPath != nullptr) fieldPath->clear();
+    std::vector<std::string> reversePath;
+    const ast::AstNode* root = expression;
+    while (root != nullptr && root->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        reversePath.push_back(root->text());
+        root = root->first();
+    }
+    if (root == nullptr || root->kind() != ast::AstNodeKind::IdentifierExpression)
+        return std::nullopt;
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, root->text());
+    if (!name.has_value()) return std::nullopt;
+
+    bool moveOnlyRoot = false;
+    if (name->kind == ScopeNameKind::Local)
+    {
+        moveOnlyRoot = name->semanticOrdinal < locals_.size() &&
+            locals_[name->semanticOrdinal].isMoveOnly;
+    }
+    else
+    {
+        const std::size_t callable = scopeOrdinal < scopes_.size()
+            ? scopes_[scopeOrdinal].methodMemberOrdinal : 0U;
+        const ClassMemberSymbol* method = methodSymbol(callable);
+        moveOnlyRoot = method != nullptr && name->semanticOrdinal < method->parameters.size() &&
+            method->parameters[name->semanticOrdinal].passKind == ParameterPassKind::Value &&
+            memberModel_ != nullptr &&
+            memberModel_->typeIsMoveOnly(method->parameters[name->semanticOrdinal].typeKey);
+    }
+    if (!moveOnlyRoot) return std::nullopt;
+
+    std::ranges::reverse(reversePath);
+    if (fieldPath != nullptr) *fieldPath = reversePath;
+    std::string key = name->kind == ScopeNameKind::Local ? "L" : "P";
+    key += std::to_string(name->semanticOrdinal);
+    for (const std::string& field : reversePath)
+    {
+        key += '/';
+        key += field;
+    }
+    return key;
+}
+
+bool ProjectMethodBodyModel::placeContains(
+    std::string_view ancestor, std::string_view descendant) noexcept
+{
+    return ancestor == descendant ||
+        (descendant.size() > ancestor.size() && descendant.starts_with(ancestor) &&
+         descendant[ancestor.size()] == '/');
+}
+
+bool ProjectMethodBodyModel::placeOrAncestorIsPartiallyMoved(std::string_view place) const
+{
+    return std::ranges::any_of(partiallyMovedPlaces_, [&](const std::string& moved)
+    {
+        return placeContains(moved, place);
+    });
+}
+
+bool ProjectMethodBodyModel::placeOrAncestorIsMaybePartiallyMoved(std::string_view place) const
+{
+    return std::ranges::any_of(maybePartiallyMovedPlaces_, [&](const std::string& moved)
+    {
+        return placeContains(moved, place);
+    });
+}
+
+bool ProjectMethodBodyModel::placeHasMovedDescendant(std::string_view place) const
+{
+    return std::ranges::any_of(partiallyMovedPlaces_, [&](const std::string& moved)
+    {
+        return moved != place && placeContains(place, moved);
+    });
+}
+
+bool ProjectMethodBodyModel::placeHasMaybeMovedDescendant(std::string_view place) const
+{
+    return std::ranges::any_of(maybePartiallyMovedPlaces_, [&](const std::string& moved)
+    {
+        return moved != place && placeContains(place, moved);
+    });
+}
+
+void ProjectMethodBodyModel::reinitializePartialPlace(std::string_view place)
+{
+    std::erase_if(partiallyMovedPlaces_, [&](const std::string& moved)
+    {
+        return placeContains(place, moved);
+    });
+    std::erase_if(maybePartiallyMovedPlaces_, [&](const std::string& moved)
+    {
+        return placeContains(place, moved);
+    });
 }
 
 MethodBorrowState ProjectMethodBodyModel::localBorrowFlowState(std::size_t borrowOrdinal) const noexcept
@@ -3463,7 +3600,8 @@ void ProjectMethodBodyModel::analyzeStatement(
             {
                 for (std::size_t localOrdinal = 0; localOrdinal < localCountAtBodyEntry; ++localOrdinal)
                 {
-                    if (localOrdinal >= locals_.size() || !locals_[localOrdinal].isRaii)
+                    if (localOrdinal >= locals_.size() ||
+                        (!locals_[localOrdinal].isRaii && !locals_[localOrdinal].isMoveOnly))
                     {
                         continue;
                     }
@@ -3504,6 +3642,24 @@ void ProjectMethodBodyModel::analyzeStatement(
                                     "' may remain moved across a while-loop back-edge; transfer it only on an exiting path");
                         }
                     }
+                }
+                std::unordered_set<std::string> entryPartial = loopEntry.partiallyMovedPlaces;
+                entryPartial.insert(
+                    loopEntry.maybePartiallyMovedPlaces.begin(),
+                    loopEntry.maybePartiallyMovedPlaces.end());
+                std::unordered_set<std::string> backPartial = backEdgeState.partiallyMovedPlaces;
+                backPartial.insert(
+                    backEdgeState.maybePartiallyMovedPlaces.begin(),
+                    backEdgeState.maybePartiallyMovedPlaces.end());
+                for (const std::string& place : backPartial)
+                {
+                    if (entryPartial.contains(place)) continue;
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        statement->range(),
+                        "field path '" + place +
+                            "' may remain moved across a while-loop back-edge; reinitialize it before the next iteration");
                 }
             }
 
@@ -5013,6 +5169,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     }
     local.isRaii = isRaii;
     local.isMoveOnly = isMoveOnly;
+    local.requiresValueDrop = memberModel_->typeRequiresValueDrop(typeKey);
     local.isPinned = isPinnedLocal;
     local.ownership = isBorrowed ? sema::OwnershipKind::Borrowed : sema::OwnershipKind::None;
     local.objectLifetimeOwnership = pendingObjectLifetimeOwnership;
@@ -5154,10 +5311,12 @@ void ProjectMethodBodyModel::analyzeVariable(
         pendingLocalBorrow->localOrdinal = localOrdinal;
         localBorrowBindings_.push_back(std::move(*pendingLocalBorrow));
     }
-    if (isRaii)
+    if (isRaii || locals_[localOrdinal].requiresValueDrop)
     {
         const std::size_t cleanupOrdinal = createCleanupRegion(
-            MethodCleanupRegionKind::RaiiDestroy,
+            isRaii
+                ? MethodCleanupRegionKind::RaiiDestroy
+                : MethodCleanupRegionKind::ValueLocalDrop,
             variable,
             variable,
             methodMemberOrdinal,
@@ -5277,7 +5436,8 @@ void ProjectMethodBodyModel::analyzeFor(
     {
         for (std::size_t localOrdinal = 0; localOrdinal < localCountAtBodyEntry; ++localOrdinal)
         {
-            if (localOrdinal >= locals_.size() || !locals_[localOrdinal].isRaii)
+            if (localOrdinal >= locals_.size() ||
+                (!locals_[localOrdinal].isRaii && !locals_[localOrdinal].isMoveOnly))
             {
                 continue;
             }
@@ -5318,6 +5478,24 @@ void ProjectMethodBodyModel::analyzeFor(
                             "' may remain moved across a for-loop back-edge; transfer it only on an exiting path");
                 }
             }
+        }
+        std::unordered_set<std::string> entryPartial = loopEntry.partiallyMovedPlaces;
+        entryPartial.insert(
+            loopEntry.maybePartiallyMovedPlaces.begin(),
+            loopEntry.maybePartiallyMovedPlaces.end());
+        std::unordered_set<std::string> backPartial = backEdgeState.partiallyMovedPlaces;
+        backPartial.insert(
+            backEdgeState.maybePartiallyMovedPlaces.begin(),
+            backEdgeState.maybePartiallyMovedPlaces.end());
+        for (const std::string& place : backPartial)
+        {
+            if (entryPartial.contains(place)) continue;
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->range(),
+                "field path '" + place +
+                    "' may remain moved across a for-loop back-edge; reinitialize it before the next iteration");
         }
     }
 
@@ -5742,8 +5920,11 @@ void ProjectMethodBodyModel::analyzeReturn(
                     diagnostics::DiagnosticId::InvalidReturn,
                     diagnostics::DiagnosticSeverity::Error,
                     statement->first()->range(),
-                    "returning " + std::string(local.isRaii ? "RAII owner '" : "move-only value '") +
-                        local.name + "' requires return move(value)");
+                    local.isRaii
+                        ? "returning RAII owner '" + local.name +
+                            "' requires return move(owner) to transfer ownership"
+                        : "returning move-only value '" + local.name +
+                            "' requires return move(value)");
             }
             else if (returnedName->kind == ScopeNameKind::Parameter &&
                 returnedName->semanticOrdinal < method->parameters.size() &&
@@ -5763,10 +5944,11 @@ void ProjectMethodBodyModel::analyzeReturn(
                     diagnostics::DiagnosticId::InvalidReturn,
                     diagnostics::DiagnosticSeverity::Error,
                     statement->first()->range(),
-                    "returning " + std::string(
-                        parameter.ownership == sema::OwnershipKind::Owned
-                            ? "owned parameter '" : "move-only parameter '") +
-                        parameter.name + "' requires return move(value)");
+                    parameter.ownership == sema::OwnershipKind::Owned
+                        ? "returning owned parameter '" + parameter.name +
+                            "' requires return move(owner) to transfer ownership"
+                        : "returning move-only parameter '" + parameter.name +
+                            "' requires return move(value)");
             }
         }
     }
@@ -6760,13 +6942,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 if (name->kind == ScopeNameKind::Local)
                 {
                     return name->semanticOrdinal < locals_.size() &&
-                            locals_[name->semanticOrdinal].isRaii
+                            (locals_[name->semanticOrdinal].isRaii ||
+                             locals_[name->semanticOrdinal].isMoveOnly)
                         ? name
                         : std::nullopt;
                 }
                 const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
                 return method != nullptr && name->semanticOrdinal < method->parameters.size() &&
-                        method->parameters[name->semanticOrdinal].ownership == sema::OwnershipKind::Owned
+                        (method->parameters[name->semanticOrdinal].ownership == sema::OwnershipKind::Owned ||
+                         (method->parameters[name->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                          memberModel_ != nullptr && memberModel_->typeIsMoveOnly(
+                              method->parameters[name->semanticOrdinal].typeKey)))
                     ? name
                     : std::nullopt;
             };
@@ -6830,7 +7016,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             // Por que es el MISMO caso y no uno parecido: lo unico que la bajada necesita de este
             // ligado es una DIRECCION de ranura, y el HIR ya sabe dar la de un elemento de arreglo
             // fijo (caso RawElement, "C2.1 fixed arrays"); `MoveArrayElement` recibe esa direccion
-            // y hace el load-and-null de siempre, gobernado por `elementIsReferenceLike`, que sale
+            // y hace el load-and-empty de siempre, gobernado por `clearSourceStorage`, que sale
             // del tipo del ELEMENTO. Un arreglo fijo de un tipo por valor sigue siendo el no-op
             // que ya era.
             if (allowMove && expression->first() != nullptr &&
@@ -6879,8 +7065,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 {
                     move.partialSourceOwnerParameterOrdinal = partialRoot->semanticOrdinal;
                 }
-                move.elementIsReferenceLike =
-                    isReferenceTypeKey(element.typeKey) || element.typeKey == "builtin:string";
+                move.clearSourceStorage =
+                    isReferenceTypeKey(element.typeKey) || element.typeKey == "builtin:string" ||
+                    ProjectTypeConversion::isNativeArray(element.typeKey) ||
+                    (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(element.typeKey));
                 moveBindings_.push_back(std::move(move));
                 result.typeKey = element.typeKey;
                 result.valid = true;
@@ -6915,16 +7103,67 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 }
                 const ClassMemberSymbol& sourceField =
                     memberModel_->members()[*fieldSource.assignmentMemberOrdinal];
-                const bool ownedStorageField = sourceField.kind == ClassMemberKind::Field &&
+                const bool movableStorageField = sourceField.kind == ClassMemberKind::Field &&
                     !sourceField.isStatic &&
-                    sourceField.declaredOwnership == sema::OwnershipKind::Owned;
-                if (!ownedStorageField) return false;
+                    (sourceField.declaredOwnership == sema::OwnershipKind::Owned ||
+                     memberModel_->typeIsMoveOnly(sourceField.declaredTypeKey));
+                if (!movableStorageField) return false;
+
+                std::vector<std::string> fieldPath;
+                const std::optional<std::string> place = partialMovePlaceKey(
+                    expression->first(), scopeOrdinal, &fieldPath);
+                if (place.has_value())
+                {
+                    std::string rootTypeKey;
+                    if (partialRoot.has_value() && partialRoot->kind == ScopeNameKind::Local &&
+                        partialRoot->semanticOrdinal < locals_.size())
+                        rootTypeKey = locals_[partialRoot->semanticOrdinal].typeKey;
+                    else if (partialRoot.has_value())
+                    {
+                        const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+                        if (method != nullptr && partialRoot->semanticOrdinal < method->parameters.size())
+                            rootTypeKey = method->parameters[partialRoot->semanticOrdinal].typeKey;
+                    }
+                    if (memberModel_->typeTransitivelyHasCustomDestructor(rootTypeKey))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "cannot partially move from value of type '" + rootTypeKey +
+                                "' because its custom destructor requires the complete value");
+                        return true;
+                    }
+                    if (placeOrAncestorIsPartiallyMoved(*place) || placeHasMovedDescendant(*place))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "cannot move from already moved field path '" + *place + "'");
+                        return true;
+                    }
+                    if (placeOrAncestorIsMaybePartiallyMoved(*place) ||
+                        placeHasMaybeMovedDescendant(*place))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "cannot move from possibly moved field path '" + *place +
+                                "' after a control-flow join");
+                        return true;
+                    }
+                    partiallyMovedPlaces_.insert(*place);
+                    maybePartiallyMovedPlaces_.erase(*place);
+                }
                 MethodMoveBinding move;
                 move.syntax = expression;
                 move.methodMemberOrdinal = methodMemberOrdinal;
                 move.scopeOrdinal = scopeOrdinal;
                 move.typeKey = fieldSource.typeKey;
                 move.sourceIsOwnedField = true;
+                move.partialFieldPath = std::move(fieldPath);
                 if (partialRoot.has_value() && partialRoot->kind == ScopeNameKind::Local)
                 {
                     move.partialSourceOwnerLocalOrdinal = partialRoot->semanticOrdinal;
@@ -6933,8 +7172,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 {
                     move.partialSourceOwnerParameterOrdinal = partialRoot->semanticOrdinal;
                 }
-                move.elementIsReferenceLike =
-                    isReferenceTypeKey(fieldSource.typeKey) || fieldSource.typeKey == "builtin:string";
+                move.clearSourceStorage =
+                    isReferenceTypeKey(fieldSource.typeKey) || fieldSource.typeKey == "builtin:string" ||
+                    ProjectTypeConversion::isNativeArray(fieldSource.typeKey) ||
+                    memberModel_->typeRequiresValueDrop(fieldSource.typeKey);
                 moveBindings_.push_back(std::move(move));
                 result.typeKey = fieldSource.typeKey;
                 result.valid = true;
@@ -6948,14 +7189,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 const std::optional<ScopeName> partialRoot = partialMoveRoot(expression->first());
                 if (rejectInvalidPartialMove(partialRoot)) break;
+                ++partialMoveSourceDepth_;
                 const ExpressionResult member = analyzeExpression(
                     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                --partialMoveSourceDepth_;
                 if (tryOwnedFieldMoveSource(member, partialRoot)) break;
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
-                    "move(...) member source must be an assignable owned field");
+                    "move(...) member source must be an assignable owned field or an assignable "
+                    "move-only field");
                 break;
             }
             if (!allowMove || expression->first() == nullptr ||
@@ -6965,7 +7209,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
-                    "move(...) is only valid for a direct RAII/move-only local or owned/move-only parameter in a consuming context");
+                    "move(...) is only valid for a direct RAII local or owned parameter, or a "
+                    "move-only local/parameter, in a consuming context");
                 break;
             }
             const std::optional<ScopeName> source = lookupScopeName(scopeOrdinal, expression->first()->text());
@@ -6974,14 +7219,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 // An identifier that is not a local or parameter can still be a FIELD of the
                 // current type reached through the implicit `this` -- `move(slot)` inside the
                 // declaring class is the container's own Take() idiom.
+                ++partialMoveSourceDepth_;
                 const ExpressionResult implicitField = analyzeExpression(
                     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                --partialMoveSourceDepth_;
                 if (tryOwnedFieldMoveSource(implicitField, std::nullopt)) break;
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
-                    "move(...) source must be a RAII/move-only local or owned/move-only parameter");
+                    "move(...) source must be a RAII local or owned parameter, or a move-only "
+                    "local/parameter");
                 break;
             }
 
@@ -6995,7 +7243,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "move(...) source must be a RAII/move-only local or owned/move-only parameter");
+                        "move(...) source must be a RAII local or owned parameter, or a move-only "
+                        "local/parameter");
                     break;
                 }
                 const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
@@ -7060,9 +7309,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 move.scopeOrdinal = scopeOrdinal;
                 move.sourceLocalOrdinal = source->semanticOrdinal;
                 move.typeKey = local.typeKey;
-                move.elementIsReferenceLike =
+                if (placeHasMovedDescendant("L" + std::to_string(source->semanticOrdinal)) ||
+                    placeHasMaybeMovedDescendant("L" + std::to_string(source->semanticOrdinal)))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "cannot move complete value '" + local.name +
+                            "' after one of its fields was moved; reinitialize the field first");
+                    break;
+                }
+                move.clearSourceStorage =
                     isReferenceTypeKey(local.typeKey) || local.typeKey == "builtin:string" ||
-                    ProjectTypeConversion::isNativeArray(local.typeKey);
+                    ProjectTypeConversion::isNativeArray(local.typeKey) ||
+                    memberModel_->typeRequiresValueDrop(local.typeKey);
                 moveBindings_.push_back(std::move(move));
                 maybeMovedRaiiLocals_.erase(source->semanticOrdinal);
                 movedRaiiLocals_.insert(source->semanticOrdinal);
@@ -7085,7 +7346,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "move(...) source must be a RAII/move-only local or owned/move-only parameter");
+                        "move(...) source must be a RAII local or owned parameter, or a move-only "
+                        "local/parameter");
                     break;
                 }
                 const MethodParameterSymbol& parameter = method->parameters[source->semanticOrdinal];
@@ -7138,9 +7400,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 move.scopeOrdinal = scopeOrdinal;
                 move.sourceParameterOrdinal = source->semanticOrdinal;
                 move.typeKey = parameter.typeKey;
-                move.elementIsReferenceLike =
+                if (placeHasMovedDescendant("P" + std::to_string(source->semanticOrdinal)) ||
+                    placeHasMaybeMovedDescendant("P" + std::to_string(source->semanticOrdinal)))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "cannot move complete parameter '" + parameter.name +
+                            "' after one of its fields was moved; reinitialize the field first");
+                    break;
+                }
+                move.clearSourceStorage =
                     isReferenceTypeKey(parameter.typeKey) || parameter.typeKey == "builtin:string" ||
-                    ProjectTypeConversion::isNativeArray(parameter.typeKey);
+                    ProjectTypeConversion::isNativeArray(parameter.typeKey) ||
+                    memberModel_->typeRequiresValueDrop(parameter.typeKey);
                 moveBindings_.push_back(std::move(move));
                 maybeMovedOwnedParameters_.erase(source->semanticOrdinal);
                 movedOwnedParameters_.insert(source->semanticOrdinal);
@@ -9348,6 +9622,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 // fundamental complaint, and the moved-from checks below would otherwise report
                 // a confusing second opinion about the same name.
                 checkDefiniteAssignment(expression, scopeName->semanticOrdinal, diagnostics);
+                const std::string partialRoot = "L" + std::to_string(scopeName->semanticOrdinal);
+                if (local.isMoveOnly && partialProjectionReceiverDepth_ == 0 &&
+                    (placeHasMovedDescendant(partialRoot) ||
+                     placeHasMaybeMovedDescendant(partialRoot)))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "use of partially moved value '" + local.name +
+                            "'; reinitialize every moved field before using the complete value");
+                    return result;
+                }
                 if ((local.isRaii || local.isMoveOnly) &&
                     movedRaiiLocals_.contains(scopeName->semanticOrdinal))
                 {
@@ -9489,6 +9776,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 parameter.ownership == sema::OwnershipKind::Owned ||
                 (parameter.passKind == ParameterPassKind::Value &&
                  memberModel_->typeIsMoveOnly(parameter.typeKey));
+            const std::string partialRoot = "P" + std::to_string(scopeName->semanticOrdinal);
+            if (moveTrackedParameter && partialProjectionReceiverDepth_ == 0 &&
+                (placeHasMovedDescendant(partialRoot) ||
+                 placeHasMaybeMovedDescendant(partialRoot)))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "use of partially moved parameter '" + parameter.name +
+                        "'; reinitialize every moved field before using the complete value");
+                return result;
+            }
             if (moveTrackedParameter &&
                 movedOwnedParameters_.contains(scopeName->semanticOrdinal))
             {
@@ -9967,6 +10267,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
+    const bool isProjectionReceiver = partialProjectionReceiverDepth_ != 0;
     if (namespaceFunctionModel_ != nullptr && expression != nullptr)
     {
         if (const NamespaceFunctionReferenceBinding* functionReference =
@@ -10041,8 +10342,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         (lookupScopeName(scopeOrdinal, expression->first()->text()).has_value() ||
          memberValueShadowsType))
     {
+        ++partialProjectionReceiverDepth_;
         receiver = analyzeExpression(
             expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        --partialProjectionReceiverDepth_;
         if (!receiver.valid || receiver.methodGroup)
         {
             return result;
@@ -10172,8 +10475,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     }
     else if (!valueReceiver && !typeReceiver)
     {
+        ++partialProjectionReceiverDepth_;
         receiver = analyzeExpression(
             expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        --partialProjectionReceiverDepth_;
         if (!receiver.valid || receiver.methodGroup)
         {
             return result;
@@ -10493,6 +10798,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
             ? MethodNameBindingKind::ExplicitThisEvent
             : MethodNameBindingKind::ExplicitObjectEvent;
 
+    if (!typeReceiver && fields.empty())
+    {
+        const std::optional<std::string> receiverPlace = partialMovePlaceKey(
+            expression->first(), scopeOrdinal);
+        if (receiverPlace.has_value() &&
+            (placeHasMovedDescendant(*receiverPlace) ||
+             placeHasMaybeMovedDescendant(*receiverPlace)))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "member invocation/access requires complete value '" + *receiverPlace +
+                    "', but one of its fields was moved");
+            return result;
+        }
+    }
+
     if (!events.empty())
     {
         const std::size_t eventOrdinal = events.front();
@@ -10538,6 +10861,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.valid = true;
         result.assignmentMemberOrdinal = fields.front();
         const ClassMemberSymbol& field = memberModel_->members()[fields.front()];
+        const std::optional<std::string> place = partialMovePlaceKey(
+            expression, scopeOrdinal);
+        const bool assignmentWrite = expression == definiteAssignmentWriteTarget_ ||
+            expression == activeUnionWriteTarget_;
+        if (place.has_value() && !assignmentWrite && partialMoveSourceDepth_ == 0)
+        {
+            const bool unavailable = placeOrAncestorIsPartiallyMoved(*place) ||
+                placeOrAncestorIsMaybePartiallyMoved(*place) ||
+                (!isProjectionReceiver &&
+                 (placeHasMovedDescendant(*place) ||
+                  placeHasMaybeMovedDescendant(*place)));
+            if (unavailable)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "use of moved or possibly moved field path '" + *place + "'");
+                result.valid = false;
+                return result;
+            }
+        }
         if (!typeReceiver && aggregateRequiresActiveMember(receiver.typeKey))
         {
             std::optional<std::size_t> storageKey;
@@ -16019,7 +16364,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             memberModel_->members()[*left.assignmentMemberOrdinal];
         ownedFieldMoveTarget = targetMember.kind == ClassMemberKind::Field &&
             !targetMember.isStatic &&
-            targetMember.declaredOwnership == sema::OwnershipKind::Owned;
+            (targetMember.declaredOwnership == sema::OwnershipKind::Owned ||
+             memberModel_->typeIsMoveOnly(targetMember.declaredTypeKey));
         ownedFieldOwnsStorage = ownedFieldMoveTarget &&
             (isReferenceTypeKey(targetMember.declaredTypeKey) ||
              targetMember.declaredTypeKey == "builtin:string");
@@ -17039,6 +17385,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         {
             movedOwnedParameters_.erase(*moveOnlyTargetParameter);
             maybeMovedOwnedParameters_.erase(*moveOnlyTargetParameter);
+        }
+        if (const std::optional<std::string> assignedPlace = partialMovePlaceKey(
+                expression->first(), scopeOrdinal))
+        {
+            reinitializePartialPlace(*assignedPlace);
         }
         if (assignedUnionStorage.has_value())
         {
@@ -19176,6 +19527,8 @@ const char* methodCleanupRegionKindName(MethodCleanupRegionKind kind) noexcept
         case MethodCleanupRegionKind::UsingDispose: return "using-dispose";
         case MethodCleanupRegionKind::RaiiDestroy: return "raii-destroy";
         case MethodCleanupRegionKind::OwnedParameterDestroy: return "owned-parameter-destroy";
+        case MethodCleanupRegionKind::ValueLocalDrop: return "value-local-drop";
+        case MethodCleanupRegionKind::ValueParameterDrop: return "value-parameter-drop";
     }
     return "finally";
 }

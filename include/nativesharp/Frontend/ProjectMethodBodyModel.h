@@ -129,6 +129,9 @@ struct MethodLocalSymbol final
     // Copy. It shares the existing path-sensitive moved-from sets with RAII owners, but it does
     // not acquire a cleanup region merely for being move-only.
     bool isMoveOnly = false;
+    // T06-F02. A value local with an owned field or a (possibly nested) custom destructor owns
+    // cleanup despite not being a reference-shaped `raii` local.
+    bool requiresValueDrop = false;
     // NativeSharp 3.0 T06-F06. A `pin raii` owner keeps its ownership slot and object identity
     // fixed until lexical cleanup. It may be borrowed and destroyed in place, but never moved or
     // replaced after initialization.
@@ -367,7 +370,9 @@ enum class MethodCleanupRegionKind
     Finally,
     UsingDispose,
     RaiiDestroy,
-    OwnedParameterDestroy
+    OwnedParameterDestroy,
+    ValueLocalDrop,
+    ValueParameterDrop
 };
 
 struct MethodCleanupRegion final
@@ -399,6 +404,9 @@ struct MethodMoveBinding final
     // can enforce borrow exclusivity and dumps can make the decision observable.
     std::optional<std::size_t> partialSourceOwnerLocalOrdinal;
     std::optional<std::size_t> partialSourceOwnerParameterOrdinal;
+    // Canonical source-level projection from the named root, e.g. {"Header", "Token"} for
+    // `move(packet.Header.Token)`. Empty for whole-value moves and runtime-indexed elements.
+    std::vector<std::string> partialFieldPath;
     std::string typeKey;
     // Stage 52: move(...) also accepts a native-array element (e.g. "move(items[i])"),
     // needed by generic collections (Queue<T>.Dequeue(), Stack<T>.Pop(), ...) to extract an
@@ -406,15 +414,9 @@ struct MethodMoveBinding final
     // are both unset -- HIR lowering re-derives the array/index sub-expressions directly from
     // `syntax->first()` (the IndexExpression being moved).
     //
-    // `elementIsReferenceLike` records whether the SOURCE actually needs the load+null-store
-    // treatment (a class/interface reference or native string) or is a plain value type, where
-    // the move degrades to a harmless plain read -- for EVERY move() source shape, not just an
-    // array element: a named RAII local or owned parameter closed over a generic T can equally
-    // monomorphize to a value type (int, bool, a struct, ...), and MoveValue's LLVM lowering
-    // (ProjectOopLlvmLowerer) needs this to know the storage slot's real width/type instead of
-    // always treating it as a pointer -- see that case's comment for the bug this fixed
-    // (LinkedList<int>.AddFirst's "move(value)" on an owned int parameter loading it as a
-    // mismatched `ptr` and failing LLVM verification).
+    // `clearSourceStorage` records whether the SOURCE actually needs load+empty-store treatment.
+    // Reference slots use null and move-only value aggregates use their zero/empty state; Copy
+    // scalars degrade to a harmless plain read.
     bool sourceIsArrayElement = false;
     // Bloque 1: move(...) also accepts a direct `owned` field access -- `move(holder.slot)`, or
     // `move(slot)` through the implicit this. Same contract as the array-element case: both
@@ -423,7 +425,10 @@ struct MethodMoveBinding final
     // entry, or a later overwrite's release) sees an empty slot instead of double-freeing the
     // value that was just moved out.
     bool sourceIsOwnedField = false;
-    bool elementIsReferenceLike = false;
+    // The source storage must be cleared after the load whenever its bits carry a drop
+    // obligation. Reference slots use null as their optimized drop flag; move-only value
+    // aggregates are zeroed so every nested owning slot becomes empty as well.
+    bool clearSourceStorage = false;
 };
 
 enum class MethodOwnershipTransferKind
@@ -1469,6 +1474,11 @@ private:
         std::unordered_set<std::size_t> maybeMovedRaiiLocals;
         std::unordered_set<std::size_t> movedOwnedParameters;
         std::unordered_set<std::size_t> maybeMovedOwnedParameters;
+        // T06-F02 uses canonical strings (`L4/Header/Token`, `P1/Payload`) so snapshots and joins
+        // remain independent of AST pointer identity. Definite and maybe sets use the same
+        // three-state join as whole-value moves.
+        std::unordered_set<std::string> partiallyMovedPlaces;
+        std::unordered_set<std::string> maybePartiallyMovedPlaces;
         std::unordered_set<std::size_t> invalidLocalBorrows;
         std::unordered_set<std::size_t> maybeInvalidLocalBorrows;
         // C7 "definite assignment". Unlike every other set here it is a MUST set, not a MAY set:
@@ -1605,6 +1615,16 @@ private:
     OwnershipFlowSnapshot joinOwnershipFlows(
         const OwnershipFlowSnapshot& seed,
         const std::vector<OwnershipFlowSnapshot>& states) const;
+    std::optional<std::string> partialMovePlaceKey(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal,
+        std::vector<std::string>* fieldPath = nullptr) const;
+    static bool placeContains(std::string_view ancestor, std::string_view descendant) noexcept;
+    bool placeOrAncestorIsPartiallyMoved(std::string_view place) const;
+    bool placeOrAncestorIsMaybePartiallyMoved(std::string_view place) const;
+    bool placeHasMovedDescendant(std::string_view place) const;
+    bool placeHasMaybeMovedDescendant(std::string_view place) const;
+    void reinitializePartialPlace(std::string_view place);
     MethodBorrowState localBorrowFlowState(std::size_t borrowOrdinal) const noexcept;
     void invalidateHistoricalBorrowsOfOwnerLocal(std::size_t localOrdinal);
     void invalidateHistoricalBorrowsOfOwnedParameter(std::size_t parameterOrdinal);
@@ -2135,6 +2155,8 @@ private:
     std::unordered_set<std::size_t> maybeMovedRaiiLocals_;
     std::unordered_set<std::size_t> movedOwnedParameters_;
     std::unordered_set<std::size_t> maybeMovedOwnedParameters_;
+    std::unordered_set<std::string> partiallyMovedPlaces_;
+    std::unordered_set<std::string> maybePartiallyMovedPlaces_;
     std::unordered_set<std::size_t> invalidLocalBorrows_;
     std::unordered_set<std::size_t> maybeInvalidLocalBorrows_;
     // C7 "definite assignment": the locals DEFINITELY assigned at the current point of the walk.
@@ -2161,6 +2183,14 @@ private:
     bool inUnevaluatedOperand_ = false;
     bool formingAddressOperand_ = false;
     bool ownershipFlowReachable_ = true;
+    // While a MemberExpression recursively analyzes its receiver, a partially moved aggregate
+    // root may be inspected only long enough to select a still-live field. The completed member
+    // path is validated immediately afterward; methods/properties still require the whole value.
+    std::size_t partialProjectionReceiverDepth_ = 0;
+    // The direct member operand of move(...) must be bound as a place before its moved-state is
+    // diagnosed. The move rule then distinguishes an already-moved path from a maybe-moved path
+    // and emits one precise diagnostic; ordinary reads never enter this context.
+    std::size_t partialMoveSourceDepth_ = 0;
     std::vector<OwnershipFlowSnapshot> throwFlowStates_;
     std::vector<MethodSwitchBinding> switchBindings_;
     std::vector<MethodStructuredExitBinding> structuredExits_;
