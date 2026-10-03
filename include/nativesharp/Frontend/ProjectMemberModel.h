@@ -8,6 +8,7 @@
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Frontend/InliningPolicy.h"
 #include "nativesharp/Sema/OwnershipKind.h"
+#include "nativesharp/Sema/EffectContext.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -145,6 +146,9 @@ struct ClassMemberSymbol final
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     // Item 321. The callable body may not contain an operation that allocates heap storage.
     bool isNoHeap = false;
+    // NativeSharp 3.0 T00-F04. `isNoHeap` remains as an ABI-compatible projection while all
+    // semantic consumers use this extensible set for noheap/throws/async and future effects.
+    sema::EffectSet effects;
     bool isVirtual = false;
     bool isOverride = false;
     bool isAbstract = false;

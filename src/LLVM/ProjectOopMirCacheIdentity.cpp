@@ -155,6 +155,7 @@ void writeFunction(
     output.scalar(function.isStatic);
     output.scalar(function.referenceReturn);
     output.scalar(function.isNoHeap);
+    output.scalar(function.effects.bits());
     output.scalar(function.inliningPolicy);
     output.scalar(function.isExportedC);
     output.scalar(function.isImportedC);

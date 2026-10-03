@@ -186,6 +186,7 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << (function.isLambda ? " lambda" : "")
                << " inlining=" << inliningPolicyName(function.inliningPolicy)
                << " noheap=" << (function.isNoHeap ? "true" : "false")
+               << " effects=" << function.effects.bits()
                << " abi=(" << (function.isLambda && function.hasClosureEnvironment
                     ? "closure-env:first" : function.isStatic ? "static" : "this:first")
                << (function.isExportedC ? " export-c=" + function.cAbiName : "");

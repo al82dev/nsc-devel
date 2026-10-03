@@ -1288,6 +1288,9 @@ bool ProjectMemberModel::collectTypeMembers(
             symbol.isNoHeap = (symbol.kind == ClassMemberKind::Method ||
                                symbol.kind == ClassMemberKind::Constructor) &&
                 memberNode->hasModifier(lexer::TokenKind::KwNoHeap);
+            symbol.effects = symbol.isNoHeap
+                ? sema::EffectSet(sema::Effect::NoHeap)
+                : sema::EffectSet{};
             symbol.isStatic = (symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
                 symbol.kind == ClassMemberKind::Method) &&
                 (memberNode->hasModifier(lexer::TokenKind::KwStatic) || symbol.isConst);

@@ -109,10 +109,12 @@ public class Program
     {
         const std::size_t method = output.find(" method Work ");
         const std::size_t lineEnd = output.find('\n', method);
-        tests.expect(method != std::string::npos &&
-                         output.substr(method, lineEnd - method).find("noheap=true") !=
-                             std::string::npos,
-                     "the member model exposes the noheap contract");
+        const std::string_view methodLine = method == std::string::npos
+            ? std::string_view{}
+            : std::string_view(output).substr(method, lineEnd - method);
+        tests.expect(methodLine.find("noheap=true") != std::string::npos &&
+                         methodLine.find("effects=16") != std::string::npos,
+                     "the member model exposes noheap through the canonical effect set");
     }
 
     const std::array<std::string_view, 3> hirArguments = {

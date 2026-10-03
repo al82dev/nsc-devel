@@ -565,6 +565,7 @@ struct ProjectOopHirFunction final
     bool isStatic = false;
     bool referenceReturn = false;
     bool isNoHeap = false;
+    sema::EffectSet effects;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExportedC = false;
     // Interop Foundation: a function declared in `extern C from "<dll>" { ... }`. It has NO body

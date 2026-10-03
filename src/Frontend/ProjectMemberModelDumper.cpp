@@ -50,6 +50,7 @@ void ProjectMemberModelDumper::dump(
                        << " variadic=" << (member.isVariadic ? "true" : "false")
                        << " inlining=" << inliningPolicyName(member.inliningPolicy)
                        << " noheap=" << (member.isNoHeap ? "true" : "false")
+                       << " effects=" << member.effects.bits()
                        << " override=" << (member.isOverride ? "true" : "false")
                        << " abstract=" << (member.isAbstract ? "true" : "false")
                        << " sealed=" << (member.isSealed ? "true" : "false");

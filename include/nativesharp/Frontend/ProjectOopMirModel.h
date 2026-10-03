@@ -694,6 +694,7 @@ struct ProjectOopMirFunction final
     bool isStatic = false;
     bool referenceReturn = false;
     bool isNoHeap = false;
+    sema::EffectSet effects;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExportedC = false;
     bool isImportedC = false;

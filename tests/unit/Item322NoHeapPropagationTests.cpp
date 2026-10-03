@@ -115,8 +115,9 @@ public class Program
     if (hir)
     {
         tests.expect(output.find("noheap=true") != std::string::npos &&
+                         output.find("effects=16") != std::string::npos &&
                          output.find("placement-construction") != std::string::npos,
-            "HIR transports the callable contract and placement operation");
+            "HIR transports the canonical effect set and placement operation");
     }
 
     const std::array<std::string_view, 3> mirArguments = {
@@ -130,8 +131,9 @@ public class Program
         tests.expect(output.find("schema=" +
                          std::to_string(nativesharp::frontend::kProjectOopMirSchemaMajor) + "." +
                          std::to_string(nativesharp::frontend::kProjectOopMirSchemaMinor)) != std::string::npos &&
-                         output.find("noheap=true") != std::string::npos,
-            "current MIR transports the noheap function flag");
+                         output.find("noheap=true") != std::string::npos &&
+                         output.find("effects=16") != std::string::npos,
+            "current MIR transports the canonical noheap effect set");
     }
 
     expectReject(tests, root, "direct_call", R"NS(
@@ -221,8 +223,10 @@ namespace CrossNoHeap
         "-O0", "--emit-project-oop-lib", producerProject, "-o", producerLibrary};
     output.clear();
     error.clear();
-    tests.expect(runDriver(producerArguments, output, error) == ExitCode::Success,
-        "a noheap producer emits its library and current NSMETA (" + error + ")");
+    const ExitCode producerCode = runDriver(producerArguments, output, error);
+    tests.expect(producerCode == ExitCode::Success,
+        "a noheap producer emits its library and current NSMETA (exit " +
+            std::to_string(static_cast<int>(producerCode)) + "; " + error + "; " + output + ")");
 
     nativesharp::interop::LibraryMetadataCodec codec;
     nativesharp::interop::LibraryMetadata metadata;

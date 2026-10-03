@@ -1277,6 +1277,7 @@ bool ProjectOopMirModel::build(
         function.isStatic = source.isStatic;
         function.referenceReturn = source.referenceReturn;
         function.isNoHeap = source.isNoHeap;
+        function.effects = source.effects;
         function.inliningPolicy = source.inliningPolicy;
         function.isExportedC = source.isExportedC;
         function.isImportedC = source.isImportedC;

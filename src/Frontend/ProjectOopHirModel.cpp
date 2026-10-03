@@ -1480,6 +1480,7 @@ bool ProjectOopHirModel::buildImpl(
             imported.isStatic = member.isStatic;
             imported.referenceReturn = member.isReferenceReturn;
             imported.isNoHeap = member.isNoHeap;
+            imported.effects = member.effects;
             // NSMETA declarations carry optimization policy as part of their callable contract.
             // In particular, `noinline` has no transported body but must still constrain calls
             // emitted by this consumer.
@@ -1564,6 +1565,7 @@ bool ProjectOopHirModel::buildImpl(
         function.isStatic = member.isStatic;
         function.referenceReturn = member.isReferenceReturn;
         function.isNoHeap = member.isNoHeap;
+        function.effects = member.effects;
         function.inliningPolicy = member.inliningPolicy;
         function.isExportedC = member.isExportedC;
         function.cAbiName = member.cAbiName;
@@ -3292,8 +3294,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             memberOrdinal < memberModel_->members().size()
         ? &memberModel_->members()[memberOrdinal]
         : nullptr;
-    const sema::EffectContext effects(activeMember != nullptr && activeMember->isNoHeap
-        ? sema::EffectSet(sema::Effect::NoHeap)
+    const sema::EffectContext effects(activeMember != nullptr
+        ? activeMember->effects
         : sema::EffectSet{});
     const auto directlyAllocatesHeap = [](ProjectOopHirNodeKind kind) noexcept
     {
