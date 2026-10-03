@@ -79,7 +79,8 @@ private:
     ast::AstNode* parseStructDeclaration(
         StructLayoutForm form = StructLayoutForm::Struct,
         bool isBorrowedView = false,
-        bool isRecordStruct = false);
+        bool isRecordStruct = false,
+        bool isCopyType = false);
     // NativeSharp 3.0 T03. A closed tagged sum is materialized as an ordinary struct whose
     // payload carrier is an in-place union. Keeping the generated representation in the parser
     // means name lookup, generics, layout, HIR, MIR and LLVM all consume the same productive AST
@@ -130,6 +131,7 @@ private:
         bool isExternC = false;
         bool hasExplicitFieldOffset = false;
         bool isBorrowedView = false;
+        bool isCopyType = false;
         std::optional<std::uint64_t> layoutPack;
         std::optional<std::uint64_t> layoutAlign;
         std::optional<std::uint64_t> layoutSize;

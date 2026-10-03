@@ -2065,7 +2065,11 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             // implementation. The ordered 1.27 catalogue is authoritative because its ordinal is
             // the observable CaseTag value; the ordinary public member table is signature-sorted
             // and cannot reconstruct that order safely.
-            generated << typeAccessibility << " variant " << typeName << "\n{\n";
+            generated << typeAccessibility << ' ';
+            if (metadata.formatMinor >= 33 &&
+                (type.flags & interop::kMetadataTypeCopy) != 0U)
+                generated << "copy ";
+            generated << "variant " << typeName << "\n{\n";
             for (std::size_t caseIndex = 0; caseIndex < type.variantCases.size(); ++caseIndex)
             {
                 const interop::LibraryMetadataVariantCase& variantCase =
@@ -2098,6 +2102,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                       << ") ";
             if ((type.flags & (1U << 6U)) != 0U) generated << "readonly ";
             if ((type.flags & (1U << 4U)) != 0U) generated << "borrowed ";
+            if (metadata.formatMinor >= 33 &&
+                (type.flags & interop::kMetadataTypeCopy) != 0U)
+                generated << "copy ";
             const bool isRecord = metadata.formatMinor >= 26 &&
                 (type.flags & interop::kMetadataTypeRecord) != 0U;
             if (isRecord) generated << "record ";

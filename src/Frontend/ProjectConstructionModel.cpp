@@ -787,6 +787,12 @@ void ProjectConstructionModel::bindConstructorInitializer(
                 argumentTypes[argumentOrdinal].ownershipFreshOwner,
                 argumentTypes[argumentOrdinal].typeKey == "builtin:null");
             candidate.ownershipFits.push_back(fit);
+            const bool moveOnlyCopy = !packElement && conversion.exists() &&
+                parameter.passKind == ParameterPassKind::Value &&
+                memberModel_->typeIsMoveOnly(conversionTarget) &&
+                sema::isPlaceCategory(argumentTypes[argumentOrdinal].valueCategory) &&
+                !argumentTypes[argumentOrdinal].ownershipTransfer;
+            candidate.moveOnlyCopyRejects.push_back(moveOnlyCopy);
             if (freshBorrow)
             {
                 candidate.fullExpressionBorrowArgumentOrdinals.push_back(argumentOrdinal);
@@ -795,6 +801,7 @@ void ProjectConstructionModel::bindConstructorInitializer(
             {
                 candidate.viable = false;
             }
+            if (moveOnlyCopy) candidate.viable = false;
             if (fit == OwnershipArgumentFit::Ok && !freshBorrow &&
                 argumentTypes[argumentOrdinal].ownershipTransfer)
             {
@@ -1267,6 +1274,12 @@ void ProjectConstructionModel::bindConstruction(
                 argumentTypes[argumentOrdinal].ownershipFreshOwner,
                 argumentTypes[argumentOrdinal].typeKey == "builtin:null");
             candidate.ownershipFits.push_back(fit);
+            const bool moveOnlyCopy = !packElement && conversion.exists() &&
+                parameter.passKind == ParameterPassKind::Value &&
+                memberModel_->typeIsMoveOnly(conversionTarget) &&
+                sema::isPlaceCategory(argumentTypes[argumentOrdinal].valueCategory) &&
+                !argumentTypes[argumentOrdinal].ownershipTransfer;
+            candidate.moveOnlyCopyRejects.push_back(moveOnlyCopy);
             if (freshBorrow)
             {
                 candidate.fullExpressionBorrowArgumentOrdinals.push_back(argumentOrdinal);
@@ -1275,6 +1288,7 @@ void ProjectConstructionModel::bindConstruction(
             {
                 candidate.viable = false;
             }
+            if (moveOnlyCopy) candidate.viable = false;
             if (fit == OwnershipArgumentFit::Ok && !freshBorrow &&
                 argumentTypes[argumentOrdinal].ownershipTransfer)
             {
@@ -1456,7 +1470,8 @@ bool ProjectConstructionModel::explainOwnershipRejection(
     std::size_t conAridad = 0;
     for (const ConstructorCandidateBinding& candidato : candidates)
     {
-        if (!candidato.accessible || candidato.ownershipFits.size() != argumentCount) continue;
+        if (!candidato.accessible || candidato.ownershipFits.size() != argumentCount ||
+            candidato.moveOnlyCopyRejects.size() != argumentCount) continue;
         ++conAridad;
         unico = &candidato;
     }
@@ -1474,13 +1489,16 @@ bool ProjectConstructionModel::explainOwnershipRejection(
     {
         algunaObjecion = algunaObjecion || fit != OwnershipArgumentFit::Ok;
     }
+    algunaObjecion = algunaObjecion || std::ranges::any_of(
+        unico->moveOnlyCopyRejects, [](bool rejected) { return rejected; });
     if (!algunaObjecion) return false;
 
     const ClassMemberSymbol& elegido = memberModel_->members()[*unico->memberOrdinal];
     if (elegido.parameters.size() != argumentCount) return false;
     for (std::size_t index = 0; index < unico->ownershipFits.size(); ++index)
     {
-        if (unico->ownershipFits[index] == OwnershipArgumentFit::Ok) continue;
+        if (unico->ownershipFits[index] == OwnershipArgumentFit::Ok &&
+            !unico->moveOnlyCopyRejects[index]) continue;
         const ast::AstNode* argumento =
             argumentListSyntax != nullptr && index < argumentListSyntax->children().size()
                 ? argumentListSyntax->children()[index]
@@ -1489,14 +1507,20 @@ bool ProjectConstructionModel::explainOwnershipRejection(
             ? argumento->range()
             : (fallbackSyntax != nullptr ? fallbackSyntax->range() : SourceRange{});
         diagnostics.report(
-            diagnostics::DiagnosticId::InvalidConversion,
+            unico->moveOnlyCopyRejects[index]
+                ? diagnostics::DiagnosticId::NS3020InvalidValueCategory
+                : diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error,
             range,
-            "argument " + std::to_string(index + 1) + ": " +
-                ownershipArgumentFitMessage(
-                    unico->ownershipFits[index],
-                    elegido.parameters[index].name,
-                    elegido.parameters[index].typeKey));
+            unico->moveOnlyCopyRejects[index]
+                ? "argument " + std::to_string(index + 1) +
+                    ": move-only value cannot be copied into constructor parameter '" +
+                    elegido.parameters[index].name + "'; use move(argument)"
+                : "argument " + std::to_string(index + 1) + ": " +
+                    ownershipArgumentFitMessage(
+                        unico->ownershipFits[index],
+                        elegido.parameters[index].name,
+                        elegido.parameters[index].typeKey));
     }
     return true;
 }

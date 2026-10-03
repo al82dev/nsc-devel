@@ -302,7 +302,7 @@ namespace ExtensionApi
         {
             return function.name == "Add";
         });
-    tests.expect(metadataRead && metadata.formatMinor == 32U &&
+    tests.expect(metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             extension != metadata.namespaceFunctions.end() &&
             (extension->flags &
                 nativesharp::interop::kMetadataNamespaceFunctionExtension) != 0U &&

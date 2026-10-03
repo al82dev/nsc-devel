@@ -258,7 +258,7 @@ namespace OpaqueResultApi
     {
         return type.fullyQualifiedName.find("__nsc_some_") != std::string::npos;
     });
-    tests.expect(metadataRead && metadata.formatMinor == 32U &&
+    tests.expect(metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             wrapper != metadata.types.end() &&
             wrapper->kind == nativesharp::interop::LibraryMetadataTypeKind::Struct &&
             (wrapper->flags & nativesharp::interop::kMetadataTypeOpaqueResult) != 0U &&

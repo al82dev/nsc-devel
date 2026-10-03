@@ -285,7 +285,7 @@ namespace OperatorApi
     std::string producerError;
     const ExitCode producerResult = runDriver(producerArguments, producerOutput, producerError);
     tests.expect(producerResult == ExitCode::Success,
-        "a public operator-trait witness is emitted with NSMETA 1.32 (" + producerError +
+        "a public operator-trait witness is emitted with the current NSMETA format (" + producerError +
             producerOutput + ")");
 
     const std::filesystem::path consumer = writeProject(

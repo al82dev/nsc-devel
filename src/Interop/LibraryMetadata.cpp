@@ -506,6 +506,7 @@ std::uint16_t typeFlags(const frontend::NamedTypeDeclaration& type) noexcept
         }
         if (hasMarker(metadata, "variant")) flags |= kMetadataTypeVariant;
         if (metadata.starts_with("opaque-result|")) flags |= kMetadataTypeOpaqueResult;
+        if (hasMarker(metadata, "copy")) flags |= kMetadataTypeCopy;
     }
     return flags;
 }
@@ -3150,6 +3151,17 @@ bool LibraryMetadataCodec::writeModelImpl(
         error = "NativeSharp metadata before 1.32 cannot represent extension methods";
         return false;
     }
+    if (metadata.formatMinor < 33)
+    {
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            if ((type.flags & kMetadataTypeCopy) != 0U)
+            {
+                error = "NativeSharp metadata before 1.33 cannot represent explicit Copy value types";
+                return false;
+            }
+        }
+    }
     if (metadata.formatMinor < 25 &&
         (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))
     {
@@ -3387,6 +3399,19 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         const bool isVariant = (type.flags & kMetadataTypeVariant) != 0U;
         const bool isTrait = (type.flags & kMetadataTypeTrait) != 0U;
         const bool isOpaqueResult = (type.flags & kMetadataTypeOpaqueResult) != 0U;
+        const bool isCopy = (type.flags & kMetadataTypeCopy) != 0U;
+        if (metadata.formatMinor < 33 && isCopy)
+        {
+            error = "metadata before NSMETA 1.33 contains a Copy flag on type '" +
+                type.fullyQualifiedName + "'";
+            return false;
+        }
+        if (isCopy && type.kind != LibraryMetadataTypeKind::Struct)
+        {
+            error = "metadata Copy capability on '" + type.fullyQualifiedName +
+                "' requires a struct value type";
+            return false;
+        }
         if (metadata.formatMinor < 30 && isOpaqueResult)
         {
             error = "metadata before NSMETA 1.30 contains an opaque-result flag on type '" +

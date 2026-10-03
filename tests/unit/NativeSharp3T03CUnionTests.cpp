@@ -108,7 +108,7 @@ int main()
         compileAndRun(root / "active", "ActiveMember", R"NS(
 namespace ActiveMember
 {
-    public union Word { public int Signed; public uint Unsigned; }
+    public copy union Word { public int Signed; public uint Unsigned; }
     public class Program
     {
         public static int Main()
@@ -192,7 +192,7 @@ namespace JoinedMember
     const auto producerProject = writeProject(producer, "CUnionAbi", "SharedLibrary", R"NS(
 namespace CUnionAbi
 {
-    public union Word { public int Signed; public uint Unsigned; }
+    public copy union Word { public int Signed; public uint Unsigned; }
     public class Api
     {
         public static export extern C int Read(Word value)

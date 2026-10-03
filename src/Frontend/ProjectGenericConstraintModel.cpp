@@ -136,37 +136,6 @@ const NamedTypeDeclaration* declarationForKey(
     return declarationForTypeKey(nameLookup, typeKey, ordinalOut);
 }
 
-bool typeKeyIsCopyable(
-    std::string_view typeKey,
-    const ProjectNameLookup& nameLookup,
-    const ProjectMemberModel& memberModel,
-    std::unordered_set<std::size_t>& visiting)
-{
-    if (typeKey.empty() || typeKey == "builtin:void") return false;
-    if (typeKey.starts_with("builtin:") || typeKey.ends_with("*") || typeKey.ends_with("[]"))
-        return true;
-    if (const auto element = ProjectMemberModel::fixedArrayElementTypeKey(typeKey); element.has_value())
-        return typeKeyIsCopyable(*element, nameLookup, memberModel, visiting);
-    std::size_t ordinal = 0;
-    const NamedTypeDeclaration* declaration = declarationForKey(nameLookup, typeKey, ordinal);
-    if (declaration == nullptr) return false;
-    if (declaration->kind != NamedTypeDeclarationKind::Struct) return true;
-    if (!visiting.insert(ordinal).second) return true;
-    for (const std::size_t memberOrdinal : memberModel.membersOfType(ordinal))
-    {
-        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
-        if (member.kind != ClassMemberKind::Field || member.isStatic || member.isConst) continue;
-        if (member.declaredOwnership == sema::OwnershipKind::Owned ||
-            !typeKeyIsCopyable(member.declaredTypeKey, nameLookup, memberModel, visiting))
-        {
-            visiting.erase(ordinal);
-            return false;
-        }
-    }
-    visiting.erase(ordinal);
-    return true;
-}
-
 bool typeKeyIsUnmanaged(
     std::string_view typeKey,
     const ProjectNameLookup& nameLookup,
@@ -719,7 +688,6 @@ bool ProjectGenericConstraintModel::build(
                         false}});
             };
 
-            std::unordered_set<std::size_t> copyVisiting;
             std::unordered_set<std::size_t> unmanagedVisiting;
             requireCapability(
                 clause.requiresValueType,
@@ -736,7 +704,7 @@ bool ProjectGenericConstraintModel::build(
                 "a public parameterless or implicit default constructor");
             requireCapability(
                 clause.requiresCopy,
-                typeKeyIsCopyable(argumentKey, nameLookup, memberModel, copyVisiting),
+                memberModel.typeIsImplicitlyCopyable(argumentKey),
                 GenericConstraintViolationKind::RequiresCopy,
                 "copy",
                 "copyable storage");

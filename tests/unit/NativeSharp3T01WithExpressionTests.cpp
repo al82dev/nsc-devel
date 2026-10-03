@@ -82,19 +82,19 @@ int main()
     writeProject(positive, "WithExpressions", R"NS(
 namespace WithExpressions
 {
-    public readonly struct ReadonlyPair
+    public readonly copy struct ReadonlyPair
     {
         public readonly int X;
         public readonly int Y;
     }
 
-    public struct Pair<T>
+    public copy struct Pair<T> where T : copy
     {
         public T First;
         public T Second;
     }
 
-    public struct Vault
+    public copy struct Vault
     {
         private int Secret;
         public int Visible;
@@ -119,7 +119,7 @@ namespace WithExpressions
         public CloneBox Clone()
         {
             CloneBox result = { Value };
-            return result;
+            return move(result);
         }
     }
 

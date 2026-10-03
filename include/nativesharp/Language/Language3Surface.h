@@ -20,6 +20,7 @@ enum class Language3Feature
     Decimal,
     ExtensionMethods,
     TraitOperators,
+    MoveOnlyDefaults,
     LongDouble,
     ConditionDeclarations,
     StaticLocals

@@ -2141,6 +2141,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     bool isNoInlineFunction = false;
     bool isReadonlyType = false;
     bool isRecordStruct = false;
+    bool isCopyType = false;
     // C2.2 "union and explicit layout": `pack(N)` and `align(N)` are contextual-keyword layout
     // modifiers on a struct/union declaration -- the NativeSharp spellings of C's
     // `#pragma pack(N)` and `__declspec(align(N))`. They are contextual (an ordinary identifier
@@ -2329,6 +2330,36 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             continue;
         }
 
+        // NativeSharp 3.0 T06-F01. `copy` is contextual and is consumed only while it is
+        // unambiguously decorating a value-type declaration. Edition 2 therefore keeps the
+        // identifier available, while edition 3 makes copyability an explicit source contract.
+        const bool copyTypeModifier = atContextualKeyword("copy") &&
+            (peek().kind() == TokenKind::KwStruct || peek().kind() == TokenKind::KwClass ||
+             peek().kind() == TokenKind::KwInterface || peek().kind() == TokenKind::KwEnum ||
+             peek().kind() == TokenKind::KwDelegate || peek().kind() == TokenKind::KwPublic ||
+             peek().kind() == TokenKind::KwInternal || peek().kind() == TokenKind::KwReadonly ||
+             peek().kind() == TokenKind::KwBorrowed ||
+             (peek().kind() == TokenKind::Identifier &&
+              (peek().lexeme() == "pack" || peek().lexeme() == "align" ||
+               peek().lexeme() == "size" || peek().lexeme() == "record" ||
+               peek().lexeme() == "variant" || peek().lexeme() == "opaque" ||
+               peek().lexeme() == "union")));
+        if (copyTypeModifier)
+        {
+            const lexer::Token& modifier = consume();
+            requireEdition3(modifier.range(), "explicit Copy value types");
+            if (isCopyType)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate copy modifier on value-type declaration");
+            }
+            isCopyType = true;
+            continue;
+        }
+
         const bool readonlyTypeModifier = at(TokenKind::KwReadonly) &&
             (peek().kind() == TokenKind::KwStruct || peek().kind() == TokenKind::KwClass ||
              peek().kind() == TokenKind::KwInterface || peek().kind() == TokenKind::KwEnum ||
@@ -2337,7 +2368,8 @@ ast::AstNode* Parser::parseGlobalDeclaration()
              (peek().kind() == TokenKind::Identifier &&
               (peek().lexeme() == "pack" || peek().lexeme() == "align" ||
                peek().lexeme() == "size" || peek().lexeme() == "union" ||
-               peek().lexeme() == "record" || peek().lexeme() == "variant")));
+                peek().lexeme() == "record" || peek().lexeme() == "variant" ||
+                peek().lexeme() == "copy")));
         if (readonlyTypeModifier)
         {
             const lexer::Token& modifier = consume();
@@ -2404,6 +2436,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
              peek().kind() == TokenKind::KwStatic ||
              (peek().kind() == TokenKind::Identifier && peek().lexeme() == "union") ||
              (peek().kind() == TokenKind::Identifier && peek().lexeme() == "variant") ||
+              (peek().kind() == TokenKind::Identifier && peek().lexeme() == "copy") ||
              (peek().kind() == TokenKind::Identifier && peek().lexeme() == "partial"));
         if (borrowedTypeModifier)
         {
@@ -2520,7 +2553,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         requireEdition3(feature, "trait implementation blocks");
         if (accessibility != TokenKind::Invalid || isPartial || isAbstract || isSealed ||
             isStatic || isReadonlyType || isRecordStruct || isBorrowedView ||
-            layoutPack.has_value() || layoutAlign.has_value() || layoutSize.has_value())
+            isCopyType || layoutPack.has_value() || layoutAlign.has_value() || layoutSize.has_value())
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -2602,7 +2635,8 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         declaration = parseStructDeclaration(
             at(TokenKind::KwStruct) ? StructLayoutForm::Struct : StructLayoutForm::Union,
             isBorrowedView && at(TokenKind::KwStruct),
-            isRecordStruct);
+            isRecordStruct,
+            isCopyType);
     }
     else if (at(TokenKind::KwEnum))
     {
@@ -2786,6 +2820,24 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     }
     if (declaration != nullptr)
     {
+        if (isCopyType)
+        {
+            if (declaration->kind() != ast::AstNodeKind::StructDeclaration)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    declaration->range(),
+                    "copy applies only to struct, record, variant, and opaque value-type declarations");
+            }
+            else if (declaration->auxiliaryText().find("copy") == std::string::npos)
+            {
+                std::string markers = declaration->auxiliaryText();
+                markers += (markers.empty() ? "" : ",");
+                markers += "copy";
+                declaration->setAuxiliaryText(std::move(markers));
+            }
+        }
         // SHR-013: la misma forma que pack/align de abajo. `borrowed` describe el TIEMPO DE VIDA
         // de un valor, y solo un agregado por valor lo tiene sin dueno: una clase se posee por
         // referencia (`owned`/`borrowed` en cada uso ya lo dicen), un enum y un delegate no
@@ -2946,7 +2998,8 @@ ast::AstNode* Parser::parseDelegateDeclaration()
 ast::AstNode* Parser::parseStructDeclaration(
     StructLayoutForm form,
     bool isBorrowedView,
-    bool isRecordStruct)
+    bool isRecordStruct,
+    bool isCopyType)
 {
     const std::size_t beginIndex = index_;
     consume();
@@ -2963,6 +3016,8 @@ ast::AstNode* Parser::parseStructDeclaration(
     knownTypeNames_.insert(structName);
     ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::StructDeclaration, name.range());
     node->setText(structName);
+    if (languageEdition_ == language::LanguageEdition::V3)
+        node->setAuxiliaryText("ns3-value");
     // C2.2: a union IS a struct in every respect this compiler already models -- same members,
     // same by-value semantics, same C ABI classification, same LLVM byte-array carrier -- except
     // that its fields all start at the same place. Rather than a parallel declaration kind
@@ -2970,10 +3025,12 @@ ast::AstNode* Parser::parseStructDeclaration(
     // here as a layout marker and honoured in exactly one place: ProjectObjectLayoutModel.
     if (form == StructLayoutForm::Union)
     {
-        node->setAuxiliaryText(
-            languageEdition_ == language::LanguageEdition::V3
-                ? "union,active-member-safe"
-                : "union");
+        std::string markers = node->auxiliaryText();
+        markers += (markers.empty() ? "" : ",");
+        markers += languageEdition_ == language::LanguageEdition::V3
+            ? "union,active-member-safe"
+            : "union";
+        node->setAuxiliaryText(std::move(markers));
     }
     // SHR-013: la marca de vista viaja por el MISMO canal que "union"/"pack="/"align=" -- el
     // texto auxiliar de la declaracion, separado por comas -- porque es exactamente la misma
@@ -2991,6 +3048,13 @@ ast::AstNode* Parser::parseStructDeclaration(
         std::string markers = node->auxiliaryText();
         markers += (markers.empty() ? "" : ",");
         markers += "record";
+        node->setAuxiliaryText(std::move(markers));
+    }
+    if (isCopyType)
+    {
+        std::string markers = node->auxiliaryText();
+        markers += (markers.empty() ? "" : ",");
+        markers += "copy";
         node->setAuxiliaryText(std::move(markers));
     }
     parseGenericParameterList(node);
@@ -3272,7 +3336,7 @@ ast::AstNode* Parser::parseVariantDeclaration()
     ast::AstNode* node = arena_.make<ast::AstNode>(
         ast::AstNodeKind::StructDeclaration, name.range());
     node->setText(variantName);
-    node->setAuxiliaryText("variant");
+    node->setAuxiliaryText("variant,ns3-value");
     parseGenericParameterList(node);
     KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
     parseGenericConstraintClauses(node);
@@ -3617,7 +3681,7 @@ ast::AstNode* Parser::parseOpaqueTypeDeclaration()
     ast::AstNode* node = arena_.make<ast::AstNode>(
         ast::AstNodeKind::StructDeclaration, name.range());
     node->setText(typeName);
-    node->setAuxiliaryText("opaque-type");
+    node->setAuxiliaryText("opaque-type,ns3-value");
     parseGenericParameterList(node);
     KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
 
@@ -4523,7 +4587,8 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
         declaration = parseStructDeclaration(
             at(TokenKind::KwStruct) ? StructLayoutForm::Struct : StructLayoutForm::Union,
             modifiers.isBorrowedView && at(TokenKind::KwStruct),
-            nestedRecordStruct);
+            nestedRecordStruct,
+            modifiers.isCopyType);
     }
     else if (at(TokenKind::KwEnum))
     {
@@ -4537,6 +4602,21 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     if (declaration == nullptr)
     {
         return nullptr;
+    }
+
+    if (modifiers.isCopyType)
+    {
+        if (declaration->kind() != ast::AstNodeKind::StructDeclaration)
+        {
+            refuse("copy", "only nested structs, records, and variants can opt into Copy");
+        }
+        else if (declaration->auxiliaryText().find("copy") == std::string::npos)
+        {
+            std::string markers = declaration->auxiliaryText();
+            markers += (markers.empty() ? "" : ",");
+            markers += "copy";
+            declaration->setAuxiliaryText(std::move(markers));
+        }
     }
 
     // NSC-LIMIT-009 -- LO QUE ESTA ENTREGA NO HACE, dicho en el parser y no en silencio.
@@ -4651,6 +4731,7 @@ ast::AstNode* Parser::parseClassMember(
     bool isControlledSpecialization = false;
     SourceRange controlledSpecializationRange{};
     bool isBorrowedView = false;
+    bool isCopyType = false;
     std::optional<std::uint64_t> nestedLayoutPack;
     std::optional<std::uint64_t> nestedLayoutAlign;
     std::optional<std::uint64_t> nestedLayoutSize;
@@ -4781,7 +4862,9 @@ ast::AstNode* Parser::parseClassMember(
             else nestedLayoutSize = value;
             continue;
         }
-        if (at(TokenKind::KwBorrowed) && peek().kind() == TokenKind::KwStruct)
+        if (at(TokenKind::KwBorrowed) &&
+            (peek().kind() == TokenKind::KwStruct ||
+             (peek().kind() == TokenKind::Identifier && peek().lexeme() == "copy")))
         {
             const lexer::Token& modifier = consume();
             if (isBorrowedView)
@@ -4793,6 +4876,31 @@ ast::AstNode* Parser::parseClassMember(
                     "duplicate borrowed modifier on nested type");
             }
             isBorrowedView = true;
+            continue;
+        }
+        const bool copyNestedModifier = atContextualKeyword("copy") &&
+            (peek().kind() == TokenKind::KwStruct || peek().kind() == TokenKind::KwClass ||
+             peek().kind() == TokenKind::KwEnum || peek().kind() == TokenKind::KwDelegate ||
+             peek().kind() == TokenKind::KwPublic ||
+             peek().kind() == TokenKind::KwInternal || peek().kind() == TokenKind::KwProtected ||
+             peek().kind() == TokenKind::KwPrivate || peek().kind() == TokenKind::KwReadonly ||
+             (peek().kind() == TokenKind::Identifier &&
+              (peek().lexeme() == "pack" || peek().lexeme() == "align" ||
+               peek().lexeme() == "size" || peek().lexeme() == "record" ||
+               peek().lexeme() == "variant")));
+        if (copyNestedModifier)
+        {
+            const lexer::Token& modifier = consume();
+            requireEdition3(modifier.range(), "explicit Copy value types");
+            if (isCopyType)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate copy modifier on nested value type");
+            }
+            isCopyType = true;
             continue;
         }
         if (!(at(TokenKind::KwPublic) || at(TokenKind::KwInternal) ||
@@ -5512,6 +5620,7 @@ ast::AstNode* Parser::parseClassMember(
                 isExternC,
                 explicitFieldOffset.has_value(),
                 isBorrowedView,
+                isCopyType,
                 nestedLayoutPack,
                 nestedLayoutAlign,
                 nestedLayoutSize},

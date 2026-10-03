@@ -138,7 +138,7 @@ int main()
 namespace Capabilities
 {
     public interface ITagged { public int Tag(); }
-    public struct Pod
+    public copy struct Pod
     {
         public int Value;
     }

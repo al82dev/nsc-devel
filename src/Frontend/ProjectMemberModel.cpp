@@ -422,6 +422,33 @@ bool ProjectMemberModel::build(
         collectTypeMembers(typeOrdinal, type, nameLookup, diagnostics);
     }
 
+    // T06-F01 validates the opt-in only after every field has a canonical type key. Merely
+    // spelling `copy` must never turn an owning or recursively move-only representation into a
+    // bitwise-copyable value; the declaration is rejected at its source instead.
+    for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
+    {
+        const NamedTypeDeclaration& type = nameLookup.namedTypes()[typeOrdinal];
+        if (type.kind != NamedTypeDeclarationKind::Struct || type.syntax == nullptr ||
+            type.syntax->auxiliaryText().find("copy") == std::string::npos)
+            continue;
+        for (const std::size_t memberOrdinal : membersByType_[typeOrdinal])
+        {
+            if (memberOrdinal >= members_.size()) continue;
+            const ClassMemberSymbol& field = members_[memberOrdinal];
+            if (field.kind != ClassMemberKind::Field || field.isStatic || field.isConst) continue;
+            if (field.declaredOwnership == sema::OwnershipKind::Owned ||
+                !typeIsImplicitlyCopyable(field.declaredTypeKey))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    field.range,
+                    "copy type '" + type.identity.key() + "' contains non-Copy field '" +
+                        field.name + "' of type '" + field.declaredTypeKey + "'");
+            }
+        }
+    }
+
     // Raw unions carry no active-member discriminant.  It is therefore unsafe for any
     // alternative to own storage, including ownership hidden inside an inline struct or fixed
     // array of structs: writing through that nested owner would run release-before-store against
@@ -742,6 +769,87 @@ bool ProjectMemberModel::typeTransitivelyOwnsStorage(std::string_view typeKey) c
         return result;
     };
     return owns(typeKey);
+}
+
+bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) const
+{
+    if (typeKey.empty() || typeKey == "<error>" || typeKey == "builtin:void") return false;
+    if (typeKey.starts_with("builtin:") || typeKey.ends_with("*") || typeKey.ends_with("[]"))
+        return true;
+    if (const std::optional<std::vector<std::string>> tuple =
+            ProjectTypeConversion::tupleElementTypeKeys(typeKey))
+        return std::ranges::all_of(*tuple, [&](const std::string& element)
+        {
+            return typeIsImplicitlyCopyable(element);
+        });
+    if (const std::optional<std::string> element = fixedArrayElementTypeKey(typeKey))
+        return typeIsImplicitlyCopyable(*element);
+    if (nameLookup_ == nullptr) return false;
+
+    std::unordered_set<std::size_t> visiting;
+    std::function<bool(std::string_view)> copyable = [&](std::string_view candidate) -> bool
+    {
+        if (candidate.empty() || candidate == "<error>" || candidate == "builtin:void")
+            return false;
+        if (candidate.starts_with("builtin:") || candidate.ends_with("*") ||
+            candidate.ends_with("[]"))
+            return true;
+        if (const std::optional<std::vector<std::string>> tuple =
+                ProjectTypeConversion::tupleElementTypeKeys(candidate))
+            return std::ranges::all_of(*tuple, [&](const std::string& element)
+            {
+                return copyable(element);
+            });
+        if (const std::optional<std::string> element = fixedArrayElementTypeKey(candidate))
+            return copyable(*element);
+        const std::optional<std::size_t> ordinal = typeOrdinalForKey(candidate);
+        if (!ordinal.has_value()) return false;
+        const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[*ordinal];
+        if (declaration.kind != NamedTypeDeclarationKind::Struct) return true;
+
+        const std::string_view markers = declaration.syntax != nullptr
+            ? std::string_view(declaration.syntax->auxiliaryText()) : std::string_view{};
+        const bool edition3Value = markers.find("ns3-value") != std::string_view::npos;
+        const bool explicitCopy = markers.find("copy") != std::string_view::npos;
+        if (edition3Value && !explicitCopy) return false;
+        // Recursive by-value aggregates are rejected by layout. Returning true at the recursive
+        // edge avoids manufacturing a second diagnostic while the outer fields are inspected.
+        if (!visiting.insert(*ordinal).second) return true;
+        for (const std::size_t memberOrdinal : membersByType_[*ordinal])
+        {
+            if (memberOrdinal >= members_.size()) continue;
+            const ClassMemberSymbol& field = members_[memberOrdinal];
+            if (field.kind != ClassMemberKind::Field || field.isStatic || field.isConst) continue;
+            if (field.declaredOwnership == sema::OwnershipKind::Owned ||
+                !copyable(field.declaredTypeKey))
+            {
+                visiting.erase(*ordinal);
+                return false;
+            }
+        }
+        visiting.erase(*ordinal);
+        return true;
+    };
+    return copyable(typeKey);
+}
+
+bool ProjectMemberModel::typeIsMoveOnly(std::string_view typeKey) const
+{
+    if (typeKey.empty() || typeKey == "<error>" || typeKey == "builtin:void" ||
+        typeKey.starts_with("builtin:") || typeKey.ends_with("*") || typeKey.ends_with("[]"))
+        return false;
+    if (const std::optional<std::vector<std::string>> tuple =
+            ProjectTypeConversion::tupleElementTypeKeys(typeKey))
+        return std::ranges::any_of(*tuple, [&](const std::string& element)
+        {
+            return typeIsMoveOnly(element);
+        });
+    if (const std::optional<std::string> element = fixedArrayElementTypeKey(typeKey))
+        return typeIsMoveOnly(*element);
+    const std::optional<std::size_t> ordinal = typeOrdinalForKey(typeKey);
+    return ordinal.has_value() && nameLookup_ != nullptr &&
+        nameLookup_->namedTypes()[*ordinal].kind == NamedTypeDeclarationKind::Struct &&
+        !typeIsImplicitlyCopyable(typeKey);
 }
 
 std::span<const std::size_t> ProjectMemberModel::promotedMembersOfType(

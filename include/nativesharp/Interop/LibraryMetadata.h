@@ -74,13 +74,15 @@ namespace nativesharp::interop
 // MINOR 23 (2026-09-29): modules preserve their NativeSharp language edition.
 // MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
+// MINOR 33 (2026-10-03): edition-3 value types preserve their explicit Copy capability across
+// LibraryReference boundaries; an absent bit keeps the move-only default.
 // MINOR 32 (2026-10-03): public extension methods preserve their receiver contract and extension
 // lookup identity across LibraryReference boundaries.
 // MINOR 31 (2026-10-03): traits publish the descriptor-backed one-word dyn-object ABI and public
 // callable signatures retain the explicit `dyn` marker across LibraryReference boundaries.
 // MINOR 30 (2026-10-03): declaration-scoped opaque result identities publish their one-field
 // in-place representation and implemented trait as a closed native contract.
-inline constexpr std::uint16_t kMetadataFormatMinor = 32;
+inline constexpr std::uint16_t kMetadataFormatMinor = 33;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -101,6 +103,9 @@ inline constexpr std::uint16_t kMetadataTypeTrait = 1U << 13U;
 // compiler-owned nominal identity from a user struct so source/API/ABI tools cannot erase the
 // `some Trait` abstraction while preserving the same bytes accidentally.
 inline constexpr std::uint16_t kMetadataTypeOpaqueResult = 1U << 14U;
+// NSMETA 1.33. This is a semantic capability, not a layout promise: validation still requires
+// every instance field to be Copy before the producer may publish it.
+inline constexpr std::uint16_t kMetadataTypeCopy = 1U << 15U;
 inline constexpr std::uint16_t kMetadataTypeRecordDeriveMask =
     kMetadataTypeDeriveEquality | kMetadataTypeDeriveHash |
     kMetadataTypeDerivePrint | kMetadataTypeDeriveClone;

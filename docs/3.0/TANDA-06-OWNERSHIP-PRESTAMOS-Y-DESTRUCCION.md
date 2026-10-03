@@ -1,6 +1,6 @@
 # Tanda 06 — Ownership, préstamos y destrucción / Ownership, borrows, and destruction
 
-> **Estado 2026-09-29 después de la tanda operativa 13:** `IMPLEMENTING`.
+> **Estado 2026-10-03:** `IMPLEMENTING`; F01 está cerrado de forma dirigida, el gate T06 completo sigue abierto.
 
 ## Resultado productivo actual
 
@@ -24,7 +24,7 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 
 | ID | Estado productivo | Deuda que impide cerrar el ID completo |
 |---|---|---|
-| T06-F01 | Vertical integrada para locals RAII y parámetros `owned`; moved/maybe-moved y joins CFG | `Copy` explícito como contrato de tipos, defaults move-only generales, fields/arrays/generics completos |
+| T06-F01 | **CERRADO**: tipos valor de edición 3 move-only por defecto, `copy` explícito, consumo con `move(...)`, joins CFG, arrays/genéricos y NSMETA 1.33 | Los moves parciales de fields/variants pertenecen expresamente a F02 |
 | T06-F02 | Move parcial de campo owned y elemento con ranura nula como drop guard; owner raíz observable | Estado estático por campo, reinicialización, structs/variants nested y destructor personalizado |
 | T06-F03 | Exclusividad conservadora del owner completo, incluidas proyecciones field/index | Reborrow mutable y préstamos divididos demostrablemente disjuntos para fields/índices/slices |
 | T06-F04 | Lifetimes léxicos inferidos de borrowed locals y procedencia local/parámetro | Sintaxis nombrada, outlives/subtyping, returns prestados y metadata cross-module |
@@ -47,13 +47,19 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 
 ## Evidencia
 
+- `nsc.ns3.t06.move-only-defaults`: 16/16 checks; ejecución O0/NSLink, locales, parámetros,
+  returns, branches, loops, fields, fixed arrays, constraints, constructores, funciones libres,
+  compatibilidad edición 2 y productor/consumidor NSMETA 1.33.
+- Regresiones dirigidas: T04 constraints y T05 opaque/trait objects/extensions/operator traits,
+  más contratos de migración/compatibilidad/versionado, todas verdes.
+
 - `c63_ns3_move_borrow_drop`, O0, termina en 42.
 - Method-body dump contiene `partial-owner-local=0` en el movimiento de `holder.Left`.
 - MIR contiene `move-owned-field`, dos owners locales con cleanup y ruta de retorno `#3 -> #2`.
 - Negativos dirigidos rechazan field desde owner local prestado, field desde parámetro `owned`
   prestado y elemento de array desde owner prestado con diagnóstico causal.
 
-El gate T06 completo no se declara verde: todavía requiere las extensiones abiertas, interacción
+El gate T06 completo no se declara verde: todavía requiere F02-F08, interacción
 con T07, matriz CFG/DLL exhaustiva, debugger y baseline final ejecutado por Alberto.
 
 La tanda operativa 14 cerró una vertical de F06 y la frontera DLL de F08, pero no F07 ni el glue

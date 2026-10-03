@@ -6,7 +6,7 @@ namespace nativesharp::language
 {
 namespace
 {
-constexpr std::array<Language3SurfaceEntry, 15> kSurface = {{
+constexpr std::array<Language3SurfaceEntry, 16> kSurface = {{
     {Language3Feature::RecordStructs, "record-structs", Language3Disposition::Implemented,
      "productive parser, layout, metadata and code-generation vertical"},
     {Language3Feature::PrimaryConstructors, "primary-constructors", Language3Disposition::Implemented,
@@ -32,6 +32,8 @@ constexpr std::array<Language3SurfaceEntry, 15> kSurface = {{
      "static namespace extensions with deterministic import lookup and no receiver-type mutation"},
     {Language3Feature::TraitOperators, "trait-operators", Language3Disposition::Implemented,
      "stable lang-item witnesses with builtin precedence and intrinsic short-circuit control flow"},
+    {Language3Feature::MoveOnlyDefaults, "move-only-defaults", Language3Disposition::Implemented,
+     "edition-3 value types require explicit Copy and named consuming reads require move(value)"},
     {Language3Feature::LongDouble, "long-double", Language3Disposition::RejectedFor3,
      "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp 3.0"},
     {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::DeferredTo4,

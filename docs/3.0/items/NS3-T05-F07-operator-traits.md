@@ -45,7 +45,7 @@ ambigüedad o referencia aparecen en Sema antes del backend.
 
 ## Validación dirigida
 
-- `nsc_ns3_t05_operator_trait_tests`: 20/20, incluido productor/consumidor `.lib/.nsmeta` 1.32.
+- `nsc_ns3_t05_operator_trait_tests`: 20/20, incluido productor/consumidor `.lib/.nsmeta` vigente.
 - `cc1-c70-ns3-operator-traits`: 6/6, O0/NSLink, exit 42.
 - Regresiones focalizadas: traits 9/9; declaraciones trait 14/14; coherence 11/11; extensiones
   12/12; operadores Stage 38 96/96; forceinline 14/14; superficie 3.0 27/27.

@@ -125,6 +125,10 @@ struct MethodLocalSymbol final
     // usa para una pregunta concreta --¿el divisor es cero?-- y no para tipar nada.
     std::optional<std::int64_t> constantIntegerValue;
     bool isRaii = false;
+    // NativeSharp 3.0 T06-F01. This local stores an edition-3 value type that did not opt into
+    // Copy. It shares the existing path-sensitive moved-from sets with RAII owners, but it does
+    // not acquire a cleanup region merely for being move-only.
+    bool isMoveOnly = false;
     // NativeSharp 3.0 T06-F06. A `pin raii` owner keeps its ownership slot and object identity
     // fixed until lexical cleanup. It may be borrowed and destroyed in place, but never moved or
     // replaced after initialization.
@@ -1320,6 +1324,7 @@ struct MethodCallCandidate final
     std::size_t defaultedParameterCount = 0;
     bool isVariadicCandidate = false;
     std::optional<std::size_t> invalidVariadicArgumentOrdinal;
+    std::optional<std::size_t> invalidMoveOnlyArgumentOrdinal;
 };
 
 struct MethodCallBinding final

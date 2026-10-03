@@ -77,7 +77,8 @@ int main()
             manifest.find("record-structs=implemented") != std::string::npos &&
             manifest.find("primary-constructors=implemented") != std::string::npos &&
             manifest.find("extension-methods=implemented") != std::string::npos &&
-            manifest.find("trait-operators=implemented") != std::string::npos,
+            manifest.find("trait-operators=implemented") != std::string::npos &&
+            manifest.find("move-only-defaults=implemented") != std::string::npos,
         "the frozen 3.0 manifest publishes the productive language surface");
     constexpr std::array deferred = {
         "async-await=deferred-4.0", "async-streams=deferred-4.0",

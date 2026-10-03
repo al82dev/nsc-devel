@@ -66,6 +66,9 @@ struct ConstructorCandidateBinding final
     // diagnostico tiene que nombrar el argumento concreto y decir cual de los tres
     // incumplimientos fue.
     std::vector<OwnershipArgumentFit> ownershipFits;
+    // Parallel to conversions/ownershipFits. True means the physical conversion exists but a
+    // named edition-3 move-only place would be copied into a by-value constructor parameter.
+    std::vector<bool> moveOnlyCopyRejects;
     // Las transferencias que este candidato exigiria si saliera elegido.
     std::vector<ConstructorOwnershipTransfer> ownershipTransfers;
     // Argumentos que producen un string owned temporal prestado solo durante la construccion.

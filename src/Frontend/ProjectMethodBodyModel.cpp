@@ -4329,10 +4329,9 @@ void ProjectMethodBodyModel::analyzeVariable(
                 "fixed-array type");
             return;
         }
-        const bool isRaiiForVar = variable->hasModifier(TokenKind::KwRaii);
         ExpressionResult varInit = analyzeExpression(
             variable->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
-            /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/isRaiiForVar);
+            /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
         if (!varInit.valid || varInit.typeKey.empty() || varInit.typeKey == "<error>")
         {
             return;
@@ -4501,6 +4500,7 @@ void ProjectMethodBodyModel::analyzeVariable(
             : memberModel_->canonicalTypeKey(variable->typeSyntax(), *nameLookup_));
     const sema::OwnershipKind declaredOwnership = ownershipKindFromSyntax(variable->typeSyntax());
     const bool isBorrowed = declaredOwnership == sema::OwnershipKind::Borrowed;
+    const bool isMoveOnly = memberModel_->typeIsMoveOnly(typeKey);
     // Bloque 1 item 1/6/7 fix -- `owned T x = ...` declares an OWNING local, exactly like
     // `raii T x = ...`. Before this, the `owned` qualifier on a local was computed here (into
     // `declaredOwnership`) and then silently DISCARDED: only the Borrowed case was ever consulted,
@@ -4662,12 +4662,23 @@ void ProjectMethodBodyModel::analyzeVariable(
         {
             initializer = analyzeExpression(
                 variable->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
-                isDelegateTypeKey(typeKey), false, isRaii);
+                isDelegateTypeKey(typeKey), false, isRaii || isMoveOnly);
             if (initializer.methodGroup && isDelegateTypeKey(typeKey))
             {
                 initializer = bindMethodGroupToDelegate(
                     variable->first(), initializer, typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
             }
+        }
+        if (isMoveOnly && initializer.valid && initializer.addressable &&
+            variable->first()->kind() != ast::AstNodeKind::MoveExpression)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->first()->range(),
+                "move-only value of type '" + typeKey +
+                    "' cannot be copied into local '" + variable->text() +
+                    "'; use move(source)");
         }
         if (!isRaii && !isBorrowed && variable->first()->kind() == ast::AstNodeKind::IdentifierExpression)
         {
@@ -4683,13 +4694,13 @@ void ProjectMethodBodyModel::analyzeVariable(
                         "' cannot be copied into a non-owning local; Stage 49 requires ownership transfer with move(...)");
             }
         }
-        if (variable->first()->kind() == ast::AstNodeKind::MoveExpression && !isRaii)
+        if (variable->first()->kind() == ast::AstNodeKind::MoveExpression && !isRaii && !isMoveOnly)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
                 variable->first()->range(),
-                "move construction requires a raii destination local");
+                "move construction requires a RAII or move-only destination local");
         }
         // Stage 52: an "owned"/"borrowed"-returning call whose declared return type is a
         // generic T closed over a plain value type (int, bool, a struct, ...) carries an
@@ -5001,6 +5012,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         }
     }
     local.isRaii = isRaii;
+    local.isMoveOnly = isMoveOnly;
     local.isPinned = isPinnedLocal;
     local.ownership = isBorrowed ? sema::OwnershipKind::Borrowed : sema::OwnershipKind::None;
     local.objectLifetimeOwnership = pendingObjectLifetimeOwnership;
@@ -5152,6 +5164,11 @@ void ProjectMethodBodyModel::analyzeVariable(
             scopeOrdinal);
         cleanupRegions_[cleanupOrdinal].resourceLocalOrdinal = localOrdinal;
         activeCleanupRegions_.push_back(cleanupOrdinal);
+        movedRaiiLocals_.erase(localOrdinal);
+        maybeMovedRaiiLocals_.erase(localOrdinal);
+    }
+    else if (isMoveOnly)
+    {
         movedRaiiLocals_.erase(localOrdinal);
         maybeMovedRaiiLocals_.erase(localOrdinal);
     }
@@ -5715,31 +5732,41 @@ void ProjectMethodBodyModel::analyzeReturn(
         if (returnedName.has_value())
         {
             if (returnedName->kind == ScopeNameKind::Local &&
-                returnedName->semanticOrdinal < locals_.size() && locals_[returnedName->semanticOrdinal].isRaii)
+                returnedName->semanticOrdinal < locals_.size() &&
+                (locals_[returnedName->semanticOrdinal].isRaii ||
+                 locals_[returnedName->semanticOrdinal].isMoveOnly))
             {
                 directOwnerReturnWithoutMove = true;
+                const MethodLocalSymbol& local = locals_[returnedName->semanticOrdinal];
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidReturn,
                     diagnostics::DiagnosticSeverity::Error,
                     statement->first()->range(),
-                    "returning RAII owner '" + locals_[returnedName->semanticOrdinal].name +
-                        "' requires return move(owner) to transfer ownership");
+                    "returning " + std::string(local.isRaii ? "RAII owner '" : "move-only value '") +
+                        local.name + "' requires return move(value)");
             }
             else if (returnedName->kind == ScopeNameKind::Parameter &&
                 returnedName->semanticOrdinal < method->parameters.size() &&
-                method->parameters[returnedName->semanticOrdinal].ownership == sema::OwnershipKind::Owned &&
-                // Stage 52: an "owned T" parameter closed over a value type never needed
-                // move(...) in the first place -- see the returnTypeOwnable rationale below.
-                (isReferenceTypeKey(method->parameters[returnedName->semanticOrdinal].typeKey) ||
-                 method->parameters[returnedName->semanticOrdinal].typeKey == "builtin:string"))
+                ((method->parameters[returnedName->semanticOrdinal].ownership == sema::OwnershipKind::Owned &&
+                  // Stage 52: an "owned T" parameter closed over a Copy value type needs no
+                  // ownership ceremony; a move-only value is handled by the next alternative.
+                  (isReferenceTypeKey(method->parameters[returnedName->semanticOrdinal].typeKey) ||
+                   method->parameters[returnedName->semanticOrdinal].typeKey == "builtin:string")) ||
+                 (method->parameters[returnedName->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                  memberModel_->typeIsMoveOnly(
+                      method->parameters[returnedName->semanticOrdinal].typeKey))))
             {
                 directOwnerReturnWithoutMove = true;
+                const MethodParameterSymbol& parameter =
+                    method->parameters[returnedName->semanticOrdinal];
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidReturn,
                     diagnostics::DiagnosticSeverity::Error,
                     statement->first()->range(),
-                    "returning owned parameter '" + method->parameters[returnedName->semanticOrdinal].name +
-                        "' requires return move(owner) to transfer ownership");
+                    "returning " + std::string(
+                        parameter.ownership == sema::OwnershipKind::Owned
+                            ? "owned parameter '" : "move-only parameter '") +
+                        parameter.name + "' requires return move(value)");
             }
         }
     }
@@ -6938,7 +6965,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
-                    "move(...) is only valid for a direct RAII local or owned parameter in RAII initialization, move assignment, owned argument transfer, or return");
+                    "move(...) is only valid for a direct RAII/move-only local or owned/move-only parameter in a consuming context");
                 break;
             }
             const std::optional<ScopeName> source = lookupScopeName(scopeOrdinal, expression->first()->text());
@@ -6954,19 +6981,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
-                    "move(...) source must be a RAII local or owned parameter");
+                    "move(...) source must be a RAII/move-only local or owned/move-only parameter");
                 break;
             }
 
             if (source->kind == ScopeNameKind::Local)
             {
-                if (source->semanticOrdinal >= locals_.size() || !locals_[source->semanticOrdinal].isRaii)
+                if (source->semanticOrdinal >= locals_.size() ||
+                    (!locals_[source->semanticOrdinal].isRaii &&
+                     !locals_[source->semanticOrdinal].isMoveOnly))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "move(...) source must be a RAII local or owned parameter");
+                        "move(...) source must be a RAII/move-only local or owned/move-only parameter");
                     break;
                 }
                 const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
@@ -6986,7 +7015,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "cannot move from already moved-from RAII local '" + local.name + "'");
+                        "cannot move from already moved-from " +
+                            std::string(local.isRaii ? "RAII local '" : "move-only local '") +
+                            local.name + "'");
                     break;
                 }
                 if (maybeMovedRaiiLocals_.contains(source->semanticOrdinal))
@@ -6995,7 +7026,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "cannot move from possibly moved RAII local '" + local.name +
+                        "cannot move from possibly moved " +
+                            std::string(local.isRaii ? "RAII local '" : "move-only local '") + local.name +
                             "' after a control-flow join");
                     break;
                 }
@@ -7044,13 +7076,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
                 if (method == nullptr || source->semanticOrdinal >= method->parameters.size() ||
-                    method->parameters[source->semanticOrdinal].ownership != sema::OwnershipKind::Owned)
+                    (method->parameters[source->semanticOrdinal].ownership != sema::OwnershipKind::Owned &&
+                     !(method->parameters[source->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                       memberModel_->typeIsMoveOnly(
+                           method->parameters[source->semanticOrdinal].typeKey))))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "move(...) source must be a RAII local or owned parameter");
+                        "move(...) source must be a RAII/move-only local or owned/move-only parameter");
                     break;
                 }
                 const MethodParameterSymbol& parameter = method->parameters[source->semanticOrdinal];
@@ -7060,7 +7095,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "cannot move from already moved-from owned parameter '" + parameter.name + "'");
+                        "cannot move from already moved-from parameter '" + parameter.name + "'");
                     break;
                 }
                 if (maybeMovedOwnedParameters_.contains(source->semanticOrdinal))
@@ -7069,7 +7104,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "cannot move from possibly moved owned parameter '" + parameter.name +
+                        "cannot move from possibly moved parameter '" + parameter.name +
                             "' after a control-flow join");
                     break;
                 }
@@ -7079,7 +7114,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "cannot move owned parameter '" + parameter.name +
+                        "cannot move parameter '" + parameter.name +
                             "' while a borrowed local is alive");
                     break;
                 }
@@ -9313,22 +9348,27 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 // fundamental complaint, and the moved-from checks below would otherwise report
                 // a confusing second opinion about the same name.
                 checkDefiniteAssignment(expression, scopeName->semanticOrdinal, diagnostics);
-                if (local.isRaii && movedRaiiLocals_.contains(scopeName->semanticOrdinal))
+                if ((local.isRaii || local.isMoveOnly) &&
+                    movedRaiiLocals_.contains(scopeName->semanticOrdinal))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "use of moved-from RAII local '" + local.name + "'");
+                        "use of moved-from " +
+                            std::string(local.isRaii ? "RAII local '" : "move-only local '") +
+                            local.name + "'");
                     return result;
                 }
-                if (local.isRaii && maybeMovedRaiiLocals_.contains(scopeName->semanticOrdinal))
+                if ((local.isRaii || local.isMoveOnly) &&
+                    maybeMovedRaiiLocals_.contains(scopeName->semanticOrdinal))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "use of moved-from RAII local '" + local.name +
+                        "use of possibly moved " +
+                            std::string(local.isRaii ? "RAII local '" : "move-only local '") + local.name +
                             "': value is possibly moved after a control-flow join");
                     return result;
                 }
@@ -9445,24 +9485,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         if (method != nullptr && scopeName->semanticOrdinal < method->parameters.size())
         {
             const MethodParameterSymbol& parameter = method->parameters[scopeName->semanticOrdinal];
-            if (parameter.ownership == sema::OwnershipKind::Owned &&
+            const bool moveTrackedParameter =
+                parameter.ownership == sema::OwnershipKind::Owned ||
+                (parameter.passKind == ParameterPassKind::Value &&
+                 memberModel_->typeIsMoveOnly(parameter.typeKey));
+            if (moveTrackedParameter &&
                 movedOwnedParameters_.contains(scopeName->semanticOrdinal))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
-                    "use of moved-from owned parameter '" + parameter.name + "'");
+                    "use of moved-from parameter '" + parameter.name + "'");
                 return result;
             }
-            if (parameter.ownership == sema::OwnershipKind::Owned &&
+            if (moveTrackedParameter &&
                 maybeMovedOwnedParameters_.contains(scopeName->semanticOrdinal))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
-                    "use of moved-from owned parameter '" + parameter.name +
+                    "use of moved-from parameter '" + parameter.name +
                         "': value is possibly moved after a control-flow join");
                 return result;
             }
@@ -11024,6 +11068,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                     // Move-only and ownership-qualified values must be passed in a prebuilt span.
                     evaluated.viable = false;
                 }
+                else if (!implicitExtensionReceiverPass &&
+                    conversion.exists() &&
+                    parameter.passKind == ParameterPassKind::Value &&
+                    memberModel_->typeIsMoveOnly(conversionTarget) &&
+                    arguments[argumentOrdinal].addressable &&
+                    !arguments[argumentOrdinal].ownershipTransfer)
+                {
+                    evaluated.viable = false;
+                    evaluated.invalidMoveOnlyArgumentOrdinal = argumentOrdinal;
+                }
                 const bool freshStringBorrow = !packElement &&
                     parameter.typeKey == "builtin:string" &&
                     (parameter.ownership == sema::OwnershipKind::None ||
@@ -11070,6 +11124,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         if (call.evaluatedCandidates[index].viable) viable.push_back(index);
     if (viable.empty())
     {
+        for (const MethodCallCandidate& candidate : call.evaluatedCandidates)
+        {
+            if (!candidate.invalidMoveOnlyArgumentOrdinal.has_value()) continue;
+            const std::size_t ordinal = *candidate.invalidMoveOnlyArgumentOrdinal;
+            const ast::AstNode* argument = ordinal < argumentSyntaxes.size()
+                ? argumentSyntaxes[ordinal] : expression;
+            diagnostics.report(
+                diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                diagnostics::DiagnosticSeverity::Error,
+                argument != nullptr ? argument->range() : expression->range(),
+                "move-only argument cannot be copied into a by-value namespace-function parameter; use move(argument)");
+            store();
+            return result;
+        }
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error,
@@ -11708,6 +11776,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         binding.resultTypeKey = returnType;
         for (std::size_t index = 0; index < arguments.size(); ++index)
         {
+            if (memberModel_->typeIsMoveOnly(parameterTypes[index]) &&
+                arguments[index].addressable && !arguments[index].ownershipTransfer)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->children()[index]->range(),
+                    "move-only event argument cannot be copied into a by-value delegate parameter; use move(argument)");
+                return result;
+            }
             ProjectImplicitConversion conversion = classifyImplicit(
                 arguments[index].typeKey, parameterTypes[index], arguments[index].integerConstant);
             if (!conversion.exists())
@@ -11753,6 +11831,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         binding.resultTypeKey = returnType;
         for (std::size_t index = 0; index < arguments.size(); ++index)
         {
+            if (memberModel_->typeIsMoveOnly(parameterTypes[index]) &&
+                arguments[index].addressable && !arguments[index].ownershipTransfer)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->children()[index]->range(),
+                    "move-only argument cannot be copied into a by-value delegate parameter; use move(argument)");
+                return result;
+            }
             ProjectImplicitConversion conversion = classifyImplicit(
                 arguments[index].typeKey, parameterTypes[index], arguments[index].integerConstant);
             if (!conversion.exists())
@@ -12024,6 +12112,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         candidateBinding.viable = false;
                     }
                 }
+                if (candidateBinding.viable &&
+                    parameter.passKind == ParameterPassKind::Value &&
+                    memberModel_->typeIsMoveOnly(conversionTarget) &&
+                    resolvedArguments[argumentOrdinal].addressable &&
+                    !resolvedArguments[argumentOrdinal].ownershipTransfer)
+                {
+                    candidateBinding.viable = false;
+                    candidateBinding.invalidMoveOnlyArgumentOrdinal = argumentOrdinal;
+                }
                 candidateBinding.conversions.push_back(std::move(conversion));
             }
             // NSC-LIMIT-007, tercera vuelta. LOS CONSTRAINTS SE CONSULTAN AQUI, y solo despues
@@ -12092,6 +12189,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         }
         for (const MethodCallCandidate& candidate : call.evaluatedCandidates)
         {
+            if (candidate.invalidMoveOnlyArgumentOrdinal.has_value())
+            {
+                const std::size_t ordinal = *candidate.invalidMoveOnlyArgumentOrdinal;
+                const ast::AstNode* argument = resolvedArgumentSyntax(ordinal);
+                diagnostics.report(
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error,
+                    argument != nullptr ? argument->range() : expression->range(),
+                    "move-only argument cannot be copied into a by-value parameter; use move(argument)");
+                call.resolution = MethodCallResolutionKind::NoViableCandidate;
+                calls_.push_back(std::move(call));
+                return result;
+            }
             if (!candidate.invalidVariadicArgumentOrdinal.has_value()) continue;
             const std::size_t ordinal = *candidate.invalidVariadicArgumentOrdinal;
             const ast::AstNode* argument = resolvedArgumentSyntax(ordinal);
@@ -15642,6 +15752,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     }
 
     std::optional<std::size_t> raiiTargetLocal;
+    std::optional<std::size_t> moveOnlyTargetLocal;
+    std::optional<std::size_t> moveOnlyTargetParameter;
     ExpressionResult left;
     // C4 "language references": record that an `out` parameter was written to. The obligation an
     // `out` parameter carries -- the callee MUST assign it -- is checked once the whole body has
@@ -15683,10 +15795,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     {
         const std::optional<ScopeName> target = lookupScopeName(scopeOrdinal, expression->first()->text());
         if (target.has_value() && target->kind == ScopeNameKind::Local &&
-            target->semanticOrdinal < locals_.size() && locals_[target->semanticOrdinal].isRaii)
+            target->semanticOrdinal < locals_.size() &&
+            (locals_[target->semanticOrdinal].isRaii ||
+             locals_[target->semanticOrdinal].isMoveOnly))
         {
             const MethodLocalSymbol& local = locals_[target->semanticOrdinal];
-            raiiTargetLocal = target->semanticOrdinal;
+            if (local.isRaii) raiiTargetLocal = target->semanticOrdinal;
+            if (local.isMoveOnly) moveOnlyTargetLocal = target->semanticOrdinal;
             left.typeKey = local.typeKey;
             left.valid = true;
             left.assignable = true;
@@ -15704,6 +15819,36 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                 "",
                 std::nullopt,
                 false});
+        }
+        else if (target.has_value() && target->kind == ScopeNameKind::Parameter)
+        {
+            const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+            if (method != nullptr && target->semanticOrdinal < method->parameters.size())
+            {
+                const MethodParameterSymbol& parameter = method->parameters[target->semanticOrdinal];
+                if (parameter.passKind == ParameterPassKind::Value &&
+                    memberModel_->typeIsMoveOnly(parameter.typeKey))
+                {
+                    moveOnlyTargetParameter = target->semanticOrdinal;
+                    left.typeKey = parameter.typeKey;
+                    left.valid = true;
+                    left.assignable = true;
+                    nameBindings_.push_back(MethodNameBinding{
+                        MethodNameBindingKind::Parameter,
+                        expression->first(),
+                        methodMemberOrdinal,
+                        scopeOrdinal,
+                        parameter.name,
+                        parameter.typeKey,
+                        std::nullopt,
+                        target->semanticOrdinal,
+                        {},
+                        nullptr,
+                        "",
+                        std::nullopt,
+                        false});
+                }
+            }
         }
     }
     // C7 "definite assignment": a plain `=` assigns its target; a compound one (`x += 1`) reads it
@@ -16064,8 +16209,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         right = analyzeExpression(
             expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics,
             delegateTarget, false,
-            raiiTargetLocal.has_value() || arrayElementMoveTarget || ownedFieldMoveTarget ||
-                ownedSetterMoveTarget);
+            raiiTargetLocal.has_value() || moveOnlyTargetLocal.has_value() ||
+                moveOnlyTargetParameter.has_value() || arrayElementMoveTarget ||
+                ownedFieldMoveTarget || ownedSetterMoveTarget);
     if (right.methodGroup && delegateTarget)
     {
         right = bindMethodGroupToDelegate(
@@ -16073,6 +16219,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     }
     if (!right.valid)
     {
+        return {};
+    }
+    if (expression->tokenKind() == TokenKind::Equal &&
+        memberModel_->typeIsMoveOnly(left.typeKey) && right.addressable &&
+        expression->second()->kind() != ast::AstNodeKind::MoveExpression)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->second()->range(),
+            "move-only value of type '" + left.typeKey +
+                "' cannot be copied by assignment; use move(source)");
         return {};
     }
     const bool raiiStringAppend = raiiTargetLocal.has_value() &&
@@ -16555,6 +16713,39 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             return {};
         }
     }
+    if (moveOnlyTargetLocal.has_value() || moveOnlyTargetParameter.has_value())
+    {
+        if (expression->tokenKind() != TokenKind::Equal)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "move-only values support replacement with '=' but not compound assignment");
+            return {};
+        }
+        const MethodMoveBinding* move = nullptr;
+        for (auto iterator = moveBindings_.rbegin(); iterator != moveBindings_.rend(); ++iterator)
+        {
+            if (iterator->syntax == expression->second())
+            {
+                move = &*iterator;
+                break;
+            }
+        }
+        if ((moveOnlyTargetLocal.has_value() && move != nullptr &&
+             move->sourceLocalOrdinal == *moveOnlyTargetLocal) ||
+            (moveOnlyTargetParameter.has_value() && move != nullptr &&
+             move->sourceParameterOrdinal == *moveOnlyTargetParameter))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "self move-assignment of a move-only value is not allowed");
+            return {};
+        }
+    }
 
     // Resolved above, before the right-hand side was analyzed, so that an `owned` property or
     // indexer could admit move(...) on its RHS. Only now is it safe to take a pointer: nothing
@@ -16838,6 +17029,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         {
             movedRaiiLocals_.erase(*raiiTargetLocal);
             maybeMovedRaiiLocals_.erase(*raiiTargetLocal);
+        }
+        if (moveOnlyTargetLocal.has_value())
+        {
+            movedRaiiLocals_.erase(*moveOnlyTargetLocal);
+            maybeMovedRaiiLocals_.erase(*moveOnlyTargetLocal);
+        }
+        if (moveOnlyTargetParameter.has_value())
+        {
+            movedOwnedParameters_.erase(*moveOnlyTargetParameter);
+            maybeMovedOwnedParameters_.erase(*moveOnlyTargetParameter);
         }
         if (assignedUnionStorage.has_value())
         {

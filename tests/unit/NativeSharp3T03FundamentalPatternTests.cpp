@@ -82,8 +82,8 @@ int main()
     writeProject(direct, "FundamentalPatterns", R"NS(
 namespace FundamentalPatterns
 {
-    public struct Point { public int X; public int Y; }
-    public variant Payload
+    public copy struct Point { public int X; public int Y; }
+    public copy variant Payload
     {
         Deep((int, (int, int))),
         Position(Point),

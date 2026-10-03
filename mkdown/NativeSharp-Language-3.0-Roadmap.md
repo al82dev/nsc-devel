@@ -577,6 +577,9 @@ constantes y round-trip NSMETA 1.29 están cubiertos por 16 checks dirigidos O0/
 
 **Commit:** `ns3(t06-f01): move-only-defaults`
 
+**Estado:** `TERMINADA` (2026-10-03). Contrato y migración: `docs/3.0/language/move-only-copy.md`;
+evidencia del commit: `docs/3.0/items/NS3-T06-F01-move-only-defaults.md`.
+
 - **Implementación:** formalizar copy implícito solo para tipos que satisfacen `Copy`; el resto se mueve; estados moved-from no son observables salvo reasignación/destrucción permitida.
 - **Pruebas dirigidas:** parámetros, returns, branches, loops, fields, arrays, generics y diagnóstico use-after-move.
 - **Markdown ES/EN:** matriz copy/move y ejemplos de migración desde 2.x.

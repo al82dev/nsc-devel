@@ -279,7 +279,7 @@ namespace DynApi
         {
             return state.namespaceName == "DynApi" && state.name == "Current";
         });
-    tests.expect(metadataRead && metadata.formatMinor == 32U &&
+    tests.expect(metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             trait != metadata.types.end() && trait->traitObjectWordCount == 1U &&
             (trait->traitObjectFlags & nativesharp::interop::kMetadataTraitObjectObjectSafe) != 0U &&
             (trait->traitObjectFlags & nativesharp::interop::kMetadataTraitObjectDescriptorMap) != 0U &&

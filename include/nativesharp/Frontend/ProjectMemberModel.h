@@ -308,6 +308,13 @@ public:
     // `owned`, which callers check separately.
     bool typeTransitivelyOwnsStorage(std::string_view typeKey) const;
 
+    // NativeSharp 3.0 T06-F01. Scalars and reference-shaped values remain Copy. Edition-3
+    // structs are move-only unless their declaration carries the explicit `copy` contract;
+    // edition-2 structs retain the legacy structural rule. Fixed arrays inherit the element
+    // capability, so constraints, calls and method-body flow all ask one canonical service.
+    bool typeIsImplicitlyCopyable(std::string_view typeKey) const;
+    bool typeIsMoveOnly(std::string_view typeKey) const;
+
     // C2.1 "fixed arrays". The compile-time value of a `T[N]` count expression, or nullopt when
     // it is not a constant. It lives here, next to canonicalTypeKey, because the CANONICAL TYPE
     // KEY is the first consumer: a fixed-array key must read `builtin:float[4]`, with the count
