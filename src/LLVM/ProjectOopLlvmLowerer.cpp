@@ -9963,6 +9963,8 @@ private:
                 return lowerSafeReferenceCast(node, error);
             case frontend::ProjectOopMirNodeKind::CheckedReferenceCast:
                 return lowerCheckedReferenceCast(node, error);
+            case frontend::ProjectOopMirNodeKind::RangeSlice:
+                return lowerRangeSlice(node, error);
             case frontend::ProjectOopMirNodeKind::DirectInstanceCall:
                 return node->nullConditionalCall
                     ? lowerNullConditionalCall(node, error)
@@ -12097,6 +12099,11 @@ private:
             LLVMValueRef extent = LLVMBuildLoad2(builder_, i64,
                 byteOffset(object, 8U * (1U + dimension), "range.index.dimension.addr"),
                 "range.index.dimension");
+            if (dimension < 64U &&
+                (node->integerValue & (std::uint64_t{1} << dimension)) != 0U)
+            {
+                index = LLVMBuildSub(builder_, extent, index, "range.index.fromend");
+            }
             LLVMValueRef valid = LLVMBuildICmp(
                 builder_, LLVMIntULT, index, extent, "range.index.inrange");
             if (isSignedInteger(indexNode->typeKey))
@@ -12790,10 +12797,92 @@ private:
         return phi;
     }
 
+    // NativeSharp 3.0 T01-F04. The receiver is lowered once, then reused for both structural
+    // protocol calls. Endpoints are half-open: omitted start/end mean 0/Length, and `^n` means
+    // Length-n. The compiler validates 0 <= start <= end <= Length before invoking Slice, so a
+    // user type cannot silently reinterpret malformed range syntax.
+    LLVMValueRef lowerRangeSlice(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 3U || node->calleeName.empty() ||
+            node->secondaryCalleeName.empty())
+        {
+            return failValue(error, "T01-F04 range slice requires receiver, two endpoints and Length/Slice targets");
+        }
+        const auto lengthTarget = functions_.find(node->secondaryCalleeName);
+        if (lengthTarget == functions_.end())
+        {
+            return failValue(error, "T01-F04 Length target was not declared: " + node->secondaryCalleeName);
+        }
+
+        LLVMValueRef receiver = lowerExpression(node->children[0].get(), error);
+        if (receiver == nullptr) return nullptr;
+        const bool structReceiver = isStructValue(node->children[0]->typeKey);
+        LLVMValueRef checked = receiver;
+        if (!structReceiver)
+        {
+            checked = checkedReceiver(receiver, error);
+            if (checked == nullptr) return nullptr;
+        }
+
+        LLVMValueRef lengthArguments[] = {checked};
+        LLVMValueRef length = buildPotentiallyThrowingCall(
+            lengthTarget->second.functionType,
+            lengthTarget->second.function,
+            lengthArguments,
+            1U,
+            "range.length",
+            error);
+        if (length == nullptr) return nullptr;
+
+        LLVMValueRef writtenStart = lowerExpression(node->children[1].get(), error);
+        LLVMValueRef writtenEnd = lowerExpression(node->children[2].get(), error);
+        if (writtenStart == nullptr || writtenEnd == nullptr) return nullptr;
+
+        constexpr std::uint64_t hasStartBit = 1U;
+        constexpr std::uint64_t startFromEndBit = 2U;
+        constexpr std::uint64_t hasEndBit = 4U;
+        constexpr std::uint64_t endFromEndBit = 8U;
+        constexpr std::uint64_t boundsProvenBit = 16U;
+        LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+        LLVMValueRef zero = LLVMConstInt(i32, 0U, 0);
+        LLVMValueRef start = (node->integerValue & hasStartBit) != 0U
+            ? writtenStart : zero;
+        if ((node->integerValue & startFromEndBit) != 0U)
+            start = LLVMBuildSub(builder_, length, start, "range.start.fromend");
+        LLVMValueRef end = (node->integerValue & hasEndBit) != 0U
+            ? writtenEnd : length;
+        if ((node->integerValue & endFromEndBit) != 0U)
+            end = LLVMBuildSub(builder_, length, end, "range.end.fromend");
+
+        if ((node->integerValue & boundsProvenBit) == 0U)
+        {
+            LLVMValueRef lengthValid = LLVMBuildICmp(
+                builder_, LLVMIntSGE, length, zero, "range.length.nonnegative");
+            LLVMValueRef startValid = LLVMBuildICmp(
+                builder_, LLVMIntSGE, start, zero, "range.start.nonnegative");
+            LLVMValueRef ordered = LLVMBuildICmp(
+                builder_, LLVMIntSLE, start, end, "range.ordered");
+            LLVMValueRef endValid = LLVMBuildICmp(
+                builder_, LLVMIntSLE, end, length, "range.end.inbounds");
+            LLVMValueRef valid = LLVMBuildAnd(
+                builder_, lengthValid, startValid, "range.valid.length-start");
+            valid = LLVMBuildAnd(builder_, valid, ordered, "range.valid.order");
+            valid = LLVMBuildAnd(builder_, valid, endValid, "range.valid.end");
+            if (!emitGuard(valid, LlvmTrapReason::BoundsViolation, "range.slice", error))
+                return nullptr;
+        }
+
+        LLVMValueRef count = LLVMBuildSub(builder_, end, start, "range.count");
+        const std::vector<LLVMValueRef> sliceArguments = {start, count};
+        return lowerCall(node, error, checked, &sliceArguments);
+    }
+
     LLVMValueRef lowerCall(
         const frontend::ProjectOopMirNode* node,
         std::string& error,
-        LLVMValueRef receiverOverride = nullptr)
+        LLVMValueRef receiverOverride = nullptr,
+        const std::vector<LLVMValueRef>* argumentOverrides = nullptr)
     {
         const auto found = functions_.find(node->calleeName);
         if (found == functions_.end())
@@ -12839,9 +12928,16 @@ private:
         }
         std::vector<LLVMValueRef> sourceArguments;
         sourceArguments.reserve(node->children.size() - 1);
+        if (argumentOverrides != nullptr &&
+            argumentOverrides->size() != node->children.size() - 1U)
+        {
+            return failValue(error, "direct call argument override count does not match MIR operands");
+        }
         for (std::size_t index = 1; index < node->children.size(); ++index)
         {
-            LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+            LLVMValueRef value = argumentOverrides != nullptr
+                ? (*argumentOverrides)[index - 1U]
+                : lowerExpression(node->children[index].get(), error);
             if (value == nullptr)
             {
                 return nullptr;

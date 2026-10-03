@@ -158,6 +158,12 @@ enum class ProjectOopHirNodeKind
     ArrayElementAddress,
     RangeArrayElementValue,
     RangeArrayElementAddress,
+    // NativeSharp 3.0 T01-F04. children = [receiver, written-start-or-zero,
+    // written-end-or-zero]. memberOrdinal is Slice(int,int), secondaryMemberOrdinal is
+    // Length(). integerValue is a four-bit endpoint mask: has-start, start-from-end, has-end,
+    // end-from-end; bit 4 records a compile-time bounds proof. The backend reuses one evaluated
+    // receiver for both protocol calls.
+    RangeSlice,
     StringLength,
     StringElementValue,
     // ID 129. `ToString()` de un enum: el NOMBRE del enumerador.
@@ -769,6 +775,8 @@ private:
     const MethodCoreBinding* coreBinding(const ast::AstNode* syntax) const noexcept;
     const MethodOptionalCarrierBinding* optionalCarrierBinding(
         const ast::AstNode* syntax) const noexcept;
+    const MethodRangeSliceBinding* rangeSliceBinding(
+        const ast::AstNode* syntax) const noexcept;
     const MethodExceptionBinding* exceptionBinding(const ast::AstNode* syntax) const noexcept;
     const MethodCleanupRegion* cleanupRegion(const ast::AstNode* syntax) const noexcept;
     const MethodUsingBinding* usingBinding(const ast::AstNode* syntax) const noexcept;
@@ -832,6 +840,8 @@ private:
     std::unordered_map<const ast::AstNode*, const MethodCoreBinding*> coreBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodOptionalCarrierBinding*>
         optionalCarrierBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodRangeSliceBinding*>
+        rangeSliceBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodExceptionBinding*> exceptionBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodCleanupRegion*> cleanupRegionBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodUsingBinding*> usingBindingBySyntax_;

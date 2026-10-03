@@ -744,6 +744,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::ArrayElementAddress: return "array-element-address";
         case ProjectOopMirNodeKind::RangeArrayElementLoad: return "range-array-element-load";
         case ProjectOopMirNodeKind::RangeArrayElementAddress: return "range-array-element-address";
+        case ProjectOopMirNodeKind::RangeSlice: return "range-slice";
         case ProjectOopMirNodeKind::StringLength: return "string-length";
         case ProjectOopMirNodeKind::StringElementLoad: return "string-element-load";
         case ProjectOopMirNodeKind::EnumName: return "enum-name";
@@ -2566,6 +2567,28 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             else if (node->kind == ProjectOopHirNodeKind::RangeArrayElementValue)
                 result->kind = ProjectOopMirNodeKind::RangeArrayElementLoad;
             else result->kind = ProjectOopMirNodeKind::RangeArrayElementAddress;
+            break;
+        }
+        case ProjectOopHirNodeKind::RangeSlice:
+        {
+            if (!node->memberOrdinal.has_value() ||
+                !node->secondaryMemberOrdinal.has_value() || hirModel_ == nullptr)
+            {
+                error = "T01-F04 range slice has no selected Length/Slice protocol methods";
+                return nullptr;
+            }
+            const ProjectOopHirFunction* slice =
+                hirModel_->functionForMember(*node->memberOrdinal);
+            const ProjectOopHirFunction* length =
+                hirModel_->functionForMember(*node->secondaryMemberOrdinal);
+            if (slice == nullptr || length == nullptr || slice->isStatic || length->isStatic)
+            {
+                error = "T01-F04 range slice protocol methods are not direct instance call targets";
+                return nullptr;
+            }
+            result->kind = ProjectOopMirNodeKind::RangeSlice;
+            result->calleeName = slice->mangledName;
+            result->secondaryCalleeName = length->mangledName;
             break;
         }
         case ProjectOopHirNodeKind::Unary: result->kind = ProjectOopMirNodeKind::Unary; break;

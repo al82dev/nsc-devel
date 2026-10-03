@@ -2145,6 +2145,12 @@ ProjectMethodBodyModel::optionalCarrierBindings() const noexcept
     return optionalCarrierBindings_;
 }
 
+std::span<const MethodRangeSliceBinding>
+ProjectMethodBodyModel::rangeSliceBindings() const noexcept
+{
+    return rangeSliceBindings_;
+}
+
 std::span<const MethodCallBinding> ProjectMethodBodyModel::calls() const noexcept
 {
     return calls_;
@@ -7518,6 +7524,214 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
                 if (caller == nullptr) break;
                 const std::size_t accessingTypeOrdinal = caller->declaringTypeOrdinal;
+                const ast::AstNode* singleIndex = !indexSyntaxes.empty()
+                    ? indexSyntaxes.front() : expression->second();
+                if (indices.size() == 1 && singleIndex != nullptr &&
+                    singleIndex->kind() == ast::AstNodeKind::RangeExpression)
+                {
+                    // NativeSharp 3.0 T01-F04. Range indexing is a statically resolved structural
+                    // protocol, not a hidden allocation and not a magical Range carrier:
+                    //
+                    //     receiver[start..end]
+                    //       -> receiver.Slice(resolvedStart, resolvedEnd - resolvedStart)
+                    //
+                    // `Length()` supplies omitted/from-end endpoints. Both methods are bound now,
+                    // but HIR keeps them in one node so an effectful receiver is evaluated once.
+                    const bool interfaceReceiver = interfaceModel_ != nullptr &&
+                        interfaceModel_->isInterface(*receiverType);
+                    const auto protocolCandidates = [&](std::string_view name)
+                    {
+                        std::vector<std::size_t> candidates;
+                        if (memberModel_ == nullptr || nameLookup_ == nullptr ||
+                            inheritanceModel_ == nullptr || interfaceReceiver)
+                        {
+                            return candidates;
+                        }
+                        for (const std::size_t ordinal : memberCandidatesForType(*receiverType, name))
+                        {
+                            if (ordinal >= memberModel_->members().size()) continue;
+                            const ClassMemberSymbol& member = memberModel_->members()[ordinal];
+                            if (member.kind != ClassMemberKind::Method || member.isStatic ||
+                                !ProjectMemberAccessibility::isAccessible(
+                                    member, accessingTypeOrdinal, *receiverType,
+                                    *nameLookup_, *inheritanceModel_))
+                            {
+                                continue;
+                            }
+                            candidates.push_back(ordinal);
+                        }
+                        return candidates;
+                    };
+
+                    const std::vector<ExpressionResult> noArguments;
+                    ExpressionResult lengthResult = resolveSyntheticCall(
+                        expression, methodMemberOrdinal, scopeOrdinal, "Length",
+                        protocolCandidates("Length"), noArguments,
+                        expression->first(), base.typeKey, receiverType,
+                        false, false, diagnostics, false, base.readonlyReceiver);
+                    const MethodCallBinding lengthCall = calls_.empty()
+                        ? MethodCallBinding{} : calls_.back();
+
+                    ExpressionResult integerArgument;
+                    integerArgument.typeKey = "builtin:int";
+                    integerArgument.valid = true;
+                    const std::vector<ExpressionResult> sliceArguments = {
+                        integerArgument, integerArgument};
+                    ExpressionResult sliceResult = resolveSyntheticCall(
+                        expression, methodMemberOrdinal, scopeOrdinal, "Slice",
+                        protocolCandidates("Slice"), sliceArguments,
+                        expression->first(), base.typeKey, receiverType,
+                        false, false, diagnostics, false, base.readonlyReceiver);
+                    const MethodCallBinding sliceCall = calls_.empty()
+                        ? MethodCallBinding{} : calls_.back();
+
+                    const bool validProtocol = lengthResult.valid &&
+                        lengthResult.typeKey == "builtin:int" &&
+                        lengthCall.resolution == MethodCallResolutionKind::Resolved &&
+                        lengthCall.selectedMemberOrdinal.has_value() &&
+                        sliceResult.valid &&
+                        sliceCall.resolution == MethodCallResolutionKind::Resolved &&
+                        sliceCall.selectedMemberOrdinal.has_value();
+                    if (!validProtocol)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidIndex,
+                            diagnostics::DiagnosticSeverity::Error,
+                            singleIndex->range(),
+                            "range indexing requires accessible instance methods 'int Length()' "
+                            "and 'Slice(int start, int length)'");
+                        break;
+                    }
+
+                    const ClassMemberSymbol& lengthMember =
+                        memberModel_->members()[*lengthCall.selectedMemberOrdinal];
+                    const ClassMemberSymbol& sliceMember =
+                        memberModel_->members()[*sliceCall.selectedMemberOrdinal];
+                    if (lengthMember.isReferenceReturn || sliceMember.isReferenceReturn)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidIndex,
+                            diagnostics::DiagnosticSeverity::Error,
+                            singleIndex->range(),
+                            "the Length/Slice range protocol methods must return by value");
+                        break;
+                    }
+                    if (lengthMember.isVirtual || lengthMember.isOverride || lengthMember.isAbstract ||
+                        sliceMember.isVirtual || sliceMember.isOverride || sliceMember.isAbstract)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidIndex,
+                            diagnostics::DiagnosticSeverity::Error,
+                            singleIndex->range(),
+                            "the Length/Slice range protocol is statically dispatched; virtual, "
+                            "override, abstract and interface protocol members are not permitted");
+                        break;
+                    }
+
+                    const auto analyzedEndpoint = [&](const ast::AstNode* syntax)
+                    {
+                        ExpressionResult endpoint;
+                        if (syntax == nullptr) return endpoint;
+                        for (auto iterator = expressionTypes_.rbegin();
+                             iterator != expressionTypes_.rend(); ++iterator)
+                        {
+                            if (iterator->syntax != syntax) continue;
+                            endpoint.typeKey = iterator->typeKey;
+                            endpoint.integerConstant = iterator->integerConstant;
+                            endpoint.valid = !isErrorType(endpoint.typeKey);
+                            return endpoint;
+                        }
+                        return endpoint;
+                    };
+                    const ast::AstNode* writtenStart = singleIndex->first();
+                    const ast::AstNode* writtenEnd = singleIndex->second();
+                    const bool startFromEnd = writtenStart != nullptr &&
+                        writtenStart->kind() == ast::AstNodeKind::FromEndExpression;
+                    const bool endFromEnd = writtenEnd != nullptr &&
+                        writtenEnd->kind() == ast::AstNodeKind::FromEndExpression;
+                    const ast::AstNode* startValue = startFromEnd ? writtenStart->first() : writtenStart;
+                    const ast::AstNode* endValue = endFromEnd ? writtenEnd->first() : writtenEnd;
+                    const ExpressionResult startResult = analyzedEndpoint(startValue);
+                    const ExpressionResult endResult = analyzedEndpoint(endValue);
+                    const ProjectImplicitConversion startConversion = startValue != nullptr
+                        ? classifyImplicit(startResult.typeKey, "builtin:int", startResult.integerConstant)
+                        : ProjectImplicitConversion{};
+                    const ProjectImplicitConversion endConversion = endValue != nullptr
+                        ? classifyImplicit(endResult.typeKey, "builtin:int", endResult.integerConstant)
+                        : ProjectImplicitConversion{};
+                    if ((startValue != nullptr && (!startResult.valid || !startConversion.exists())) ||
+                        (endValue != nullptr && (!endResult.valid || !endConversion.exists())))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidIndex,
+                            diagnostics::DiagnosticSeverity::Error,
+                            singleIndex->range(),
+                            "range endpoints must convert implicitly to int");
+                        break;
+                    }
+                    const bool negativeStart = startValue != nullptr && !startFromEnd &&
+                        startResult.integerConstant.has_value() &&
+                        startResult.integerConstant->isNegative;
+                    const bool negativeEnd = endValue != nullptr && !endFromEnd &&
+                        endResult.integerConstant.has_value() &&
+                        endResult.integerConstant->isNegative;
+                    if (negativeStart || negativeEnd)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::ConstantIndexOutOfBounds,
+                            diagnostics::DiagnosticSeverity::Error,
+                            negativeStart ? writtenStart->range() : writtenEnd->range(),
+                            "a range endpoint cannot be negative");
+                        break;
+                    }
+
+                    MethodRangeSliceBinding binding;
+                    binding.syntax = expression;
+                    binding.methodMemberOrdinal = methodMemberOrdinal;
+                    binding.scopeOrdinal = scopeOrdinal;
+                    binding.receiverSyntax = expression->first();
+                    binding.receiverTypeKey = base.typeKey;
+                    binding.receiverTypeOrdinal = receiverType;
+                    binding.lengthMemberOrdinal = *lengthCall.selectedMemberOrdinal;
+                    binding.sliceMemberOrdinal = *sliceCall.selectedMemberOrdinal;
+                    binding.resultTypeKey = sliceResult.typeKey;
+                    binding.startSyntax = startValue;
+                    binding.endSyntax = endValue;
+                    binding.startConversion = startConversion;
+                    binding.endConversion = endConversion;
+                    binding.hasStart = writtenStart != nullptr;
+                    binding.startFromEnd = startFromEnd;
+                    binding.hasEnd = writtenEnd != nullptr;
+                    binding.endFromEnd = endFromEnd;
+                    const auto isZero = [](const ExpressionResult& endpoint)
+                    {
+                        return endpoint.integerConstant.has_value() &&
+                            !endpoint.integerConstant->isNegative &&
+                            endpoint.integerConstant->value == 0U;
+                    };
+                    enum class ProvenEndpoint { Zero, Length, Other };
+                    const ProvenEndpoint provenStart = writtenStart == nullptr
+                        ? ProvenEndpoint::Zero
+                        : isZero(startResult)
+                            ? (startFromEnd ? ProvenEndpoint::Length : ProvenEndpoint::Zero)
+                            : ProvenEndpoint::Other;
+                    const ProvenEndpoint provenEnd = writtenEnd == nullptr
+                        ? ProvenEndpoint::Length
+                        : isZero(endResult)
+                            ? (endFromEnd ? ProvenEndpoint::Length : ProvenEndpoint::Zero)
+                            : ProvenEndpoint::Other;
+                    binding.boundsStaticallyProven =
+                        (provenStart == ProvenEndpoint::Zero &&
+                         (provenEnd == ProvenEndpoint::Zero ||
+                          provenEnd == ProvenEndpoint::Length)) ||
+                        (provenStart == ProvenEndpoint::Length &&
+                         provenEnd == ProvenEndpoint::Length);
+                    rangeSliceBindings_.push_back(std::move(binding));
+                    result = sliceResult;
+                    result.assignable = false;
+                    result.addressable = false;
+                    break;
+                }
                 const std::vector<std::size_t> getters = stage38AccessorCandidates(
                     *receiverType, "get_Item", false, true, false,
                     accessingTypeOrdinal, *receiverType);

@@ -145,6 +145,8 @@ enum class ProjectOopMirNodeKind
     ArrayElementAddress,
     RangeArrayElementLoad,
     RangeArrayElementAddress,
+    // T01-F04 structural Length/Slice protocol; see the HIR node for child/flag layout.
+    RangeSlice,
     StringLength,
     StringElementLoad,
     // ID 129. Ver ProjectOopHirNodeKind::EnumName para la forma y el porque.

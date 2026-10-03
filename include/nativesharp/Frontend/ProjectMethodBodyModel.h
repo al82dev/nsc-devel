@@ -1250,6 +1250,35 @@ struct MethodOptionalCarrierBinding final
     std::size_t uncheckedValueMemberOrdinal = 0;
 };
 
+// NativeSharp 3.0 T01-F04. A range index is structural sugar over two public instance
+// methods on the receiver: `int Length()` and `Slice(int start, int length)`.  The binding
+// keeps both selected methods together because lowering must evaluate the receiver exactly once
+// and reuse that physical value for both calls.  Endpoints remain source syntax so their normal
+// evaluation order and conversions survive into HIR.
+struct MethodRangeSliceBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    std::size_t methodMemberOrdinal = 0;
+    std::size_t scopeOrdinal = 0;
+    const ast::AstNode* receiverSyntax = nullptr;
+    std::string receiverTypeKey;
+    std::optional<std::size_t> receiverTypeOrdinal;
+    std::size_t lengthMemberOrdinal = 0;
+    std::size_t sliceMemberOrdinal = 0;
+    std::string resultTypeKey;
+    const ast::AstNode* startSyntax = nullptr;
+    const ast::AstNode* endSyntax = nullptr;
+    ProjectImplicitConversion startConversion;
+    ProjectImplicitConversion endConversion;
+    bool hasStart = false;
+    bool startFromEnd = false;
+    bool hasEnd = false;
+    bool endFromEnd = false;
+    // The endpoints are one of 0..0, 0..Length or Length..Length. These are valid for every
+    // protocol-conforming non-negative Length and need no runtime range guard, even at O0.
+    bool boundsStaticallyProven = false;
+};
+
 enum class MethodCallResolutionKind
 {
     Resolved,
@@ -1384,6 +1413,7 @@ public:
     std::span<const MethodDelegateBinding> delegateBindings() const noexcept;
     std::span<const MethodEventBinding> eventBindings() const noexcept;
     std::span<const MethodOptionalCarrierBinding> optionalCarrierBindings() const noexcept;
+    std::span<const MethodRangeSliceBinding> rangeSliceBindings() const noexcept;
     std::span<const MethodCallBinding> calls() const noexcept;
     std::span<const NamespaceFunctionCallBinding> namespaceFunctionCalls() const noexcept;
     const NamespaceFunctionCallBinding* namespaceFunctionCall(
@@ -2096,6 +2126,7 @@ private:
     std::size_t currentCatchDepth_ = 0;
     std::vector<MethodEventBinding> eventBindings_;
     std::vector<MethodOptionalCarrierBinding> optionalCarrierBindings_;
+    std::vector<MethodRangeSliceBinding> rangeSliceBindings_;
     std::vector<MethodCallBinding> calls_;
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
     std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;

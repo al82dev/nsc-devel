@@ -1033,6 +1033,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::ArrayElementAddress: return "array-element-address";
         case ProjectOopHirNodeKind::RangeArrayElementValue: return "range-array-element-value";
         case ProjectOopHirNodeKind::RangeArrayElementAddress: return "range-array-element-address";
+        case ProjectOopHirNodeKind::RangeSlice: return "range-slice";
         case ProjectOopHirNodeKind::StringLength: return "string-length";
         case ProjectOopHirNodeKind::StringElementValue: return "string-element-value";
         case ProjectOopHirNodeKind::EnumName: return "enum-name";
@@ -1309,6 +1310,7 @@ bool ProjectOopHirModel::buildImpl(
         indexBySyntax(eventBindingBySyntax_, methodBodyModel.eventBindings());
         indexBySyntax(coreBindingBySyntax_, methodBodyModel.coreBindings());
         indexBySyntax(optionalCarrierBindingBySyntax_, methodBodyModel.optionalCarrierBindings());
+        indexBySyntax(rangeSliceBindingBySyntax_, methodBodyModel.rangeSliceBindings());
         indexBySyntax(exceptionBindingBySyntax_, methodBodyModel.exceptionBindings());
         indexBySyntax(cleanupRegionBySyntax_, methodBodyModel.cleanupRegions());
         indexBySyntax(usingBindingBySyntax_, methodBodyModel.usingBindings());
@@ -4492,6 +4494,77 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
 
         case ast::AstNodeKind::IndexExpression:
         {
+            if (const MethodRangeSliceBinding* range = rangeSliceBinding(expression);
+                range != nullptr)
+            {
+                if (addressContext)
+                {
+                    error = "T01-F04 a range slice is a value and cannot be used as assignable storage";
+                    return nullptr;
+                }
+                if (memberModel_ == nullptr ||
+                    range->lengthMemberOrdinal >= memberModel_->members().size() ||
+                    range->sliceMemberOrdinal >= memberModel_->members().size())
+                {
+                    error = "T01-F04 range protocol lost its selected Length/Slice members";
+                    return nullptr;
+                }
+                auto receiver = lowerReceiver(
+                    range->receiverSyntax, range->receiverTypeKey, memberOrdinal, error);
+                if (receiver == nullptr) return nullptr;
+
+                const auto lowerEndpoint = [&](
+                    const ast::AstNode* syntax,
+                    const ProjectImplicitConversion& conversion)
+                    -> std::unique_ptr<ProjectOopHirNode>
+                {
+                    if (syntax == nullptr)
+                    {
+                        auto zero = makeNode(
+                            ProjectOopHirNodeKind::IntegerConstant,
+                            expression,
+                            "builtin:int");
+                        zero->integerValue = 0;
+                        return zero;
+                    }
+                    auto endpoint = lowerExpression(syntax, memberOrdinal, false, error);
+                    if (endpoint == nullptr) return nullptr;
+                    if (conversion.exists() &&
+                        conversion.kind != ProjectConversionKind::Identity)
+                    {
+                        endpoint = wrapImplicitConversion(
+                            std::move(endpoint), conversion, syntax);
+                    }
+                    return endpoint;
+                };
+
+                auto start = lowerEndpoint(range->startSyntax, range->startConversion);
+                auto end = lowerEndpoint(range->endSyntax, range->endConversion);
+                if (start == nullptr || end == nullptr) return nullptr;
+
+                const ClassMemberSymbol& sliceMember =
+                    memberModel_->members()[range->sliceMemberOrdinal];
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::RangeSlice,
+                    expression,
+                    range->resultTypeKey);
+                node->elementTypeKey = range->receiverTypeKey;
+                node->memberOrdinal = range->sliceMemberOrdinal;
+                node->secondaryMemberOrdinal = range->lengthMemberOrdinal;
+                node->referenceResult = sliceMember.isReferenceReturn;
+                node->integerValue =
+                    (range->hasStart ? 1U : 0U) |
+                    (range->startFromEnd ? 2U : 0U) |
+                    (range->hasEnd ? 4U : 0U) |
+                    (range->endFromEnd ? 8U : 0U) |
+                    (range->boundsStaticallyProven ? 16U : 0U);
+                node->argumentCount = 2;
+                node->argumentParameterOrdinals = {0U, 1U};
+                node->children.push_back(std::move(receiver));
+                node->children.push_back(std::move(start));
+                node->children.push_back(std::move(end));
+                return node;
+            }
             const MethodCoreBinding* core = coreBinding(expression);
             if (core != nullptr &&
                 (core->kind == MethodCoreOperationKind::ArrayElement ||
@@ -4505,10 +4578,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 auto receiver = lowerExpression(expression->first(), memberOrdinal, false, error);
                 if (receiver == nullptr) return nullptr;
-                const ast::AstNode* indexSyntax = !expression->children().empty()
-                    ? expression->children().front() : expression->second();
-                const bool fromEnd = indexSyntax != nullptr &&
-                    indexSyntax->kind() == ast::AstNodeKind::FromEndExpression;
                 std::vector<const ast::AstNode*> indexSyntaxes;
                 if (!expression->children().empty())
                     indexSyntaxes.assign(expression->children().begin(), expression->children().end());
@@ -4528,12 +4597,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 auto node = makeNode(kind, expression, core->resultTypeKey);
                 node->elementTypeKey = core->elementTypeKey;
-                node->booleanValue = fromEnd;
                 node->nativeArrayRank = core->kind == MethodCoreOperationKind::RangeArrayElement
                     ? indexSyntaxes.size() : 1U;
                 node->children.push_back(std::move(receiver));
-                for (const ast::AstNode* syntax : indexSyntaxes)
+                for (std::size_t dimension = 0; dimension < indexSyntaxes.size(); ++dimension)
                 {
+                    const ast::AstNode* syntax = indexSyntaxes[dimension];
+                    const bool fromEnd = syntax != nullptr &&
+                        syntax->kind() == ast::AstNodeKind::FromEndExpression;
+                    if (dimension == 0U) node->booleanValue = fromEnd;
+                    if (fromEnd && dimension < 64U)
+                        node->integerValue |= (std::uint64_t{1} << dimension);
                     auto index = lowerExpression(
                         fromEnd ? syntax->first() : syntax, memberOrdinal, false, error);
                     if (index == nullptr) return nullptr;
@@ -7570,6 +7644,15 @@ const MethodOptionalCarrierBinding* ProjectOopHirModel::optionalCarrierBinding(
 {
     const auto& index = lookupSource_ == nullptr
         ? optionalCarrierBindingBySyntax_ : lookupSource_->optionalCarrierBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
+}
+
+const MethodRangeSliceBinding* ProjectOopHirModel::rangeSliceBinding(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto& index = lookupSource_ == nullptr
+        ? rangeSliceBindingBySyntax_ : lookupSource_->rangeSliceBindingBySyntax_;
     const auto found = index.find(syntax);
     return found == index.end() ? nullptr : found->second;
 }

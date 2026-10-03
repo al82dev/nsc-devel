@@ -923,6 +923,21 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_ns3_t01_null_aware_operator_tests)
 
     add_executable(
+        nsc_ns3_t01_range_index_tests
+        tests/unit/NativeSharp3T01RangeIndexTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t01_range_index_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_ns3_t01_range_index_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_ns3_t01_range_index_tests
+        PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t01_range_index_tests)
+    add_test(
+        NAME nsc.ns3.t01.range-index
+        COMMAND nsc_ns3_t01_range_index_tests)
+
+    add_executable(
         nsc_ns3_t02_aggregate_tests
         tests/unit/NativeSharp3T02AggregateTests.cpp)
     target_link_libraries(
