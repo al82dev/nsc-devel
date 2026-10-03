@@ -72,7 +72,7 @@ clone salvo opt-in. Esto evita que azúcar de superficie esconda asignaciones o 
 
 ## Límite consciente vigente
 
-F01–F04 y las verticales históricas de promoted fields/spread ya no son helpers aislados: compilan
+F01–F05 y la vertical histórica de spread ya no son helpers aislados: compilan
 y ejecutan hasta PE x64. No se afirma todavía el gate T02 completo. Los partial moves, drops y
 drop flags siguen perteneciendo a T06; debugger/LSP corresponden a la tanda 29.
 
@@ -124,6 +124,6 @@ copies, and records acquire generated behavior only through an explicit derive.
 ## Deliberate boundary
 
 Tuples and native records now reach executable OOP/HIR/MIR/LLVM code, and record derives survive
-NSMETA 1.26 precompiled consumption. Nominal `Deconstruct` is complete. Promoted fields, spreads,
+NSMETA 1.26 precompiled consumption. Nominal `Deconstruct` and promoted fields are complete. Spreads,
 owning/move-only partial moves, drops, and tooling remain explicit dependencies; the complete T02
 gate is therefore not claimed yet.

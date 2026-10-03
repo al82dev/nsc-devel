@@ -180,3 +180,11 @@ anidados, rechazo de Clone sobre ownership, semántica definida para records vac
 de record/derives en NSMETA 1.26. La batería exclusiva `nsc_ns3_t02_native_record_tests` pasa
 12/12 con O0 y NSLink local; el consumidor precompilado ejecuta con exit 42. F05 y F06 conservan
 su tracking independiente y no se dan por terminados mediante este cierre.
+
+## Cierre itemizado F05 — 2026-10-03
+
+La sintaxis de parámetros primarios quedó cerrada como contrato independiente: el desazucarado
+produce campos y constructor ordinarios, conserva orden, defaults, `readonly`, accesibilidad,
+genéricos, layout y nombres CodeView, y rechaza colisiones u ownership invisible. La batería
+exclusiva `nsc_ns3_t02_promoted_field_tests` pasa 11/11 con O0 y NSLink local. F06 conserva su
+tracking independiente y no se da por terminado mediante este cierre.
