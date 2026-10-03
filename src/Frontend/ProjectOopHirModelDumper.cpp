@@ -65,6 +65,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
     if (node->kind == ProjectOopHirNodeKind::BooleanConstant) output << " value=" << (node->booleanValue ? "true" : "false");
     if (node->referenceLocal) output << " reference-local=true";
     if (node->referenceResult) output << " reference-result=true";
+    if (node->nullConditionalCall) output << " null-conditional=true";
     if (node->stackPromotedObject) output << " stack-promoted=true";
     if (node->volatileAccess) output << " volatile=true";
     if (!node->elementTypeKey.empty()) output << " element=" << node->elementTypeKey;

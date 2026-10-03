@@ -512,6 +512,10 @@ struct ProjectOopHirNode final
     // Item 313. A call with this bit produces an address although typeKey names the referent.
     // Value contexts add PointerLoad; address contexts preserve the call itself.
     bool referenceResult = false;
+    // T01-F03. Set only on an instance getter/method reached through `?.`.  The receiver is the
+    // first child as for every other instance call, but the backend must test it before lowering
+    // the remaining children so argument/default expressions stay lazy on the null edge.
+    bool nullConditionalCall = false;
     // Item 377. Debug information must distinguish an owner from a borrow even though both use
     // the same physical pointer representation. This is the declaration-level qualifier;
     // objectLifetimeOwnership/storageOwnership remain the independent placement axes.

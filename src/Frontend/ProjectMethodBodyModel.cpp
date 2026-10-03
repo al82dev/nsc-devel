@@ -6608,6 +6608,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.valid = false;
                 break;
             }
+            // A method group has no result type until overload resolution runs in analyzeCall.
+            // Keep it alive here and validate the selected method's result at the end of that
+            // routine.  Arguments remain semantic branches and the backend keeps them off the
+            // null edge through the nullConditionalCall bit.
+            if (result.methodGroup)
+            {
+                result.assignable = false;
+                result.addressable = false;
+                break;
+            }
             const bool nullableResult = ProjectTypeConversion::isPointer(result.typeKey) ||
                 ProjectTypeConversion::isNativeArray(result.typeKey) ||
                 result.typeKey == "builtin:string" || isAnyDelegateTypeKey(result.typeKey) ||
@@ -6619,15 +6629,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         (inheritanceModel_->isClass(*ordinal) ||
                          (interfaceModel_ != nullptr && interfaceModel_->isInterface(*ordinal)));
                 }();
-            if (!result.assignmentMemberOrdinal.has_value() || !nullableResult)
+            if (!nullableResult)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
-                    "this '?.' access requires a nullable instance field result; value members "
-                    "require the Optional<T> carrier and property/method access requires a "
-                    "captured conditional-call lowering");
+                    "this '?.' access requires a nullable field/property/method result; value "
+                    "results require the Optional<T> carrier");
                 result.valid = false;
                 break;
             }
@@ -10320,6 +10329,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     call.syntax = expression;
     call.callerMethodMemberOrdinal = methodMemberOrdinal;
     call.scopeOrdinal = scopeOrdinal;
+    const bool nullConditionalCall = expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression;
     call.explicitThis = expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
         expression->first()->first() != nullptr &&
@@ -10337,7 +10348,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (expression->first() != nullptr)
     {
         call.methodName = expression->first()->kind() == ast::AstNodeKind::IdentifierExpression ||
-                expression->first()->kind() == ast::AstNodeKind::MemberExpression
+                expression->first()->kind() == ast::AstNodeKind::MemberExpression ||
+                expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression
             ? expression->first()->text()
             : "<expression>";
     }
@@ -10608,65 +10620,79 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     std::vector<ExpressionResult> arguments;
     arguments.reserve(expression->children().size());
     bool allArgumentsValid = true;
-    for (std::size_t argumentOrdinal = 0; argumentOrdinal < expression->children().size(); ++argumentOrdinal)
+    const auto analyzeArguments = [&]
     {
-        const ast::AstNode* argument = expression->children()[argumentOrdinal];
-        ExpressionResult argumentResult;
-        if (argument->kind() == ast::AstNodeKind::LambdaExpression &&
-            !lambdaTargetTypes[argumentOrdinal].empty())
+        for (std::size_t argumentOrdinal = 0;
+             argumentOrdinal < expression->children().size(); ++argumentOrdinal)
         {
-            argumentResult = bindLambdaToDelegate(
-                argument, lambdaTargetTypes[argumentOrdinal], methodMemberOrdinal, scopeOrdinal, diagnostics);
-        }
-        else
-        {
-            argumentResult = analyzeExpression(
-                argument, methodMemberOrdinal, scopeOrdinal, diagnostics, true, false, true);
-            if (argumentResult.methodGroup && callee.methodGroup)
+            const ast::AstNode* argument = expression->children()[argumentOrdinal];
+            ExpressionResult argumentResult;
+            if (argument->kind() == ast::AstNodeKind::LambdaExpression &&
+                !lambdaTargetTypes[argumentOrdinal].empty())
             {
-                std::vector<std::string> targets;
-                for (const std::size_t candidateOrdinal : callee.methodCandidates)
+                argumentResult = bindLambdaToDelegate(
+                    argument, lambdaTargetTypes[argumentOrdinal], methodMemberOrdinal, scopeOrdinal, diagnostics);
+            }
+            else
+            {
+                argumentResult = analyzeExpression(
+                    argument, methodMemberOrdinal, scopeOrdinal, diagnostics, true, false, true);
+                if (argumentResult.methodGroup && callee.methodGroup)
                 {
-                    const ClassMemberSymbol* candidate = methodSymbol(candidateOrdinal);
-                    if (candidate == nullptr || candidate->kind != ClassMemberKind::Method) continue;
-                    const NamedArgumentMap mapping = mapArgumentsToParameters(
-                        expression->children(), *candidate, coreStringForwarding ? 1U : 0U);
-                    if (!mapping.valid || argumentOrdinal >= mapping.explicitParameterOrdinals.size())
-                        continue;
-                    const std::size_t parameterOrdinal =
-                        mapping.explicitParameterOrdinals[argumentOrdinal];
-                    if (parameterOrdinal >= candidate->parameters.size()) continue;
-                    const std::string& target = candidate->parameters[parameterOrdinal].typeKey;
-                    if (methodGroupExactlyMatchesDelegate(argumentResult, target) &&
-                        std::ranges::find(targets, target) == targets.end())
-                        targets.push_back(target);
-                }
-                if (targets.size() == 1)
-                {
-                    argumentResult = bindMethodGroupToDelegate(
-                        argument, argumentResult, targets.front(), methodMemberOrdinal,
-                        scopeOrdinal, diagnostics);
-                }
-                else
-                {
-                    diagnostics.report(
-                        targets.empty() ? diagnostics::DiagnosticId::InvalidConversion
-                                        : diagnostics::DiagnosticId::InvalidCall,
-                        diagnostics::DiagnosticSeverity::Error,
-                        argument->range(),
-                        targets.empty()
-                            ? "method group does not match any delegate parameter of '" +
-                                call.methodName + "'"
-                            : "method group argument has more than one compatible delegate target in '" +
-                                call.methodName + "'");
+                    std::vector<std::string> targets;
+                    for (const std::size_t candidateOrdinal : callee.methodCandidates)
+                    {
+                        const ClassMemberSymbol* candidate = methodSymbol(candidateOrdinal);
+                        if (candidate == nullptr || candidate->kind != ClassMemberKind::Method) continue;
+                        const NamedArgumentMap mapping = mapArgumentsToParameters(
+                            expression->children(), *candidate, coreStringForwarding ? 1U : 0U);
+                        if (!mapping.valid || argumentOrdinal >= mapping.explicitParameterOrdinals.size())
+                            continue;
+                        const std::size_t parameterOrdinal =
+                            mapping.explicitParameterOrdinals[argumentOrdinal];
+                        if (parameterOrdinal >= candidate->parameters.size()) continue;
+                        const std::string& target = candidate->parameters[parameterOrdinal].typeKey;
+                        if (methodGroupExactlyMatchesDelegate(argumentResult, target) &&
+                            std::ranges::find(targets, target) == targets.end())
+                            targets.push_back(target);
+                    }
+                    if (targets.size() == 1)
+                    {
+                        argumentResult = bindMethodGroupToDelegate(
+                            argument, argumentResult, targets.front(), methodMemberOrdinal,
+                            scopeOrdinal, diagnostics);
+                    }
+                    else
+                    {
+                        diagnostics.report(
+                            targets.empty() ? diagnostics::DiagnosticId::InvalidConversion
+                                            : diagnostics::DiagnosticId::InvalidCall,
+                            diagnostics::DiagnosticSeverity::Error,
+                            argument->range(),
+                            targets.empty()
+                                ? "method group does not match any delegate parameter of '" +
+                                    call.methodName + "'"
+                                : "method group argument has more than one compatible delegate target in '" +
+                                    call.methodName + "'");
+                    }
                 }
             }
+            if (!argumentResult.valid || argumentResult.methodGroup)
+            {
+                allArgumentsValid = false;
+            }
+            arguments.push_back(std::move(argumentResult));
         }
-        if (!argumentResult.valid || argumentResult.methodGroup)
-        {
-            allArgumentsValid = false;
-        }
-        arguments.push_back(std::move(argumentResult));
+    };
+    if (nullConditionalCall)
+    {
+        const OwnershipFlowSnapshot branchEntry = captureOwnershipFlow();
+        const OwnershipFlowSnapshot argumentState = analyzeBranchState(branchEntry, analyzeArguments);
+        commitBranchJoin(branchEntry, argumentState);
+    }
+    else
+    {
+        analyzeArguments();
     }
 
     if (callee.eventMemberOrdinal.has_value())
@@ -13127,6 +13153,30 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
 
     result.typeKey = call.resultTypeKey;
     result.valid = !isErrorType(result.typeKey);
+    if (result.valid && nullConditionalCall)
+    {
+        const bool nullableResult = ProjectTypeConversion::isPointer(result.typeKey) ||
+            ProjectTypeConversion::isNativeArray(result.typeKey) ||
+            result.typeKey == "builtin:string" || isAnyDelegateTypeKey(result.typeKey) ||
+            [&]
+            {
+                const std::optional<std::size_t> ordinal =
+                    referenceTypeOrdinalForTypeKey(result.typeKey);
+                return ordinal.has_value() && inheritanceModel_ != nullptr &&
+                    (inheritanceModel_->isClass(*ordinal) ||
+                     (interfaceModel_ != nullptr && interfaceModel_->isInterface(*ordinal)));
+            }();
+        if (!nullableResult)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "a null-conditional method must return a nullable pointer/reference carrier; "
+                "value and void results require Optional<T>");
+            result.valid = false;
+        }
+    }
     calls_.push_back(std::move(call));
     return result;
 }

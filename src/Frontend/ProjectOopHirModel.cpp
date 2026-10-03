@@ -3487,7 +3487,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
     const auto lowerResolvedCall = [&](
         const MethodCallBinding* binding,
         const std::vector<const ast::AstNode*>& argumentSyntaxes,
-        std::unique_ptr<ProjectOopHirNode> preloweredLast = nullptr)
+        std::unique_ptr<ProjectOopHirNode> preloweredLast = nullptr,
+        bool nullConditional = false)
         -> std::unique_ptr<ProjectOopHirNode>
     {
         if (binding == nullptr || binding->resolution != MethodCallResolutionKind::Resolved ||
@@ -3548,6 +3549,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         node->memberOrdinal = selectedMemberOrdinal;
         node->baseReceiver = binding->baseReceiver;
         node->interfaceDispatch = interfaceDispatch;
+        node->nullConditionalCall = nullConditional;
         if (interfaceDispatch) node->targetTypeOrdinal = binding->receiverTypeOrdinal;
         if (!binding->staticCall)
         {
@@ -3690,6 +3692,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             {
                 error = "a null-conditional access produces a value, not addressable storage";
                 return nullptr;
+            }
+            if (const MethodCallBinding* accessorCall = accessorGetterBinding(expression);
+                accessorCall != nullptr)
+            {
+                auto call = lowerResolvedCall(accessorCall, {}, nullptr, true);
+                if (call == nullptr) return nullptr;
+                return call;
             }
             const MethodNameBinding* binding = nameBinding(expression);
             if (binding == nullptr || binding->candidateMemberOrdinals.size() != 1 ||
@@ -6209,6 +6218,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 binding->staticCall ? ProjectOopHirNodeKind::StaticCall : ProjectOopHirNodeKind::InstanceCall,
                 expression,
                 binding->resultTypeKey);
+            node->nullConditionalCall = expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression;
             node->memberOrdinal = selectedMemberOrdinal;
             node->baseReceiver = binding->baseReceiver;
             node->interfaceDispatch = interfaceDispatch;
@@ -7068,6 +7079,7 @@ const MethodCallBinding* ProjectOopHirModel::accessorGetterBinding(
         // IndexExpression -- and all three are calls once the model has resolved them.
         case ast::AstNodeKind::IdentifierExpression:
         case ast::AstNodeKind::MemberExpression:
+        case ast::AstNodeKind::NullConditionalMemberExpression:
         case ast::AstNodeKind::IndexExpression:
             break;
         default:

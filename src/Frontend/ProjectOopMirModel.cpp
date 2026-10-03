@@ -1828,6 +1828,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->booleanValue = node->booleanValue;
     result->referenceLocal = node->referenceLocal;
     result->referenceResult = node->referenceResult;
+    result->nullConditionalCall = node->nullConditionalCall;
     result->ownership = node->ownership;
     result->automaticDestruction = node->automaticDestruction;
     result->variableLengthArray = node->variableLengthArray;

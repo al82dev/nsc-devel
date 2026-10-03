@@ -412,6 +412,8 @@ struct ProjectOopMirNode final
     bool referenceLocal = false;
     // Item 313. Mirrors ProjectOopHirNode::referenceResult for physical call ABI selection.
     bool referenceResult = false;
+    // T01-F03. Mirrors ProjectOopHirNode::nullConditionalCall.
+    bool nullConditionalCall = false;
     // Item 377. Retained for CodeView/PDB ownership and borrow visualization.
     sema::OwnershipKind ownership = sema::OwnershipKind::None;
     // Item 378. Scope-bound destruction remains visible to late debug-info lowering.

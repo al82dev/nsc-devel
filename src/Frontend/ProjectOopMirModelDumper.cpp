@@ -127,6 +127,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
                << " preserve=" << (node->booleanValue ? "true" : "false");
     if (node->referenceLocal) output << " reference-local=true";
     if (node->referenceResult) output << " reference-result=true";
+    if (node->nullConditionalCall) output << " null-conditional=true";
     if (node->ownership != sema::OwnershipKind::None)
         output << " ownership=" << sema::ownershipKindName(node->ownership);
     if (node->automaticDestruction) output << " destruction=scope-bound";

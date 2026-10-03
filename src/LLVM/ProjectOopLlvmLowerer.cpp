@@ -9964,13 +9964,19 @@ private:
             case frontend::ProjectOopMirNodeKind::CheckedReferenceCast:
                 return lowerCheckedReferenceCast(node, error);
             case frontend::ProjectOopMirNodeKind::DirectInstanceCall:
-                return lowerCall(node, error);
+                return node->nullConditionalCall
+                    ? lowerNullConditionalCall(node, error)
+                    : lowerCall(node, error);
             case frontend::ProjectOopMirNodeKind::DirectStaticCall:
                 return lowerStaticCall(node, error);
             case frontend::ProjectOopMirNodeKind::VirtualInstanceCall:
-                return lowerVirtualCall(node, error);
+                return node->nullConditionalCall
+                    ? lowerNullConditionalCall(node, error)
+                    : lowerVirtualCall(node, error);
             case frontend::ProjectOopMirNodeKind::InterfaceInstanceCall:
-                return lowerInterfaceCall(node, error);
+                return node->nullConditionalCall
+                    ? lowerNullConditionalCall(node, error)
+                    : lowerInterfaceCall(node, error);
             case frontend::ProjectOopMirNodeKind::TemporaryAddress:
             {
                 // C6 "struct members": give a struct temporary a home, and hand back its address.
@@ -12732,7 +12738,62 @@ private:
         return true;
     }
 
-    LLVMValueRef lowerCall(const frontend::ProjectOopMirNode* node, std::string& error)
+    // T01-F03. `?.` shares the ordinary direct/virtual/interface call lowerers.  Only the
+    // scheduling differs: evaluate the receiver, branch on null, and lower every argument plus
+    // the actual dispatch inside the non-null block.  This makes effectful arguments lazy and
+    // keeps the receiver single-evaluation without a second call ABI implementation.
+    LLVMValueRef lowerNullConditionalCall(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.empty())
+            return failValue(error, "null-conditional call is missing its receiver");
+        LLVMValueRef receiver = lowerExpression(node->children.front().get(), error);
+        if (receiver == nullptr) return nullptr;
+        LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef hasReceiver = LLVMBuildICmp(
+            builder_, LLVMIntNE, receiver, LLVMConstNull(pointerType), "nullcall.hasreceiver");
+        LLVMBasicBlockRef nullBlock = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef callBlock = appendBlock("nullcall.invoke");
+        LLVMBasicBlockRef endBlock = appendBlock("nullcall.end");
+        LLVMBuildCondBr(builder_, hasReceiver, callBlock, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, callBlock);
+        LLVMValueRef value = nullptr;
+        switch (node->kind)
+        {
+            case frontend::ProjectOopMirNodeKind::DirectInstanceCall:
+                value = lowerCall(node, error, receiver);
+                break;
+            case frontend::ProjectOopMirNodeKind::VirtualInstanceCall:
+                value = lowerVirtualCall(node, error, receiver);
+                break;
+            case frontend::ProjectOopMirNodeKind::InterfaceInstanceCall:
+                value = lowerInterfaceCall(node, error, receiver);
+                break;
+            default:
+                return failValue(error, "null-conditional dispatch requires an instance call");
+        }
+        if (value == nullptr) return nullptr;
+        LLVMBasicBlockRef callExit = LLVMGetInsertBlock(builder_);
+        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        LLVMTypeRef resultType = llvmType(node->typeKey, error);
+        // Semantic analysis admits only physical nullable carriers here; every such carrier uses
+        // the opaque-pointer ABI.  Do not depend on LLVM's type-introspection C API merely to
+        // repeat that already authoritative decision.
+        if (resultType == nullptr) return nullptr;
+        LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcall");
+        LLVMValueRef values[] = {LLVMConstNull(resultType), value};
+        LLVMBasicBlockRef blocks[] = {nullBlock, callExit};
+        LLVMAddIncoming(phi, values, blocks, 2);
+        return phi;
+    }
+
+    LLVMValueRef lowerCall(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef receiverOverride = nullptr)
     {
         const auto found = functions_.find(node->calleeName);
         if (found == functions_.end())
@@ -12744,7 +12805,9 @@ private:
             return failValue(error, "Macro A instance call is missing its explicit receiver operand");
         }
 
-        LLVMValueRef receiver = lowerExpression(node->children.front().get(), error);
+        LLVMValueRef receiver = receiverOverride != nullptr
+            ? receiverOverride
+            : lowerExpression(node->children.front().get(), error);
         if (receiver == nullptr)
         {
             return nullptr;
@@ -12913,7 +12976,10 @@ private:
         return call;
     }
 
-    LLVMValueRef lowerVirtualCall(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef lowerVirtualCall(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef receiverOverride = nullptr)
     {
         if (!node->virtualSlot.has_value())
         {
@@ -12928,7 +12994,9 @@ private:
             return failValue(error, "Macro A virtual call has no class-descriptor LLVM type");
         }
 
-        LLVMValueRef receiver = lowerExpression(node->children.front().get(), error);
+        LLVMValueRef receiver = receiverOverride != nullptr
+            ? receiverOverride
+            : lowerExpression(node->children.front().get(), error);
         if (receiver == nullptr)
         {
             return nullptr;
@@ -13024,7 +13092,10 @@ private:
         return call;
     }
 
-    LLVMValueRef lowerInterfaceCall(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef lowerInterfaceCall(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef receiverOverride = nullptr)
     {
         if (!node->interfaceSlot.has_value() || !node->targetTypeOrdinal.has_value())
         {
@@ -13039,7 +13110,9 @@ private:
             return failValue(error, "Stage 36 interface call has no interface-map LLVM ABI types");
         }
 
-        LLVMValueRef receiver = lowerExpression(node->children.front().get(), error);
+        LLVMValueRef receiver = receiverOverride != nullptr
+            ? receiverOverride
+            : lowerExpression(node->children.front().get(), error);
         if (receiver == nullptr)
         {
             return nullptr;
