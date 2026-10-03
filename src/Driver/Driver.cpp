@@ -1912,6 +1912,36 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                     type.fullyQualifiedName + "'";
             return false;
         }
+        const bool isVariant = type.kind == interop::LibraryMetadataTypeKind::Struct &&
+            metadata.formatMinor >= 27 &&
+            (type.flags & interop::kMetadataTypeVariant) != 0U;
+        if (isVariant)
+        {
+            // Reparse the nominal declaration instead of exposing the generated tag/union
+            // implementation. The ordered 1.27 catalogue is authoritative because its ordinal is
+            // the observable CaseTag value; the ordinary public member table is signature-sorted
+            // and cannot reconstruct that order safely.
+            generated << typeAccessibility << " variant " << typeName << "\n{\n";
+            for (std::size_t caseIndex = 0; caseIndex < type.variantCases.size(); ++caseIndex)
+            {
+                const interop::LibraryMetadataVariantCase& variantCase =
+                    type.variantCases[caseIndex];
+                generated << "    " << variantCase.name;
+                if (!variantCase.payloadTypeKey.empty())
+                {
+                    std::string payloadType;
+                    if (!sourceTypeForMetadataKey(
+                            metadata, variantCase.payloadTypeKey, payloadType, error))
+                        return false;
+                    generated << '(' << payloadType << ')';
+                }
+                if (caseIndex + 1U != type.variantCases.size()) generated << ',';
+                generated << '\n';
+            }
+            generated << "}\n";
+            if (topLevel && !namespaceName.empty()) generated << "}\n";
+            return true;
+        }
         generated << typeAccessibility << ' ';
         if (type.kind == interop::LibraryMetadataTypeKind::Struct)
         {

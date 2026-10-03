@@ -37,8 +37,9 @@ contextuales y requieren `<Language>3</Language>`.
   scope de brazo y baja a un árbol ordinario `if/else` visible en HIR/MIR.
 - Se diagnostican casos duplicados, brazos duplicados, wildcard duplicado, brazos posteriores al
   wildcard, guards todavía no materializados y matches sin wildcard seguro.
-- `.lib + .nsmeta` transporta un variant genérico y un consumidor precompilado puede construirlo y
-  hacer match. Un variant C-compatible usado por `export extern C` genera `struct + union`, tag
+- NSMETA 1.27 transporta identidad y catálogo ordenado de variants concretos; un consumidor
+  precompilado puede construirlos y hacer match sin deducir el tag por orden alfabético. Un variant
+  C-compatible usado por `export extern C` genera `struct + union`, tag
   mínimo y `static_assert` de tamaño, alineación y offsets en el host header.
 
 ## Invariantes de seguridad
@@ -59,6 +60,8 @@ contextuales y requieren `<Language>3</Language>`.
 - exhaustividad/usefulness por catálogo cerrado sin wildcard, incluida metadata no genérica;
 - `if let`, `while let`, `let else`, guards y narrowing;
 - active-payload drop flags, unwind y destrucción exactamente una vez para ownership no trivial;
+- importación nominal de variants genéricos mediante `LibraryReference`, dentro del frente general
+  de genéricos precompilados;
 - presentación semántica del caso activo en debugger/LSP.
 
 Estas piezas conservan sus dependencias maestras: ownership/drop en tandas 13–14, metadata/tooling
@@ -69,7 +72,8 @@ en 18/29 y matriz combinatoria en 30. No se trasladan artificialmente a T15 ni s
 - fixture `tests/cc1/c59_ns3_variants`: O0, nested match, unit/generic/nested/tuple/alignment variants,
   evaluación única y salida 42;
 - dumps de layout: `Result<int,int>` mide 8/align 4 y `Wide` mide 16/align 8 con tag byte;
-- consumidor LibraryReference de `Result<T,E>`: `.lib + NSMETA 1.24`, salida 42;
+- consumidor LibraryReference de variant concreto: `.lib + NSMETA 1.27`, salida 42 y orden de
+  `CaseTag()` preservado;
 - host header testigo: `uint8_t` tag, payload `union`, offsets 0/8 y asserts C;
 - probes negativos de edition 2, duplicado, wildcard ausente y extractor directo.
 

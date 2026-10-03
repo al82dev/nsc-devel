@@ -96,6 +96,12 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         number(contract, type.delegateFlags);
         field(contract, type.delegateReturnTypeKey);
         strings(contract, type.delegateParameterTypeKeys, false);
+        number(contract, type.variantCases.size());
+        for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
+        {
+            field(contract, variantCase.name);
+            field(contract, variantCase.payloadTypeKey);
+        }
         result.emplace("type:" + type.identityKey, std::move(contract));
     }
 
@@ -218,6 +224,12 @@ Surface abiSurface(const LibraryMetadata& metadata)
         number(contract, type.delegateFlags);
         field(contract, type.delegateReturnTypeKey);
         strings(contract, type.delegateParameterTypeKeys, false);
+        number(contract, type.variantCases.size());
+        for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
+        {
+            field(contract, variantCase.name);
+            field(contract, variantCase.payloadTypeKey);
+        }
         number(contract, type.fields.size());
         for (const LibraryMetadataField& fieldRecord : type.fields)
         {

@@ -28,6 +28,11 @@ bool equalField(const LibraryMetadataField& left, const LibraryMetadataField& ri
 
 bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right)
 {
+    const auto equalVariantCase = [](const LibraryMetadataVariantCase& a,
+                                     const LibraryMetadataVariantCase& b)
+    {
+        return std::tie(a.name, a.payloadTypeKey) == std::tie(b.name, b.payloadTypeKey);
+    };
     return std::tie(left.kind, left.accessibility, left.flags, left.identityKey,
                left.fullyQualifiedName, left.baseTypeKey, left.interfaceTypeKeys,
                left.size, left.alignment, left.headerSize, left.referenceSize,
@@ -40,6 +45,7 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
                 right.referenceAlignment, right.stableTypeId, right.enumUnderlyingTypeKey,
                 right.delegateFlags, right.delegateReturnTypeKey,
                 right.delegateParameterTypeKeys) &&
+        vectorEqual(left.variantCases, right.variantCases, equalVariantCase) &&
         vectorEqual(left.fields, right.fields, equalField);
 }
 

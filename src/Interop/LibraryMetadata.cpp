@@ -21,6 +21,7 @@
 #include <array>
 #include <bit>
 #include <cctype>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -495,6 +496,7 @@ std::uint16_t typeFlags(const frontend::NamedTypeDeclaration& type) noexcept
                 if (hasListItem(derives, "Clone")) flags |= kMetadataTypeDeriveClone;
             }
         }
+        if (hasMarker(metadata, "variant")) flags |= kMetadataTypeVariant;
     }
     return flags;
 }
@@ -1003,6 +1005,50 @@ bool buildMetadataModel(
                 }
             }
         }
+        if ((record.flags & kMetadataTypeVariant) != 0U && type.syntax != nullptr)
+        {
+            struct IndexedVariantCase final
+            {
+                std::size_t index = 0;
+                LibraryMetadataVariantCase value;
+            };
+            std::vector<IndexedVariantCase> orderedCases;
+            for (const ast::AstNode* child : type.syntax->children())
+            {
+                if (child == nullptr || child->kind() != ast::AstNodeKind::MethodDeclaration)
+                    continue;
+                const std::string_view marker = child->auxiliaryText();
+                constexpr std::string_view prefix = "variant-case-factory:";
+                if (!marker.starts_with(prefix)) continue;
+                const std::size_t separator = marker.find(':', prefix.size());
+                if (separator == std::string_view::npos) continue;
+                std::size_t caseIndex = 0;
+                const std::string_view indexText = marker.substr(separator + 1U);
+                const auto parsed = std::from_chars(
+                    indexText.data(), indexText.data() + indexText.size(), caseIndex);
+                if (parsed.ec != std::errc{} || parsed.ptr != indexText.data() + indexText.size())
+                    continue;
+                LibraryMetadataVariantCase variantCase;
+                variantCase.name = std::string(marker.substr(prefix.size(), separator - prefix.size()));
+                const auto parameter = std::ranges::find_if(
+                    child->children(),
+                    [](const ast::AstNode* candidate)
+                    {
+                        return candidate != nullptr &&
+                            candidate->kind() == ast::AstNodeKind::ParameterDeclaration;
+                    });
+                if (parameter != child->children().end())
+                {
+                    variantCase.payloadTypeKey = compilation.memberModel()->canonicalTypeKey(
+                        (*parameter)->typeSyntax(), *compilation.nameLookup());
+                }
+                orderedCases.push_back({caseIndex, std::move(variantCase)});
+            }
+            std::ranges::sort(
+                orderedCases, {}, &IndexedVariantCase::index);
+            for (IndexedVariantCase& item : orderedCases)
+                record.variantCases.push_back(std::move(item.value));
+        }
         metadata.types.push_back(std::move(record));
     }
 
@@ -1369,6 +1415,8 @@ bool buildMetadataModel(
         for (const LibraryMetadataField& field : type.fields) rememberType(field.typeKey);
         rememberType(type.delegateReturnTypeKey);
         for (const std::string& parameterTypeKey : type.delegateParameterTypeKeys) rememberType(parameterTypeKey);
+        for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
+            rememberType(variantCase.payloadTypeKey);
     }
     for (const LibraryMetadataMember& member : metadata.members)
     {
@@ -1697,6 +1745,15 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
             writer.text(type.delegateReturnTypeKey);
             writeStringVector(writer, type.delegateParameterTypeKeys);
         }
+        if (metadata.formatMinor >= 27)
+        {
+            writer.u32(static_cast<std::uint32_t>(type.variantCases.size()));
+            for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
+            {
+                writer.text(variantCase.name);
+                writer.text(variantCase.payloadTypeKey);
+            }
+        }
         writer.u32(static_cast<std::uint32_t>(type.fields.size()));
         for (const LibraryMetadataField& field : type.fields)
         {
@@ -1905,7 +1962,35 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
     projected.binaryDependencies.clear();
     projected.platformImports.clear();
     if (projected.formatMinor >= 25) projected.formatMinor = 24;
-    return encodePayload(projected);
+    std::vector<std::uint8_t> projection = encodePayload(projected);
+    // The 1.25 private closure stays outside the public ABI projection, while the 1.27 ordered
+    // variant catalogue cannot: changing declaration order changes the observable CaseTag value.
+    // Append this section only when a variant exists so fingerprints of pre-1.27 models remain
+    // byte-for-byte stable.
+    const bool hasVariant = std::ranges::any_of(
+        metadata.types,
+        [](const LibraryMetadataType& type)
+        {
+            return (type.flags & kMetadataTypeVariant) != 0U;
+        });
+    if (hasVariant)
+    {
+        ByteWriter catalogue;
+        catalogue.u32(static_cast<std::uint32_t>(metadata.types.size()));
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            catalogue.text(type.identityKey);
+            catalogue.u32(static_cast<std::uint32_t>(type.variantCases.size()));
+            for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
+            {
+                catalogue.text(variantCase.name);
+                catalogue.text(variantCase.payloadTypeKey);
+            }
+        }
+        const std::vector<std::uint8_t>& bytes = catalogue.bytes();
+        projection.insert(projection.end(), bytes.begin(), bytes.end());
+    }
+    return projection;
 }
 
 bool readCount(ByteReader& reader, std::uint32_t& count)
@@ -1972,6 +2057,26 @@ bool decodePayload(
         {
             error = "truncated or invalid metadata delegate signature";
             return false;
+        }
+        if (metadata.formatMinor >= 27)
+        {
+            std::uint32_t variantCaseCount = 0;
+            if (!readCount(reader, variantCaseCount))
+            {
+                error = "invalid metadata variant case count";
+                return false;
+            }
+            type.variantCases.reserve(variantCaseCount);
+            for (std::uint32_t caseIndex = 0; caseIndex < variantCaseCount; ++caseIndex)
+            {
+                LibraryMetadataVariantCase variantCase;
+                if (!reader.text(variantCase.name) || !reader.text(variantCase.payloadTypeKey))
+                {
+                    error = "truncated metadata variant case catalogue";
+                    return false;
+                }
+                type.variantCases.push_back(std::move(variantCase));
+            }
         }
         std::uint32_t fieldCount = 0;
         if (!readCount(reader, fieldCount)) { error = "invalid metadata field count"; return false; }
@@ -2602,6 +2707,17 @@ bool LibraryMetadataCodec::writeModelImpl(
             }
         }
     }
+    if (metadata.formatMinor < 27)
+    {
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            if ((type.flags & kMetadataTypeVariant) != 0U || !type.variantCases.empty())
+            {
+                error = "NativeSharp metadata before 1.27 cannot represent tagged variants";
+                return false;
+            }
+        }
+    }
     if (metadata.formatMinor < 25 &&
         (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))
     {
@@ -2835,6 +2951,43 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             error = "metadata record '" + type.fullyQualifiedName +
                 "' must be a non-union struct";
             return false;
+        }
+        const bool isVariant = (type.flags & kMetadataTypeVariant) != 0U;
+        if (metadata.formatMinor < 27 && (isVariant || !type.variantCases.empty()))
+        {
+            error = "metadata before NSMETA 1.27 contains tagged-variant data on type '" +
+                type.fullyQualifiedName + "'";
+            return false;
+        }
+        if (isVariant &&
+            (type.kind != LibraryMetadataTypeKind::Struct || (type.flags & (1U << 5U)) != 0U ||
+             (type.flags & kMetadataTypeRecord) != 0U))
+        {
+            error = "metadata variant '" + type.fullyQualifiedName +
+                "' must be a non-union, non-record struct";
+            return false;
+        }
+        if (isVariant && type.variantCases.empty())
+        {
+            error = "metadata variant '" + type.fullyQualifiedName +
+                "' has an empty case catalogue";
+            return false;
+        }
+        if (!isVariant && !type.variantCases.empty())
+        {
+            error = "metadata type '" + type.fullyQualifiedName +
+                "' publishes variant cases without the variant flag";
+            return false;
+        }
+        std::unordered_set<std::string> variantCaseNames;
+        for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
+        {
+            if (variantCase.name.empty() || !variantCaseNames.insert(variantCase.name).second)
+            {
+                error = "metadata variant '" + type.fullyQualifiedName +
+                    "' has an empty or duplicate case name";
+                return false;
+            }
         }
         if (type.identityKey.empty() || type.fullyQualifiedName.empty())
         {
@@ -3198,6 +3351,11 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             if (!verifyTypeReference(type.delegateReturnTypeKey, owner)) return false;
             for (const std::string& parameterTypeKey : type.delegateParameterTypeKeys)
                 if (!verifyTypeReference(parameterTypeKey, owner)) return false;
+            for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
+                if (!verifyTypeReference(
+                        variantCase.payloadTypeKey,
+                        owner + " variant case '" + variantCase.name + "'"))
+                    return false;
         }
         for (const LibraryMetadataMember& member : metadata.members)
         {

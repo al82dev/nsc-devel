@@ -22,6 +22,9 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 27 (2026-10-03): tagged variants preserve nominal identity plus their ordered case and
+// payload catalogue. Case order is observable through CaseTag(), so reconstructing it from the
+// alphabetically sorted public member table would be an ABI defect.
 // MINOR 26 (2026-10-03): struct type flags preserve `record` and its four explicit derives so a
 // LibraryReference consumer reconstructs the same NativeSharp 3.0 synthesized-member surface.
 // MINOR 25 (2026-10-01): static-library metadata carries its binary LibraryReference closure and
@@ -67,7 +70,7 @@ namespace nativesharp::interop
 // MINOR 23 (2026-09-29): modules preserve their NativeSharp language edition.
 // MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 26;
+inline constexpr std::uint16_t kMetadataFormatMinor = 27;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -78,6 +81,9 @@ inline constexpr std::uint16_t kMetadataTypeDeriveEquality = 1U << 8U;
 inline constexpr std::uint16_t kMetadataTypeDeriveHash = 1U << 9U;
 inline constexpr std::uint16_t kMetadataTypeDerivePrint = 1U << 10U;
 inline constexpr std::uint16_t kMetadataTypeDeriveClone = 1U << 11U;
+// NSMETA 1.27. A variant is physically a struct, but its ordered closed case domain is part of the
+// public language and ABI contract. The payload catalogue below carries the rest of that identity.
+inline constexpr std::uint16_t kMetadataTypeVariant = 1U << 12U;
 inline constexpr std::uint16_t kMetadataTypeRecordDeriveMask =
     kMetadataTypeDeriveEquality | kMetadataTypeDeriveHash |
     kMetadataTypeDerivePrint | kMetadataTypeDeriveClone;
@@ -169,6 +175,13 @@ struct LibraryMetadataField final
     std::uint64_t bitWidth = 0;
 };
 
+struct LibraryMetadataVariantCase final
+{
+    std::string name;
+    // Empty for a unit case; otherwise the canonical type key of the in-place payload.
+    std::string payloadTypeKey;
+};
+
 struct LibraryMetadataType final
 {
     LibraryMetadataTypeKind kind = LibraryMetadataTypeKind::Struct;
@@ -202,6 +215,8 @@ struct LibraryMetadataType final
     std::uint8_t delegateFlags = 0;
     std::string delegateReturnTypeKey;
     std::vector<std::string> delegateParameterTypeKeys;
+    // NSMETA 1.27. Declaration order is deliberately retained because it defines CaseTag().
+    std::vector<LibraryMetadataVariantCase> variantCases;
     std::vector<LibraryMetadataField> fields;
 };
 

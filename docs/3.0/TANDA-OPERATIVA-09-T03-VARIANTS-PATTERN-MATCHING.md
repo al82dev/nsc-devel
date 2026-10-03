@@ -111,7 +111,7 @@ antes del commit.
 - Los variants genéricos reutilizan el modelo de specialization existente.
 - Match no reevalúa side effects y no introduce allocation oculta.
 - La lectura del payload inactivo queda cerrada semánticamente.
-- El mismo tipo cruza LibraryReference y un witness `export extern C` con asserts de ABI.
+- Un variant concreto cruza LibraryReference y un witness `export extern C` conserva asserts de ABI.
 - Los límites peligrosos fallan con diagnóstico en vez de compilar con semántica incompleta.
 
 ## Validación dirigida ejecutada
@@ -124,8 +124,10 @@ antes del commit.
    - `Packed`: size 12, align 4;
    - `Wide`: size 16, align 8, payload union en offset 8.
 4. Dump MIR dirigido: llamadas de tests de caso y ramas ordinarias visibles; sin dispatcher heap.
-5. Producer `VariantProducer.lib + VariantProducer.nsmeta` y consumidor LibraryReference genérico:
-   correctos; consumidor termina en 42.
+5. Producer `VariantApi.lib + VariantApi.nsmeta` y consumidor LibraryReference concreto: correctos;
+   NSMETA 1.27 conserva `Zulu=0`, `Alpha=1` aunque el orden alfabético sea el contrario, y el
+   consumidor termina en 42. La importación nominal genérica sigue en el frente general de
+   genéricos precompilados.
 6. Witness C no genérico usado por `EchoStatus(Status)`:
    - host header emite `uint8_t __nsc_variant_tag`;
    - emite una `union` real con ambos payloads en offset 0;
@@ -144,7 +146,8 @@ No se ejecutó baseline, CTest general, O1/O2/O3, instalación, deploy ni operac
 - Ownership payload, active drop, unwind y destrucción exactamente una vez: tandas 13–14.
 - Patterns literal/range/record/or, binding ref/move, `if let`, `while let`, `let else`, guards y
   closed-domain usefulness sin wildcard: extensión T03 aún pendiente.
-- Catálogo concreto completo en metadata/API fingerprint: tanda 18.
+- El catálogo concreto ya cruza NSMETA 1.27, fingerprint ABI, API diff y reporte ABI. La
+  importación nominal genérica desde `LibraryReference` sigue pendiente en su frente general.
 - Visualización del caso activo y payload válido en debugger/LSP: tanda 29.
 - Matriz combinatoria, fuzz y comparación de costos: tanda 30.
 

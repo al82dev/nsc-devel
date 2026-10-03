@@ -151,6 +151,17 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
                 output << "      parameter #" << ordinal
                        << " type=" << type->delegateParameterTypeKeys[ordinal] << '\n';
         }
+        if ((type->flags & kMetadataTypeVariant) != 0U)
+        {
+            for (std::size_t ordinal = 0; ordinal < type->variantCases.size(); ++ordinal)
+            {
+                const LibraryMetadataVariantCase& variantCase = type->variantCases[ordinal];
+                output << "    variant-case #" << ordinal << " name=" << variantCase.name;
+                if (!variantCase.payloadTypeKey.empty())
+                    output << " payload=" << variantCase.payloadTypeKey;
+                output << '\n';
+            }
+        }
         std::vector<const LibraryMetadataField*> fields;
         for (const LibraryMetadataField& field : type->fields) fields.push_back(&field);
         std::ranges::sort(fields, [](const LibraryMetadataField* left, const LibraryMetadataField* right)
