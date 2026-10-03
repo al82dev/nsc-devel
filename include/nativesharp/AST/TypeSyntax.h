@@ -69,6 +69,14 @@ public:
     bool isDynamicTrait() const noexcept;
     void setDynamicTrait(bool value = true) noexcept;
 
+    // NativeSharp 3.0 T05-F04. `some Trait` is a declaration-scoped opaque result, not a
+    // dynamic trait object. The parser keeps the requested trait here until the early frontend
+    // replaces the source return with its generated nominal value wrapper.
+    bool isOpaqueResult() const noexcept;
+    void setOpaqueResult(bool value = true) noexcept;
+    const std::string& opaqueResultTraitName() const noexcept;
+    void setOpaqueResultTraitName(std::string name);
+
     // NativeSharp 3.0 T05-F02. Marks a base-list entry introduced by
     // `impl Trait for Type` rather than by the type declaration itself. The resolved type is
     // deliberately unchanged: this bit only preserves provenance so coherence can reject a
@@ -152,6 +160,8 @@ private:
     std::string baseName_;
     OwnershipQualifierSyntaxKind ownershipQualifier_ = OwnershipQualifierSyntaxKind::None;
     bool isDynamicTrait_ = false;
+    bool isOpaqueResult_ = false;
+    std::string opaqueResultTraitName_;
     bool isExplicitTraitImplementation_ = false;
     bool isPointeeConst_ = false;
     std::vector<TypeSyntax*> typeArguments_;

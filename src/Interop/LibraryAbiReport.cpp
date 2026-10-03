@@ -129,9 +129,11 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
     for (const LibraryMetadataType* type : types)
     {
         output << "  type " << type->identityKey
-               << " kind=" << (((type->flags & kMetadataTypeTrait) != 0U)
-                       ? "trait"
-                       : typeKindName(type->kind))
+               << " kind=" << (((type->flags & kMetadataTypeOpaqueResult) != 0U)
+                       ? "opaque-result"
+                       : ((type->flags & kMetadataTypeTrait) != 0U)
+                           ? "trait"
+                           : typeKindName(type->kind))
                << " access=" << static_cast<unsigned>(type->accessibility)
                << " flags=" << flagsHex(type->flags)
                << " size=" << type->size

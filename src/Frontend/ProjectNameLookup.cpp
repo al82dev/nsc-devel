@@ -1358,6 +1358,10 @@ void ProjectNameLookup::bindTypeSyntax(
             mutableSyntax->setBaseName(target->baseName());
             mutableSyntax->setDynamicTrait(
                 mutableSyntax->isDynamicTrait() || target->isDynamicTrait());
+            mutableSyntax->setOpaqueResult(
+                mutableSyntax->isOpaqueResult() || target->isOpaqueResult());
+            if (mutableSyntax->opaqueResultTraitName().empty())
+                mutableSyntax->setOpaqueResultTraitName(target->opaqueResultTraitName());
             mutableSyntax->prependModifiers(target->modifiers());
         }
     }

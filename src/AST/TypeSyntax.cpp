@@ -35,6 +35,16 @@ void TypeSyntax::setOwnershipQualifier(OwnershipQualifierSyntaxKind qualifier) n
 }
 bool TypeSyntax::isDynamicTrait() const noexcept { return isDynamicTrait_; }
 void TypeSyntax::setDynamicTrait(bool value) noexcept { isDynamicTrait_ = value; }
+bool TypeSyntax::isOpaqueResult() const noexcept { return isOpaqueResult_; }
+void TypeSyntax::setOpaqueResult(bool value) noexcept { isOpaqueResult_ = value; }
+const std::string& TypeSyntax::opaqueResultTraitName() const noexcept
+{
+    return opaqueResultTraitName_;
+}
+void TypeSyntax::setOpaqueResultTraitName(std::string name)
+{
+    opaqueResultTraitName_ = std::move(name);
+}
 bool TypeSyntax::isExplicitTraitImplementation() const noexcept
 {
     return isExplicitTraitImplementation_;

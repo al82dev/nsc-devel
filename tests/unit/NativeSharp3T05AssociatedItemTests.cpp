@@ -292,10 +292,11 @@ namespace AssociatedApi
     {
         return type.fullyQualifiedName == "AssociatedApi.Number";
     });
-    tests.expect(metadataRead && metadata.formatMinor == 29 &&
+    tests.expect(metadataRead &&
+            metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             traitRecord != metadata.types.end() && traitRecord->associatedItems.size() == 2U &&
             classRecord != metadata.types.end() && classRecord->associatedItems.size() == 2U,
-        "NSMETA 1.29 publishes trait requirements and implementation definitions (" +
+        "current NSMETA publishes trait requirements and implementation definitions (" +
             metadataError + diagnostic + ")");
 
     bool rejectedDownlevel = false;
@@ -327,7 +328,7 @@ class Program
 }
 )NS", 42, diagnostic, consumerItems);
     tests.expect(metadataRoundTrip,
-        "NSMETA 1.29 preserves associated requirements and concrete definitions (" +
+        "current NSMETA preserves associated requirements and concrete definitions (" +
             diagnostic + ")");
 
     return tests.resultKeeping(root);

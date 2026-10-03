@@ -567,29 +567,45 @@ bool ProjectInterfaceModel::visitInterface(
 bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagnostics)
 {
     bool ok = true;
-    std::vector<const ClassInheritanceInfo*> orderedClasses;
-    orderedClasses.reserve(inheritanceModel_->classes().size());
+    struct ImplementingType final
+    {
+        std::size_t ordinal = 0;
+        std::optional<std::size_t> baseOrdinal;
+        std::size_t depth = 0;
+        bool valueType = false;
+    };
+    std::vector<ImplementingType> orderedTypes;
+    orderedTypes.reserve(
+        inheritanceModel_->classes().size() + nameLookup_->namedTypes().size());
     for (const ClassInheritanceInfo& classInfo : inheritanceModel_->classes())
     {
-        orderedClasses.push_back(&classInfo);
+        orderedTypes.push_back(ImplementingType{
+            classInfo.typeOrdinal, classInfo.baseTypeOrdinal, classInfo.depth, false});
     }
-    std::stable_sort(orderedClasses.begin(), orderedClasses.end(),
-        [](const ClassInheritanceInfo* left, const ClassInheritanceInfo* right)
+    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+    {
+        if (nameLookup_->namedTypes()[ordinal].kind == NamedTypeDeclarationKind::Struct)
+            orderedTypes.push_back(ImplementingType{ordinal, std::nullopt, 0U, true});
+    }
+    std::stable_sort(orderedTypes.begin(), orderedTypes.end(),
+        [](const ImplementingType& left, const ImplementingType& right)
         {
-            return left->depth < right->depth;
+            return left.depth < right.depth;
         });
 
     // Base classes must publish their inherited interface set before derived classes copy it.
     // Sorting by the already-validated inheritance depth makes this independent of source order.
-    for (const ClassInheritanceInfo* classInfoPointer : orderedClasses)
+    // NativeSharp 3 structs participate in nominal trait constraints too, but remain value types:
+    // they have no class base and receive no dynamic interface table from this phase.
+    for (const ImplementingType& implementingType : orderedTypes)
     {
-        const ClassInheritanceInfo& classInfo = *classInfoPointer;
-        const std::size_t classOrdinal = classInfo.typeOrdinal;
+        const std::size_t classOrdinal = implementingType.ordinal;
         std::vector<std::size_t>& implemented = interfacesByClass_[classOrdinal];
 
-        if (classInfo.baseTypeOrdinal.has_value() && *classInfo.baseTypeOrdinal < interfacesByClass_.size())
+        if (implementingType.baseOrdinal.has_value() &&
+            *implementingType.baseOrdinal < interfacesByClass_.size())
         {
-            implemented = interfacesByClass_[*classInfo.baseTypeOrdinal];
+            implemented = interfacesByClass_[*implementingType.baseOrdinal];
         }
 
         const NamedTypeDeclaration& type = nameLookup_->namedTypes()[classOrdinal];
@@ -618,6 +634,17 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
                 {
                     const bool explicitImpl = specification->isExplicitTraitImplementation();
                     const InterfaceTypeInfo* info = interfaceInfo(*candidate);
+                    if (implementingType.valueType && (info == nullptr || !info->isTrait))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidBaseType,
+                            diagnostics::DiagnosticSeverity::Error,
+                            specification->range(),
+                            "a NativeSharp 3 struct may implement traits only; ordinary "
+                            "interfaces require class reference semantics");
+                        ok = false;
+                        continue;
+                    }
                     if (explicitImpl && (info == nullptr || !info->isTrait))
                     {
                         diagnostics.report(
@@ -663,6 +690,17 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
                             appendUnique(implemented, baseInterface);
                         }
                     }
+                }
+                else if (implementingType.valueType)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidBaseType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        specification->range(),
+                        "a struct cannot inherit class '" +
+                            nameLookup_->namedTypes()[*candidate].identity.key() +
+                            "'; only NativeSharp 3 traits are valid after ':'");
+                    ok = false;
                 }
                 else if (kind == NamedTypeDeclarationKind::Class && sawInterface)
                 {
@@ -742,7 +780,7 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
                     ok = false;
                 }
             }
-            tablePlans_.push_back(std::move(plan));
+            if (!implementingType.valueType) tablePlans_.push_back(std::move(plan));
         }
     }
     return ok;

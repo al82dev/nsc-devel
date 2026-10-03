@@ -290,7 +290,9 @@ namespace TraitApi
             return type.fullyQualifiedName == "TraitApi.IScore";
         });
     tests.expect(
-        metadataRead && metadata.formatMinor == 29 && trait != metadata.types.end() &&
+        metadataRead &&
+            metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+            trait != metadata.types.end() &&
             (trait->flags & nativesharp::interop::kMetadataTypeTrait) != 0U &&
             trait->traitMethodSignatures.size() == 2U &&
             trait->traitMethodSignatures[0] == "Score()" &&

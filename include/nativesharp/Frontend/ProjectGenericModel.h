@@ -495,6 +495,10 @@ private:
     std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentityBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOriginBySyntax_;
     std::unordered_map<const ast::AstNode*, ast::TypeSyntax*> inferredCallReturnTypes_;
+    // Available before the ordinary member/body model. Only an unambiguous common return for a
+    // non-generic callable name is retained; this lets an unnamed `some Trait` identity provide
+    // evidence to generic inference without writing semantic state onto CallExpression AST nodes.
+    std::unordered_map<std::string, const ast::TypeSyntax*> ordinaryCallableReturnTypes_;
     std::unordered_map<const ast::AstNode*, std::vector<const ast::AstNode*>>
         traitImplExtensions_;
     std::unordered_map<std::string, const ast::TypeSyntax*> associatedTypes_;

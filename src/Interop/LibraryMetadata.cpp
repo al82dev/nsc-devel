@@ -505,6 +505,7 @@ std::uint16_t typeFlags(const frontend::NamedTypeDeclaration& type) noexcept
             }
         }
         if (hasMarker(metadata, "variant")) flags |= kMetadataTypeVariant;
+        if (metadata.starts_with("opaque-result|")) flags |= kMetadataTypeOpaqueResult;
     }
     return flags;
 }
@@ -922,7 +923,8 @@ bool buildMetadataModel(
             {
                 record.baseTypeKey = inheritance->baseTypeKey;
             }
-            if (type.kind == frontend::NamedTypeDeclarationKind::Class)
+            if (type.kind == frontend::NamedTypeDeclarationKind::Class ||
+                type.kind == frontend::NamedTypeDeclarationKind::Struct)
             {
                 for (const std::size_t interfaceOrdinal :
                      compilation.interfaceModel()->interfacesOfClass(typeOrdinal))
@@ -950,6 +952,29 @@ bool buildMetadataModel(
                             record.traitMethodSignatures.push_back(
                                 signatureForMember(members, memberOrdinal));
                         }
+                    }
+                }
+            }
+            // Opaque results are compiler-owned value structs. Keep a direct-syntax fallback for
+            // metadata-hydrated or partial compilations whose value-trait relation did not produce
+            // a class-style interface set; silently dropping the trait would erase the abstraction
+            // at the module boundary. Inherited bases are rebuilt from the trait metadata.
+            if ((record.flags & kMetadataTypeOpaqueResult) != 0U &&
+                record.interfaceTypeKeys.empty())
+            {
+                for (const frontend::NamedTypeDeclarationPart& part : type.parts)
+                {
+                    if (part.syntax == nullptr) continue;
+                    for (const ast::TypeSyntax* specification : part.syntax->typeSyntaxes())
+                    {
+                        const std::optional<std::size_t> interfaceOrdinal =
+                            compilation.nameLookup()->resolvedTypeOrdinal(specification);
+                        if (!interfaceOrdinal.has_value() || *interfaceOrdinal >= types.size() ||
+                            types[*interfaceOrdinal].kind !=
+                                frontend::NamedTypeDeclarationKind::Interface)
+                            continue;
+                        record.interfaceTypeKeys.push_back(
+                            typeKeyForOrdinal(types, *interfaceOrdinal));
                     }
                 }
             }
@@ -1168,7 +1193,7 @@ bool buildMetadataModel(
             member.accessibility == frontend::ClassMemberAccessibility::Protected;
         if (contractAccessibility &&
             !member.isControlledSpecializationFamily &&
-            isPubliclyReachableRootType(member.declaringTypeOrdinal))
+            rootTypes.contains(member.declaringTypeOrdinal))
         {
             memberOrdinals.push_back(ordinal);
         }
@@ -2935,6 +2960,17 @@ bool LibraryMetadataCodec::writeModelImpl(
             }
         }
     }
+    if (metadata.formatMinor < 30)
+    {
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            if ((type.flags & kMetadataTypeOpaqueResult) != 0U)
+            {
+                error = "NativeSharp metadata before 1.30 cannot represent opaque result types";
+                return false;
+            }
+        }
+    }
     if (metadata.formatMinor < 25 &&
         (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))
     {
@@ -3171,6 +3207,30 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         }
         const bool isVariant = (type.flags & kMetadataTypeVariant) != 0U;
         const bool isTrait = (type.flags & kMetadataTypeTrait) != 0U;
+        const bool isOpaqueResult = (type.flags & kMetadataTypeOpaqueResult) != 0U;
+        if (metadata.formatMinor < 30 && isOpaqueResult)
+        {
+            error = "metadata before NSMETA 1.30 contains an opaque-result flag on type '" +
+                type.fullyQualifiedName + "'";
+            return false;
+        }
+        if (isOpaqueResult &&
+            (type.kind != LibraryMetadataTypeKind::Struct ||
+             type.fields.size() != 1U || type.interfaceTypeKeys.empty()))
+        {
+            error = "metadata opaque result '" + type.fullyQualifiedName +
+                "' must be a one-field struct implementing its exposed trait";
+            return false;
+        }
+        if (isOpaqueResult &&
+            (type.fields.front().name != "__nsc_opaque_value" ||
+             type.size != type.fields.front().size ||
+             type.alignment != type.fields.front().alignment))
+        {
+            error = "metadata opaque result '" + type.fullyQualifiedName +
+                "' has an inconsistent in-place representation";
+            return false;
+        }
         if (metadata.formatMinor < 28 && isTrait)
         {
             error = "metadata before NSMETA 1.28 contains a trait flag on type '" +

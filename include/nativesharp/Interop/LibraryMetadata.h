@@ -74,7 +74,9 @@ namespace nativesharp::interop
 // MINOR 23 (2026-09-29): modules preserve their NativeSharp language edition.
 // MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 29;
+// MINOR 30 (2026-10-03): declaration-scoped opaque result identities publish their one-field
+// in-place representation and implemented trait as a closed native contract.
+inline constexpr std::uint16_t kMetadataFormatMinor = 30;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -91,6 +93,10 @@ inline constexpr std::uint16_t kMetadataTypeVariant = 1U << 12U;
 // NSMETA 1.28. Traits intentionally share the interface ABI; this bit preserves their source and
 // semantic contract without inventing a sixth physical type kind.
 inline constexpr std::uint16_t kMetadataTypeTrait = 1U << 13U;
+// NSMETA 1.30. An opaque result is physically a one-field struct. This bit distinguishes that
+// compiler-owned nominal identity from a user struct so source/API/ABI tools cannot erase the
+// `some Trait` abstraction while preserving the same bytes accidentally.
+inline constexpr std::uint16_t kMetadataTypeOpaqueResult = 1U << 14U;
 inline constexpr std::uint16_t kMetadataTypeRecordDeriveMask =
     kMetadataTypeDeriveEquality | kMetadataTypeDeriveHash |
     kMetadataTypeDerivePrint | kMetadataTypeDeriveClone;

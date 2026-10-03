@@ -313,6 +313,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectGenericConstraintModel.cpp
     src/Frontend/ProjectGenericModel.cpp
     src/Frontend/ProjectGenericModelDumper.cpp
+    src/Frontend/ProjectOpaqueResultModel.cpp
     src/Frontend/ProjectNameLookup.cpp
     src/Frontend/ProjectNameLookupDumper.cpp
     src/Frontend/PrecompiledMemberIdentityIndex.cpp
@@ -1491,6 +1492,21 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.ns3.t05.associated-items
         COMMAND nsc_ns3_t05_associated_item_tests)
+
+    add_executable(
+        nsc_ns3_t05_opaque_result_tests
+        tests/unit/NativeSharp3T05OpaqueResultTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t05_opaque_result_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_ns3_t05_opaque_result_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_ns3_t05_opaque_result_tests
+        PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t05_opaque_result_tests)
+    add_test(
+        NAME nsc.ns3.t05.opaque-results
+        COMMAND nsc_ns3_t05_opaque_result_tests)
 
     add_executable(
         nsc_ns3_t06_ownership_tests

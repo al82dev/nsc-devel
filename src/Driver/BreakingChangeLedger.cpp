@@ -17,10 +17,10 @@ constexpr const char* kLedger =
     "change.001.2x_contract=compiler:2.0.0;nsmeta:1.21;runtime-abi:1.0;runtime-symbol-set:2\n"
     "change.001.consumer=precompiled-libraries-runtime-and-tooling\n"
     "change.001.compatible_alternatives_rejected=silent-abi-upgrade;accept-N-minus-2-producers\n"
-    "change.001.new_semantics=compiler:3.0.0;nsmeta:1.29;runtime-abi:1.1;runtime-symbol-set:3\n"
+    "change.001.new_semantics=compiler:3.0.0;nsmeta:1.30;runtime-abi:1.1;runtime-symbol-set:3\n"
     "change.001.impact=source:no;binary:yes;metadata:yes;tools:yes\n"
     "change.001.diagnostics_migration=unsupported-producer-or-runtime-abi;rebuild-with-3.0\n"
-    "change.001.minimum_component_version=compiler:3.0.0;runtime-abi:1.1;nsmeta:1.29\n"
+    "change.001.minimum_component_version=compiler:3.0.0;runtime-abi:1.1;nsmeta:1.30\n"
     "change.001.compatibility_tests=nsc.stage48_2.library-metadata;nsc.item393.compatibility-matrix\n";
 }
 

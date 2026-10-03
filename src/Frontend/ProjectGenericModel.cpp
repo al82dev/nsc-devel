@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
+#include "nativesharp/Frontend/ProjectOpaqueResultModel.h"
 
 #include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
@@ -617,6 +618,33 @@ bool ProjectGenericModel::build(
         built_ = true;
         return false;
     }
+    if (!ProjectOpaqueResultModel{}.build(units, diagnostics))
+    {
+        built_ = true;
+        return false;
+    }
+    ordinaryCallableReturnTypes_.clear();
+    const auto collectOrdinaryReturns = [&](auto&& self, ast::AstNode* node) -> void
+    {
+        if (node == nullptr) return;
+        if ((node->kind() == ast::AstNodeKind::MethodDeclaration ||
+             node->kind() == ast::AstNodeKind::FunctionDeclaration) &&
+            node->genericParameters().empty() && node->typeSyntax() != nullptr)
+        {
+            const auto [entry, inserted] = ordinaryCallableReturnTypes_.emplace(
+                node->text(), node->typeSyntax());
+            if (!inserted && entry->second != nullptr &&
+                typeSpelling(entry->second) != typeSpelling(node->typeSyntax()))
+                entry->second = nullptr;
+        }
+        self(self, node->first());
+        self(self, node->second());
+        self(self, node->third());
+        for (ast::AstNode* child : node->children()) self(self, child);
+    };
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
+        if (unit != nullptr && unit->syntaxTree() != nullptr)
+            collectOrdinaryReturns(collectOrdinaryReturns, unit->syntaxTree());
     if (!collectAssociatedItems(units, diagnostics))
     {
         built_ = true;
@@ -1028,33 +1056,40 @@ bool ProjectGenericModel::collectAssociatedItems(
         ProjectSyntaxUnit* unit = nullptr;
         ast::AstNode* syntax = nullptr;
         std::string namespaceName;
+        std::string ownerName;
     };
     std::vector<LocatedNode> traits;
     std::vector<LocatedNode> owners;
     const auto collect = [&](auto&& self,
                              ast::AstNode* node,
-                             const std::string& parentNamespace) -> void
+                             const std::string& parentNamespace,
+                             const std::string& parentOwner) -> void
     {
         if (node == nullptr) return;
         std::string currentNamespace = parentNamespace;
         if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
             currentNamespace = namespaceAppend(parentNamespace, node->text());
+        std::string currentOwner = parentOwner;
+        if (node->kind() == ast::AstNodeKind::ClassDeclaration ||
+            node->kind() == ast::AstNodeKind::StructDeclaration ||
+            node->kind() == ast::AstNodeKind::InterfaceDeclaration)
+            currentOwner = namespaceAppend(parentOwner, node->text());
         if (node->kind() == ast::AstNodeKind::InterfaceDeclaration &&
             (node->auxiliaryText() == "ns3-trait" ||
              node->auxiliaryText().find("nsc-meta:ns3-trait") != std::string::npos))
-            traits.push_back(LocatedNode{nullptr, node, currentNamespace});
+            traits.push_back(LocatedNode{nullptr, node, currentNamespace, currentOwner});
         else if (node->kind() == ast::AstNodeKind::ClassDeclaration ||
                  node->kind() == ast::AstNodeKind::StructDeclaration)
-            owners.push_back(LocatedNode{nullptr, node, currentNamespace});
+            owners.push_back(LocatedNode{nullptr, node, currentNamespace, currentOwner});
         for (ast::AstNode* child : node->children())
-            self(self, child, currentNamespace);
+            self(self, child, currentNamespace, currentOwner);
     };
     for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
     {
         if (unit == nullptr) continue;
         const std::size_t traitBegin = traits.size();
         const std::size_t ownerBegin = owners.size();
-        collect(collect, unit->syntaxTree(), "");
+        collect(collect, unit->syntaxTree(), "", "");
         for (std::size_t index = traitBegin; index < traits.size(); ++index)
             traits[index].unit = unit.get();
         for (std::size_t index = ownerBegin; index < owners.size(); ++index)
@@ -1068,7 +1103,7 @@ bool ProjectGenericModel::collectAssociatedItems(
     for (const LocatedNode& trait : traits)
     {
         const std::string traitName = namespaceAppend(
-            trait.namespaceName, trait.syntax->text());
+            trait.namespaceName, trait.ownerName);
         traitsByName.emplace(traitName, &trait);
         std::unordered_set<std::string> localNames;
         for (const ast::AstNode* item : trait.syntax->children())
@@ -1099,7 +1134,7 @@ bool ProjectGenericModel::collectAssociatedItems(
     for (const LocatedNode& owner : owners)
     {
         const std::string ownerName = namespaceAppend(
-            owner.namespaceName, owner.syntax->text());
+            owner.namespaceName, owner.ownerName);
         std::unordered_set<std::string> directTypeKeys;
         std::unordered_set<std::string> directConstantKeys;
         for (const ast::AstNode* item : owner.syntax->children())
@@ -1337,6 +1372,8 @@ ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
     }
     result->setPackExpansion(source->isPackExpansion());
     result->setDynamicTrait(source->isDynamicTrait());
+    result->setOpaqueResult(source->isOpaqueResult());
+    result->setOpaqueResultTraitName(source->opaqueResultTraitName());
     result->setPointeeConst(source->isPointeeConst());
     return result;
 }
@@ -1430,6 +1467,9 @@ bool ProjectGenericModel::expandTypeAliases(
     syntax->setBaseTokenKind(expanded->baseTokenKind());
     syntax->setBaseName(expanded->baseName());
     syntax->setDynamicTrait(syntax->isDynamicTrait() || expanded->isDynamicTrait());
+    syntax->setOpaqueResult(syntax->isOpaqueResult() || expanded->isOpaqueResult());
+    if (syntax->opaqueResultTraitName().empty())
+        syntax->setOpaqueResultTraitName(expanded->opaqueResultTraitName());
     if (writtenOwnership == ast::OwnershipQualifierSyntaxKind::None)
         syntax->setOwnershipQualifier(targetOwnership);
     const std::vector<ast::TypeSyntax*> expandedArguments(
@@ -2256,7 +2296,11 @@ ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
         case ast::AstNodeKind::CallExpression:
         {
             const auto found = inferredCallReturnTypes_.find(expression);
-            return found == inferredCallReturnTypes_.end() ? nullptr : clone(found->second);
+            if (found != inferredCallReturnTypes_.end()) return clone(found->second);
+            const auto ordinary = ordinaryCallableReturnTypes_.find(
+                methodCalleeName(expression));
+            return ordinary == ordinaryCallableReturnTypes_.end()
+                ? nullptr : clone(ordinary->second);
         }
         default:
             return nullptr;
@@ -2353,6 +2397,8 @@ bool ProjectGenericModel::inferTypeArguments(
             value->setOwnershipQualifier(actual->ownershipQualifier());
         value->setTuple(actual->isTuple());
         value->setDynamicTrait(actual->isDynamicTrait());
+        value->setOpaqueResult(actual->isOpaqueResult());
+        value->setOpaqueResultTraitName(actual->opaqueResultTraitName());
         value->setPointeeConst(actual->isPointeeConst());
         if (actual->originProjectOrdinal().has_value())
             value->setOriginProjectOrdinal(*actual->originProjectOrdinal());
@@ -3922,6 +3968,8 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
             }
             result->setOwnershipQualifier(source->ownershipQualifier());
             result->setDynamicTrait(source->isDynamicTrait());
+            result->setOpaqueResult(source->isOpaqueResult());
+            result->setOpaqueResultTraitName(source->opaqueResultTraitName());
             result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
             result->setPointeeConst(source->isPointeeConst());
             result->setPackExpansion(source->isPackExpansion());
@@ -3976,6 +4024,8 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
             }
             selected->setOwnershipQualifier(source->ownershipQualifier());
             selected->setDynamicTrait(source->isDynamicTrait());
+            selected->setOpaqueResult(source->isOpaqueResult());
+            selected->setOpaqueResultTraitName(source->opaqueResultTraitName());
             selected->setExplicitTraitImplementation(
                 source->isExplicitTraitImplementation());
             selected->setPointeeConst(source->isPointeeConst());
@@ -4099,6 +4149,8 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     // pointer/array modifiers just above.
     result->setOwnershipQualifier(source->ownershipQualifier());
     result->setDynamicTrait(source->isDynamicTrait());
+    result->setOpaqueResult(source->isOpaqueResult());
+    result->setOpaqueResultTraitName(source->opaqueResultTraitName());
     result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
     result->setPointeeConst(source->isPointeeConst());
     result->setPackExpansion(source->isPackExpansion());

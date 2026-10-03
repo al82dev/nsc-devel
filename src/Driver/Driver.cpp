@@ -1470,14 +1470,18 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             error = "metadata member '" + member.name + "' refers to a declaring type that is not present";
             return false;
         }
-        if (!isPubliclyReachableMetadataType(metadata, *type)) continue;
+        const bool contractDependency = contractTypeIdentities.contains(type->identityKey);
+        if (!isPubliclyReachableMetadataType(metadata, *type) && !contractDependency) continue;
         if (type->accessibility != kPublicAccessibility)
         {
             constexpr std::uint32_t kVirtual = 1U << 3U;
             constexpr std::uint32_t kOverride = 1U << 4U;
             constexpr std::uint32_t kAbstract = 1U << 5U;
             constexpr std::uint8_t kDestructorKind = 4U;
-            if ((member.flags & (kVirtual | kOverride | kAbstract)) == 0U && member.kind != kDestructorKind) continue;
+            if (!contractDependency &&
+                (member.flags & (kVirtual | kOverride | kAbstract)) == 0U &&
+                member.kind != kDestructorKind)
+                continue;
         }
         PublishedType &group = published[type->identityKey];
         group.type = &*type;
@@ -2065,13 +2069,17 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         // A static class has no instance hierarchy. Some NSMETA 1.10 producers recorded the
         // implicit Object edge anyway; ignore that legacy pollution instead of generating the
         // invalid `static class Utility : Object` source that the parser correctly rejects.
-        if (type.kind == interop::LibraryMetadataTypeKind::Class &&
-            (type.flags & (1U << 3U)) == 0U &&
+        const bool opaqueResultStruct =
+            type.kind == interop::LibraryMetadataTypeKind::Struct &&
+            metadata.formatMinor >= 30 &&
+            (type.flags & interop::kMetadataTypeOpaqueResult) != 0U;
+        if (((type.kind == interop::LibraryMetadataTypeKind::Class &&
+              (type.flags & (1U << 3U)) == 0U) || opaqueResultStruct) &&
             (!type.baseTypeKey.empty() || !type.interfaceTypeKeys.empty()))
         {
             generated << " : ";
             bool wroteBase = false;
-            if (!type.baseTypeKey.empty())
+            if (!opaqueResultStruct && !type.baseTypeKey.empty())
             {
                 std::string baseType;
                 if (!sourceBaseType(type.baseTypeKey, baseType)) return false;

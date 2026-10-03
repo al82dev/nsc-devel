@@ -862,7 +862,8 @@ bool ProjectGenericConstraintModel::build(
                     // la extiende. `includeIdentity` es true en el segundo porque `where T : IFoo`
                     // lo satisface `IFoo` misma.
                     satisfied =
-                        (argument->kind == NamedTypeDeclarationKind::Class &&
+                        ((argument->kind == NamedTypeDeclarationKind::Class ||
+                          argument->kind == NamedTypeDeclarationKind::Struct) &&
                          interfaceModel.classImplementsInterface(argumentOrdinal, constraintOrdinal)) ||
                         (argument->kind == NamedTypeDeclarationKind::Interface &&
                          interfaceModel.interfaceDerivesFrom(argumentOrdinal, constraintOrdinal, true));

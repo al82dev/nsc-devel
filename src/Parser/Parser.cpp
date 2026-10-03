@@ -386,7 +386,7 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
 
     if (tokenIndex < tokens_.size() &&
         tokens_[tokenIndex].kind() == TokenKind::Identifier &&
-        tokens_[tokenIndex].lexeme() == "dyn")
+        (tokens_[tokenIndex].lexeme() == "dyn" || tokens_[tokenIndex].lexeme() == "some"))
     {
         std::size_t afterDynamicType = tokenIndex + 1U;
         if (scanTypeAt(tokenIndex + 1U, afterDynamicType))
@@ -757,6 +757,24 @@ ast::TypeSyntax* Parser::parseType()
         dynamicTrait = true;
     }
 
+    bool opaqueResult = false;
+    SourceRange opaqueRange = current().range();
+    if (atContextualKeyword("some") && canStartTypeAt(index_ + 1U))
+    {
+        const lexer::Token& qualifier = consume();
+        opaqueRange = qualifier.range();
+        requireEdition3(opaqueRange, "opaque result types");
+        opaqueResult = true;
+        if (dynamicTrait)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                join(dynamicRange, opaqueRange),
+                "'dyn' and 'some' are mutually exclusive trait representations");
+        }
+    }
+
     SourceRange longDoubleRange{};
     bool recoverLongDoubleAsDouble = false;
     if (at(TokenKind::KwLong) && peek().kind() == TokenKind::KwDouble)
@@ -786,6 +804,14 @@ ast::TypeSyntax* Parser::parseType()
                 diagnostics::DiagnosticSeverity::Error,
                 dynamicRange,
                 "'dyn' requires a named trait or interface type");
+        }
+        if (opaqueResult)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                opaqueRange,
+                "'some' requires a named trait type");
         }
         if (ownershipQualifier != ast::OwnershipQualifierSyntaxKind::None)
             qualifierRange = join(qualifierRange, open);
@@ -843,11 +869,14 @@ ast::TypeSyntax* Parser::parseType()
         completeRange, baseKind, std::move(baseName));
     type->setOwnershipQualifier(ownershipQualifier);
     type->setDynamicTrait(dynamicTrait);
+    type->setOpaqueResult(opaqueResult);
+    if (opaqueResult) type->setOpaqueResultTraitName(type->baseName());
     if (ownershipQualifier != ast::OwnershipQualifierSyntaxKind::None)
     {
         completeRange = join(qualifierRange, completeRange);
     }
     if (dynamicTrait) completeRange = join(dynamicRange, completeRange);
+    if (opaqueResult) completeRange = join(opaqueRange, completeRange);
 
     if (baseKind == TokenKind::Identifier && at(TokenKind::Less))
     {
@@ -3009,6 +3038,32 @@ ast::AstNode* Parser::parseStructDeclaration(
         node->setAuxiliaryText(std::move(markers));
     }
 
+    if (consumeIf(TokenKind::Colon))
+    {
+        requireEdition3(tokens_[index_ - 1U].range(), "struct trait implementations");
+        bool first = true;
+        do
+        {
+            if (!canStartTypeAt(index_))
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    "expected trait type after ':'/',' on struct declaration");
+                break;
+            }
+            ast::TypeSyntax* specification = parseType();
+            if (first)
+            {
+                node->setTypeSyntax(specification);
+                first = false;
+            }
+            node->addTypeSyntax(specification);
+        }
+        while (consumeIf(TokenKind::Comma));
+    }
+
     bool sawRecordDeriveClause = false;
     const auto parseRecordDerives = [&]()
     {
@@ -3088,8 +3143,8 @@ ast::AstNode* Parser::parseStructDeclaration(
         }
     };
     parseRecordDerives();
-    // NSC-LIMIT-007: un struct no declara bases en este lenguaje, asi que la clausula va aqui,
-    // entre los parametros genericos y el cuerpo.
+    // A struct never has a class base. NativeSharp 3 permits the preceding list only for trait
+    // conformance; generic constraints still occupy the ordinary position before the body.
     parseGenericConstraintClauses(node);
     parseRecordDerives();
 
@@ -3589,7 +3644,18 @@ ast::AstNode* Parser::parseStructBody(
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
         const std::size_t before = index_;
-        ast::AstNode* member = parseClassMember(structName, true, true);
+        ast::AstNode* member = nullptr;
+        if (atContextualKeyword("associated") &&
+            (peek().kind() == TokenKind::KwConst ||
+             (peek().kind() == TokenKind::Identifier && peek().lexeme() == "type")))
+        {
+            consume();
+            member = parseAssociatedItem(true);
+        }
+        else
+        {
+            member = parseClassMember(structName, true, true);
+        }
         if (member != nullptr)
         {
             // C6 "struct members". This gate used to be ONE condition refusing constructors,
