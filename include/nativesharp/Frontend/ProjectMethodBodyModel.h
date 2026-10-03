@@ -1921,6 +1921,11 @@ private:
         std::string_view sourceTypeKey,
         std::string_view targetTypeKey,
         std::optional<ProjectIntegerConstant> integerConstant = std::nullopt) const;
+    bool reportTupleConversionFailure(
+        std::string_view sourceTypeKey,
+        std::string_view targetTypeKey,
+        SourceRange range,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     ProjectImplicitConversion classifyCVariadicPromotion(std::string_view sourceTypeKey) const;
     std::string implicitThisTypeKey(std::size_t methodMemberOrdinal) const;
     // C4 "language references": enforce that a call writes the same `ref`/`out`/`in` keyword the
@@ -2040,7 +2045,7 @@ private:
     const ClassMemberSymbol* methodSymbol(std::size_t methodMemberOrdinal) const noexcept;
     bool betterCandidate(
         const MethodCallCandidate& left,
-        const MethodCallCandidate& right) const noexcept;
+        const MethodCallCandidate& right) const;
     void recordExpressionType(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,

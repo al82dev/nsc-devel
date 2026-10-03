@@ -4215,12 +4215,16 @@ void ProjectMethodBodyModel::analyzeVariable(
                 initializer.integerConstant);
             if (!conversion.exists())
             {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidConversion,
-                    diagnostics::DiagnosticSeverity::Error,
-                    variable->first()->range(),
-                    "cannot initialize local '" + variable->text() + "' of type '" + typeKey +
-                        "' from '" + initializer.typeKey + "'");
+                if (!reportTupleConversionFailure(
+                        initializer.typeKey, typeKey, variable->first()->range(), diagnostics))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        variable->first()->range(),
+                        "cannot initialize local '" + variable->text() + "' of type '" + typeKey +
+                            "' from '" + initializer.typeKey + "'");
+                }
             }
             if (!isVarInferred && ProjectTypeConversion::isPointer(typeKey) &&
                 initializer.pointerPointeeReadonly && !declaredPointerPointeeReadonly)
@@ -5178,12 +5182,16 @@ void ProjectMethodBodyModel::analyzeReturn(
         value.integerConstant);
     if (!conversion.exists())
     {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidConversion,
-            diagnostics::DiagnosticSeverity::Error,
-            statement->first()->range(),
-            "cannot convert return expression from '" + value.typeKey + "' to '" +
-                method->declaredTypeKey + "'");
+        if (!reportTupleConversionFailure(
+                value.typeKey, method->declaredTypeKey, statement->first()->range(), diagnostics))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->first()->range(),
+                "cannot convert return expression from '" + value.typeKey + "' to '" +
+                    method->declaredTypeKey + "'");
+        }
         return;
     }
     if (value.pointerPointeeReadonly &&
@@ -17351,6 +17359,42 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyImplicit(
         integerConstant);
 }
 
+bool ProjectMethodBodyModel::reportTupleConversionFailure(
+    std::string_view sourceTypeKey,
+    std::string_view targetTypeKey,
+    SourceRange range,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const std::optional<std::vector<std::string>> source =
+        ProjectTypeConversion::tupleElementTypeKeys(sourceTypeKey);
+    const std::optional<std::vector<std::string>> target =
+        ProjectTypeConversion::tupleElementTypeKeys(targetTypeKey);
+    if (!source.has_value() || !target.has_value()) return false;
+    if (source->size() != target->size())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            range,
+            "tuple conversion requires equal arity; source has " +
+                std::to_string(source->size()) + " element(s) and target has " +
+                std::to_string(target->size()));
+        return true;
+    }
+    for (std::size_t index = 0; index < source->size(); ++index)
+    {
+        if (classifyImplicit((*source)[index], (*target)[index]).exists()) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            range,
+            "cannot convert tuple element " + std::to_string(index + 1) + " from '" +
+                (*source)[index] + "' to '" + (*target)[index] + "'");
+        return true;
+    }
+    return false;
+}
+
 ProjectImplicitConversion ProjectMethodBodyModel::classifyCVariadicPromotion(
     std::string_view sourceTypeKey) const
 {
@@ -17757,7 +17801,7 @@ const ClassMemberSymbol* ProjectMethodBodyModel::methodSymbol(
 
 bool ProjectMethodBodyModel::betterCandidate(
     const MethodCallCandidate& left,
-    const MethodCallCandidate& right) const noexcept
+    const MethodCallCandidate& right) const
 {
     if (!left.viable || !right.viable || left.conversions.size() != right.conversions.size())
     {
@@ -17774,6 +17818,22 @@ bool ProjectMethodBodyModel::betterCandidate(
         if (left.conversions[index].rank < right.conversions[index].rank)
         {
             strictlyBetter = true;
+        }
+        if (left.conversions[index].rank == right.conversions[index].rank &&
+            left.conversions[index].targetTypeKey != right.conversions[index].targetTypeKey)
+        {
+            // Equal broad categories still have a better conversion target. For example an int
+            // tuple reaches both `(long,long)` and `(double,double)` through numeric widening,
+            // but the former itself converts to the latter and not vice versa. Preserve the
+            // ordinary overload partial order recursively for structural tuples and references.
+            const bool leftReachesRight = classifyImplicit(
+                left.conversions[index].targetTypeKey,
+                right.conversions[index].targetTypeKey).exists();
+            const bool rightReachesLeft = classifyImplicit(
+                right.conversions[index].targetTypeKey,
+                left.conversions[index].targetTypeKey).exists();
+            if (rightReachesLeft && !leftReachesRight) return false;
+            if (leftReachesRight && !rightReachesLeft) strictlyBetter = true;
         }
     }
     if (!strictlyBetter && left.defaultedParameterCount != right.defaultedParameterCount)

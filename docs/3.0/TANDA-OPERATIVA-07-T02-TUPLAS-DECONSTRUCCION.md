@@ -47,6 +47,10 @@ podía declarar, retornar, pasar, convertir ni ejecutar una tupla.
 - `ProjectConversionKind::Tuple` clasifica aridad exacta y conversiones recursivas por elemento.
 - LLVM derrama el carrier fuente una vez, convierte cada campo y construye el carrier destino sin
   reinterpretar padding ni repetir efectos.
+- El clasificador semántico conserva upcasts de clase/interfaz dentro de tuplas y rechaza
+  conversiones de usuario que exigirían llamadas ocultas por elemento.
+- El overload resolution usa el orden parcial de destinos estructurales cuando dos conversiones
+  comparten rango; los errores de inicialización/return nombran el elemento incompatible.
 
 ### Deconstrucción
 
@@ -73,7 +77,11 @@ podía declarar, retornar, pasar, convertir ni ejecutar una tupla.
 - `tests/cc1/c57_ns3_tuples/Main.ns`: ejecución O0 de tipos/literales/conversiones/ABI/deconstrucción.
 - `tests/unit/NativeSharp3T02NativeTupleTests.cpp`: contrato dirigido de aridad, identidad, layout,
   genéricos, ABI, ejecución y frontera move-only.
+- `tests/unit/NativeSharp3T02TupleLiteralTests.cpp`: inferencia, conversiones numéricas/de
+  referencia, overloads, temporales, efectos y diagnósticos causales.
 - `docs/3.0/language/native-tuples.md`: contrato normativo bilingüe de identidad/layout/ABI.
+- `docs/3.0/language/tuple-literals-and-conversions.md`: reglas bilingües de inferencia,
+  conversiones y selección de overload.
 - Este documento: evidencia completa de la tanda y de sus fronteras.
 
 ## Archivos modificados

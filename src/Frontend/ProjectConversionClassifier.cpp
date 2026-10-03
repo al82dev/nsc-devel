@@ -1,5 +1,6 @@
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 
+#include <algorithm>
 #include <string>
 #include <unordered_set>
 
@@ -29,6 +30,39 @@ ProjectImplicitConversion ProjectConversionClassifier::classifyImplicit(
     std::string_view targetTypeKey,
     std::optional<ProjectIntegerConstant> integerConstant) const
 {
+    const std::optional<std::vector<std::string>> sourceTuple =
+        ProjectTypeConversion::tupleElementTypeKeys(sourceTypeKey);
+    const std::optional<std::vector<std::string>> targetTuple =
+        ProjectTypeConversion::tupleElementTypeKeys(targetTypeKey);
+    if (sourceTuple.has_value() || targetTuple.has_value())
+    {
+        if (!sourceTuple.has_value() || !targetTuple.has_value() ||
+            sourceTuple->size() != targetTuple->size())
+            return noConversion(sourceTypeKey, targetTypeKey);
+        if (sourceTypeKey == targetTypeKey)
+            return ProjectTypeConversion::classifyImplicit(sourceTypeKey, targetTypeKey);
+        int rank = 0;
+        for (std::size_t index = 0; index < sourceTuple->size(); ++index)
+        {
+            const ProjectImplicitConversion element = classifyImplicit(
+                (*sourceTuple)[index], (*targetTuple)[index]);
+            // User-defined conversions require a call per element, which the structural LLVM
+            // converter intentionally does not synthesize. Keep tuple conversion structural:
+            // builtins, pointer/reference identity/upcasts, and nested tuples only.
+            if (!element.exists() ||
+                element.kind == ProjectConversionKind::UserDefinedImplicit ||
+                element.kind == ProjectConversionKind::UserDefinedExplicit)
+                return noConversion(sourceTypeKey, targetTypeKey);
+            rank = std::max(rank, element.rank);
+        }
+        return ProjectImplicitConversion{
+            ProjectConversionKind::Tuple,
+            rank + 1,
+            std::string(sourceTypeKey),
+            std::string(targetTypeKey),
+            std::nullopt};
+    }
+
     ProjectImplicitConversion primitive = ProjectTypeConversion::classifyImplicit(
         sourceTypeKey,
         targetTypeKey,
