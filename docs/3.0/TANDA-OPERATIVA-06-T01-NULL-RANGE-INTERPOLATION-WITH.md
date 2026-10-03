@@ -81,6 +81,10 @@ oculto o duplicar efectos. Las dependencias se registran al final de este docume
 
 - La fuente se evalúa una vez antes de los updates.
 - Se valida el nombre de cada campo, duplicados y conversiones.
+- Nombrar un campo privado obedece la accesibilidad ordinaria: se acepta dentro del tipo
+  declarante y se rechaza fuera. Copiar los bytes no convierte un campo privado en API pública.
+- Un campo `readonly` puede recibir su valor durante la construcción del nuevo resultado; el
+  valor fuente no se muta.
 - HIR usa un `aggregate-spread` de todos los campos y después los updates en orden textual.
 - MIR publica `aggregate-spread-store`; LLVM copia a un slot final y actualiza in-place.
 - Sólo se aceptan agregados triviales. Un aggregate owning/move-only requiere clone/copy strategy y

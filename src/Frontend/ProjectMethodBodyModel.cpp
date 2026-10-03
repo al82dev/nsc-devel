@@ -6761,6 +6761,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             binding.syntax = expression;
             binding.targetTypeKey = source.typeKey;
             binding.generalized = true;
+            const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+            const std::optional<std::size_t> sourceTypeOrdinal = inheritanceModel_ != nullptr
+                ? inheritanceModel_->typeOrdinalForTypeKey(source.typeKey) : std::nullopt;
             std::vector<bool> assigned(elements->size(), false);
             for (const ast::AstNode* update : expression->children())
             {
@@ -6793,6 +6796,45 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 }
                 assigned[target] = true;
                 entry.targetElementOrdinals.push_back(target);
+
+                // A `with` update is construction of a new value, so a readonly field may be
+                // initialized here. Accessibility is independent: copying the complete carrier
+                // never exposes a private field, but naming that field as an update is a direct
+                // source-level access and must obey the same rule as `receiver.Field = value`.
+                const ClassMemberSymbol* targetField = nullptr;
+                if (sourceTypeOrdinal.has_value() && memberModel_ != nullptr)
+                {
+                    for (const std::size_t fieldOrdinal :
+                         memberModel_->membersOfType(*sourceTypeOrdinal))
+                    {
+                        if (fieldOrdinal >= memberModel_->members().size()) continue;
+                        const ClassMemberSymbol& candidate = memberModel_->members()[fieldOrdinal];
+                        if (candidate.kind == ClassMemberKind::Field && !candidate.isStatic &&
+                            !candidate.isConst && !candidate.isUnnamedBitField &&
+                            candidate.name == (*names)[target])
+                        {
+                            targetField = &candidate;
+                            break;
+                        }
+                    }
+                }
+                if (targetField == nullptr || caller == nullptr || nameLookup_ == nullptr ||
+                    inheritanceModel_ == nullptr || !sourceTypeOrdinal.has_value() ||
+                    !ProjectMemberAccessibility::isAccessible(
+                        *targetField,
+                        caller->declaringTypeOrdinal,
+                        *sourceTypeOrdinal,
+                        *nameLookup_,
+                        *inheritanceModel_))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InaccessibleMember,
+                        diagnostics::DiagnosticSeverity::Error,
+                        update->range(),
+                        "with member '" + update->argumentName() +
+                            "' is not accessible in this context");
+                    valid = false;
+                }
                 const ExpressionResult value = analyzeExpression(
                     update, methodMemberOrdinal, scopeOrdinal, diagnostics);
                 if (!value.valid || !classifyImplicit(
