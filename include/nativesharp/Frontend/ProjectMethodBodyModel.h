@@ -10,6 +10,7 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
+#include "nativesharp/Sema/ExpressionInfo.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -263,6 +264,10 @@ struct MethodExpressionTypeBinding final
     std::size_t methodMemberOrdinal = 0;
     std::size_t scopeOrdinal = 0;
     std::string typeKey;
+    // NativeSharp 3.0 T00-F03. This is the canonical value-category view consumed by
+    // lowering/tooling. Ownership remains orthogonal: it explains who destroys a value, while
+    // this field explains whether the expression denotes storage, a value, or a temporary.
+    sema::ValueCategory valueCategory = sema::ValueCategory::Value;
     std::optional<ProjectIntegerConstant> integerConstant;
     bool pointerPointeeReadonly = false;
     // NSC-LIMIT-010. El resultado semantico de una expresion llevaba ownership, transferencia y

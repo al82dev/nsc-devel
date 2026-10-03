@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <ranges>
 #include <sstream>
 #include <string>
@@ -56,6 +57,15 @@ bool hasDiagnosticText(const ProjectCompilation& compilation, std::string_view t
     return std::ranges::any_of(
         compilation.diagnostics().diagnostics(),
         [text](const auto& diagnostic) { return diagnostic.message().find(text) != std::string::npos; });
+}
+
+bool hasDiagnosticId(
+    const ProjectCompilation& compilation,
+    nativesharp::diagnostics::DiagnosticId id)
+{
+    return std::ranges::any_of(
+        compilation.diagnostics().diagnostics(),
+        [id](const auto& diagnostic) { return diagnostic.id() == id; });
 }
 
 void collectHir(const ProjectOopHirNode* node, std::vector<const ProjectOopHirNode*>& output)
@@ -104,7 +114,8 @@ void expectInvalid(
     const std::filesystem::path& root,
     std::string_view caseName,
     std::string_view source,
-    std::string_view diagnostic)
+    std::string_view diagnostic,
+    std::optional<nativesharp::diagnostics::DiagnosticId> diagnosticId = std::nullopt)
 {
     const std::filesystem::path directory = root / std::string(caseName);
     writeProject(directory, caseName, source);
@@ -117,6 +128,12 @@ void expectInvalid(
     tests.expect(
         hasDiagnosticText(compilation, diagnostic),
         std::string(caseName) + " reports the Stage 49 ownership diagnostic");
+    if (diagnosticId.has_value())
+    {
+        tests.expect(
+            hasDiagnosticId(compilation, *diagnosticId),
+            std::string(caseName) + " reports the stable value-category diagnostic ID");
+    }
 }
 
 std::string positiveSource()
@@ -138,8 +155,30 @@ class Resource
     ~Resource() { Value = 0; }
 }
 
+struct Pair
+{
+    public int Value;
+}
+
 class Harness
 {
+    public static int Inspect(borrowed Resource value)
+    {
+        return value.Read();
+    }
+
+    public static Pair MakePair()
+    {
+        Pair value;
+        value.Value = 7;
+        return value;
+    }
+
+    public static int ReadPair()
+    {
+        return MakePair().Value;
+    }
+
     public static int Run(bool choose, bool loop)
     {
         raii Resource a = new Resource(1);
@@ -224,6 +263,18 @@ void testSemanticModel(TestContext& tests, const std::filesystem::path& root)
     }
 
     const auto& body = *compilation.methodBodyModel();
+    tests.expect(std::ranges::any_of(body.expressionTypes(), [](const auto& expression) {
+        return expression.valueCategory == nativesharp::sema::ValueCategory::Place;
+    }), "project sema publishes storage-backed expressions as place values");
+    tests.expect(std::ranges::any_of(body.expressionTypes(), [](const auto& expression) {
+        return expression.valueCategory == nativesharp::sema::ValueCategory::BorrowedValue;
+    }), "project sema publishes borrowed storage through the canonical borrowed-value category");
+    tests.expect(std::ranges::any_of(body.expressionTypes(), [](const auto& expression) {
+        return expression.valueCategory == nativesharp::sema::ValueCategory::Value;
+    }), "project sema publishes computed expressions as values");
+    tests.expect(std::ranges::any_of(body.expressionTypes(), [](const auto& expression) {
+        return expression.valueCategory == nativesharp::sema::ValueCategory::Temporary;
+    }), "project sema publishes non-addressable struct results as temporaries");
     const std::size_t raiiLocals = static_cast<std::size_t>(std::ranges::count_if(body.locals(), [](const auto& local) {
         return local.isRaii;
     }));
@@ -441,7 +492,8 @@ class Resource
 
     expectInvalid(tests, root, "UseAfterMove", prefix +
         "class H { public static int F() { raii Resource a = new Resource(); raii Resource b = move(a); return a.Read(); } }",
-        "use of moved-from RAII local 'a'");
+        "use of moved-from RAII local 'a'",
+        nativesharp::diagnostics::DiagnosticId::NS3020InvalidValueCategory);
 
     expectInvalid(tests, root, "DoubleMove", prefix +
         "class H { public static void F() { raii Resource a = new Resource(); raii Resource b = move(a); raii Resource c = move(a); } }",

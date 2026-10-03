@@ -8482,7 +8482,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 if (local.isRaii && movedRaiiLocals_.contains(scopeName->semanticOrdinal))
                 {
                     diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
                         "use of moved-from RAII local '" + local.name + "'");
@@ -8491,7 +8491,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 if (local.isRaii && maybeMovedRaiiLocals_.contains(scopeName->semanticOrdinal))
                 {
                     diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
                         "use of moved-from RAII local '" + local.name +
@@ -8615,7 +8615,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 movedOwnedParameters_.contains(scopeName->semanticOrdinal))
             {
                 diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
                     "use of moved-from owned parameter '" + parameter.name + "'");
@@ -8625,7 +8625,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 maybeMovedOwnedParameters_.contains(scopeName->semanticOrdinal))
             {
                 diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
                     "use of moved-from owned parameter '" + parameter.name +
@@ -17531,6 +17531,26 @@ void ProjectMethodBodyModel::recordExpressionType(
     binding.methodMemberOrdinal = methodMemberOrdinal;
     binding.scopeOrdinal = scopeOrdinal;
     binding.typeKey = result.typeKey;
+    if (result.addressable)
+    {
+        binding.valueCategory = result.ownership == sema::OwnershipKind::Borrowed
+            ? sema::ValueCategory::BorrowedValue
+            : sema::ValueCategory::Place;
+    }
+    else if (!result.ownershipTransfer && !result.ownershipFreshOwner &&
+             typeKeyIsStruct(result.typeKey) &&
+             (expression->kind() == ast::AstNodeKind::CallExpression ||
+              expression->kind() == ast::AstNodeKind::ObjectCreationExpression ||
+              expression->kind() == ast::AstNodeKind::AggregateInitializerExpression ||
+              expression->kind() == ast::AstNodeKind::TupleExpression ||
+              expression->kind() == ast::AstNodeKind::WithExpression))
+    {
+        binding.valueCategory = sema::ValueCategory::Temporary;
+    }
+    else
+    {
+        binding.valueCategory = sema::ValueCategory::Value;
+    }
     binding.integerConstant = result.integerConstant;
     binding.pointerPointeeReadonly = result.pointerPointeeReadonly;
     binding.ownership = result.ownership;
