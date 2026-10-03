@@ -70,6 +70,7 @@ bool ProjectInterfaceModel::build(
     inheritanceModel_ = &inheritanceModel;
     interfaceInfoByType_.resize(nameLookup.namedTypes().size());
     interfacesByClass_.resize(nameLookup.namedTypes().size());
+    operatorWitnessesByType_.resize(nameLookup.namedTypes().size());
 
     for (std::size_t ordinal = 0; ordinal < nameLookup.namedTypes().size(); ++ordinal)
     {
@@ -161,6 +162,15 @@ std::span<const std::size_t> ProjectInterfaceModel::interfacesOfClass(
     return classTypeOrdinal < interfacesByClass_.size()
         ? std::span<const std::size_t>(interfacesByClass_[classTypeOrdinal])
         : std::span<const std::size_t>(empty);
+}
+
+std::span<const TraitOperatorWitness> ProjectInterfaceModel::operatorWitnessesOfType(
+    std::size_t typeOrdinal) const noexcept
+{
+    static const std::vector<TraitOperatorWitness> empty;
+    return typeOrdinal < operatorWitnessesByType_.size()
+        ? std::span<const TraitOperatorWitness>(operatorWitnessesByType_[typeOrdinal])
+        : std::span<const TraitOperatorWitness>(empty);
 }
 
 std::span<const ClassInterfaceTablePlan> ProjectInterfaceModel::tablePlans() const noexcept
@@ -870,7 +880,9 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
             {
                 if (requirementOrdinal >= memberModel_->members().size()) continue;
                 const ClassMemberSymbol& requirement = memberModel_->members()[requirementOrdinal];
-                if (!findStaticImplementation(classOrdinal, requirement).has_value() &&
+                const std::optional<std::size_t> implementation =
+                    findStaticImplementation(classOrdinal, requirement);
+                if (!implementation.has_value() &&
                     !type.isAbstract)
                 {
                     diagnostics.report(
@@ -882,6 +894,28 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
                             requirement.signatureKey + "' from '" +
                             nameLookup_->namedTypes()[interfaceOrdinal].identity.key() + "'");
                     ok = false;
+                }
+                if (implementation.has_value() && requirement.isUserOperator &&
+                    !requirement.operatorTraitKey.empty())
+                {
+                    auto& witnesses = operatorWitnessesByType_[classOrdinal];
+                    const bool duplicate = std::ranges::any_of(
+                        witnesses,
+                        [&](const TraitOperatorWitness& witness)
+                        {
+                            return witness.traitTypeOrdinal == interfaceOrdinal &&
+                                witness.requirementMemberOrdinal == requirementOrdinal &&
+                                witness.implementationMemberOrdinal == *implementation;
+                        });
+                    if (!duplicate)
+                    {
+                        witnesses.push_back(TraitOperatorWitness{
+                            classOrdinal,
+                            interfaceOrdinal,
+                            requirementOrdinal,
+                            *implementation,
+                            requirement.operatorTraitKey});
+                    }
                 }
             }
             if (!implementingType.valueType) tablePlans_.push_back(std::move(plan));

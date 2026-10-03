@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>c70_ns3_operator_traits</Name>
+    <Language>3</Language>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 
 #include "nativesharp/Language/AggregateSemantics.h"
+#include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
@@ -1833,6 +1834,24 @@ bool ProjectMemberModel::collectTypeMembers(
                 {
                     symbol.signatureKey += "->" + symbol.declaredTypeKey;
                 }
+                if (symbol.isUserOperator)
+                {
+                    const language::OperatorTraitContract* contract =
+                        language::operatorTraitContractForMethod(
+                            symbol.name, symbol.parameters.size());
+                    if (contract != nullptr)
+                    {
+                        symbol.operatorTraitKey = std::string(contract->langItem);
+                    }
+                    else
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            symbol.range,
+                            "user-defined operator has no NativeSharp 3 lang-item contract");
+                    }
+                }
 
                 // Bloque 1 item 9, setter half. The setter's implicit `value` parameter is
                 // built from the property's own TypeSyntax, so it already carries the `owned`
@@ -1981,7 +2000,19 @@ bool ProjectMemberModel::collectTypeMembers(
                 bool containsContainingType = false;
                 for (const MethodParameterSymbol& parameter : symbol.parameters)
                 {
-                    containsContainingType = containsContainingType || parameter.typeKey == containingTypeKey;
+                    const std::string_view operandType =
+                        parameter.passKind == ParameterPassKind::Value
+                        ? std::string_view(parameter.typeKey)
+                        : std::string_view(parameter.pointeeTypeKey);
+                    containsContainingType = containsContainingType || operandType == containingTypeKey;
+                    if (parameter.passKind == ParameterPassKind::Out)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            parameter.range,
+                            "operator operands may be passed by value, ref or in, but never out");
+                    }
                 }
                 if (!containsContainingType && !(symbol.isAbstract && isTraitDeclaration(type)))
                 {

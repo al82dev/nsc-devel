@@ -15,6 +15,7 @@
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Language/SumTypeSemantics.h"
+#include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -399,26 +400,56 @@ std::string shiftResultType(std::string_view leftTypeKey)
 
 std::string stage38OperatorMethodName(TokenKind kind, std::size_t arity)
 {
+    const auto spelling = [](TokenKind operation) noexcept -> std::string_view
+    {
+        switch (operation)
+        {
+            case TokenKind::Plus: return "+";
+            case TokenKind::Minus: return "-";
+            case TokenKind::Star: return "*";
+            case TokenKind::Slash: return "/";
+            case TokenKind::Percent: return "%";
+            case TokenKind::Bang: return "!";
+            case TokenKind::Tilde: return "~";
+            case TokenKind::Amp: return "&";
+            case TokenKind::Pipe: return "|";
+            case TokenKind::Caret: return "^";
+            case TokenKind::LessLess: return "<<";
+            case TokenKind::GreaterGreater: return ">>";
+            case TokenKind::EqualEqual: return "==";
+            case TokenKind::BangEqual: return "!=";
+            case TokenKind::Less: return "<";
+            case TokenKind::LessEqual: return "<=";
+            case TokenKind::Greater: return ">";
+            case TokenKind::GreaterEqual: return ">=";
+            default: return {};
+        }
+    };
+    return std::string(language::operatorMethodName(spelling(kind), arity));
+}
+
+std::string stage38OperatorTraitKey(TokenKind kind, std::size_t arity)
+{
     switch (kind)
     {
-        case TokenKind::Plus: return arity == 1 ? "op_UnaryPlus" : "op_Addition";
-        case TokenKind::Minus: return arity == 1 ? "op_UnaryNegation" : "op_Subtraction";
-        case TokenKind::Star: return "op_Multiply";
-        case TokenKind::Slash: return "op_Division";
-        case TokenKind::Percent: return "op_Modulus";
-        case TokenKind::Bang: return "op_LogicalNot";
-        case TokenKind::Tilde: return "op_OnesComplement";
-        case TokenKind::Amp: return "op_BitwiseAnd";
-        case TokenKind::Pipe: return "op_BitwiseOr";
-        case TokenKind::Caret: return "op_ExclusiveOr";
-        case TokenKind::LessLess: return "op_LeftShift";
-        case TokenKind::GreaterGreater: return "op_RightShift";
-        case TokenKind::EqualEqual: return "op_Equality";
-        case TokenKind::BangEqual: return "op_Inequality";
-        case TokenKind::Less: return "op_LessThan";
-        case TokenKind::LessEqual: return "op_LessThanOrEqual";
-        case TokenKind::Greater: return "op_GreaterThan";
-        case TokenKind::GreaterEqual: return "op_GreaterThanOrEqual";
+        case TokenKind::Plus: return std::string(language::operatorTrait("+", arity));
+        case TokenKind::Minus: return std::string(language::operatorTrait("-", arity));
+        case TokenKind::Star: return std::string(language::operatorTrait("*", arity));
+        case TokenKind::Slash: return std::string(language::operatorTrait("/", arity));
+        case TokenKind::Percent: return std::string(language::operatorTrait("%", arity));
+        case TokenKind::Bang: return std::string(language::operatorTrait("!", arity));
+        case TokenKind::Tilde: return std::string(language::operatorTrait("~", arity));
+        case TokenKind::Amp: return std::string(language::operatorTrait("&", arity));
+        case TokenKind::Pipe: return std::string(language::operatorTrait("|", arity));
+        case TokenKind::Caret: return std::string(language::operatorTrait("^", arity));
+        case TokenKind::LessLess: return std::string(language::operatorTrait("<<", arity));
+        case TokenKind::GreaterGreater: return std::string(language::operatorTrait(">>", arity));
+        case TokenKind::EqualEqual: return std::string(language::operatorTrait("==", arity));
+        case TokenKind::BangEqual: return std::string(language::operatorTrait("!=", arity));
+        case TokenKind::Less: return std::string(language::operatorTrait("<", arity));
+        case TokenKind::LessEqual: return std::string(language::operatorTrait("<=", arity));
+        case TokenKind::Greater: return std::string(language::operatorTrait(">", arity));
+        case TokenKind::GreaterEqual: return std::string(language::operatorTrait(">=", arity));
         default: return {};
     }
 }
@@ -14142,6 +14173,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
     call.candidateMemberOrdinals = std::move(candidates);
 
     bool hasMatchingArity = false;
+    const bool implicitOperatorCall =
+        language::operatorTraitContractForMethod(call.methodName, arguments.size()) != nullptr;
     if (memberModel_ != nullptr)
     {
         for (const std::size_t candidateOrdinal : call.candidateMemberOrdinals)
@@ -14161,11 +14194,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
             candidateBinding.viable = true;
             for (std::size_t argumentOrdinal = 0; argumentOrdinal < arguments.size(); ++argumentOrdinal)
             {
+                const MethodParameterSymbol& parameter = candidate.parameters[argumentOrdinal];
+                const bool implicitOperatorReference = candidate.isUserOperator &&
+                    (parameter.passKind == ParameterPassKind::Ref ||
+                     parameter.passKind == ParameterPassKind::In);
+                const std::string_view conversionTarget = implicitOperatorReference
+                    ? std::string_view(parameter.pointeeTypeKey)
+                    : std::string_view(parameter.typeKey);
                 ProjectImplicitConversion conversion = classifyImplicit(
                     arguments[argumentOrdinal].typeKey,
-                    candidate.parameters[argumentOrdinal].typeKey,
+                    conversionTarget,
                     arguments[argumentOrdinal].integerConstant);
-                if (!conversion.exists()) candidateBinding.viable = false;
+                if (!conversion.exists() ||
+                    (implicitOperatorReference &&
+                     conversion.kind != ProjectConversionKind::Identity) ||
+                    (implicitOperatorReference && !arguments[argumentOrdinal].addressable) ||
+                    (parameter.passKind == ParameterPassKind::Ref &&
+                     (!arguments[argumentOrdinal].assignable ||
+                      arguments[argumentOrdinal].readonlyReceiver)) ||
+                    (candidate.isUserOperator && parameter.passKind == ParameterPassKind::Out))
+                {
+                    candidateBinding.viable = false;
+                }
                 candidateBinding.conversions.push_back(std::move(conversion));
             }
             if (candidateBinding.viable) call.viableCandidateMemberOrdinals.push_back(candidateOrdinal);
@@ -14215,7 +14265,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
                 soleCandidate < memberModel_->members().size())
             {
                 const ClassMemberSymbol& only = memberModel_->members()[soleCandidate];
-                for (std::size_t index = 0; index < arguments.size() && index < only.parameters.size(); ++index)
+                for (std::size_t index = 0;
+                     !implicitOperatorCall && !only.isUserOperator && index < arguments.size() &&
+                         index < only.parameters.size();
+                     ++index)
                 {
                     if (only.parameters[index].passKind != arguments[index].argumentPassKind)
                     {
@@ -14293,7 +14346,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
             return result;
         }
     }
-    if (diagnoseFailure)
+    if (diagnoseFailure && memberModel_ != nullptr &&
+        selected.memberOrdinal < memberModel_->members().size() &&
+        !memberModel_->members()[selected.memberOrdinal].isUserOperator)
     {
         checkArgumentPassKinds(syntax, call.methodName, selected.memberOrdinal, arguments, diagnostics);
     }
@@ -14360,6 +14415,7 @@ std::vector<std::size_t> ProjectMethodBodyModel::stage38AccessorCandidates(
 }
 
 std::vector<std::size_t> ProjectMethodBodyModel::stage38OperatorCandidates(
+    std::string_view operatorTraitKey,
     std::string_view methodName,
     std::string_view leftTypeKey,
     std::optional<std::string_view> rightTypeKey) const
@@ -14379,11 +14435,30 @@ std::vector<std::size_t> ProjectMethodBodyModel::stage38OperatorCandidates(
         // framework -- writable the way it is written everywhere else.
         const std::optional<std::size_t> typeOrdinal = inheritanceModel_->typeOrdinalForTypeKey(typeKey);
         if (!typeOrdinal.has_value()) return;
+        if (interfaceModel_ != nullptr)
+        {
+            for (const TraitOperatorWitness& witness :
+                 interfaceModel_->operatorWitnessesOfType(*typeOrdinal))
+            {
+                if (witness.langItem != operatorTraitKey ||
+                    witness.implementationMemberOrdinal >= memberModel_->members().size() ||
+                    seen.contains(witness.implementationMemberOrdinal))
+                    continue;
+                const ClassMemberSymbol& member =
+                    memberModel_->members()[witness.implementationMemberOrdinal];
+                if (!member.isUserOperator || !member.isStatic || member.name != methodName ||
+                    member.operatorTraitKey != operatorTraitKey)
+                    continue;
+                seen.insert(witness.implementationMemberOrdinal);
+                result.push_back(witness.implementationMemberOrdinal);
+            }
+        }
         for (const std::size_t ordinal : memberModel_->findMembers(*typeOrdinal, methodName))
         {
             if (ordinal >= memberModel_->members().size() || seen.contains(ordinal)) continue;
             const ClassMemberSymbol& member = memberModel_->members()[ordinal];
-            if (!member.isUserOperator || !member.isStatic) continue;
+            if (!member.isUserOperator || !member.isStatic ||
+                member.operatorTraitKey != operatorTraitKey) continue;
             seen.insert(ordinal);
             result.push_back(ordinal);
         }
@@ -14494,10 +14569,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
         operation != TokenKind::PlusPlus && operation != TokenKind::MinusMinus)
     {
         const std::string operatorName = stage38OperatorMethodName(operation, 1);
-        if (!operatorName.empty())
+        const std::string operatorTraitKey = stage38OperatorTraitKey(operation, 1);
+        if (!operatorName.empty() && !operatorTraitKey.empty())
         {
             std::vector<std::size_t> candidates = stage38OperatorCandidates(
-                operatorName, operand.typeKey, std::nullopt);
+                operatorTraitKey, operatorName, operand.typeKey, std::nullopt);
             if (!candidates.empty())
             {
                 const std::vector<ExpressionResult> arguments = {operand};
@@ -14514,12 +14590,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
                     false,
                     false,
                     diagnostics,
-                    false);
+                    true);
                 if (overloaded.valid)
                 {
                     overloaded.assignable = false;
+                    overloaded.addressable = false;
                     return overloaded;
                 }
+                return {};
             }
         }
     }
@@ -14858,6 +14936,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
     }
 
     const std::string operatorName = stage38OperatorMethodName(operation, 2);
+    const std::string operatorTraitKey = stage38OperatorTraitKey(operation, 2);
     // A comparison against the `null` LITERAL does not bind to a user-defined operator. Without
     // this, the guard every `operator ==` has to open with was itself the recursion:
     //
@@ -14882,10 +14961,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
          expression->first()->kind() == ast::AstNodeKind::NullLiteralExpression) ||
         (expression->second() != nullptr &&
          expression->second()->kind() == ast::AstNodeKind::NullLiteralExpression);
-    if (!operatorName.empty() && !nullLiteralOperand)
+    if (!operatorName.empty() && !operatorTraitKey.empty() && !nullLiteralOperand)
     {
         std::vector<std::size_t> candidates = stage38OperatorCandidates(
-            operatorName, left.typeKey, right.typeKey);
+            operatorTraitKey, operatorName, left.typeKey, right.typeKey);
         if (!candidates.empty())
         {
             const std::vector<ExpressionResult> arguments = {left, right};
@@ -14902,12 +14981,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
                 false,
                 false,
                 diagnostics,
-                false);
+                true);
             if (overloaded.valid)
             {
                 overloaded.assignable = false;
+                overloaded.addressable = false;
                 return overloaded;
             }
+            return {};
         }
     }
     if (isLogical(operation))

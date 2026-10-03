@@ -14,6 +14,8 @@
 > extensión y reemplazó su disposición por `implemented`. El resto de este documento conserva la
 > evidencia del cierre original de T49. Contrato vigente:
 > [extension-methods.md](language/extension-methods.md).
+> `NS3-T05-F07` añadió posteriormente `trait-operators=implemented`; contrato vigente:
+> [operator-traits.md](language/operator-traits.md).
 
 ## Resultado
 
@@ -43,6 +45,7 @@ Los `record struct` y constructores primarios ya habían cerrado su vertical en 
 | Constructores estáticos | Diferidos a 4.0 | Falta inicialización once thread-safe, reentrancia y modelo de fallo. |
 | `decimal` | Diferido a 4.0 | Falta ABI de valor y contratos de aritmética, overflow, conversión y formato. |
 | Métodos de extensión | Implementados | Lookup/import deterministas, prioridad de miembros reales, lowering directo y NSMETA 1.32. |
+| Operadores mediante traits | Implementados | Lang-items estables, witnesses estáticos, reglas builtin preservadas y short-circuit intrínseco. |
 | `long double` | Rechazado en 3.0 | El ABI MSVC de Windows x64 lo iguala a `double`; 3.0 exige escribir `double`. |
 | Declaraciones en condiciones | Diferidas a 4.0 | Faltan alcance, definite assignment y cleanup en aristas true/false. |
 | Locales `static` | Diferidas a 4.0 | Faltan once thread-safe, reentrancia, destrucción y lifetime de módulo. |

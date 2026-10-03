@@ -65,6 +65,31 @@ std::string dispatchMetadata(DispatchKind kind, std::string_view traitIdentity);
 enum class ExtensionResolution { InstanceMember, UniqueExtension, Missing, Ambiguous };
 ExtensionResolution resolveExtension(bool hasInstanceMember, std::size_t visibleExtensions) noexcept;
 
+// NativeSharp 3.0 T05-F07. Operators are language items, not ad-hoc method-name conventions.
+// The spelling+arity pair is the source identity; langItem is the stable semantic identity used
+// by trait requirements and witnesses; methodName is only the existing ABI spelling. Keeping the
+// three in one table prevents parser, Sema and metadata reconstruction from inventing different
+// mappings for the same operator.
+struct OperatorTraitContract final
+{
+    std::string_view spelling;
+    std::size_t arity = 0;
+    std::string_view langItem;
+    std::string_view methodName;
+};
+
+std::span<const OperatorTraitContract> operatorTraitContracts() noexcept;
+const OperatorTraitContract* operatorTraitContract(
+    std::string_view spelling,
+    std::size_t arity) noexcept;
+const OperatorTraitContract* operatorTraitContractForMethod(
+    std::string_view methodName,
+    std::size_t arity) noexcept;
+std::string_view operatorTrait(std::string_view spelling, std::size_t arity) noexcept;
+std::string_view operatorMethodName(std::string_view spelling, std::size_t arity) noexcept;
+
+// Compatibility projection retained for the original T05 helper. Ambiguous unary/binary
+// spellings select their binary contract, matching the historical `+ -> lang:Add` behavior.
 std::string_view operatorTrait(std::string_view spelling) noexcept;
 bool operatorCanBeOverloaded(std::string_view spelling) noexcept;
 }

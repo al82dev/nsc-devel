@@ -3619,9 +3619,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         for (std::size_t index = 0; index < argumentSyntaxes.size(); ++index)
         {
             const ast::AstNode* argumentSyntax = argumentSyntaxes[index];
+            const bool implicitOperatorReference = memberModel_ != nullptr &&
+                selectedMemberOrdinal < memberModel_->members().size() &&
+                memberModel_->members()[selectedMemberOrdinal].isUserOperator &&
+                index < memberModel_->members()[selectedMemberOrdinal].parameters.size() &&
+                memberModel_->members()[selectedMemberOrdinal].parameters[index].passKind !=
+                    ParameterPassKind::Value;
             auto argument = preloweredLast != nullptr && index + 1 == argumentSyntaxes.size()
                 ? std::move(preloweredLast)
-                : lowerExpression(argumentSyntax, memberOrdinal, false, error);
+                : lowerExpression(
+                    argumentSyntax, memberOrdinal, implicitOperatorReference, error);
             if (argument == nullptr) return nullptr;
             if (index < binding->selectedConversions.size() &&
                 binding->selectedConversions[index].kind != ProjectConversionKind::Identity)

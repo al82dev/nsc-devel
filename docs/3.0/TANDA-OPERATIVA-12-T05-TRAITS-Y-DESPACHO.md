@@ -11,6 +11,10 @@
 > `NS3-T05-F06` cerró posteriormente extensiones estáticas, lookup explícito y NSMETA 1.32; véase
 > [NS3-T05-F06-extension-methods.md](items/NS3-T05-F06-extension-methods.md). Las frases históricas
 > que dejan extension methods abiertas describen solamente el alcance de esta primera vertical.
+> `NS3-T05-F07` cerró después la tabla lang-item, witnesses estáticos, referencias implícitas y
+> codegen inline de operadores; véase
+> [NS3-T05-F07-operator-traits.md](items/NS3-T05-F07-operator-traits.md). Las frases históricas que
+> dejan operadores por traits abiertos describen también solamente el alcance inicial.
 
 ## Objetivo
 

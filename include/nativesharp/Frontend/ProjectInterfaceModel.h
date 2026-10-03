@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -35,6 +36,18 @@ struct ClassInterfaceTablePlan final
     std::uint64_t stableInterfaceTypeId = 0;
     std::vector<std::size_t> interfaceMethodMemberOrdinals;
     std::vector<std::optional<std::size_t>> implementationMemberOrdinals;
+};
+
+// NativeSharp 3.0 T05-F07. A trait's static operator requirement is resolved to one concrete
+// witness while interface/coherence information is complete. Operator expressions consume this
+// table; they never rediscover a trait contract by matching ABI method names later in Sema.
+struct TraitOperatorWitness final
+{
+    std::size_t implementingTypeOrdinal = 0;
+    std::size_t traitTypeOrdinal = 0;
+    std::size_t requirementMemberOrdinal = 0;
+    std::size_t implementationMemberOrdinal = 0;
+    std::string langItem;
 };
 
 // NativeSharp 3.0 T05-F05. A `dyn Trait` is deliberately not a boxed value and not a
@@ -73,6 +86,8 @@ public:
         std::size_t classTypeOrdinal,
         std::size_t interfaceTypeOrdinal) const noexcept;
     std::span<const std::size_t> interfacesOfClass(std::size_t classTypeOrdinal) const noexcept;
+    std::span<const TraitOperatorWitness> operatorWitnessesOfType(
+        std::size_t typeOrdinal) const noexcept;
     std::span<const ClassInterfaceTablePlan> tablePlans() const noexcept;
     const ClassInterfaceTablePlan* tablePlan(
         std::size_t classTypeOrdinal,
@@ -113,6 +128,7 @@ private:
     std::vector<InterfaceTypeInfo> interfaces_;
     std::vector<std::optional<std::size_t>> interfaceInfoByType_;
     std::vector<std::vector<std::size_t>> interfacesByClass_;
+    std::vector<std::vector<TraitOperatorWitness>> operatorWitnessesByType_;
     std::vector<ClassInterfaceTablePlan> tablePlans_;
     std::vector<TraitObjectContract> traitObjectContracts_;
     bool built_ = false;

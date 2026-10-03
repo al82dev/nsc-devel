@@ -1,0 +1,33 @@
+namespace c70ns3operatortraits
+{
+    public trait IAdd<T>
+    {
+        public static T operator +(in T left, in T right);
+    }
+
+    public struct Number : IAdd<Number>
+    {
+        public int Value;
+
+        public Number(int value)
+        {
+            Value = value;
+        }
+
+        public static forceinline Number operator +(in Number left, in Number right)
+        {
+            return new Number(left.Value + right.Value);
+        }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            Number left = new Number(20);
+            Number right = new Number(22);
+            Number sum = left + right;
+            return sum.Value;
+        }
+    }
+}

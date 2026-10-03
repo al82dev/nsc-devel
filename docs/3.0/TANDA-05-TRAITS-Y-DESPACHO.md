@@ -1,9 +1,9 @@
 # Tanda 05 — Traits, interfaces estáticas y despacho / Traits and dispatch
 
-> **Estado 2026-10-03:** `IMPLEMENTING`. `NS3-T05-F01`–`NS3-T05-F06` están terminados:
+> **Estado 2026-10-03:** `TERMINADA`. `NS3-T05-F01`–`NS3-T05-F07` están terminados:
 > declaraciones, defaults, requisitos estáticos, bloques `impl`, coherencia sellada, impls
 > condicionales, tipos/constantes asociados, resultados opacos, objetos trait, extensiones
-> estáticas y transporte NSMETA. F07 permanece pendiente.
+> estáticas, operadores por lang-item estable y transporte NSMETA.
 > No se ejecutó baseline.
 
 ## Resultado / Outcome
@@ -37,6 +37,9 @@ importable extension-method identity.
   upcast, null, DLL y NSMETA 1.31.
 - `NativeSharp3T05ExtensionMethodTests` cubre 12 casos de prioridad, imports, generic receivers,
   no-ADL, ambigüedad, ref identity y cruce `.lib/.nsmeta` 1.32.
+- `NativeSharp3T05OperatorTraitTests` cubre 20 checks de tabla lang-item, witnesses, promoción,
+  consteval, referencias, ambigüedad, short-circuit, inline O0 y cruce `.lib/.nsmeta`; c70 ejecuta
+  exit 42 con NSLink.
 
 ## Mejora / Improvement
 
@@ -52,13 +55,15 @@ reordering or runtime coherence.
 
 ## Límite / Boundary
 
-F01–F06 no equivalen al gate T05. Los operadores resueltos mediante traits siguen abiertos en F07.
+T05 queda funcionalmente cerrado. Su baseline completo continúa reservado para Alberto; este
+commit sólo ejecuta baterías dirigidas y regresiones focalizadas.
 
 ## Validación / Validation
 
 `nsc` O0; c62 exit 42; MIR static/dynamic; batería F01 14/14; batería F02 11/11; batería F03
-16/16; F04 14/14; F05 12/12; F06 12/12; productor `.lib/.nsmeta` y consumidores con defaults, impl
-genérico, asociados, resultados opacos, objetos trait y extensiones estáticas exit 42.
+16/16; F04 14/14; F05 12/12; F06 12/12; F07 20/20; productor `.lib/.nsmeta` y consumidores con
+defaults, impl genérico, asociados, resultados opacos, objetos trait y extensiones estáticas exit
+42; c70 operator-traits 6/6 y exit 42.
 Sin baseline, CTest general, O1/O2/O3, instalación ni deploy.
 
 Detalle: [trait-declarations.md](language/trait-declarations.md),
@@ -72,4 +77,5 @@ Detalle: [trait-declarations.md](language/trait-declarations.md),
 [NS3-T05-F03-associated-items.md](items/NS3-T05-F03-associated-items.md) y
 [NS3-T05-F04-opaque-result-types.md](items/NS3-T05-F04-opaque-result-types.md) y
 [NS3-T05-F05-trait-objects.md](items/NS3-T05-F05-trait-objects.md) y
-[NS3-T05-F06-extension-methods.md](items/NS3-T05-F06-extension-methods.md).
+[NS3-T05-F06-extension-methods.md](items/NS3-T05-F06-extension-methods.md) y
+[NS3-T05-F07-operator-traits.md](items/NS3-T05-F07-operator-traits.md).

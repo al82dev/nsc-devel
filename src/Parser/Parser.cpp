@@ -7,6 +7,7 @@
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
 #include "nativesharp/Source/SourceFile.h"
 #include "nativesharp/Target/TargetInfo.h"
@@ -191,32 +192,41 @@ bool isStage38OperatorToken(TokenKind kind) noexcept
     }
 }
 
-std::string operatorMethodName(TokenKind kind, std::size_t arity)
+std::string_view operatorSpelling(TokenKind kind) noexcept
 {
     switch (kind)
     {
-        case TokenKind::Plus: return arity == 1 ? "op_UnaryPlus" : "op_Addition";
-        case TokenKind::Minus: return arity == 1 ? "op_UnaryNegation" : "op_Subtraction";
-        case TokenKind::Star: return "op_Multiply";
-        case TokenKind::Slash: return "op_Division";
-        case TokenKind::Percent: return "op_Modulus";
-        case TokenKind::Bang: return "op_LogicalNot";
-        case TokenKind::Tilde: return "op_OnesComplement";
-        case TokenKind::Amp: return "op_BitwiseAnd";
-        case TokenKind::Pipe: return "op_BitwiseOr";
-        case TokenKind::Caret: return "op_ExclusiveOr";
-        case TokenKind::LessLess: return "op_LeftShift";
-        case TokenKind::GreaterGreater: return "op_RightShift";
-        case TokenKind::EqualEqual: return "op_Equality";
-        case TokenKind::BangEqual: return "op_Inequality";
-        case TokenKind::Less: return "op_LessThan";
-        case TokenKind::LessEqual: return "op_LessThanOrEqual";
-        case TokenKind::Greater: return "op_GreaterThan";
-        case TokenKind::GreaterEqual: return "op_GreaterThanOrEqual";
-        case TokenKind::PlusPlus: return "op_Increment";
-        case TokenKind::MinusMinus: return "op_Decrement";
-        default: return "op_Invalid";
+        case TokenKind::Plus: return "+";
+        case TokenKind::Minus: return "-";
+        case TokenKind::Star: return "*";
+        case TokenKind::Slash: return "/";
+        case TokenKind::Percent: return "%";
+        case TokenKind::Bang: return "!";
+        case TokenKind::Tilde: return "~";
+        case TokenKind::Amp: return "&";
+        case TokenKind::Pipe: return "|";
+        case TokenKind::Caret: return "^";
+        case TokenKind::LessLess: return "<<";
+        case TokenKind::GreaterGreater: return ">>";
+        case TokenKind::EqualEqual: return "==";
+        case TokenKind::BangEqual: return "!=";
+        case TokenKind::Less: return "<";
+        case TokenKind::LessEqual: return "<=";
+        case TokenKind::Greater: return ">";
+        case TokenKind::GreaterEqual: return ">=";
+        case TokenKind::AmpAmp: return "&&";
+        case TokenKind::PipePipe: return "||";
+        case TokenKind::QuestionQuestion: return "??";
+        default: return {};
     }
+}
+
+std::string operatorMethodName(TokenKind kind, std::size_t arity)
+{
+    if (kind == TokenKind::PlusPlus) return "op_Increment";
+    if (kind == TokenKind::MinusMinus) return "op_Decrement";
+    const std::string_view method = language::operatorMethodName(operatorSpelling(kind), arity);
+    return method.empty() ? "op_Invalid" : std::string(method);
 }
 }
 
@@ -5605,16 +5615,24 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isReadonly || isVolatile || isConst || isInline || isForceInline || isNoInline || isNoHeap ||
+        if (isReadonly || isVolatile || isConst || isNoHeap ||
             isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
-                "user-defined operators cannot be readonly, volatile, const, virtual, override, abstract or sealed");
+                "user-defined operators cannot be readonly, volatile, const, noheap, virtual, override, abstract or sealed");
         }
-        return parseOperatorTail(type, accessibility, isStatic, beginIndex);
+        ast::AstNode* operatorDeclaration =
+            parseOperatorTail(type, accessibility, isStatic, beginIndex);
+        if (operatorDeclaration != nullptr)
+        {
+            if (isInline) operatorDeclaration->addModifier(TokenKind::KwInline);
+            if (isForceInline) operatorDeclaration->addModifier(TokenKind::KwForceInline);
+            if (isNoInline) operatorDeclaration->addModifier(TokenKind::KwNoInline);
+        }
+        return operatorDeclaration;
     }
 
     if (at(TokenKind::KwThis))
@@ -6490,11 +6508,17 @@ ast::AstNode* Parser::parseOperatorTail(
     const SourceRange operatorKeywordRange = consume().range(); // operator
     if (!isStage38OperatorToken(current().kind()))
     {
+        const std::string_view spelling = operatorSpelling(current().kind());
+        const bool shortCircuit = spelling == "&&" || spelling == "||" || spelling == "??";
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
             diagnostics::DiagnosticSeverity::Error,
             current().range(),
-            "unsupported user-defined operator token in Stage 38");
+            shortCircuit
+                ? "short-circuit operator '" + std::string(spelling) +
+                    "' is intrinsic and cannot be overloaded; a future dedicated branching "
+                    "protocol would be required"
+                : "unsupported user-defined operator token in Stage 38");
         synchronizeStatement();
         return nullptr;
     }

@@ -1,5 +1,6 @@
 #include "nativesharp/Language/TraitSemantics.h"
 
+#include <array>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -93,18 +94,84 @@ ExtensionResolution resolveExtension(bool hasInstanceMember, std::size_t visible
     return ExtensionResolution::Ambiguous;
 }
 
+namespace
+{
+constexpr std::array<OperatorTraitContract, 20> kOperatorTraits = {{
+    {"+", 1, "lang:UnaryPlus", "op_UnaryPlus"},
+    {"-", 1, "lang:Negate", "op_UnaryNegation"},
+    {"!", 1, "lang:LogicalNot", "op_LogicalNot"},
+    {"~", 1, "lang:OnesComplement", "op_OnesComplement"},
+    {"+", 2, "lang:Add", "op_Addition"},
+    {"-", 2, "lang:Subtract", "op_Subtraction"},
+    {"*", 2, "lang:Multiply", "op_Multiply"},
+    {"/", 2, "lang:Divide", "op_Division"},
+    {"%", 2, "lang:Remainder", "op_Modulus"},
+    {"&", 2, "lang:BitwiseAnd", "op_BitwiseAnd"},
+    {"|", 2, "lang:BitwiseOr", "op_BitwiseOr"},
+    {"^", 2, "lang:ExclusiveOr", "op_ExclusiveOr"},
+    {"<<", 2, "lang:LeftShift", "op_LeftShift"},
+    {">>", 2, "lang:RightShift", "op_RightShift"},
+    {"==", 2, "lang:Equality", "op_Equality"},
+    {"!=", 2, "lang:Inequality", "op_Inequality"},
+    {"<", 2, "lang:LessThan", "op_LessThan"},
+    {"<=", 2, "lang:LessThanOrEqual", "op_LessThanOrEqual"},
+    {">", 2, "lang:GreaterThan", "op_GreaterThan"},
+    {">=", 2, "lang:GreaterThanOrEqual", "op_GreaterThanOrEqual"},
+}};
+}
+
+std::span<const OperatorTraitContract> operatorTraitContracts() noexcept
+{
+    return kOperatorTraits;
+}
+
+const OperatorTraitContract* operatorTraitContract(
+    std::string_view spelling,
+    std::size_t arity) noexcept
+{
+    for (const OperatorTraitContract& contract : kOperatorTraits)
+        if (contract.spelling == spelling && contract.arity == arity) return &contract;
+    return nullptr;
+}
+
+const OperatorTraitContract* operatorTraitContractForMethod(
+    std::string_view methodName,
+    std::size_t arity) noexcept
+{
+    for (const OperatorTraitContract& contract : kOperatorTraits)
+        if (contract.methodName == methodName && contract.arity == arity) return &contract;
+    return nullptr;
+}
+
+std::string_view operatorTrait(std::string_view spelling, std::size_t arity) noexcept
+{
+    const OperatorTraitContract* contract = operatorTraitContract(spelling, arity);
+    return contract != nullptr ? contract->langItem : std::string_view{};
+}
+
+std::string_view operatorMethodName(std::string_view spelling, std::size_t arity) noexcept
+{
+    const OperatorTraitContract* contract = operatorTraitContract(spelling, arity);
+    return contract != nullptr ? contract->methodName : std::string_view{};
+}
+
 std::string_view operatorTrait(std::string_view spelling) noexcept
 {
-    if (spelling == "+") return "lang:Add";
-    if (spelling == "-") return "lang:Subtract";
-    if (spelling == "*") return "lang:Multiply";
-    if (spelling == "/") return "lang:Divide";
-    if (spelling == "==") return "lang:Equality";
-    return {};
+    if (const OperatorTraitContract* binary = operatorTraitContract(spelling, 2))
+        return binary->langItem;
+    if (const OperatorTraitContract* unary = operatorTraitContract(spelling, 1))
+        return unary->langItem;
+    return std::string_view{};
 }
 
 bool operatorCanBeOverloaded(std::string_view spelling) noexcept
 {
-    return spelling != "&&" && spelling != "||" && spelling != "??";
+    // Short-circuiting is control flow, not an eager two-argument call. It stays intrinsic until
+    // a dedicated truthiness/branching protocol is designed; ordinary trait operators must never
+    // make the right operand eager. Unknown spellings are not silently accepted either.
+    if (spelling == "&&" || spelling == "||" || spelling == "??") return false;
+    for (const OperatorTraitContract& contract : kOperatorTraits)
+        if (contract.spelling == spelling) return true;
+    return false;
 }
 }

@@ -1836,6 +1836,7 @@ private:
         std::size_t accessingTypeOrdinal,
         std::size_t protectedReceiverTypeOrdinal) const;
     std::vector<std::size_t> stage38OperatorCandidates(
+        std::string_view operatorTraitKey,
         std::string_view methodName,
         std::string_view leftTypeKey,
         std::optional<std::string_view> rightTypeKey) const;

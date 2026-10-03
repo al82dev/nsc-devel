@@ -855,6 +855,14 @@ int main(int argc, char** argv)
         "tests/cc1/c69_ns3_extension_methods/c69_ns3_extension_methods.nsproj",
         "cc1-c69-ns3-extension-methods", 42);
 
+    // NativeSharp 3.0 T05-F07. The source operator maps to the stable lang:Add item, trait
+    // coherence selects the concrete static witness, implicit in-reference operands preserve
+    // their address identity, and the ordinary O0/NSLink pipeline executes the result.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c70_ns3_operator_traits/c70_ns3_operator_traits.nsproj",
+        "cc1-c70-ns3-operator-traits", 42);
+
     // NativeSharp 3.0 T06-F01..F05. A partial move keeps the containing owner alive, empties
     // exactly one owned field and transfers that value to a new owner; scope cleanup must destroy
     // both payloads exactly once. Borrow-conflict variants remain directed negative probes.

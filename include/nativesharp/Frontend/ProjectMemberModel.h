@@ -185,6 +185,10 @@ struct ClassMemberSymbol final
     bool isGetter = false;
     bool isSetter = false;
     bool isUserOperator = false;
+    // NativeSharp 3.0 T05-F07. Stable semantic identity (for example `lang:Add`) shared by a
+    // trait operator requirement and every concrete witness. The ABI method name remains in
+    // `name`; overload resolution must not use that historical spelling as the language contract.
+    std::string operatorTraitKey;
     bool isUserConversion = false;
     bool isImplicitUserConversion = false;
     // Bloque 1 item 9 (ownership-aware properties/indexers). Set on BOTH accessors of a
