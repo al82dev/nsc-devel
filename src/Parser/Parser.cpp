@@ -6435,7 +6435,15 @@ ast::AstNode* Parser::parseBlock()
         ast::AstNode* statement = parseStatement();
         if (statement != nullptr)
         {
-            block->addChild(statement);
+            if (statement->kind() == ast::AstNodeKind::BlockStatement &&
+                statement->auxiliaryText() == "conditional-pattern-inline")
+            {
+                for (ast::AstNode* child : statement->children()) block->addChild(child);
+            }
+            else
+            {
+                block->addChild(statement);
+            }
         }
         if (index_ == before)
         {
@@ -6453,6 +6461,14 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::LeftBrace)) return parseBlock();
     if (atContextualKeyword("asm") && peek().kind() == TokenKind::LeftBrace)
         return parseInlineAssemblyStatement();
+    const auto beginsConditionalPattern = [&]() noexcept
+    {
+        return peek().kind() == TokenKind::LeftParen &&
+            peek(2).kind() == TokenKind::Identifier && peek(2).lexeme() == "let";
+    };
+    if ((at(TokenKind::KwIf) || at(TokenKind::KwWhile)) && beginsConditionalPattern())
+        return parseConditionalPatternStatement();
+    if (atContextualKeyword("let")) return parseConditionalPatternStatement();
     if (at(TokenKind::KwIf)) return parseIfStatement();
     if (at(TokenKind::KwWhile)) return parseWhileStatement();
     if (at(TokenKind::KwDo)) return parseDoWhileStatement();
@@ -7325,6 +7341,283 @@ ast::AstNode* Parser::parseAggregateInitializer()
     return node;
 }
 
+bool Parser::statementAlwaysDiverges(const ast::AstNode* statement) const
+{
+    if (statement == nullptr) return false;
+    switch (statement->kind())
+    {
+        case ast::AstNodeKind::ReturnStatement:
+        case ast::AstNodeKind::ThrowStatement:
+        case ast::AstNodeKind::BreakStatement:
+        case ast::AstNodeKind::ContinueStatement:
+            return true;
+        case ast::AstNodeKind::BlockStatement:
+            return !statement->children().empty() &&
+                statementAlwaysDiverges(statement->children().back());
+        case ast::AstNodeKind::IfStatement:
+            return statement->second() != nullptr && statement->third() != nullptr &&
+                statementAlwaysDiverges(statement->second()) &&
+                statementAlwaysDiverges(statement->third());
+        default:
+            return false;
+    }
+}
+
+ast::AstNode* Parser::parseConditionalPatternStatement()
+{
+    enum class Form
+    {
+        If,
+        While,
+        LetElse
+    };
+
+    const std::size_t beginIndex = index_;
+    Form form = Form::LetElse;
+    SourceRange featureRange = current().range();
+    if (at(TokenKind::KwIf))
+    {
+        form = Form::If;
+        featureRange = consume().range();
+        expect(TokenKind::LeftParen, "'(' after 'if'");
+        expectContextualKeyword("let", "'let' in conditional pattern");
+    }
+    else if (at(TokenKind::KwWhile))
+    {
+        form = Form::While;
+        featureRange = consume().range();
+        expect(TokenKind::LeftParen, "'(' after 'while'");
+        expectContextualKeyword("let", "'let' in conditional pattern");
+    }
+    else
+    {
+        expectContextualKeyword("let", "'let'");
+    }
+    requireEdition3(featureRange, "conditional patterns (if let, while let, and let else)");
+
+    Pattern pattern = parsePattern(false);
+    expect(TokenKind::Equal, "'=' between conditional pattern and source expression");
+    ast::AstNode* sourceExpression = parseAssignmentExpression();
+    if (form != Form::LetElse) expect(TokenKind::RightParen, "')' after conditional pattern");
+
+    const auto collectBindings = [&](const Pattern& root)
+    {
+        std::vector<std::pair<std::string, PatternBindingMode>> bindings;
+        std::function<void(const Pattern&)> visit = [&](const Pattern& currentPattern)
+        {
+            if (currentPattern.kind == PatternKind::Binding)
+            {
+                bindings.emplace_back(currentPattern.name, currentPattern.bindingMode);
+                return;
+            }
+            for (const Pattern& child : currentPattern.children) visit(child);
+        };
+        visit(root);
+        std::ranges::sort(bindings, [](const auto& left, const auto& right)
+        {
+            if (left.first != right.first) return left.first < right.first;
+            return left.second < right.second;
+        });
+        return bindings;
+    };
+    std::function<void(const Pattern&, bool)> validateBindingModes =
+        [&](const Pattern& currentPattern, bool preservesAddress)
+    {
+        if (currentPattern.kind == PatternKind::Binding &&
+            currentPattern.bindingMode != PatternBindingMode::Value && !preservesAddress)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                currentPattern.range,
+                "ref/move pattern binding cannot cross a tuple deconstruction or variant "
+                "payload copy; bind the aggregate first");
+        }
+        const bool childPreservesAddress = preservesAddress &&
+            currentPattern.kind != PatternKind::Tuple && currentPattern.kind != PatternKind::Variant;
+        for (const Pattern& child : currentPattern.children)
+            validateBindingModes(child, childPreservesAddress);
+    };
+    std::function<void(const Pattern&)> validateOrBindings = [&](const Pattern& currentPattern)
+    {
+        if (currentPattern.kind == PatternKind::Or && !currentPattern.children.empty())
+        {
+            const auto expected = collectBindings(currentPattern.children.front());
+            bool identical = true;
+            for (std::size_t index = 1; index < currentPattern.children.size(); ++index)
+                identical = identical && collectBindings(currentPattern.children[index]) == expected;
+            if (!identical)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    currentPattern.range,
+                    "OR-pattern alternatives must bind identical names with identical "
+                    "value/ref/move modes");
+            }
+            else if (!expected.empty())
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    currentPattern.range,
+                    "OR-pattern bindings require branch-value merging; use an OR-pattern without "
+                    "bindings or split the conditional");
+            }
+        }
+        for (const Pattern& child : currentPattern.children) validateOrBindings(child);
+    };
+    validateBindingModes(pattern, true);
+    validateOrBindings(pattern);
+
+    ast::AstNode* successBody = nullptr;
+    ast::AstNode* failureBody = nullptr;
+    if (form == Form::If)
+    {
+        successBody = parseEmbeddedStatementBlock();
+        if (consumeIf(TokenKind::KwElse))
+        {
+            if (at(TokenKind::KwIf))
+            {
+                const bool conditional = peek().kind() == TokenKind::LeftParen &&
+                    peek(2).kind() == TokenKind::Identifier && peek(2).lexeme() == "let";
+                failureBody = conditional
+                    ? parseConditionalPatternStatement()
+                    : parseIfStatement();
+            }
+            else
+            {
+                failureBody = parseEmbeddedStatementBlock();
+            }
+        }
+    }
+    else if (form == Form::While)
+    {
+        successBody = parseEmbeddedStatementBlock();
+    }
+    else
+    {
+        expect(TokenKind::KwElse, "'else' after let pattern initializer");
+        failureBody = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
+        if (failureBody == nullptr)
+            expect(TokenKind::LeftBrace, "'{' to open the divergent let-else body");
+        if (!statementAlwaysDiverges(failureBody))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                failureBody != nullptr ? failureBody->range() : featureRange,
+                "the else body of a let-else statement must diverge with return, throw, break, "
+                "continue, or an if whose branches both diverge");
+        }
+        expect(TokenKind::Semicolon, "';' after let-else statement");
+    }
+
+    const SourceRange statementRange = tokenRangeFrom(beginIndex);
+    const std::string temporary =
+        "$__nsc_conditional_pattern_" + std::to_string(nextMatchTemporary_++);
+    const std::string matched = temporary + "_matched";
+    const auto bindings = collectBindings(pattern);
+    const bool hasReferenceBinding = std::ranges::any_of(bindings, [](const auto& binding)
+    {
+        return binding.second == PatternBindingMode::Reference;
+    });
+    const bool hasMoveBinding = std::ranges::any_of(bindings, [](const auto& binding)
+    {
+        return binding.second == PatternBindingMode::Move;
+    });
+
+    const auto addPrelude = [&](ast::AstNode* destination)
+    {
+        ast::TypeSyntax* inferred = arena_.make<ast::TypeSyntax>(
+            featureRange, TokenKind::KwVar, "var");
+        ast::AstNode* declaration = makeVariableDeclaration(
+            inferred, temporary, sourceExpression, false, !hasReferenceBinding && !hasMoveBinding);
+        if (hasReferenceBinding) declaration->setAuxiliaryText("local:ref");
+        destination->addChild(declaration);
+        ast::TypeSyntax* boolType = arena_.make<ast::TypeSyntax>(
+            featureRange, TokenKind::KwBool, "bool");
+        destination->addChild(makeVariableDeclaration(
+            boolType,
+            matched,
+            makeBooleanLiteral(featureRange, false),
+            false,
+            false));
+    };
+    const auto makeNotMatched = [&]()
+    {
+        ast::AstNode* result = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::UnaryExpression, statementRange);
+        result->setTokenKind(TokenKind::Bang);
+        result->setFirst(makeIdentifierExpression(statementRange, matched));
+        return result;
+    };
+    const auto makeSuccess = [&](bool includeBody)
+    {
+        ast::AstNode* body = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, statementRange);
+        body->addChild(makeExpressionStatement(makeAssignmentExpression(
+            makeIdentifierExpression(statementRange, matched),
+            makeBooleanLiteral(statementRange, true))));
+        if (includeBody && successBody != nullptr)
+            for (ast::AstNode* child : successBody->children()) body->addChild(child);
+        return body;
+    };
+    PatternExpressionFactory root = [&, statementRange]
+    {
+        return makeIdentifierExpression(statementRange, temporary);
+    };
+
+    if (form == Form::While)
+    {
+        ast::AstNode* iteration = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, statementRange);
+        addPrelude(iteration);
+        iteration->addChild(lowerPattern(pattern, root, makeSuccess(true), temporary));
+        ast::AstNode* stopBody = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, statementRange);
+        stopBody->addChild(arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BreakStatement, statementRange));
+        ast::AstNode* stop = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::IfStatement, statementRange);
+        stop->setFirst(makeNotMatched());
+        stop->setSecond(stopBody);
+        iteration->addChild(stop);
+
+        ast::AstNode* loop = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::WhileStatement, statementRange);
+        loop->setFirst(makeBooleanLiteral(featureRange, true));
+        loop->setSecond(iteration);
+        return loop;
+    }
+
+    ast::AstNode* lowered = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BlockStatement, statementRange);
+    addPrelude(lowered);
+    lowered->addChild(lowerPattern(
+        pattern,
+        root,
+        makeSuccess(form == Form::If),
+        temporary,
+        form != Form::LetElse));
+
+    if (failureBody != nullptr)
+    {
+        ast::AstNode* failure = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::IfStatement, statementRange);
+        failure->setFirst(makeNotMatched());
+        failure->setSecond(failureBody);
+        lowered->addChild(failure);
+    }
+
+    if (form == Form::LetElse)
+    {
+        emitPatternBindings(pattern, root, lowered, temporary);
+        lowered->setAuxiliaryText("conditional-pattern-inline");
+    }
+    return lowered;
+}
+
 ast::AstNode* Parser::parseIfStatement()
 {
     const std::size_t beginIndex = index_;
@@ -7382,7 +7675,9 @@ ast::AstNode* Parser::parseEmbeddedStatementBlock()
     ast::AstNode* statement = parseStatement();
     if (statement != nullptr &&
         (statement->kind() == ast::AstNodeKind::VariableDeclarationStatement ||
-         statement->kind() == ast::AstNodeKind::DeconstructionDeclarationStatement))
+         statement->kind() == ast::AstNodeKind::DeconstructionDeclarationStatement ||
+         (statement->kind() == ast::AstNodeKind::BlockStatement &&
+          statement->auxiliaryText() == "conditional-pattern-inline")))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedToken,
@@ -7543,7 +7838,15 @@ ast::AstNode* Parser::parseSwitchStatement()
             ast::AstNode* statement = parseStatement();
             if (statement != nullptr)
             {
-                section->addChild(statement);
+                if (statement->kind() == ast::AstNodeKind::BlockStatement &&
+                    statement->auxiliaryText() == "conditional-pattern-inline")
+                {
+                    for (ast::AstNode* child : statement->children()) section->addChild(child);
+                }
+                else
+                {
+                    section->addChild(statement);
+                }
             }
             if (index_ == before)
             {
@@ -7560,63 +7863,8 @@ ast::AstNode* Parser::parseSwitchStatement()
     return node;
 }
 
-ast::AstNode* Parser::parseMatchStatement()
+Parser::Pattern Parser::parsePatternPrimary(bool implicitBinding)
 {
-    enum class PatternKind
-    {
-        Wildcard,
-        Literal,
-        Binding,
-        Tuple,
-        Struct,
-        Variant,
-        Range,
-        Or
-    };
-    enum class BindingMode
-    {
-        Value,
-        Reference,
-        Move
-    };
-    struct Pattern final
-    {
-        PatternKind kind = PatternKind::Wildcard;
-        BindingMode bindingMode = BindingMode::Value;
-        std::string name;
-        SourceRange range;
-        ast::AstNode* firstValue = nullptr;
-        ast::AstNode* secondValue = nullptr;
-        std::optional<std::int64_t> firstInteger;
-        std::optional<std::int64_t> secondInteger;
-        std::vector<std::string> fieldNames;
-        std::vector<Pattern> children;
-    };
-    struct ParsedArm final
-    {
-        Pattern pattern;
-        SourceRange range;
-        ast::AstNode* body = nullptr;
-    };
-
-    const std::size_t beginIndex = index_;
-    const lexer::Token& matchKeyword = consume();
-    requireEdition3(matchKeyword.range(), "match statement syntax");
-    expect(TokenKind::LeftParen, "'(' after 'match'");
-    ast::AstNode* governing = parseExpression();
-    expect(TokenKind::RightParen, "')' after match governing expression");
-    expect(TokenKind::LeftBrace, "'{' to open match arms");
-
-    const auto bindingModeName = [](BindingMode mode) -> std::string_view
-    {
-        switch (mode)
-        {
-            case BindingMode::Value: return "value";
-            case BindingMode::Reference: return "ref";
-            case BindingMode::Move: return "move";
-        }
-        return "value";
-    };
     const auto literalStartsHere = [&]() noexcept
     {
         const TokenKind kind = current().kind();
@@ -7642,11 +7890,9 @@ ast::AstNode* Parser::parseMatchStatement()
             constexpr std::uint64_t minMagnitude =
                 std::uint64_t{1} << (std::numeric_limits<std::int64_t>::digits);
             if (magnitude <= minMagnitude)
-            {
                 value = magnitude == minMagnitude
                     ? std::numeric_limits<std::int64_t>::min()
                     : -static_cast<std::int64_t>(magnitude);
-            }
             ast::AstNode* unary = arena_.make<ast::AstNode>(
                 ast::AstNodeKind::UnaryExpression,
                 SourceRange(tokens_[index_ - 2].range().begin(), literal->range().end()));
@@ -7661,232 +7907,523 @@ ast::AstNode* Parser::parseMatchStatement()
         return {literal, value};
     };
 
-    std::function<Pattern(bool)> parsePattern;
-    std::function<Pattern(bool)> parsePatternPrimary;
-    parsePatternPrimary = [&](bool implicitBinding) -> Pattern
+    Pattern result;
+    const std::size_t patternBegin = index_;
+    const SourceRange start = current().range();
+    if (at(TokenKind::Identifier) && current().lexeme() == "_")
     {
-        Pattern result;
-        const std::size_t patternBegin = index_;
-        const SourceRange start = current().range();
-
-        if (at(TokenKind::Identifier) && current().lexeme() == "_")
+        consume();
+        result.kind = PatternKind::Wildcard;
+        result.range = start;
+        return result;
+    }
+    if (at(TokenKind::KwVar) || at(TokenKind::KwMove) ||
+        (atContextualKeyword("ref") && peek().kind() == TokenKind::Identifier))
+    {
+        if (at(TokenKind::KwMove))
+        {
+            result.bindingMode = PatternBindingMode::Move;
+            consume();
+        }
+        else if (atContextualKeyword("ref"))
+        {
+            result.bindingMode = PatternBindingMode::Reference;
+            consume();
+        }
+        else
         {
             consume();
-            result.kind = PatternKind::Wildcard;
-            result.range = start;
-            return result;
         }
-        if (at(TokenKind::KwVar) || at(TokenKind::KwMove) ||
-            (atContextualKeyword("ref") && peek().kind() == TokenKind::Identifier))
+        result.kind = PatternKind::Binding;
+        if (!at(TokenKind::Identifier))
+            expect(TokenKind::Identifier, "binding name after pattern binding mode");
+        else
+            result.name = std::string(consume().lexeme());
+        result.range = tokenRangeFrom(patternBegin);
+        return result;
+    }
+    if (literalStartsHere())
+    {
+        result.kind = PatternKind::Literal;
+        if (at(TokenKind::Minus))
         {
-            if (at(TokenKind::KwMove))
+            auto [literal, value] = parseSignedIntegerLiteral();
+            result.firstValue = literal;
+            result.firstInteger = value;
+        }
+        else
+        {
+            const TokenKind literalKind = current().kind();
+            result.firstValue = parsePrimaryExpression();
+            if (literalKind == TokenKind::IntegerLiteral)
             {
-                result.bindingMode = BindingMode::Move;
-                consume();
+                const std::uint64_t value = result.firstValue->integerValue();
+                if (value <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+                    result.firstInteger = static_cast<std::int64_t>(value);
             }
-            else if (atContextualKeyword("ref"))
+            if (literalKind == TokenKind::FloatingLiteral)
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    result.firstValue->range(),
+                    "floating-point literals are not permitted in patterns because NaN and "
+                    "signed-zero equality do not define a closed pattern domain");
+        }
+        if (consumeIf(TokenKind::DotDot))
+        {
+            result.kind = PatternKind::Range;
+            if (!at(TokenKind::IntegerLiteral) &&
+                !(at(TokenKind::Minus) && peek().kind() == TokenKind::IntegerLiteral))
             {
-                result.bindingMode = BindingMode::Reference;
-                consume();
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    "a range pattern requires an integer literal upper bound");
+                result.secondValue = makeErrorExpression();
             }
             else
             {
-                consume();
+                auto [upper, value] = parseSignedIntegerLiteral();
+                result.secondValue = upper;
+                result.secondInteger = value;
             }
-            result.kind = PatternKind::Binding;
+            if (result.firstInteger.has_value() && result.secondInteger.has_value() &&
+                *result.firstInteger >= *result.secondInteger)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    start,
+                    "a half-open range pattern requires its lower bound to be less than its "
+                    "upper bound");
+            }
+        }
+        result.range = tokenRangeFrom(patternBegin);
+        return result;
+    }
+    if (consumeIf(TokenKind::LeftParen))
+    {
+        Pattern first = parsePattern(true);
+        if (!consumeIf(TokenKind::Comma))
+        {
+            expect(TokenKind::RightParen, "')' after grouped pattern");
+            first.range = tokenRangeFrom(patternBegin);
+            return first;
+        }
+        result.kind = PatternKind::Tuple;
+        result.children.push_back(std::move(first));
+        while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile))
+        {
+            result.children.push_back(parsePattern(true));
+            if (!consumeIf(TokenKind::Comma)) break;
+        }
+        expect(TokenKind::RightParen, "')' after tuple pattern");
+        result.range = tokenRangeFrom(patternBegin);
+        return result;
+    }
+    const auto parseStructBody = [&](Pattern& pattern)
+    {
+        pattern.kind = PatternKind::Struct;
+        expect(TokenKind::LeftBrace, "'{' to open struct pattern");
+        std::unordered_set<std::string> fields;
+        while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+        {
             if (!at(TokenKind::Identifier))
             {
-                expect(TokenKind::Identifier, "binding name after pattern binding mode");
+                expect(TokenKind::Identifier, "field name in struct pattern");
+                break;
             }
-            else
+            const lexer::Token& field = consume();
+            const std::string fieldName(field.lexeme());
+            if (!fields.insert(fieldName).second)
             {
-                result.name = std::string(consume().lexeme());
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::DuplicateSymbol,
+                    diagnostics::DiagnosticSeverity::Error,
+                    field.range(),
+                    "duplicate field '" + fieldName + "' in struct pattern");
             }
-            result.range = tokenRangeFrom(patternBegin);
-            return result;
+            expect(TokenKind::Colon, "':' after struct-pattern field name");
+            pattern.fieldNames.push_back(fieldName);
+            pattern.children.push_back(parsePattern(true));
+            if (!consumeIf(TokenKind::Comma)) break;
         }
-        if (literalStartsHere())
-        {
-            result.kind = PatternKind::Literal;
-            if (at(TokenKind::Minus))
-            {
-                auto [literal, value] = parseSignedIntegerLiteral();
-                result.firstValue = literal;
-                result.firstInteger = value;
-            }
-            else
-            {
-                const TokenKind literalKind = current().kind();
-                result.firstValue = parsePrimaryExpression();
-                if (literalKind == TokenKind::IntegerLiteral)
-                {
-                    const std::uint64_t value = result.firstValue->integerValue();
-                    if (value <= static_cast<std::uint64_t>(
-                            std::numeric_limits<std::int64_t>::max()))
-                        result.firstInteger = static_cast<std::int64_t>(value);
-                }
-                if (literalKind == TokenKind::FloatingLiteral)
-                {
-                    diagnostics_.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        result.firstValue->range(),
-                        "floating-point literals are not permitted in patterns because NaN and "
-                        "signed-zero equality do not define a closed pattern domain");
-                }
-            }
-            if (consumeIf(TokenKind::DotDot))
-            {
-                result.kind = PatternKind::Range;
-                if (!at(TokenKind::IntegerLiteral) &&
-                    !(at(TokenKind::Minus) && peek().kind() == TokenKind::IntegerLiteral))
-                {
-                    diagnostics_.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        current().range(),
-                        "a range pattern requires an integer literal upper bound");
-                    result.secondValue = makeErrorExpression();
-                }
-                else
-                {
-                    auto [upper, value] = parseSignedIntegerLiteral();
-                    result.secondValue = upper;
-                    result.secondInteger = value;
-                }
-                if (result.firstInteger.has_value() && result.secondInteger.has_value() &&
-                    *result.firstInteger >= *result.secondInteger)
-                {
-                    diagnostics_.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        start,
-                        "a half-open range pattern requires its lower bound to be less than its "
-                        "upper bound");
-                }
-            }
-            result.range = tokenRangeFrom(patternBegin);
-            return result;
-        }
-        if (consumeIf(TokenKind::LeftParen))
-        {
-            Pattern first = parsePattern(true);
-            if (!consumeIf(TokenKind::Comma))
-            {
-                expect(TokenKind::RightParen, "')' after grouped pattern");
-                first.range = tokenRangeFrom(patternBegin);
-                return first;
-            }
-            result.kind = PatternKind::Tuple;
-            result.children.push_back(std::move(first));
-            while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile))
-            {
-                result.children.push_back(parsePattern(true));
-                if (!consumeIf(TokenKind::Comma)) break;
-            }
-            expect(TokenKind::RightParen, "')' after tuple pattern");
-            result.range = tokenRangeFrom(patternBegin);
-            return result;
-        }
-        const auto parseStructBody = [&](Pattern& pattern)
-        {
-            pattern.kind = PatternKind::Struct;
-            expect(TokenKind::LeftBrace, "'{' to open struct pattern");
-            std::unordered_set<std::string> fields;
-            while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
-            {
-                if (!at(TokenKind::Identifier))
-                {
-                    expect(TokenKind::Identifier, "field name in struct pattern");
-                    break;
-                }
-                const lexer::Token& field = consume();
-                const std::string fieldName(field.lexeme());
-                if (!fields.insert(fieldName).second)
-                {
-                    diagnostics_.report(
-                        diagnostics::DiagnosticId::DuplicateSymbol,
-                        diagnostics::DiagnosticSeverity::Error,
-                        field.range(),
-                        "duplicate field '" + fieldName + "' in struct pattern");
-                }
-                expect(TokenKind::Colon, "':' after struct-pattern field name");
-                pattern.fieldNames.push_back(fieldName);
-                pattern.children.push_back(parsePattern(true));
-                if (!consumeIf(TokenKind::Comma)) break;
-            }
-            expect(TokenKind::RightBrace, "'}' after struct pattern");
-        };
+        expect(TokenKind::RightBrace, "'}' after struct pattern");
+    };
+    if (at(TokenKind::LeftBrace))
+    {
+        parseStructBody(result);
+        result.range = tokenRangeFrom(patternBegin);
+        return result;
+    }
+    if (at(TokenKind::Identifier))
+    {
+        const lexer::Token& name = consume();
+        result.name = std::string(name.lexeme());
         if (at(TokenKind::LeftBrace))
         {
             parseStructBody(result);
             result.range = tokenRangeFrom(patternBegin);
             return result;
         }
-        if (at(TokenKind::Identifier))
+        if (consumeIf(TokenKind::LeftParen))
         {
-            const lexer::Token& name = consume();
-            result.name = std::string(name.lexeme());
-            if (at(TokenKind::LeftBrace))
+            result.kind = PatternKind::Variant;
+            if (!at(TokenKind::RightParen)) result.children.push_back(parsePattern(true));
+            if (at(TokenKind::Comma))
             {
-                parseStructBody(result);
-                result.range = tokenRangeFrom(patternBegin);
-                return result;
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidArgumentCount,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    "a tagged-variant pattern accepts exactly one payload pattern");
+                while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile)) consume();
             }
-            if (consumeIf(TokenKind::LeftParen))
+            expect(TokenKind::RightParen, "')' after variant payload pattern");
+        }
+        else
+        {
+            result.kind = implicitBinding ? PatternKind::Binding : PatternKind::Variant;
+        }
+        result.range = tokenRangeFrom(patternBegin);
+        return result;
+    }
+
+    diagnostics_.report(
+        diagnostics::DiagnosticId::ExpectedToken,
+        diagnostics::DiagnosticSeverity::Error,
+        current().range(),
+        "expected wildcard, literal, binding, tuple, struct, variant, or range pattern");
+    if (!at(TokenKind::EndOfFile)) consume();
+    result.range = start;
+    return result;
+}
+
+Parser::Pattern Parser::parsePattern(bool implicitBinding)
+{
+    Pattern first = parsePatternPrimary(implicitBinding);
+    if (!at(TokenKind::Pipe)) return first;
+    Pattern result;
+    result.kind = PatternKind::Or;
+    result.range = first.range;
+    result.children.push_back(std::move(first));
+    while (consumeIf(TokenKind::Pipe))
+        result.children.push_back(parsePatternPrimary(implicitBinding));
+    result.range = SourceRange(
+        result.children.front().range.begin(), result.children.back().range.end());
+    return result;
+}
+
+ast::AstNode* Parser::makeBooleanLiteral(const SourceRange& range, bool value)
+{
+    ast::AstNode* literal = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BooleanLiteralExpression, range);
+    literal->setTokenKind(value ? TokenKind::KwTrue : TokenKind::KwFalse);
+    literal->setIntegerValue(value ? 1U : 0U);
+    return literal;
+}
+
+bool Parser::patternIsConditionOnly(const Pattern& pattern) const
+{
+    if (pattern.kind == PatternKind::Binding || pattern.kind == PatternKind::Tuple) return false;
+    return std::ranges::all_of(
+        pattern.children,
+        [this](const Pattern& child) { return patternIsConditionOnly(child); });
+}
+
+ast::AstNode* Parser::makePatternCondition(
+    const Pattern& pattern,
+    const PatternExpressionFactory& source)
+{
+    switch (pattern.kind)
+    {
+        case PatternKind::Wildcard:
+            return makeBooleanLiteral(pattern.range, true);
+        case PatternKind::Literal:
+            return makeBinaryExpression(TokenKind::EqualEqual, source(), pattern.firstValue);
+        case PatternKind::Range:
+            return makeBinaryExpression(
+                TokenKind::AmpAmp,
+                makeBinaryExpression(TokenKind::GreaterEqual, source(), pattern.firstValue),
+                makeBinaryExpression(TokenKind::Less, source(), pattern.secondValue));
+        case PatternKind::Struct:
+        {
+            ast::AstNode* result = makeBooleanLiteral(pattern.range, true);
+            for (std::size_t index = 0; index < pattern.children.size(); ++index)
             {
-                result.kind = PatternKind::Variant;
-                if (!at(TokenKind::RightParen)) result.children.push_back(parsePattern(true));
-                if (at(TokenKind::Comma))
+                const std::string field = pattern.fieldNames[index];
+                PatternExpressionFactory member = [&, source, field]
                 {
-                    diagnostics_.report(
-                        diagnostics::DiagnosticId::InvalidArgumentCount,
-                        diagnostics::DiagnosticSeverity::Error,
-                        current().range(),
-                        "a tagged-variant pattern accepts exactly one payload pattern");
-                    while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile)) consume();
-                }
-                expect(TokenKind::RightParen, "')' after variant payload pattern");
+                    return makeMemberExpression(source(), field);
+                };
+                result = makeBinaryExpression(
+                    TokenKind::AmpAmp,
+                    result,
+                    makePatternCondition(pattern.children[index], member));
             }
-            else if (implicitBinding)
-            {
-                result.kind = PatternKind::Binding;
-            }
-            else
-            {
-                result.kind = PatternKind::Variant;
-            }
-            result.range = tokenRangeFrom(patternBegin);
             return result;
         }
+        case PatternKind::Variant:
+        {
+            ast::AstNode* test = makeZeroArgCallExpression(
+                makeMemberExpression(source(), "Is" + pattern.name));
+            if (pattern.children.empty()) return test;
+            PatternExpressionFactory payload = [&, source, caseName = pattern.name]
+            {
+                ast::AstNode* extract = makeZeroArgCallExpression(
+                    makeMemberExpression(source(), "__nsc_variant_extract_" + caseName));
+                extract->setAuxiliaryText("variant-pattern-extract");
+                return extract;
+            };
+            return makeBinaryExpression(
+                TokenKind::AmpAmp,
+                test,
+                makePatternCondition(pattern.children.front(), payload));
+        }
+        case PatternKind::Or:
+        {
+            ast::AstNode* result = makePatternCondition(pattern.children.front(), source);
+            for (std::size_t index = 1; index < pattern.children.size(); ++index)
+                result = makeBinaryExpression(
+                    TokenKind::PipePipe,
+                    result,
+                    makePatternCondition(pattern.children[index], source));
+            return result;
+        }
+        case PatternKind::Binding:
+        case PatternKind::Tuple:
+            return makeBooleanLiteral(pattern.range, false);
+    }
+    return makeBooleanLiteral(pattern.range, false);
+}
 
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedToken,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "expected wildcard, literal, binding, tuple, struct, variant, or range pattern");
-        if (!at(TokenKind::EndOfFile)) consume();
-        result.range = start;
-        return result;
-    };
-    parsePattern = [&](bool implicitBinding) -> Pattern
+ast::AstNode* Parser::lowerPattern(
+    const Pattern& pattern,
+    const PatternExpressionFactory& source,
+    ast::AstNode* continuation,
+    std::string_view temporaryPrefix,
+    bool emitBindings)
+{
+    if (pattern.kind == PatternKind::Wildcard) return continuation;
+    if (pattern.kind == PatternKind::Binding)
     {
-        Pattern first = parsePatternPrimary(implicitBinding);
-        if (!at(TokenKind::Pipe)) return first;
-        Pattern result;
-        result.kind = PatternKind::Or;
-        result.range = first.range;
-        result.children.push_back(std::move(first));
-        while (consumeIf(TokenKind::Pipe))
-            result.children.push_back(parsePatternPrimary(implicitBinding));
-        result.range = SourceRange(
-            result.children.front().range.begin(), result.children.back().range.end());
-        return result;
+        if (!emitBindings) return continuation;
+        ast::AstNode* block = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, pattern.range);
+        ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
+            pattern.range, TokenKind::KwVar, "var");
+        ast::AstNode* declaration = makeVariableDeclaration(
+            type,
+            pattern.name,
+            source(),
+            false,
+            pattern.bindingMode == PatternBindingMode::Value);
+        if (pattern.bindingMode == PatternBindingMode::Reference)
+            declaration->setAuxiliaryText("local:ref");
+        block->addChild(declaration);
+        block->addChild(continuation);
+        return block;
+    }
+    if (pattern.kind == PatternKind::Tuple)
+    {
+        ast::AstNode* block = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, pattern.range);
+        ast::AstNode* deconstruction = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::DeconstructionDeclarationStatement, pattern.range);
+        deconstruction->setFirst(source());
+        std::vector<std::string> elementNames;
+        elementNames.reserve(pattern.children.size());
+        for (std::size_t index = 0; index < pattern.children.size(); ++index)
+        {
+            const std::string name = std::string(temporaryPrefix) + "_tuple_" +
+                std::to_string(nextMatchTemporary_++) + "_" + std::to_string(index);
+            elementNames.push_back(name);
+            deconstruction->addChild(makeIdentifierExpression(pattern.range, name));
+        }
+        block->addChild(deconstruction);
+        ast::AstNode* next = continuation;
+        for (std::size_t index = pattern.children.size(); index > 0; --index)
+        {
+            const std::string name = elementNames[index - 1];
+            PatternExpressionFactory element = [&, name]
+            {
+                return makeIdentifierExpression(pattern.range, name);
+            };
+            next = lowerPattern(
+                pattern.children[index - 1], element, next, temporaryPrefix, emitBindings);
+        }
+        block->addChild(next);
+        return block;
+    }
+    if (pattern.kind == PatternKind::Struct)
+    {
+        ast::AstNode* next = continuation;
+        for (std::size_t index = pattern.children.size(); index > 0; --index)
+        {
+            const std::string field = pattern.fieldNames[index - 1];
+            PatternExpressionFactory member = [&, source, field]
+            {
+                return makeMemberExpression(source(), field);
+            };
+            next = lowerPattern(
+                pattern.children[index - 1], member, next, temporaryPrefix, emitBindings);
+        }
+        return next;
+    }
+    if (pattern.kind == PatternKind::Variant)
+    {
+        ast::AstNode* test = makeZeroArgCallExpression(
+            makeMemberExpression(source(), "Is" + pattern.name));
+        ast::AstNode* thenBlock = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, pattern.range);
+        if (pattern.children.empty() || pattern.children.front().kind == PatternKind::Wildcard)
+        {
+            thenBlock->addChild(continuation);
+        }
+        else
+        {
+            const std::string payloadName = std::string(temporaryPrefix) + "_payload_" +
+                std::to_string(nextMatchTemporary_++);
+            ast::AstNode* extract = makeZeroArgCallExpression(
+                makeMemberExpression(source(), "__nsc_variant_extract_" + pattern.name));
+            extract->setAuxiliaryText("variant-pattern-extract");
+            ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
+                pattern.range, TokenKind::KwVar, "var");
+            thenBlock->addChild(makeVariableDeclaration(type, payloadName, extract, false, true));
+            PatternExpressionFactory payload = [&, payloadName]
+            {
+                return makeIdentifierExpression(pattern.range, payloadName);
+            };
+            thenBlock->addChild(lowerPattern(
+                pattern.children.front(), payload, continuation, temporaryPrefix, emitBindings));
+        }
+        ast::AstNode* decision = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::IfStatement, pattern.range);
+        decision->setFirst(test);
+        decision->setSecond(thenBlock);
+        return decision;
+    }
+    if (pattern.kind == PatternKind::Or && !patternIsConditionOnly(pattern))
+        return continuation;
+    ast::AstNode* decision = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::IfStatement, pattern.range);
+    decision->setFirst(makePatternCondition(pattern, source));
+    decision->setSecond(continuation);
+    return decision;
+}
+
+void Parser::emitPatternBindings(
+    const Pattern& pattern,
+    const PatternExpressionFactory& source,
+    ast::AstNode* destination,
+    std::string_view temporaryPrefix)
+{
+    if (pattern.kind == PatternKind::Binding)
+    {
+        ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
+            pattern.range, TokenKind::KwVar, "var");
+        ast::AstNode* declaration = makeVariableDeclaration(
+            type,
+            pattern.name,
+            source(),
+            false,
+            pattern.bindingMode == PatternBindingMode::Value);
+        if (pattern.bindingMode == PatternBindingMode::Reference)
+            declaration->setAuxiliaryText("local:ref");
+        destination->addChild(declaration);
+        return;
+    }
+    if (pattern.kind == PatternKind::Tuple)
+    {
+        ast::AstNode* deconstruction = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::DeconstructionDeclarationStatement, pattern.range);
+        deconstruction->setFirst(source());
+        std::vector<std::string> elementNames;
+        for (std::size_t index = 0; index < pattern.children.size(); ++index)
+        {
+            const std::string name = std::string(temporaryPrefix) + "_tuple_" +
+                std::to_string(nextMatchTemporary_++) + "_" + std::to_string(index);
+            elementNames.push_back(name);
+            deconstruction->addChild(makeIdentifierExpression(pattern.range, name));
+        }
+        destination->addChild(deconstruction);
+        for (std::size_t index = 0; index < pattern.children.size(); ++index)
+        {
+            const std::string name = elementNames[index];
+            PatternExpressionFactory element = [&, name]
+            {
+                return makeIdentifierExpression(pattern.range, name);
+            };
+            emitPatternBindings(
+                pattern.children[index], element, destination, temporaryPrefix);
+        }
+        return;
+    }
+    if (pattern.kind == PatternKind::Struct)
+    {
+        for (std::size_t index = 0; index < pattern.children.size(); ++index)
+        {
+            const std::string field = pattern.fieldNames[index];
+            PatternExpressionFactory member = [&, source, field]
+            {
+                return makeMemberExpression(source(), field);
+            };
+            emitPatternBindings(
+                pattern.children[index], member, destination, temporaryPrefix);
+        }
+        return;
+    }
+    if (pattern.kind == PatternKind::Variant && !pattern.children.empty())
+    {
+        const std::string payloadName = std::string(temporaryPrefix) + "_payload_" +
+            std::to_string(nextMatchTemporary_++);
+        ast::AstNode* extract = makeZeroArgCallExpression(
+            makeMemberExpression(source(), "__nsc_variant_extract_" + pattern.name));
+        extract->setAuxiliaryText("variant-pattern-extract");
+        ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
+            pattern.range, TokenKind::KwVar, "var");
+        destination->addChild(makeVariableDeclaration(type, payloadName, extract, false, true));
+        PatternExpressionFactory payload = [&, payloadName]
+        {
+            return makeIdentifierExpression(pattern.range, payloadName);
+        };
+        emitPatternBindings(
+            pattern.children.front(), payload, destination, temporaryPrefix);
+    }
+}
+
+ast::AstNode* Parser::parseMatchStatement()
+{
+    struct ParsedArm final
+    {
+        Pattern pattern;
+        SourceRange range;
+        ast::AstNode* body = nullptr;
+    };
+
+    const std::size_t beginIndex = index_;
+    const lexer::Token& matchKeyword = consume();
+    requireEdition3(matchKeyword.range(), "match statement syntax");
+    expect(TokenKind::LeftParen, "'(' after 'match'");
+    ast::AstNode* governing = parseExpression();
+    expect(TokenKind::RightParen, "')' after match governing expression");
+    expect(TokenKind::LeftBrace, "'{' to open match arms");
+
+    const auto bindingModeName = [](PatternBindingMode mode) -> std::string_view
+    {
+        switch (mode)
+        {
+            case PatternBindingMode::Value: return "value";
+            case PatternBindingMode::Reference: return "ref";
+            case PatternBindingMode::Move: return "move";
+        }
+        return "value";
     };
 
     const auto collectBindings = [&](const Pattern& root)
     {
-        std::vector<std::pair<std::string, BindingMode>> bindings;
+        std::vector<std::pair<std::string, PatternBindingMode>> bindings;
         std::function<void(const Pattern&)> visit = [&](const Pattern& pattern)
         {
             if (pattern.kind == PatternKind::Binding)
@@ -7914,7 +8451,7 @@ ast::AstNode* Parser::parseMatchStatement()
         [&](const Pattern& pattern, bool preservesAddress)
     {
         if (pattern.kind == PatternKind::Binding &&
-            pattern.bindingMode != BindingMode::Value && !preservesAddress)
+            pattern.bindingMode != PatternBindingMode::Value && !preservesAddress)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::InvalidOperand,
@@ -8151,7 +8688,7 @@ ast::AstNode* Parser::parseMatchStatement()
             const auto bindings = collectBindings(arm.pattern);
             return std::ranges::any_of(bindings, [](const auto& binding)
             {
-                return binding.second == BindingMode::Reference;
+                return binding.second == PatternBindingMode::Reference;
             });
         });
     const bool hasMoveBinding = std::ranges::any_of(
@@ -8161,7 +8698,7 @@ ast::AstNode* Parser::parseMatchStatement()
             const auto bindings = collectBindings(arm.pattern);
             return std::ranges::any_of(bindings, [](const auto& binding)
             {
-                return binding.second == BindingMode::Move;
+                return binding.second == PatternBindingMode::Move;
             });
         });
     ast::AstNode* governingDeclaration = makeVariableDeclaration(
@@ -8172,18 +8709,9 @@ ast::AstNode* Parser::parseMatchStatement()
     const std::string matched = temporary + "_selected";
     ast::TypeSyntax* boolType = arena_.make<ast::TypeSyntax>(
         matchKeyword.range(), TokenKind::KwBool, "bool");
-    const auto makeBooleanLiteral = [&](bool value) -> ast::AstNode*
-    {
-        ast::AstNode* literal = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::BooleanLiteralExpression, matchKeyword.range());
-        literal->setTokenKind(value ? TokenKind::KwTrue : TokenKind::KwFalse);
-        literal->setIntegerValue(value ? 1U : 0U);
-        return literal;
-    };
     lowered->addChild(makeVariableDeclaration(
-        boolType, matched, makeBooleanLiteral(false), false, false));
+        boolType, matched, makeBooleanLiteral(matchKeyword.range(), false), false, false));
 
-    using ExpressionFactory = std::function<ast::AstNode*()>;
     const auto makeNotMatched = [&]() -> ast::AstNode*
     {
         ast::AstNode* result = arena_.make<ast::AstNode>(
@@ -8192,200 +8720,19 @@ ast::AstNode* Parser::parseMatchStatement()
         result->setFirst(makeIdentifierExpression(matchRange, matched));
         return result;
     };
-    std::function<bool(const Pattern&)> isConditionOnly = [&](const Pattern& pattern)
-    {
-        if (pattern.kind == PatternKind::Binding || pattern.kind == PatternKind::Tuple) return false;
-        return std::ranges::all_of(pattern.children, isConditionOnly);
-    };
-    std::function<ast::AstNode*(const Pattern&, const ExpressionFactory&)> makeCondition;
-    makeCondition = [&](const Pattern& pattern, const ExpressionFactory& source) -> ast::AstNode*
-    {
-        switch (pattern.kind)
-        {
-            case PatternKind::Wildcard:
-                return makeBooleanLiteral(true);
-            case PatternKind::Literal:
-                return makeBinaryExpression(TokenKind::EqualEqual, source(), pattern.firstValue);
-            case PatternKind::Range:
-                return makeBinaryExpression(
-                    TokenKind::AmpAmp,
-                    makeBinaryExpression(TokenKind::GreaterEqual, source(), pattern.firstValue),
-                    makeBinaryExpression(TokenKind::Less, source(), pattern.secondValue));
-            case PatternKind::Struct:
-            {
-                ast::AstNode* result = makeBooleanLiteral(true);
-                for (std::size_t index = 0; index < pattern.children.size(); ++index)
-                {
-                    const std::string field = pattern.fieldNames[index];
-                    ExpressionFactory member = [&, source, field]
-                    {
-                        return makeMemberExpression(source(), field);
-                    };
-                    result = makeBinaryExpression(
-                        TokenKind::AmpAmp, result, makeCondition(pattern.children[index], member));
-                }
-                return result;
-            }
-            case PatternKind::Variant:
-            {
-                ast::AstNode* test = makeZeroArgCallExpression(
-                    makeMemberExpression(source(), "Is" + pattern.name));
-                if (pattern.children.empty()) return test;
-                ExpressionFactory payload = [&, source, caseName = pattern.name]
-                {
-                    ast::AstNode* extract = makeZeroArgCallExpression(
-                        makeMemberExpression(source(), "__nsc_variant_extract_" + caseName));
-                    extract->setAuxiliaryText("variant-pattern-extract");
-                    return extract;
-                };
-                return makeBinaryExpression(
-                    TokenKind::AmpAmp, test, makeCondition(pattern.children.front(), payload));
-            }
-            case PatternKind::Or:
-            {
-                ast::AstNode* result = makeCondition(pattern.children.front(), source);
-                for (std::size_t index = 1; index < pattern.children.size(); ++index)
-                    result = makeBinaryExpression(
-                        TokenKind::PipePipe, result, makeCondition(pattern.children[index], source));
-                return result;
-            }
-            case PatternKind::Binding:
-            case PatternKind::Tuple:
-                return makeBooleanLiteral(false);
-        }
-        return makeBooleanLiteral(false);
-    };
-
-    std::function<ast::AstNode*(const Pattern&, const ExpressionFactory&, ast::AstNode*)>
-        lowerPattern;
-    lowerPattern = [&](const Pattern& pattern, const ExpressionFactory& source,
-                       ast::AstNode* continuation) -> ast::AstNode*
-    {
-        if (pattern.kind == PatternKind::Wildcard) return continuation;
-        if (pattern.kind == PatternKind::Binding)
-        {
-            ast::AstNode* block = arena_.make<ast::AstNode>(
-                ast::AstNodeKind::BlockStatement, pattern.range);
-            ast::AstNode* initializer = source();
-            // For trivially copyable values an explicit move binding has the same physical
-            // operation as a value binding, but remains mutable and visibly distinct in the
-            // pattern contract. Owning/partial moves are rejected by the existing ownership
-            // model until T06 supplies per-field and active-payload drop flags; synthesizing a
-            // MoveExpression here would incorrectly claim the temporary is a RAII owner.
-            ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
-                pattern.range, TokenKind::KwVar, "var");
-            ast::AstNode* declaration = makeVariableDeclaration(
-                type, pattern.name, initializer, false,
-                pattern.bindingMode == BindingMode::Value);
-            if (pattern.bindingMode == BindingMode::Reference)
-                declaration->setAuxiliaryText("local:ref");
-            block->addChild(declaration);
-            block->addChild(continuation);
-            return block;
-        }
-        if (pattern.kind == PatternKind::Tuple)
-        {
-            ast::AstNode* block = arena_.make<ast::AstNode>(
-                ast::AstNodeKind::BlockStatement, pattern.range);
-            ast::AstNode* deconstruction = arena_.make<ast::AstNode>(
-                ast::AstNodeKind::DeconstructionDeclarationStatement, pattern.range);
-            deconstruction->setFirst(source());
-            std::vector<std::string> elementNames;
-            elementNames.reserve(pattern.children.size());
-            for (std::size_t index = 0; index < pattern.children.size(); ++index)
-            {
-                const std::string name = temporary + "_tuple_" +
-                    std::to_string(nextMatchTemporary_++) + "_" + std::to_string(index);
-                elementNames.push_back(name);
-                deconstruction->addChild(makeIdentifierExpression(pattern.range, name));
-            }
-            block->addChild(deconstruction);
-            ast::AstNode* next = continuation;
-            for (std::size_t index = pattern.children.size(); index > 0; --index)
-            {
-                const std::string name = elementNames[index - 1];
-                ExpressionFactory element = [&, name]
-                {
-                    return makeIdentifierExpression(pattern.range, name);
-                };
-                next = lowerPattern(pattern.children[index - 1], element, next);
-            }
-            block->addChild(next);
-            return block;
-        }
-        if (pattern.kind == PatternKind::Struct)
-        {
-            ast::AstNode* next = continuation;
-            for (std::size_t index = pattern.children.size(); index > 0; --index)
-            {
-                const std::string field = pattern.fieldNames[index - 1];
-                ExpressionFactory member = [&, source, field]
-                {
-                    return makeMemberExpression(source(), field);
-                };
-                next = lowerPattern(pattern.children[index - 1], member, next);
-            }
-            return next;
-        }
-        if (pattern.kind == PatternKind::Variant)
-        {
-            ast::AstNode* test = makeZeroArgCallExpression(
-                makeMemberExpression(source(), "Is" + pattern.name));
-            ast::AstNode* thenBlock = arena_.make<ast::AstNode>(
-                ast::AstNodeKind::BlockStatement, pattern.range);
-            if (pattern.children.empty() ||
-                pattern.children.front().kind == PatternKind::Wildcard)
-            {
-                thenBlock->addChild(continuation);
-            }
-            else
-            {
-                const std::string payloadName = temporary + "_payload_" +
-                    std::to_string(nextMatchTemporary_++);
-                ast::AstNode* extract = makeZeroArgCallExpression(
-                    makeMemberExpression(source(), "__nsc_variant_extract_" + pattern.name));
-                extract->setAuxiliaryText("variant-pattern-extract");
-                ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
-                    pattern.range, TokenKind::KwVar, "var");
-                thenBlock->addChild(makeVariableDeclaration(
-                    type, payloadName, extract, false, true));
-                ExpressionFactory payload = [&, payloadName]
-                {
-                    return makeIdentifierExpression(pattern.range, payloadName);
-                };
-                thenBlock->addChild(lowerPattern(
-                    pattern.children.front(), payload, continuation));
-            }
-            ast::AstNode* decision = arena_.make<ast::AstNode>(
-                ast::AstNodeKind::IfStatement, pattern.range);
-            decision->setFirst(test);
-            decision->setSecond(thenBlock);
-            return decision;
-        }
-        if (pattern.kind == PatternKind::Or && !isConditionOnly(pattern))
-        {
-            return continuation;
-        }
-        ast::AstNode* decision = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::IfStatement, pattern.range);
-        decision->setFirst(makeCondition(pattern, source));
-        decision->setSecond(continuation);
-        return decision;
-    };
-
     for (const ParsedArm& arm : arms)
     {
         ast::AstNode* selectedBody = arena_.make<ast::AstNode>(
             ast::AstNodeKind::BlockStatement, arm.range);
         selectedBody->addChild(makeExpressionStatement(makeAssignmentExpression(
-            makeIdentifierExpression(arm.range, matched), makeBooleanLiteral(true))));
+            makeIdentifierExpression(arm.range, matched), makeBooleanLiteral(arm.range, true))));
         for (ast::AstNode* statement : arm.body->children()) selectedBody->addChild(statement);
 
-        ExpressionFactory root = [&, armRange = arm.range]
+        PatternExpressionFactory root = [&, armRange = arm.range]
         {
             return makeIdentifierExpression(armRange, temporary);
         };
-        ast::AstNode* matcher = lowerPattern(arm.pattern, root, selectedBody);
+        ast::AstNode* matcher = lowerPattern(arm.pattern, root, selectedBody, temporary);
         ast::AstNode* guardedBody = arena_.make<ast::AstNode>(
             ast::AstNodeKind::BlockStatement, arm.range);
         guardedBody->addChild(matcher);

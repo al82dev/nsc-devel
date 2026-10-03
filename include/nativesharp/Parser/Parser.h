@@ -8,7 +8,10 @@
 #include "nativesharp/Language/LanguageEdition.h"
 
 #include <cstddef>
+#include <functional>
+#include <optional>
 #include <span>
+#include <string>
 #include <vector>
 #include <string_view>
 #include <unordered_set>
@@ -215,6 +218,57 @@ private:
 
     ast::AstNode* parseBlock();
     ast::AstNode* parseStatement();
+    enum class PatternKind
+    {
+        Wildcard,
+        Literal,
+        Binding,
+        Tuple,
+        Struct,
+        Variant,
+        Range,
+        Or
+    };
+    enum class PatternBindingMode
+    {
+        Value,
+        Reference,
+        Move
+    };
+    struct Pattern final
+    {
+        PatternKind kind = PatternKind::Wildcard;
+        PatternBindingMode bindingMode = PatternBindingMode::Value;
+        std::string name;
+        SourceRange range;
+        ast::AstNode* firstValue = nullptr;
+        ast::AstNode* secondValue = nullptr;
+        std::optional<std::int64_t> firstInteger;
+        std::optional<std::int64_t> secondInteger;
+        std::vector<std::string> fieldNames;
+        std::vector<Pattern> children;
+    };
+    using PatternExpressionFactory = std::function<ast::AstNode*()>;
+    Pattern parsePattern(bool implicitBinding);
+    Pattern parsePatternPrimary(bool implicitBinding);
+    ast::AstNode* makeBooleanLiteral(const SourceRange& range, bool value);
+    bool patternIsConditionOnly(const Pattern& pattern) const;
+    ast::AstNode* makePatternCondition(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source);
+    ast::AstNode* lowerPattern(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* continuation,
+        std::string_view temporaryPrefix,
+        bool emitBindings = true);
+    void emitPatternBindings(
+        const Pattern& pattern,
+        const PatternExpressionFactory& source,
+        ast::AstNode* destination,
+        std::string_view temporaryPrefix);
+    ast::AstNode* parseConditionalPatternStatement();
+    bool statementAlwaysDiverges(const ast::AstNode* statement) const;
     ast::AstNode* parseStaticAssertStatement();
     ast::AstNode* parseInlineAssemblyStatement();
     void parseInlineAssemblyOutputClause(ast::AstNode* statement);
