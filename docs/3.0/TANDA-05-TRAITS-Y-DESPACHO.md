@@ -1,8 +1,8 @@
 # Tanda 05 — Traits, interfaces estáticas y despacho / Traits and dispatch
 
-> **Estado 2026-10-03:** `IMPLEMENTING`. `NS3-T05-F01` está terminado: declaraciones, métodos
-> requeridos/default, propiedades y operadores estáticos requeridos, conflictos y NSMETA 1.28.
-> F02–F07 permanecen pendientes. No se ejecutó baseline.
+> **Estado 2026-10-03:** `IMPLEMENTING`. `NS3-T05-F01` y `NS3-T05-F02` están terminados:
+> declaraciones, defaults, requisitos estáticos, bloques `impl`, coherencia sellada, impls
+> condicionales y transporte NSMETA. F03–F07 permanecen pendientes. No se ejecutó baseline.
 
 ## Resultado / Outcome
 
@@ -23,27 +23,33 @@ methods plus static property/operator requirements. Concrete constraints are mon
 - `ProjectInterfaceModel` resuelve defaults, conflictos y requisitos estáticos sin añadir layout.
 - `LibraryMetadata` 1.28 publica el marcador trait y el orden normativo de métodos.
 - `NativeSharp3T05TraitDeclarationTests` cubre 14 casos, incluido productor/consumidor separado.
+- `NativeSharp3T05ImplCoherenceTests` cubre ownership, duplicados, privacidad, condicionales y
+  round-trip genérico productor/consumidor.
 
 ## Mejora / Improvement
 
-ES: Un trait no altera layout ni crea un runtime paralelo. La implementación en la lista base evita
-impls huérfanos por construcción; el constraint especializado hace llamada directa y `dyn` hace
-`interface-instance-call`. Defaults y requisitos cruzan `.nsmeta` sin reordenar slots.
+ES: Un trait no altera layout ni crea un runtime paralelo. Un bloque `impl` sólo puede extender una
+clase propiedad del módulo; el constraint especializado hace llamada directa y `dyn` hace
+`interface-instance-call`. Defaults, requisitos e impls genéricos cruzan `.nsmeta` sin reordenar
+slots ni delegar coherence al runtime.
 
-EN: Traits add no layout or parallel runtime. Base-list implementation prevents orphan impls by
-construction; specialized constraints use direct calls and `dyn` uses `interface-instance-call`.
-Defaults and requirements cross `.nsmeta` without slot reordering.
+EN: Traits add no layout or parallel runtime. Sealed coherence lets an impl extend only a class
+owned by its module; specialized constraints use direct calls and `dyn` uses
+`interface-instance-call`. Defaults, requirements, and generic impls cross `.nsmeta` without slot
+reordering or runtime coherence.
 
 ## Límite / Boundary
 
-F01 no equivale al gate T05. Bloques `impl`/coherencia, associated items, opaque results,
-object-safety completa, extension lookup y operadores resueltos mediante traits siguen abiertos en
-F02–F07.
+F01+F02 no equivalen al gate T05. Associated items, opaque results, object-safety completa,
+extension lookup y operadores resueltos mediante traits siguen abiertos en F03–F07.
 
 ## Validación / Validation
 
-`nsc` O0; c62 exit 42; MIR static/dynamic; batería F01 14/14; productor `.lib/.nsmeta` y
-consumidor con default exit 42. Sin baseline, CTest general, O1/O2/O3, instalación ni deploy.
+`nsc` O0; c62 exit 42; MIR static/dynamic; batería F01 14/14; batería F02 11/11; productor
+`.lib/.nsmeta` y consumidores con default/impl genérico exit 42. Sin baseline, CTest general,
+O1/O2/O3, instalación ni deploy.
 
-Detalle: [trait-declarations.md](language/trait-declarations.md) y
-[NS3-T05-F01-traits.md](items/NS3-T05-F01-traits.md).
+Detalle: [trait-declarations.md](language/trait-declarations.md),
+[trait-implementations.md](language/trait-implementations.md),
+[NS3-T05-F01-traits.md](items/NS3-T05-F01-traits.md) y
+[NS3-T05-F02-impl-coherence.md](items/NS3-T05-F02-impl-coherence.md).

@@ -87,6 +87,11 @@ struct GenericTemplateRecord final
     // source-level using directives that are intentionally not transported with a template body.
     std::vector<GenericTemplateExternalTypeReference> externalTypeReferences;
 
+    // T05-F02. Source-level impl blocks merged into this template. They are retained separately
+    // so NSMETA can publish the original class declaration followed by its coherence extensions;
+    // a consumer then runs the same merge before monomorphization.
+    std::vector<const ast::AstNode*> extensionSyntaxes;
+
     // Explicit generic uses that could not be resolved while inspecting the template. They are
     // harmless in an unreachable private template, but make a public reusable closure invalid.
     std::vector<std::string> unresolvedDependencies;
@@ -216,6 +221,10 @@ private:
         const std::string& namespaceName,
         const std::string& ownerName,
         bool insideGenericType,
+        diagnostics::DiagnosticEngine& diagnostics);
+
+    bool mergeTraitImplementations(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics);
 
     void discoverTemplateDependencies(
@@ -479,6 +488,8 @@ private:
     std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentityBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOriginBySyntax_;
     std::unordered_map<const ast::AstNode*, ast::TypeSyntax*> inferredCallReturnTypes_;
+    std::unordered_map<const ast::AstNode*, std::vector<const ast::AstNode*>>
+        traitImplExtensions_;
     std::vector<std::vector<std::size_t>> visibleProjects_;
     std::vector<std::string> projectModuleNames_;
     // Available before name binding because generic materialization itself runs before name

@@ -157,6 +157,12 @@ bool isNamedTypeDeclaration(ast::AstNodeKind kind) noexcept
         kind == ast::AstNodeKind::DelegateDeclaration;
 }
 
+bool isTraitImplementationPart(const NamedTypeDeclarationPart& part) noexcept
+{
+    return part.syntax != nullptr && part.syntax->kind() == ast::AstNodeKind::ClassDeclaration &&
+        part.syntax->auxiliaryText() == "ns3-trait-impl";
+}
+
 NamedTypeDeclarationKind namedTypeKind(ast::AstNodeKind kind) noexcept
 {
     if (kind == ast::AstNodeKind::ClassDeclaration)
@@ -756,10 +762,19 @@ void ProjectNameLookup::finalizePredeclarations(
         compilation::PartialTypeAggregator aggregator;
         std::string aggregationError;
         bool collected = true;
+        std::optional<std::size_t> primaryIndex;
         for (std::size_t index = groupBegin; index < groupEnd; ++index)
         {
             const PendingTypeDeclaration& pending = pendingTypes_[index];
             const NamedTypeDeclarationPart& part = pending.part;
+            if (isTraitImplementationPart(part))
+            {
+                continue;
+            }
+            if (!primaryIndex.has_value())
+            {
+                primaryIndex = index;
+            }
             compilation::TypePartDescriptor descriptor{
                 pending.identity,
                 compilationTypeKind(part.kind),
@@ -779,12 +794,47 @@ void ProjectNameLookup::finalizePredeclarations(
             }
         }
 
+        if (!primaryIndex.has_value())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidBaseType,
+                diagnostics::DiagnosticSeverity::Error,
+                pendingTypes_[groupBegin].part.range,
+                "sealed trait coherence rejects this impl: target class '" +
+                    pendingTypes_[groupBegin].identity.fullyQualifiedName() +
+                    "' is not declared by this module");
+            groupBegin = groupEnd;
+            continue;
+        }
+
+        const PendingTypeDeclaration& primary = pendingTypes_[*primaryIndex];
+        const bool hasTraitImplementation = std::any_of(
+            pendingTypes_.begin() + static_cast<std::ptrdiff_t>(groupBegin),
+            pendingTypes_.begin() + static_cast<std::ptrdiff_t>(groupEnd),
+            [](const PendingTypeDeclaration& pending)
+            {
+                return isTraitImplementationPart(pending.part);
+            });
+        if (hasTraitImplementation &&
+            (primary.part.kind != NamedTypeDeclarationKind::Class || primary.part.isStatic))
+        {
+            const auto implementation = std::find_if(
+                pendingTypes_.begin() + static_cast<std::ptrdiff_t>(groupBegin),
+                pendingTypes_.begin() + static_cast<std::ptrdiff_t>(groupEnd),
+                [](const PendingTypeDeclaration& pending)
+                {
+                    return isTraitImplementationPart(pending.part);
+                });
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidBaseType,
+                diagnostics::DiagnosticSeverity::Error,
+                implementation->part.range,
+                "a trait impl target must be a non-static class declared by this module");
+        }
         const bool aggregated = collected && aggregator.finalize(aggregationError);
         if (!aggregated)
         {
-            const std::size_t diagnosticIndex = groupEnd - groupBegin > 1
-                ? groupBegin + 1
-                : groupBegin;
+            const std::size_t diagnosticIndex = *primaryIndex;
             const diagnostics::DiagnosticId diagnosticId = aggregationError.starts_with(
                 "duplicate non-partial type declaration")
                     ? diagnostics::DiagnosticId::DuplicateSymbol
@@ -799,12 +849,10 @@ void ProjectNameLookup::finalizePredeclarations(
                 diagnostics.report(
                     diagnostics::DiagnosticId::PreviousDeclaration,
                     diagnostics::DiagnosticSeverity::Note,
-                    pendingTypes_[groupBegin].part.range,
+                    primary.part.range,
                     "previous declaration of this type is here");
             }
         }
-
-        const PendingTypeDeclaration& primary = pendingTypes_[groupBegin];
         NamedTypeDeclarationKind finalKind = primary.part.kind;
         NamedTypeAccessibility finalAccessibility = primary.part.accessibility;
         bool finalPartial = primary.part.isPartial;

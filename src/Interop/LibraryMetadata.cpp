@@ -606,13 +606,31 @@ bool materializeGenericTemplateSource(
 {
     const SourceRange rootRange = generic.syntax->range();
     source = std::string(compilation.sourceManager().getText(rootRange));
+    struct TemplateSourcePiece final
+    {
+        SourceRange range;
+        std::size_t outputBegin = 0;
+    };
+    std::vector<TemplateSourcePiece> pieces{{rootRange, 0}};
+    for (const ast::AstNode* extension : generic.extensionSyntaxes)
+    {
+        if (extension == nullptr || !extension->range().isValid()) continue;
+        source.push_back('\n');
+        const std::size_t outputBegin = source.size();
+        source += compilation.sourceManager().getText(extension->range());
+        pieces.push_back(TemplateSourcePiece{extension->range(), outputBegin});
+    }
     std::vector<TemplateSourceReplacement> replacements;
     const auto appendReplacement = [&](SourceRange range,
                                        std::size_t localBegin,
                                        std::size_t localEnd,
                                        std::string text) -> bool
     {
-        if (!rangeIsInside(range, rootRange) || localBegin >= localEnd ||
+        const auto piece = std::ranges::find_if(pieces, [&](const TemplateSourcePiece& candidate)
+        {
+            return rangeIsInside(range, candidate.range);
+        });
+        if (piece == pieces.end() || localBegin >= localEnd ||
             localEnd > range.end().offset() - range.begin().offset())
         {
             error = "cannot canonicalize an external type reference in reusable template '" +
@@ -620,8 +638,12 @@ bool materializeGenericTemplateSource(
             return false;
         }
         replacements.push_back({
-            static_cast<std::size_t>(range.begin().offset() - rootRange.begin().offset()) + localBegin,
-            static_cast<std::size_t>(range.begin().offset() - rootRange.begin().offset()) + localEnd,
+            piece->outputBegin +
+                static_cast<std::size_t>(range.begin().offset() - piece->range.begin().offset()) +
+                localBegin,
+            piece->outputBegin +
+                static_cast<std::size_t>(range.begin().offset() - piece->range.begin().offset()) +
+                localEnd,
             std::move(text)});
         return true;
     };

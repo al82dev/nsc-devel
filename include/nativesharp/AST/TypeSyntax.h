@@ -69,6 +69,13 @@ public:
     bool isDynamicTrait() const noexcept;
     void setDynamicTrait(bool value = true) noexcept;
 
+    // NativeSharp 3.0 T05-F02. Marks a base-list entry introduced by
+    // `impl Trait for Type` rather than by the type declaration itself. The resolved type is
+    // deliberately unchanged: this bit only preserves provenance so coherence can reject a
+    // duplicate impl deterministically after name binding, including on generic clones.
+    bool isExplicitTraitImplementation() const noexcept;
+    void setExplicitTraitImplementation(bool value = true) noexcept;
+
     // NativeSharp 3.0 T42: `T const*` qualifies the pointed-to T. This is deliberately
     // independent from a declaration's leading `const`, which qualifies the binding itself
     // (`const T* p`). The bit is semantic-only: it does not alter the canonical Win64 ABI type.
@@ -145,6 +152,7 @@ private:
     std::string baseName_;
     OwnershipQualifierSyntaxKind ownershipQualifier_ = OwnershipQualifierSyntaxKind::None;
     bool isDynamicTrait_ = false;
+    bool isExplicitTraitImplementation_ = false;
     bool isPointeeConst_ = false;
     std::vector<TypeSyntax*> typeArguments_;
     bool isTuple_ = false;

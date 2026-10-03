@@ -5,7 +5,9 @@
 > marcador/orden de slots en NSMETA 1.28. Las frases posteriores que los describen como deuda se
 > leen como estado de aquella entrega, no como estado actual. Véanse
 > [TANDA-05-TRAITS-Y-DESPACHO.md](TANDA-05-TRAITS-Y-DESPACHO.md) y
-> [NS3-T05-F01-traits.md](items/NS3-T05-F01-traits.md).
+> [NS3-T05-F01-traits.md](items/NS3-T05-F01-traits.md). `NS3-T05-F02` cerró después bloques
+> `impl`, coherencia sellada, impl condicional y transporte NSMETA; véase
+> [NS3-T05-F02-impl-coherence.md](items/NS3-T05-F02-impl-coherence.md).
 
 ## Objetivo
 

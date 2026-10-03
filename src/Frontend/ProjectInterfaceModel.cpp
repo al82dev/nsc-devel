@@ -594,6 +594,12 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
 
         const NamedTypeDeclaration& type = nameLookup_->namedTypes()[classOrdinal];
         bool sawInterface = false;
+        struct DirectInterfaceSource final
+        {
+            const ast::TypeSyntax* syntax = nullptr;
+            bool explicitImpl = false;
+        };
+        std::unordered_map<std::size_t, DirectInterfaceSource> directInterfaces;
         for (const NamedTypeDeclarationPart& part : type.parts)
         {
             for (const ast::TypeSyntax* specification : declarationSpecifications(part.syntax))
@@ -610,9 +616,46 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
                 const NamedTypeDeclarationKind kind = nameLookup_->namedTypes()[*candidate].kind;
                 if (kind == NamedTypeDeclarationKind::Interface)
                 {
+                    const bool explicitImpl = specification->isExplicitTraitImplementation();
+                    const InterfaceTypeInfo* info = interfaceInfo(*candidate);
+                    if (explicitImpl && (info == nullptr || !info->isTrait))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidBaseType,
+                            diagnostics::DiagnosticSeverity::Error,
+                            specification->range(),
+                            "an impl block requires a NativeSharp 3 trait; '" +
+                                nameLookup_->namedTypes()[*candidate].identity.key() +
+                                "' is an ordinary interface");
+                        ok = false;
+                        continue;
+                    }
+                    if (const auto duplicate = directInterfaces.find(*candidate);
+                        duplicate != directInterfaces.end() &&
+                        (explicitImpl || duplicate->second.explicitImpl))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::DuplicateSymbol,
+                            diagnostics::DiagnosticSeverity::Error,
+                            specification->range(),
+                            "duplicate trait impl for '" +
+                                nameLookup_->namedTypes()[*candidate].identity.key() +
+                                "' on class '" + type.identity.key() + "'");
+                        if (duplicate->second.syntax != nullptr)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::PreviousDeclaration,
+                                diagnostics::DiagnosticSeverity::Note,
+                                duplicate->second.syntax->range(),
+                                "previous trait implementation is here");
+                        }
+                        ok = false;
+                        continue;
+                    }
+                    directInterfaces.emplace(
+                        *candidate, DirectInterfaceSource{specification, explicitImpl});
                     sawInterface = true;
                     appendUnique(implemented, *candidate);
-                    const InterfaceTypeInfo* info = interfaceInfo(*candidate);
                     if (info != nullptr)
                     {
                         for (const std::size_t baseInterface : info->transitiveBaseInterfaceOrdinals)

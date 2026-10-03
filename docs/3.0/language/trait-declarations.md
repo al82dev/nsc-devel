@@ -3,8 +3,9 @@
 ## Español
 
 Un `trait` declara comportamiento nominal sin reservar almacenamiento ni crear instancias por sí
-mismo. La implementación se expresa, en F01, incluyendo el trait en la lista base de una clase.
-Los bloques `impl` y su regla de coherencia pertenecen a `NS3-T05-F02`.
+mismo. La implementación puede incluir el trait en la lista base de una clase o separarse mediante
+`impl Trait for Type`; la segunda forma aplica la coherencia sellada descrita en
+[trait-implementations.md](trait-implementations.md).
 
 ```nativesharp
 public trait IScore
@@ -44,9 +45,9 @@ precompilados.
 
 ## English
 
-A `trait` declares nominal behavior without reserving storage or producing instances by itself. In
-F01, a class implements a trait by listing it as a base. `impl` blocks and their coherence rule are
-owned by `NS3-T05-F02`.
+A `trait` declares nominal behavior without reserving storage or producing instances by itself. A
+class may list the trait as a base or use a separate `impl Trait for Type` block; the latter follows
+the sealed-coherence contract in [trait-implementations.md](trait-implementations.md).
 
 - A method ending in `;` is a requirement.
 - A method with a body is a default used when the class provides no implementation.

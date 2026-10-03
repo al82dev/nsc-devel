@@ -2360,6 +2360,22 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         }
         declaration = parseInterfaceDeclaration(isPartial, true);
     }
+    else if (atContextualKeyword("impl"))
+    {
+        const SourceRange feature = current().range();
+        requireEdition3(feature, "trait implementation blocks");
+        if (accessibility != TokenKind::Invalid || isPartial || isAbstract || isSealed ||
+            isStatic || isReadonlyType || isRecordStruct || isBorrowedView ||
+            layoutPack.has_value() || layoutAlign.has_value() || layoutSize.has_value())
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                tokens_[declarationBeginIndex].range(),
+                "an impl block cannot declare accessibility, layout, or type modifiers");
+        }
+        declaration = parseTraitImplementationDeclaration();
+    }
     else if (atContextualKeyword("variant") && peek().kind() == TokenKind::Identifier)
     {
         if (isPartial || isAbstract || isSealed || isStatic || isRecordStruct)
@@ -3740,6 +3756,105 @@ ast::AstNode* Parser::parseClassDeclaration(
         }
     }
 
+    expect(TokenKind::RightBrace, "'}'");
+    node->setRange(tokenRangeFrom(beginIndex));
+    return node;
+}
+
+ast::AstNode* Parser::parseTraitImplementationDeclaration()
+{
+    const std::size_t beginIndex = index_;
+    consume(); // contextual impl
+
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::ClassDeclaration, tokens_[beginIndex].range());
+    node->setAuxiliaryText("ns3-trait-impl");
+    parseGenericParameterList(node);
+    KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
+
+    ast::TypeSyntax* trait = parseType();
+    if (trait == nullptr)
+    {
+        synchronizeGlobal();
+        return node;
+    }
+    trait->setExplicitTraitImplementation();
+    node->setTypeSyntax(trait);
+    node->addTypeSyntax(trait);
+
+    if (!expect(TokenKind::KwFor, "'for' after trait type in impl declaration"))
+    {
+        synchronizeGlobal();
+        node->setRange(tokenRangeFrom(beginIndex));
+        return node;
+    }
+    ast::TypeSyntax* target = parseType();
+    node->setSecond(target == nullptr ? nullptr : arena_.make<ast::AstNode>(
+        ast::AstNodeKind::IdentifierExpression, target->range()));
+    if (node->second() != nullptr) node->second()->setTypeSyntax(target);
+
+    if (target == nullptr || target->baseTokenKind() != TokenKind::Identifier ||
+        target->isTuple() || target->isDynamicTrait() ||
+        target->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::None ||
+        !target->modifiers().empty() || target->baseName().find('.') != std::string::npos ||
+        target->baseName().find(':') != std::string::npos)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            target == nullptr ? current().range() : target->range(),
+            "an impl target must be a direct unqualified class type owned by this module");
+    }
+    else
+    {
+        node->setText(target->baseName());
+    }
+
+    parseGenericConstraintClauses(node);
+    if (!expect(TokenKind::LeftBrace, "'{' after impl target"))
+    {
+        synchronizeGlobal();
+        node->setRange(tokenRangeFrom(beginIndex));
+        return node;
+    }
+
+    while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+    {
+        const std::size_t before = index_;
+        ast::AstNode* member = parseClassMember(node->text());
+        if (member != nullptr)
+        {
+            const bool allowed = member->kind() == ast::AstNodeKind::MethodDeclaration ||
+                member->kind() == ast::AstNodeKind::PropertyDeclaration ||
+                member->kind() == ast::AstNodeKind::IndexerDeclaration;
+            if (!allowed)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    member->range(),
+                    "an impl block may contain only methods, properties, indexers, and operators");
+            }
+            else
+            {
+                if (member->tokenKind() == TokenKind::Invalid)
+                {
+                    member->setTokenKind(TokenKind::KwPublic);
+                    member->addModifier(TokenKind::KwPublic);
+                }
+                if (member->tokenKind() != TokenKind::KwPublic)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        member->range(),
+                        "members of an impl block are public trait witnesses");
+                }
+                node->addChild(member);
+            }
+        }
+        if (index_ == before) consume();
+    }
     expect(TokenKind::RightBrace, "'}'");
     node->setRange(tokenRangeFrom(beginIndex));
     return node;

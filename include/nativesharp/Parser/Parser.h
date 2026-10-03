@@ -98,6 +98,10 @@ private:
         bool isAbstract,
         bool isSealed,
         bool isStatic = false);
+    // NativeSharp 3.0 T05-F02. A trait impl is represented as a class extension whose second()
+    // names the target and whose sole base specification names the trait. Later phases merge the
+    // extension with the locally-owned class and retain this source node for reusable NSMETA.
+    ast::AstNode* parseTraitImplementationDeclaration();
     ast::AstNode* parseInterfaceDeclaration(bool isPartial, bool isTrait = false);
     ast::AstNode* parseDelegateDeclaration();
     ast::AstNode* parseInterfaceMember(bool isTrait);

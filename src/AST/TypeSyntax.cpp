@@ -35,6 +35,14 @@ void TypeSyntax::setOwnershipQualifier(OwnershipQualifierSyntaxKind qualifier) n
 }
 bool TypeSyntax::isDynamicTrait() const noexcept { return isDynamicTrait_; }
 void TypeSyntax::setDynamicTrait(bool value) noexcept { isDynamicTrait_ = value; }
+bool TypeSyntax::isExplicitTraitImplementation() const noexcept
+{
+    return isExplicitTraitImplementation_;
+}
+void TypeSyntax::setExplicitTraitImplementation(bool value) noexcept
+{
+    isExplicitTraitImplementation_ = value;
+}
 bool TypeSyntax::isPointeeConst() const noexcept { return isPointeeConst_; }
 void TypeSyntax::setPointeeConst(bool value) noexcept { isPointeeConst_ = value; }
 

@@ -612,6 +612,12 @@ bool ProjectGenericModel::build(
         return false;
     }
 
+    if (!mergeTraitImplementations(units, diagnostics))
+    {
+        built_ = true;
+        return false;
+    }
+
     for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
     {
         if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
@@ -790,6 +796,157 @@ bool ProjectGenericModel::build(
 
     built_ = true;
     return !diagnostics.hasErrors();
+}
+
+bool ProjectGenericModel::mergeTraitImplementations(
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    struct LocatedNode final
+    {
+        ProjectSyntaxUnit* unit = nullptr;
+        ast::AstNode* syntax = nullptr;
+        std::string namespaceName;
+    };
+    std::vector<LocatedNode> templates;
+    std::vector<LocatedNode> implementations;
+    const auto collect = [&](auto&& self,
+                             ProjectSyntaxUnit& unit,
+                             ast::AstNode* node,
+                             const std::string& parentNamespace) -> void
+    {
+        if (node == nullptr) return;
+        std::string currentNamespace = parentNamespace;
+        if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+            currentNamespace = namespaceAppend(parentNamespace, node->text());
+        if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
+            node->auxiliaryText() == "ns3-trait-impl" &&
+            !node->genericParameters().empty())
+            implementations.push_back(LocatedNode{&unit, node, currentNamespace});
+        else if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
+                 !node->genericParameters().empty())
+            templates.push_back(LocatedNode{&unit, node, currentNamespace});
+        for (ast::AstNode* child : node->children())
+            self(self, unit, child, currentNamespace);
+    };
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
+        if (unit != nullptr) collect(collect, *unit, unit->syntaxTree(), "");
+
+    const auto parameterShape = [&](const ast::AstNode* node)
+    {
+        std::string shape;
+        for (const ast::GenericParameterSyntax& parameter : node->genericParameterSyntaxes())
+        {
+            shape += std::to_string(static_cast<unsigned>(parameter.kind));
+            shape += ':';
+            shape += parameter.name;
+            shape += ':';
+            shape += typeSpelling(parameter.constantType);
+            shape += ';';
+        }
+        return shape;
+    };
+    const auto constraintShape = [&](const ast::AstNode* node)
+    {
+        std::string shape;
+        for (const ast::GenericConstraintClause& clause : node->genericConstraints())
+        {
+            shape += clause.parameterName + ':';
+            shape += clause.requiresClass ? 'C' : '-';
+            shape += clause.requiresValueType ? 'V' : '-';
+            shape += clause.requiresDefaultConstructor ? 'N' : '-';
+            shape += clause.requiresCopy ? 'P' : '-';
+            shape += clause.requiresMove ? 'M' : '-';
+            shape += clause.requiresTrackedLifetime ? 'L' : '-';
+            shape += clause.requiresUnmanaged ? 'U' : '-';
+            shape += clause.requiresNotNull ? 'R' : '-';
+            shape += '=' + typeSpelling(clause.equalityConstraint);
+            for (const ast::TypeSyntax* type : clause.typeConstraints)
+                shape += ',' + typeSpelling(type);
+            shape += ';';
+        }
+        return shape;
+    };
+
+    bool ok = true;
+    for (const LocatedNode& implementation : implementations)
+    {
+        ast::AstNode* impl = implementation.syntax;
+        const ast::TypeSyntax* target = impl->second() == nullptr
+            ? nullptr : impl->second()->typeSyntax();
+        const auto matching = std::ranges::find_if(templates, [&](const LocatedNode& candidate)
+        {
+            return candidate.unit->projectOrdinal() == implementation.unit->projectOrdinal() &&
+                candidate.namespaceName == implementation.namespaceName &&
+                candidate.syntax->text() == impl->text() &&
+                candidate.syntax->genericParameters().size() == impl->genericParameters().size();
+        });
+        if (matching == templates.end())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidBaseType,
+                diagnostics::DiagnosticSeverity::Error,
+                impl->range(),
+                "sealed trait coherence rejects this generic impl: target class '" +
+                    impl->text() + "' is not declared by this module and namespace");
+            ok = false;
+            continue;
+        }
+        ast::AstNode* owner = matching->syntax;
+        bool directTarget = target != nullptr &&
+            target->typeArguments().size() == impl->genericParameters().size();
+        if (directTarget)
+        {
+            for (std::size_t index = 0; index < target->typeArguments().size(); ++index)
+            {
+                const ast::TypeSyntax* argument = target->typeArguments()[index];
+                directTarget = argument != nullptr && argument->typeArguments().empty() &&
+                    argument->modifiers().empty() &&
+                    argument->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::None &&
+                    argument->baseName() == impl->genericParameters()[index];
+                if (!directTarget) break;
+            }
+        }
+        if (!directTarget || parameterShape(owner) != parameterShape(impl) ||
+            constraintShape(owner) != constraintShape(impl))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidBaseType,
+                diagnostics::DiagnosticSeverity::Error,
+                impl->range(),
+                "a conditional trait impl must repeat the target class generic parameters and "
+                "where constraints exactly");
+            ok = false;
+            continue;
+        }
+
+        const std::string trait = typeSpelling(impl->typeSyntax());
+        const auto duplicate = std::ranges::find_if(owner->typeSyntaxes(), [&](const auto* base)
+        {
+            return typeSpelling(base) == trait;
+        });
+        if (duplicate != owner->typeSyntaxes().end())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::DuplicateSymbol,
+                diagnostics::DiagnosticSeverity::Error,
+                impl->typeSyntax()->range(),
+                "duplicate trait impl for '" + trait + "' on generic class '" +
+                    owner->text() + "'");
+            diagnostics.report(
+                diagnostics::DiagnosticId::PreviousDeclaration,
+                diagnostics::DiagnosticSeverity::Note,
+                (*duplicate)->range(),
+                "previous trait implementation is here");
+            ok = false;
+            continue;
+        }
+        owner->addTypeSyntax(impl->typeSyntax());
+        if (owner->typeSyntax() == nullptr) owner->setTypeSyntax(impl->typeSyntax());
+        for (ast::AstNode* member : impl->children()) owner->addChild(member);
+        traitImplExtensions_[owner].push_back(impl);
+    }
+    return ok;
 }
 
 ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
@@ -1097,6 +1254,9 @@ void ProjectGenericModel::collectTemplates(
     {
         currentNamespace = namespaceAppend(namespaceName, node->text());
     }
+    if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
+        node->auxiliaryText() == "ns3-trait-impl")
+        return;
 
     if (!insideGenericType && node->kind() == ast::AstNodeKind::EnumDeclaration)
     {
@@ -1192,6 +1352,9 @@ void ProjectGenericModel::collectTemplates(
         record.parameters = node->genericParameters();
         record.parameterSyntaxes = node->genericParameterSyntaxes();
         record.constraints = node->genericConstraints();
+        if (const auto extensions = traitImplExtensions_.find(node);
+            extensions != traitImplExtensions_.end())
+            record.extensionSyntaxes = extensions->second;
         // NSC-LIMIT-009: `ns.A+Inner`1`, no `ns.Inner`1`. Hoy el parser rechaza un tipo anidado
         // generico, de modo que esta cadena esta siempre vacia; se escribe igualmente porque el
         // dia que deje de rechazarlo la clave tiene que salir completa, no ambigua.
@@ -1268,6 +1431,9 @@ void ProjectGenericModel::processNode(
     {
         currentNamespace = namespaceAppend(namespaceName, node->text());
     }
+    if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
+        node->auxiliaryText() == "ns3-trait-impl")
+        return;
 
     // LOS `using` DE ESTE AMBITO, recogidos como los recoge ProjectNameLookup::bindScope: del
     // mismo AST, en el mismo sitio, y heredando los de fuera.
@@ -3354,6 +3520,8 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
             }
             selected->setOwnershipQualifier(source->ownershipQualifier());
             selected->setDynamicTrait(source->isDynamicTrait());
+            selected->setExplicitTraitImplementation(
+                source->isExplicitTraitImplementation());
             selected->setPointeeConst(source->isPointeeConst());
             selected->setRange(source->range());
             return selected;
@@ -3475,6 +3643,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     // pointer/array modifiers just above.
     result->setOwnershipQualifier(source->ownershipQualifier());
     result->setDynamicTrait(source->isDynamicTrait());
+    result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
     result->setPointeeConst(source->isPointeeConst());
     result->setPackExpansion(source->isPackExpansion());
     // Stage 52 fix: only stamp the TEMPLATE's own range for the non-substituted branch (the
