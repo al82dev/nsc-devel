@@ -23,6 +23,7 @@ from typing import Any
 
 SCHEMA = "nativesharp.conformance.v1"
 DIAGNOSTIC_PATTERN = re.compile(r"\bNS3\d{3}\b")
+CASE_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 
 
 class ManifestError(ValueError):
@@ -52,6 +53,23 @@ def _string_list(value: Any, field: str) -> list[str]:
     return value
 
 
+def _relative_path(value: str, field: str) -> Path:
+    path = Path(value)
+    if not value or path.is_absolute() or path.anchor or ".." in path.parts:
+        raise ManifestError(f"NS3099: '{field}' must stay inside its conformance case")
+    return path
+
+
+def _inside(root: Path, relative: Path, field: str) -> Path:
+    root = root.resolve()
+    candidate = (root / relative).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as error:
+        raise ManifestError(f"NS3099: '{field}' escapes its conformance case") from error
+    return candidate
+
+
 def load_manifest(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -65,8 +83,8 @@ def load_manifest(path: Path) -> dict[str, Any]:
         raise ManifestError(f"NS3099: missing fields: {', '.join(missing)}")
     if data["schema"] != SCHEMA:
         raise ManifestError(f"NS3099: schema must be '{SCHEMA}'")
-    if not isinstance(data["id"], str) or not data["id"]:
-        raise ManifestError("NS3099: 'id' must be a non-empty string")
+    if not isinstance(data["id"], str) or CASE_ID_PATTERN.fullmatch(data["id"]) is None:
+        raise ManifestError("NS3099: 'id' must be a safe 1-128 character identifier")
     if data["kind"] not in ("normative", "regression"):
         raise ManifestError("NS3099: 'kind' must be 'normative' or 'regression'")
     if data["edition"] not in ("2", "3"):
@@ -93,6 +111,18 @@ def load_manifest(path: Path) -> dict[str, Any]:
     ):
         if field in expected:
             _string_list(expected[field], f"expected.{field}")
+    for code in expected.get("diagnostics", []):
+        if DIAGNOSTIC_PATTERN.fullmatch(code) is None:
+            raise ManifestError(
+                "NS3099: 'expected.diagnostics' accepts only stable NS3xxx codes"
+            )
+    for evidence, checks in (("mirFile", "mirContains"), ("abiFile", "abiContains")):
+        if evidence in expected:
+            _relative_path(expected[evidence], f"expected.{evidence}")
+        if expected.get(checks) and evidence not in expected:
+            raise ManifestError(
+                f"NS3099: 'expected.{checks}' requires 'expected.{evidence}'"
+            )
     timeout = data.get("timeoutSeconds", 30.0)
     repeat = data.get("repeat", 1)
     if not isinstance(timeout, (int, float)) or timeout <= 0 or timeout > 600:
@@ -100,7 +130,11 @@ def load_manifest(path: Path) -> dict[str, Any]:
     if not isinstance(repeat, int) or repeat < 1 or repeat > 10:
         raise ManifestError("NS3099: 'repeat' must be an integer from 1 through 10")
     if "inputs" in data:
-        _string_list(data["inputs"], "inputs")
+        inputs = _string_list(data["inputs"], "inputs")
+        if len(inputs) != len(set(inputs)):
+            raise ManifestError("NS3099: 'inputs' cannot contain duplicates")
+        for index, relative in enumerate(inputs):
+            _relative_path(relative, f"inputs[{index}]")
     return data
 
 
@@ -121,10 +155,11 @@ def _observe(
     compiler: Path | None,
 ) -> Observation:
     for relative in manifest.get("inputs", []):
-        source = (manifest_path.parent / relative).resolve()
+        relative_path = _relative_path(relative, "inputs")
+        source = _inside(manifest_path.parent, relative_path, "inputs")
         if not source.is_file():
             raise ManifestError(f"NS3099: input does not exist: '{relative}'")
-        destination = case_dir / relative
+        destination = _inside(case_dir, relative_path, "inputs")
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
 
@@ -146,8 +181,12 @@ def _observe(
     expected = manifest["expected"]
     mir_path = expected.get("mirFile")
     abi_path = expected.get("abiFile")
-    mir = (case_dir / mir_path).read_text(encoding="utf-8") if isinstance(mir_path, str) else ""
-    abi = (case_dir / abi_path).read_text(encoding="utf-8") if isinstance(abi_path, str) else ""
+    mir = _inside(case_dir, _relative_path(mir_path, "expected.mirFile"), "expected.mirFile").read_text(
+        encoding="utf-8"
+    ) if isinstance(mir_path, str) else ""
+    abi = _inside(case_dir, _relative_path(abi_path, "expected.abiFile"), "expected.abiFile").read_text(
+        encoding="utf-8"
+    ) if isinstance(abi_path, str) else ""
     diagnostics = tuple(DIAGNOSTIC_PATTERN.findall(completed.stderr))
     return Observation(completed.returncode, completed.stdout, completed.stderr, diagnostics, mir, abi)
 
@@ -222,19 +261,25 @@ def self_test() -> int:
         timeout = dict(base, id="timeout", command=["{python}", "-c", "import time; time.sleep(2)"], timeoutSeconds=0.05)
         nondeterministic = dict(base, id="nondeterministic", command=["{python}", "-c", "import time; print(time.time_ns())"], repeat=2)
         isolated = dict(base, id="isolated", command=["{python}", "-c", "from pathlib import Path; p=Path('token'); print('old' if p.exists() else 'ok'); p.write_text('x')"], repeat=2)
+        traversal = dict(base, id="traversal", command=["{python}", "-c", "print('ok')"], inputs=["../outside.ns"])
+        bad_diagnostic = dict(base, id="bad-diagnostic", command=["{python}", "-c", "print('ok')"], expected={"diagnostics": ["InvalidOperand"]})
+        missing_evidence = dict(base, id="missing-evidence", command=["{python}", "-c", "print('ok')"], expected={"mirContains": ["function"]})
         cases = [
             (valid, "passed"),
             (invalid, "invalid"),
             (timeout, "timeout"),
             (nondeterministic, "nondeterministic"),
             (isolated, "passed"),
+            (traversal, "invalid"),
+            (bad_diagnostic, "invalid"),
+            (missing_evidence, "invalid"),
         ]
         for index, (manifest, expected_status) in enumerate(cases):
             result = run_case(_write_manifest(root, f"case-{index}", manifest), root)
             if result.status != expected_status:
                 print(f"FAIL: {result.case_id}: {result.status}: {result.message}", file=sys.stderr)
                 return 1
-    print("PASS: 5 conformance harness checks")
+    print("PASS: 8 conformance harness checks")
     return 0
 
 
