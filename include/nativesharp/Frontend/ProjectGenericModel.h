@@ -408,6 +408,11 @@ private:
         ast::AstArena& arena,
         const ast::TypeSyntax* source,
         const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions);
+
+    std::vector<ast::TypeSyntax*> cloneExpandedTypeArgument(
+        ast::AstArena& arena,
+        const ast::TypeSyntax* source,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions);
     void preserveOrAttachInstantiationOrigin(ast::TypeSyntax* syntax) const;
     ast::AstNode* cloneNode(
         ast::AstArena& arena,
@@ -475,6 +480,11 @@ private:
     // Active only while cloneNode/cloneType expands one specialization. A trailing type pack maps
     // to zero or more arguments; the map is saved/restored around recursive materialization.
     std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>> activePackSubstitutions_;
+    // cloneNode/cloneType cannot emit diagnostics directly. Pack indexing/folding records one
+    // causal materialization error here; ensure*Specialization publishes it before attaching the
+    // incomplete clone and removes the provisional cache entry.
+    std::string packMaterializationError_;
+    SourceRange packMaterializationErrorRange_{};
 };
 
 const char* genericTemplateKindName(GenericTemplateKind kind) noexcept;

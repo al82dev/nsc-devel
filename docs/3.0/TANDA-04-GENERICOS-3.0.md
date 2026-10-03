@@ -1,8 +1,9 @@
 # Tanda 04 — Genéricos 3.0 / Generics 3.0
 
-> **Estado 2026-10-03:** `IMPLEMENTING`. F01 y F02 están terminadas. Const generics cubre enteros,
+> **Estado 2026-10-03:** `IMPLEMENTING`. F01–F03 están terminadas. Const generics cubre enteros,
 > bool, enums, tuplas estructurales, expresiones deterministas, inferencia exacta, layout e identidad
-> Win64. F03–F07 continúan su secuencia propia; no se confunde su deuda con F02.
+> Win64. Packs cubre tipos/valores, zip, índices, folds, forwarding, `.nsmeta` y límites. F04–F07
+> continúan su secuencia propia.
 
 ## Resultado / Outcome
 
@@ -38,8 +39,8 @@ with a stable diagnostic at depth 64. Exact repeats reuse the cache and appear i
 
 ES/EN: La inferencia const sigue siendo exacta/directa y no prueba conversiones arbitrarias. Las
 tuplas son los únicos valores estructurales aprobados; structs nominales requieren primero un
-contrato estable de igualdad estructural. Value packs/index/folds, lambdas/method groups, opaque
-aliases y especialización controlada pertenecen a F03–F07 y continúan abiertas.
+contrato estable de igualdad estructural. Inferencia bidireccional profunda, lambdas/method groups,
+opaque aliases y especialización controlada pertenecen a F04–F07 y continúan abiertas.
 
 ## Validación / Validation
 

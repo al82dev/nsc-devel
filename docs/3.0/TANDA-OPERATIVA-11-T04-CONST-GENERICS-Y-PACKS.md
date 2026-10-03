@@ -1,9 +1,9 @@
 # Tanda operativa 11 — T04 const generics y type packs
 
-> **Actualización 2026-10-03:** la limitación histórica de F02 descrita en este registro quedó
-> cerrada por `NS3-T04-F02`. Const generics admite ahora expresiones deterministas, signo, enums,
-> tuplas estructurales, normalización completa e inferencia exacta. La deuda de packs pertenece a
-> F03 y no debe leerse como deuda de F02.
+> **Actualización 2026-10-03:** las limitaciones históricas de F02/F03 descritas en este registro
+> quedaron cerradas. Const generics admite expresiones deterministas, signo, enums, tuplas
+> estructurales, normalización completa e inferencia exacta. Packs admite tipos/valores, expansión
+> compuesta, zip, índices, folds, forwarding y límite causal de recursos.
 
 ## Objetivo
 
@@ -39,11 +39,12 @@ Cada declaración conserva ahora, en paralelo con el nombre compatible 2.x, un d
 - parámetro de tipo ordinario;
 - valor const con su tipo declarado;
 - pack de tipos;
-- pack de valores reservado, no materializable todavía.
+- pack de valores const materializable.
 
-La sintaxis edition 3 aceptada es `const <builtin> N` y `pack Ts`. Un pack debe ser el último
-parámetro. Los tipos const admitidos en esta vertical son `bool`, `char` y los enteros builtin. Un
-`where` sobre const/pack se rechaza en la declaración, no lejos de ella durante una instancia.
+La sintaxis edition 3 aceptada incluye `const T N`, `pack Ts` y `pack const T Ns`. Un pack debe ser
+el último parámetro. Los tipos const vigentes son `bool`, `char`, enteros builtin, enums nominales
+y tuplas estructurales aprobadas. Un `where` sobre const/pack se rechaza en la declaración, no lejos
+de ella durante una instancia.
 
 ### Argumentos const e identidad
 
@@ -156,14 +157,13 @@ No se ejecutó baseline, CTest general, O1/O2/O3, instalación, deploy ni operac
 
 - La restricción original a literales `bool`/enteros no negativos fue eliminada por F02. El estado
   vigente está en `docs/3.0/language/const-generics.md`.
-- Packs productivos: type pack final, `packcount` y forwarding. Indexado, folds, zipped packs y
-  value packs continúan abiertos.
-- F02 ya infiere valores const desde evidencia exacta. La inferencia de longitud de packs sigue
-  siendo trabajo de F03.
+- F03 cerró packs productivos de tipo/valor, `packcount`, indexado, folds, expansión compuesta,
+  validación zip, forwarding y frontera `.nsmeta`. La regla de pack final mantiene una partición
+  inequívoca y evita inferencia combinatoria de longitudes.
 - Opaque aliases y especialización controlada siguen siendo contratos aislados. No se publica una
   sintaxis parcial porque aún faltan privacidad de representación/metadata para el primero y
   coherence/orden parcial cross-module para la segunda.
 - Lambdas, tuples/method groups y propagación contextual profunda permanecen como deuda F04.
 
 La tanda operativa 11 queda cerrada con una vertical real F02/F03; T04 maestro permanece
-`IMPLEMENTING` hasta cerrar esas capacidades y los gates completos de ABI, tooling y rendimiento.
+`IMPLEMENTING` mientras F04–F07 continúan su secuencia independiente.

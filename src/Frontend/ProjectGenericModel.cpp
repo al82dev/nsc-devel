@@ -431,24 +431,25 @@ std::string constGenericParameterTypeKey(const ast::GenericParameterSyntax& para
         : std::string{};
 }
 
-std::optional<std::size_t> trailingTypePackIndex(const GenericTemplateRecord& record) noexcept
+std::optional<std::size_t> trailingPackIndex(const GenericTemplateRecord& record) noexcept
 {
     if (record.parameterSyntaxes.empty()) return std::nullopt;
     const std::size_t index = record.parameterSyntaxes.size() - 1U;
-    return record.parameterSyntaxes[index].kind == ast::GenericParameterSyntaxKind::TypePack
+    return record.parameterSyntaxes[index].kind == ast::GenericParameterSyntaxKind::TypePack ||
+        record.parameterSyntaxes[index].kind == ast::GenericParameterSyntaxKind::ConstantPack
         ? std::optional<std::size_t>(index) : std::nullopt;
 }
 
 bool genericArityAccepts(const GenericTemplateRecord& record, std::size_t arity) noexcept
 {
-    if (const auto pack = trailingTypePackIndex(record); pack.has_value())
+    if (const auto pack = trailingPackIndex(record); pack.has_value())
         return arity >= *pack;
     return arity == record.parameters.size();
 }
 
 std::string genericAritySpelling(const GenericTemplateRecord& record)
 {
-    if (const auto pack = trailingTypePackIndex(record); pack.has_value())
+    if (const auto pack = trailingPackIndex(record); pack.has_value())
         return std::to_string(*pack) + "+pack";
     return std::to_string(record.parameters.size());
 }
@@ -1388,8 +1389,8 @@ bool ProjectGenericModel::processTypeSyntax(
             diagnostics::DiagnosticSeverity::Error,
             syntax->range(),
             "generic type '" + state->record.name + "' expects " +
-                (trailingTypePackIndex(state->record).has_value()
-                    ? "at least " + std::to_string(*trailingTypePackIndex(state->record))
+                (trailingPackIndex(state->record).has_value()
+                    ? "at least " + std::to_string(*trailingPackIndex(state->record))
                     : std::to_string(state->record.parameters.size())) +
                 " type argument(s) but received " +
                 std::to_string(syntax->typeArguments().size()));
@@ -1718,7 +1719,7 @@ bool ProjectGenericModel::normalizeGenericArguments(
     SourceRange range,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    const std::optional<std::size_t> packIndex = trailingTypePackIndex(record);
+    const std::optional<std::size_t> packIndex = trailingPackIndex(record);
     if (packIndex.has_value())
     {
         const std::array<std::size_t, 1> lengths{
@@ -1745,6 +1746,8 @@ bool ProjectGenericModel::normalizeGenericArguments(
             ? record.parameterSyntaxes[parameterIndex].kind
             : ast::GenericParameterSyntaxKind::Type;
         const ast::GenericParameterSyntax& parameter = record.parameterSyntaxes[parameterIndex];
+        const std::string constSubject = kind == ast::GenericParameterSyntaxKind::ConstantPack
+            ? "const generic pack '" : "const generic parameter '";
         std::string expectedType = constGenericParameterTypeKey(parameter);
         if (expectedType.empty() && parameter.constantType != nullptr)
         {
@@ -1813,22 +1816,13 @@ bool ProjectGenericModel::normalizeGenericArguments(
                     "' cannot contain a compile-time value argument");
             return false;
         }
-        if (kind == ast::GenericParameterSyntaxKind::ConstantPack)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                range,
-                "generic pack materialization requires pack expansion support");
-            return false;
-        }
         if (!constant)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidType,
                 diagnostics::DiagnosticSeverity::Error,
                 arguments[index] != nullptr ? arguments[index]->range() : range,
-                "const generic parameter '" + record.parameters[parameterIndex] +
+                constSubject + record.parameters[parameterIndex] +
                     "' requires a compile-time value argument");
             return false;
         }
@@ -1839,7 +1833,7 @@ bool ProjectGenericModel::normalizeGenericArguments(
                 diagnostics::DiagnosticId::InvalidType,
                 diagnostics::DiagnosticSeverity::Error,
                 parameter.constantType != nullptr ? parameter.constantType->range() : range,
-                "const generic parameter '" + record.parameters[parameterIndex] +
+                constSubject + record.parameters[parameterIndex] +
                     "' has a type that is not an enum or approved structural const type");
             return false;
         }
@@ -1851,7 +1845,7 @@ bool ProjectGenericModel::normalizeGenericArguments(
                     diagnostics::DiagnosticId::InvalidType,
                     diagnostics::DiagnosticSeverity::Error,
                     arguments[index]->range(),
-                    "const generic parameter '" + record.parameters[parameterIndex] +
+                    constSubject + record.parameters[parameterIndex] +
                         "' requires a value of enum type '" + parameter.constantType->baseName() + "'");
                 return false;
             }
@@ -1865,7 +1859,7 @@ bool ProjectGenericModel::normalizeGenericArguments(
                     diagnostics::DiagnosticId::InvalidType,
                     diagnostics::DiagnosticSeverity::Error,
                     arguments[index]->range(),
-                    "const generic parameter '" + record.parameters[parameterIndex] +
+                    constSubject + record.parameters[parameterIndex] +
                         "' requires structural value type '" + expectedType + "'");
                 return false;
             }
@@ -1880,7 +1874,7 @@ bool ProjectGenericModel::normalizeGenericArguments(
                     diagnostics::DiagnosticId::InvalidType,
                     diagnostics::DiagnosticSeverity::Error,
                     arguments[index]->range(),
-                    "const generic parameter '" + record.parameters[parameterIndex] +
+                    constSubject + record.parameters[parameterIndex] +
                         "' requires a boolean value");
                 return false;
             }
@@ -1892,7 +1886,7 @@ bool ProjectGenericModel::normalizeGenericArguments(
                 diagnostics::DiagnosticId::InvalidType,
                 diagnostics::DiagnosticSeverity::Error,
                 arguments[index]->range(),
-                "const generic parameter '" + record.parameters[parameterIndex] +
+                constSubject + record.parameters[parameterIndex] +
                     "' requires an integral value");
             return false;
         }
@@ -2307,8 +2301,8 @@ bool ProjectGenericModel::processGenericCall(
             diagnostics::DiagnosticSeverity::Error,
             call->range(),
             "generic method '" + methodName + "' expects " +
-                (trailingTypePackIndex(state->record).has_value()
-                    ? "at least " + std::to_string(*trailingTypePackIndex(state->record))
+                (trailingPackIndex(state->record).has_value()
+                    ? "at least " + std::to_string(*trailingPackIndex(state->record))
                     : std::to_string(state->record.parameters.size())) +
                 " type argument(s) but received " +
                 std::to_string(call->typeSyntaxes().size()));
@@ -2545,6 +2539,8 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     const SourceRange callerRange = currentInstantiationRange_;
     const std::size_t callerOverloadGroup = currentOverloadGroup_;
     const auto callerPackSubstitutions = activePackSubstitutions_;
+    const std::string callerPackError = packMaterializationError_;
+    const SourceRange callerPackErrorRange = packMaterializationErrorRange_;
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
@@ -2612,21 +2608,43 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         currentOverloadGroup_});
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
-    const std::size_t fixedParameterCount = trailingTypePackIndex(state.record).value_or(
+    const std::size_t fixedParameterCount = trailingPackIndex(state.record).value_or(
         state.record.parameters.size());
     for (std::size_t index = 0; index < fixedParameterCount; ++index)
         substitutions.emplace(state.record.parameters[index], arguments[index]);
     activePackSubstitutions_.clear();
-    if (const auto pack = trailingTypePackIndex(state.record); pack.has_value())
+    if (const auto pack = trailingPackIndex(state.record); pack.has_value())
     {
         auto& values = activePackSubstitutions_[state.record.parameters[*pack]];
         for (std::size_t index = *pack; index < arguments.size(); ++index)
             values.push_back(arguments[index]);
     }
+    packMaterializationError_.clear();
+    packMaterializationErrorRange_ = {};
 
     ast::AstNode* clone = cloneNode(
         state.unit->arena(), state.syntax, substitutions, specializedName, state.record.name);
+    const std::string packError = packMaterializationError_;
+    const SourceRange packErrorRange = packMaterializationErrorRange_;
+    packMaterializationError_ = callerPackError;
+    packMaterializationErrorRange_ = callerPackErrorRange;
     activePackSubstitutions_ = callerPackSubstitutions;
+    if (!packError.empty())
+    {
+        specializationByKey_.erase(key);
+        specializations_.pop_back();
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidArgumentCount,
+            diagnostics::DiagnosticSeverity::Error,
+            packErrorRange,
+            packError);
+        currentInstantiationProjectOrdinal_ = callerProjectOrdinal;
+        currentInstantiationNamespace_ = callerNamespace;
+        currentInstantiationRange_ = callerRange;
+        currentOverloadGroup_ = callerOverloadGroup;
+        instantiationBudget_.leave();
+        return {};
+    }
     clone->setText(specializedName);
     clone->clearGenericParameters();
     // Keep the specialization prefix first because downstream demand/debug readers use it as the
@@ -2668,6 +2686,8 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     const SourceRange callerRange = currentInstantiationRange_;
     const std::size_t callerOverloadGroup = currentOverloadGroup_;
     const auto callerPackSubstitutions = activePackSubstitutions_;
+    const std::string callerPackError = packMaterializationError_;
+    const SourceRange callerPackErrorRange = packMaterializationErrorRange_;
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
@@ -2754,20 +2774,42 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
         currentOverloadGroup_});
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
-    const std::size_t fixedParameterCount = trailingTypePackIndex(state.record).value_or(
+    const std::size_t fixedParameterCount = trailingPackIndex(state.record).value_or(
         state.record.parameters.size());
     for (std::size_t index = 0; index < fixedParameterCount; ++index)
         substitutions.emplace(state.record.parameters[index], arguments[index]);
     activePackSubstitutions_.clear();
-    if (const auto pack = trailingTypePackIndex(state.record); pack.has_value())
+    if (const auto pack = trailingPackIndex(state.record); pack.has_value())
     {
         auto& values = activePackSubstitutions_[state.record.parameters[*pack]];
         for (std::size_t index = *pack; index < arguments.size(); ++index)
             values.push_back(arguments[index]);
     }
+    packMaterializationError_.clear();
+    packMaterializationErrorRange_ = {};
 
     ast::AstNode* clone = cloneNode(state.unit->arena(), state.syntax, substitutions, "", "");
+    const std::string packError = packMaterializationError_;
+    const SourceRange packErrorRange = packMaterializationErrorRange_;
+    packMaterializationError_ = callerPackError;
+    packMaterializationErrorRange_ = callerPackErrorRange;
     activePackSubstitutions_ = callerPackSubstitutions;
+    if (!packError.empty())
+    {
+        specializationByKey_.erase(key);
+        specializations_.pop_back();
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidArgumentCount,
+            diagnostics::DiagnosticSeverity::Error,
+            packErrorRange,
+            packError);
+        currentInstantiationProjectOrdinal_ = callerProjectOrdinal;
+        currentInstantiationNamespace_ = callerNamespace;
+        currentInstantiationRange_ = callerRange;
+        currentOverloadGroup_ = callerOverloadGroup;
+        instantiationBudget_.leave();
+        return {};
+    }
     clone->setText(specializedName);
     clone->clearGenericParameters();
     clone->setAuxiliaryText("stage44-specialization:" + key);
@@ -2785,12 +2827,126 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     return specializedName;
 }
 
+std::vector<ast::TypeSyntax*> ProjectGenericModel::cloneExpandedTypeArgument(
+    ast::AstArena& arena,
+    const ast::TypeSyntax* source,
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions)
+{
+    if (source == nullptr) return {nullptr};
+    if (!source->isPackExpansion()) return {cloneType(arena, source, substitutions)};
+
+    std::vector<std::string> packNames;
+    const std::function<void(const ast::TypeSyntax*)> collect =
+        [&](const ast::TypeSyntax* syntax)
+        {
+            if (syntax == nullptr) return;
+            if (syntax->typeArguments().empty() &&
+                activePackSubstitutions_.contains(syntax->baseName()) &&
+                std::find(packNames.begin(), packNames.end(), syntax->baseName()) ==
+                    packNames.end())
+                packNames.push_back(syntax->baseName());
+            for (const ast::TypeSyntax* argument : syntax->typeArguments()) collect(argument);
+        };
+    collect(source);
+    if (packNames.empty())
+    {
+        if (packMaterializationError_.empty())
+        {
+            packMaterializationError_ =
+                "generic pack expansion does not name an active pack";
+            packMaterializationErrorRange_ = source->range();
+        }
+        return {};
+    }
+
+    std::vector<std::size_t> lengths;
+    lengths.reserve(packNames.size());
+    for (const std::string& name : packNames)
+        lengths.push_back(activePackSubstitutions_.at(name).size());
+    std::string validationError;
+    if (!language::validatePackExpansion(
+            lengths, DefaultMaximumPackExpansionCount, validationError))
+    {
+        if (packMaterializationError_.empty())
+        {
+            packMaterializationError_ = validationError;
+            packMaterializationErrorRange_ = source->range();
+        }
+        return {};
+    }
+
+    std::vector<ast::TypeSyntax*> result;
+    result.reserve(lengths.front());
+    for (std::size_t index = 0; index < lengths.front(); ++index)
+    {
+        std::unordered_map<std::string, const ast::TypeSyntax*> itemSubstitutions = substitutions;
+        for (const std::string& name : packNames)
+            itemSubstitutions[name] = activePackSubstitutions_.at(name)[index];
+        ast::TypeSyntax* item = cloneType(arena, source, itemSubstitutions);
+        if (item != nullptr) item->setPackExpansion(false);
+        result.push_back(item);
+    }
+    return result;
+}
+
 ast::TypeSyntax* ProjectGenericModel::cloneType(
     ast::AstArena& arena,
     const ast::TypeSyntax* source,
     const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions)
 {
     if (source == nullptr) return nullptr;
+
+    if (source->baseName() == "packtype" && source->typeArguments().size() == 2U)
+    {
+        const ast::TypeSyntax* packSyntax = source->typeArguments()[0];
+        const auto pack = packSyntax != nullptr && packSyntax->typeArguments().empty()
+            ? activePackSubstitutions_.find(packSyntax->baseName())
+            : activePackSubstitutions_.end();
+        if (pack != activePackSubstitutions_.end())
+        {
+            std::string indexType;
+            std::string indexValue;
+            std::size_t index = 0;
+            const ast::TypeSyntax* indexSyntax = source->typeArguments()[1];
+            const bool decodedIndex = decodeConstGenericArgument(
+                indexSyntax, indexType, indexValue);
+            const auto parsedIndex = decodedIndex && indexValue.find('-') == std::string::npos
+                ? std::from_chars(
+                    indexValue.data(), indexValue.data() + indexValue.size(), index)
+                : std::from_chars_result{};
+            const bool validIndex = decodedIndex && indexValue.find('-') == std::string::npos &&
+                parsedIndex.ec == std::errc{} &&
+                parsedIndex.ptr == indexValue.data() + indexValue.size();
+            if (!validIndex || index >= pack->second.size())
+            {
+                if (packMaterializationError_.empty())
+                {
+                    packMaterializationError_ = validIndex
+                        ? "generic pack type index " + std::to_string(index) +
+                            " is outside a pack of length " +
+                            std::to_string(pack->second.size())
+                        : "generic pack type index must be a non-negative compile-time integer";
+                    packMaterializationErrorRange_ = source->range();
+                }
+                return arena.make<ast::TypeSyntax>(
+                    source->range(), lexer::TokenKind::KwInt, "int");
+            }
+            ast::TypeSyntax* selected = cloneType(arena, pack->second[index], substitutions);
+            for (const ast::TypeModifierSyntax& modifier : source->modifiers())
+            {
+                selected->addModifier(ast::TypeModifierSyntax{
+                    modifier.kind,
+                    cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
+                    modifier.range,
+                    modifier.arrayRank});
+            }
+            selected->setOwnershipQualifier(source->ownershipQualifier());
+            selected->setDynamicTrait(source->isDynamicTrait());
+            selected->setPointeeConst(source->isPointeeConst());
+            selected->setRange(source->range());
+            return selected;
+        }
+    }
 
     ast::TypeSyntax* result = nullptr;
     bool substituted = false;
@@ -2838,19 +2994,9 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
         else
         {
             for (const ast::TypeSyntax* argument : source->typeArguments())
-            {
-                if (argument != nullptr && argument->isPackExpansion())
-                {
-                    const auto pack = activePackSubstitutions_.find(argument->baseName());
-                    if (pack != activePackSubstitutions_.end())
-                    {
-                        for (const ast::TypeSyntax* item : pack->second)
-                            result->addTypeArgument(cloneType(arena, item, substitutions));
-                        continue;
-                    }
-                }
-                result->addTypeArgument(cloneType(arena, argument, substitutions));
-            }
+                for (ast::TypeSyntax* expanded :
+                     cloneExpandedTypeArgument(arena, argument, substitutions))
+                    result->addTypeArgument(expanded);
         }
         // Stage 52 fix: this plain (non-substituted) re-clone still needs to carry forward the
         // origin tags the SOURCE node already carries. This branch is exactly what runs when
@@ -2977,19 +3123,110 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     if (source->kind() == ast::AstNodeKind::CallExpression &&
         source->first() != nullptr &&
         source->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
-        source->first()->text() == "packcount" && source->children().size() == 1U &&
-        source->children().front() != nullptr &&
+        !source->children().empty() && source->children().front() != nullptr &&
         source->children().front()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
+        const std::string& operation = source->first()->text();
         const auto pack = activePackSubstitutions_.find(source->children().front()->text());
         if (pack != activePackSubstitutions_.end())
         {
-            ast::AstNode* literal = arena.make<ast::AstNode>(
-                ast::AstNodeKind::IntegerLiteralExpression, source->range());
-            literal->setTokenKind(lexer::TokenKind::IntegerLiteral);
-            literal->setIntegerValue(pack->second.size());
-            literal->setText(std::to_string(pack->second.size()));
-            return literal;
+            if (operation == "packcount" && source->children().size() == 1U)
+            {
+                ast::AstNode* literal = arena.make<ast::AstNode>(
+                    ast::AstNodeKind::IntegerLiteralExpression, source->range());
+                literal->setTokenKind(lexer::TokenKind::IntegerLiteral);
+                literal->setIntegerValue(pack->second.size());
+                literal->setText(std::to_string(pack->second.size()));
+                return literal;
+            }
+
+            if (operation == "packat" && source->children().size() == 2U)
+            {
+                ast::AstNode* clonedIndex = cloneNode(
+                    arena, source->children()[1], substitutions,
+                    rewrittenContainingTypeName, originalContainingTypeName);
+                const ProjectIntegerEvaluator evaluator(nullptr);
+                const std::optional<ProjectIntegerValue> evaluated = evaluator.evaluate(clonedIndex);
+                const bool validIndex = evaluated.has_value() && evaluated->asSigned() >= 0;
+                const std::size_t index = validIndex
+                    ? static_cast<std::size_t>(evaluated->bits) : 0U;
+                if (validIndex && index < pack->second.size())
+                {
+                    std::string typeKey;
+                    std::string value;
+                    if (decodeConstGenericArgument(pack->second[index], typeKey, value))
+                        if (ast::AstNode* selected = constArgumentExpression(
+                                arena, typeKey, value, source->range()))
+                            return selected;
+                }
+                if (packMaterializationError_.empty())
+                {
+                    packMaterializationError_ = !validIndex
+                        ? "generic value-pack index must be a non-negative compile-time integer"
+                        : index >= pack->second.size()
+                            ? "generic value-pack index " + std::to_string(index) +
+                                " is outside a pack of length " +
+                                std::to_string(pack->second.size())
+                            : "packat requires a const value pack";
+                    packMaterializationErrorRange_ = source->range();
+                }
+                return constArgumentExpression(
+                    arena, "builtin:int", "0", source->range());
+            }
+
+            const bool arithmeticFold = operation == "packsum" || operation == "packproduct";
+            const bool booleanFold = operation == "packall" || operation == "packany";
+            if ((arithmeticFold || booleanFold) && source->children().size() == 1U)
+            {
+                const lexer::TokenKind foldOperator = operation == "packsum"
+                    ? lexer::TokenKind::Plus
+                    : operation == "packproduct"
+                        ? lexer::TokenKind::Star
+                        : operation == "packall"
+                            ? lexer::TokenKind::AmpAmp : lexer::TokenKind::PipePipe;
+                const std::string identity = operation == "packproduct" || operation == "packall"
+                    ? "1" : "0";
+                ast::AstNode* folded = constArgumentExpression(
+                    arena,
+                    booleanFold ? "builtin:bool" : "builtin:int",
+                    booleanFold ? (operation == "packall" ? "true" : "false") : identity,
+                    source->range());
+                bool valid = true;
+                for (const ast::TypeSyntax* item : pack->second)
+                {
+                    std::string typeKey;
+                    std::string value;
+                    if (!decodeConstGenericArgument(item, typeKey, value) ||
+                        (booleanFold && typeKey != "builtin:bool") ||
+                        (arithmeticFold && !ProjectIntegerEvaluator::isIntegerType(typeKey)))
+                    {
+                        valid = false;
+                        break;
+                    }
+                    ast::AstNode* element = constArgumentExpression(
+                        arena, typeKey, value, source->range());
+                    if (element == nullptr)
+                    {
+                        valid = false;
+                        break;
+                    }
+                    ast::AstNode* combined = arena.make<ast::AstNode>(
+                        ast::AstNodeKind::BinaryExpression, source->range());
+                    combined->setTokenKind(foldOperator);
+                    combined->setFirst(folded);
+                    combined->setSecond(element);
+                    folded = combined;
+                }
+                if (valid) return folded;
+                if (packMaterializationError_.empty())
+                {
+                    packMaterializationError_ = booleanFold
+                        ? operation + " requires a bool const value pack"
+                        : operation + " requires an integral const value pack";
+                    packMaterializationErrorRange_ = source->range();
+                }
+                return folded;
+            }
         }
     }
     if (source->kind() == ast::AstNodeKind::IdentifierExpression)
@@ -3102,7 +3339,9 @@ ast::AstNode* ProjectGenericModel::cloneNode(
         result->setTypeSyntax(cloneType(arena, source->typeSyntax(), substitutions));
     }
     for (const ast::TypeSyntax* syntax : source->typeSyntaxes())
-        result->addTypeSyntax(cloneType(arena, syntax, substitutions));
+        for (ast::TypeSyntax* expanded :
+             cloneExpandedTypeArgument(arena, syntax, substitutions))
+            result->addTypeSyntax(expanded);
     if (!layoutQueryOfSubstitutedParameter)
     {
         result->setFirst(cloneNode(

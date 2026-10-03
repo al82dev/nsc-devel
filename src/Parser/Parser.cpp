@@ -1093,8 +1093,37 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
         else if (atContextualKeyword("pack"))
         {
             const SourceRange feature = consume().range();
-            requireEdition3(feature, "generic type packs");
-            syntax.kind = ast::GenericParameterSyntaxKind::TypePack;
+            requireEdition3(feature, "generic packs");
+            if (consumeIf(TokenKind::KwConst))
+            {
+                syntax.kind = ast::GenericParameterSyntaxKind::ConstantPack;
+                syntax.constantType = parseType();
+                if (syntax.constantType == nullptr) return false;
+                const TokenKind kind = syntax.constantType->baseTokenKind();
+                const bool scalarSupported = syntax.constantType->typeArguments().empty() &&
+                    (kind == TokenKind::KwBool || kind == TokenKind::KwByte ||
+                     kind == TokenKind::KwSByte || kind == TokenKind::KwShort ||
+                     kind == TokenKind::KwUShort || kind == TokenKind::KwInt ||
+                     kind == TokenKind::KwUInt || kind == TokenKind::KwLong ||
+                     kind == TokenKind::KwULong || kind == TokenKind::KwNInt ||
+                     kind == TokenKind::KwNUInt || kind == TokenKind::KwChar ||
+                     kind == TokenKind::Identifier);
+                const bool supported = syntax.constantType->modifiers().empty() &&
+                    (scalarSupported || syntax.constantType->isTuple());
+                if (!supported)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        syntax.constantType->range(),
+                        "const generic packs require bool, char, an integral builtin type, "
+                        "an enum, or an approved structural tuple type");
+                }
+            }
+            else
+            {
+                syntax.kind = ast::GenericParameterSyntaxKind::TypePack;
+            }
         }
         if (!at(TokenKind::Identifier))
         {
@@ -1553,6 +1582,7 @@ bool Parser::canAppearInTypeArgumentList(TokenKind kind) noexcept
         case TokenKind::Less:
         case TokenKind::Greater:
         case TokenKind::GreaterGreater:
+        case TokenKind::Ellipsis:
         case TokenKind::Plus:
         case TokenKind::Minus:
         case TokenKind::Slash:
