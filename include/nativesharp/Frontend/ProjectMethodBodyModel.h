@@ -307,6 +307,19 @@ struct MethodAggregateInitializerBinding final
     std::vector<MethodAggregateInitializerEntryBinding> entries;
 };
 
+// NativeSharp 3.0 T02-F03. A deconstruction always consumes one tuple carrier. For a native
+// tuple the carrier is the source expression itself; for a nominal source it is the result of the
+// statically selected, parameterless instance Deconstruct() method recorded here. Keeping this
+// decision in sema prevents HIR from repeating member lookup or changing overload/access rules.
+struct MethodDeconstructionBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    const ast::AstNode* sourceSyntax = nullptr;
+    std::string sourceTypeKey;
+    std::string tupleTypeKey;
+    std::optional<std::size_t> selectedMemberOrdinal;
+};
+
 enum class MethodRuntimeTypeOperationKind
 {
     TypeTest,
@@ -1388,6 +1401,8 @@ public:
     std::span<const MethodExpressionTypeBinding> expressionTypes() const noexcept;
     const MethodAggregateInitializerBinding* aggregateInitializerBinding(
         const ast::AstNode* syntax) const noexcept;
+    const MethodDeconstructionBinding* deconstructionBinding(
+        const ast::AstNode* syntax) const noexcept;
     const std::string* staticInterpolationValue(const ast::AstNode* syntax) const noexcept;
     // NSC-LIMIT-010. "Este tipo tiene algo que poseer": una referencia de clase/interfaz o una
     // cadena nativa. Publico porque ProjectConstructionModel lo necesita para aplicar la MISMA
@@ -2013,6 +2028,12 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<MethodDeconstructionBinding> bindDeconstructionSource(
+        const ast::AstNode* syntax,
+        const ast::AstNode* sourceSyntax,
+        const ExpressionResult& source,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     // C6 "struct members": class, interface OR struct -- everything that can declare accessor
     // members. See the definition for why this is not referenceTypeOrdinalForTypeKey.
     std::optional<std::size_t> accessorReceiverTypeOrdinalForTypeKey(
@@ -2073,6 +2094,8 @@ private:
     std::vector<MethodExpressionTypeBinding> expressionTypes_;
     std::vector<MethodAggregateInitializerBinding> aggregateInitializerBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> aggregateInitializerBindingBySyntax_;
+    std::vector<MethodDeconstructionBinding> deconstructionBindings_;
+    std::unordered_map<const ast::AstNode*, std::size_t> deconstructionBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, std::string> staticInterpolationValues_;
     std::vector<MethodRuntimeTypeBinding> runtimeTypeBindings_;
     std::vector<MethodCoreBinding> coreBindings_;

@@ -278,6 +278,7 @@ private:
     ast::AstNode* parseUnaryExpression();
     ast::AstNode* parsePostfixExpression();
     ast::AstNode* parsePrimaryExpression();
+    ast::AstNode* parseDeconstructionPattern();
     ast::AstNode* parseWithExpression(ast::AstNode* source);
     bool requireEdition3(SourceRange range, std::string_view feature);
 

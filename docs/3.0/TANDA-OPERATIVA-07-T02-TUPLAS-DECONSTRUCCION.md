@@ -60,10 +60,15 @@ podía declarar, retornar, pasar, convertir ni ejecutar una tupla.
 - `var (a, _, b) = source` crea locals inferidos en el mismo scope y evalúa la fuente una vez.
 - HIR/MIR publican `tuple-deconstruct` y descriptores con offset/tipo/conversión.
 - MIR schema sube de 1.16 a 1.17.
+- Los patrones de declaración y asignación son recursivos y cubren `()`, `(x,)` y nesting.
+- Un tipo nominal participa mediante un `Deconstruct()` de instancia resuelto estáticamente,
+  accesible, sin parámetros, no virtual y con retorno tupla por valor.
+- Las hojas destino se validan completamente antes del HIR y se escriben izquierda→derecha.
+- Una fuente `ref` se lee una sola vez; un retorno `ref` del protocolo se rechaza.
+- Un temporal nominal move-only se rechaza si exigiría una copia oculta.
 
 ## Límites deliberados y dependencias
 
-- `Deconstruct` nominal no se finge como una tupla: requiere resolución de protocolo/método.
 - Deconstrucción de elementos owning/move-only se rechaza hasta disponer de bindings move,
   partial drop y drop flags en tandas 13–14.
 - Nombres públicos de elementos en NSMETA, consumidor precompilado, debugger y LSP siguen abiertos;
@@ -79,9 +84,12 @@ podía declarar, retornar, pasar, convertir ni ejecutar una tupla.
   genéricos, ABI, ejecución y frontera move-only.
 - `tests/unit/NativeSharp3T02TupleLiteralTests.cpp`: inferencia, conversiones numéricas/de
   referencia, overloads, temporales, efectos y diagnósticos causales.
+- `tests/unit/NativeSharp3T02DeconstructionTests.cpp`: patrones anidados, protocolo nominal,
+  fuentes ref, orden de escritura y fronteras de seguridad.
 - `docs/3.0/language/native-tuples.md`: contrato normativo bilingüe de identidad/layout/ABI.
 - `docs/3.0/language/tuple-literals-and-conversions.md`: reglas bilingües de inferencia,
   conversiones y selección de overload.
+- `docs/3.0/language/deconstruction.md`: contrato bilingüe de binding, temporales y asignación.
 - Este documento: evidencia completa de la tanda y de sus fronteras.
 
 ## Archivos modificados
@@ -128,4 +136,5 @@ Los casos aún inseguros fallan en frontend con causa concreta en vez de produci
   `tuple-deconstruct-element-store`.
 - Una negativa dirigida produjo los tres diagnósticos esperados: aridad, fuente no-tupla y binding
   duplicado.
+- La prueba exclusiva F03 pasó 6/6; las regresiones vecinas pasaron 13/13, 24/24, 4/4 y 58/58.
 - No se ejecutó CTest, baseline, matriz O1/O2/O3, instalación, despliegue ni remoto.

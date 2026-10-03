@@ -725,6 +725,11 @@ private:
         std::string_view receiverTypeKey,
         std::size_t memberOrdinal,
         std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerDeconstructionSource(
+        const ast::AstNode* bindingSyntax,
+        const ast::AstNode* sourceSyntax,
+        std::size_t memberOrdinal,
+        std::string& error);
     std::unique_ptr<ProjectOopHirNode> wrapImplicitConversion(
         std::unique_ptr<ProjectOopHirNode> value,
         const ProjectImplicitConversion& conversion,

@@ -6500,36 +6500,17 @@ ast::AstNode* Parser::parseStatement()
         const std::size_t beginIndex = index_;
         const SourceRange featureRange = consume().range();
         requireEdition3(featureRange, "tuple deconstruction declarations");
-        expect(TokenKind::LeftParen, "'(' after 'var'");
+        ast::AstNode* pattern = parseDeconstructionPattern();
         ast::AstNode* declaration = arena_.make<ast::AstNode>(
             ast::AstNodeKind::DeconstructionDeclarationStatement, featureRange);
-        while (true)
+        if (pattern != nullptr && pattern->kind() == ast::AstNodeKind::TupleExpression)
         {
-            if (!at(TokenKind::Identifier))
-            {
-                expect(TokenKind::Identifier, "deconstruction binding name or '_'");
-                break;
-            }
-            const lexer::Token& name = consume();
-            ast::AstNode* binding = arena_.make<ast::AstNode>(
-                ast::AstNodeKind::IdentifierExpression, name.range());
-            binding->setText(std::string(name.lexeme()));
-            declaration->addChild(binding);
-            if (!consumeIf(TokenKind::Comma)) break;
+            for (ast::AstNode* binding : pattern->children()) declaration->addChild(binding);
         }
-        expect(TokenKind::RightParen, "')' after deconstruction bindings");
         expect(TokenKind::Equal, "'=' after deconstruction bindings");
         declaration->setFirst(parseAssignmentExpression());
         expect(TokenKind::Semicolon, "';'");
         declaration->setRange(tokenRangeFrom(beginIndex));
-        if (declaration->children().size() < 2)
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                declaration->range(),
-                "tuple deconstruction declaration requires at least two bindings");
-        }
         return declaration;
     }
 
@@ -6561,6 +6542,55 @@ ast::AstNode* Parser::parseStatement()
     expect(TokenKind::Semicolon, "';'");
     statement->setRange(tokenRangeFrom(beginIndex));
     return statement;
+}
+
+ast::AstNode* Parser::parseDeconstructionPattern()
+{
+    if (at(TokenKind::Identifier))
+    {
+        const lexer::Token& name = consume();
+        ast::AstNode* binding = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::IdentifierExpression, name.range());
+        binding->setText(std::string(name.lexeme()));
+        return binding;
+    }
+
+    if (!at(TokenKind::LeftParen))
+    {
+        expect(TokenKind::LeftParen, "'(' in deconstruction pattern");
+        return makeErrorExpression();
+    }
+
+    const SourceRange open = consume().range();
+    ast::AstNode* tuple = arena_.make<ast::AstNode>(ast::AstNodeKind::TupleExpression, open);
+    if (at(TokenKind::RightParen))
+    {
+        const SourceRange close = consume().range();
+        tuple->setRange(join(open, close));
+        return tuple;
+    }
+
+    while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile))
+    {
+        if (!at(TokenKind::Identifier) && !at(TokenKind::LeftParen))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "expected deconstruction binding name, '_', or nested pattern");
+            consume();
+        }
+        else
+        {
+            tuple->addChild(parseDeconstructionPattern());
+        }
+        if (!consumeIf(TokenKind::Comma)) break;
+    }
+    expect(TokenKind::RightParen, "')' after deconstruction pattern");
+    if (index_ != 0)
+        tuple->setRange(SourceRange(open.begin(), tokens_[index_ - 1].range().end()));
+    return tuple;
 }
 
 namespace

@@ -20,6 +20,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <ranges>
 #include <string>
@@ -2039,6 +2040,130 @@ const MethodAggregateInitializerBinding* ProjectMethodBodyModel::aggregateInitia
         ? nullptr : &aggregateInitializerBindings_[found->second];
 }
 
+const MethodDeconstructionBinding* ProjectMethodBodyModel::deconstructionBinding(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto found = deconstructionBindingBySyntax_.find(syntax);
+    return found == deconstructionBindingBySyntax_.end()
+        ? nullptr : &deconstructionBindings_[found->second];
+}
+
+std::optional<MethodDeconstructionBinding> ProjectMethodBodyModel::bindDeconstructionSource(
+    const ast::AstNode* syntax,
+    const ast::AstNode* sourceSyntax,
+    const ExpressionResult& source,
+    std::size_t methodMemberOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (!source.valid) return std::nullopt;
+
+    MethodDeconstructionBinding binding;
+    binding.syntax = syntax;
+    binding.sourceSyntax = sourceSyntax;
+    binding.sourceTypeKey = source.typeKey;
+    if (ProjectTypeConversion::tupleElementTypeKeys(source.typeKey).has_value())
+    {
+        binding.tupleTypeKey = source.typeKey;
+        return binding;
+    }
+
+    const std::optional<std::size_t> receiverType =
+        accessorReceiverTypeOrdinalForTypeKey(source.typeKey);
+    const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+    if (!receiverType.has_value() || caller == nullptr || memberModel_ == nullptr ||
+        nameLookup_ == nullptr || inheritanceModel_ == nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            sourceSyntax != nullptr ? sourceSyntax->range() : syntax->range(),
+            "deconstruction requires a tuple or a nominal value with an accessible "
+            "parameterless Deconstruct() method returning a tuple");
+        return std::nullopt;
+    }
+
+    bool namedCandidate = false;
+    bool inaccessibleCandidate = false;
+    std::vector<std::size_t> validCandidates;
+    for (const std::size_t ordinal : memberCandidatesForType(*receiverType, "Deconstruct"))
+    {
+        if (ordinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[ordinal];
+        namedCandidate = true;
+        if (!ProjectMemberAccessibility::isAccessible(
+                member, caller->declaringTypeOrdinal, *receiverType,
+                *nameLookup_, *inheritanceModel_))
+        {
+            inaccessibleCandidate = true;
+            continue;
+        }
+        if (member.kind != ClassMemberKind::Method || member.isStatic ||
+            !member.parameters.empty() || member.isReferenceReturn || member.isVirtual ||
+            member.isAbstract ||
+            !ProjectTypeConversion::tupleElementTypeKeys(member.declaredTypeKey).has_value())
+        {
+            continue;
+        }
+        if (source.readonlyReceiver && !member.isReadonly)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                sourceSyntax != nullptr ? sourceSyntax->range() : syntax->range(),
+                "readonly deconstruction source requires a readonly Deconstruct() method");
+            return std::nullopt;
+        }
+        validCandidates.push_back(ordinal);
+    }
+
+    if (validCandidates.size() != 1)
+    {
+        const diagnostics::DiagnosticId id = validCandidates.size() > 1
+            ? diagnostics::DiagnosticId::InvalidCall
+            : inaccessibleCandidate && namedCandidate
+                ? diagnostics::DiagnosticId::InaccessibleMember
+                : diagnostics::DiagnosticId::InvalidOperand;
+        const std::string message = validCandidates.size() > 1
+            ? "nominal deconstruction has more than one valid Deconstruct() method"
+            : inaccessibleCandidate && namedCandidate
+                ? "Deconstruct() is not accessible in this context"
+                : "nominal deconstruction requires one non-static, non-virtual, parameterless "
+                  "Deconstruct() method returning a tuple by value";
+        diagnostics.report(
+            id,
+            diagnostics::DiagnosticSeverity::Error,
+            sourceSyntax != nullptr ? sourceSyntax->range() : syntax->range(),
+            message);
+        return std::nullopt;
+    }
+
+    const ClassMemberSymbol& selected = memberModel_->members()[validCandidates.front()];
+    if (!elementTypeHasTrivialLifetime(selected.declaredTypeKey))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            sourceSyntax != nullptr ? sourceSyntax->range() : syntax->range(),
+            "Deconstruct() returning owning or move-only tuple elements requires per-element "
+            "move bindings and drop flags");
+        return std::nullopt;
+    }
+    if (!source.addressable && !elementTypeHasTrivialLifetime(source.typeKey))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            sourceSyntax != nullptr ? sourceSyntax->range() : syntax->range(),
+            "deconstructing a temporary move-only nominal value would require a hidden copy; "
+            "bind it to storage before deconstruction");
+        return std::nullopt;
+    }
+
+    binding.tupleTypeKey = selected.declaredTypeKey;
+    binding.selectedMemberOrdinal = validCandidates.front();
+    return binding;
+}
+
 const std::string* ProjectMethodBodyModel::staticInterpolationValue(
     const ast::AstNode* syntax) const noexcept
 {
@@ -2651,18 +2776,14 @@ void ProjectMethodBodyModel::analyzeStatement(
         {
             const ExpressionResult source = analyzeExpression(
                 statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-            const std::optional<std::vector<std::string>> elements =
-                ProjectTypeConversion::tupleElementTypeKeys(source.typeKey);
             if (!source.valid) break;
-            if (!elements.has_value())
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    statement->first() != nullptr ? statement->first()->range() : statement->range(),
-                    "a deconstruction declaration requires a tuple value");
-                break;
-            }
+            const std::optional<MethodDeconstructionBinding> deconstruction =
+                bindDeconstructionSource(
+                    statement, statement->first(), source, methodMemberOrdinal, diagnostics);
+            if (!deconstruction.has_value()) break;
+            const std::optional<std::vector<std::string>> elements =
+                ProjectTypeConversion::tupleElementTypeKeys(deconstruction->tupleTypeKey);
+            if (!elements.has_value()) break;
             if (elements->size() != statement->children().size())
             {
                 diagnostics.report(
@@ -2674,7 +2795,7 @@ void ProjectMethodBodyModel::analyzeStatement(
                         " binding(s), but the tuple has " + std::to_string(elements->size()));
                 break;
             }
-            if (!elementTypeHasTrivialLifetime(source.typeKey))
+            if (!elementTypeHasTrivialLifetime(deconstruction->tupleTypeKey))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
@@ -2684,11 +2805,58 @@ void ProjectMethodBodyModel::analyzeStatement(
                     "per-element move bindings and drop flags");
                 break;
             }
+            deconstructionBindingBySyntax_[statement] = deconstructionBindings_.size();
+            deconstructionBindings_.push_back(*deconstruction);
+
             std::unordered_set<std::string> declaredHere;
-            for (std::size_t index = 0; index < statement->children().size(); ++index)
+            std::function<void(const ast::AstNode*, const std::string&, const std::string&)>
+                bindPattern;
+            bindPattern = [&](const ast::AstNode* binding, const std::string& typeKey,
+                              const std::string& path)
             {
-                const ast::AstNode* binding = statement->children()[index];
-                if (binding == nullptr || binding->text() == "_") continue;
+                if (binding == nullptr) return;
+                if (binding->kind() == ast::AstNodeKind::TupleExpression)
+                {
+                    const std::optional<std::vector<std::string>> nested =
+                        ProjectTypeConversion::tupleElementTypeKeys(typeKey);
+                    if (!nested.has_value())
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            binding->range(),
+                            "nested deconstruction pattern at " + path +
+                                " requires a tuple element");
+                        return;
+                    }
+                    if (nested->size() != binding->children().size())
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidArgumentCount,
+                            diagnostics::DiagnosticSeverity::Error,
+                            binding->range(),
+                            "nested deconstruction pattern at " + path + " has " +
+                                std::to_string(binding->children().size()) +
+                                " binding(s), but the tuple element has " +
+                                std::to_string(nested->size()));
+                        return;
+                    }
+                    for (std::size_t index = 0; index < nested->size(); ++index)
+                        bindPattern(
+                            binding->children()[index], (*nested)[index],
+                            path + "." + std::to_string(index));
+                    return;
+                }
+                if (binding->kind() != ast::AstNodeKind::IdentifierExpression)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        binding->range(),
+                        "deconstruction declaration patterns contain only names, '_', or tuples");
+                    return;
+                }
+                if (binding->text() == "_") return;
                 if (!declaredHere.insert(binding->text()).second)
                 {
                     diagnostics.report(
@@ -2696,7 +2864,7 @@ void ProjectMethodBodyModel::analyzeStatement(
                         diagnostics::DiagnosticSeverity::Error,
                         binding->range(),
                         "duplicate deconstruction binding '" + binding->text() + "'");
-                    continue;
+                    return;
                 }
                 const std::optional<ScopeName> sameScope =
                     lookupScopeNameInScope(scopeOrdinal, binding->text());
@@ -2709,7 +2877,7 @@ void ProjectMethodBodyModel::analyzeStatement(
                         "duplicate local/parameter name '" + binding->text() +
                             "' in the same method scope");
                     reportPrevious(sameScope->range, diagnostics, "previous declaration is here");
-                    continue;
+                    return;
                 }
                 MethodLocalSymbol local;
                 local.methodMemberOrdinal = methodMemberOrdinal;
@@ -2720,7 +2888,7 @@ void ProjectMethodBodyModel::analyzeStatement(
                 local.range = binding->range();
                 local.syntax = binding;
                 local.name = binding->text();
-                local.typeKey = (*elements)[index];
+                local.typeKey = typeKey;
                 local.lambdaOrdinal = currentLambdaOrdinal_;
                 if (const std::optional<ScopeName> outer =
                         lookupScopeName(scopeOrdinal, binding->text());
@@ -2750,6 +2918,12 @@ void ProjectMethodBodyModel::analyzeStatement(
                     localOrdinal,
                     binding->range()});
                 assignedLocals_.insert(localOrdinal);
+            };
+            for (std::size_t index = 0; index < statement->children().size(); ++index)
+            {
+                bindPattern(
+                    statement->children()[index], (*elements)[index],
+                    std::to_string(index));
             }
             break;
         }
@@ -14670,39 +14844,39 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         return target;
     }
 
-    // NativeSharp 3.0 T02-F03. Evaluate the complete tuple source first, then validate targets
-    // from left to right. HIR materializes that source once before taking any destination
-    // address, which makes `(a, b) = (b, a)` alias-safe and preserves source side effects.
+    // NativeSharp 3.0 T02-F03. Evaluate the complete source first, resolve a native tuple or the
+    // nominal Deconstruct() protocol exactly once, then validate every target leaf left-to-right.
+    // HIR materializes the resulting tuple before taking any destination address, which makes
+    // `(a, b) = (b, a)` alias-safe and fixes the observable write order for nested patterns too.
     if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::TupleExpression)
     {
         const ExpressionResult source = analyzeExpression(
             expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        const std::optional<MethodDeconstructionBinding> deconstruction = source.valid
+            ? bindDeconstructionSource(
+                expression, expression->second(), source, methodMemberOrdinal, diagnostics)
+            : std::nullopt;
         const std::optional<std::vector<std::string>> sourceElements =
-            ProjectTypeConversion::tupleElementTypeKeys(source.typeKey);
-        bool valid = source.valid;
-        if (!sourceElements.has_value())
-        {
-            if (source.valid)
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->second() != nullptr ? expression->second()->range() : expression->range(),
-                    "tuple deconstruction requires a tuple value on the right-hand side");
-            valid = false;
-        }
-        else if (sourceElements->size() != expression->first()->children().size())
+            deconstruction.has_value()
+                ? ProjectTypeConversion::tupleElementTypeKeys(deconstruction->tupleTypeKey)
+                : std::nullopt;
+        bool valid = source.valid && deconstruction.has_value() && sourceElements.has_value();
+        if (sourceElements.has_value() &&
+            sourceElements->size() != expression->first()->children().size())
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidArgumentCount,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->first()->range(),
-                "tuple deconstruction target has " +
+                "deconstruction target has " +
                     std::to_string(expression->first()->children().size()) +
-                    " element(s), but the source has " + std::to_string(sourceElements->size()));
+                    " element(s), but the source tuple has " +
+                    std::to_string(sourceElements->size()));
             valid = false;
         }
-        if (sourceElements.has_value() && !elementTypeHasTrivialLifetime(source.typeKey))
+        if (deconstruction.has_value() &&
+            !elementTypeHasTrivialLifetime(deconstruction->tupleTypeKey))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
@@ -14712,11 +14886,58 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                 "bindings and per-element drop flags");
             valid = false;
         }
-        for (std::size_t index = 0; index < expression->first()->children().size(); ++index)
+        if (deconstruction.has_value())
         {
-            const ast::AstNode* target = expression->first()->children()[index];
-            if (target != nullptr && target->kind() == ast::AstNodeKind::IdentifierExpression &&
-                target->text() == "_") continue;
+            deconstructionBindingBySyntax_[expression] = deconstructionBindings_.size();
+            deconstructionBindings_.push_back(*deconstruction);
+        }
+
+        std::function<void(const ast::AstNode*, const std::string&, const std::string&)>
+            bindTarget;
+        bindTarget = [&](const ast::AstNode* target, const std::string& sourceTypeKey,
+                         const std::string& path)
+        {
+            if (target == nullptr)
+            {
+                valid = false;
+                return;
+            }
+            if (target->kind() == ast::AstNodeKind::TupleExpression)
+            {
+                const std::optional<std::vector<std::string>> nested =
+                    ProjectTypeConversion::tupleElementTypeKeys(sourceTypeKey);
+                if (!nested.has_value())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        target->range(),
+                        "nested deconstruction target at " + path +
+                            " requires a tuple source element");
+                    valid = false;
+                    return;
+                }
+                if (nested->size() != target->children().size())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidArgumentCount,
+                        diagnostics::DiagnosticSeverity::Error,
+                        target->range(),
+                        "nested deconstruction target at " + path + " has " +
+                            std::to_string(target->children().size()) +
+                            " element(s), but its source tuple has " +
+                            std::to_string(nested->size()));
+                    valid = false;
+                    return;
+                }
+                for (std::size_t index = 0; index < nested->size(); ++index)
+                    bindTarget(
+                        target->children()[index], (*nested)[index],
+                        path + "." + std::to_string(index));
+                return;
+            }
+            if (target->kind() == ast::AstNodeKind::IdentifierExpression &&
+                target->text() == "_") return;
             const ast::AstNode* previousWriteTarget = definiteAssignmentWriteTarget_;
             markAssignmentTarget(target, scopeOrdinal);
             const ExpressionResult targetResult = analyzeExpression(
@@ -14732,26 +14953,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                         target != nullptr ? target->range() : expression->first()->range(),
                         "tuple deconstruction target must be addressable storage or '_'");
                 valid = false;
-                continue;
+                return;
             }
-            if (sourceElements.has_value() && index < sourceElements->size())
+            const ProjectImplicitConversion conversion = classifyImplicit(
+                sourceTypeKey, targetResult.typeKey, std::nullopt);
+            if (!conversion.exists())
             {
-                const ProjectImplicitConversion conversion = classifyImplicit(
-                    (*sourceElements)[index], targetResult.typeKey, std::nullopt);
-                if (!conversion.exists())
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidConversion,
-                        diagnostics::DiagnosticSeverity::Error,
-                        target->range(),
-                        "tuple element " + std::to_string(index) + " of type '" +
-                            (*sourceElements)[index] + "' cannot convert to target type '" +
-                            targetResult.typeKey + "'");
-                    valid = false;
-                }
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    target->range(),
+                    "deconstruction element " + path + " of type '" + sourceTypeKey +
+                        "' cannot convert to target type '" + targetResult.typeKey + "'");
+                valid = false;
             }
+        };
+        if (sourceElements.has_value() &&
+            sourceElements->size() == expression->first()->children().size())
+        {
+            for (std::size_t index = 0; index < sourceElements->size(); ++index)
+                bindTarget(
+                    expression->first()->children()[index], (*sourceElements)[index],
+                    std::to_string(index));
         }
         ExpressionResult result = source;
+        if (deconstruction.has_value()) result.typeKey = deconstruction->tupleTypeKey;
         result.valid = valid;
         result.assignable = false;
         result.addressable = false;
