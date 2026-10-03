@@ -7117,6 +7117,17 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
             exportSymbols.push_back(table.descriptorAccessorName);
         }
     }
+    for (const frontend::ProjectOopMirStructLayout &layout :
+         compilation.oopMirModel()->structLayouts())
+    {
+        if (layout.isImported || !layout.requiresDrop || layout.dropGlueEntryName.empty() ||
+            layout.typeOrdinal >= types.size())
+            continue;
+        const frontend::NamedTypeDeclaration &type = types[layout.typeOrdinal];
+        if (type.projectOrdinal == rootProjectOrdinal &&
+            isPubliclyReachableNamedType(types, layout.typeOrdinal))
+            exportSymbols.push_back(layout.dropGlueEntryName);
+    }
     for (const frontend::ProjectOopMirStaticField &field : compilation.oopMirModel()->staticFields())
     {
         if (field.isImported || field.isConst || field.declaringTypeOrdinal >= types.size() ||

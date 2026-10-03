@@ -232,7 +232,9 @@ void writeCommonModel(IdentityWriter& output, const frontend::ProjectOopMirModel
         output.scalar(layout.size); output.scalar(layout.alignment);
         output.scalar(layout.isUnion); output.scalar(layout.pack);
         output.scalar(layout.minimumAlignment); output.scalar(layout.hasExplicitFieldOffsets);
-        output.scalar(layout.abiPassing); output.scalar(layout.fields.size());
+        output.scalar(layout.abiPassing); output.scalar(layout.isImported);
+        output.scalar(layout.requiresDrop); output.text(layout.dropGlueEntryName);
+        output.scalar(layout.fields.size());
         for (const auto& field : layout.fields) writeFieldLayout(output, field);
     }
     output.scalar(model.classLayouts().size());

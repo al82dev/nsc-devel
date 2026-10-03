@@ -7,6 +7,7 @@
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
+#include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
@@ -1087,6 +1088,17 @@ bool buildMetadataModel(
                 field.bitWidth = fieldLayout.bitWidth.value_or(0);
                 record.fields.push_back(std::move(field));
             }
+            if (compilation.memberModel()->typeRequiresValueDrop(
+                    "type:" + type.identity.key()))
+            {
+                for (const frontend::ProjectOopMirStructLayout& mirLayout :
+                     compilation.oopMirModel()->structLayouts())
+                {
+                    if (mirLayout.typeOrdinal != typeOrdinal) continue;
+                    record.dropGlueEntryName = mirLayout.dropGlueEntryName;
+                    break;
+                }
+            }
         }
         else if (classLayout != nullptr)
         {
@@ -2036,6 +2048,7 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
                 writer.u64(field.bitWidth);
             }
         }
+        if (metadata.formatMinor >= 36) writer.text(type.dropGlueEntryName);
     }
 
     writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
@@ -2320,6 +2333,24 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
         const std::vector<std::uint8_t>& bytes = catalogue.bytes();
         projection.insert(projection.end(), bytes.begin(), bytes.end());
     }
+    const bool hasValueDropGlue = metadata.formatMinor >= 36 && std::ranges::any_of(
+        metadata.types,
+        [](const LibraryMetadataType& type)
+        {
+            return !type.dropGlueEntryName.empty();
+        });
+    if (hasValueDropGlue)
+    {
+        ByteWriter catalogue;
+        catalogue.u32(static_cast<std::uint32_t>(metadata.types.size()));
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            catalogue.text(type.identityKey);
+            catalogue.text(type.dropGlueEntryName);
+        }
+        const std::vector<std::uint8_t>& bytes = catalogue.bytes();
+        projection.insert(projection.end(), bytes.begin(), bytes.end());
+    }
     const bool hasTrait = std::ranges::any_of(
         metadata.types,
         [](const LibraryMetadataType& type)
@@ -2561,6 +2592,11 @@ bool decodePayload(
                 return false;
             }
             type.fields.push_back(std::move(field));
+        }
+        if (metadata.formatMinor >= 36 && !reader.text(type.dropGlueEntryName))
+        {
+            error = "truncated metadata value drop-glue identity";
+            return false;
         }
         metadata.types.push_back(std::move(type));
     }
@@ -3579,6 +3615,15 @@ bool LibraryMetadataCodec::writeModelImpl(
             return false;
         }
     }
+    if (metadata.formatMinor < 36 &&
+        std::ranges::any_of(metadata.types, [](const LibraryMetadataType& type)
+        {
+            return !type.dropGlueEntryName.empty();
+        }))
+    {
+        error = "NativeSharp metadata before 1.36 cannot represent value drop glue";
+        return false;
+    }
     if (metadata.formatMinor < 25 &&
         (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))
     {
@@ -3817,6 +3862,34 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         const bool isTrait = (type.flags & kMetadataTypeTrait) != 0U;
         const bool isOpaqueResult = (type.flags & kMetadataTypeOpaqueResult) != 0U;
         const bool isCopy = (type.flags & kMetadataTypeCopy) != 0U;
+        if (metadata.formatMinor < 36 && !type.dropGlueEntryName.empty())
+        {
+            error = "metadata before NSMETA 1.36 contains value drop glue on type '" +
+                type.fullyQualifiedName + "'";
+            return false;
+        }
+        const std::string expectedDropGlue = "__nsc_drop_value_" +
+            compilation::symbolFragmentForIdentityKey("type:" + type.identityKey);
+        if (!type.dropGlueEntryName.empty() &&
+            (type.kind != LibraryMetadataTypeKind::Struct ||
+             type.dropGlueEntryName != expectedDropGlue))
+        {
+            error = "metadata type '" + type.fullyQualifiedName +
+                "' has an invalid value drop-glue contract";
+            return false;
+        }
+        const bool directlyOwnsStorage = std::ranges::any_of(
+            type.fields, [](const LibraryMetadataField& field)
+            {
+                return field.ownership == LibraryMetadataOwnershipKind::Owned;
+            });
+        if (metadata.formatMinor >= 36 && directlyOwnsStorage &&
+            type.dropGlueEntryName.empty())
+        {
+            error = "metadata owning value type '" + type.fullyQualifiedName +
+                "' has no producer drop-glue entry";
+            return false;
+        }
         if (metadata.formatMinor < 33 && isCopy)
         {
             error = "metadata before NSMETA 1.33 contains a Copy flag on type '" +

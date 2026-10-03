@@ -169,7 +169,12 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " size=" << layout.size
                << " align=" << layout.alignment
                << " min-align=" << layout.minimumAlignment
-               << " abi=" << projectOopMirAbiPassingName(layout.abiPassing) << '\n';
+               << " abi=" << projectOopMirAbiPassingName(layout.abiPassing)
+               << " imported=" << (layout.isImported ? "true" : "false")
+               << " requires-drop=" << (layout.requiresDrop ? "true" : "false");
+        if (!layout.dropGlueEntryName.empty())
+            output << " drop-glue=" << layout.dropGlueEntryName;
+        output << '\n';
     }
     output << "generic-specializations=" << model.genericSpecializations().size() << '\n';
     for (const ProjectOopMirGenericSpecialization& specialization : model.genericSpecializations())

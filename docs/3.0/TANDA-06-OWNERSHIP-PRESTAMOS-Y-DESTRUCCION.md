@@ -1,6 +1,6 @@
 # Tanda 06 — Ownership, préstamos y destrucción / Ownership, borrows, and destruction
 
-> **Estado 2026-10-03:** `IMPLEMENTING`; F01–F06 están cerrados de forma dirigida, el gate T06 completo sigue abierto.
+> **Estado 2026-10-03:** F01–F08 cerrados de forma dirigida; la certificación global queda para el cierre de NSC.
 
 ## Resultado productivo actual
 
@@ -31,7 +31,7 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 | T06-F05 | **CERRADO**: `defer` edición 3 con capturas explícitas `ref`/`move`, registro léxico, orden LIFO y lowering al grafo único `finally`/RAII para salida normal y exits estructurados | El spelling y perfiles de panic pertenecen a T07; F05 ya comparte el cleanup de unwind y documenta que abort inmediato no ejecuta acciones posteriores |
 | T06-F06 | **CERRADO**: `pin raii` y `pin ref`, places estáticos, placement autorreferencial, cleanup object-only, frontera conservadora de containers y bit pinned transportado por HIR/MIR para T09/T10 | Los state machines de `yield`/`async` pertenecen a T09/T10; F06 ya entrega la obligación que deben consumir, sin simular esas features |
 | T06-F07 | **CERRADO**: summaries por parámetro, fixed-point interprocedural, returns/globals/closures, NSMETA 1.35, fingerprint e hidratación fail-closed | Los tipos callable explícitos de T08 podrán reemplazar el fallback conservador de callbacks/genéricos |
-| T06-F08 | Descriptor/drop entry del productor cruza NSMETA/DLL, validación fail-closed y witness O0 exactamente una vez | Glue genérico de arrays/variants y summaries de layout/destrucción indirecta |
+| T06-F08 | **CERRADO**: thunk `void(ptr)` por valor no trivial, arrays inversos, payload activo de variants, especializaciones genéricas, productor/consumidor, DLL exports, MIR 1.22 y NSMETA 1.36 | Vida del módulo y unload con objetos vivos pertenecen a T13-F08 |
 
 ## Invariantes de la vertical
 
@@ -67,6 +67,9 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 - `nsc.ns3.t06.escape-summaries`: 8/8 checks; inferencia local/transitiva/closure, NSMETA 1.35,
   invalidación por fingerprint, lectura 1.34, metadata corrupta, diagnóstico causal y compatibilidad
   de edición 2. Ejecutada de forma aislada; no se corrió suite ni baseline.
+- `nsc.ns3.t06.drop-glue`: prueba dirigida única; variant genérico dentro de array fijo,
+  destrucción exacta del payload activo, contrato NSMETA 1.36, corrupción fail-closed, lectura 1.35
+  y productor/consumidor separado. Ejecutada de forma aislada; no se corrió suite ni baseline.
 - Matriz dirigida F02: 7/7 tests verdes incluyendo inicializadores, records, F01, ABI struct de
   edición 2, ownership Stage 50.11 y C6 struct members.
 - Regresiones dirigidas: T04 constraints y T05 opaque/trait objects/extensions/operator traits,
@@ -78,8 +81,8 @@ campo extraído y el campo restante se destruyen exactamente una vez.
 - Negativos dirigidos rechazan field desde owner local prestado, field desde parámetro `owned`
   prestado y elemento de array desde owner prestado con diagnóstico causal.
 
-El gate T06 completo no se declara verde: todavía requiere F08, interacción
-con T07, matriz CFG/DLL exhaustiva, debugger y baseline final ejecutado por Alberto.
+La implementación de T06 está cerrada. Su certificación integral se difiere al cierre de todos los
+ítems NSC; no se ejecutó baseline ni una suite agrupada durante F08.
 
-La tanda operativa 14 cerró una vertical de F06 y la frontera DLL de F08. F07 quedó cerrado con
-NSMETA 1.35; el gate T06 sigue abierto por el glue genérico completo de F08.
+La tanda operativa 14 cerró una vertical de F06 y la frontera DLL inicial. F07 cerró summaries con
+NSMETA 1.35 y F08 completó el glue genérico/indirecto con NSMETA 1.36.

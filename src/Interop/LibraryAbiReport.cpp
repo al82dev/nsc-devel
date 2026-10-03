@@ -143,6 +143,8 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
                << " ref-size=" << type->referenceSize
                << " ref-align=" << type->referenceAlignment
                << " stable-id=" << flagsHex(type->stableTypeId) << '\n';
+        if (!type->dropGlueEntryName.empty())
+            output << "    drop-glue " << type->dropGlueEntryName << '\n';
         if (!type->baseTypeKey.empty()) output << "    base " << type->baseTypeKey << '\n';
         for (const std::string& interfaceKey : type->interfaceTypeKeys)
             output << "    interface " << interfaceKey << '\n';

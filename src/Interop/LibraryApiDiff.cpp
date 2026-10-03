@@ -137,6 +137,7 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         for (const LibraryMetadataParameterPassKind pass : type.delegateParameterPassKinds)
             number(contract, pass);
         strings(contract, type.delegateParameterLifetimeNames, false);
+        field(contract, type.dropGlueEntryName);
         number(contract, type.fields.size());
         for (const LibraryMetadataField& metadataField : type.fields)
         {
@@ -305,6 +306,7 @@ Surface abiSurface(const LibraryMetadata& metadata)
         }
         number(contract, type.traitObjectFlags);
         number(contract, type.traitObjectWordCount);
+        field(contract, type.dropGlueEntryName);
         number(contract, type.fields.size());
         for (const LibraryMetadataField& fieldRecord : type.fields)
         {

@@ -3515,15 +3515,14 @@ ast::AstNode* Parser::parseVariantDeclaration()
                         item.payloadType->range(),
                         "a variant payload cannot have type void; omit the payload instead");
                 }
-                if (item.payloadType->ownershipQualifier() !=
-                    ast::OwnershipQualifierSyntaxKind::None)
+                if (item.payloadType->ownershipQualifier() ==
+                    ast::OwnershipQualifierSyntaxKind::Borrowed)
                 {
                     diagnostics_.report(
                         diagnostics::DiagnosticId::InvalidType,
                         diagnostics::DiagnosticSeverity::Error,
                         item.payloadType->range(),
-                        "owned and borrowed variant payloads require the T06 active-payload "
-                        "drop contract; use a lifetime-trivial payload in this vertical");
+                        "borrowed variant payloads require an explicit lifetime binding");
                 }
             }
             if (at(TokenKind::Comma))
@@ -3617,6 +3616,13 @@ ast::AstNode* Parser::parseVariantDeclaration()
         statement->setFirst(expression);
         return statement;
     };
+    const auto makeMove = [&](ast::AstNode* expression, SourceRange range)
+    {
+        ast::AstNode* move = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::MoveExpression, range);
+        move->setFirst(expression);
+        return move;
+    };
 
     ast::AstNode* tagField = arena_.make<ast::AstNode>(
         ast::AstNodeKind::FieldDeclaration, name.range());
@@ -3701,10 +3707,13 @@ ast::AstNode* Parser::parseVariantDeclaration()
                 payloadFieldName);
             payload = makeMemberExpression(payload, "__nsc_case_" + item.name);
             factoryBody->addChild(makeExpressionStatement(makeAssignmentExpression(
-                payload, makeIdentifierExpression(item.range, "value"))));
+                payload, makeMove(
+                    makeIdentifierExpression(item.range, "value"), item.range))));
         }
         factoryBody->addChild(makeReturn(
-            makeIdentifierExpression(item.range, "__nsc_variant_result"), item.range));
+            makeMove(
+                makeIdentifierExpression(item.range, "__nsc_variant_result"), item.range),
+            item.range));
         factory->setFirst(factoryBody);
         node->addChild(factory);
 
@@ -3739,11 +3748,10 @@ ast::AstNode* Parser::parseVariantDeclaration()
             payloadMethod->setAuxiliaryText(
                 "variant-case-extract:" + item.name + ":" + std::to_string(caseIndex));
             markPublic(payloadMethod);
-            payloadMethod->addModifier(TokenKind::KwReadonly);
             ast::AstNode* payloadBody = makeBlock(item.range);
-            payloadBody->addChild(makeReturn(makeMemberExpression(
+            payloadBody->addChild(makeReturn(makeMove(makeMemberExpression(
                 makeIdentifierExpression(item.range, payloadFieldName),
-                "__nsc_case_" + item.name), item.range));
+                "__nsc_case_" + item.name), item.range), item.range));
             payloadMethod->setFirst(payloadBody);
             node->addChild(payloadMethod);
         }

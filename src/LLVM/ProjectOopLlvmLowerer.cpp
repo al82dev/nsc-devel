@@ -468,6 +468,7 @@ public:
             !declareFunctions(error) ||
             !declareTypeInitializers(error, !partitioned_ || ownsModuleGlobals_) ||
             !declareDestructionEntries(error) ||
+            !declareValueDropEntries(error) ||
             !emitDispatchMetadata(error, !partitioned_ || ownsModuleGlobals_) ||
             !defineRttiHelpers(error) || !defineTypedCatchFilters(error) ||
             ((!partitioned_ || ownsModuleGlobals_) &&
@@ -475,7 +476,8 @@ public:
             !defineCallbackGuardThunks(error, !partitioned_ || ownsModuleGlobals_) ||
             !defineFunctions(error) ||
             ((!partitioned_ || ownsModuleGlobals_) &&
-             (!defineCAbiWrappers(error) || !defineDestructionEntries(error))))
+             (!defineCAbiWrappers(error) || !defineValueDropEntries(error) ||
+              !defineDestructionEntries(error))))
         {
             dispose();
             return false;
@@ -3158,6 +3160,30 @@ private:
         return true;
     }
 
+    bool declareValueDropEntries(std::string& error)
+    {
+        LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef parameters[] = {pointer};
+        valueDropEntryFunctionType_ = LLVMFunctionType(
+            LLVMVoidTypeInContext(context_), parameters, 1, 0);
+        if (valueDropEntryFunctionType_ == nullptr)
+            return fail(error, "NativeSharp 3.0 could not create the value drop-glue ABI");
+
+        for (const frontend::ProjectOopMirStructLayout& layout : mirModel_.structLayouts())
+        {
+            if (!layout.requiresDrop || layout.dropGlueEntryName.empty()) continue;
+            LLVMValueRef function = LLVMAddFunction(
+                module_, layout.dropGlueEntryName.c_str(), valueDropEntryFunctionType_);
+            if (function == nullptr)
+                return fail(error, "NativeSharp 3.0 could not declare value drop glue '" +
+                    layout.dropGlueEntryName + "'");
+            applyUwtableAttribute(function);
+            valueDropEntries_[layout.typeKey] = FunctionInfo{
+                function, valueDropEntryFunctionType_, nullptr};
+        }
+        return true;
+    }
+
     bool declareDestructionEntries(std::string& error)
     {
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
@@ -4604,6 +4630,54 @@ private:
         return true;
     }
 
+    bool defineValueDropEntries(std::string& error)
+    {
+        for (const frontend::ProjectOopMirStructLayout& layout : mirModel_.structLayouts())
+        {
+            if (!layout.requiresDrop || layout.isImported || layout.dropGlueEntryName.empty())
+                continue;
+            const auto found = valueDropEntries_.find(layout.typeKey);
+            if (found == valueDropEntries_.end())
+                return fail(error, "NativeSharp 3.0 lost declared value drop glue for '" +
+                    layout.typeKey + "'");
+
+            currentFunction_ = found->second.function;
+            currentMirFunction_ = nullptr;
+            thisValue_ = nullptr;
+            closureEnvironment_ = nullptr;
+            constructionThisOverride_ = nullptr;
+            parameterStorage_.clear();
+            localStorage_.clear();
+            parameterValueDropFlags_.clear();
+            localValueDropFlags_.clear();
+            activeCatchExceptions_.clear();
+            loopStack_.clear();
+            exceptionDispatchBlocks_.clear();
+            cleanupRegions_.clear();
+            cleanupChainCache_.clear();
+            activeCleanupRegions_.clear();
+            exceptionHandlerStack_.clear();
+            funcletStack_.clear();
+            returnStorage_ = nullptr;
+            sretStorage_ = nullptr;
+            blockCounter_ = 0;
+
+            LLVMBasicBlockRef entry = appendBlock("value.drop.entry");
+            LLVMPositionBuilderAtEnd(builder_, entry);
+            LLVMValueRef storage = LLVMGetParam(currentFunction_, 0);
+            LLVMSetValueName2(storage, "storage", 7);
+            if (!emitValueDropAddress(
+                    storage, layout.typeKey, "value.drop", error, false))
+                return false;
+            if (!terminated()) LLVMBuildRetVoid(builder_);
+            applyOdrDefinition(currentFunction_);
+        }
+        currentFunction_ = nullptr;
+        currentMirFunction_ = nullptr;
+        blockCounter_ = 0;
+        return true;
+    }
+
     bool defineDestructionEntries(std::string& error)
     {
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
@@ -5699,11 +5773,137 @@ private:
         return true;
     }
 
+    bool emitVariantDropAddress(
+        LLVMValueRef address,
+        const frontend::ProjectOopMirStructLayout& layout,
+        std::string_view stem,
+        std::string& error)
+    {
+        if (layout.typeOrdinal >= nameLookup_.namedTypes().size() || memberModel_ == nullptr)
+            return fail(error, "NativeSharp 3.0 variant drop has no nominal type model");
+        const frontend::ObjectFieldLayout* tagField = nullptr;
+        const frontend::ObjectFieldLayout* payloadField = nullptr;
+        for (const frontend::ObjectFieldLayout& field : layout.fields)
+        {
+            if (field.memberOrdinal >= memberModel_->members().size()) continue;
+            const frontend::ClassMemberSymbol& symbol = memberModel_->members()[field.memberOrdinal];
+            if (symbol.name == "__nsc_variant_tag") tagField = &field;
+            else if (symbol.name == "__nsc_variant_payload") payloadField = &field;
+        }
+        if (tagField == nullptr)
+            return fail(error, "NativeSharp 3.0 variant drop lost its active-case tag");
+        if (payloadField == nullptr) return true;
+
+        const frontend::ProjectOopMirStructLayout* payloadLayout =
+            structLayout(payloadField->typeKey);
+        if (payloadLayout == nullptr || !payloadLayout->isUnion)
+            return fail(error, "NativeSharp 3.0 variant drop lost its payload union layout");
+
+        std::unordered_map<std::string, std::uint64_t> caseIndices;
+        constexpr std::string_view factoryPrefix = "variant-case-factory:";
+        for (const std::size_t memberOrdinal : memberModel_->membersOfType(layout.typeOrdinal))
+        {
+            if (memberOrdinal >= memberModel_->members().size()) continue;
+            const frontend::ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+            if (member.syntax == nullptr) continue;
+            const std::string_view marker = member.syntax->auxiliaryText();
+            if (!marker.starts_with(factoryPrefix)) continue;
+            const std::size_t separator = marker.rfind(':');
+            if (separator == std::string_view::npos || separator < factoryPrefix.size()) continue;
+            std::uint64_t index = 0;
+            bool valid = separator + 1U < marker.size();
+            for (std::size_t position = separator + 1U; valid && position < marker.size(); ++position)
+            {
+                const char digit = marker[position];
+                valid = digit >= '0' && digit <= '9';
+                if (valid) index = index * 10U + static_cast<std::uint64_t>(digit - '0');
+            }
+            if (valid)
+                caseIndices.emplace(
+                    std::string(marker.substr(factoryPrefix.size(), separator - factoryPrefix.size())),
+                    index);
+        }
+
+        struct DropCase final
+        {
+            std::uint64_t index = 0;
+            const frontend::ObjectFieldLayout* field = nullptr;
+            const frontend::ClassMemberSymbol* symbol = nullptr;
+        };
+        std::vector<DropCase> dropCases;
+        constexpr std::string_view payloadPrefix = "variant-case-payload:";
+        for (const frontend::ObjectFieldLayout& field : payloadLayout->fields)
+        {
+            if (field.memberOrdinal >= memberModel_->members().size()) continue;
+            const frontend::ClassMemberSymbol& symbol = memberModel_->members()[field.memberOrdinal];
+            if (symbol.syntax == nullptr) continue;
+            const std::string_view marker = symbol.syntax->auxiliaryText();
+            if (!marker.starts_with(payloadPrefix)) continue;
+            const auto index = caseIndices.find(std::string(marker.substr(payloadPrefix.size())));
+            if (index == caseIndices.end())
+                return fail(error, "NativeSharp 3.0 variant drop cannot map payload to case tag");
+            const bool owned = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
+                (requiresOwnedDestruction(field.typeKey) ||
+                 frontend::ProjectTypeConversion::isNativeArray(field.typeKey));
+            if (owned || memberModel_->typeRequiresValueDrop(field.typeKey))
+                dropCases.push_back(DropCase{index->second, &field, &symbol});
+        }
+        if (dropCases.empty()) return true;
+
+        LLVMTypeRef tagType = llvmType(tagField->typeKey, error);
+        if (tagType == nullptr || !error.empty()) return false;
+        LLVMValueRef tagAddress = byteOffset(
+            address, tagField->offset, (std::string(stem) + ".tag.addr").c_str());
+        LLVMValueRef tag = LLVMBuildLoad2(
+            builder_, tagType, tagAddress, (std::string(stem) + ".tag").c_str());
+        LLVMBasicBlockRef done = appendBlock(std::string(stem) + ".done");
+        LLVMValueRef instruction = LLVMBuildSwitch(
+            builder_, tag, done, static_cast<unsigned>(dropCases.size()));
+        std::vector<LLVMBasicBlockRef> blocks;
+        blocks.reserve(dropCases.size());
+        for (const DropCase& item : dropCases)
+        {
+            LLVMBasicBlockRef block = appendBlock(std::string(stem) + ".case");
+            LLVMAddCase(instruction, LLVMConstInt(tagType, item.index, 0), block);
+            blocks.push_back(block);
+        }
+        for (std::size_t ordinal = 0; ordinal < dropCases.size(); ++ordinal)
+        {
+            const DropCase& item = dropCases[ordinal];
+            LLVMPositionBuilderAtEnd(builder_, blocks[ordinal]);
+            LLVMValueRef payloadAddress = byteOffset(
+                address, payloadField->offset + item.field->offset,
+                (std::string(stem) + ".payload.addr").c_str());
+            const bool owned = item.symbol->declaredOwnership == sema::OwnershipKind::Owned &&
+                (requiresOwnedDestruction(item.field->typeKey) ||
+                 frontend::ProjectTypeConversion::isNativeArray(item.field->typeKey));
+            if (owned)
+            {
+                LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef value = LLVMBuildLoad2(
+                    builder_, pointer, payloadAddress,
+                    (std::string(stem) + ".payload").c_str());
+                LLVMBuildStore(builder_, LLVMConstNull(pointer), payloadAddress);
+                if (!emitOwnedPointerDestroy(
+                        value, item.field->typeKey,
+                        std::string(stem) + ".payload.destroy", error)) return false;
+            }
+            else if (!emitValueDropAddress(
+                         payloadAddress, item.field->typeKey,
+                         std::string(stem) + ".payload", error))
+                return false;
+            if (!terminated()) LLVMBuildBr(builder_, done);
+        }
+        LLVMPositionBuilderAtEnd(builder_, done);
+        return true;
+    }
+
     bool emitValueDropAddress(
         LLVMValueRef address,
         std::string_view typeKey,
         std::string_view stem,
-        std::string& error)
+        std::string& error,
+        bool allowNamedThunk = true)
     {
         if (address == nullptr || memberModel_ == nullptr)
             return fail(error, "NativeSharp 3.0 value drop has no address/member model");
@@ -5732,6 +5932,31 @@ private:
 
         const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
         if (layout == nullptr) return true;
+        if (allowNamedThunk && !layout->dropGlueEntryName.empty())
+        {
+            const auto entry = valueDropEntries_.find(layout->typeKey);
+            if (entry == valueDropEntries_.end())
+                return fail(error, "NativeSharp 3.0 value drop glue was not declared: " +
+                    layout->dropGlueEntryName);
+            LLVMValueRef arguments[] = {address};
+            buildNoUnwindCall(
+                entry->second.functionType, entry->second.function, arguments, 1, "");
+            return true;
+        }
+        if (!layout->isUnion)
+        {
+            bool variant = false;
+            for (const frontend::ObjectFieldLayout& field : layout->fields)
+            {
+                if (field.memberOrdinal < memberModel_->members().size() &&
+                    memberModel_->members()[field.memberOrdinal].name == "__nsc_variant_tag")
+                {
+                    variant = true;
+                    break;
+                }
+            }
+            if (variant) return emitVariantDropAddress(address, *layout, stem, error);
+        }
         if (layout->isUnion)
             return fail(error, "NativeSharp 3.0 value drop requires an active-member discriminator for union '" +
                 std::string(typeKey) + "'");
@@ -15411,6 +15636,8 @@ private:
     std::unordered_map<std::size_t, LLVMValueRef> interfaceMapGlobals_;
     std::unordered_map<std::size_t, FunctionInfo> destructionFunctions_;
     std::unordered_map<std::size_t, FunctionInfo> objectDestructionFunctions_;
+    LLVMTypeRef valueDropEntryFunctionType_ = nullptr;
+    std::unordered_map<std::string, FunctionInfo> valueDropEntries_;
     std::unordered_map<std::size_t, LLVMValueRef> vtableGlobals_;
     std::unordered_map<std::size_t, LLVMValueRef> staticFieldGlobals_;
     std::unordered_map<std::size_t, const frontend::ProjectOopMirStaticField*> staticFieldInfo_;

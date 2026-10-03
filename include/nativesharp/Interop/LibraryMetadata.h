@@ -86,7 +86,8 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // in-place representation and implemented trait as a closed native contract.
 // MINOR 34 (2026-10-03): named lifetime binders and outlives edges cross module boundaries.
 // MINOR 35 (2026-10-03): per-parameter interprocedural escape summaries are public contracts.
-inline constexpr std::uint16_t kMetadataFormatMinor = 35;
+// MINOR 36 (2026-10-03): value types that own storage publish producer-owned drop-glue thunks.
+inline constexpr std::uint16_t kMetadataFormatMinor = 36;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -295,6 +296,9 @@ struct LibraryMetadataType final
     std::vector<LibraryMetadataField> fields;
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
+    // NSMETA 1.36. Empty for trivially destructible values and all reference-shaped types.
+    // Consumers call this producer-owned thunk instead of rebuilding private layout/destructors.
+    std::string dropGlueEntryName;
     bool delegateReferenceReturn = false;
     std::string delegateReturnLifetimeName;
     std::vector<LibraryMetadataParameterPassKind> delegateParameterPassKinds;

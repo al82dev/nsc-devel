@@ -156,7 +156,7 @@ namespace EscapeContracts
             retain->parameterEscapeSummary ==
                 std::vector<nativesharp::interop::LibraryMetadataEscapeClass>{
                     nativesharp::interop::LibraryMetadataEscapeClass::Global},
-        "NSMETA 1.35 round-trips the public escape contract (" + driverError + driverOutput +
+        "NSMETA round-trips the public escape contract (" + driverError + driverOutput +
             metadataError + ")");
 
     nativesharp::interop::LibraryMetadata changed = roundTrip;

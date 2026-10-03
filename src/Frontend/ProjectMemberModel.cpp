@@ -633,7 +633,8 @@ bool ProjectMemberModel::build(
         const NamedTypeDeclaration& type = nameLookup.namedTypes()[typeOrdinal];
         const bool isRawUnion = type.kind == NamedTypeDeclarationKind::Struct &&
             type.syntax != nullptr &&
-            type.syntax->auxiliaryText().find("union") != std::string::npos;
+            type.syntax->auxiliaryText().find("union") != std::string::npos &&
+            type.syntax->auxiliaryText().find("variant-payload") == std::string::npos;
         if (!isRawUnion) continue;
         for (const std::size_t memberOrdinal : membersByType_[typeOrdinal])
         {

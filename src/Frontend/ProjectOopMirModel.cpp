@@ -951,10 +951,24 @@ bool ProjectOopMirModel::build(
     hirModel_ = &hirModel;
     for (const StructValueLayout& layout : objectLayoutModel.structLayouts())
     {
+        const bool imported = layout.typeOrdinal < nameLookup.namedTypes().size() &&
+            nameLookup.namedTypes()[layout.typeOrdinal].isPrecompiled;
+        const bool variantPayloadCarrier = layout.isUnion && std::ranges::any_of(
+            layout.fields, [&](const ObjectFieldLayout& field)
+            {
+                return field.memberOrdinal < memberModel.members().size() &&
+                    memberModel.members()[field.memberOrdinal].name.starts_with("__nsc_case_");
+            });
+        const bool requiresDrop = !variantPayloadCarrier &&
+            memberModel.typeRequiresValueDrop(layout.typeKey);
+        const std::string dropGlueEntryName = requiresDrop
+            ? "__nsc_drop_value_" + sanitizeDispatchName(layout.typeKey)
+            : std::string{};
         structLayouts_.push_back(ProjectOopMirStructLayout{
             layout.typeOrdinal, layout.typeKey, layout.size, layout.alignment,
             layout.isUnion, layout.pack, layout.minimumAlignment,
-            layout.hasExplicitFieldOffsets, abiPassingForSize(layout.size), layout.fields});
+            layout.hasExplicitFieldOffsets, abiPassingForSize(layout.size),
+            imported, requiresDrop, dropGlueEntryName, layout.fields});
     }
     // Structural tuples do not have named-type ordinals, but from MIR onward they obey the same
     // Win64 value-carrier and ABI rules as declared structs. Discover every tuple key used by
@@ -1029,6 +1043,9 @@ bool ProjectOopMirModel::build(
             0,
             false,
             abiPassingForSize(layout->size),
+            false,
+            memberModel.typeRequiresValueDrop(key),
+            {},
             std::move(fields)});
     }
     for (const ClassObjectLayout& layout : objectLayoutModel.classLayouts())

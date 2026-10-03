@@ -2086,7 +2086,7 @@ tanda normativa. El estado vigente y el trabajo que aún impide el cierre son:
 | `NS3-T03` | 6 | `IMPLEMENTING` | exhaustiveness/usefulness completo, moves por arm, guards, refinamiento y unions C seguras |
 | `NS3-T04` | 7 | `IMPLEMENTING` | const generics/layout, packs, alias opacos, especialización y límites de monomorfización en el pipeline real |
 | `NS3-T05` | 7 | `IMPLEMENTING` | associated types/constants, `some`, coherence completa, extensions y operadores mediante traits |
-| `NS3-T06` | 8 | `IMPLEMENTING` | `Copy`, partial/split borrow, lifetimes nombrados, `defer`, pinning, escape interprocedural y drop glue importado |
+| `NS3-T06` | 8 | `IMPLEMENTED` | Ownership, partial/split borrow, lifetimes, `defer`, pinning, escape interprocedural y drop glue genérico/importado; certificación global pendiente |
 | `NS3-T07` | 6 | `IMPLEMENTING` | `Result`/`?`, typed throws, `try/catch/finally`, loop values y perfiles panic unwind/handler |
 | `NS3-T08` | 6 | `IMPLEMENTING` | tipos función completos, captures copy/move/ref, lambdas genéricas, `FnOnce`, stack/noheap y tail-call contracts |
 | `NS3-T09` | 6 | `DESIGNED/IMPLEMENTING` | protocolo foreach completo, ranges perezosos, comprehensions, views, `yield` y fusión |

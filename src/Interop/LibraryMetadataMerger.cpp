@@ -48,6 +48,7 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
                left.delegateParameterDynamicTraits, left.traitMethodSignatures,
                left.traitObjectFlags, left.traitObjectWordCount,
                left.lifetimeParameters, left.lifetimeOutlivesConstraints,
+               left.dropGlueEntryName,
                left.delegateReferenceReturn, left.delegateReturnLifetimeName,
                left.delegateParameterPassKinds, left.delegateParameterLifetimeNames) ==
             std::tie(right.kind, right.accessibility, right.flags, right.identityKey,
@@ -59,6 +60,7 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
                 right.delegateParameterDynamicTraits, right.traitMethodSignatures,
                 right.traitObjectFlags, right.traitObjectWordCount,
                 right.lifetimeParameters, right.lifetimeOutlivesConstraints,
+                right.dropGlueEntryName,
                 right.delegateReferenceReturn, right.delegateReturnLifetimeName,
                 right.delegateParameterPassKinds, right.delegateParameterLifetimeNames) &&
         vectorEqual(left.variantCases, right.variantCases, equalVariantCase) &&

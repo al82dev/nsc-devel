@@ -32,7 +32,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 19: closure capture provenance and shared-cell environment layout are inspectable.
 // MINOR 20: Optional<T> coalescing preserves its public HasValue/UncheckedValue protocol calls.
 // MINOR 21: rectangular native arrays preserve rank and use explicit allocate/index operations.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 21;
+// MINOR 22: value layouts publish producer-owned, versioned drop-glue identities.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 22;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -474,6 +475,9 @@ struct ProjectOopMirStructLayout final
     std::uint64_t minimumAlignment = 0;
     bool hasExplicitFieldOffsets = false;
     ProjectOopMirAbiPassing abiPassing = ProjectOopMirAbiPassing::Direct;
+    bool isImported = false;
+    bool requiresDrop = false;
+    std::string dropGlueEntryName;
     std::vector<ObjectFieldLayout> fields;
 };
 
