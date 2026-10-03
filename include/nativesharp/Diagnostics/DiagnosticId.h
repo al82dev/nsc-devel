@@ -88,6 +88,23 @@ enum class DiagnosticId
     NS3099InvalidConformanceManifest
 };
 
+constexpr bool isNativeSharp3Diagnostic(DiagnosticId id) noexcept
+{
+    switch (id)
+    {
+        case DiagnosticId::NS3001IncompatibleLanguageEdition:
+        case DiagnosticId::NS3002FeatureRequiresLanguageEdition3:
+        case DiagnosticId::NS3010InvalidCompilationStage:
+        case DiagnosticId::NS3020InvalidValueCategory:
+        case DiagnosticId::NS3030MissingEffectContext:
+        case DiagnosticId::NS3049DeferredLanguageSurface:
+        case DiagnosticId::NS3099InvalidConformanceManifest:
+            return true;
+        default:
+            return false;
+    }
+}
+
 // These names are the stable machine-facing diagnostic codes used by editor integrations. New
 // IDs may be added without changing existing spellings.
 constexpr std::string_view diagnosticIdName(DiagnosticId id) noexcept

@@ -25,7 +25,7 @@ void DiagnosticRenderer::render(const Diagnostic& diagnostic, std::ostream& outp
         << ':' << position.column
         << ": " << diagnosticSeverityName(diagnostic.severity());
     const std::string_view code = diagnosticIdName(diagnostic.id());
-    if (code.starts_with("NS3")) output << '[' << code << ']';
+    if (isNativeSharp3Diagnostic(diagnostic.id())) output << '[' << code << ']';
     output << ": " << diagnostic.message() << '\n';
 
     const std::string_view line = sourceManager_.getLineText(diagnostic.location());

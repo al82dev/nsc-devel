@@ -66,14 +66,15 @@ Los nombres 2.0 `LValue` y `RValue` permanecen como aliases de `Place` y `Value`
 
 T00 reserva el catálogo inicial:
 
-| Código | Causa |
-|---|---|
-| `NS3001` | ediciones incompatibles dentro del grafo de módulos |
-| `NS3002` | característica 3.0 usada bajo edición 2 |
-| `NS3010` | transición inválida entre etapas |
-| `NS3020` | operación inválida para la categoría de valor |
-| `NS3030` | contexto de efecto requerido ausente |
-| `NS3099` | manifest de conformidad inválido |
+| Código | Causa | Ejemplo mínimo | Corrección |
+|---|---|---|---|
+| `NS3001` | ediciones incompatibles dentro del grafo de módulos | proyecto 3 referencia metadata 2 | recompilar o alinear la edición del grafo |
+| `NS3002` | característica 3.0 usada bajo edición 2 | `value with { X = 1 }` en `<Language>2</Language>` | seleccionar edición 3 o reescribir con sintaxis 2.x |
+| `NS3010` | transición inválida entre etapas | entrar a binding sin parse | ejecutar el productor anterior y no saltar etapas |
+| `NS3020` | operación inválida para la categoría de valor | leer un owner después de `move(owner)` | reasignar el storage o dejar de usar el valor movido |
+| `NS3030` | contexto de efecto requerido ausente | asignar heap dentro de `noheap` | quitar la operación o el contrato, o usar storage permitido |
+| `NS3049` | superficie 3.0 reconocida pero todavía diferida | una construcción reservada llega a un lowering no habilitado | usar una forma soportada por la edición o habilitar su implementación completa |
+| `NS3099` | manifest de conformidad inválido | target distinto de `windows-x64` | corregir el esquema, target y resultados esperados |
 
 `error`, `warning`, `lint` y `note` son severidades diferentes. Un diagnóstico puede llevar un span primario, spans secundarios con etiqueta y notas estructuradas. Los diagnósticos anteriores a 3.0 conservan su representación textual histórica; sólo los códigos `NS3xxx` se muestran entre corchetes junto a la severidad.
 
@@ -112,7 +113,7 @@ The shared effect representation covers unsafe, throws, async, comptime, and noh
 
 ### Stable diagnostics and conformance
 
-Codes `NS3001`, `NS3002`, `NS3010`, `NS3020`, `NS3030`, and `NS3099` form the first stable 3.0 catalog. Error, warning, lint, and note are distinct. Structured diagnostics support primary and secondary spans plus notes. The conformance harness runs normative and regression manifests in isolated directories, enforces timeouts and deterministic repetition, and verifies stdout, diagnostics, MIR, and ABI evidence.
+Codes `NS3001`, `NS3002`, `NS3010`, `NS3020`, `NS3030`, `NS3049`, and `NS3099` form the first stable 3.0 catalog. `NS3001` aligns language editions; `NS3002` selects edition 3 or rewrites 3.0 syntax; `NS3010` restores the missing producer stage; `NS3020` stops use of moved or otherwise invalid values; `NS3030` removes an operation forbidden by the active effect; `NS3049` identifies recognized but deferred language surface; and `NS3099` repairs an invalid conformance manifest. Error, warning, lint, and note are distinct. Structured diagnostics support primary and secondary spans plus notes. The conformance harness runs normative and regression manifests in isolated directories, enforces timeouts and deterministic repetition, and verifies stdout, diagnostics, MIR, and ABI evidence.
 
 ## Archivos creados y modificados
 

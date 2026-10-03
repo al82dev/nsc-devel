@@ -235,6 +235,12 @@ int main()
             rendered.str().find("effect originates here") != std::string::npos &&
             rendered.str().find("add async") != std::string::npos,
         "structured diagnostic renders code, secondary span, and note");
+    tests.expect(diagnostics::isNativeSharp3Diagnostic(
+            diagnostics::DiagnosticId::NS3049DeferredLanguageSurface) &&
+            diagnostics::diagnosticIdName(
+                diagnostics::DiagnosticId::NS3049DeferredLanguageSurface) == "NS3049" &&
+            !diagnostics::isNativeSharp3Diagnostic(diagnostics::DiagnosticId::InvalidOperand),
+        "the stable NS3 diagnostic catalog is explicit and does not classify legacy IDs by text");
 
     return tests.resultKeeping(root);
 }
