@@ -81,9 +81,11 @@ un local, su comienzo y fin de vida, el nombre fuente de un binding, los puntos 
 la clasificación de código generado sí forman parte del contrato semántico que el compilador debe
 entregar al backend. La sección 11 consolida el contrato PDB/Debug transversal.
 
-### 2.3 Gate previo obligatorio de NSC 2.0 / Mandatory NSC 2.0 gate
+### 2.3 Punto de partida vigente de NSC 3.0 / Current NSC 3.0 starting point
 
-El rendimiento, la observabilidad, los logs, los diagnósticos y los contratos reales de `-O0` a `-O3` se ejecutan en el roadmap oficial separado [NativeSharp-2.0-Compiler-Performance-and-Diagnostics-Roadmap.md](NativeSharp-2.0-Compiler-Performance-and-Diagnostics-Roadmap.md). Ese programa pertenece al compilador/toolchain, no se contabiliza como feature del lenguaje y debe completar su baseline `NS2-PERF-P11` antes de abrir `NS3-T00`.
+NativeSharp 3.0 se desarrolla directamente sobre `development`. El antiguo gate de NSC 2.0 y el roadmap [NativeSharp-2.0-Compiler-Performance-and-Diagnostics-Roadmap.md](NativeSharp-2.0-Compiler-Performance-and-Diagnostics-Roadmap.md) se conservan únicamente como evidencia histórica; ya no bloquean `NS3-T00` ni autorizan cambios sobre la línea 2.0.
+
+El milestone local `v.3.0.2` permanece congelado. Todo cambio posterior se implementa en `development`, con pruebas dirigidas por tanda y sin instalar artefactos experimentales en `C:\native-sharp`. La coordinación vigente entre lenguaje, compilador, linker, debugger y VS Code se define en la sección 12 de este documento.
 
 ---
 
@@ -624,6 +626,14 @@ primera vez la depurabilidad de las features T00–T14.
 - **Pruebas dirigidas:** DLL/imports, callbacks, ref fields, closures, specialization, metadata corrupta y compatibilidad 2.x.
 - **Markdown ES/EN:** garantías públicas y límites del análisis.
 
+## NS3-T06-F08 — Drop glue genérico e indirecto / Generic and indirect drop glue
+
+**Commit:** `ns3(t06-f08): generic-drop-glue`
+
+- **Implementación:** emitir y versionar thunks de destrucción a partir de layout y metadata; cubrir arrays, variants, genéricos y tipos importados; garantizar una sola destrucción a través de fronteras DLL.
+- **Pruebas dirigidas:** especializaciones locales/importadas, arrays parciales, variants activos, metadata corrupta, unload y conteo exacto de destrucciones cross-module.
+- **Markdown ES/EN:** identidad del thunk, ownership del storage y reglas de compatibilidad NSMETA.
+
 ### Baseline T06 / T06 baseline
 
 - Corpus de ownership pasa sin falsos negativos conocidos.
@@ -880,6 +890,14 @@ primera vez la depurabilidad de las features T00–T14.
 - **Pruebas dirigidas:** litmus tests, invalid orderings, fences, tearing, volatile MMIO, optimizer checks y ThreadSanitizer cuando esté disponible.
 - **Markdown ES/EN:** modelo de memoria formal y ejemplos correctos/incorrectos.
 
+## NS3-T10-F08 — Primitivas de conteo de referencias / Reference-counting primitives
+
+**Commit:** `ns3(t10-f08): refcount-primitives`
+
+- **Implementación:** primitivas tipadas de incremento/decremento, detección de overflow, publicación y release/acquire final; hook de destrucción explícito y sin recolector oculto.
+- **Pruebas dirigidas:** último release concurrente, overflow, weak/strong cuando aplique, destructor una sola vez, DLL boundary y ausencia de allocation implícita.
+- **Markdown ES/EN:** modelo de memoria, responsabilidad del runtime y costos observables.
+
 ### Baseline T10 / T10 baseline
 
 - Programa async mínimo corre con executor de prueba sin runtime global.
@@ -1012,6 +1030,14 @@ primera vez la depurabilidad de las features T00–T14.
 - **Pruebas dirigidas:** cambios source/ABI compatible e incompatible, orden irrelevante, docs-only, private changes y generics.
 - **Markdown ES/EN:** elementos que forman contrato y versionado del formato.
 
+## NS3-T12-F07 — Ownership genérico exportado / Exported generic ownership
+
+**Commit:** `ns3(t12-f07): exported-generic-ownership`
+
+- **Implementación:** publicar en NSMETA los contratos move/copy/drop, lifetimes y constraints de parámetros genéricos; rehidratar el mismo comportamiento sin requerir fuentes del productor.
+- **Pruebas dirigidas:** biblioteca estática/DLL, consumidor sin fuente, especialización anidada, incompatibilidad N−1/N, metadata incompleta y diagnóstico causal.
+- **Markdown ES/EN:** schema NSMETA, compatibilidad y límites de inferencia del consumidor.
+
 ### Baseline T12 / T12 baseline
 
 - Grafo de módulos produce binding determinista en Windows.
@@ -1081,6 +1107,14 @@ primera vez la depurabilidad de las features T00–T14.
 - **Implementación:** consolidar SIMD 2.0 con vectors genéricos por lane/count, masks y operaciones definidas; fallback/scalarization permitido sin cambiar resultados.
 - **Pruebas dirigidas:** lane counts, shuffles const, masks, NaN/FP modes, ABI vectorcall, assembly AVX2 y fallback.
 - **Markdown ES/EN:** semántica por operación y requisitos de target.
+
+## NS3-T13-F08 — Allocator y destrucción entre módulos / Cross-module allocator and destruction
+
+**Commit:** `ns3(t13-f08): cross-module-allocation`
+
+- **Implementación:** contratos `create/destroy/deallocate` mediante thunks versionados; el módulo que reserva define cómo destruir/liberar; proteger vida del módulo y rechazar unload con objetos vivos cuando no exista estrategia segura.
+- **Pruebas dirigidas:** EXE↔DLL, DLL↔DLL, CRT estático, allocator personalizado, excepción durante construcción, unload y mismatch negativo.
+- **Markdown ES/EN:** ownership de allocation, lifetime del módulo y reglas ABI 1.1.
 
 ### Baseline T13 / T13 baseline
 
@@ -1909,10 +1943,12 @@ Cada tanda es un commit, incluye su Markdown y ejecuta sólo sus pruebas dirigid
 
 #### NS3-DBG-12 — nsdbg y VS Code
 
+- NSDBG congela primero el contrato DAP y sus capabilities reales;
 - breakpoint relocation visible;
 - estados de disponibilidad distintos;
 - diagnóstico de identidad y metadata;
-- UI consistente con DAP.
+- transcript DAP reproducible como entrega para el consumidor;
+- la integración de UI se ejecuta después, en `NS3-VSC-01`–`NS3-VSC-07`.
 
 #### NS3-DBG-13 — Certificación dirigida
 
@@ -1921,15 +1957,17 @@ Cada tanda es un commit, incluye su Markdown y ejecuta sólo sus pruebas dirigid
 - sin baseline general;
 - sin instalación en C:/native-sharp.
 
-#### NS3-DBG-14 — Milestone autorizado
+#### NS3-DBG-14 — Candidato de componente
 
-Sólo mediante autorización expresa:
+- build limpio de NSDBG en `A:`;
+- suites dirigidas acumuladas de `NS3-DBG-01`–`NS3-DBG-13`;
+- corrección de todas las regresiones dirigidas;
+- paquete candidato conservado en staging de `A:`;
+- contrato DAP entregado a VS Code;
+- sin baseline general, VSIX, instalación en `C:\native-sharp` ni tag.
 
-- build limpio;
-- suites acumuladas y baseline general;
-- corrección de regresiones;
-- paquete, VSIX e instalación en C:/native-sharp;
-- prueba manual y tag.
+La autorización del milestone integral ocurre sólo después de completar la etapa
+VS Code y el cierre único definido en la sección 12.
 
 ### 11.17 Criterios de aceptación del milestone
 
@@ -1964,3 +2002,372 @@ Sólo mediante autorización expresa:
 La definición de éxito es concreta: en el breakpoint exacto solicitado, el depurador muestra
 solamente las variables que existen, con los valores que realmente tienen, y Next avanza a la
 siguiente operación fuente sin congelarse ni mentir.
+
+---
+
+## 12. Plan integral y ordenado del toolchain / Unified Ordered Toolchain Plan
+
+Esta sección fusiona el roadmap del lenguaje con el plan operativo de los cuatro
+consumidores que deben cerrarse en orden. No crea otra versión del producto: los
+milestones `v.3.0.2`, `v.3.0.3`, etc. siguen perteneciendo a NativeSharp 3.0.
+
+El orden obligatorio es:
+
+```text
+NSC (`NS3-T00`–`NS3-T17`)
+  -> NSLink (`NS3-LNK-01`–`NS3-LNK-09`)
+    -> NSDBG (`NS3-DBG-01`–`NS3-DBG-14`)
+      -> NSC-LSP (`NS3-LSP-01`–`NS3-LSP-10`)
+        -> NSC-VSCode (`NS3-VSC-01`–`NS3-VSC-07`)
+          -> NSASM (`NS3-ASM-01`–`NS3-ASM-07`)
+            -> cierre integrado autorizado
+```
+
+### 12.1 Reglas únicas de ejecución / Single execution rules
+
+1. `v.3.0.2` permanece congelada y todo trabajo nuevo ocurre en `development`.
+2. Cada tanda produce un commit local y un Markdown de evidencia en el repositorio
+   propietario.
+3. Cada tanda construye sólo lo necesario y ejecuta únicamente pruebas dirigidas.
+4. Ninguna tanda autoriza por sí sola un baseline general.
+5. Durante desarrollo todos los artefactos se construyen y consumen desde `A:`.
+6. `C:\native-sharp` sólo recibe el despliegue después del cierre autorizado; nunca
+   se usa como fuente para reconstruir o completar staging.
+7. Un cambio de contrato aterriza primero en el productor y después en su consumidor.
+8. Un fallo se corrige en el componente propietario; queda prohibido esconderlo con
+   fallback silencioso, ruta hardcodeada o tolerancia en el consumidor.
+9. NSC puede construirse con clang/LLVM y lld-link. Los programas `.ns` de prueba
+   deben enlazarse con NSLink, salvo una comparación explícita y documentada.
+10. El baseline integral sólo se ejecuta al final y mediante autorización expresa del
+    propietario.
+
+### 12.2 Etapa 1 — NSC / Stage 1 — NSC
+
+Las únicas tandas normativas del lenguaje son `NS3-T00`–`NS3-T17`, ya definidas
+en las secciones anteriores. No se crean identificadores paralelos `NSC-xx`.
+
+#### Estado ejecutivo del catálogo NSC
+
+Los 120 IDs `NS3-T00-F01`–`NS3-T17-F07` constituyen el inventario completo del
+lenguaje 3.0. Una vertical dirigida terminada no cierra automáticamente toda la
+tanda normativa. El estado vigente y el trabajo que aún impide el cierre son:
+
+| Tanda | Features | Estado vigente | Trabajo todavía abierto |
+|---|---:|---|---|
+| `NS3-T00` | 6 | `IMPLEMENTING` | propagar edición, stage y `EffectContext` por toda la tubería; catálogo diagnóstico único y harness de conformidad completo |
+| `NS3-T01` | 7 | `IMPLEMENTING` | carriers físicos de null-aware, slicing completo, holes runtime y `with` owning sin ABI inventada |
+| `NS3-T02` | 6 | `IMPLEMENTING` | cerrar metadata, drop parcial, tooling y combinaciones nested/cross-module de tuplas y records |
+| `NS3-T03` | 6 | `IMPLEMENTING` | exhaustiveness/usefulness completo, moves por arm, guards, refinamiento y unions C seguras |
+| `NS3-T04` | 7 | `IMPLEMENTING` | const generics/layout, packs, alias opacos, especialización y límites de monomorfización en el pipeline real |
+| `NS3-T05` | 7 | `IMPLEMENTING` | associated types/constants, `some`, coherence completa, extensions y operadores mediante traits |
+| `NS3-T06` | 8 | `IMPLEMENTING` | `Copy`, partial/split borrow, lifetimes nombrados, `defer`, pinning, escape interprocedural y drop glue importado |
+| `NS3-T07` | 6 | `IMPLEMENTING` | `Result`/`?`, typed throws, `try/catch/finally`, loop values y perfiles panic unwind/handler |
+| `NS3-T08` | 6 | `IMPLEMENTING` | tipos función completos, captures copy/move/ref, lambdas genéricas, `FnOnce`, stack/noheap y tail-call contracts |
+| `NS3-T09` | 6 | `DESIGNED/IMPLEMENTING` | protocolo foreach completo, ranges perezosos, comprehensions, views, `yield` y fusión |
+| `NS3-T10` | 8 | `DESIGNED/IMPLEMENTING` | async/await físico, cancelación, generators, `Send`/`Sync`, task scopes, modelo atómico y refcount |
+| `NS3-T11` | 7 | `DESIGNED/IMPLEMENTING` | introspección estática, atributos, derive, macros higiénicas, `#run`, diagnósticos de usuario y sandbox/budgets |
+| `NS3-T12` | 7 | `DESIGNED/IMPLEMENTING` | módulos/imports/visibilidad/reexports, availability, fingerprints y ownership genérico exportado |
+| `NS3-T13` | 8 | `DESIGNED/IMPLEMENTING` | `repr`, bitfields, punteros, calling conventions, unsafe, contratos FFI, SIMD y allocator cross-module |
+| `NS3-T14` | 6 | `DESIGNED/IMPLEMENTING` | literales, overflow, conversiones, FP modes, units y consteval unificada contra oráculo independiente |
+| `NS3-T15` | 6 | `DESIGNED` | matriz combinatoria, whole-program corpus, budgets, diagnósticos, debug y auditoría de costos |
+| `NS3-T16` | 6 | `DESIGNED` | compatibilidad 2.x, lints/fix-its, matriz source/ABI, guía y ventana de deprecación |
+| `NS3-T17` | 7 | `DESIGNED` | freeze de sintaxis/semántica/ABI, suite candidata, auditoría bilingüe, RC y promoción |
+
+Los bloques `P00`–`P11`, `SH00`–`SH54`, el ledger de 156 observaciones y las
+brechas de `vsBeef` son gates y fuentes de evidencia de estas tandas; no crean un
+segundo catálogo de features. Toda brecha debe mapearse a un ID anterior o quedar
+clasificada expresamente como runtime/tooling, `NO-OBJETIVO` o `DIFERIDA-4.0`.
+
+| Bloque | Trabajo de cierre | Entrega al siguiente componente |
+|---|---|---|
+| `NS3-T00` | constitución, ediciones, etapas, value categories, efectos, diagnósticos y harness | contrato estable de lenguaje y diagnóstico |
+| `NS3-T01`–`NS3-T05` | expresiones, tuplas/records, variants/patterns, genéricos, traits y despacho | semántica y metadata completas para codegen/link |
+| `NS3-T06`–`NS3-T10` | ownership, errores, funciones/closures, iteración y concurrencia | MIR de lifetimes/cleanup, ABI de callables y estados suspendidos |
+| `NS3-T11`–`NS3-T14` | metaprogramación, módulos, ABI/FFI/unsafe y numéricos | objetos COFF Win64, NSMETA y manifiestos reproducibles |
+| `NS3-T15` | interacción, programas completos, rendimiento, diagnósticos y depurabilidad | corpus integrado y presupuestos medidos |
+| `NS3-T16` | compatibilidad, lints, fix-its y migración 2.x → 3.0 | matriz de compatibilidad y guía verificable |
+| `NS3-T17` | freeze de sintaxis, semántica, ABI y suite candidata | contrato candidato que NSLink debe consumir |
+
+Antes de cerrar `NS3-T15`, las 156 secciones de
+`A:\Limitantes\limitaciones-conversion-v4.md` deben tener estado terminal. Las
+observaciones que correspondan a defectos del material fuente permanecen separadas
+y no se contabilizan como defectos del compilador.
+
+El gate de salida de NSC exige:
+
+- parser, semántica, ownership, MIR, codegen y diagnósticos cubiertos por pruebas
+  dirigidas positivas y negativas;
+- proyectos `.nsproj`, referencias, `NS_LIB_ROOT`, `--no-restore`, NSMETA y grafo
+  de fuentes reproducibles sin leer `C:`;
+- progreso, telemetría y logs deterministas;
+- O0 sin passes opcionales innecesarios y mediciones limpia/incremental;
+- corpus versionado de objetos COFF válidos e inválidos;
+- contrato de objetos, ABI, NSMETA y Debug/PDB entregado a NSLink;
+- gates self-host afectados ejecutados individualmente, sin baseline general.
+
+### 12.3 Etapa 2 — NSLink / Stage 2 — NSLink
+
+#### NS3-LNK-01 — Contrato de entrada
+
+- versión de objeto/NSMETA, machine type, arquitectura y opciones;
+- códigos de salida y diagnósticos estables;
+- corpus válido e inválido recibido de NSC.
+
+#### NS3-LNK-02 — COFF y resolución de símbolos
+
+- objetos y archives;
+- índices, weak externals, COMDAT, aliases y `.drectve`;
+- duplicados y símbolos ausentes independientes del orden de entrada.
+
+#### NS3-LNK-03 — Imagen PE x64
+
+- secciones, alineación, relocations e imagen base;
+- imports, exports, entry point, subsystem, recursos y TLS;
+- EXE y DLL mínimas cargables en Windows x64.
+
+#### NS3-LNK-04 — Runtime, ABI y excepciones
+
+- runtime estático aprobado;
+- `.pdata`, `.xdata`, unwind y cleanup;
+- contrato ABI 1.1 y ausencia de imports runtime prohibidos.
+
+#### NS3-LNK-05 — CodeView/PDB
+
+- contribuciones por objeto, GUID/age y rutas normalizadas;
+- identidad PE/PDB y datos consumibles por NSDBG;
+- preservación de líneas, funciones, scopes y tipos entregados por NSC.
+
+#### NS3-LNK-06 — Determinismo y entradas hostiles
+
+- orden canónico y timestamps controlados;
+- overflow, archivos truncados, Unicode y rutas largas;
+- fallo sin crash ni artefacto parcial presentado como válido.
+
+#### NS3-LNK-07 — Rendimiento e incrementalidad
+
+- índices persistentes con claves completas;
+- IO acotado y paralelismo medido;
+- telemetría por fase y comparación antes/después.
+
+#### NS3-LNK-08 — Integración con el driver NSC
+
+- NSLink predeterminado para programas `.ns`;
+- argumentos, response files, logs y cancelación;
+- lld-link sólo como comparación interna explícita, nunca fallback oculto.
+
+#### NS3-LNK-09 — Entrega a NSDBG
+
+- fixtures O0–O3 enlazados exclusivamente por NSLink;
+- símbolos, PDB, mapa de imagen y resultados esperados;
+- prueba dirigida de que no se invocó lld-link.
+
+El gate de salida de NSLink es un staging en `A:` con `nslink.exe` 3.0 y un corpus
+de EXE/DLL NativeSharp enlazado por NSLink. No instala en `C:` ni ejecuta baseline.
+
+### 12.4 Etapa 3 — NSDBG / Stage 3 — NSDBG
+
+Esta etapa ejecuta exactamente `NS3-DBG-01`–`NS3-DBG-14` de la sección 11.16;
+no existe una segunda serie `NSD-xx`. Su orden cubre:
+
+1. contrato y reproducción;
+2. O0+SEH;
+3. assignment tracking/SSA;
+4. sequence points;
+5. lifetimes y scopes;
+6. Console y stepping;
+7. SEH, RAII y ownership;
+8. tipos y visualización;
+9. features nuevas 3.0;
+10. closures, inline y optimización;
+11. async, generators y módulos;
+12. contrato NSDBG/VS Code;
+13. certificación dirigida;
+14. candidato de componente en staging de `A:`.
+
+El gate de salida es `nsdbg.exe` 3.0 estático, sin dependencias dinámicas de LLVM
+o del runtime MSVC, acompañado por transcripts DAP, corpus PE/PDB y la matriz de
+disponibilidad O0–O3. No incluye VSIX, baseline general ni instalación en `C:`.
+
+### 12.5 Etapa 4 — NSC-LSP / Stage 4 — NSC-LSP
+
+#### NS3-LSP-01 — Frontera pública de análisis
+
+- publicar `NativeSharp::LanguageService` sin exponer AST/HIR/MIR/LLVM;
+- compartir identidad canónica del compilador sin enlazar driver/backend;
+- exportar una API estática estable para el servidor independiente.
+
+#### NS3-LSP-02 — Documentos versionados en memoria
+
+- overlays sin guardar con versión estrictamente monotónica;
+- rutas absolutas Windows normalizadas e insensibles a mayúsculas;
+- snapshots concurrentes sin reemplazar texto nuevo con una respuesta vieja.
+
+#### NS3-LSP-03 — Posiciones UTF-16 y diagnósticos
+
+- conversión bidireccional UTF-8/UTF-16 con CRLF, BMP y pares sustitutos;
+- rangos, severidad, código y mensaje estructurados;
+- rechazo de posiciones dentro de secuencias inválidas.
+
+#### NS3-LSP-04 — Snapshots, cancelación y recuperación
+
+- una compilación inmutable por generación;
+- cancelación antes de HIR/MIR/backend;
+- diagnósticos actuales con recuperación separada del último modelo válido.
+
+#### NS3-LSP-05 — Índice semántico básico
+
+- símbolos de documento/workspace, hover y definición;
+- identidad semántica y overload elegido por el frontend;
+- índices reutilizables por snapshots válidos y recuperados.
+
+#### NS3-LSP-06 — Consultas semánticas avanzadas
+
+- completion, signature help, referencias, rename y semantic tokens;
+- rangos exactos y workspace edits sin escribir archivos;
+- cero reinterpretación de NativeSharp mediante regex en el servidor.
+
+#### NS3-LSP-07 — Formato conservador
+
+- formato estable con espacios/tabs y conservación de CRLF/LF;
+- literales y comentarios intactos, sin edición cuando ya está normalizado;
+- `TextEdit` completo en coordenadas UTF-16.
+
+#### NS3-LSP-08 — Acciones de código seguras
+
+- quick fixes sólo cuando el frontend demuestra la transformación;
+- `SourceFixAll` respaldado por el formateador;
+- ninguna corrección inferida desde texto humano del diagnóstico.
+
+#### NS3-LSP-09 — Preservación de inline assembly
+
+- detectar bloques `asm` fuera de comentarios/literales;
+- no modificar sus bytes ni sangría;
+- preferir ausencia de edición a alterar la entrada física de NSASM.
+
+#### NS3-LSP-10 — Identidad técnica del compilador
+
+- `--print-compiler-identity` con encabezado `NSCOMPILER 1`;
+- versión, release, lenguaje, stage y hash en campos estables;
+- sin banner, copyright ni texto localizado.
+
+El gate de salida es la API de análisis y su harness directo, sin depender de
+VS Code. Cada capability anunciada debe tener handler real y prueba dirigida.
+
+### 12.6 Etapa 5 — NSC-VSCode / Stage 5 — NSC-VSCode
+
+#### NS3-VSC-01 — Identidad y descubrimiento
+
+- detectar NSC, NSLink y NSDBG 3.0;
+- mostrar rutas efectivas y prioridad de configuración;
+- rechazar mezcla accidental con instalaciones 2.0.
+
+#### NS3-VSC-02 — Proyectos y builds
+
+- `.nsproj`, O0–O3, jobs, referencias, clean/rebuild y cancelación;
+- precedencia idéntica a la documentada por NSC;
+- línea efectiva reproducible y visible.
+
+#### NS3-VSC-03 — Progreso y diagnósticos
+
+- módulo/fase actual y porcentaje cuando el productor lo proporcione;
+- consola inglesa/española;
+- Problems, códigos/spans, `error.log` consecutivo y vínculo a evidencia.
+
+#### NS3-VSC-04 — Integración DAP
+
+- launch/attach, breakpoints, watches, stepping y excepciones;
+- consumo literal de capabilities de NSDBG;
+- ubicación real visible cuando un breakpoint se ajuste.
+
+#### NS3-VSC-05 — Experiencia de edición
+
+- diagnósticos, navegación, símbolos, completion y acciones disponibles;
+- ninguna capability se anuncia si el backend no la implementa;
+- errores accionables cuando una operación no esté soportada.
+
+#### NS3-VSC-06 — Empaquetado offline Win64
+
+- VSIX, esquemas, snippets, licencias y documentación;
+- sin dependencia de Visual Studio, .NET o C++/CLI;
+- configuración por prefijo NativeSharp 3.0.
+
+#### NS3-VSC-07 — Aceptación de producto
+
+- crear, abrir, compilar, ejecutar y depurar;
+- rutas Unicode/largas y workspaces múltiples;
+- migración desde 2.0 y correlación de logs NSC/NSLink/NSDBG.
+
+El gate de salida es una VSIX candidata probada contra el staging de `A:`. Todavía
+no se instala el toolchain en `C:` ni se crea un milestone nuevo.
+
+### 12.7 Etapa 6 — NSASM / Stage 6 — NSASM
+
+#### NS3-ASM-01 — Identidad y distribución 3.0
+
+- versión pública 3.0 y Windows x64;
+- `nsasm`, `nsdump`, `nsdis` y `NativeAsmCore` autocontenidos;
+- runtime MSVC estático y paquete CMake verificable.
+
+#### NS3-ASM-02 — Compatibilidad MASM/ML64
+
+- macros, directivas, tipos, expresiones e `INCLUDE` compatibles con ml64;
+- errores y warnings estables;
+- decisiones fuera de alcance documentadas y probadas.
+
+#### NS3-ASM-03 — Codificación x86-64
+
+- enteras, x87, SSE, AVX, AVX2, FMA, BMI y AVX-512;
+- operandos, prefijos, ModRM/SIB y EVEX completos;
+- comparación byte a byte contra oráculo independiente.
+
+#### NS3-ASM-04 — COFF, relocations y unwind
+
+- objetos COFF, `.drectve`, `.pdata` y `.xdata`;
+- símbolos externos y `PROC FRAME` consumibles por NSLink;
+- addends y relocations verificados mediante ejecución real.
+
+#### NS3-ASM-05 — CodeView y listados
+
+- `/Zi`, archivos, líneas y símbolos útiles para NSDBG;
+- listados `/Fl` deterministas y expansión opcional `/Sa`;
+- identidad de fuente preservada hasta PE/PDB.
+
+#### NS3-ASM-06 — NSDump, NSDis y round-trip
+
+- inspección estructural de COFF;
+- desensamblado con longitud exacta;
+- assemble→dump→disassemble→assemble reproducible.
+
+#### NS3-ASM-07 — Robustez e integración
+
+- corpus válido/inválido sin crashes;
+- ejemplos reales ejecutados en Windows;
+- cadena NSC→NSASM→NSLink sin dependencias dinámicas prohibidas.
+
+El gate de salida es el producto NSASM 3.0 completo con sus suites normales
+correctas. No incluye baseline del compilador ni instalación en `C:`.
+
+### 12.8 Cierre integrado autorizado / Authorized integrated closure
+
+1. Construir NSC, NSLink y NSDBG desde `development` usando sólo fuentes y
+   dependencias aprobadas en `A:`.
+2. Crear desde cero `A:\native-sharp-3.0-baseline` y poblarla de `A:` hacia `A:`.
+3. Ejecutar smoke tests NSC → NSLink → NSDBG → NSC-LSP → VS Code y la cadena
+   NSC → NSASM → NSLink.
+4. Entregar hashes, rutas, commits, lista de pruebas dirigidas y pendientes reales.
+5. Esperar autorización expresa del propietario para ejecutar el baseline integral.
+6. Ante un fallo, corregirlo en el repositorio propietario y ejecutar únicamente la
+   prueba dirigida; no relanzar automáticamente el baseline completo.
+7. Con baseline aprobado, registrar Gate 0, desplegar de `A:` hacia
+   `C:\native-sharp`, probar la instalación y crear el milestone local autorizado.
+8. El nombre del milestone puede avanzar (`v.3.0.3`, `v.3.0.4`, etc.), pero la
+   identidad final del producto continúa siendo NativeSharp 3.0.
+
+### 12.9 Fronteras / Boundaries
+
+- Libraries/runtime, Bindings, Project Manager, SaruGL y SaruDX quedan fuera de
+  esta mega-tanda por decisión expresa.
+- Pueden entregar contratos o fixtures, pero no se incorporan como componentes
+  ni filas de tracking de este plan.
+- El IDE monolítico permanece fuera del alcance.
+- Ningún cierre documental equivale por sí solo a certificación ejecutable.
