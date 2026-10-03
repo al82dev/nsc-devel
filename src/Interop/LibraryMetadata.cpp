@@ -443,6 +443,59 @@ std::uint16_t typeFlags(const frontend::NamedTypeDeclaration& type) noexcept
         flags |= 1U << 5U;
     if (type.syntax != nullptr && type.syntax->hasModifier(lexer::TokenKind::KwReadonly))
         flags |= 1U << 6U;
+    if (type.syntax != nullptr)
+    {
+        const std::string_view metadata = type.syntax->auxiliaryText();
+        const auto hasListItem = [](std::string_view list, std::string_view item) noexcept
+        {
+            std::size_t cursor = 0;
+            while (cursor <= list.size())
+            {
+                const std::size_t separator = list.find('|', cursor);
+                if (list.substr(
+                        cursor,
+                        separator == std::string_view::npos ? std::string_view::npos
+                                                            : separator - cursor) == item)
+                {
+                    return true;
+                }
+                if (separator == std::string_view::npos) break;
+                cursor = separator + 1;
+            }
+            return false;
+        };
+        const auto hasMarker = [](std::string_view text, std::string_view marker) noexcept
+        {
+            std::size_t position = text.find(marker);
+            while (position != std::string_view::npos)
+            {
+                const bool beginsItem = position == 0 || text[position - 1] == ',' ||
+                    text[position - 1] == ':';
+                const std::size_t end = position + marker.size();
+                const bool endsItem = end == text.size() || text[end] == ',' || text[end] == ';';
+                if (beginsItem && endsItem) return true;
+                position = text.find(marker, position + 1);
+            }
+            return false;
+        };
+        const bool isRecord = hasMarker(metadata, "record");
+        if (isRecord)
+        {
+            flags |= kMetadataTypeRecord;
+            const std::size_t marker = metadata.find("derive=");
+            if (marker != std::string_view::npos)
+            {
+                const std::size_t begin = marker + std::string_view("derive=").size();
+                const std::size_t end = metadata.find_first_of(",;", begin);
+                const std::string_view derives = metadata.substr(
+                    begin, (end == std::string_view::npos ? metadata.size() : end) - begin);
+                if (hasListItem(derives, "Equality")) flags |= kMetadataTypeDeriveEquality;
+                if (hasListItem(derives, "Hash")) flags |= kMetadataTypeDeriveHash;
+                if (hasListItem(derives, "Print")) flags |= kMetadataTypeDerivePrint;
+                if (hasListItem(derives, "Clone")) flags |= kMetadataTypeDeriveClone;
+            }
+        }
+    }
     return flags;
 }
 
@@ -1844,11 +1897,14 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
     projected.producerVersion.clear();
     projected.languageEdition = 0;
     // Static closure and private imports describe how to link this particular archive; they do
-    // not change the public NativeSharp ABI published by the module. Project through 1.24 so even
-    // the two 1.25 section counts stay outside the public fingerprint.
+    // not change the public NativeSharp ABI published by the module. Project every current
+    // post-1.24 model through 1.24 so the two 1.25 section counts stay outside the public
+    // fingerprint when later additive minors (such as 1.26 record flags) are introduced. Type
+    // flags are part of every projection, so record/derive policy still changes the public
+    // contract while the private binary closure does not leak back into it.
     projected.binaryDependencies.clear();
     projected.platformImports.clear();
-    if (projected.formatMinor == 25) projected.formatMinor = 24;
+    if (projected.formatMinor >= 25) projected.formatMinor = 24;
     return encodePayload(projected);
 }
 
@@ -2535,6 +2591,17 @@ bool LibraryMetadataCodec::writeModelImpl(
             return false;
         }
     }
+    if (metadata.formatMinor < 26)
+    {
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            if ((type.flags & (kMetadataTypeRecord | kMetadataTypeRecordDeriveMask)) != 0U)
+            {
+                error = "NativeSharp metadata before 1.26 cannot represent record derive policy";
+                return false;
+            }
+        }
+    }
     if (metadata.formatMinor < 25 &&
         (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))
     {
@@ -2747,6 +2814,28 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     std::unordered_set<std::string> typeIdentities;
     for (const LibraryMetadataType& type : metadata.types)
     {
+        const std::uint16_t recordFlags =
+            type.flags & (kMetadataTypeRecord | kMetadataTypeRecordDeriveMask);
+        if (metadata.formatMinor < 26 && recordFlags != 0U)
+        {
+            error = "metadata before NSMETA 1.26 contains record derive flags on type '" +
+                type.fullyQualifiedName + "'";
+            return false;
+        }
+        if ((recordFlags & kMetadataTypeRecordDeriveMask) != 0U &&
+            (recordFlags & kMetadataTypeRecord) == 0U)
+        {
+            error = "metadata type '" + type.fullyQualifiedName +
+                "' publishes record derives without the record flag";
+            return false;
+        }
+        if ((recordFlags & kMetadataTypeRecord) != 0U &&
+            (type.kind != LibraryMetadataTypeKind::Struct || (type.flags & (1U << 5U)) != 0U))
+        {
+            error = "metadata record '" + type.fullyQualifiedName +
+                "' must be a non-union struct";
+            return false;
+        }
         if (type.identityKey.empty() || type.fullyQualifiedName.empty())
         {
             error = "metadata contains a type with an empty canonical identity or name";

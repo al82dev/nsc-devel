@@ -21,8 +21,8 @@ int main()
         "N-1/N matrix remains pending until the final baseline is certified");
     tests.expect(matrix.find("compiler.N=3.0.0\ncompiler.N-1=2.0.0\n") != std::string::npos,
         "compiler window is explicit 2.0.0 and 3.0.0 rather than arithmetic");
-    tests.expect(matrix.find("nsmeta.N=1.25\nnsmeta.N-1=1.21\n") != std::string::npos,
-        "the 3.0 window accepts NSMETA 1.21 producers in the NSMETA 1.25 compiler");
+    tests.expect(matrix.find("nsmeta.N=1.26\nnsmeta.N-1=1.21\n") != std::string::npos,
+        "the 3.0 window accepts NSMETA 1.21 producers in the NSMETA 1.26 compiler");
     tests.expect(matrix.find("native-abi.N=1.0\nnative-abi.N-1=1.0\n") != std::string::npos &&
             matrix.find("runtime-abi.N=1.1\nruntime-abi.N-1=1.0\n") != std::string::npos,
         "Native ABI stays at 1.0 while Runtime ABI advances from 1.0 to 1.1");

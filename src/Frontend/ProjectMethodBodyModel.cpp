@@ -1249,6 +1249,117 @@ bool ProjectMethodBodyModel::aggregateAllowsSynthesizedMember(
     return memberName != "Clone";
 }
 
+bool ProjectMethodBodyModel::aggregateSupportsSynthesizedMember(
+    std::string_view typeKey,
+    std::string_view memberName,
+    std::string& reason) const
+{
+    reason.clear();
+    if (memberName == "ToString") return true;
+    if (memberModel_ == nullptr || nameLookup_ == nullptr || inheritanceModel_ == nullptr)
+    {
+        reason = "record derive validation requires the complete member and type models";
+        return false;
+    }
+
+    const std::string_view requiredDerive = memberName == "Equals" ? "Equality"
+        : memberName == "GetHashCode" ? "Hash"
+        : memberName == "Clone" ? "Clone" : std::string_view{};
+    if (requiredDerive.empty())
+    {
+        reason = "unknown synthesized record member '" + std::string(memberName) + "'";
+        return false;
+    }
+
+    std::unordered_set<std::string> activeTypes;
+    std::function<bool(std::string_view, const std::string&, bool)> visit =
+        [&](std::string_view currentTypeKey, const std::string& path, bool nested) -> bool
+    {
+        if (const std::optional<std::string> element =
+                ProjectMemberModel::fixedArrayElementTypeKey(currentTypeKey);
+            element.has_value())
+        {
+            return visit(*element, path + "[]", true);
+        }
+        if (const std::optional<std::vector<std::string>> elements =
+                ProjectTypeConversion::tupleElementTypeKeys(currentTypeKey);
+            elements.has_value())
+        {
+            for (std::size_t index = 0; index < elements->size(); ++index)
+            {
+                if (!visit((*elements)[index], path + "." + std::to_string(index), true))
+                    return false;
+            }
+            return true;
+        }
+        if (!typeKeyIsStruct(currentTypeKey)) return true;
+
+        if (aggregateIsUnion(currentTypeKey))
+        {
+            reason = "field '" + (path.empty() ? std::string("<self>") : path) +
+                "' has union type '" + std::string(currentTypeKey) +
+                "'; a generated '" + std::string(memberName) +
+                "' cannot determine which union member is live";
+            return false;
+        }
+        if (nested && memberName != "Clone" &&
+            !aggregateAllowsSynthesizedMember(currentTypeKey, memberName))
+        {
+            reason = "field '" + path + "' has record type '" + std::string(currentTypeKey) +
+                "' that does not derive " + std::string(requiredDerive) +
+                "; the outer record cannot synthesize '" + std::string(memberName) + "'";
+            return false;
+        }
+
+        const std::string stableKey(currentTypeKey);
+        if (!activeTypes.insert(stableKey).second) return true;
+        const std::optional<std::size_t> typeOrdinal =
+            inheritanceModel_->typeOrdinalForTypeKey(currentTypeKey);
+        if (!typeOrdinal.has_value())
+        {
+            activeTypes.erase(stableKey);
+            reason = "record derive validation cannot resolve value type '" + stableKey + "'";
+            return false;
+        }
+
+        // Destructors do not participate in ordinary name lookup and therefore are not required
+        // to appear in the per-type lookup bucket. Walk the authoritative symbol vector and
+        // filter by owner so Clone cannot miss lifetime-only members.
+        for (const ClassMemberSymbol& member : memberModel_->members())
+        {
+            if (member.declaringTypeOrdinal != *typeOrdinal) continue;
+            if (member.kind == ClassMemberKind::Destructor && memberName == "Clone")
+            {
+                reason = "field '" + (path.empty() ? std::string("<self>") : path) +
+                    "' has a destructor; generated Clone is a plain value copy and would "
+                    "duplicate a non-trivial lifetime";
+                activeTypes.erase(stableKey);
+                return false;
+            }
+            if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
+            const std::string fieldPath = path.empty() ? member.name : path + "." + member.name;
+            if (memberName == "Clone" &&
+                member.declaredOwnership == sema::OwnershipKind::Owned)
+            {
+                reason = "field '" + fieldPath +
+                    "' owns storage; generated Clone is a plain value copy and would create "
+                    "two owners";
+                activeTypes.erase(stableKey);
+                return false;
+            }
+            if (!visit(member.declaredTypeKey, fieldPath, true))
+            {
+                activeTypes.erase(stableKey);
+                return false;
+            }
+        }
+        activeTypes.erase(stableKey);
+        return true;
+    };
+
+    return visit(typeKey, {}, false);
+}
+
 // SHR-013: la marca `borrowedview` que el parser escribio en el texto auxiliar de la
 // declaracion, leida igual que "union" justo arriba. Un solo sitio la escribe y un solo sitio la
 // lee, que es la razon de haberla puesto ahi y no en un AstNodeKind nuevo.
@@ -10832,6 +10943,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     "every field would be meaningless; declare your own");
             return {};
         }
+        std::string unsupportedReason;
+        if (!aggregateSupportsSynthesizedMember(structTypeKey, memberName, unsupportedReason))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                unsupportedReason);
+            return {};
+        }
         coreBindings_.push_back(MethodCoreBinding{
             *structKind,
             expression,
@@ -14464,6 +14585,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
                 "union '" + left.typeKey + "' cannot be compared with '==' or '!=': only one "
                     "member of a union is live at a time, so comparing every field would be "
                     "meaningless; declare your own comparison");
+            return result;
+        }
+        std::string unsupportedReason;
+        if (!aggregateSupportsSynthesizedMember(left.typeKey, "Equals", unsupportedReason))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                unsupportedReason);
             return result;
         }
         coreBindings_.push_back(MethodCoreBinding{

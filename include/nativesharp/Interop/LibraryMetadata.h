@@ -22,6 +22,8 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 26 (2026-10-03): struct type flags preserve `record` and its four explicit derives so a
+// LibraryReference consumer reconstructs the same NativeSharp 3.0 synthesized-member surface.
 // MINOR 25 (2026-10-01): static-library metadata carries its binary LibraryReference closure and
 // private platform imports so a consumer can link the archive without repeating implementation
 // dependencies or losing DLL symbols.
@@ -65,7 +67,20 @@ namespace nativesharp::interop
 // MINOR 23 (2026-09-29): modules preserve their NativeSharp language edition.
 // MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 25;
+inline constexpr std::uint16_t kMetadataFormatMinor = 26;
+
+// NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
+// struct; the flags publish only its compile-time member-generation policy. They therefore do not
+// change layout or the native ABI, but they must survive source materialization or a consumer would
+// silently gain the legacy struct members and lose the record's explicit opt-ins.
+inline constexpr std::uint16_t kMetadataTypeRecord = 1U << 7U;
+inline constexpr std::uint16_t kMetadataTypeDeriveEquality = 1U << 8U;
+inline constexpr std::uint16_t kMetadataTypeDeriveHash = 1U << 9U;
+inline constexpr std::uint16_t kMetadataTypeDerivePrint = 1U << 10U;
+inline constexpr std::uint16_t kMetadataTypeDeriveClone = 1U << 11U;
+inline constexpr std::uint16_t kMetadataTypeRecordDeriveMask =
+    kMetadataTypeDeriveEquality | kMetadataTypeDeriveHash |
+    kMetadataTypeDerivePrint | kMetadataTypeDeriveClone;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing

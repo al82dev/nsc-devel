@@ -1,8 +1,8 @@
 # Tanda 02 — Tuplas, deconstrucción y registros
 
-> **Actualización 2026-10-03:** F01–F03 están terminadas item por item. La deconstrucción nominal,
-> anidada, de aridad 0/1 y con orden de escritura ya cruza parser→semántica→HIR→MIR→LLVM.
-> T02 permanece abierto por los ítems F04–F07 y por ownership/partial-drop de T06. Véase
+> **Actualización 2026-10-03:** F01–F04 están terminadas item por item. Deconstrucción y records
+> nativos ya cruzan parser→semántica→HIR→MIR→LLVM; record/derive sobrevive además NSMETA 1.26.
+> T02 permanece abierto por los ítems F05–F06 y por ownership/partial-drop de T06. Véase
 > [TANDA-00-AUDITORIA-REAL-T00-T17.md](TANDA-00-AUDITORIA-REAL-T00-T17.md).
 
 ## Resultado
@@ -72,10 +72,9 @@ clone salvo opt-in. Esto evita que azúcar de superficie esconda asignaciones o 
 
 ## Límite consciente vigente
 
-F01–F03 y las verticales históricas de records/spread ya no son helpers aislados: compilan y
-ejecutan hasta PE x64. No se afirma todavía el gate T02 completo. Los partial moves, drops y drop
-flags siguen perteneciendo a T06; nombres públicos/derives en NSMETA y consumo
-precompilado se cierran en integración; debugger/LSP corresponden a la tanda 29.
+F01–F04 y las verticales históricas de promoted fields/spread ya no son helpers aislados: compilan
+y ejecutan hasta PE x64. No se afirma todavía el gate T02 completo. Los partial moves, drops y
+drop flags siguen perteneciendo a T06; debugger/LSP corresponden a la tanda 29.
 
 ## Validación dirigida
 
@@ -90,6 +89,8 @@ precompilado se cierran en integración; debugger/LSP corresponden a la tanda 29
   orden de destinos y negativas de conversión/firma/ref-return/temporal move-only.
 - Fixture `c58_ns3_records` O0: exit 42 con derives parciales/completos, primary constructors,
   defaults, readonly, genéricos, visibility y spread con fuente única.
+- Prueba F04 12/12: records vacíos, derives parciales, shadowing de miembro usuario, genéricos,
+  ownership no clonable, NSMETA 1.26 y consumidor precompilado.
 - Negativas T08: derives ausentes/inválidos/duplicados, primary duplicado, ownership diferido y
   colisión con miembro escrito.
 
@@ -122,6 +123,7 @@ copies, and records acquire generated behavior only through an explicit derive.
 
 ## Deliberate boundary
 
-Tuples, records, primary fields, and trivial spreads now reach executable OOP/HIR/MIR/LLVM code.
-Nominal `Deconstruct` is now complete. Owning/move-only partial moves and drops, public metadata,
-and tooling remain explicit dependencies; the complete T02 gate is therefore not claimed yet.
+Tuples and native records now reach executable OOP/HIR/MIR/LLVM code, and record derives survive
+NSMETA 1.26 precompiled consumption. Nominal `Deconstruct` is complete. Promoted fields, spreads,
+owning/move-only partial moves, drops, and tooling remain explicit dependencies; the complete T02
+gate is therefore not claimed yet.

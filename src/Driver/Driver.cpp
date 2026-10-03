@@ -1924,6 +1924,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                       << ") ";
             if ((type.flags & (1U << 6U)) != 0U) generated << "readonly ";
             if ((type.flags & (1U << 4U)) != 0U) generated << "borrowed ";
+            const bool isRecord = metadata.formatMinor >= 26 &&
+                (type.flags & interop::kMetadataTypeRecord) != 0U;
+            if (isRecord) generated << "record ";
             generated << ((type.flags & (1U << 5U)) != 0U ? "union " : "struct ");
         }
         else
@@ -1935,6 +1938,24 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             generated << "class ";
         }
         generated << typeName;
+        if (type.kind == interop::LibraryMetadataTypeKind::Struct &&
+            metadata.formatMinor >= 26 &&
+            (type.flags & interop::kMetadataTypeRecord) != 0U)
+        {
+            const std::array<std::pair<std::uint16_t, std::string_view>, 4> derives = {{
+                {interop::kMetadataTypeDeriveEquality, "Equality"},
+                {interop::kMetadataTypeDeriveHash, "Hash"},
+                {interop::kMetadataTypeDerivePrint, "Print"},
+                {interop::kMetadataTypeDeriveClone, "Clone"}}};
+            bool firstDerive = true;
+            for (const auto& [flag, name] : derives)
+            {
+                if ((type.flags & flag) == 0U) continue;
+                generated << (firstDerive ? " derive(" : ", ") << name;
+                firstDerive = false;
+            }
+            if (!firstDerive) generated << ')';
+        }
         // A static class has no instance hierarchy. Some NSMETA 1.10 producers recorded the
         // implicit Object edge anyway; ignore that legacy pollution instead of generating the
         // invalid `static class Utility : Object` source that the parser correctly rejects.

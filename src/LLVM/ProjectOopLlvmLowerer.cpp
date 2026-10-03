@@ -11198,7 +11198,7 @@ private:
 
     LLVMValueRef lowerAggregateEquals(const frontend::ProjectOopMirNode* node, std::string& error)
     {
-        if (node->argumentCount != 2 || node->children.size() <= 2 || node->alignment == 0)
+        if (node->argumentCount != 2 || node->children.size() < 2 || node->alignment == 0)
             return failValue(error, "C8 struct Equals is malformed");
         LLVMValueRef left = spillAggregate(node, 0, error);
         if (left == nullptr) return nullptr;
@@ -11222,12 +11222,14 @@ private:
         // A straight-line AND rather than an early-out chain: the leaf loads have no side effects
         // and cannot fault (both operands are live stack slots), so short-circuiting would only
         // add branches for the optimizer to undo.
-        return equal;
+        return equal != nullptr
+            ? equal
+            : LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0);
     }
 
     LLVMValueRef lowerAggregateHash(const frontend::ProjectOopMirNode* node, std::string& error)
     {
-        if (node->argumentCount != 1 || node->children.size() <= 1 || node->alignment == 0)
+        if (node->argumentCount != 1 || node->children.empty() || node->alignment == 0)
             return failValue(error, "C8 struct GetHashCode is malformed");
         LLVMValueRef value = spillAggregate(node, 0, error);
         if (value == nullptr) return nullptr;

@@ -4364,12 +4364,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 {
                     return nullptr;
                 }
-                if (node->children.size() == node->argumentCount)
-                {
-                    error = "C8 struct '" + stringCore->elementTypeKey +
-                        "' has no fields to compare";
-                    return nullptr;
-                }
                 if (expression->tokenKind() == lexer::TokenKind::BangEqual)
                 {
                     auto negated = makeNode(
@@ -6113,11 +6107,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->argumentCount = node->children.size();
                 if (!appendAggregateLeaves(core->elementTypeKey, 0, expression, node->children, error))
                 {
-                    return nullptr;
-                }
-                if (node->children.size() == node->argumentCount)
-                {
-                    error = "C8 struct '" + core->elementTypeKey + "' has no fields to compare or hash";
                     return nullptr;
                 }
                 return node;

@@ -1980,6 +1980,14 @@ private:
     bool aggregateAllowsSynthesizedMember(
         std::string_view typeKey,
         std::string_view memberName) const noexcept;
+    // NativeSharp 3.0 records synthesize field-wise operations only when every value nested in
+    // the physical aggregate can honor the same contract. Equality/hash cannot tunnel through a
+    // record that did not opt in, and Clone is a plain value copy so it cannot duplicate a
+    // destructor or owned storage. `reason` names the first offending field path.
+    bool aggregateSupportsSynthesizedMember(
+        std::string_view typeKey,
+        std::string_view memberName,
+        std::string& reason) const;
     // SHR-013 "vistas y tiempo de vida". Las tres preguntas de un tipo vista, separadas porque
     // NO son la misma:
     //   * aggregateIsBorrowedView -- el tipo se declaro `borrowed struct`.

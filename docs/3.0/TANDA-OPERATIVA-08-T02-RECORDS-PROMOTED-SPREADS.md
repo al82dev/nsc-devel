@@ -112,8 +112,9 @@ modelo de cuerpos recibe explícitamente el catálogo genérico y puede consulta
 - Parámetros primarios `owned`/`borrowed`, spreads move-only, partial moves, lectura posterior de
   campos movidos y drop flags se rechazan o permanecen fuera del corte. Sus dueños son las tandas
   operativas 13–14; aceptarlos ahora produciría doble drop o ownership invisible.
-- `Deconstruct` nominal y tuplas move-only siguen abiertos de la tanda 07.
-- Los nombres públicos/derives en NSMETA y el consumidor precompiled se cierran en integración.
+- Las tuplas move-only y los partial drops siguen abiertos en T06.
+- Los derives públicos ya se conservan en NSMETA 1.26 y el consumidor precompiled reconstruye la
+  misma política del productor.
 - Debugger y LSP pertenecen a la tanda 29.
 - La promoción C de campos anónimos preexistente se conserva; no se mezcla con parámetros
   primarios.
@@ -171,3 +172,11 @@ fuente. Los casos de ownership aún inseguros fallan en frontend con una depende
   ejecutó CTest. La prueba fuente quedó actualizada y la fixture queda registrada para el baseline
   final de Alberto.
 - No se ejecutó baseline, O1/O2/O3, instalación, deploy, remoto ni nada en `C:\native-sharp`.
+
+## Cierre itemizado F04 — 2026-10-03
+
+La implementación histórica quedó endurecida como `NS3-T02-F04`: validación recursiva de records
+anidados, rechazo de Clone sobre ownership, semántica definida para records vacíos y publicación
+de record/derives en NSMETA 1.26. La batería exclusiva `nsc_ns3_t02_native_record_tests` pasa
+12/12 con O0 y NSLink local; el consumidor precompilado ejecuta con exit 42. F05 y F06 conservan
+su tracking independiente y no se dan por terminados mediante este cierre.
