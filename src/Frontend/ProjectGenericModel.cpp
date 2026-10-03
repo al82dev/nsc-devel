@@ -5,6 +5,7 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
+#include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -216,6 +217,74 @@ std::string stableHashSuffix(std::string_view text)
     return stream.str();
 }
 
+class EnumConstResolver final : public ProjectConstantMemberResolver
+{
+public:
+    EnumConstResolver(std::string enumName, std::string underlyingType)
+        : enumName_(std::move(enumName)), underlyingType_(std::move(underlyingType))
+    {
+    }
+
+    void add(std::string name, std::uint64_t bits)
+    {
+        const std::size_t ordinal = values_.size();
+        names_.emplace(std::move(name), ordinal);
+        values_.push_back(bits);
+    }
+
+    std::optional<std::size_t> resolveConstantMember(
+        const ast::AstNode* syntax,
+        std::optional<std::size_t>) const override
+    {
+        if (syntax == nullptr) return std::nullopt;
+        if (syntax->kind() == ast::AstNodeKind::MemberExpression)
+        {
+            if (syntax->first() == nullptr ||
+                syntax->first()->kind() != ast::AstNodeKind::IdentifierExpression ||
+                syntax->first()->text() != enumName_)
+                return std::nullopt;
+        }
+        else if (syntax->kind() != ast::AstNodeKind::IdentifierExpression)
+        {
+            return std::nullopt;
+        }
+        const auto found = names_.find(syntax->text());
+        return found == names_.end()
+            ? std::nullopt : std::optional<std::size_t>(found->second);
+    }
+
+    bool describeConstantMember(
+        std::size_t memberOrdinal,
+        bool& isEnumConstant,
+        std::int64_t& enumConstantValue,
+        std::string& enumUnderlyingTypeKey,
+        const ast::AstNode*& initializer,
+        std::string& declaredTypeKey,
+        std::optional<std::size_t>& declaringTypeOrdinal) const override
+    {
+        if (memberOrdinal >= values_.size()) return false;
+        isEnumConstant = true;
+        enumConstantValue = static_cast<std::int64_t>(values_[memberOrdinal]);
+        enumUnderlyingTypeKey = underlyingType_;
+        initializer = nullptr;
+        declaredTypeKey.clear();
+        declaringTypeOrdinal.reset();
+        return true;
+    }
+
+    std::string resolveTypeKey(const ast::TypeSyntax* syntax) const override
+    {
+        if (syntax == nullptr || !lexer::isBuiltinTypeKeyword(syntax->baseTokenKind())) return {};
+        return "builtin:" + syntax->baseName();
+    }
+
+private:
+    std::string enumName_;
+    std::string underlyingType_;
+    std::unordered_map<std::string, std::size_t> names_;
+    std::vector<std::uint64_t> values_;
+};
+
 bool decodeConstGenericArgument(
     const ast::TypeSyntax* syntax,
     std::string& typeKey,
@@ -225,10 +294,141 @@ bool decodeConstGenericArgument(
         language::parseConstGenericArgumentMarker(syntax->baseName(), typeKey, value);
 }
 
+ast::AstNode* constArgumentExpression(
+    ast::AstArena& arena,
+    std::string_view typeKey,
+    std::string_view value,
+    SourceRange range)
+{
+    if (typeKey.starts_with("tuple<"))
+    {
+        ast::AstNode* tuple = arena.make<ast::AstNode>(
+            ast::AstNodeKind::TupleExpression, range);
+        std::size_t cursor = 0;
+        while (cursor < value.size())
+        {
+            const std::size_t colon = value.find(':', cursor);
+            if (colon == std::string_view::npos || colon == cursor) return nullptr;
+            std::size_t length = 0;
+            const auto lengthResult = std::from_chars(
+                value.data() + cursor, value.data() + colon, length);
+            if (lengthResult.ec != std::errc{} || lengthResult.ptr != value.data() + colon)
+                return nullptr;
+            const std::size_t markerBegin = colon + 1U;
+            if (length > value.size() - markerBegin) return nullptr;
+            const std::size_t markerEnd = markerBegin + length;
+            if (markerEnd >= value.size() || value[markerEnd] != ';') return nullptr;
+            std::string elementType;
+            std::string elementValue;
+            if (!language::parseConstGenericArgumentMarker(
+                    value.substr(markerBegin, length), elementType, elementValue))
+                return nullptr;
+            ast::AstNode* element = constArgumentExpression(
+                arena, elementType, elementValue, range);
+            if (element == nullptr) return nullptr;
+            tuple->addChild(element);
+            cursor = markerEnd + 1U;
+        }
+        return tuple;
+    }
+
+    const bool boolean = typeKey == "builtin:bool";
+    if (!boolean && !value.empty() && value.front() == '-')
+    {
+        std::uint64_t magnitude = 0;
+        const auto result = std::from_chars(
+            value.data() + 1, value.data() + value.size(), magnitude);
+        if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) return nullptr;
+        ast::AstNode* operand = arena.make<ast::AstNode>(
+            ast::AstNodeKind::IntegerLiteralExpression, range);
+        operand->setText(std::string(value.substr(1)));
+        operand->setTokenKind(lexer::TokenKind::IntegerLiteral);
+        operand->setIntegerValue(magnitude);
+        ast::AstNode* negation = arena.make<ast::AstNode>(
+            ast::AstNodeKind::UnaryExpression, range);
+        negation->setText(std::string(value));
+        negation->setTokenKind(lexer::TokenKind::Minus);
+        negation->setFirst(operand);
+        return negation;
+    }
+
+    ast::AstNode* literal = arena.make<ast::AstNode>(
+        boolean ? ast::AstNodeKind::BooleanLiteralExpression
+                : ast::AstNodeKind::IntegerLiteralExpression,
+        range);
+    literal->setText(std::string(value));
+    literal->setTokenKind(boolean
+        ? (value == "true" ? lexer::TokenKind::KwTrue : lexer::TokenKind::KwFalse)
+        : lexer::TokenKind::IntegerLiteral);
+    if (!boolean)
+    {
+        std::uint64_t integer = 0;
+        const auto result = std::from_chars(
+            value.data(), value.data() + value.size(), integer);
+        if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) return nullptr;
+        literal->setIntegerValue(integer);
+    }
+    return literal;
+}
+
+bool normalizeConstExpressionArgument(
+    ast::TypeSyntax* syntax,
+    std::string& typeKey,
+    std::string& value)
+{
+    if (syntax == nullptr || syntax->constExpression() == nullptr) return false;
+    const ast::AstNode* expression = syntax->constExpression();
+    if (expression->kind() == ast::AstNodeKind::TupleExpression)
+    {
+        std::string tupleType = "tuple<";
+        std::string tupleValue;
+        for (std::size_t index = 0; index < expression->children().size(); ++index)
+        {
+            ast::TypeSyntax elementCarrier(
+                expression->children()[index]->range(), lexer::TokenKind::Invalid,
+                "$nsc_const_expression$");
+            elementCarrier.setConstExpression(expression->children()[index]);
+            std::string elementType;
+            std::string elementValue;
+            if (!normalizeConstExpressionArgument(
+                    &elementCarrier, elementType, elementValue)) return false;
+            if (index != 0) tupleType += ',';
+            tupleType += elementType;
+            const std::string marker =
+                language::constGenericArgumentMarker(elementType, elementValue);
+            tupleValue += std::to_string(marker.size()) + ":" + marker + ";";
+        }
+        tupleType += '>';
+        typeKey = std::move(tupleType);
+        value = std::move(tupleValue);
+        syntax->setBaseName(language::constGenericArgumentMarker(typeKey, value));
+        syntax->setConstExpression(nullptr);
+        return true;
+    }
+    if (expression->kind() == ast::AstNodeKind::BooleanLiteralExpression)
+    {
+        typeKey = "builtin:bool";
+        value = expression->tokenKind() == lexer::TokenKind::KwTrue ? "true" : "false";
+    }
+    else
+    {
+        const ProjectIntegerEvaluator evaluator(nullptr);
+        const std::optional<ProjectIntegerValue> evaluated = evaluator.evaluate(expression);
+        if (!evaluated.has_value()) return false;
+        typeKey = evaluated->typeKey;
+        value = std::to_string(evaluated->bits);
+    }
+    syntax->setBaseName(language::constGenericArgumentMarker(typeKey, value));
+    syntax->setConstExpression(nullptr);
+    return true;
+}
+
 std::string constGenericParameterTypeKey(const ast::GenericParameterSyntax& parameter)
 {
     if (parameter.constantType == nullptr) return {};
-    return "builtin:" + parameter.constantType->baseName();
+    return lexer::isBuiltinTypeKeyword(parameter.constantType->baseTokenKind())
+        ? "builtin:" + parameter.constantType->baseName()
+        : std::string{};
 }
 
 std::optional<std::size_t> trailingTypePackIndex(const GenericTemplateRecord& record) noexcept
@@ -738,6 +938,56 @@ void ProjectGenericModel::collectTemplates(
     if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
     {
         currentNamespace = namespaceAppend(namespaceName, node->text());
+    }
+
+    if (!insideGenericType && node->kind() == ast::AstNodeKind::EnumDeclaration)
+    {
+        const std::string qualified = qualifiedName(currentNamespace, node->text());
+        const std::string enumTypeKey =
+            "enum:" + std::string(unit.moduleName()) + "::" + qualified;
+        const auto publishType = [&](const std::string& spelling)
+        {
+            const auto [entry, inserted] = constEnumTypeBySpelling_.emplace(spelling, enumTypeKey);
+            if (!inserted && entry->second != enumTypeKey) entry->second.clear();
+        };
+        publishType(node->text());
+        publishType(qualified);
+
+        const std::string underlying = node->typeSyntax() != nullptr
+            ? "builtin:" + node->typeSyntax()->baseName() : "builtin:int";
+        EnumConstResolver enumResolver(node->text(), underlying);
+        std::uint64_t nextValue = 0;
+        bool previousKnown = true;
+        for (const ast::AstNode* member : node->children())
+        {
+            if (member == nullptr || member->kind() != ast::AstNodeKind::EnumMemberDeclaration)
+                continue;
+            std::uint64_t bits = nextValue;
+            if (member->first() != nullptr)
+            {
+                const ProjectIntegerEvaluator evaluator(&enumResolver);
+                const std::optional<ProjectIntegerValue> evaluated = evaluator.evaluate(member->first());
+                previousKnown = evaluated.has_value();
+                if (previousKnown) bits = evaluated->bits;
+            }
+            if (!previousKnown) continue;
+            bits = ProjectIntegerEvaluator::normalize(bits, underlying);
+            const std::string value = ProjectIntegerEvaluator::isSignedInteger(underlying) &&
+                    static_cast<std::int64_t>(bits) < 0
+                ? std::to_string(static_cast<std::int64_t>(bits))
+                : std::to_string(bits);
+            const std::pair<std::string, std::string> identity{enumTypeKey, value};
+            const auto publishValue = [&](const std::string& spelling)
+            {
+                const auto [entry, inserted] =
+                    constEnumValueBySpelling_.emplace(spelling, identity);
+                if (!inserted && entry->second != identity) entry->second = {};
+            };
+            publishValue(node->text() + "." + member->text());
+            publishValue(qualified + "." + member->text());
+            enumResolver.add(member->text(), bits);
+            nextValue = bits + 1U;
+        }
     }
 
     // NSC-LIMIT-022. Generic specialization happens before ProjectNameLookup exists, but its
@@ -1351,6 +1601,7 @@ bool ProjectGenericModel::inferTypeArguments(
     ProjectSyntaxUnit& unit,
     const ast::TypeSyntax* pattern,
     const ast::TypeSyntax* actual,
+    const GenericTemplateRecord& record,
     const std::unordered_set<std::string>& parameters,
     std::unordered_map<std::string, ast::TypeSyntax*>& inferred)
 {
@@ -1359,11 +1610,76 @@ bool ProjectGenericModel::inferTypeArguments(
     const std::size_t modifierPrefix = actual->modifiers().size() - pattern->modifiers().size();
     for (std::size_t index = 0; index < pattern->modifiers().size(); ++index)
     {
-        if (pattern->modifiers()[index].kind != actual->modifiers()[modifierPrefix + index].kind)
+        const ast::TypeModifierSyntax& patternModifier = pattern->modifiers()[index];
+        const ast::TypeModifierSyntax& actualModifier =
+            actual->modifiers()[modifierPrefix + index];
+        if (patternModifier.kind != actualModifier.kind)
             return false;
+        if (patternModifier.kind != ast::TypeModifierSyntaxKind::Array ||
+            patternModifier.arrayCount == nullptr ||
+            patternModifier.arrayCount->kind() != ast::AstNodeKind::IdentifierExpression)
+            continue;
+
+        const std::string& parameterName = patternModifier.arrayCount->text();
+        const auto parameter = std::ranges::find_if(
+            record.parameterSyntaxes,
+            [&](const ast::GenericParameterSyntax& candidate)
+            {
+                return candidate.name == parameterName &&
+                    candidate.kind == ast::GenericParameterSyntaxKind::Constant;
+            });
+        if (parameter == record.parameterSyntaxes.end() || actualModifier.arrayCount == nullptr)
+            continue;
+
+        const ProjectIntegerEvaluator evaluator(nullptr);
+        const std::optional<ProjectIntegerValue> extent =
+            evaluator.evaluate(actualModifier.arrayCount);
+        if (!extent.has_value()) return false;
+        ast::TypeSyntax* value = unit.arena().make<ast::TypeSyntax>(
+            actualModifier.arrayCount->range(), lexer::TokenKind::Invalid,
+            language::constGenericArgumentMarker(
+                extent->typeKey, std::to_string(extent->bits)));
+        const auto prior = inferred.find(parameterName);
+        if (prior == inferred.end()) inferred.emplace(parameterName, value);
+        else if (typeSpelling(prior->second) != typeSpelling(value)) return false;
     }
 
-    if (parameters.contains(pattern->baseName()) && pattern->typeArguments().empty())
+    const auto constantParameter = std::ranges::find_if(
+        record.parameterSyntaxes,
+        [&](const ast::GenericParameterSyntax& candidate)
+        {
+            return candidate.name == pattern->baseName() &&
+                candidate.kind == ast::GenericParameterSyntaxKind::Constant;
+        });
+    if (parameters.contains(pattern->baseName()) &&
+        constantParameter != record.parameterSyntaxes.end() &&
+        pattern->typeArguments().empty() && pattern->modifiers().empty())
+    {
+        std::string actualType;
+        std::string actualValue;
+        if (!decodeConstGenericArgument(actual, actualType, actualValue)) return false;
+        ast::TypeSyntax* value = unit.arena().make<ast::TypeSyntax>(
+            actual->range(), lexer::TokenKind::Invalid,
+            language::constGenericArgumentMarker(actualType, actualValue));
+        const auto prior = inferred.find(pattern->baseName());
+        if (prior == inferred.end())
+        {
+            inferred.emplace(pattern->baseName(), value);
+            return true;
+        }
+        return typeSpelling(prior->second) == typeSpelling(value);
+    }
+
+    const auto typeParameter = std::ranges::find_if(
+        record.parameterSyntaxes,
+        [&](const ast::GenericParameterSyntax& candidate)
+        {
+            return candidate.name == pattern->baseName() &&
+                (candidate.kind == ast::GenericParameterSyntaxKind::Type ||
+                 candidate.kind == ast::GenericParameterSyntaxKind::TypePack);
+        });
+    if (parameters.contains(pattern->baseName()) &&
+        typeParameter != record.parameterSyntaxes.end() && pattern->typeArguments().empty())
     {
         ast::TypeSyntax* value = unit.arena().make<ast::TypeSyntax>(
             actual->range(), actual->baseTokenKind(), actual->baseName());
@@ -1391,7 +1707,7 @@ bool ProjectGenericModel::inferTypeArguments(
     {
         if (!inferTypeArguments(
                 unit, pattern->typeArguments()[index], actual->typeArguments()[index],
-                parameters, inferred)) return false;
+                record, parameters, inferred)) return false;
     }
     return true;
 }
@@ -1428,10 +1744,53 @@ bool ProjectGenericModel::normalizeGenericArguments(
             parameterIndex < record.parameterSyntaxes.size()
             ? record.parameterSyntaxes[parameterIndex].kind
             : ast::GenericParameterSyntaxKind::Type;
+        const ast::GenericParameterSyntax& parameter = record.parameterSyntaxes[parameterIndex];
+        std::string expectedType = constGenericParameterTypeKey(parameter);
+        if (expectedType.empty() && parameter.constantType != nullptr)
+        {
+            const std::function<std::string(const ast::TypeSyntax*)> structuralTypeKey =
+                [&](const ast::TypeSyntax* type) -> std::string
+                {
+                    if (type == nullptr || !type->modifiers().empty()) return {};
+                    if (lexer::isBuiltinTypeKeyword(type->baseTokenKind()))
+                        return "builtin:" + type->baseName();
+                    if (type->isTuple())
+                    {
+                        std::string key = "tuple<";
+                        for (std::size_t item = 0; item < type->typeArguments().size(); ++item)
+                        {
+                            const std::string element = structuralTypeKey(type->typeArguments()[item]);
+                            if (element.empty()) return {};
+                            if (item != 0) key += ',';
+                            key += element;
+                        }
+                        return key + '>';
+                    }
+                    const auto enumType = constEnumTypeBySpelling_.find(type->baseName());
+                    return enumType != constEnumTypeBySpelling_.end()
+                        ? enumType->second : std::string{};
+                };
+            expectedType = structuralTypeKey(parameter.constantType);
+        }
         std::string argumentType;
         std::string argumentValue;
-        const bool constant = decodeConstGenericArgument(
-            arguments[index], argumentType, argumentValue);
+        bool constant = decodeConstGenericArgument(
+                arguments[index], argumentType, argumentValue) ||
+            normalizeConstExpressionArgument(arguments[index], argumentType, argumentValue);
+        if (!constant && !expectedType.empty() && expectedType.starts_with("enum:") &&
+            arguments[index] != nullptr)
+        {
+            const auto enumValue = constEnumValueBySpelling_.find(arguments[index]->baseName());
+            if (enumValue != constEnumValueBySpelling_.end() &&
+                !enumValue->second.first.empty())
+            {
+                argumentType = enumValue->second.first;
+                argumentValue = enumValue->second.second;
+                arguments[index]->setBaseName(language::constGenericArgumentMarker(
+                    argumentType, argumentValue));
+                constant = true;
+            }
+        }
         if (kind == ast::GenericParameterSyntaxKind::Type)
         {
             if (!constant) continue;
@@ -1474,8 +1833,44 @@ bool ProjectGenericModel::normalizeGenericArguments(
             return false;
         }
 
-        const ast::GenericParameterSyntax& parameter = record.parameterSyntaxes[parameterIndex];
-        const std::string expectedType = constGenericParameterTypeKey(parameter);
+        if (expectedType.empty())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                parameter.constantType != nullptr ? parameter.constantType->range() : range,
+                "const generic parameter '" + record.parameters[parameterIndex] +
+                    "' has a type that is not an enum or approved structural const type");
+            return false;
+        }
+        if (expectedType.starts_with("enum:"))
+        {
+            if (argumentType != expectedType)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    arguments[index]->range(),
+                    "const generic parameter '" + record.parameters[parameterIndex] +
+                        "' requires a value of enum type '" + parameter.constantType->baseName() + "'");
+                return false;
+            }
+            continue;
+        }
+        if (expectedType.starts_with("tuple<"))
+        {
+            if (argumentType != expectedType)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    arguments[index]->range(),
+                    "const generic parameter '" + record.parameters[parameterIndex] +
+                        "' requires structural value type '" + expectedType + "'");
+                return false;
+            }
+            continue;
+        }
         if (expectedType == "builtin:bool")
         {
             if (argumentType != "builtin:bool" ||
@@ -1514,23 +1909,36 @@ bool ProjectGenericModel::normalizeGenericArguments(
                 "const generic argument is not a normalized integral value");
             return false;
         }
-        const lexer::TokenKind expectedKind = parameter.constantType != nullptr
-            ? parameter.constantType->baseTokenKind() : lexer::TokenKind::Invalid;
-        std::uint64_t maximum = (std::numeric_limits<std::uint64_t>::max)();
-        switch (expectedKind)
+        const unsigned expectedWidth = ProjectIntegerEvaluator::integerWidth(expectedType);
+        const bool expectedSigned = ProjectIntegerEvaluator::isSignedInteger(expectedType);
+        const bool argumentSigned = ProjectIntegerEvaluator::isSignedInteger(argumentType);
+        bool fits = expectedWidth != 0;
+        if (fits && expectedSigned)
         {
-            case lexer::TokenKind::KwSByte: maximum = 0x7fU; break;
-            case lexer::TokenKind::KwByte: maximum = 0xffU; break;
-            case lexer::TokenKind::KwShort: maximum = 0x7fffU; break;
-            case lexer::TokenKind::KwUShort:
-            case lexer::TokenKind::KwChar: maximum = 0xffffU; break;
-            case lexer::TokenKind::KwInt: maximum = 0x7fffffffU; break;
-            case lexer::TokenKind::KwUInt: maximum = 0xffffffffULL; break;
-            case lexer::TokenKind::KwLong:
-            case lexer::TokenKind::KwNInt: maximum = 0x7fffffffffffffffULL; break;
-            default: break;
+            const std::uint64_t positiveMaximum = expectedWidth == 64
+                ? 0x7fffffffffffffffULL
+                : ((std::uint64_t{1} << (expectedWidth - 1U)) - 1U);
+            if (argumentSigned && static_cast<std::int64_t>(value) < 0)
+            {
+                const std::int64_t minimum = expectedWidth == 64
+                    ? (std::numeric_limits<std::int64_t>::min)()
+                    : -(std::int64_t{1} << (expectedWidth - 1U));
+                fits = static_cast<std::int64_t>(value) >= minimum;
+            }
+            else
+            {
+                fits = value <= positiveMaximum;
+            }
         }
-        if (value > maximum)
+        else if (fits)
+        {
+            const std::uint64_t maximum = expectedWidth == 64
+                ? (std::numeric_limits<std::uint64_t>::max)()
+                : ((std::uint64_t{1} << expectedWidth) - 1U);
+            fits = (!argumentSigned || static_cast<std::int64_t>(value) >= 0) &&
+                value <= maximum;
+        }
+        if (!fits)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidType,
@@ -1542,8 +1950,13 @@ bool ProjectGenericModel::normalizeGenericArguments(
         }
         // The declaration type, not the literal suffix, participates in identity. Therefore
         // `Vector<int, 4>` and `Vector<int, 4u>` share the same specialization when N is uint.
+        const std::uint64_t normalized = ProjectIntegerEvaluator::normalize(value, expectedType);
+        const std::string normalizedText = expectedSigned &&
+                static_cast<std::int64_t>(normalized) < 0
+            ? std::to_string(static_cast<std::int64_t>(normalized))
+            : std::to_string(normalized);
         arguments[index]->setBaseName(language::constGenericArgumentMarker(
-            expectedType, std::to_string(value)));
+            expectedType, normalizedText));
     }
     return true;
 }
@@ -1683,12 +2096,13 @@ bool ProjectGenericModel::inferGenericCall(
             if (actual != nullptr)
             {
                 viable = inferTypeArguments(
-                    unit, pattern, actual, genericParameters, inferred);
+                    unit, pattern, actual, candidate->record, genericParameters, inferred);
             }
         }
         if (viable && expectedType != nullptr && candidate->syntax->typeSyntax() != nullptr)
             viable = inferTypeArguments(
-                unit, candidate->syntax->typeSyntax(), expectedType, genericParameters, inferred);
+                unit, candidate->syntax->typeSyntax(), expectedType,
+                candidate->record, genericParameters, inferred);
         if (!viable || inferred.size() != candidate->record.parameters.size()) continue;
         Inference success;
         success.candidate = candidate;
@@ -2406,6 +2820,11 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     else
     {
         result = arena.make<ast::TypeSyntax>(source->range(), source->baseTokenKind(), source->baseName());
+        if (source->constExpression() != nullptr)
+        {
+            result->setConstExpression(cloneNode(
+                arena, source->constExpression(), substitutions, "", ""));
+        }
         if (source->isTuple())
         {
             for (std::size_t index = 0; index < source->typeArguments().size(); ++index)
@@ -2581,23 +3000,9 @@ ast::AstNode* ProjectGenericModel::cloneNode(
         if (substitution != substitutions.end() &&
             decodeConstGenericArgument(substitution->second, constType, constValue))
         {
-            const bool boolean = constType == "builtin:bool";
-            ast::AstNode* literal = arena.make<ast::AstNode>(
-                boolean ? ast::AstNodeKind::BooleanLiteralExpression
-                        : ast::AstNodeKind::IntegerLiteralExpression,
-                source->range());
-            literal->setText(constValue);
-            literal->setTokenKind(boolean
-                ? (constValue == "true" ? lexer::TokenKind::KwTrue : lexer::TokenKind::KwFalse)
-                : lexer::TokenKind::IntegerLiteral);
-            if (!boolean)
-            {
-                std::uint64_t value = 0;
-                std::from_chars(
-                    constValue.data(), constValue.data() + constValue.size(), value);
-                literal->setIntegerValue(value);
-            }
-            return literal;
+            if (ast::AstNode* expression = constArgumentExpression(
+                    arena, constType, constValue, source->range()))
+                return expression;
         }
     }
     const bool layoutQueryOfSubstitutedParameter =

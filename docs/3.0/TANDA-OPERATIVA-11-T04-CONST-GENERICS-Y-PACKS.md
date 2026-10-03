@@ -1,5 +1,10 @@
 # Tanda operativa 11 — T04 const generics y type packs
 
+> **Actualización 2026-10-03:** la limitación histórica de F02 descrita en este registro quedó
+> cerrada por `NS3-T04-F02`. Const generics admite ahora expresiones deterministas, signo, enums,
+> tuplas estructurales, normalización completa e inferencia exacta. La deuda de packs pertenece a
+> F03 y no debe leerse como deuda de F02.
+
 ## Objetivo
 
 Llevar const generics y packs de tipos desde los helpers aislados de T04 hasta el compilador
@@ -147,13 +152,14 @@ logs temporales de los probes se eliminaron antes del commit.
 
 No se ejecutó baseline, CTest general, O1/O2/O3, instalación, deploy ni operación remota.
 
-## Límites y deuda explícita
+## Límites y deuda al cierre original
 
-- Const generics productivos: sólo literales `bool`/enteros no negativos y tipos builtin. Enums,
-  structural values y evaluación checked de expresiones constantes continúan abiertos.
+- La restricción original a literales `bool`/enteros no negativos fue eliminada por F02. El estado
+  vigente está en `docs/3.0/language/const-generics.md`.
 - Packs productivos: type pack final, `packcount` y forwarding. Indexado, folds, zipped packs y
   value packs continúan abiertos.
-- La inferencia no deduce valores const ni la longitud de un pack; se escriben explícitamente.
+- F02 ya infiere valores const desde evidencia exacta. La inferencia de longitud de packs sigue
+  siendo trabajo de F03.
 - Opaque aliases y especialización controlada siguen siendo contratos aislados. No se publica una
   sintaxis parcial porque aún faltan privacidad de representación/metadata para el primero y
   coherence/orden parcial cross-module para la segunda.

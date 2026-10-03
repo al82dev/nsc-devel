@@ -1070,21 +1070,24 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
             syntax.constantType = parseType();
             if (syntax.constantType == nullptr) return false;
             const TokenKind kind = syntax.constantType->baseTokenKind();
-            const bool supported = syntax.constantType->modifiers().empty() &&
-                syntax.constantType->typeArguments().empty() &&
+            const bool scalarSupported = syntax.constantType->typeArguments().empty() &&
                 (kind == TokenKind::KwBool || kind == TokenKind::KwByte ||
                  kind == TokenKind::KwSByte || kind == TokenKind::KwShort ||
                  kind == TokenKind::KwUShort || kind == TokenKind::KwInt ||
                  kind == TokenKind::KwUInt || kind == TokenKind::KwLong ||
                  kind == TokenKind::KwULong || kind == TokenKind::KwNInt ||
-                 kind == TokenKind::KwNUInt || kind == TokenKind::KwChar);
+                 kind == TokenKind::KwNUInt || kind == TokenKind::KwChar ||
+                 kind == TokenKind::Identifier);
+            const bool supported = syntax.constantType->modifiers().empty() &&
+                (scalarSupported || syntax.constantType->isTuple());
             if (!supported)
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::InvalidType,
                     diagnostics::DiagnosticSeverity::Error,
                     syntax.constantType->range(),
-                    "const generic parameters currently require bool, char, or an integral builtin type");
+                    "const generic parameters require bool, char, an integral builtin type, "
+                    "an enum, or an approved structural tuple type");
             }
         }
         else if (atContextualKeyword("pack"))
@@ -1424,6 +1427,22 @@ bool Parser::parseTypeArgumentList(std::vector<ast::TypeSyntax*>& arguments)
     if (consumeGenericGreater()) return true;
     while (true)
     {
+        if (at(TokenKind::LeftParen) || at(TokenKind::Plus) || at(TokenKind::Minus) ||
+            at(TokenKind::Tilde) || at(TokenKind::Bang))
+        {
+            const SourceRange begin = current().range();
+            requireEdition3(begin, "const generic expressions");
+            ast::AstNode* expression = at(TokenKind::LeftParen)
+                ? parsePrimaryExpression() : parseUnaryExpression();
+            ast::TypeSyntax* argument = arena_.make<ast::TypeSyntax>(
+                expression != nullptr ? expression->range() : begin,
+                TokenKind::Invalid,
+                "$nsc_const_expression$");
+            argument->setConstExpression(expression);
+            arguments.push_back(argument);
+            if (!consumeIf(TokenKind::Comma)) break;
+            continue;
+        }
         if (at(TokenKind::IntegerLiteral))
         {
             const lexer::Token& literal = consume();
@@ -1505,9 +1524,10 @@ bool Parser::consumeGenericGreater()
 // LA REGLA CORRECTA ES UNA LISTA BLANCA, no una lista de paradas. Lo que `parseType` puede
 // consumir es un conjunto CERRADO: nombres, tipos primitivos, cualificadores de propiedad, el
 // punto de un nombre calificado, la coma que separa argumentos, el `*` de un puntero, los
-// corchetes de un arreglo con su contador, y los `<`/`>` del anidamiento. Cualquier otra cosa
-// --un operador, un literal de cadena, un parentesis, una llave-- significa que esto no era una
-// lista de argumentos de tipo, y se contesta que no en vez de comprometerse y morir.
+// corchetes de un arreglo con su contador, y los `<`/`>` del anidamiento. NativeSharp 3 agrega
+// valores const: sus expresiones compuestas se escriben entre parentesis, de modo que el
+// lookahead puede admitir operadores dentro de esos parentesis sin volver a confundir una
+// comparacion ordinaria con una llamada generica.
 //
 // Enumerar lo que SI puede aparecer es lo que hace que el caso siguiente que nadie previo salga
 // bien por omision. Una lista de paradas hay que ampliarla cada vez que aparece un operador nuevo;
@@ -1526,11 +1546,31 @@ bool Parser::canAppearInTypeArgumentList(TokenKind kind) noexcept
         case TokenKind::Star:
         case TokenKind::LeftBracket:
         case TokenKind::RightBracket:
+        case TokenKind::LeftParen:
+        case TokenKind::RightParen:
         // El contador de un arreglo fijo: `Foo<float[4]>(x)`.
         case TokenKind::IntegerLiteral:
         case TokenKind::Less:
         case TokenKind::Greater:
         case TokenKind::GreaterGreater:
+        case TokenKind::Plus:
+        case TokenKind::Minus:
+        case TokenKind::Slash:
+        case TokenKind::Percent:
+        case TokenKind::Bang:
+        case TokenKind::AmpAmp:
+        case TokenKind::PipePipe:
+        case TokenKind::Amp:
+        case TokenKind::Pipe:
+        case TokenKind::Caret:
+        case TokenKind::Tilde:
+        case TokenKind::LessLess:
+        case TokenKind::EqualEqual:
+        case TokenKind::BangEqual:
+        case TokenKind::LessEqual:
+        case TokenKind::GreaterEqual:
+        case TokenKind::KwTrue:
+        case TokenKind::KwFalse:
             return true;
         default:
             return false;
@@ -1542,6 +1582,7 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
     if (!at(TokenKind::Less)) return false;
     std::size_t cursor = index_ + 1;
     int genericDepth = 1;
+    int parenthesisDepth = 0;
     while (cursor < tokens_.size())
     {
         const TokenKind kind = tokens_[cursor].kind();
@@ -1549,8 +1590,29 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
         {
             return false;
         }
-        if (kind == TokenKind::Less) ++genericDepth;
-        else if (kind == TokenKind::Greater || kind == TokenKind::GreaterGreater)
+        if (parenthesisDepth == 0 &&
+            (kind == TokenKind::AmpAmp || kind == TokenKind::PipePipe ||
+             kind == TokenKind::EqualEqual || kind == TokenKind::BangEqual ||
+             kind == TokenKind::LessEqual || kind == TokenKind::GreaterEqual ||
+             kind == TokenKind::Slash || kind == TokenKind::Percent ||
+             kind == TokenKind::Amp || kind == TokenKind::Pipe ||
+             kind == TokenKind::Caret || kind == TokenKind::LessLess))
+            return false;
+        if (parenthesisDepth == 0 &&
+            (kind == TokenKind::Plus || kind == TokenKind::Minus ||
+             kind == TokenKind::Bang || kind == TokenKind::Tilde))
+        {
+            const TokenKind previous = tokens_[cursor - 1U].kind();
+            if (previous != TokenKind::Less && previous != TokenKind::Comma) return false;
+        }
+        if (kind == TokenKind::LeftParen) ++parenthesisDepth;
+        else if (kind == TokenKind::RightParen)
+        {
+            if (--parenthesisDepth < 0) return false;
+        }
+        else if (parenthesisDepth == 0 && kind == TokenKind::Less) ++genericDepth;
+        else if (parenthesisDepth == 0 &&
+                 (kind == TokenKind::Greater || kind == TokenKind::GreaterGreater))
         {
             genericDepth -= kind == TokenKind::GreaterGreater ? 2 : 1;
             if (genericDepth == 0)
@@ -1613,6 +1675,7 @@ bool Parser::looksLikeClosedGenericTypeReference() const noexcept
 
     ++cursor;
     int genericDepth = 1;
+    int parenthesisDepth = 0;
     while (cursor < tokens_.size())
     {
         const TokenKind kind = tokens_[cursor].kind();
@@ -1620,8 +1683,29 @@ bool Parser::looksLikeClosedGenericTypeReference() const noexcept
         {
             return false;
         }
-        if (kind == TokenKind::Less) ++genericDepth;
-        else if (kind == TokenKind::Greater || kind == TokenKind::GreaterGreater)
+        if (parenthesisDepth == 0 &&
+            (kind == TokenKind::AmpAmp || kind == TokenKind::PipePipe ||
+             kind == TokenKind::EqualEqual || kind == TokenKind::BangEqual ||
+             kind == TokenKind::LessEqual || kind == TokenKind::GreaterEqual ||
+             kind == TokenKind::Slash || kind == TokenKind::Percent ||
+             kind == TokenKind::Amp || kind == TokenKind::Pipe ||
+             kind == TokenKind::Caret || kind == TokenKind::LessLess))
+            return false;
+        if (parenthesisDepth == 0 &&
+            (kind == TokenKind::Plus || kind == TokenKind::Minus ||
+             kind == TokenKind::Bang || kind == TokenKind::Tilde))
+        {
+            const TokenKind previous = tokens_[cursor - 1U].kind();
+            if (previous != TokenKind::Less && previous != TokenKind::Comma) return false;
+        }
+        if (kind == TokenKind::LeftParen) ++parenthesisDepth;
+        else if (kind == TokenKind::RightParen)
+        {
+            if (--parenthesisDepth < 0) return false;
+        }
+        else if (parenthesisDepth == 0 && kind == TokenKind::Less) ++genericDepth;
+        else if (parenthesisDepth == 0 &&
+                 (kind == TokenKind::Greater || kind == TokenKind::GreaterGreater))
         {
             genericDepth -= kind == TokenKind::GreaterGreater ? 2 : 1;
             if (genericDepth == 0)

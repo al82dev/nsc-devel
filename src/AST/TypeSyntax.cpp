@@ -63,6 +63,11 @@ const std::vector<std::string>& TypeSyntax::tupleElementNames() const noexcept
 {
     return tupleElementNames_;
 }
+AstNode* TypeSyntax::constExpression() const noexcept { return constExpression_; }
+void TypeSyntax::setConstExpression(AstNode* expression) noexcept
+{
+    constExpression_ = expression;
+}
 
 bool TypeSyntax::isPackExpansion() const noexcept { return isPackExpansion_; }
 void TypeSyntax::setPackExpansion(bool value) noexcept { isPackExpansion_ = value; }

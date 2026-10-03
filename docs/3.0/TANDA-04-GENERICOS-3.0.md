@@ -1,10 +1,8 @@
 # Tanda 04 — Genéricos 3.0 / Generics 3.0
 
-> **Estado 2026-09-29:** `IMPLEMENTING`. Las tandas operativas 10–11 conectaron F01/F04/F07 y una
-> vertical productiva F02/F03: const bool/enteros builtin, layout dependiente, type packs finales,
-> `packcount`, forwarding y rehidratación `.nsmeta`. Opaque aliases, especialización controlada,
-> expresiones const generales, value packs/folds/indexado y la inferencia contextual profunda
-> continúan abiertos.
+> **Estado 2026-10-03:** `IMPLEMENTING`. F01 y F02 están terminadas. Const generics cubre enteros,
+> bool, enums, tuplas estructurales, expresiones deterministas, inferencia exacta, layout e identidad
+> Win64. F03–F07 continúan su secuencia propia; no se confunde su deuda con F02.
 
 ## Resultado / Outcome
 
@@ -38,11 +36,10 @@ with a stable diagnostic at depth 64. Exact repeats reuse the cache and appear i
 
 ## Límite / Boundary
 
-ES/EN: La inferencia contextual sigue siendo exacta/directa. Const generics se limitan por ahora a
-literales bool/enteros builtin; packs, a un type pack final con count/forwarding. Enums/structural,
-const expressions, value packs/index/folds, lambdas/tuplas/method groups, opaque aliases y
-especialización controlada continúan abiertas. NSMETA transporta la vertical productiva, no toda la
-superficie futura 3.0.
+ES/EN: La inferencia const sigue siendo exacta/directa y no prueba conversiones arbitrarias. Las
+tuplas son los únicos valores estructurales aprobados; structs nominales requieren primero un
+contrato estable de igualdad estructural. Value packs/index/folds, lambdas/method groups, opaque
+aliases y especialización controlada pertenecen a F03–F07 y continúan abiertas.
 
 ## Validación / Validation
 

@@ -88,6 +88,12 @@ public:
     void addTupleElement(TypeSyntax* type, std::string name = {});
     const std::vector<std::string>& tupleElementNames() const noexcept;
 
+    // NativeSharp 3 const-generic argument. The parser temporarily keeps the ordinary expression
+    // AST here; ProjectGenericModel evaluates it deterministically and replaces this carrier with
+    // the canonical const marker before specialization identity or lowering observes the type.
+    AstNode* constExpression() const noexcept;
+    void setConstExpression(AstNode* expression) noexcept;
+
     bool isPackExpansion() const noexcept;
     void setPackExpansion(bool value = true) noexcept;
 
@@ -143,6 +149,7 @@ private:
     std::vector<TypeSyntax*> typeArguments_;
     bool isTuple_ = false;
     std::vector<std::string> tupleElementNames_;
+    AstNode* constExpression_ = nullptr;
     bool isPackExpansion_ = false;
     std::vector<TypeModifierSyntax> modifiers_;
     std::optional<std::size_t> originProjectOrdinal_;

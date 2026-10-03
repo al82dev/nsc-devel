@@ -325,6 +325,7 @@ private:
         ProjectSyntaxUnit& unit,
         const ast::TypeSyntax* pattern,
         const ast::TypeSyntax* actual,
+        const GenericTemplateRecord& record,
         const std::unordered_set<std::string>& parameters,
         std::unordered_map<std::string, ast::TypeSyntax*>& inferred);
 
@@ -441,6 +442,11 @@ private:
     std::unordered_map<const ast::AstNode*, ast::TypeSyntax*> inferredCallReturnTypes_;
     std::vector<std::vector<std::size_t>> visibleProjects_;
     std::vector<std::string> projectModuleNames_;
+    // Available before name binding because generic materialization itself runs before name
+    // binding. Values use the enum's canonical declaration identity plus normalized underlying
+    // bits, so aliases with the same value share one specialization.
+    std::unordered_map<std::string, std::string> constEnumTypeBySpelling_;
+    std::unordered_map<std::string, std::pair<std::string, std::string>> constEnumValueBySpelling_;
     bool built_ = false;
 
     // Stage 52 fix: the project ordinal and lexical namespace of whichever call site is
