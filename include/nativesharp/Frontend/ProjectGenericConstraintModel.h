@@ -95,6 +95,8 @@ public:
     std::span<const GenericConstraintViolation> violations() const noexcept;
     bool isBuilt() const noexcept;
     std::string_view normalizedConstraintIdentity(std::size_t templateOrdinal) const noexcept;
+    std::span<const std::string> normalizedConstraintAtoms(
+        std::size_t templateOrdinal) const noexcept;
 
     // LO QUE UNA ESPECIALIZACION DE UN GRUPO DE SOBRECARGAS NO PUEDE DECIDIR SOLA.
     //
@@ -151,6 +153,9 @@ private:
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         diagnostics::DiagnosticEngine& diagnostics);
+    void validateControlledSpecializations(
+        const ProjectGenericModel& genericModel,
+        diagnostics::DiagnosticEngine& diagnostics);
     // Las tres formas de infringir la regla de constraint primario comparten registro y
     // diagnostico; solo cambia el mensaje, que es lo unico que las distingue para el lector.
     void reportPrimaryConstraint(
@@ -191,6 +196,7 @@ private:
     // Parameter ordinals plus sorted semantic atoms. This is stable under source reordering and
     // is the identity consumed by diagnostics/metadata/cache-facing tests.
     std::vector<std::string> normalizedConstraintIdentities_;
+    std::vector<std::vector<std::string>> normalizedConstraintAtoms_;
     bool built_ = false;
 };
 }

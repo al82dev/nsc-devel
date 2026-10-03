@@ -72,6 +72,12 @@ struct GenericTemplateRecord final
     // valida es ProjectGenericConstraintModel, con las tres ya construidas.
     std::vector<ast::GenericConstraintClause> constraints;
     std::string canonicalKey;
+    // NativeSharp 3.0 T04-F06. Methods enter one controlled-specialization family only when
+    // their generic arity, receiver form and alpha-normalized value-parameter pattern agree.
+    // Constraints are deliberately excluded: they define the partial order inside the family.
+    std::string specializationFamilyKey;
+    bool isControlledSpecialization = false;
+    bool isControlledSpecializationFamily = false;
     // Canonical identities reached from this template's declaration/body. The producer uses
     // these edges to compute the reusable fixed-point closure; NSMETA persists them so artifact
     // verification can prove that every same-module dependency is present.
@@ -158,6 +164,8 @@ public:
 
     std::span<const GenericTemplateRecord> templates() const noexcept;
     std::span<const GenericSpecializationRecord> specializations() const noexcept;
+    const GenericSpecializationRecord* specializationForSyntax(
+        const ast::AstNode* syntax) const noexcept;
     const GenericSpecializationRecord* specializationForTypeKey(
         std::string_view typeKey) const noexcept;
     GenericInstantiationReport instantiationReport() const noexcept;
@@ -463,6 +471,7 @@ private:
     std::vector<GenericTemplateRecord> templateRecords_;
     std::vector<GenericSpecializationRecord> specializations_;
     std::unordered_map<std::string, std::size_t> specializationByKey_;
+    std::unordered_map<const ast::AstNode*, std::size_t> specializationBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentityBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOriginBySyntax_;
     std::unordered_map<const ast::AstNode*, ast::TypeSyntax*> inferredCallReturnTypes_;

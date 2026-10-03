@@ -1066,6 +1066,7 @@ bool buildMetadataModel(
             member.accessibility == frontend::ClassMemberAccessibility::Public ||
             member.accessibility == frontend::ClassMemberAccessibility::Protected;
         if (contractAccessibility &&
+            !member.isControlledSpecializationFamily &&
             isPubliclyReachableRootType(member.declaringTypeOrdinal))
         {
             memberOrdinals.push_back(ordinal);

@@ -440,6 +440,119 @@ std::optional<std::size_t> trailingPackIndex(const GenericTemplateRecord& record
         ? std::optional<std::size_t>(index) : std::nullopt;
 }
 
+std::string genericExpressionPattern(const ast::AstNode* node)
+{
+    if (node == nullptr) return "-";
+    std::string result = std::to_string(static_cast<unsigned>(node->kind())) + ":" +
+        std::to_string(static_cast<unsigned>(node->tokenKind())) + ":" + node->text() + ":" +
+        std::to_string(node->integerValue());
+    result += "[" + genericExpressionPattern(node->first()) + "]";
+    result += "[" + genericExpressionPattern(node->second()) + "]";
+    result += "[" + genericExpressionPattern(node->third()) + "]";
+    result.push_back('{');
+    for (const ast::AstNode* child : node->children())
+    {
+        result += genericExpressionPattern(child);
+        result.push_back(';');
+    }
+    result.push_back('}');
+    return result;
+}
+
+std::string genericTypePattern(
+    const ast::TypeSyntax* syntax,
+    std::span<const std::string> parameters)
+{
+    if (syntax == nullptr) return "<missing>";
+    std::string result;
+    if (syntax->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::None)
+    {
+        result += std::string(ast::ownershipQualifierSyntaxKindName(syntax->ownershipQualifier()));
+        result.push_back(' ');
+    }
+    if (syntax->isDynamicTrait()) result += "dyn ";
+    if (syntax->isTuple())
+    {
+        result.push_back('(');
+        for (std::size_t index = 0; index < syntax->typeArguments().size(); ++index)
+        {
+            if (index != 0) result.push_back(',');
+            result += genericTypePattern(syntax->typeArguments()[index], parameters);
+        }
+        result.push_back(')');
+    }
+    else
+    {
+        const auto parameter = std::ranges::find(parameters, syntax->baseName());
+        if (parameter != parameters.end() && syntax->typeArguments().empty())
+        {
+            result += "$" + std::to_string(
+                static_cast<std::size_t>(parameter - parameters.begin()));
+        }
+        else
+        {
+            result += lexer::isBuiltinTypeKeyword(syntax->baseTokenKind())
+                ? "builtin:" + syntax->baseName() : syntax->baseName();
+            if (!syntax->typeArguments().empty())
+            {
+                result.push_back('<');
+                for (std::size_t index = 0; index < syntax->typeArguments().size(); ++index)
+                {
+                    if (index != 0) result.push_back(',');
+                    result += genericTypePattern(syntax->typeArguments()[index], parameters);
+                }
+                result.push_back('>');
+            }
+        }
+    }
+    if (syntax->isPointeeConst()) result += " const-pointee";
+    if (syntax->isPackExpansion()) result += "...";
+    for (const ast::TypeModifierSyntax& modifier : syntax->modifiers())
+    {
+        switch (modifier.kind)
+        {
+            case ast::TypeModifierSyntaxKind::Pointer: result.push_back('*'); break;
+            case ast::TypeModifierSyntaxKind::DynamicArray: result += "[]"; break;
+            case ast::TypeModifierSyntaxKind::RangeArray:
+                result.push_back('[');
+                if (modifier.arrayRank > 1) result.append(modifier.arrayRank - 1, ',');
+                result.push_back(']');
+                break;
+            case ast::TypeModifierSyntaxKind::FlexibleArray: result += "[*]"; break;
+            case ast::TypeModifierSyntaxKind::Array:
+                result += "[" + genericExpressionPattern(modifier.arrayCount) + "]";
+                break;
+        }
+    }
+    return result;
+}
+
+std::string methodSpecializationFamilyKey(
+    const GenericTemplateRecord& record,
+    const ast::AstNode* syntax)
+{
+    std::string key = record.canonicalKey;
+    key += syntax != nullptr && syntax->hasModifier(lexer::TokenKind::KwStatic)
+        ? "|static(" : "|instance(";
+    if (syntax != nullptr)
+    {
+        bool first = true;
+        for (const ast::AstNode* child : syntax->children())
+        {
+            if (child == nullptr || child->kind() != ast::AstNodeKind::ParameterDeclaration)
+                continue;
+            if (!first) key.push_back(',');
+            first = false;
+            key += child->auxiliaryText();
+            key.push_back(':');
+            key += genericTypePattern(child->typeSyntax(), record.parameters);
+        }
+        if (syntax->isVariadic()) key += ",...";
+    }
+    key.push_back(')');
+    return key;
+}
+
 bool genericArityAccepts(const GenericTemplateRecord& record, std::size_t arity) noexcept
 {
     if (const auto pack = trailingPackIndex(record); pack.has_value())
@@ -536,6 +649,21 @@ bool ProjectGenericModel::build(
             if (found == baseCounts.end() || found->second < 2) continue;
             state.record.canonicalKey += "#" + std::to_string(position);
         }
+    }
+
+    // A closed member from a controlled family is an implementation artifact, not an additional
+    // public overload. Mark every participant (including the unmodified fallback) so NSMETA can
+    // publish the open templates without trying to merge equal closed language signatures.
+    {
+        std::unordered_set<std::string> controlledFamilies;
+        for (const TemplateState& state : templateStates_)
+            if (state.record.kind == GenericTemplateKind::Method &&
+                state.record.isControlledSpecialization)
+                controlledFamilies.insert(state.record.specializationFamilyKey);
+        for (TemplateState& state : templateStates_)
+            state.record.isControlledSpecializationFamily =
+                state.record.kind == GenericTemplateKind::Method &&
+                controlledFamilies.contains(state.record.specializationFamilyKey);
     }
 
     // Record the declaration-level dependency graph before any template is cloned. A producer
@@ -909,6 +1037,14 @@ std::span<const GenericSpecializationRecord> ProjectGenericModel::specialization
     return specializations_;
 }
 
+const GenericSpecializationRecord* ProjectGenericModel::specializationForSyntax(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto found = specializationBySyntax_.find(syntax);
+    return found != specializationBySyntax_.end() && found->second < specializations_.size()
+        ? &specializations_[found->second] : nullptr;
+}
+
 const GenericSpecializationRecord* ProjectGenericModel::specializationForTypeKey(
     std::string_view typeKey) const noexcept
 {
@@ -1090,6 +1226,9 @@ void ProjectGenericModel::collectTemplates(
         record.canonicalKey = record.moduleName + "::" +
             (callableScope.empty() ? std::string{} : callableScope + ".") +
             record.name + "``" + genericAritySpelling(record);
+        record.specializationFamilyKey = methodSpecializationFamilyKey(record, node);
+        record.isControlledSpecialization =
+            node->auxiliaryText() == "controlled-specialization";
         templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
     }
 
@@ -2919,6 +3058,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     clone->setAuxiliaryText(std::move(specializationMetadata));
     state.parent->addChild(clone);
     specializations_[ordinal].specializedSyntax = clone;
+    specializationBySyntax_[clone] = ordinal;
 
     processNode(
         *state.unit, clone, state.record.namespaceName, specializedName,
@@ -3073,9 +3213,13 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     }
     clone->setText(specializedName);
     clone->clearGenericParameters();
-    clone->setAuxiliaryText("stage44-specialization:" + key);
+    std::string specializationMetadata = "stage44-specialization:" + key;
+    if (!state.syntax->auxiliaryText().empty())
+        specializationMetadata += ";nsc-meta:" + state.syntax->auxiliaryText();
+    clone->setAuxiliaryText(std::move(specializationMetadata));
     state.parent->addChild(clone);
     specializations_[ordinal].specializedSyntax = clone;
+    specializationBySyntax_[clone] = ordinal;
     processNode(
         *state.unit, clone, state.record.namespaceName, state.record.ownerName,
         GenericLookupScope{}, false, diagnostics);

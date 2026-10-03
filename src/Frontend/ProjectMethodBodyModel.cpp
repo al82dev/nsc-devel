@@ -13,6 +13,7 @@
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
+#include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Language/SumTypeSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
@@ -18568,6 +18569,22 @@ bool ProjectMethodBodyModel::betterCandidate(
         left.usesExpandedParameterPack != right.usesExpandedParameterPack)
     {
         return !left.usesExpandedParameterPack;
+    }
+    if (!strictlyBetter && genericConstraintModel_ != nullptr)
+    {
+        const ClassMemberSymbol* leftSymbol = methodSymbol(left.memberOrdinal);
+        const ClassMemberSymbol* rightSymbol = methodSymbol(right.memberOrdinal);
+        if (leftSymbol != nullptr && rightSymbol != nullptr &&
+            leftSymbol->isControlledSpecialization &&
+            leftSymbol->genericTemplateOrdinal.has_value() &&
+            rightSymbol->genericTemplateOrdinal.has_value())
+        {
+            return language::specializationStrictlyDominates(
+                genericConstraintModel_->normalizedConstraintAtoms(
+                    *leftSymbol->genericTemplateOrdinal),
+                genericConstraintModel_->normalizedConstraintAtoms(
+                    *rightSymbol->genericTemplateOrdinal));
+        }
     }
     return strictlyBetter;
 }

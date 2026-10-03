@@ -125,6 +125,12 @@ struct ClassMemberSymbol final
     sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
     std::vector<MethodParameterSymbol> parameters;
     std::string signatureKey;
+    // NativeSharp 3.0 T04-F06. Closed generic methods retain the template that produced them so
+    // overload resolution can compare the declaration constraints after ordinary conversions.
+    std::optional<std::size_t> genericTemplateOrdinal;
+    bool isControlledSpecialization = false;
+    bool isControlledSpecializationFamily = false;
+    std::string genericTemplateKey;
     bool hasImplicitThis = false;
     bool declaringTypeIsStruct = false;
     bool isStatic = false;

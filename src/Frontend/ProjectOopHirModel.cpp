@@ -484,6 +484,19 @@ std::string sanitize(std::string value)
     return value;
 }
 
+std::string stableSymbolSuffix(std::string_view value)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const char raw : value)
+    {
+        hash ^= static_cast<std::uint64_t>(static_cast<unsigned char>(raw));
+        hash *= 1099511628211ULL;
+    }
+    std::ostringstream stream;
+    stream << std::hex << hash;
+    return stream.str();
+}
+
 // C1.2 "import identity": the INTERNAL name of an import whose C symbol name is shared by two
 // libraries. It encodes the identity's library and symbol so the two never collide again, and it
 // is never seen by the linker as an external symbol -- the backend gives this name a real body
@@ -1218,8 +1231,11 @@ std::string ProjectOopHirModel::mangleCallable(
     // NSC-LIMIT-009: la identidad pasa por el codificador que conserva el `+`, no por `sanitize`.
     // El nombre del MIEMBRO si usa `sanitize`: no puede contener `+`, y cambiarlo moveria todos
     // los simbolos ya existentes.
-    return prefix + compilation::symbolFragmentForIdentityKey(type.identity.key()) + "__" +
-        sanitize(member.name) + typeSuffix(member);
+    std::string result = prefix + compilation::symbolFragmentForIdentityKey(type.identity.key()) +
+        "__" + sanitize(member.name) + typeSuffix(member);
+    if (member.isControlledSpecialization)
+        result += "__specialize_" + stableSymbolSuffix(member.genericTemplateKey);
+    return result;
 }
 
 bool ProjectOopHirModel::build(

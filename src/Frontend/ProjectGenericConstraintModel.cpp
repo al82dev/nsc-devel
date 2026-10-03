@@ -472,6 +472,121 @@ void ProjectGenericConstraintModel::validateTemplateClauses(
         language::normalizeConstraints(templateAtoms, normalizedTemplate, ignoredError);
         if (templateOrdinal < normalizedConstraintIdentities_.size())
             normalizedConstraintIdentities_[templateOrdinal] = std::move(normalizedTemplate.canonical);
+        if (templateOrdinal < normalizedConstraintAtoms_.size())
+            normalizedConstraintAtoms_[templateOrdinal] = std::move(normalizedTemplate.atoms);
+    }
+}
+
+void ProjectGenericConstraintModel::validateControlledSpecializations(
+    const ProjectGenericModel& genericModel,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const std::span<const GenericTemplateRecord> templates = genericModel.templates();
+    std::unordered_map<std::string, std::vector<std::size_t>> families;
+    for (std::size_t ordinal = 0; ordinal < templates.size(); ++ordinal)
+    {
+        const GenericTemplateRecord& record = templates[ordinal];
+        if (record.kind == GenericTemplateKind::Method &&
+            !record.specializationFamilyKey.empty())
+            families[record.specializationFamilyKey].push_back(ordinal);
+    }
+
+    const auto report = [&](std::size_t ordinal, std::string message)
+    {
+        const GenericTemplateRecord& record = templates[ordinal];
+        violations_.push_back(GenericConstraintViolation{
+            GenericConstraintViolationKind::InvalidConstraintCombination,
+            ordinal,
+            std::string(),
+            std::string(),
+            ordinal < normalizedConstraintIdentities_.size()
+                ? normalizedConstraintIdentities_[ordinal] : std::string(),
+            true});
+        diagnostics.report(
+            diagnostics::DiagnosticId::DuplicateSymbol,
+            diagnostics::DiagnosticSeverity::Error,
+            record.syntax != nullptr ? record.syntax->range() : SourceRange{},
+            std::move(message));
+    };
+    const auto notePrevious = [&](std::size_t ordinal)
+    {
+        const GenericTemplateRecord& record = templates[ordinal];
+        diagnostics.report(
+            diagnostics::DiagnosticId::PreviousDeclaration,
+            diagnostics::DiagnosticSeverity::Note,
+            record.syntax != nullptr ? record.syntax->range() : SourceRange{},
+            "previous implementation in this controlled-specialization family is here");
+    };
+
+    for (const auto& [familyKey, ordinals] : families)
+    {
+        (void)familyKey;
+        if (ordinals.size() == 1U)
+        {
+            const std::size_t ordinal = ordinals.front();
+            if (templates[ordinal].isControlledSpecialization)
+                report(
+                    ordinal,
+                    "controlled specialization '" + templates[ordinal].name +
+                        "' has no less-constrained fallback implementation");
+            continue;
+        }
+
+        std::unordered_set<std::size_t> hasFallback;
+        for (std::size_t leftIndex = 0; leftIndex < ordinals.size(); ++leftIndex)
+        {
+            const std::size_t leftOrdinal = ordinals[leftIndex];
+            const std::span<const std::string> left = normalizedConstraintAtoms(leftOrdinal);
+            for (std::size_t rightIndex = leftIndex + 1U;
+                 rightIndex < ordinals.size(); ++rightIndex)
+            {
+                const std::size_t rightOrdinal = ordinals[rightIndex];
+                const std::span<const std::string> right = normalizedConstraintAtoms(rightOrdinal);
+                const bool leftDominates = language::specializationStrictlyDominates(left, right);
+                const bool rightDominates = language::specializationStrictlyDominates(right, left);
+                if (!leftDominates && !rightDominates)
+                {
+                    const bool equivalent = left.size() == right.size() &&
+                        std::ranges::equal(left, right);
+                    report(
+                        rightOrdinal,
+                        equivalent
+                            ? "generic implementation '" + templates[rightOrdinal].name +
+                                "' has constraints equivalent to an existing implementation; "
+                                "controlled specialization requires a strict constraint order"
+                            : "generic implementations of '" + templates[rightOrdinal].name +
+                                "' overlap with incomparable constraints; add a single strictly "
+                                "more-constrained specialize implementation or separate their "
+                                "parameter patterns");
+                    notePrevious(leftOrdinal);
+                    continue;
+                }
+
+                const std::size_t moreSpecific = leftDominates ? leftOrdinal : rightOrdinal;
+                const std::size_t lessSpecific = leftDominates ? rightOrdinal : leftOrdinal;
+                if (templates[moreSpecific].isControlledSpecialization)
+                    hasFallback.insert(moreSpecific);
+                else
+                {
+                    report(
+                        moreSpecific,
+                        "more-constrained generic implementation '" +
+                            templates[moreSpecific].name +
+                            "' must opt in with the specialize modifier");
+                    notePrevious(lessSpecific);
+                }
+            }
+        }
+
+        for (const std::size_t ordinal : ordinals)
+        {
+            if (templates[ordinal].isControlledSpecialization &&
+                !hasFallback.contains(ordinal))
+                report(
+                    ordinal,
+                    "controlled specialization '" + templates[ordinal].name +
+                        "' does not strictly dominate any fallback implementation");
+        }
     }
 }
 
@@ -509,10 +624,12 @@ bool ProjectGenericConstraintModel::build(
     invalidSpecializations_.clear();
     invalidTemplateOrdinals_.clear();
     normalizedConstraintIdentities_.assign(genericModel.templates().size(), {});
+    normalizedConstraintAtoms_.assign(genericModel.templates().size(), {});
     built_ = true;
 
     // PRIMERA PASADA: lo que esta mal escrito en la declaracion, se instancie o no.
     validateTemplateClauses(genericModel, nameLookup, memberModel, diagnostics);
+    validateControlledSpecializations(genericModel, diagnostics);
 
     // UNA PLANTILLA MAL DECLARADA INVALIDA A TODAS SUS ESPECIALIZACIONES, y eso se sabe AQUI, no
     // en la segunda pasada: no depende de ningun argumento. Se recolecta de `violations_` porque
@@ -866,5 +983,13 @@ std::string_view ProjectGenericConstraintModel::normalizedConstraintIdentity(
     return templateOrdinal < normalizedConstraintIdentities_.size()
         ? std::string_view(normalizedConstraintIdentities_[templateOrdinal])
         : std::string_view{};
+}
+
+std::span<const std::string> ProjectGenericConstraintModel::normalizedConstraintAtoms(
+    std::size_t templateOrdinal) const noexcept
+{
+    return templateOrdinal < normalizedConstraintAtoms_.size()
+        ? std::span<const std::string>(normalizedConstraintAtoms_[templateOrdinal])
+        : std::span<const std::string>{};
 }
 }

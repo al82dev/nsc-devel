@@ -1198,6 +1198,23 @@ bool ProjectMemberModel::collectTypeMembers(
             symbol.range = memberNode->range();
             symbol.syntax = memberNode;
             symbol.sourcePath = part.sourcePath;
+            if (genericModel_ != nullptr)
+            {
+                if (const GenericSpecializationRecord* specialization =
+                        genericModel_->specializationForSyntax(memberNode);
+                    specialization != nullptr &&
+                    specialization->templateOrdinal < genericModel_->templates().size())
+                {
+                    symbol.genericTemplateOrdinal = specialization->templateOrdinal;
+                    const GenericTemplateRecord& genericTemplate = genericModel_->templates()[
+                        specialization->templateOrdinal];
+                    symbol.isControlledSpecialization =
+                        genericTemplate.isControlledSpecialization;
+                    symbol.isControlledSpecializationFamily =
+                        genericTemplate.isControlledSpecializationFamily;
+                    symbol.genericTemplateKey = genericTemplate.canonicalKey;
+                }
+            }
             // NSMETA 1.13 may place the producer's real `inline`/`forceinline` body in the
             // synthetic API unit. Those methods are executable input owned by this consumer,
             // unlike the empty declarations beside them. The source modifier is an explicit,
@@ -2027,6 +2044,21 @@ bool ProjectMemberModel::collectTypeMembers(
                     }
                     if (symbol.kind == previous.kind && symbol.signatureKey == previous.signatureKey)
                     {
+                        const bool sameControlledFamily =
+                            symbol.kind == ClassMemberKind::Method &&
+                            genericModel_ != nullptr &&
+                            symbol.genericTemplateOrdinal.has_value() &&
+                            previous.genericTemplateOrdinal.has_value() &&
+                            *symbol.genericTemplateOrdinal < genericModel_->templates().size() &&
+                            *previous.genericTemplateOrdinal < genericModel_->templates().size() &&
+                            genericModel_->templates()[*symbol.genericTemplateOrdinal]
+                                    .specializationFamilyKey ==
+                                genericModel_->templates()[*previous.genericTemplateOrdinal]
+                                    .specializationFamilyKey;
+                        // F06 validates the complete declaration family after semantic constraint
+                        // normalization. Let its closed candidates coexist here so the ordinary
+                        // overload resolver can later apply that proven partial order.
+                        if (sameControlledFamily) continue;
                         const std::string category = symbol.kind == ClassMemberKind::Constructor
                             ? "constructor"
                             : symbol.kind == ClassMemberKind::Destructor

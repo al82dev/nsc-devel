@@ -4180,6 +4180,8 @@ ast::AstNode* Parser::parseClassMember(
     bool isForceInline = false;
     bool isNoInline = false;
     bool isNoHeap = false;
+    bool isControlledSpecialization = false;
+    SourceRange controlledSpecializationRange{};
     bool isBorrowedView = false;
     std::optional<std::uint64_t> nestedLayoutPack;
     std::optional<std::uint64_t> nestedLayoutAlign;
@@ -4220,12 +4222,41 @@ ast::AstNode* Parser::parseClassMember(
             }
         }
     };
+    const auto rejectControlledSpecialization = [&](std::string_view declarationKind)
+    {
+        if (!isControlledSpecialization) return;
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            controlledSpecializationRange,
+            "specialize applies only to an ordinary generic method, not " +
+                std::string(declarationKind));
+    };
     // `at(N)` may appear anywhere among the modifiers -- before them, after them, or between two
     // of them -- because no ordering of `public`, `static` and `at(4)` is more correct than
     // another and a parser that accepted only one of them would be an arbitrary rule to remember.
     while (true)
     {
         parseExplicitFieldOffset();
+        if (atContextualKeyword("specialize"))
+        {
+            const lexer::Token& modifier = consume();
+            requireEdition3(modifier.range(), "controlled generic specialization");
+            if (isControlledSpecialization)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate specialize modifier on class member");
+            }
+            else
+            {
+                isControlledSpecialization = true;
+                controlledSpecializationRange = modifier.range();
+            }
+            continue;
+        }
         const bool partialNestedModifier = atContextualKeyword("partial") &&
             (peek().kind() == TokenKind::KwClass || peek().kind() == TokenKind::KwPublic ||
              peek().kind() == TokenKind::KwInternal || peek().kind() == TokenKind::KwProtected ||
@@ -4523,6 +4554,7 @@ ast::AstNode* Parser::parseClassMember(
             //       "succeeded".
             if ((at(TokenKind::Identifier) && current().lexeme() == "from") || at(TokenKind::LeftBrace))
             {
+                rejectControlledSpecialization("an extern C import block");
                 if (isInline || isForceInline || isNoInline || isNoHeap)
                 {
                     diagnostics_.report(
@@ -4762,6 +4794,7 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::Tilde))
     {
+        rejectControlledSpecialization("a destructor");
         if (accessibility != TokenKind::Invalid || isNew || isStatic || isReadonly || isVolatile || isConst ||
             isInline || isForceInline || isNoInline || isNoHeap ||
             isVirtual || isOverride || isAbstract || isSealed || isExported || isExternC)
@@ -4778,6 +4811,7 @@ ast::AstNode* Parser::parseClassMember(
     if (at(TokenKind::Identifier) && current().lexeme() == className &&
         peek().kind() == TokenKind::LeftParen)
     {
+        rejectControlledSpecialization("a constructor");
         if (isStatic)
         {
             reportDeferredLanguage3(
@@ -4798,6 +4832,7 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::KwImplicit) || at(TokenKind::KwExplicit))
     {
+        rejectControlledSpecialization("a conversion operator");
         if (isExported || isExternC)
         {
             diagnostics_.report(
@@ -4822,6 +4857,7 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::KwEvent))
     {
+        rejectControlledSpecialization("an event");
         if (isExported || isExternC)
         {
             diagnostics_.report(
@@ -4852,6 +4888,7 @@ ast::AstNode* Parser::parseClassMember(
     const bool anonymousUnion = atContextualKeyword("union") && peek().kind() == TokenKind::LeftBrace;
     if (anonymousStruct || anonymousUnion)
     {
+        rejectControlledSpecialization("an anonymous aggregate field");
         const lexer::Token& aggregateKeyword = consume();
         const std::string synthesizedName =
             std::string(anonymousUnion ? "__nsc_anonymous_union_f" : "__nsc_anonymous_struct_f") +
@@ -4974,6 +5011,7 @@ ast::AstNode* Parser::parseClassMember(
     // literalmente lo unico que le pasaba a `class Outer { struct Item { } }`.
     if (atNestedTypeDeclaration())
     {
+        rejectControlledSpecialization("a nested type");
         if (isVolatile)
         {
             diagnostics_.report(
@@ -5021,6 +5059,7 @@ ast::AstNode* Parser::parseClassMember(
     if (!canStartTypeAt(index_) && !at(TokenKind::Identifier) &&
         !lexer::isOwnershipQualifierKeyword(current().kind()))
     {
+        rejectControlledSpecialization("an invalid member declaration");
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
             diagnostics::DiagnosticSeverity::Error,
@@ -5038,6 +5077,7 @@ ast::AstNode* Parser::parseClassMember(
     // Item 328 owns physical placement; this item only establishes lossless source syntax.
     if (at(TokenKind::Colon))
     {
+        rejectControlledSpecialization("an unnamed bit-field");
         const lexer::Token& colon = consume();
         ast::AstNode* width = parseExpression();
         if (width != nullptr && width->kind() == ast::AstNodeKind::AssignmentExpression)
@@ -5090,6 +5130,7 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::KwOperator))
     {
+        rejectControlledSpecialization("an operator");
         if (isReferenceReturn)
         {
             diagnostics_.report(
@@ -5120,6 +5161,7 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::KwThis))
     {
+        rejectControlledSpecialization("an indexer");
         if (isExported || isExternC)
         {
             diagnostics_.report(
@@ -5166,6 +5208,7 @@ ast::AstNode* Parser::parseClassMember(
 
     if (!at(TokenKind::Identifier))
     {
+        rejectControlledSpecialization("an invalid member declaration");
         expect(TokenKind::Identifier, "class member name");
         synchronizeStatement();
         return nullptr;
@@ -5195,6 +5238,26 @@ ast::AstNode* Parser::parseClassMember(
         ast::AstNode* method = parseMethodTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
             isExported, isExternC, isInline, isForceInline, isNoInline, isNoHeap, beginIndex);
+        if (method != nullptr && isControlledSpecialization)
+        {
+            method->setAuxiliaryText("controlled-specialization");
+            if (method->genericParameters().empty())
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    controlledSpecializationRange,
+                    "specialize requires an ordinary generic method");
+            }
+            if (isVirtual || isOverride || isAbstract || isSealed)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    controlledSpecializationRange,
+                    "controlled specialization is not valid on virtual, override, abstract, or sealed methods");
+            }
+        }
         if (isReadonly && structContext && !isStatic && method != nullptr)
             method->addModifier(TokenKind::KwReadonly);
         if (method != nullptr) method->setReference(isReferenceReturn);
@@ -5203,6 +5266,7 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::LeftBrace))
     {
+        rejectControlledSpecialization("a property");
         if (isReferenceReturn)
         {
             diagnostics_.report(
@@ -5267,6 +5331,7 @@ ast::AstNode* Parser::parseClassMember(
             name.range(),
             "export extern C is valid only on ordinary static methods in Stage 47");
     }
+    rejectControlledSpecialization("a field");
     if (isReferenceReturn)
     {
         diagnostics_.report(
