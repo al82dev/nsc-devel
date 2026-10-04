@@ -122,7 +122,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(Path(plan.deploy_prefix), Path(r"C:\native-sharp"))
         self.assertEqual(
             Path(plan.nslink_exe),
-            Path(r"A:\nslink-devel\build-debug\bin\nslink.exe"),
+            Path(r"A:\nslink-devel\bin\release\nslink.exe"),
         )
         self.assertFalse(plan.sync_libraries)
         self.assertEqual(plan.optimizations, ["-O0", "-O1", "-O2", "-O3"])
