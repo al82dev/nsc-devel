@@ -78,12 +78,14 @@ int main()
     tests.expect(text.find("is_nativesharp_exception") != std::string::npos,
         "SEH filter compares the incoming exception code against the NativeSharp private code");
 
-    tests.expect(text.find("__C_specific_handler") == std::string::npos,
-        "Stage 45.8 does not prematurely introduce the Windows EH personality");
-    tests.expect(text.find("catchswitch") == std::string::npos &&
-            text.find("catchpad") == std::string::npos &&
-            text.find("cleanuppad") == std::string::npos,
-        "Stage 45.8 remains a runtime-only checkpoint without LLVM EH funclets");
+    tests.expect(text.find("personality ptr @__C_specific_handler") != std::string::npos,
+        "native process startup uses the Windows x64 personality for its panic boundary");
+    tests.expect(text.find("panic.catchswitch") != std::string::npos &&
+            text.find("panic.catchpad") != std::string::npos &&
+            text.find("@__nativesharp_panic_eh_filter") != std::string::npos,
+        "native process startup contains the dedicated NativeSharp panic funclet");
+    tests.expect(text.find("cleanuppad") == std::string::npos,
+        "the startup panic boundary does not invent an unrelated cleanup funclet");
 
     std::string targetError;
     std::unique_ptr<LlvmTargetMachine> target = LlvmTargetMachine::createWindowsX64(targetError);
