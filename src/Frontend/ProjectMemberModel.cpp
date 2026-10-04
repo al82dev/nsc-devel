@@ -1784,9 +1784,14 @@ bool ProjectMemberModel::collectTypeMembers(
             symbol.isNoHeap = (symbol.kind == ClassMemberKind::Method ||
                                symbol.kind == ClassMemberKind::Constructor) &&
                 memberNode->hasModifier(lexer::TokenKind::KwNoHeap);
+            symbol.isUnsafe = (symbol.kind == ClassMemberKind::Method ||
+                               symbol.kind == ClassMemberKind::Constructor) &&
+                memberNode->isUnsafe();
             symbol.effects = {};
             if (symbol.isNoHeap)
                 symbol.effects = symbol.effects.with(sema::Effect::NoHeap);
+            if (symbol.isUnsafe)
+                symbol.effects = symbol.effects.with(sema::Effect::Unsafe);
             if (!symbol.declaredErrorTypeKey.empty())
                 symbol.effects = symbol.effects.with(sema::Effect::Throws);
             symbol.isStatic = (symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
@@ -1896,6 +1901,8 @@ bool ProjectMemberModel::collectTypeMembers(
                 memberNode->auxiliaryText().starts_with("cimport:"))
             {
                 symbol.isImportedC = true;
+                symbol.isUnsafe = true;
+                symbol.effects = symbol.effects.with(sema::Effect::Unsafe);
                 symbol.importDllName = memberNode->auxiliaryText().substr(std::string("cimport:").size());
                 symbol.cAbiName = symbol.name;
             }

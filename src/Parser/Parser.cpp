@@ -8,6 +8,7 @@
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Language/IterationSemantics.h"
 #include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
 #include "nativesharp/Source/SourceFile.h"
@@ -129,6 +130,7 @@ ast::AstNode* cloneParsedNode(ast::AstArena& arena, const ast::AstNode* source)
     result->setReference(source->isReference());
     result->setLifetimeName(source->lifetimeName());
     result->setVariadic(source->isVariadic());
+    result->setUnsafe(source->isUnsafe());
     result->setIntegerValue(source->integerValue());
     result->setFloatingValue(source->floatingValue());
     for (const TokenKind modifier : source->modifiers()) result->addModifier(modifier);
@@ -2683,6 +2685,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     bool isReadonlyType = false;
     bool isRecordStruct = false;
     bool isCopyType = false;
+    bool isUnsafeTraitContract = false;
     // C2.2 "union and explicit layout": `pack(N)` and `align(N)` are contextual-keyword layout
     // modifiers on a struct/union declaration -- the NativeSharp spellings of C's
     // `#pragma pack(N)` and `__declspec(align(N))`. They are contextual (an ordinary identifier
@@ -2708,6 +2711,22 @@ ast::AstNode* Parser::parseGlobalDeclaration()
 
     while (true)
     {
+        if (atContextualKeyword("unsafe") && peek().kind() == TokenKind::Identifier &&
+            (peek().lexeme() == "trait" || peek().lexeme() == "impl"))
+        {
+            const lexer::Token& modifier = consume();
+            requireEdition3(modifier.range(), "unsafe trait contracts");
+            if (isUnsafeTraitContract)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate unsafe modifier on trait contract");
+            }
+            isUnsafeTraitContract = true;
+            continue;
+        }
         if ((atContextualKeyword("pack") || atContextualKeyword("align")) &&
             peek().kind() == TokenKind::LeftParen)
         {
@@ -3361,6 +3380,8 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     }
     if (declaration != nullptr)
     {
+        if (isUnsafeTraitContract)
+            declaration->setUnsafe();
         if (isCopyType)
         {
             if (declaration->kind() != ast::AstNodeKind::StructDeclaration)
@@ -5053,7 +5074,7 @@ ast::AstNode* Parser::parseInterfaceMember(bool isTrait)
             returnType, name, accessibility,
             false, sawStatic, false, false, isTrait ? sawAbstract : true,
             false, false, false, false, false, false,
-            sawNoHeap, beginIndex, isTrait);
+            sawNoHeap, false, beginIndex, isTrait);
         if (method != nullptr)
         {
             method->setReference(isReferenceReturn);
@@ -5335,6 +5356,7 @@ ast::AstNode* Parser::parseClassMember(
     bool isForceInline = false;
     bool isNoInline = false;
     bool isNoHeap = false;
+    bool isUnsafe = false;
     bool isControlledSpecialization = false;
     SourceRange controlledSpecializationRange{};
     bool isBorrowedView = false;
@@ -5394,6 +5416,30 @@ ast::AstNode* Parser::parseClassMember(
     while (true)
     {
         parseExplicitFieldOffset();
+        if (atContextualKeyword("unsafe"))
+        {
+            std::size_t afterType = index_ + 1U;
+            const bool methodModifier = scanTypeAt(index_ + 1U, afterType) &&
+                afterType + 1U < tokens_.size() &&
+                tokens_[afterType].kind() == TokenKind::Identifier &&
+                (tokens_[afterType + 1U].kind() == TokenKind::LeftParen ||
+                 tokens_[afterType + 1U].kind() == TokenKind::Less);
+            if (methodModifier)
+            {
+                const lexer::Token& modifier = consume();
+                requireEdition3(modifier.range(), "unsafe function declarations");
+                if (isUnsafe)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        modifier.range(),
+                        "duplicate unsafe modifier on method");
+                }
+                isUnsafe = true;
+                continue;
+            }
+        }
         if (atContextualKeyword("specialize"))
         {
             const lexer::Token& modifier = consume();
@@ -6435,7 +6481,8 @@ ast::AstNode* Parser::parseClassMember(
         }
         ast::AstNode* method = parseMethodTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
-            isExported, isExternC, isInline, isForceInline, isNoInline, isNoHeap, beginIndex);
+            isExported, isExternC, isInline, isForceInline, isNoInline, isNoHeap, isUnsafe,
+            beginIndex);
         if (method != nullptr && isControlledSpecialization)
         {
             method->setAuxiliaryText("controlled-specialization");
@@ -7588,6 +7635,7 @@ ast::AstNode* Parser::parseMethodTail(
     bool isForceInline,
     bool isNoInline,
     bool isNoHeap,
+    bool isUnsafe,
     std::size_t beginIndex,
     bool allowBodyless)
 {
@@ -7649,6 +7697,7 @@ ast::AstNode* Parser::parseMethodTail(
     {
         method->addModifier(TokenKind::KwNoHeap);
     }
+    method->setUnsafe(isUnsafe);
 
     parseGenericParameterList(method);
     KnownGenericTypeScope genericTypeScope(knownTypeNames_, method);
@@ -8216,12 +8265,31 @@ ast::AstNode* Parser::parseBlock()
 ast::AstNode* Parser::parseStatement()
 {
     if (at(TokenKind::LeftBrace)) return parseBlock();
-    if (atContextualKeyword("unsafe") && peek().kind() == TokenKind::LeftBrace)
+    if (atContextualKeyword("unsafe") &&
+        (peek().kind() == TokenKind::LeftBrace || peek().kind() == TokenKind::LeftParen))
     {
         const SourceRange unsafeRange = consume().range();
         requireEdition3(unsafeRange, "unsafe blocks");
+        std::string reason;
+        if (consumeIf(TokenKind::LeftParen))
+        {
+            if (at(TokenKind::StringLiteral))
+                reason = std::string(consume().lexeme());
+            else
+                expect(TokenKind::StringLiteral, "unsafe block reason string");
+            expect(TokenKind::RightParen, "')' after unsafe block reason");
+        }
         ast::AstNode* block = parseBlock();
         block->setAuxiliaryText("unsafe-block");
+        block->setText(reason);
+        if (language::unsafeBlockTooBroad(block->children().size(), !reason.empty()))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::NS3030MissingEffectContext,
+                diagnostics::DiagnosticSeverity::Warning,
+                block->range(),
+                "unsafe block covers more than eight statements; narrow it or write unsafe(\"reason\") { ... }");
+        }
         return block;
     }
     if (atContextualKeyword("asm") && peek().kind() == TokenKind::LeftBrace)

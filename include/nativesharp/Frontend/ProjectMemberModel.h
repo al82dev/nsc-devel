@@ -167,6 +167,8 @@ struct ClassMemberSymbol final
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     // Item 321. The callable body may not contain an operation that allocates heap storage.
     bool isNoHeap = false;
+    // T13-F05: a direct call requires an explicit unsafe block at the call site.
+    bool isUnsafe = false;
     // NativeSharp 3.0 T00-F04. `isNoHeap` remains as an ABI-compatible projection while all
     // semantic consumers use this extensible set for noheap/throws/async and future effects.
     sema::EffectSet effects;

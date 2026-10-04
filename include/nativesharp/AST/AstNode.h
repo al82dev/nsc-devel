@@ -176,6 +176,12 @@ public:
     bool isVariadic() const noexcept;
     void setVariadic(bool value) noexcept;
 
+    // NativeSharp 3.0 T13-F05. On callable declarations this is the caller-side unsafe
+    // requirement. It is intentionally independent from flag()/isReference()/isVariadic(),
+    // which already carry unrelated ABI state.
+    bool isUnsafe() const noexcept;
+    void setUnsafe(bool value = true) noexcept;
+
     std::uint64_t integerValue() const noexcept;
     void setIntegerValue(std::uint64_t value) noexcept;
 
@@ -206,6 +212,7 @@ private:
     bool flag_ = false;
     bool reference_ = false;
     bool variadic_ = false;
+    bool unsafe_ = false;
     std::uint64_t integerValue_ = 0;
     double floatingValue_ = 0.0;
 };

@@ -98,6 +98,8 @@ bool AstNode::isReference() const noexcept { return reference_; }
 void AstNode::setReference(bool value) noexcept { reference_ = value; }
 bool AstNode::isVariadic() const noexcept { return variadic_; }
 void AstNode::setVariadic(bool value) noexcept { variadic_ = value; }
+bool AstNode::isUnsafe() const noexcept { return unsafe_; }
+void AstNode::setUnsafe(bool value) noexcept { unsafe_ = value; }
 std::uint64_t AstNode::integerValue() const noexcept { return integerValue_; }
 void AstNode::setIntegerValue(std::uint64_t value) noexcept { integerValue_ = value; }
 double AstNode::floatingValue() const noexcept { return floatingValue_; }

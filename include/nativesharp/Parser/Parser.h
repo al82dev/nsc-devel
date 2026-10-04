@@ -224,6 +224,7 @@ private:
         bool isForceInline,
         bool isNoInline,
         bool isNoHeap,
+          bool isUnsafe,
         std::size_t beginIndex,
         bool allowBodyless = false);
     ast::AstNode* parseEnumDeclaration();

@@ -4697,6 +4697,14 @@ void ProjectMethodBodyModel::analyzeStatement(
             break;
         }
         case ast::AstNodeKind::InlineAssemblyStatement:
+            if (unsafeBlockDepth_ == 0)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::NS3030MissingEffectContext,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->range(),
+                    "inline assembly requires an explicit unsafe { ... } block");
+            }
             for (ast::AstNode* child : statement->children())
             {
                 if (child->kind() == ast::AstNodeKind::InlineAssemblyInputOperand &&
@@ -7404,6 +7412,7 @@ void ProjectMethodBodyModel::analyzeReturn(
             type.errorType = callable.declaredErrorTypeKey;
             type.lifetime = callable.returnLifetimeName;
             type.variadic = callable.isVariadic;
+            type.isUnsafe = callable.isUnsafe;
             type.isNoHeap = callable.isNoHeap;
             return type;
         };
@@ -10634,6 +10643,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     expression->typeSyntax()->isPointeeConst();
                 result.pointerPointeeReadonly = targetPointeeReadonly;
                 result.onePastEndPointer = operand.onePastEndPointer;
+                const bool sourceRawPointer = ProjectTypeConversion::isPointer(operand.typeKey);
+                const bool targetRawPointer = ProjectTypeConversion::isPointer(result.typeKey);
+                const bool sourceInteger = ProjectTypeConversion::isIntegral(operand.typeKey) &&
+                    operand.typeKey != "builtin:bool";
+                const bool targetInteger = ProjectTypeConversion::isIntegral(result.typeKey) &&
+                    result.typeKey != "builtin:bool";
+                if (result.valid && unsafeBlockDepth_ == 0 &&
+                    ((sourceRawPointer && targetInteger) ||
+                     (sourceInteger && targetRawPointer)))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3030MissingEffectContext,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "integer/pointer casts require an explicit unsafe { ... } block because provenance is not preserved");
+                    result.valid = false;
+                    break;
+                }
                 const std::string_view namedCast = expression->auxiliaryText().starts_with("cast:")
                     ? std::string_view(expression->auxiliaryText()).substr(5U)
                     : std::string_view{};
@@ -15751,6 +15778,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 }
             }
         }
+        if (selectedMember.isUnsafe && unsafeBlockDepth_ == 0)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::NS3030MissingEffectContext,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "call to unsafe function '" + selectedMember.name +
+                    "' requires an explicit unsafe { ... } block");
+            call.resolution = MethodCallResolutionKind::NoViableCandidate;
+            calls_.push_back(std::move(call));
+            return result;
+        }
         const std::string_view variantMarker = selectedMember.syntax != nullptr
             ? std::string_view(selectedMember.syntax->auxiliaryText()) : std::string_view{};
         const auto markerCase = [](std::string_view marker) -> std::optional<std::size_t>
@@ -17862,6 +17901,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+        if (diagnoseFailure && selectedMember.isUnsafe && unsafeBlockDepth_ == 0)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::NS3030MissingEffectContext,
+                diagnostics::DiagnosticSeverity::Error,
+                syntax != nullptr ? syntax->range() : SourceRange{},
+                "call to unsafe function '" + selectedMember.name +
+                    "' requires an explicit unsafe { ... } block");
+            call.resolution = MethodCallResolutionKind::NoViableCandidate;
+            calls_.push_back(std::move(call));
+            return result;
+        }
         if (readonlyReceiver && selectedMember.declaringTypeIsStruct &&
             !selectedMember.isStatic && !selectedMember.isReadonly)
         {
@@ -18227,6 +18278,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
                 "a one-past-end pointer is a comparison/iteration sentinel and cannot be dereferenced");
+            return result;
+        }
+        if (unsafeBlockDepth_ == 0)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::NS3030MissingEffectContext,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "raw pointer dereference requires an explicit unsafe { ... } block");
             return result;
         }
         result.typeKey = operand.typeKey.substr(0, operand.typeKey.size() - 1);
@@ -21484,6 +21544,8 @@ bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
     if (!delegateSignature(delegateTypeKey, returnType, parameterTypes, delegateOrdinal))
         return false;
     const std::string expectedErrorType = delegateErrorTypeKey(delegateTypeKey);
+    const std::optional<language::FunctionType> structuralTarget =
+        language::parseFunctionTypeIdentity(delegateTypeKey);
     std::size_t matches = 0;
     for (const std::size_t candidateOrdinal : methodGroup.methodCandidates)
     {
@@ -21491,7 +21553,9 @@ bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
         if (candidate == nullptr || candidate->kind != ClassMemberKind::Method ||
             candidate->parameters.size() != parameterTypes.size() ||
             candidate->declaredTypeKey != returnType ||
-            candidate->declaredErrorTypeKey != expectedErrorType)
+            candidate->declaredErrorTypeKey != expectedErrorType ||
+            (candidate->isUnsafe &&
+             (!structuralTarget.has_value() || !structuralTarget->isUnsafe)))
             continue;
         bool exact = true;
         for (std::size_t index = 0; index < parameterTypes.size(); ++index)
