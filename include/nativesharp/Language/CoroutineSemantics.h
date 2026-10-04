@@ -54,15 +54,43 @@ std::optional<AsyncFunctionPlan> buildAsyncFunctionPlan(
     std::string& error) noexcept;
 
 enum class PollState { Created, Pending, Ready, Cancelled, Consumed };
+enum class FutureCompletion { None, Value, Error };
+enum class PollOutcome { Pending, ReadyValue, ReadyError };
+
+struct FutureProtocol final
+{
+    std::string valueType;
+    std::string errorType;
+    std::string cancellationType;
+    bool hasPoll = true;
+    bool hasResume = true;
+    bool singleConsumer = true;
+    bool staticDispatch = true;
+};
+
+bool validateFutureProtocol(const FutureProtocol& protocol, std::string& error) noexcept;
+
+struct AwaitContext final
+{
+    bool insideAsyncFunction = false;
+    bool insideComptime = false;
+    bool insideNoSuspendCleanup = false;
+};
+
+bool awaitAllowed(const AwaitContext& context, std::string& error) noexcept;
+
 class FutureState final
 {
 public:
     PollState state() const noexcept { return state_; }
+    FutureCompletion completion() const noexcept { return completion_; }
+    bool poll(PollOutcome outcome, std::string& error);
     bool poll(bool ready, std::string& error);
     bool consume(std::string& error);
     bool cancel(std::string& error);
 private:
     PollState state_ = PollState::Created;
+    FutureCompletion completion_ = FutureCompletion::None;
 };
 
 std::vector<std::string> cancellationCleanup(

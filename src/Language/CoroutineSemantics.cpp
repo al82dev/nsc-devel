@@ -134,13 +134,75 @@ std::optional<AsyncFunctionPlan> buildAsyncFunctionPlan(
     return result;
 }
 
-bool FutureState::poll(bool ready, std::string& error)
+bool validateFutureProtocol(const FutureProtocol& protocol, std::string& error) noexcept
+{
+    error.clear();
+    if (protocol.valueType.empty())
+    {
+        error = "Future value type is unresolved";
+        return false;
+    }
+    if (protocol.errorType.empty() || protocol.cancellationType.empty())
+    {
+        error = "Future error and cancellation types must be explicit";
+        return false;
+    }
+    if (!protocol.hasPoll || !protocol.hasResume || !protocol.singleConsumer ||
+        !protocol.staticDispatch)
+    {
+        error = "Future requires static Poll/Resume and a single-consumer contract";
+        return false;
+    }
+    return true;
+}
+
+bool awaitAllowed(const AwaitContext& context, std::string& error) noexcept
+{
+    error.clear();
+    if (!context.insideAsyncFunction)
+    {
+        error = "await is only valid inside an async function";
+        return false;
+    }
+    if (context.insideComptime)
+    {
+        error = "await is not valid during deterministic comptime execution";
+        return false;
+    }
+    if (context.insideNoSuspendCleanup)
+    {
+        error = "await cannot suspend inside a no-suspend cleanup region";
+        return false;
+    }
+    return true;
+}
+
+bool FutureState::poll(PollOutcome outcome, std::string& error)
 {
     error.clear();
     if (state_ == PollState::Ready || state_ == PollState::Cancelled || state_ == PollState::Consumed)
     { error = "future cannot be resumed after completion, cancellation, or consumption"; return false; }
-    state_ = ready ? PollState::Ready : PollState::Pending;
+    switch (outcome)
+    {
+        case PollOutcome::Pending:
+            state_ = PollState::Pending;
+            completion_ = FutureCompletion::None;
+            break;
+        case PollOutcome::ReadyValue:
+            state_ = PollState::Ready;
+            completion_ = FutureCompletion::Value;
+            break;
+        case PollOutcome::ReadyError:
+            state_ = PollState::Ready;
+            completion_ = FutureCompletion::Error;
+            break;
+    }
     return true;
+}
+
+bool FutureState::poll(bool ready, std::string& error)
+{
+    return poll(ready ? PollOutcome::ReadyValue : PollOutcome::Pending, error);
 }
 
 bool FutureState::consume(std::string& error)
@@ -157,6 +219,7 @@ bool FutureState::cancel(std::string& error)
     if (state_ == PollState::Ready || state_ == PollState::Consumed || state_ == PollState::Cancelled)
     { error = "completed future cannot be cancelled"; return false; }
     state_ = PollState::Cancelled;
+    completion_ = FutureCompletion::None;
     return true;
 }
 
