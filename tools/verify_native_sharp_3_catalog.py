@@ -55,6 +55,16 @@ COMPONENT_TOTALS = {
 
 TERMINAL_STATES = {"TERMINADA", "CERTIFICADA", "DIFERIDA", "NO APLICA"}
 
+LIMITATION_RESOLVED_IDS = {
+    *(f"NS3-LIM-CV-{item:03d}" for item in range(1, 14)),
+    "NS3-LIM-LINK-001",
+    *(f"NS3-LIM-DBG-{item:03d}" for item in range(1, 9)),
+    "NS3-LIM-PKG-001",
+    "NS3-LIM-IO-001",
+}
+
+LIMITATION_OPEN_IDS = {"NS3-LIM-PKG-002", "NS3-LIM-OWN-001"}
+
 
 class VerificationError(RuntimeError):
     pass
@@ -143,6 +153,89 @@ def verify_roadmap(roadmap: Path) -> None:
         raise VerificationError("; ".join(errors))
 
 
+def verify_master_backlogs(master: Path) -> None:
+    text = master.read_text(encoding="utf-8-sig")
+    expected = expected_ids_by_component()
+    observed = {
+        "NSC-Rendimiento": set(
+            "NS3-" + item for item in re.findall(r"^### (P\d{2}) —", text, re.MULTILINE)
+        ),
+        "Runtime/STL": {
+            "NS3-R" + item
+            for item in re.findall(
+                r"^\| E(\d{3})(?: / NS3-R\d{3})? \| [^|\n]+ \|$", text, re.MULTILINE
+            )
+        },
+        "Integración": set(
+            re.findall(r"^\| (NS3-I(?:\d{2}|035)) \| [^|\n]+ \| [^|\n]+ \|$", text, re.MULTILINE)
+        ),
+        "Producto transversal": set(
+            re.findall(r"^\| (NS3-X\d{2}) \| [^|\n]+ \|$", text, re.MULTILINE)
+        ),
+        "Limitaciones importadas": set(
+            re.findall(
+                r"^\| (NS3-LIM-[A-Z]+-\d{3}) \| [^|\n]+ \| [^|\n]+ \| \d+ \|$",
+                text,
+                re.MULTILINE,
+            )
+        ),
+    }
+    errors = []
+    for component, actual in observed.items():
+        wanted = expected[component]
+        if actual != wanted:
+            errors.append(
+                f"{component} master backlog mismatch: missing={sorted(wanted - actual)}, "
+                f"unexpected={sorted(actual - wanted)}"
+            )
+    if errors:
+        raise VerificationError("; ".join(errors))
+
+
+def verify_limitation_ledger(ledger: Path) -> None:
+    text = ledger.read_text(encoding="utf-8-sig")
+    rows: dict[int, list[str]] = {}
+    duplicates: list[int] = []
+    malformed: list[str] = []
+    for line in text.splitlines():
+        cells = catalog.split_markdown_row(line)
+        if not cells or not re.fullmatch(r"\d+", catalog.plain_cell(cells[0])):
+            continue
+        number = int(catalog.plain_cell(cells[0]))
+        if not 1 <= number <= 156:
+            continue
+        if number in rows:
+            duplicates.append(number)
+        rows[number] = cells
+        if len(cells) != 5 or any(not catalog.plain_cell(cell) for cell in cells[1:]):
+            malformed.append(line)
+
+    expected = set(range(1, 157))
+    errors: list[str] = []
+    if set(rows) != expected:
+        errors.append(
+            f"limitation ledger sections differ: missing={sorted(expected - set(rows))}, "
+            f"unexpected={sorted(set(rows) - expected)}"
+        )
+    if duplicates:
+        errors.append(f"duplicate limitation ledger sections: {sorted(set(duplicates))}")
+    if malformed:
+        errors.append(f"malformed limitation ledger rows: {len(malformed)}")
+    for heading in ("### Brotli", "### Bzip2", "### Libpng", "### Zlib"):
+        if heading not in text:
+            errors.append(f"limitation ledger missing port family: {heading[4:]}")
+    for source in (
+        "limitaciones-compilador-v1.md",
+        "limitaciones-compilador-v2.md",
+        "limitaciones-conversion-v3.md",
+        "limitaciones-conversion-v4.md",
+    ):
+        if source not in text:
+            errors.append(f"limitation ledger missing source acknowledgement: {source}")
+    if errors:
+        raise VerificationError("; ".join(errors))
+
+
 def _git_commit_exists(repo_root: Path, commit: str) -> bool:
     result = subprocess.run(
         ["git", "cat-file", "-e", commit + "^{commit}"],
@@ -181,8 +274,8 @@ def verify_catalogue(master: Path, repo_root: Path) -> list[catalog.CatalogItem]
             )
         if item.state not in catalog.ALLOWED_STATES:
             errors.append(f"{item.item_id}: invalid state {item.state!r}")
-        if not item.title or not item.contract:
-            errors.append(f"{item.item_id}: empty title or closure contract")
+        if not item.title or not item.contract or not item.evidence:
+            errors.append(f"{item.item_id}: empty title, closure contract or evidence/source")
         if item.state in TERMINAL_STATES and not item.evidence:
             errors.append(f"{item.item_id}: terminal state without evidence/decision")
         if item.component == "NSC" and item.state in {"TERMINADA", "CERTIFICADA"}:
@@ -194,6 +287,13 @@ def verify_catalogue(master: Path, repo_root: Path) -> list[catalog.CatalogItem]
                 errors.append(f"{item.item_id}: completed NSC item has no commit hash")
             elif not _git_commit_exists(repo_root, commit_match.group(0)):
                 errors.append(f"{item.item_id}: evidence commit does not exist")
+    by_id = {item.item_id: item for item in items}
+    for item_id in LIMITATION_RESOLVED_IDS:
+        if by_id[item_id].state not in {"TERMINADA", "CERTIFICADA"}:
+            errors.append(f"{item_id}: ledger records a directed closure but catalogue is {by_id[item_id].state}")
+    for item_id in LIMITATION_OPEN_IDS:
+        if by_id[item_id].state in TERMINAL_STATES:
+            errors.append(f"{item_id}: ledger still leaves this route open but catalogue is terminal")
     if errors:
         raise VerificationError("; ".join(errors))
     return items
@@ -235,11 +335,24 @@ def main(argv: list[str] | None = None) -> int:
         default=[
             Path("A:/NATIVESHARP-3.0-LEDGER-LIMITACIONES.md"),
             Path("A:/NATIVESHARP-3.0-PENDIENTES-POR-COMPONENTE.md"),
+            Path("A:/native-sharp-3.0-4.0.md"),
+            Path("A:/vsBeef.md"),
+            Path("A:/NATIVESHARP-3.0-TRACKING - Copy.md"),
+            Path("A:/nsc-function-namespace.md"),
+            Path("A:/nsc-historia/NativeSharp-3.0-Unified-Language-Compiler-Runtime-Roadmap.md"),
+            repo_root / "mkdown" / "NativeSharp-Language-3.0-Roadmap.md",
         ],
+    )
+    parser.add_argument(
+        "--limitation-ledger",
+        type=Path,
+        default=Path("A:/NATIVESHARP-3.0-LEDGER-LIMITACIONES.md"),
     )
     args = parser.parse_args(argv)
     try:
         verify_roadmap(args.roadmap)
+        verify_master_backlogs(args.master)
+        verify_limitation_ledger(args.limitation_ledger)
         items = verify_catalogue(args.master, repo_root)
         verify_tracking(args.tracking, items)
         verify_secondary_authority_notice(args.secondary)

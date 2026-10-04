@@ -37,6 +37,36 @@ def fixture_roadmap() -> str:
     ) + "\n"
 
 
+def fixture_master_backlogs() -> str:
+    expected = verifier.expected_ids_by_component()
+    lines = [f"### P{item:02d} — fixture" for item in range(12)]
+    lines.extend(f"| E{item:03d} | fixture |" for item in range(1, 55))
+    lines.extend(f"| {item_id} | dependencies | closure |" for item_id in sorted(expected["Integración"]))
+    lines.extend(f"| NS3-X{item:02d} | fixture |" for item in range(1, 11))
+    lines.extend(
+        f"| {item_id} | origin | contract | 29 |"
+        for item_id in sorted(expected["Limitaciones importadas"])
+    )
+    return "\n".join(lines) + "\n"
+
+
+def fixture_limitation_ledger() -> str:
+    lines = [
+        "limitaciones-compilador-v1.md",
+        "limitaciones-compilador-v2.md",
+        "limitaciones-conversion-v3.md",
+        "limitaciones-conversion-v4.md",
+        "### Brotli",
+        "### Bzip2",
+        "### Libpng",
+        "### Zlib",
+        "| § | Tema | Estado | Dueño | Destino |",
+        "|---:|---|---|---|---|",
+    ]
+    lines.extend(f"| {item} | topic | `RESUELTO` | owner | destination |" for item in range(1, 157))
+    return "\n".join(lines) + "\n"
+
+
 class NativeSharp3CatalogueTests(unittest.TestCase):
     def test_catalogue_round_trip_and_tracking_are_exact(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -96,6 +126,32 @@ class NativeSharp3CatalogueTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(verifier.VerificationError, "NS3-LSP-10"):
                 verifier.verify_roadmap(roadmap)
+
+    def test_master_backlogs_cover_every_canonical_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            master = Path(temporary) / "master.md"
+            master.write_text(fixture_master_backlogs(), encoding="utf-8")
+            verifier.verify_master_backlogs(master)
+            master.write_text(
+                fixture_master_backlogs().replace("### P11 — fixture\n", ""),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(verifier.VerificationError, "NS3-P11"):
+                verifier.verify_master_backlogs(master)
+
+    def test_limitation_ledger_requires_all_156_sections(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            ledger = Path(temporary) / "ledger.md"
+            ledger.write_text(fixture_limitation_ledger(), encoding="utf-8")
+            verifier.verify_limitation_ledger(ledger)
+            ledger.write_text(
+                fixture_limitation_ledger().replace(
+                    "| 156 | topic | `RESUELTO` | owner | destination |\n", ""
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(verifier.VerificationError, "156"):
+                verifier.verify_limitation_ledger(ledger)
 
 
 if __name__ == "__main__":

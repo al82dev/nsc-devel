@@ -281,7 +281,7 @@ def _roadmap_items(repo_root: Path) -> list[CatalogItem]:
                     plain_cell(match.group(2)),
                     plain_cell(contract),
                     "PENDIENTE",
-                    "",
+                    "`mkdown/NativeSharp-Language-3.0-Roadmap.md`",
                 )
             )
     return items
