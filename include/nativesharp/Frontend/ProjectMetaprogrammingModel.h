@@ -52,6 +52,15 @@ struct StaticAttributeInfo final
     std::optional<std::size_t> memberOrdinal;
 };
 
+struct StaticDeriveInfo final
+{
+    std::size_t typeOrdinal = 0;
+    std::string traitName;
+    std::string dependencyKey;
+    std::vector<std::string> participatingFields;
+    std::vector<std::string> generatedMembers;
+};
+
 // Compile-time-only typed catalogue. It owns copied scalar/string values and never publishes a
 // runtime descriptor, registry, vtable, or linker-visible symbol.
 class ProjectMetaprogrammingModel final
@@ -72,6 +81,7 @@ public:
     std::span<const StaticTypeInfo> types() const noexcept;
     std::span<const StaticAttributeInfo> attributes() const noexcept;
     std::span<const StaticAttributeInfo> runtimeAttributes() const noexcept;
+    std::span<const StaticDeriveInfo> derives() const noexcept;
     const std::string& error() const noexcept;
     bool emitsRuntimeMetadata() const noexcept;
     bool isBuilt() const noexcept;
@@ -80,6 +90,7 @@ private:
     std::vector<StaticTypeInfo> types_;
     std::vector<StaticAttributeInfo> attributes_;
     std::vector<StaticAttributeInfo> runtimeAttributes_;
+    std::vector<StaticDeriveInfo> derives_;
     mutable std::vector<StaticMemberInfo> visibleScratch_;
     bool built_ = false;
     std::string error_;

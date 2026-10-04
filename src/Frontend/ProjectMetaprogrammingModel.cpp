@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
+#include "nativesharp/Language/MetaprogrammingSemantics.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -30,6 +31,7 @@ bool ProjectMetaprogrammingModel::build(
     types_.clear();
     attributes_.clear();
     runtimeAttributes_.clear();
+    derives_.clear();
     visibleScratch_.clear();
     error_.clear();
     built_ = false;
@@ -174,6 +176,50 @@ bool ProjectMetaprogrammingModel::build(
                 runtimeAttributes_.push_back(std::move(attribute));
         }
     }
+
+    const auto ignoredField = [&](std::size_t memberOrdinal)
+    {
+        return std::ranges::any_of(attributes_, [&](const StaticAttributeInfo& attribute)
+        {
+            return attribute.memberOrdinal == memberOrdinal &&
+                (attribute.identity == "NativeSharp.DeriveIgnore" ||
+                 attribute.identity.ends_with(".DeriveIgnore"));
+        });
+    };
+    for (const StaticTypeInfo& type : types_)
+    {
+        const NamedTypeDeclaration& declaration = names.namedTypes()[type.typeOrdinal];
+        if (declaration.syntax == nullptr) continue;
+        const std::string_view metadata = declaration.syntax->auxiliaryText();
+        const std::size_t marker = metadata.find("derive=");
+        if (marker == std::string_view::npos) continue;
+        const std::size_t begin = marker + 7;
+        const std::size_t end = metadata.find(',', begin);
+        const std::string_view list = metadata.substr(begin, end - begin);
+        std::vector<std::string> fields;
+        for (const StaticMemberInfo& member : type.members)
+        {
+            if (member.kind != StaticMemberKind::Field || member.isStatic ||
+                ignoredField(member.memberOrdinal)) continue;
+            fields.push_back(member.name + ":" + member.typeKey);
+        }
+        std::size_t itemBegin = 0;
+        while (itemBegin <= list.size())
+        {
+            const std::size_t separator = list.find('|', itemBegin);
+            const std::string trait(list.substr(itemBegin, separator - itemBegin));
+            std::vector<std::string> generated;
+            if (trait == "Equality") generated = {"Equals", "operator==", "operator!="};
+            else if (trait == "Hash") generated = {"GetHashCode"};
+            else if (trait == "Print") generated = {"ToString"};
+            else if (trait == "Clone") generated = {"Clone"};
+            derives_.push_back({type.typeOrdinal, trait,
+                language::deriveDependencyKey(type.identity + "::" + trait, fields),
+                fields, std::move(generated)});
+            if (separator == std::string_view::npos) break;
+            itemBegin = separator + 1;
+        }
+    }
     built_ = true;
     return true;
 }
@@ -207,6 +253,10 @@ std::span<const StaticAttributeInfo> ProjectMetaprogrammingModel::attributes() c
 std::span<const StaticAttributeInfo> ProjectMetaprogrammingModel::runtimeAttributes() const noexcept
 {
     return runtimeAttributes_;
+}
+std::span<const StaticDeriveInfo> ProjectMetaprogrammingModel::derives() const noexcept
+{
+    return derives_;
 }
 const std::string& ProjectMetaprogrammingModel::error() const noexcept { return error_; }
 bool ProjectMetaprogrammingModel::emitsRuntimeMetadata() const noexcept { return false; }
