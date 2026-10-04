@@ -308,6 +308,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/CompilationStage.cpp
     src/Frontend/StageBoundaryVerifier.cpp
     src/Frontend/ComptimeEngine.cpp
+    src/Frontend/MacroExpansionEngine.cpp
     src/Frontend/ProjectSyntaxUnit.cpp
     src/Frontend/NamespaceSymbol.cpp
     src/Frontend/QualifiedNameLadder.cpp
@@ -1885,6 +1886,17 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_ns3_t11_f02_user_attributes_tests)
     add_test(NAME nsc.ns3.t11.f02.user-attributes
         COMMAND nsc_ns3_t11_f02_user_attributes_tests)
+
+    add_executable(
+        nsc_ns3_t11_f04_hygienic_macros_tests
+        tests/unit/NativeSharp3T11HygienicMacrosTests.cpp)
+    target_link_libraries(nsc_ns3_t11_f04_hygienic_macros_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_ns3_t11_f04_hygienic_macros_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_ns3_t11_f04_hygienic_macros_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t11_f04_hygienic_macros_tests)
+    add_test(NAME nsc.ns3.t11.f04.hygienic-macros
+        COMMAND nsc_ns3_t11_f04_hygienic_macros_tests)
 
     add_executable(
         nsc_ns3_t11_comptime_integration_tests

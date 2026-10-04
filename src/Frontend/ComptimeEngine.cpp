@@ -493,7 +493,15 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         result.error = "comptime source byte limit exceeded";
         return result;
     }
-    result.source.assign(source);
+    MacroExpansionResult macros = MacroExpansionEngine().expand(source);
+    if (!macros.success)
+    {
+        result.error = macros.error;
+        return result;
+    }
+    result.source = std::move(macros.source);
+    result.macroExpansions = std::move(macros.expansions);
+    source = result.source;
     enum class Scan { Code, LineComment, BlockComment, String, Character } state = Scan::Code;
     bool escaped = false;
     for (std::size_t cursor = 0; cursor < source.size(); ++cursor)

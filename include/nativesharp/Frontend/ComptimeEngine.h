@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/MacroExpansionEngine.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -77,6 +79,7 @@ struct ComptimeResult final
     std::vector<ComptimeEvaluation> evaluations;
     std::vector<ComptimeDependency> dependencies;
     std::vector<ComptimeAttributeDirective> attributes;
+    std::vector<MacroExpansionRecord> macroExpansions;
     std::size_t executedSteps = 0;
     std::size_t cacheHits = 0;
     std::size_t cacheMisses = 0;
@@ -96,6 +99,7 @@ struct ProjectComptimeRecord final
     std::string reproducibilityDigest;
     std::vector<ComptimeDependency> dependencies;
     std::vector<ComptimeAttributeDirective> attributes;
+    std::vector<MacroExpansionRecord> macroExpansions;
 };
 
 // Executes the deliberately small NativeSharp 2.0 comptime core. `comptime` is a contextual

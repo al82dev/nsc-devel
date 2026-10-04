@@ -1046,7 +1046,8 @@ bool ProjectCompilation::compileSyntaxCore(
                 read.comptime->cacheMisses,
                 read.comptime->reproducibilityDigest,
             read.comptime->dependencies,
-            read.comptime->attributes});
+            read.comptime->attributes,
+            read.comptime->macroExpansions});
             const FileId fileId = sourceManager_.addBuffer(
                 read.path, std::move(read.comptime->source));
             units_.push_back(std::make_unique<ProjectSyntaxUnit>(
