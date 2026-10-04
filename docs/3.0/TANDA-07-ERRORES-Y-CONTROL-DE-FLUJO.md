@@ -34,7 +34,7 @@ tipo interno `builtin:never`, nodo HIR/MIR explícito y perfil abort Win64 estab
 existente convive con esa vertical en c65. `Result/?` ya tiene una vertical productiva completa en
 NS3-T07-F01. `throws E` ya es productivo mediante NS3-T07-F02: chequeo handle-or-propagate,
 subtipado, delegates, HIR/MIR 1.24 y NSMETA 1.37. NS3-T07-F03 añade catches ordenados por tipo,
-filtros `when`, cobertura de errores declarados, rethrow y finally/cleanup hasta MIR 1.25 y LLVM
+filtros `when`, cobertura de errores declarados, rethrow y finally/cleanup hasta MIR 1.26 y LLVM
 Win64. NS3-T07-F04 convierte `builtin:never` en el bottom type productivo, excluye caminos
 divergentes de PHIs/stores y prueba loops infinitos sin fabricar layout. Loop expressions,
 constructores throwing, error sets y panic unwind/handler permanecen abiertos.
@@ -43,7 +43,7 @@ Operational batch 15 connected the first physical vertical: edition-3 contextual
 internal `builtin:never` type, explicit HIR/MIR nodes, and a stable Win64 abort profile. Existing
 typed catch coexists with that vertical in c65. `Result/?` is productive through NS3-T07-F01 and
 typed `throws` through NS3-T07-F02. NS3-T07-F03 adds source-ordered typed catches, `when` filters,
-declared-error coverage, rethrow, and finally/cleanup through MIR 1.25 and Win64 LLVM. F04 makes
+declared-error coverage, rethrow, and finally/cleanup through MIR 1.26 and Win64 LLVM. F04 makes
 `builtin:never` the productive bottom type, excludes divergent paths from PHIs/stores, and proves
 literal infinite loops without inventing a layout. Loop expressions, throwing constructors, error
 sets, and unwind/handler panic profiles remain open.

@@ -240,7 +240,7 @@ public class Program
         : std::string();
     tests.expect(
         mirBuilt && compilationError.empty() &&
-            mir.find("schema=1.25") != std::string::npos &&
+            mir.find("schema=1.26") != std::string::npos &&
             mir.find("result-propagation") != std::string::npos &&
             mir.find("conversion=__nsc_method_") != std::string::npos &&
             mir.find("continuation=return") != std::string::npos,
@@ -386,12 +386,12 @@ namespace TypedThrows
     const CompilationEvidence typed = compileMir(typedProject);
     tests.expect(
         typed.succeeded && typed.error.empty() &&
-            typed.mir.find("schema=1.25") != std::string::npos &&
+            typed.mir.find("schema=1.26") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.Error") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.ParseError") != std::string::npos &&
             typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=true exhaustive=false") != std::string::npos &&
             typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=false exhaustive=true") != std::string::npos,
-        "throws E and source-ordered filtered catches reach MIR 1.25 with exact error identity (" +
+        "throws E and source-ordered filtered catches reach MIR 1.26 with exact error identity (" +
             typed.error + typed.diagnostics + typed.mir + ")");
     executionDiagnostic.clear();
     tests.expect(

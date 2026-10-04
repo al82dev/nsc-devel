@@ -717,7 +717,7 @@ evidencia del commit: `docs/3.0/items/NS3-T06-F01-move-only-defaults.md`.
 - **Pruebas dirigidas:** exhaustividad, rethrow, return en finally restringido, destructor order, nested try y codegen sin heap.
 - **Markdown ES/EN:** flujo, precedence y perfiles de implementación.
 - **Estado:** `TERMINADA`; typed/wildcard patterns y `when (bool)` se seleccionan en orden fuente,
-  el análisis distingue coincidencia posible de cobertura garantizada y MIR 1.25 publica filtro,
+  el análisis distingue coincidencia posible de cobertura garantizada y MIR 1.26 publica filtro,
   matches y exhaustividad acumulada.
 - **Evidencia:** objetivo exacto `nsc_ns3_t07_error_tests`, `PASS: 28 checks`; ejecución O0/NSLink
   exit 42 y LLVM del nested catch sin allocator ni CLR.

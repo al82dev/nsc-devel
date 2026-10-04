@@ -153,7 +153,15 @@ enum class AstNodeKind
     // carrier expression. The semantic binding freezes both variant contracts, the optional
     // explicit error adapter, and the cleanup path used by the conditional early return.
     // Appended so every serialized 2.x/earlier-3.0 node identity remains stable.
-    ResultPropagationExpression
+    ResultPropagationExpression,
+
+    // NativeSharp 3.0 T03-F03. MatchExpression evaluates first() exactly once and owns ordered
+    // MatchArmExpression children. An arm stores its structural condition in first(), optional
+    // guard in second(), result in third(), and generated binding declarations in children().
+    // MatchValueExpression is the compiler-owned reference to the single governing value.
+    MatchExpression,
+    MatchArmExpression,
+    MatchValueExpression
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

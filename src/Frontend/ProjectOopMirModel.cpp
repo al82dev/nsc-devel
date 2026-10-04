@@ -915,6 +915,9 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::ObjectDestroy: return "object-destroy";
         case ProjectOopMirNodeKind::Panic: return "panic";
         case ProjectOopMirNodeKind::ResultPropagation: return "result-propagation";
+        case ProjectOopMirNodeKind::MatchExpression: return "match-expression";
+        case ProjectOopMirNodeKind::MatchArm: return "match-arm";
+        case ProjectOopMirNodeKind::MatchValue: return "match-value";
     }
     return "unknown";
 }
@@ -1916,6 +1919,31 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::While: result->kind = ProjectOopMirNodeKind::While; break;
         case ProjectOopHirNodeKind::DoWhile: result->kind = ProjectOopMirNodeKind::DoWhile; break;
         case ProjectOopHirNodeKind::Conditional: result->kind = ProjectOopMirNodeKind::Conditional; break;
+        case ProjectOopHirNodeKind::MatchExpression:
+            result->kind = ProjectOopMirNodeKind::MatchExpression;
+            if (node->booleanValue)
+            {
+                if (!node->secondaryMemberOrdinal.has_value())
+                {
+                    error = "T03-F03 switch match lost its variant tag member";
+                    return nullptr;
+                }
+                const ObjectFieldLayout* tagLayout = fieldLayout(*node->secondaryMemberOrdinal);
+                if (tagLayout == nullptr)
+                {
+                    error = "T03-F03 switch match cannot resolve its variant tag offset";
+                    return nullptr;
+                }
+                result->immediate = tagLayout->offset;
+                result->alignment = tagLayout->alignment;
+            }
+            break;
+        case ProjectOopHirNodeKind::MatchArm:
+            result->kind = ProjectOopMirNodeKind::MatchArm;
+            break;
+        case ProjectOopHirNodeKind::MatchValue:
+            result->kind = ProjectOopMirNodeKind::MatchValue;
+            break;
         case ProjectOopHirNodeKind::NullCoalescing:
             result->kind = ProjectOopMirNodeKind::NullCoalescing;
             break;

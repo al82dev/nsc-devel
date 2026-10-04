@@ -8262,6 +8262,14 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::Conditional:
                 return lowerConditional(node, error);
+            case frontend::ProjectOopMirNodeKind::MatchExpression:
+                return lowerMatchExpression(node, error);
+            case frontend::ProjectOopMirNodeKind::MatchValue:
+                if (matchValueStack_.empty())
+                    return failValue(error, "T03-F03 match value used outside an active match");
+                return node->referenceResult
+                    ? matchValueStack_.back().second
+                    : matchValueStack_.back().first;
             case frontend::ProjectOopMirNodeKind::NullCoalescing:
                 return lowerNullCoalescing(node, error);
             case frontend::ProjectOopMirNodeKind::OptionalCoalescing:
@@ -10591,6 +10599,7 @@ private:
             case frontend::ProjectOopMirNodeKind::InlineAssemblyInput:
             case frontend::ProjectOopMirNodeKind::InlineAssemblyOutput:
             case frontend::ProjectOopMirNodeKind::InlineAssemblyClobber:
+            case frontend::ProjectOopMirNodeKind::MatchArm:
                 return failValue(error, "non-expression Stage 34 MIR node reached expression lowering");
         }
     }
@@ -12972,6 +12981,298 @@ private:
         return remainder
             ? LLVMBuildSRem(builder_, left, divisor, "srem")
             : LLVMBuildSDiv(builder_, left, divisor, "sdiv");
+    }
+
+    // T03-F03 value-producing match. The governing expression is evaluated once and spilled once;
+    // MatchValue nodes use that frozen pair as a value or address. Arms remain lazy and ordered.
+    // Bindings exist only after the structural predicate succeeds, and their cleanup executes on
+    // both a failed guard and the selected-result edge before the phi join.
+    LLVMValueRef lowerMatchExpression(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() < 2 || node->children.front() == nullptr)
+            return failValue(error, "T03-F03 match expression MIR is incomplete");
+
+        LLVMValueRef governing = lowerExpression(node->children.front().get(), error);
+        if (governing == nullptr) return nullptr;
+        if (terminated()) return governing;
+        LLVMTypeRef governingType = llvmType(node->children.front()->typeKey, error);
+        if (governingType == nullptr) return nullptr;
+        LLVMValueRef governingAddress = LLVMBuildAlloca(builder_, governingType, "match.value.addr");
+        LLVMBuildStore(builder_, governing, governingAddress);
+        matchValueStack_.emplace_back(governing, governingAddress);
+        struct MatchValuePop final
+        {
+            std::vector<std::pair<LLVMValueRef, LLVMValueRef>>& stack;
+            ~MatchValuePop() { stack.pop_back(); }
+        } pop{matchValueStack_};
+
+        const std::vector<std::size_t> outerCleanups = activeCleanupRegions_;
+        LLVMBasicBlockRef endBlock = appendBlock("match.end");
+        std::vector<LLVMValueRef> incomingValues;
+        std::vector<LLVMBasicBlockRef> incomingBlocks;
+
+        const auto lowerSelectedArm = [&](const frontend::ProjectOopMirNode* arm) -> bool
+        {
+            activeCleanupRegions_ = outerCleanups;
+            const std::size_t cleanupDepth = activeCleanupRegions_.size();
+            for (std::size_t childIndex = 2; childIndex + 1 < arm->children.size(); ++childIndex)
+            {
+                const frontend::ProjectOopMirNode* declaration = arm->children[childIndex].get();
+                if (!lowerStatement(declaration, error))
+                {
+                    activeCleanupRegions_ = outerCleanups;
+                    return false;
+                }
+                if (declaration != nullptr && declaration->cleanupRegionOrdinal.has_value())
+                    activeCleanupRegions_.push_back(*declaration->cleanupRegionOrdinal);
+                if (terminated()) break;
+            }
+            if (terminated())
+            {
+                activeCleanupRegions_ = outerCleanups;
+                return true;
+            }
+            LLVMValueRef value = lowerExpression(arm->children.back().get(), error);
+            if (value == nullptr)
+            {
+                activeCleanupRegions_ = outerCleanups;
+                return false;
+            }
+            if (!terminated())
+            {
+                while (activeCleanupRegions_.size() > cleanupDepth)
+                {
+                    const std::size_t ordinal = activeCleanupRegions_.back();
+                    activeCleanupRegions_.pop_back();
+                    if (!emitCleanupAction(ordinal, error))
+                    {
+                        activeCleanupRegions_ = outerCleanups;
+                        return false;
+                    }
+                    if (terminated()) break;
+                }
+            }
+            if (!terminated())
+            {
+                LLVMBasicBlockRef exit = LLVMGetInsertBlock(builder_);
+                LLVMBuildBr(builder_, endBlock);
+                incomingValues.push_back(value);
+                incomingBlocks.push_back(exit);
+            }
+            activeCleanupRegions_ = outerCleanups;
+            return true;
+        };
+
+        if (node->booleanValue)
+        {
+            LLVMValueRef offset = LLVMConstInt(
+                LLVMInt64TypeInContext(context_), node->immediate, 0);
+            LLVMValueRef indices[] = {offset};
+            LLVMValueRef tagAddress = LLVMBuildGEP2(
+                builder_, LLVMInt8TypeInContext(context_), governingAddress,
+                indices, 1, "match.tag.addr");
+            LLVMTypeRef tagType = LLVMInt32TypeInContext(context_);
+            LLVMValueRef tag = LLVMBuildLoad2(builder_, tagType, tagAddress, "match.tag");
+            LLVMBasicBlockRef defaultBlock = appendBlock("match.invalid.tag");
+            std::vector<LLVMBasicBlockRef> armBlocks;
+            armBlocks.reserve(node->children.size() - 1U);
+            unsigned caseCount = 0;
+            for (std::size_t armIndex = 1; armIndex < node->children.size(); ++armIndex)
+            {
+                armBlocks.push_back(appendBlock("match.case"));
+                const frontend::ProjectOopMirNode* arm = node->children[armIndex].get();
+                if (arm != nullptr) caseCount += static_cast<unsigned>(arm->switchLabels.size());
+            }
+            LLVMValueRef dispatch = LLVMBuildSwitch(builder_, tag, defaultBlock, caseCount);
+            for (std::size_t armIndex = 1; armIndex < node->children.size(); ++armIndex)
+            {
+                const frontend::ProjectOopMirNode* arm = node->children[armIndex].get();
+                if (arm == nullptr || arm->kind != frontend::ProjectOopMirNodeKind::MatchArm ||
+                    arm->children.size() < 3 || arm->children.back() == nullptr ||
+                    arm->switchLabels.empty())
+                {
+                    activeCleanupRegions_ = outerCleanups;
+                    return failValue(error, "T03-F03 switch match arm has no complete tag/value contract");
+                }
+                for (const std::int64_t caseTag : arm->switchLabels)
+                {
+                    LLVMAddCase(
+                        dispatch,
+                        LLVMConstInt(tagType, static_cast<std::uint64_t>(caseTag), 1),
+                        armBlocks[armIndex - 1U]);
+                }
+            }
+            for (std::size_t armIndex = 1; armIndex < node->children.size(); ++armIndex)
+            {
+                LLVMPositionBuilderAtEnd(builder_, armBlocks[armIndex - 1U]);
+                if (!lowerSelectedArm(node->children[armIndex].get())) return nullptr;
+            }
+            LLVMPositionBuilderAtEnd(builder_, defaultBlock);
+            LLVMBuildUnreachable(builder_);
+            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            if (incomingValues.empty())
+            {
+                LLVMBuildUnreachable(builder_);
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
+            if (node->typeKey == "builtin:void")
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            if (incomingValues.size() == 1) return incomingValues.front();
+            LLVMTypeRef resultType = node->referenceResult
+                ? LLVMPointerTypeInContext(context_, 0)
+                : llvmType(node->typeKey, error);
+            if (resultType == nullptr) return nullptr;
+            LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "match.result");
+            LLVMAddIncoming(
+                phi, incomingValues.data(), incomingBlocks.data(),
+                static_cast<unsigned>(incomingValues.size()));
+            return phi;
+        }
+
+        for (std::size_t armIndex = 1; armIndex < node->children.size(); ++armIndex)
+        {
+            const frontend::ProjectOopMirNode* arm = node->children[armIndex].get();
+            if (arm == nullptr || arm->kind != frontend::ProjectOopMirNodeKind::MatchArm ||
+                arm->children.size() < 3 || arm->children[0] == nullptr ||
+                arm->children[1] == nullptr || arm->children.back() == nullptr)
+            {
+                activeCleanupRegions_ = outerCleanups;
+                return failValue(error, "T03-F03 match arm MIR is incomplete");
+            }
+
+            LLVMValueRef condition = lowerExpression(arm->children[0].get(), error);
+            if (condition == nullptr)
+            {
+                activeCleanupRegions_ = outerCleanups;
+                return nullptr;
+            }
+            if (terminated())
+            {
+                activeCleanupRegions_ = outerCleanups;
+                continue;
+            }
+
+            LLVMBasicBlockRef bindingBlock = appendBlock("match.bind");
+            LLVMBasicBlockRef nextBlock = appendBlock("match.next");
+            LLVMBuildCondBr(builder_, condition, bindingBlock, nextBlock);
+
+            LLVMPositionBuilderAtEnd(builder_, bindingBlock);
+            activeCleanupRegions_ = outerCleanups;
+            const std::size_t cleanupDepth = activeCleanupRegions_.size();
+            for (std::size_t childIndex = 2; childIndex + 1 < arm->children.size(); ++childIndex)
+            {
+                const frontend::ProjectOopMirNode* declaration = arm->children[childIndex].get();
+                if (!lowerStatement(declaration, error))
+                {
+                    activeCleanupRegions_ = outerCleanups;
+                    return nullptr;
+                }
+                if (declaration != nullptr && declaration->cleanupRegionOrdinal.has_value())
+                    activeCleanupRegions_.push_back(*declaration->cleanupRegionOrdinal);
+                if (terminated()) break;
+            }
+            if (terminated())
+            {
+                activeCleanupRegions_ = outerCleanups;
+                LLVMPositionBuilderAtEnd(builder_, nextBlock);
+                continue;
+            }
+            const std::vector<std::size_t> armCleanups(
+                activeCleanupRegions_.begin() + static_cast<std::ptrdiff_t>(cleanupDepth),
+                activeCleanupRegions_.end());
+
+            LLVMValueRef guard = lowerExpression(arm->children[1].get(), error);
+            if (guard == nullptr)
+            {
+                activeCleanupRegions_ = outerCleanups;
+                return nullptr;
+            }
+            if (terminated())
+            {
+                activeCleanupRegions_ = outerCleanups;
+                LLVMPositionBuilderAtEnd(builder_, nextBlock);
+                continue;
+            }
+            LLVMBasicBlockRef valueBlock = appendBlock("match.value");
+            LLVMBasicBlockRef guardFailedBlock = appendBlock("match.guard.failed");
+            LLVMBuildCondBr(builder_, guard, valueBlock, guardFailedBlock);
+
+            LLVMPositionBuilderAtEnd(builder_, guardFailedBlock);
+            activeCleanupRegions_ = outerCleanups;
+            activeCleanupRegions_.insert(
+                activeCleanupRegions_.end(), armCleanups.begin(), armCleanups.end());
+            while (activeCleanupRegions_.size() > cleanupDepth)
+            {
+                const std::size_t ordinal = activeCleanupRegions_.back();
+                activeCleanupRegions_.pop_back();
+                if (!emitCleanupAction(ordinal, error))
+                {
+                    activeCleanupRegions_ = outerCleanups;
+                    return nullptr;
+                }
+                if (terminated()) break;
+            }
+            if (!terminated()) LLVMBuildBr(builder_, nextBlock);
+
+            LLVMPositionBuilderAtEnd(builder_, valueBlock);
+            activeCleanupRegions_ = outerCleanups;
+            activeCleanupRegions_.insert(
+                activeCleanupRegions_.end(), armCleanups.begin(), armCleanups.end());
+            LLVMValueRef value = lowerExpression(arm->children.back().get(), error);
+            if (value == nullptr)
+            {
+                activeCleanupRegions_ = outerCleanups;
+                return nullptr;
+            }
+            if (!terminated())
+            {
+                while (activeCleanupRegions_.size() > cleanupDepth)
+                {
+                    const std::size_t ordinal = activeCleanupRegions_.back();
+                    activeCleanupRegions_.pop_back();
+                    if (!emitCleanupAction(ordinal, error))
+                    {
+                        activeCleanupRegions_ = outerCleanups;
+                        return nullptr;
+                    }
+                    if (terminated()) break;
+                }
+            }
+            if (!terminated())
+            {
+                LLVMBasicBlockRef exit = LLVMGetInsertBlock(builder_);
+                LLVMBuildBr(builder_, endBlock);
+                incomingValues.push_back(value);
+                incomingBlocks.push_back(exit);
+            }
+            activeCleanupRegions_ = outerCleanups;
+            LLVMPositionBuilderAtEnd(builder_, nextBlock);
+        }
+
+        // Semantic exhaustiveness makes this edge impossible. Keeping it explicit makes malformed
+        // or stale MIR fail closed without adding a runtime object or fallback value.
+        if (!terminated()) LLVMBuildUnreachable(builder_);
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        activeCleanupRegions_ = outerCleanups;
+        if (incomingValues.empty())
+        {
+            LLVMBuildUnreachable(builder_);
+            return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+        }
+        if (node->typeKey == "builtin:void")
+            return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+        if (incomingValues.size() == 1) return incomingValues.front();
+
+        LLVMTypeRef resultType = node->referenceResult
+            ? LLVMPointerTypeInContext(context_, 0)
+            : llvmType(node->typeKey, error);
+        if (resultType == nullptr) return nullptr;
+        LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "match.result");
+        LLVMAddIncoming(
+            phi, incomingValues.data(), incomingBlocks.data(),
+            static_cast<unsigned>(incomingValues.size()));
+        return phi;
     }
 
     // `c ? a : b`. Both branches are LAZILY evaluated -- only the taken one runs -- so this is
@@ -15935,6 +16236,9 @@ private:
     std::unordered_map<std::size_t, const frontend::ProjectOopMirNode*> cleanupRegions_;
     std::unordered_map<std::size_t, CachedCleanup> cleanupChainCache_;
     std::vector<std::size_t> activeCleanupRegions_;
+    // T03-F03. The value/address pair for each nested match governing expression. The value is
+    // computed once; generated MatchValue nodes select the representation their HIR context needs.
+    std::vector<std::pair<LLVMValueRef, LLVMValueRef>> matchValueStack_;
     std::vector<ExceptionHandlerContext> exceptionHandlerStack_;
     std::vector<FuncletContext> funcletStack_;
     std::vector<LoopTargets> loopStack_;

@@ -1216,6 +1216,9 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::ObjectDestruction: return "object-destruction";
         case ProjectOopHirNodeKind::Panic: return "panic";
         case ProjectOopHirNodeKind::ResultPropagation: return "result-propagation";
+        case ProjectOopHirNodeKind::MatchExpression: return "match-expression";
+        case ProjectOopHirNodeKind::MatchArm: return "match-arm";
+        case ProjectOopHirNodeKind::MatchValue: return "match-value";
     }
     return "unknown";
 }
@@ -4346,6 +4349,119 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             node->children.push_back(std::move(right));
             return node;
         }
+
+        case ast::AstNodeKind::MatchValueExpression:
+        {
+            if (addressContext)
+            {
+                auto node = makeNode(ProjectOopHirNodeKind::MatchValue, expression, resultType);
+                node->referenceResult = true;
+                return node;
+            }
+            return makeNode(ProjectOopHirNodeKind::MatchValue, expression, resultType);
+        }
+
+        case ast::AstNodeKind::MatchExpression:
+        {
+            const MethodMatchExpressionBinding* binding = methodBodyModel_ != nullptr
+                ? methodBodyModel_->matchExpressionBinding(expression) : nullptr;
+            if (binding == nullptr)
+            {
+                error = "T03-F03 match expression has no semantic binding";
+                return nullptr;
+            }
+            if (addressContext && !binding->referenceResult)
+            {
+                error = "a value match expression does not produce addressable storage";
+                return nullptr;
+            }
+
+            auto node = makeNode(ProjectOopHirNodeKind::MatchExpression, expression, resultType);
+            node->referenceResult = binding->referenceResult;
+            node->secondaryMemberOrdinal = binding->switchTagMemberOrdinal;
+            node->booleanValue = binding->switchTagMemberOrdinal.has_value();
+            auto governing = lowerExpression(expression->first(), memberOrdinal, false, error);
+            if (governing == nullptr) return nullptr;
+            node->children.push_back(std::move(governing));
+
+            for (std::size_t armIndex = 0; armIndex < expression->children().size(); ++armIndex)
+            {
+                const ast::AstNode* armSyntax = expression->children()[armIndex];
+                if (armSyntax == nullptr || armSyntax->first() == nullptr ||
+                    armSyntax->third() == nullptr)
+                {
+                    error = "T03-F03 malformed match expression arm";
+                    return nullptr;
+                }
+                auto arm = makeNode(ProjectOopHirNodeKind::MatchArm, armSyntax, resultType);
+                if (armIndex < binding->armTags.size())
+                    arm->switchLabels = binding->armTags[armIndex];
+                auto condition = lowerExpression(armSyntax->first(), memberOrdinal, false, error);
+                if (condition == nullptr) return nullptr;
+                arm->children.push_back(std::move(condition));
+
+                if (armSyntax->second() != nullptr)
+                {
+                    auto guard = lowerExpression(armSyntax->second(), memberOrdinal, false, error);
+                    if (guard == nullptr) return nullptr;
+                    arm->children.push_back(std::move(guard));
+                }
+                else
+                {
+                    auto guard = makeNode(
+                        ProjectOopHirNodeKind::BooleanConstant, armSyntax, "builtin:bool");
+                    guard->booleanValue = true;
+                    arm->children.push_back(std::move(guard));
+                }
+
+                const std::size_t cleanupDepth = activeHirCleanupRegions_.size();
+                for (const ast::AstNode* declaration : armSyntax->children())
+                {
+                    auto lowered = lowerStatement(declaration, memberOrdinal, error);
+                    if (lowered == nullptr)
+                    {
+                        activeHirCleanupRegions_.resize(cleanupDepth);
+                        return nullptr;
+                    }
+                    if (lowered->kind == ProjectOopHirNodeKind::LocalDeclaration &&
+                        lowered->cleanupRegionOrdinal.has_value())
+                    {
+                        activeHirCleanupRegions_.push_back(*lowered->cleanupRegionOrdinal);
+                    }
+                    arm->children.push_back(std::move(lowered));
+                }
+
+                auto value = lowerExpression(
+                    armSyntax->third(), memberOrdinal, binding->referenceResult, error);
+                if (value == nullptr)
+                {
+                    activeHirCleanupRegions_.resize(cleanupDepth);
+                    return nullptr;
+                }
+                if (!binding->referenceResult && armIndex < binding->armConversions.size())
+                {
+                    const ProjectImplicitConversion& conversion = binding->armConversions[armIndex];
+                    if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+                        value = wrapImplicitConversion(
+                            std::move(value), conversion, armSyntax->third());
+                }
+                arm->children.push_back(std::move(value));
+                arm->cleanupRegionOrdinals.assign(
+                    activeHirCleanupRegions_.begin() + static_cast<std::ptrdiff_t>(cleanupDepth),
+                    activeHirCleanupRegions_.end());
+                activeHirCleanupRegions_.resize(cleanupDepth);
+                node->children.push_back(std::move(arm));
+            }
+
+            if (!binding->referenceResult || addressContext) return node;
+            auto load = makeNode(ProjectOopHirNodeKind::PointerLoad, expression, resultType);
+            load->children.push_back(std::move(node));
+            return load;
+        }
+
+        case ast::AstNodeKind::MatchArmExpression:
+            error = "a match arm reached HIR outside its match expression";
+            return nullptr;
 
         case ast::AstNodeKind::ConditionalExpression:
         {

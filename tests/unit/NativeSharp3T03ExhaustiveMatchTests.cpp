@@ -111,6 +111,67 @@ class Program
         tests.expect(std::system(("\"" + directExecutable + "\"").c_str()) == 42,
             "closed exhaustive match executes the selected payload arm");
 
+    const std::filesystem::path expression = root / "expression";
+    writeProject(expression, "ExhaustiveExpression", R"NS(
+variant Choice { First, Second }
+class Program
+{
+    private static int Calls = 0;
+    private static int Left = 20;
+    private static int Right = 21;
+
+    private static Choice Next()
+    {
+        Calls += 1;
+        return Choice.Second();
+    }
+
+    private static ref int Pick(bool left)
+    {
+        return ref match (left) { true => ref Left, _ => ref Right };
+    }
+
+    public static int Main()
+    {
+        long value = match (Next()) { First => 1, Second => 40L + Calls };
+        return (int)value + Pick(false) - 20;
+    }
+}
+)NS");
+    const std::string expressionProject =
+        (expression / "ExhaustiveExpression.nsproj").string();
+    const std::string expressionExecutable =
+        (expression / "ExhaustiveExpression.exe").string();
+    const std::array<std::string_view, 5> expressionArguments = {
+        "--emit-project-oop-exe", expressionProject, "-O0", "-o", expressionExecutable};
+    output.clear();
+    error.clear();
+    const ExitCode expressionResult = runDriver(expressionArguments, output, error);
+    tests.expect(
+        expressionResult == ExitCode::Success,
+        "match expressions compile with numeric joins, one governing evaluation, and ref arms (" +
+            error + output + ")");
+    if (expressionResult == ExitCode::Success)
+        tests.expect(std::system(("\"" + expressionExecutable + "\"").c_str()) == 42,
+            "value and ref match expressions execute through NSLink");
+    const std::array<std::string_view, 3> expressionMirArguments = {
+        "--dump-project-oop-mir", expressionProject, "-O0"};
+    output.clear();
+    error.clear();
+    const ExitCode expressionMirResult = runDriver(expressionMirArguments, output, error);
+    tests.expect(
+        expressionMirResult == ExitCode::Success &&
+            output.find("match-expression") != std::string::npos &&
+            output.find("governing-evaluations=1") != std::string::npos,
+        "MIR preserves match expression identity and single governing evaluation (" +
+            error + output + ")");
+    tests.expect(
+        expressionMirResult == ExitCode::Success &&
+            output.find("dispatch=tag-switch") != std::string::npos &&
+            output.find("tags=0") != std::string::npos &&
+            output.find("tags=1") != std::string::npos,
+        "closed whole-case variants lower to a tag switch without a runtime match object");
+
     std::string diagnostic;
     tests.expect(
         rejected(root / "missing", R"NS(
@@ -148,6 +209,24 @@ class Program { public static int Main() {
 } }
 )NS", "open or unresolved domain requires a final wildcard", diagnostic),
         "open domains remain explicitly total (" + diagnostic + ")");
+    diagnostic.clear();
+    tests.expect(
+        rejected(root / "expression-missing", R"NS(
+variant State { Idle, Ready, Failed }
+class Program { public static int Main() {
+    return match (State.Idle()) { Idle => 0, Ready => 1 };
+} }
+)NS", "missing variant case: Failed", diagnostic),
+        "non-exhaustive match expressions name their missing cases (" + diagnostic + ")");
+    diagnostic.clear();
+    tests.expect(
+        rejected(root / "expression-ref-mix", R"NS(
+class Program { private static int Value = 1; public static int Main() {
+    int result = match (true) { true => ref Value, _ => 0 };
+    return result;
+} }
+)NS", "cannot mix ref and value results", diagnostic),
+        "match expressions reject mixed ref and value arms (" + diagnostic + ")");
 
     const std::filesystem::path producer = root / "producer";
     writeProject(producer, "PublishedState", R"NS(

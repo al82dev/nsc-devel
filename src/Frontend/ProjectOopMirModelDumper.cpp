@@ -141,6 +141,19 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
     if (node->referenceLocal) output << " reference-local=true";
     if (node->pinnedStorage) output << " pinned=true";
     if (node->referenceResult) output << " reference-result=true";
+    if (node->kind == ProjectOopMirNodeKind::MatchExpression)
+        output << " dispatch=" << (node->booleanValue ? "tag-switch" : "ordered-branches")
+               << " governing-evaluations=1"
+               << (node->booleanValue ? " tag-offset=" + std::to_string(node->immediate) : "");
+    if (node->kind == ProjectOopMirNodeKind::MatchArm && !node->switchLabels.empty())
+    {
+        output << " tags=";
+        for (std::size_t index = 0; index < node->switchLabels.size(); ++index)
+        {
+            if (index != 0) output << ',';
+            output << node->switchLabels[index];
+        }
+    }
     if (node->nullConditionalCall) output << " null-conditional=true";
     if (node->kind == ProjectOopMirNodeKind::Binary && node->booleanValue &&
         (node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent))

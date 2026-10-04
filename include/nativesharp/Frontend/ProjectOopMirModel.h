@@ -36,7 +36,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 23: Result propagation publishes both carrier protocols, error conversion, and cleanup.
 // 1.24 publishes each callable's typed-throws contract independently from native EH regions.
 // 1.25 publishes source-ordered catch patterns, their declared-error matches and exhaustiveness.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 25;
+// 1.26 publishes value-producing exhaustive match control flow and arm cleanup boundaries.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 26;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -360,7 +361,11 @@ enum class ProjectOopMirNodeKind
     // T07 abort-profile panic: __nativesharp_trap(Panic) followed by unreachable.
     Panic,
     // T07-F01. One evaluated carrier, an explicit tag branch, and a structured Error return.
-    ResultPropagation
+    ResultPropagation,
+    // T03-F03. Explicit expression match; see the corresponding HIR nodes for child shape.
+    MatchExpression,
+    MatchArm,
+    MatchValue
 };
 
 struct ProjectOopMirNode final

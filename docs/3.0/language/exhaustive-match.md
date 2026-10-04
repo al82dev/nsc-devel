@@ -37,9 +37,26 @@ El statement `match` conserva evaluación única de la expresión gobernante y b
 ordinarias, sin objeto runtime, heap, boxing ni dependencia de linker. Las condiciones short-circuit
 protegen la extracción de payload; los brazos posteriores quedan guardados tras seleccionar uno.
 
-La forma expresión (`var x = match (...) { ... };`), el join de tipos/ownership entre valores de
-brazos, retorno de referencias y selección jump-table forman la parte pendiente de esta vertical.
-No se publican como disponibles hasta que tengan AST/HIR/MIR propios y pruebas de cleanup.
+La forma expresión produce un valor sin asignación implícita ni objeto runtime:
+
+```nativesharp
+long code = match (result)
+{
+    Ok(var value) => value,
+    Error(var error) => (long)error.Code
+};
+```
+
+El governing se evalúa exactamente una vez. Los brazos `never` no fuerzan un tipo; los demás
+deben compartir tipo, tener un tipo numérico común o una conversión implícita común. Ownership se
+conserva sólo si todos los brazos coinciden. `=> ref storage` crea un match por referencia: todos
+los brazos deben usar `ref`, nombrar storage mutable/addressable y tener identidad de tipo exacta.
+
+Cada brazo tiene scope y cleanup propios. Los bindings se crean sólo después del pattern; si el
+guard falla se destruyen antes de continuar, y si el brazo gana se destruyen después de extraer o
+mover su resultado. Un variant cerrado compuesto sólo por casos completos sin guard usa una carga
+del tag y `switch`; cualquier forma parcial conserva branches ordenados. Ambos caminos son nativos,
+sin heap, boxing ni dependencia del linker.
 
 ## English
 
@@ -66,6 +83,11 @@ Statement match evaluates its governing expression once and lowers to ordinary g
 with no runtime object, heap allocation, boxing, or linker dependency. Short-circuit conditions
 protect payload extraction.
 
-Expression match, branch value/ownership joins, reference results, jump-table selection, and
-per-arm cleanup are the remaining part of this vertical. They are not advertised as available
-until they have dedicated AST/HIR/MIR representation and execution coverage.
+Expression match has dedicated AST, HIR, and MIR 1.26 nodes. The governing expression is evaluated
+once. Reachable arms must have one exact/common numeric/implicitly compatible result type; bottom
+arms do not constrain the join. Ownership survives only when every arm agrees. `ref` results require
+every arm to yield mutable addressable storage of the same type, and their escape origins are joined.
+
+Arm bindings have lexical cleanup on both guard failure and selected-result exit. Complete,
+unguarded cases over a closed variant load the tag once and use an LLVM switch; partial patterns,
+guards, and open domains retain ordered branches. Neither path allocates a runtime match object.

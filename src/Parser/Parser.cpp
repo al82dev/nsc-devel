@@ -10118,6 +10118,164 @@ ast::AstNode* Parser::parseMatchStatement()
     return lowered;
 }
 
+ast::AstNode* Parser::parseMatchExpression()
+{
+    const std::size_t beginIndex = index_;
+    const lexer::Token& matchKeyword = consume();
+    requireEdition3(matchKeyword.range(), "match expression syntax");
+    expect(TokenKind::LeftParen, "'(' after 'match'");
+    ast::AstNode* governing = parseExpression();
+    expect(TokenKind::RightParen, "')' after match governing expression");
+    expect(TokenKind::LeftBrace, "'{' to open match expression arms");
+
+    ast::AstNode* match = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::MatchExpression, matchKeyword.range());
+    match->setFirst(governing);
+    const std::string temporary = "$__nsc_match_expr_" +
+        std::to_string(nextMatchTemporary_++);
+    match->setText(temporary);
+
+    const auto isCatchAll = [&](const Pattern& root)
+    {
+        std::function<bool(const Pattern&)> visit = [&](const Pattern& pattern)
+        {
+            if (pattern.kind == PatternKind::Wildcard || pattern.kind == PatternKind::Binding)
+                return true;
+            return pattern.kind == PatternKind::Or &&
+                std::ranges::any_of(pattern.children, visit);
+        };
+        return visit(root);
+    };
+    const auto collectBindings = [&](const Pattern& root)
+    {
+        std::vector<std::pair<std::string, PatternBindingMode>> bindings;
+        std::function<void(const Pattern&)> visit = [&](const Pattern& pattern)
+        {
+            if (pattern.kind == PatternKind::Binding)
+                bindings.emplace_back(pattern.name, pattern.bindingMode);
+            for (const Pattern& child : pattern.children) visit(child);
+        };
+        visit(root);
+        std::ranges::sort(bindings);
+        return bindings;
+    };
+    const auto validateOrBindings = [&](const Pattern& root)
+    {
+        std::function<void(const Pattern&)> visit = [&](const Pattern& pattern)
+        {
+            if (pattern.kind == PatternKind::Or && !pattern.children.empty())
+            {
+                const auto expected = collectBindings(pattern.children.front());
+                for (std::size_t index = 1; index < pattern.children.size(); ++index)
+                {
+                    if (collectBindings(pattern.children[index]) != expected)
+                    {
+                        diagnostics_.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            pattern.range,
+                            "OR-pattern alternatives in a match expression must bind identical "
+                            "names with identical value/ref/move modes");
+                        break;
+                    }
+                }
+            }
+            for (const Pattern& child : pattern.children) visit(child);
+        };
+        visit(root);
+    };
+
+    std::string coverage = "match-coverage:v1:";
+    bool firstArm = true;
+    while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+    {
+        const std::size_t armBegin = index_;
+        Pattern pattern = parsePattern(false);
+        validateOrBindings(pattern);
+        ast::AstNode* guard = nullptr;
+        if (atContextualKeyword("when"))
+        {
+            consume();
+            guard = parseConditionalExpression();
+        }
+        expect(TokenKind::FatArrow, "'=>' after match expression pattern");
+        const bool referenceResult = atContextualKeyword("ref");
+        if (referenceResult) consume();
+        ast::AstNode* value = parseExpression();
+
+        ast::AstNode* arm = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::MatchArmExpression, tokenRangeFrom(armBegin));
+        PatternExpressionFactory source = [&, range = pattern.range]
+        {
+            return arena_.make<ast::AstNode>(ast::AstNodeKind::MatchValueExpression, range);
+        };
+        arm->setFirst(makePatternCondition(pattern, source));
+        arm->setSecond(guard);
+        arm->setThird(value);
+        arm->setFlag(referenceResult);
+        emitPatternBindings(pattern, source, arm, temporary);
+        match->addChild(arm);
+
+        if (!firstArm) coverage += ';';
+        firstArm = false;
+        std::vector<std::string> cases;
+        bool wildcard = false;
+        bool partial = false;
+        std::function<void(const Pattern&)> collectCoverage = [&](const Pattern& current)
+        {
+            if (current.kind == PatternKind::Wildcard || current.kind == PatternKind::Binding)
+            {
+                wildcard = true;
+                return;
+            }
+            if (current.kind == PatternKind::Variant)
+            {
+                cases.push_back(current.name);
+                if (!current.children.empty() && !isCatchAll(current.children.front()))
+                    partial = true;
+                return;
+            }
+            if (current.kind == PatternKind::Or)
+                for (const Pattern& child : current.children) collectCoverage(child);
+        };
+        collectCoverage(pattern);
+        const bool guardRestrictsCoverage = guard != nullptr &&
+            !(guard->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+              guard->tokenKind() == TokenKind::KwTrue);
+        if (wildcard)
+        {
+            if (guardRestrictsCoverage) coverage += '~';
+            coverage += '*';
+        }
+        else if (cases.empty()) coverage += '?';
+        else
+        {
+            std::ranges::sort(cases);
+            cases.erase(std::unique(cases.begin(), cases.end()), cases.end());
+            if (partial || guardRestrictsCoverage) coverage += '~';
+            for (std::size_t index = 0; index < cases.size(); ++index)
+            {
+                if (index != 0) coverage += '|';
+                coverage += cases[index];
+            }
+        }
+        if (!consumeIf(TokenKind::Comma) && !at(TokenKind::RightBrace))
+            expect(TokenKind::Comma, "',' between match expression arms");
+    }
+    expect(TokenKind::RightBrace, "'}' to close match expression arms");
+    if (match->children().empty())
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            matchKeyword.range(),
+            "a match expression requires at least one arm");
+    }
+    match->setAuxiliaryText(std::move(coverage));
+    match->setRange(tokenRangeFrom(beginIndex));
+    return match;
+}
+
 ast::AstNode* Parser::parseForStatement()
 {
     const std::size_t beginIndex = index_;
@@ -12045,6 +12203,8 @@ ast::AstNode* Parser::parseWithExpression(ast::AstNode* source)
 
 ast::AstNode* Parser::parsePrimaryExpression()
 {
+    if (atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
+        return parseMatchExpression();
     const lexer::Token& token = current();
     ast::AstNodeKind kind = ast::AstNodeKind::IdentifierExpression;
 

@@ -347,6 +347,19 @@ struct MethodDeconstructionBinding final
     std::optional<std::size_t> selectedMemberOrdinal;
 };
 
+struct MethodMatchExpressionBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    std::string governingTypeKey;
+    std::string resultTypeKey;
+    bool referenceResult = false;
+    // Present only when every arm is an unguarded whole-case variant pattern. The backend may
+    // then load the compiler-owned tag once and emit an LLVM switch instead of repeated IsCase.
+    std::optional<std::size_t> switchTagMemberOrdinal;
+    std::vector<std::vector<std::int64_t>> armTags;
+    std::vector<ProjectImplicitConversion> armConversions;
+};
+
 enum class MethodRuntimeTypeOperationKind
 {
     TypeTest,
@@ -1472,6 +1485,8 @@ public:
         const ast::AstNode* syntax) const noexcept;
     const MethodDeconstructionBinding* deconstructionBinding(
         const ast::AstNode* syntax) const noexcept;
+    const MethodMatchExpressionBinding* matchExpressionBinding(
+        const ast::AstNode* syntax) const noexcept;
     const std::string* staticInterpolationValue(const ast::AstNode* syntax) const noexcept;
     // NSC-LIMIT-010. "Este tipo tiene algo que poseer": una referencia de clase/interfaz o una
     // cadena nativa. Publico porque ProjectConstructionModel lo necesita para aplicar la MISMA
@@ -1926,6 +1941,11 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeMatchExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     ExpressionResult analyzeNamespaceFunctionCall(
         const ast::AstNode* expression,
         const NamespaceFunctionReferenceBinding& reference,
@@ -2268,6 +2288,9 @@ private:
     std::unordered_map<const ast::AstNode*, std::size_t> aggregateInitializerBindingBySyntax_;
     std::vector<MethodDeconstructionBinding> deconstructionBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> deconstructionBindingBySyntax_;
+    std::vector<MethodMatchExpressionBinding> matchExpressionBindings_;
+    std::unordered_map<const ast::AstNode*, std::size_t> matchExpressionBindingBySyntax_;
+    std::vector<ExpressionResult> activeMatchValues_;
     std::unordered_map<const ast::AstNode*, std::string> staticInterpolationValues_;
     std::vector<MethodRuntimeTypeBinding> runtimeTypeBindings_;
     std::vector<MethodCoreBinding> coreBindings_;
