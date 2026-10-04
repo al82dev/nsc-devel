@@ -11,6 +11,7 @@
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
+#include "nativesharp/Driver/MigrationAnalyzer.h"
 #include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
 #include "nativesharp/Driver/PromotionAct.h"
@@ -4795,6 +4796,18 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     if (args.size() == 2)
     {
         const std::string_view action = args[0];
+        if (action == "--analyze-migration")
+        {
+            MigrationAnalysis analysis;
+            std::string migrationError;
+            if (!analyzeMigrationFile(std::filesystem::path(args[1]), analysis, migrationError))
+            {
+                error << "nsc: error: " << migrationError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << renderMigrationAnalysis(analysis);
+            return ExitCode::Success;
+        }
         if (action == "--check-runtime-capability")
         {
             std::string detail;
@@ -5545,6 +5558,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-migration-baseline\n"
            << "  nsc --write-migration-baseline <file.baseline>\n"
            << "  nsc --verify-migration-baseline <file.baseline>\n"
+           << "  nsc --analyze-migration <source.ns>\n"
            << "  nsc --print-migration-guide\n"
            << "  nsc --write-migration-guide <file.guide>\n"
            << "  nsc --verify-migration-guide <file.guide>\n"

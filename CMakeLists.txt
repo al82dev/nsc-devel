@@ -579,6 +579,7 @@ add_library(nsc_driver STATIC
     src/Driver/InstallationManifest.cpp
     src/Driver/InstallationVerifier.cpp
     src/Driver/MigrationBaseline.cpp
+    src/Driver/MigrationAnalyzer.cpp
     src/Driver/MigrationGuide.cpp
     src/Driver/NumericContract.cpp
     src/Driver/PackageLifecycle.cpp
@@ -2101,6 +2102,14 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_ns3_t16_compatibility_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_ns3_t16_compatibility_tests)
     add_test(NAME nsc.ns3.t16.compatibility COMMAND nsc_ns3_t16_compatibility_tests)
+
+    add_executable(
+        nsc_ns3_t16_migration_tests
+        tests/unit/NativeSharp3T16MigrationTests.cpp)
+    target_link_libraries(nsc_ns3_t16_migration_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_ns3_t16_migration_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_t16_migration_tests)
+    add_test(NAME nsc.ns3.t16.migration COMMAND nsc_ns3_t16_migration_tests)
 
     add_executable(
         nsc_ns3_t17_release_tests
