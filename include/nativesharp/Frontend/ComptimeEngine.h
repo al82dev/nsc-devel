@@ -45,6 +45,18 @@ struct ComptimeAttributeDirective final
     std::vector<std::string> constantArguments;
 };
 
+enum class ComptimeDiagnosticSeverity { Note, Warning, Error };
+
+struct ComptimeAuthoredDiagnostic final
+{
+    ComptimeDiagnosticSeverity severity = ComptimeDiagnosticSeverity::Error;
+    std::string code;
+    std::string message;
+    std::size_t offset = 0;
+    std::size_t length = 0;
+    std::vector<std::string> notes;
+};
+
 class ComptimeCache final
 {
 public:
@@ -80,6 +92,7 @@ struct ComptimeResult final
     std::vector<ComptimeDependency> dependencies;
     std::vector<ComptimeAttributeDirective> attributes;
     std::vector<MacroExpansionRecord> macroExpansions;
+    std::vector<ComptimeAuthoredDiagnostic> authoredDiagnostics;
     std::size_t executedSteps = 0;
     std::size_t cacheHits = 0;
     std::size_t cacheMisses = 0;
@@ -100,6 +113,7 @@ struct ProjectComptimeRecord final
     std::vector<ComptimeDependency> dependencies;
     std::vector<ComptimeAttributeDirective> attributes;
     std::vector<MacroExpansionRecord> macroExpansions;
+    std::vector<ComptimeAuthoredDiagnostic> authoredDiagnostics;
 };
 
 // Executes the deliberately small NativeSharp 2.0 comptime core. `comptime` is a contextual

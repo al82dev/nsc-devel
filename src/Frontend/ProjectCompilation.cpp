@@ -1047,9 +1047,28 @@ bool ProjectCompilation::compileSyntaxCore(
                 read.comptime->reproducibilityDigest,
             read.comptime->dependencies,
             read.comptime->attributes,
-            read.comptime->macroExpansions});
+            read.comptime->macroExpansions,
+            read.comptime->authoredDiagnostics});
             const FileId fileId = sourceManager_.addBuffer(
                 read.path, std::move(read.comptime->source));
+            for (const ComptimeAuthoredDiagnostic& diagnostic : read.comptime->authoredDiagnostics)
+            {
+                const auto severity = diagnostic.severity == ComptimeDiagnosticSeverity::Error
+                    ? diagnostics::DiagnosticSeverity::Error
+                    : diagnostic.severity == ComptimeDiagnosticSeverity::Warning
+                        ? diagnostics::DiagnosticSeverity::Warning
+                        : diagnostics::DiagnosticSeverity::Note;
+                diagnostics_.reportStructured(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    severity,
+                    SourceRange(
+                        SourceLocation(fileId, static_cast<std::uint32_t>(diagnostic.offset)),
+                        SourceLocation(fileId, static_cast<std::uint32_t>(
+                            diagnostic.offset + diagnostic.length))),
+                    "[" + diagnostic.code + "] " + diagnostic.message,
+                    {},
+                    diagnostic.notes);
+            }
             units_.push_back(std::make_unique<ProjectSyntaxUnit>(
                 read.projectOrdinal,
                 read.sourceOrdinal,

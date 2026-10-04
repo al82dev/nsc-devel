@@ -1,5 +1,6 @@
 #include "nativesharp/Frontend/ComptimeEngine.h"
 #include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Language/MetaprogrammingSemantics.h"
 
 #include <algorithm>
 #include <charconv>
@@ -424,6 +425,88 @@ bool parseAttributeDirective(
         parseConstantArguments(payload.substr(open + 1, close - open - 1), directive.constantArguments, error);
 }
 
+bool parseAuthoredDiagnostic(
+    std::string_view source,
+    std::size_t cursor,
+    std::string_view directiveName,
+    const std::vector<MacroExpansionRecord>& macroExpansions,
+    ComptimeAuthoredDiagnostic& diagnostic,
+    std::size_t& end,
+    std::string& error)
+{
+    std::size_t open = cursor + directiveName.size();
+    while (open < source.size() && asciiSpace(source[open])) ++open;
+    if (open == source.size() || source[open] != '(')
+    { error = "expected '(' after " + std::string(directiveName); return false; }
+    std::size_t close = open + 1;
+    unsigned depth = 1;
+    bool quoted = false;
+    bool escaped = false;
+    for (; close < source.size() && depth != 0; ++close)
+    {
+        const char value = source[close];
+        if (quoted)
+        {
+            if (escaped) escaped = false;
+            else if (value == '\\') escaped = true;
+            else if (value == '"') quoted = false;
+            continue;
+        }
+        if (value == '"') { quoted = true; continue; }
+        if (value == '(') ++depth;
+        else if (value == ')') --depth;
+    }
+    if (depth != 0) { error = "unterminated authored diagnostic"; return false; }
+    end = close;
+    std::vector<std::string> arguments;
+    if (!parseConstantArguments(source.substr(open + 1, end - open - 2), arguments, error))
+        return false;
+    if (arguments.size() < 2 || arguments.size() > 4 || arguments[0].size() < 2 ||
+        arguments[0].front() != '"' || arguments[0].back() != '"' ||
+        arguments[1].size() < 2 || arguments[1].front() != '"' || arguments[1].back() != '"')
+    {
+        error = "authored diagnostic expects string message, string package code, and optional span offset/length";
+        return false;
+    }
+    diagnostic.message = arguments[0].substr(1, arguments[0].size() - 2);
+    diagnostic.code = arguments[1].substr(1, arguments[1].size() - 2);
+    const std::size_t separator = diagnostic.code.find('-');
+    const std::string package = separator == std::string::npos
+        ? std::string{} : diagnostic.code.substr(0, separator);
+    if (!language::validPackageDiagnosticCode(package, diagnostic.code))
+    { error = "package diagnostic code cannot be empty or collide with NS3xxx"; return false; }
+    diagnostic.offset = cursor;
+    diagnostic.length = end - cursor;
+    if (arguments.size() >= 3)
+    {
+        std::size_t parsed = 0;
+        const auto converted = std::from_chars(
+            arguments[2].data(), arguments[2].data() + arguments[2].size(), parsed);
+        if (converted.ec != std::errc{} || converted.ptr != arguments[2].data() + arguments[2].size())
+        { error = "diagnostic span offset must be a non-negative integer"; return false; }
+        diagnostic.offset = parsed;
+    }
+    if (arguments.size() == 4)
+    {
+        std::size_t parsed = 0;
+        const auto converted = std::from_chars(
+            arguments[3].data(), arguments[3].data() + arguments[3].size(), parsed);
+        if (converted.ec != std::errc{} || converted.ptr != arguments[3].data() + arguments[3].size())
+        { error = "diagnostic span length must be a non-negative integer"; return false; }
+        diagnostic.length = parsed;
+    }
+    if (diagnostic.offset > source.size() || diagnostic.length > source.size() - diagnostic.offset)
+    { error = "authored diagnostic span lies outside its source file"; return false; }
+    diagnostic.severity = directiveName == "#compile_warning"
+        ? ComptimeDiagnosticSeverity::Warning
+        : directiveName == "#compile_note" ? ComptimeDiagnosticSeverity::Note
+                                            : ComptimeDiagnosticSeverity::Error;
+    for (const MacroExpansionRecord& expansion : macroExpansions)
+        diagnostic.notes.push_back("expanded from macro '" + expansion.macroName +
+            "' at byte " + std::to_string(expansion.invocationOffset));
+    return true;
+}
+
 std::string comptimeCacheKey(std::string_view expression)
 {
     std::string payload = "nativesharp-comptime-expression-v1\n";
@@ -452,6 +535,11 @@ std::string reproducibilityDigestOf(const ComptimeResult& result)
         for (const std::string& argument : attribute.constantArguments)
             payload.append(argument).push_back(',');
         payload.push_back('\n');
+    }
+    for (const ComptimeAuthoredDiagnostic& diagnostic : result.authoredDiagnostics)
+    {
+        payload.append("diagnostic:").append(diagnostic.code).push_back(':');
+        payload.append(diagnostic.message).push_back('\n');
     }
     const auto bytes = std::span(
         reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
@@ -534,6 +622,27 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         {
             result.source.replace(cursor, 8, 8, ' ');
             cursor += 7;
+            continue;
+        }
+        std::string_view diagnosticName;
+        if (source.substr(cursor, 14) == "#compile_error") diagnosticName = "#compile_error";
+        else if (source.substr(cursor, 16) == "#compile_warning") diagnosticName = "#compile_warning";
+        else if (source.substr(cursor, 13) == "#compile_note") diagnosticName = "#compile_note";
+        if (!diagnosticName.empty())
+        {
+            ComptimeAuthoredDiagnostic diagnostic;
+            std::size_t end = cursor;
+            std::string error;
+            if (!parseAuthoredDiagnostic(source, cursor, diagnosticName,
+                    result.macroExpansions, diagnostic, end, error))
+            {
+                result.error = error + " (diagnostic at byte " + std::to_string(cursor) + ")";
+                return result;
+            }
+            result.authoredDiagnostics.push_back(std::move(diagnostic));
+            for (std::size_t index = cursor; index < end; ++index)
+                if (result.source[index] != '\r' && result.source[index] != '\n') result.source[index] = ' ';
+            cursor = end - 1;
             continue;
         }
         if (source.substr(cursor, 2) == "#[")

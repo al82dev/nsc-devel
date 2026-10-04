@@ -42,7 +42,19 @@ bool FrontendCompilation::compileFile(
         loadError = comptime.error;
         return false;
     }
-    return run(sourceManager_.addBuffer(path, std::move(comptime.source)), requireMain);
+    const FileId fileId = sourceManager_.addBuffer(path, std::move(comptime.source));
+    for (const ComptimeAuthoredDiagnostic& diagnostic : comptime.authoredDiagnostics)
+    {
+        const auto severity = diagnostic.severity == ComptimeDiagnosticSeverity::Error
+            ? diagnostics::DiagnosticSeverity::Error
+            : diagnostic.severity == ComptimeDiagnosticSeverity::Warning
+                ? diagnostics::DiagnosticSeverity::Warning : diagnostics::DiagnosticSeverity::Note;
+        diagnostics_.report(diagnostics::DiagnosticId::ExpectedDeclaration, severity,
+            SourceRange(SourceLocation(fileId, static_cast<std::uint32_t>(diagnostic.offset)),
+                SourceLocation(fileId, static_cast<std::uint32_t>(diagnostic.offset + diagnostic.length))),
+            "[" + diagnostic.code + "] " + diagnostic.message);
+    }
+    return run(fileId, requireMain);
 }
 
 bool FrontendCompilation::compileBuffer(
@@ -52,7 +64,19 @@ bool FrontendCompilation::compileBuffer(
 {
     ComptimeResult comptime = ComptimeEngine().execute(buffer);
     if (!comptime.success) return false;
-    return run(sourceManager_.addBuffer(std::move(path), std::move(comptime.source)), requireMain);
+    const FileId fileId = sourceManager_.addBuffer(std::move(path), std::move(comptime.source));
+    for (const ComptimeAuthoredDiagnostic& diagnostic : comptime.authoredDiagnostics)
+    {
+        const auto severity = diagnostic.severity == ComptimeDiagnosticSeverity::Error
+            ? diagnostics::DiagnosticSeverity::Error
+            : diagnostic.severity == ComptimeDiagnosticSeverity::Warning
+                ? diagnostics::DiagnosticSeverity::Warning : diagnostics::DiagnosticSeverity::Note;
+        diagnostics_.report(diagnostics::DiagnosticId::ExpectedDeclaration, severity,
+            SourceRange(SourceLocation(fileId, static_cast<std::uint32_t>(diagnostic.offset)),
+                SourceLocation(fileId, static_cast<std::uint32_t>(diagnostic.offset + diagnostic.length))),
+            "[" + diagnostic.code + "] " + diagnostic.message);
+    }
+    return run(fileId, requireMain);
 }
 
 const source::SourceManager& FrontendCompilation::sourceManager() const noexcept { return sourceManager_; }
