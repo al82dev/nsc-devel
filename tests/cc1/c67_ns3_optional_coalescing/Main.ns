@@ -1,7 +1,7 @@
 // NativeSharp 3.0 / Tanda 17: public Optional<T> carrier protocol for lazy `??`.
 namespace NativeSharp.Core
 {
-    public struct Optional<T>
+    public copy struct Optional<T> where T : copy
     {
         private T value;
         private bool present;
@@ -28,7 +28,7 @@ namespace c67ns3optionalcoalescing
 {
     using NativeSharp.Core;
 
-    public struct LargeValue
+    public copy struct LargeValue
     {
         public long first;
         public long second;

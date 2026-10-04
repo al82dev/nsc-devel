@@ -1,6 +1,6 @@
 namespace c56ns3nullwith
 {
-    public struct Pair
+    public copy struct Pair
     {
         public int X;
         public int Y;

@@ -1,18 +1,18 @@
 namespace c55ns3callsinitializers
 {
-    public borrowed struct ReadOnlySpan<T>
+    public copy borrowed struct ReadOnlySpan<T>
     {
         public T* start;
         public int count;
     }
 
-    public struct Pair
+    public copy struct Pair
     {
         public int X;
         public int Y;
     }
 
-    public struct GenericPair<T>
+    public copy struct GenericPair<T> where T : copy
     {
         public T First;
         public T Second;
