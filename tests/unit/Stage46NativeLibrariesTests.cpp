@@ -4106,6 +4106,10 @@ namespace Consumer
     const auto legacyStaticRoot = staticRoot / "LegacyStaticHierarchy";
     LibraryMetadata legacyStaticMetadata = nominalMetadata;
     legacyStaticMetadata.formatMinor = 10;
+    for (auto& member : legacyStaticMetadata.members)
+        member.parameterEscapeSummary.clear();
+    for (auto& function : legacyStaticMetadata.namespaceFunctions)
+        function.parameterEscapeSummary.clear();
     const auto legacyUtilityType = std::ranges::find_if(
         legacyStaticMetadata.types,
         [](const auto& type) { return type.fullyQualifiedName == "Precompiled.Utility"; });
@@ -4124,10 +4128,12 @@ namespace Consumer
     }
     error.clear();
     const auto legacyStaticMetadataPath = legacyStaticRoot / "NativeMath.nsmeta";
-    tests.expect(legacyUtilityType != legacyStaticMetadata.types.end() &&
-                     legacyBaseType != legacyStaticMetadata.types.end() &&
-                     legacyInterfaceType != legacyStaticMetadata.types.end() &&
-                     metadataCodec.writeModel(legacyStaticMetadata, legacyStaticMetadataPath, error),
+    const bool wroteLegacyStaticMetadata =
+        legacyUtilityType != legacyStaticMetadata.types.end() &&
+        legacyBaseType != legacyStaticMetadata.types.end() &&
+        legacyInterfaceType != legacyStaticMetadata.types.end() &&
+        metadataCodec.writeModel(legacyStaticMetadata, legacyStaticMetadataPath, error);
+    tests.expect(wroteLegacyStaticMetadata,
                  "legacy NSMETA 1.10 fixture records the historical bogus static hierarchy (" +
                      error + ")");
     output.clear();
