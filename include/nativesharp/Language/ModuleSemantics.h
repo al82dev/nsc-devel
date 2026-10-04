@@ -22,7 +22,8 @@ bool canAccess(
     Visibility visibility,
     bool sameModule,
     bool samePackage,
-    bool explicitFriend) noexcept;
+    bool explicitFriend,
+    bool sameDeclaration = false) noexcept;
 
 std::string reexportedIdentity(std::string_view originalIdentity, std::string_view facadeName);
 

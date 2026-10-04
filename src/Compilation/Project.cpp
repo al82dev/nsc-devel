@@ -14,7 +14,9 @@ Project::Project(
     std::vector<SdkManifest> sdkReferences,
     language::LanguageEdition languageEdition,
     language::PanicProfile panicProfile,
-    std::string panicHandler)
+    std::string panicHandler,
+    std::string packageName,
+    std::vector<std::string> friendModules)
     : projectFile_(std::move(projectFile)),
       moduleName_(std::move(moduleName)),
       outputKind_(outputKind),
@@ -24,7 +26,9 @@ Project::Project(
       sdkReferences_(std::move(sdkReferences)),
       languageEdition_(languageEdition),
       panicProfile_(panicProfile),
-      panicHandler_(std::move(panicHandler))
+      panicHandler_(std::move(panicHandler)),
+      packageName_(packageName.empty() ? moduleName_ : std::move(packageName)),
+      friendModules_(std::move(friendModules))
 {
 }
 
@@ -76,5 +80,15 @@ language::PanicProfile Project::panicProfile() const noexcept
 std::string_view Project::panicHandler() const noexcept
 {
     return panicHandler_;
+}
+
+std::string_view Project::packageName() const noexcept
+{
+    return packageName_;
+}
+
+std::span<const std::string> Project::friendModules() const noexcept
+{
+    return friendModules_;
 }
 }

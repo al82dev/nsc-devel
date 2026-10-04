@@ -45,6 +45,7 @@ enum class NamedTypeAccessibility
 {
     Private,
     Internal,
+    Package,
     Protected,
     Public
 };
@@ -309,7 +310,7 @@ private:
         std::size_t moduleOrdinal,
         const std::string& dottedName) const;
     // NSC-LIMIT-009. Un tipo cruza a otro modulo solo si el y TODOS sus contenedores son public.
-    bool typeIsPubliclyVisible(std::size_t typeOrdinal) const;
+    bool typeIsVisibleTo(std::size_t accessingProjectOrdinal, std::size_t typeOrdinal) const;
     // NSC-LIMIT-009. El anidado que un nombre habria nombrado si la accesibilidad lo permitiera.
     // Existe solo para el diagnostico: decir «no existe» de un tipo que esta escrito tres lineas
     // mas arriba manda al lector a buscar una errata que no hay.
@@ -342,6 +343,8 @@ private:
     // NSC-LIMIT-009. El nodo de sintaxis de cada parte -> su ordinal de tipo. Es lo que permite a
     // `bindNode` saber en que tipo esta entrando sin reconstruir la identidad a mano.
     std::unordered_map<const ast::AstNode*, std::size_t> typeOrdinalBySyntax_;
+    std::vector<std::string> packageByProject_;
+    std::vector<std::vector<std::string>> friendsByProject_;
     std::unordered_map<const ast::TypeSyntax*, std::size_t> bindingBySyntax_;
     std::vector<ExpressionTypeNameBinding> expressionTypeBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> expressionTypeBindingBySyntax_;

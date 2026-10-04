@@ -43,7 +43,9 @@ public:
         std::vector<SdkManifest> sdkReferences,
         language::LanguageEdition languageEdition = language::LanguageEdition::V2,
         language::PanicProfile panicProfile = language::PanicProfile::Abort,
-        std::string panicHandler = {});
+        std::string panicHandler = {},
+        std::string packageName = {},
+        std::vector<std::string> friendModules = {});
 
     const std::filesystem::path& projectFile() const noexcept;
     const std::string& moduleName() const noexcept;
@@ -55,6 +57,8 @@ public:
     language::LanguageEdition languageEdition() const noexcept;
     language::PanicProfile panicProfile() const noexcept;
     std::string_view panicHandler() const noexcept;
+    std::string_view packageName() const noexcept;
+    std::span<const std::string> friendModules() const noexcept;
 
 private:
     std::filesystem::path projectFile_;
@@ -67,5 +71,7 @@ private:
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
     language::PanicProfile panicProfile_ = language::PanicProfile::Abort;
     std::string panicHandler_;
+    std::string packageName_;
+    std::vector<std::string> friendModules_;
 };
 }

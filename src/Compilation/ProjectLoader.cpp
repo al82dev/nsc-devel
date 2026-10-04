@@ -35,6 +35,7 @@ struct LibraryReferenceDescriptor final
 struct ProjectDescriptor final
 {
     std::optional<std::string> name;
+    std::optional<std::string> packageName;
     std::optional<ProjectOutputKind> outputKind;
     std::optional<language::LanguageEdition> languageEdition;
     std::optional<language::PanicProfile> panicProfile;
@@ -45,6 +46,7 @@ struct ProjectDescriptor final
     std::vector<std::string> projectReferences;
     std::vector<LibraryReferenceDescriptor> libraryReferences;
     std::vector<std::string> sdkReferences;
+    std::vector<std::string> friendModules;
 };
 
 class ProjectLoaderCache final
@@ -257,6 +259,20 @@ bool parsePropertyGroup(
                 return false;
             }
             descriptor.name = value;
+        }
+        else if (property.name == "Package")
+        {
+            if (descriptor.packageName.has_value())
+            {
+                error = "project property 'Package' is declared more than once";
+                return false;
+            }
+            if (!isIdentifier(value))
+            {
+                error = "Package must be a NativeSharp identifier";
+                return false;
+            }
+            descriptor.packageName = value;
         }
         else if (property.name == "OutputType")
         {
@@ -563,6 +579,29 @@ bool parseItemGroup(
                 return false;
             }
             descriptor.sdkReferences.push_back(trim(*include));
+        }
+        else if (item.name == "Friend")
+        {
+            if (!validateEmptyBody(item, error) || !hasOnlyAttributes(item, {"Include"}, error))
+            {
+                return false;
+            }
+            const std::string* include = attribute(item, "Include");
+            const std::string module = include == nullptr ? std::string{} : trim(*include);
+            if (!isIdentifier(module))
+            {
+                error = "Friend requires one NativeSharp module identifier in Include";
+                return false;
+            }
+            const auto duplicate = std::ranges::find_if(
+                descriptor.friendModules,
+                [&](const std::string& existing) { return equalsFolded(existing, module); });
+            if (duplicate != descriptor.friendModules.end())
+            {
+                error = "Friend module '" + module + "' is declared more than once";
+                return false;
+            }
+            descriptor.friendModules.push_back(module);
         }
         else
         {
@@ -1042,7 +1081,9 @@ std::optional<Project> ProjectLoader::load(
         std::move(sdkReferences),
         descriptor.languageEdition.value_or(language::LanguageEdition::V2),
         descriptor.panicProfile.value_or(language::PanicProfile::Abort),
-        descriptor.panicHandler.value_or(std::string{}));
+        descriptor.panicHandler.value_or(std::string{}),
+        descriptor.packageName.value_or(moduleName),
+        std::move(descriptor.friendModules));
 }
 
 ProjectLoaderStatistics ProjectLoader::statistics() const

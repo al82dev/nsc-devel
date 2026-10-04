@@ -2841,6 +2841,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
 
     const std::size_t declarationBeginIndex = index_;
     TokenKind accessibility = TokenKind::Invalid;
+    std::string granularVisibility;
     bool isPartial = false;
     bool isAbstract = false;
     bool isSealed = false;
@@ -3019,22 +3020,27 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             *seen = true;
             continue;
         }
-        if (at(TokenKind::KwPublic) || at(TokenKind::KwInternal))
+        if (at(TokenKind::KwPublic) || at(TokenKind::KwInternal) ||
+            (languageEdition_ == language::LanguageEdition::V3 &&
+             (atContextualKeyword("module") || atContextualKeyword("package"))))
         {
             const lexer::Token& modifier = consume();
+            const bool contextualVisibility = modifier.kind() == TokenKind::Identifier;
+            const TokenKind effective = contextualVisibility ? TokenKind::KwInternal : modifier.kind();
             if (accessibility != TokenKind::Invalid)
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::ExpectedDeclaration,
                     diagnostics::DiagnosticSeverity::Error,
                     modifier.range(),
-                    accessibility == modifier.kind()
+                    accessibility == effective
                         ? "duplicate accessibility modifier on top-level type declaration"
                         : "conflicting accessibility modifiers on top-level type declaration");
             }
             else
             {
-                accessibility = modifier.kind();
+                accessibility = effective;
+                if (contextualVisibility) granularVisibility = std::string(modifier.lexeme());
             }
             continue;
         }
@@ -3549,6 +3555,13 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     {
         if (isUnsafeTraitContract)
             declaration->setUnsafe();
+        if (!granularVisibility.empty())
+        {
+            std::string markers = declaration->auxiliaryText();
+            markers += markers.empty() ? "" : ",";
+            markers += "visibility=" + granularVisibility;
+            declaration->setAuxiliaryText(std::move(markers));
+        }
         if (isCopyType)
         {
             if (declaration->kind() != ast::AstNodeKind::StructDeclaration)

@@ -104,11 +104,12 @@ bool canAccess(
     Visibility visibility,
     bool sameModule,
     bool samePackage,
-    bool explicitFriend) noexcept
+    bool explicitFriend,
+    bool sameDeclaration) noexcept
 {
     switch (visibility)
     {
-        case Visibility::Private: return sameModule || explicitFriend;
+        case Visibility::Private: return sameDeclaration || explicitFriend;
         case Visibility::Module: return sameModule || explicitFriend;
         case Visibility::Package: return samePackage || explicitFriend;
         case Visibility::Public: return true;

@@ -321,11 +321,17 @@ bool ProjectNameLookup::build(
     modules_.reserve(projects.size());
     typesByModule_.resize(projects.size());
     nestedSourceNamesByModule_.resize(projects.size());
+    packageByProject_.resize(projects.size());
+    friendsByProject_.resize(projects.size());
     for (std::size_t projectOrdinal = 0; projectOrdinal < projects.size(); ++projectOrdinal)
     {
         modules_.push_back(std::make_unique<ModuleDeclarationSpace>(
             projectOrdinal,
             projects[projectOrdinal].moduleName()));
+        packageByProject_[projectOrdinal] = std::string(projects[projectOrdinal].packageName());
+        friendsByProject_[projectOrdinal].assign(
+            projects[projectOrdinal].friendModules().begin(),
+            projects[projectOrdinal].friendModules().end());
     }
 
     buildVisibility(graph);
@@ -677,7 +683,9 @@ void ProjectNameLookup::predeclareNode(
         }
         else if (node->tokenKind() == lexer::TokenKind::KwInternal)
         {
-            accessibility = NamedTypeAccessibility::Internal;
+            accessibility = node->auxiliaryText().find("visibility=package") != std::string::npos
+                ? NamedTypeAccessibility::Package
+                : NamedTypeAccessibility::Internal;
         }
         else if (node->tokenKind() == lexer::TokenKind::KwProtected)
         {
@@ -878,6 +886,32 @@ void ProjectNameLookup::finalizePredeclarations(
             finalAccessibility = primary.part.isNested
                 ? primary.part.accessibility
                 : namedAccessibility(aggregator.types().front().accessibility);
+            if (!primary.part.isNested)
+            {
+                const bool anyPackage = std::any_of(
+                    pendingTypes_.begin() + static_cast<std::ptrdiff_t>(groupBegin),
+                    pendingTypes_.begin() + static_cast<std::ptrdiff_t>(groupEnd),
+                    [](const PendingTypeDeclaration& pending)
+                    {
+                        return pending.part.accessibility == NamedTypeAccessibility::Package;
+                    });
+                const bool allPackage = std::all_of(
+                    pendingTypes_.begin() + static_cast<std::ptrdiff_t>(groupBegin),
+                    pendingTypes_.begin() + static_cast<std::ptrdiff_t>(groupEnd),
+                    [](const PendingTypeDeclaration& pending)
+                    {
+                        return pending.part.accessibility == NamedTypeAccessibility::Package;
+                    });
+                if (anyPackage && !allPackage)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::PartialTypeConflict,
+                        diagnostics::DiagnosticSeverity::Error,
+                        primary.part.range,
+                        "all parts of a package-visible partial type must declare package visibility");
+                }
+                if (allPackage) finalAccessibility = NamedTypeAccessibility::Package;
+            }
             finalAbstract = aggregator.types().front().isAbstract;
             finalSealed = aggregator.types().front().isSealed;
             finalStatic = aggregator.types().front().isStatic;
@@ -1503,6 +1537,7 @@ void ProjectNameLookup::bindTypeSyntax(
                 effectiveProjectOrdinal, effectiveNamespaceSegments, syntax->baseName());
 
             std::string internalMatch;
+            std::optional<std::size_t> inaccessibleOrdinal;
             if (!inaccessibleNested.has_value() &&
                 effectiveProjectOrdinal < modules_.size() && modules_[effectiveProjectOrdinal] != nullptr)
             {
@@ -1515,7 +1550,7 @@ void ProjectNameLookup::bindTypeSyntax(
                     for (const auto& entry : typesByModule_[visibleOrdinal])
                     {
                         if (entry.second >= namedTypes_.size()) continue;
-                        if (namedTypes_[entry.second].accessibility == NamedTypeAccessibility::Public)
+                        if (typeIsVisibleTo(effectiveProjectOrdinal, entry.second))
                         {
                             continue;
                         }
@@ -1525,6 +1560,7 @@ void ProjectNameLookup::bindTypeSyntax(
                                  entry.first.size() - suffix.size(), suffix.size(), suffix) == 0))
                         {
                             internalMatch = entry.first;
+                            inaccessibleOrdinal = entry.second;
                             break;
                         }
                     }
@@ -1548,13 +1584,21 @@ void ProjectNameLookup::bindTypeSyntax(
             }
             else if (!internalMatch.empty())
             {
+                const bool packageMismatch = inaccessibleOrdinal.has_value() &&
+                    namedTypes_[*inaccessibleOrdinal].accessibility ==
+                        NamedTypeAccessibility::Package;
                 diagnostics.report(
                     diagnostics::DiagnosticId::UnknownTypeName,
                     diagnostics::DiagnosticSeverity::Error,
                     syntax->range(),
-                    "type '" + internalMatch + "' is declared in a referenced project but is not "
-                    "public, so it does not cross the project boundary; declare it 'public' "
-                    "(module '" + std::string(unit.moduleName()) + "')");
+                    packageMismatch
+                        ? "type '" + internalMatch + "' is package-visible and the consuming "
+                          "project has a different Package identity (module '" +
+                              std::string(unit.moduleName()) + "')"
+                        : "type '" + internalMatch + "' is declared in a referenced project but is "
+                          "module-visible and the consumer is not an explicit Friend; declare it "
+                          "'public' or add a Friend contract (module '" +
+                              std::string(unit.moduleName()) + "')");
             }
             else
             {
@@ -1649,7 +1693,7 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
                 continue;
             const std::optional<std::size_t> target = findTypeInModule(ordinal, requestedType);
             if (!target.has_value()) continue;
-            if (ordinal == projectOrdinal || typeIsPubliclyVisible(*target))
+            if (ordinal == projectOrdinal || typeIsVisibleTo(projectOrdinal, *target))
             {
                 const std::array<std::size_t, 1> single{*target};
                 appendUnique(found, single);
@@ -1753,7 +1797,7 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
                     {
                         const std::optional<std::size_t> other =
                             findTypeInModule(visibleOrdinal, candidate);
-                        if (other.has_value() && typeIsPubliclyVisible(*other))
+                        if (other.has_value() && typeIsVisibleTo(projectOrdinal, *other))
                         {
                             const std::array<std::size_t, 1> single{*other};
                             appendUnique(found, single);
@@ -1780,7 +1824,7 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
                         {
                             const auto iterator = typesByModule_[visibleOrdinal].find(candidate);
                             if (iterator != typesByModule_[visibleOrdinal].end() &&
-                                typeIsPubliclyVisible(iterator->second))
+                                typeIsVisibleTo(projectOrdinal, iterator->second))
                             {
                                 const std::array<std::size_t, 1> single{iterator->second};
                                 appendUnique(found, single);
@@ -1789,7 +1833,7 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
                         }
                         const std::optional<std::size_t> other =
                             findTypeInModule(visibleOrdinal, candidate);
-                        if (other.has_value() && typeIsPubliclyVisible(*other))
+                        if (other.has_value() && typeIsVisibleTo(projectOrdinal, *other))
                         {
                             const std::array<std::size_t, 1> single{*other};
                             appendUnique(found, single);
@@ -1850,7 +1894,9 @@ std::vector<std::size_t> ProjectNameLookup::resolveExpressionTypeCandidates(
 // exporta `Item`, y `class Outer { public struct Item }` no exporta nada, porque el contenedor no
 // sale. Sin esta cadena, un `public` interior habria colado al anidado por encima de su
 // contenedor internal.
-bool ProjectNameLookup::typeIsPubliclyVisible(std::size_t typeOrdinal) const
+bool ProjectNameLookup::typeIsVisibleTo(
+    std::size_t accessingProjectOrdinal,
+    std::size_t typeOrdinal) const
 {
     // NSC-LIMIT-009, segunda vuelta. `protected` TAMBIEN CRUZA -- o mejor dicho, tiene derecho a
     // que se le pregunte. Un anidado protegido de un contenedor public es alcanzable desde una
@@ -1870,8 +1916,35 @@ bool ProjectNameLookup::typeIsPubliclyVisible(std::size_t typeOrdinal) const
     {
         const NamedTypeDeclaration& type = namedTypes_[*current];
         const bool nested = type.containingTypeOrdinal.has_value();
-        const bool crosses = type.accessibility == NamedTypeAccessibility::Public ||
+        bool crosses = type.accessibility == NamedTypeAccessibility::Public ||
             (nested && type.accessibility == NamedTypeAccessibility::Protected);
+        if (!nested && type.projectOrdinal < packageByProject_.size() &&
+            accessingProjectOrdinal < packageByProject_.size())
+        {
+            const auto fold = [](std::string value)
+            {
+                std::ranges::transform(value, value.begin(), [](unsigned char ch)
+                {
+                    return static_cast<char>(std::tolower(ch));
+                });
+                return value;
+            };
+            if (type.accessibility == NamedTypeAccessibility::Package &&
+                fold(packageByProject_[type.projectOrdinal]) ==
+                    fold(packageByProject_[accessingProjectOrdinal]))
+            {
+                crosses = true;
+            }
+            if (type.accessibility == NamedTypeAccessibility::Internal &&
+                type.projectOrdinal < friendsByProject_.size() &&
+                accessingProjectOrdinal < modules_.size())
+            {
+                const std::string accessing = fold(modules_[accessingProjectOrdinal]->moduleName());
+                crosses = std::ranges::any_of(
+                    friendsByProject_[type.projectOrdinal],
+                    [&](const std::string& name) { return fold(name) == accessing; });
+            }
+        }
         if (!crosses)
         {
             return false;
@@ -1989,7 +2062,7 @@ std::vector<std::size_t> ProjectNameLookup::findExactTypeCandidates(
     {
         const auto iterator = typesByModule_[visibleOrdinal].find(fullyQualifiedName);
         if (iterator != typesByModule_[visibleOrdinal].end() &&
-            typeIsPubliclyVisible(iterator->second))
+            typeIsVisibleTo(projectOrdinal, iterator->second))
         {
             candidates.push_back(iterator->second);
         }
@@ -2066,6 +2139,8 @@ const char* namedTypeAccessibilityName(NamedTypeAccessibility accessibility) noe
             return "private";
         case NamedTypeAccessibility::Internal:
             return "internal";
+        case NamedTypeAccessibility::Package:
+            return "package";
         case NamedTypeAccessibility::Protected:
             return "protected";
         case NamedTypeAccessibility::Public:
