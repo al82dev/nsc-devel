@@ -915,6 +915,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::ObjectDestroy: return "object-destroy";
         case ProjectOopMirNodeKind::Panic: return "panic";
         case ProjectOopMirNodeKind::ResultPropagation: return "result-propagation";
+        case ProjectOopMirNodeKind::LoopExpression: return "loop-expression";
         case ProjectOopMirNodeKind::MatchExpression: return "match-expression";
         case ProjectOopMirNodeKind::MatchArm: return "match-arm";
         case ProjectOopMirNodeKind::MatchValue: return "match-value";
@@ -1919,6 +1920,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::While: result->kind = ProjectOopMirNodeKind::While; break;
         case ProjectOopHirNodeKind::DoWhile: result->kind = ProjectOopMirNodeKind::DoWhile; break;
         case ProjectOopHirNodeKind::Conditional: result->kind = ProjectOopMirNodeKind::Conditional; break;
+        case ProjectOopHirNodeKind::LoopExpression:
+            result->kind = ProjectOopMirNodeKind::LoopExpression;
+            break;
         case ProjectOopHirNodeKind::MatchExpression:
             result->kind = ProjectOopMirNodeKind::MatchExpression;
             if (node->booleanValue)

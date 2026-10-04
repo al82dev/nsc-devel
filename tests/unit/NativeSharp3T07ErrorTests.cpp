@@ -240,7 +240,7 @@ public class Program
         : std::string();
     tests.expect(
         mirBuilt && compilationError.empty() &&
-            mir.find("schema=1.26") != std::string::npos &&
+            mir.find("schema=1.27") != std::string::npos &&
             mir.find("result-propagation") != std::string::npos &&
             mir.find("conversion=__nsc_method_") != std::string::npos &&
             mir.find("continuation=return") != std::string::npos,
@@ -386,7 +386,7 @@ namespace TypedThrows
     const CompilationEvidence typed = compileMir(typedProject);
     tests.expect(
         typed.succeeded && typed.error.empty() &&
-            typed.mir.find("schema=1.26") != std::string::npos &&
+            typed.mir.find("schema=1.27") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.Error") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.ParseError") != std::string::npos &&
             typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=true exhaustive=false") != std::string::npos &&
@@ -514,6 +514,97 @@ public class Program
         "an inferred never local has no alloca, layout, store, or fabricated runtime value (" +
             neverLlvmError + neverLocalLlvm + ")");
 
+    const std::filesystem::path loopRoot = root / "loop-expression";
+    const std::filesystem::path loopProject = writeProject(
+        loopRoot, "LoopExpression", R"NS(
+public class State
+{
+    public static int Cleanups = 0;
+    public static int Drops = 0;
+}
+
+public class Resource
+{
+    ~Resource() { State.Drops = State.Drops + 1; }
+}
+
+public class Program
+{
+    private static int Simple()
+    {
+        return loop { break 42; };
+    }
+
+    private static int Continued()
+    {
+        int index = 0;
+        return loop retry
+        {
+            index = index + 1;
+            if (index < 3) { continue retry; }
+            break 40 + index - 1;
+        };
+    }
+
+    private static int Labelled()
+    {
+        return loop outer
+        {
+            int unreachable = loop inner
+            {
+                break outer: 42;
+            };
+        };
+    }
+
+    private static int Cleaned()
+    {
+        int value = loop
+        {
+            defer [] { State.Cleanups = State.Cleanups + 1; }
+            break 42;
+        };
+        return value;
+    }
+
+    private static int Moved()
+    {
+        {
+            owned Resource result = loop
+            {
+                owned Resource source = new Resource();
+                break move(source);
+            };
+        }
+        return State.Drops;
+    }
+
+    public static int Main()
+    {
+        if (Simple() != 42 || Continued() != 42 || Labelled() != 42) { return 10; }
+        if (Cleaned() != 42 || State.Cleanups != 1) { return 20; }
+        if (Moved() != 1) { return 30; }
+        return 42;
+    }
+}
+)NS");
+    const CompilationEvidence loopEvidence = compileMir(loopProject);
+    tests.expect(
+        loopEvidence.succeeded && loopEvidence.error.empty() &&
+            loopEvidence.mir.find("schema=1.27") != std::string::npos &&
+            loopEvidence.mir.find("loop-expression type=builtin:int") != std::string::npos &&
+            loopEvidence.mir.find("label=outer break-result=builtin:int") != std::string::npos &&
+            loopEvidence.mir.find("target-label=outer") != std::string::npos &&
+            loopEvidence.mir.find("target-label=retry") != std::string::npos &&
+            loopEvidence.mir.find("continuation=break") != std::string::npos,
+        "loop expressions publish typed values, labelled exits, and cleanup edges in MIR 1.27 (" +
+            loopEvidence.error + loopEvidence.diagnostics + loopEvidence.mir + ")");
+    executionDiagnostic.clear();
+    tests.expect(
+        compileAndRun(loopProject, 42, executionDiagnostic),
+        "O0/NSLink executes loop values, labelled break/continue, never inner loops, and defer cleanup (" +
+            executionDiagnostic + ")");
+
     const auto expectRejected = [&](std::string_view name, std::string_view source,
                                     std::string_view expectedText)
     {
@@ -522,7 +613,7 @@ public class Program
         tests.expect(
             !evidence.succeeded &&
                 (evidence.error + evidence.diagnostics).find(expectedText) != std::string::npos,
-            std::string(name) + " is rejected by the typed throws contract (" +
+            std::string(name) + " is rejected by the T07 contract (" +
                 evidence.error + evidence.diagnostics + ")");
     };
     expectRejected("UnhandledCall", R"NS(
@@ -652,6 +743,52 @@ public class Program
     }
 }
 )NS", "use of unassigned local variable 'value'");
+    expectRejected("BreakValueOutsideLoopExpression", R"NS(
+public class Program
+{
+    public static int Main() { while (true) { break 42; } return 0; }
+}
+)NS", "break with a value may target only a loop expression");
+    expectRejected("UnknownLoopLabel", R"NS(
+public class Program
+{
+    public static int Main() { return loop { break missing: 42; }; }
+}
+)NS", "targets unknown loop label 'missing'");
+    expectRejected("MixedLoopBreakTypes", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        return loop { if (true) { break true; } break 42; };
+    }
+}
+)NS", "loop expression break values have no common type");
+    expectRejected("DuplicateLoopLabel", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        return loop same { int value = loop same { break 1; }; break value; };
+    }
+}
+)NS", "nested loop label 'same' is already active");
+    expectRejected("LoopBorrowEscape", R"NS(
+public class Resource {}
+public class Program
+{
+    public static int Main()
+    {
+        borrowed Resource escaped = loop
+        {
+            owned Resource owner = new Resource();
+            borrowed Resource view = owner;
+            break view;
+        };
+        return escaped == null ? 1 : 42;
+    }
+}
+)NS", "whose lifetime ends when the loop expression exits");
 
     const std::filesystem::path edition2 = root / "edition2";
     const std::filesystem::path edition2Project = edition2 / "Edition2Identifier.nsproj";

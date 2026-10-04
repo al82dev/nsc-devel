@@ -7880,10 +7880,28 @@ ast::AstNode* Parser::parseStatement()
     {
         const std::size_t beginIndex = index_;
         const TokenKind kind = consume().kind();
+        ast::AstNode* value = nullptr;
+        std::string targetLabel;
+        if (kind == TokenKind::KwBreak)
+        {
+            if (at(TokenKind::Identifier) && peek().kind() == TokenKind::Colon)
+            {
+                targetLabel = std::string(consume().lexeme());
+                consume();
+            }
+            if (!at(TokenKind::Semicolon)) value = parseExpression();
+        }
+        else if (at(TokenKind::Identifier))
+        {
+            targetLabel = std::string(consume().lexeme());
+        }
         expect(TokenKind::Semicolon, "';'");
-        return arena_.make<ast::AstNode>(
+        ast::AstNode* exit = arena_.make<ast::AstNode>(
             kind == TokenKind::KwBreak ? ast::AstNodeKind::BreakStatement : ast::AstNodeKind::ContinueStatement,
             tokenRangeFrom(beginIndex));
+        exit->setFirst(value);
+        exit->setText(std::move(targetLabel));
+        return exit;
     }
 
     if (at(TokenKind::KwReturn)) return parseReturnStatement();
@@ -10463,6 +10481,33 @@ ast::AstNode* Parser::parseMatchExpression()
     return match;
 }
 
+ast::AstNode* Parser::parseLoopExpression()
+{
+    const std::size_t beginIndex = index_;
+    const lexer::Token& loopKeyword = consume();
+    requireEdition3(loopKeyword.range(), "loop expressions");
+
+    std::string label;
+    if (at(TokenKind::Identifier) && peek().kind() == TokenKind::LeftBrace)
+        label = std::string(consume().lexeme());
+
+    if (!at(TokenKind::LeftBrace))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "expected '{' after loop expression" +
+                (label.empty() ? std::string{} : " label '" + label + "'"));
+    }
+    ast::AstNode* body = parseBlock();
+    ast::AstNode* loop = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::LoopExpression, tokenRangeFrom(beginIndex));
+    loop->setFirst(body);
+    loop->setText(std::move(label));
+    return loop;
+}
+
 ast::AstNode* Parser::parseForStatement()
 {
     const std::size_t beginIndex = index_;
@@ -12392,6 +12437,10 @@ ast::AstNode* Parser::parsePrimaryExpression()
 {
     if (atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
         return parseMatchExpression();
+    if (atContextualKeyword("loop") &&
+        (peek().kind() == TokenKind::LeftBrace ||
+         (peek().kind() == TokenKind::Identifier && peek(2).kind() == TokenKind::LeftBrace)))
+        return parseLoopExpression();
     const lexer::Token& token = current();
     ast::AstNodeKind kind = ast::AstNodeKind::IdentifierExpression;
 

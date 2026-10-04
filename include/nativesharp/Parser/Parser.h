@@ -309,6 +309,7 @@ private:
     // therefore evaluated exactly once and no runtime allocation or boxing protocol is introduced.
     ast::AstNode* parseMatchStatement();
     ast::AstNode* parseMatchExpression();
+    ast::AstNode* parseLoopExpression();
     // True when the cursor sits on `case` or on the `default` OF A LABEL. `default` is also an
     // expression keyword (`default(T)`), so it only opens a label when a colon follows it
     // immediately -- otherwise a section that begins with `default(int)` would be misread.

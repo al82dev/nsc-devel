@@ -37,7 +37,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // 1.24 publishes each callable's typed-throws contract independently from native EH regions.
 // 1.25 publishes source-ordered catch patterns, their declared-error matches and exhaustiveness.
 // 1.26 publishes value-producing exhaustive match control flow and arm cleanup boundaries.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 26;
+// 1.27 publishes value-producing loop control flow, labelled exits and converted break values.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 27;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -362,6 +363,8 @@ enum class ProjectOopMirNodeKind
     Panic,
     // T07-F01. One evaluated carrier, an explicit tag branch, and a structured Error return.
     ResultPropagation,
+    // T07-F05. Value-producing infinite loop; see the corresponding HIR node contract.
+    LoopExpression,
     // T03-F03. Explicit expression match; see the corresponding HIR nodes for child shape.
     MatchExpression,
     MatchArm,

@@ -740,9 +740,13 @@ T07 pasa 34/34 con ejecución O0/NSLink.
 
 **Commit:** `ns3(t07-f05): loop-values`
 
-- **Implementación:** `loop { break value; }`; unificar tipos de breaks, lifetimes y cleanup; `while`/`for` permanecen `void` salvo decisión explícita.
-- **Pruebas dirigidas:** múltiples breaks, never, references, destructores, labels, nested loops e inferencia.
-- **Markdown ES/EN:** tipo de loop, labels y ejemplos.
+- **Estado:** `TERMINADA`; vertical parser → semántica → HIR → MIR 1.27 → LLVM Win64.
+- **Implementación:** `loop [label] { ... }`, `break [label:] value`, `continue label`; unificación
+  por conversiones implícitas, `never`, ownership/lifetimes, back-edges y cleanup; `while`/`for`
+  permanecen sentencias sin valor.
+- **Pruebas dirigidas:** `PASS: 41 checks`; valores, labels, nested loops, `never`, defer,
+  move-only, lifetime escape y diagnósticos negativos; ejecución O0 enlazada por NSLink.
+- **Markdown ES/EN:** `docs/3.0/language/loop-expressions.md` y ficha individual F05.
 
 ## NS3-T07-F06 — Assertions y panic profiles / Assertions and panic profiles
 

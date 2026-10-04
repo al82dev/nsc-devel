@@ -366,6 +366,26 @@ struct MethodMatchExpressionBinding final
     std::vector<ProjectImplicitConversion> armConversions;
 };
 
+// T07-F05. One semantic contract for the value-producing loop and one for each break that exits
+// it. Keeping the conversion on the break syntax means HIR never repeats type unification and a
+// labelled break can target an outer loop without relying on the lowering stack's top frame.
+struct MethodLoopExpressionBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    std::size_t methodMemberOrdinal = 0;
+    std::size_t scopeOrdinal = 0;
+    std::string label;
+    std::string resultTypeKey;
+};
+
+struct MethodLoopBreakBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    const ast::AstNode* targetLoopSyntax = nullptr;
+    std::string resultTypeKey;
+    ProjectImplicitConversion conversion;
+};
+
 enum class MethodRuntimeTypeOperationKind
 {
     TypeTest,
@@ -1493,6 +1513,10 @@ public:
         const ast::AstNode* syntax) const noexcept;
     const MethodMatchExpressionBinding* matchExpressionBinding(
         const ast::AstNode* syntax) const noexcept;
+    const MethodLoopExpressionBinding* loopExpressionBinding(
+        const ast::AstNode* syntax) const noexcept;
+    const MethodLoopBreakBinding* loopBreakBinding(
+        const ast::AstNode* syntax) const noexcept;
     const std::string* staticInterpolationValue(const ast::AstNode* syntax) const noexcept;
     // NSC-LIMIT-010. "Este tipo tiene algo que poseer": una referencia de clase/interfaz o una
     // cadena nativa. Publico porque ProjectConstructionModel lo necesita para aplicar la MISMA
@@ -1671,6 +1695,15 @@ private:
         // the flag a `continue` in a `switch` in a `while` would either be rejected or, worse,
         // bound to a jump target that does not exist.
         bool isSwitch = false;
+        const ast::AstNode* syntax = nullptr;
+        std::string label;
+        bool isExpression = false;
+        struct BreakValue final
+        {
+            const ast::AstNode* syntax = nullptr;
+            ExpressionResult value;
+        };
+        std::vector<BreakValue> breakValues;
     };
 
     struct FinallyContext final
@@ -1948,6 +1981,11 @@ private:
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
     ExpressionResult analyzeMatchExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeLoopExpression(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
@@ -2297,6 +2335,10 @@ private:
     std::unordered_map<const ast::AstNode*, std::size_t> deconstructionBindingBySyntax_;
     std::vector<MethodMatchExpressionBinding> matchExpressionBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> matchExpressionBindingBySyntax_;
+    std::vector<MethodLoopExpressionBinding> loopExpressionBindings_;
+    std::unordered_map<const ast::AstNode*, std::size_t> loopExpressionBindingBySyntax_;
+    std::vector<MethodLoopBreakBinding> loopBreakBindings_;
+    std::unordered_map<const ast::AstNode*, std::size_t> loopBreakBindingBySyntax_;
     std::vector<ExpressionResult> activeMatchValues_;
     std::unordered_map<const ast::AstNode*, std::string> staticInterpolationValues_;
     std::vector<MethodRuntimeTypeBinding> runtimeTypeBindings_;

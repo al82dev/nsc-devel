@@ -2688,6 +2688,22 @@ const MethodMatchExpressionBinding* ProjectMethodBodyModel::matchExpressionBindi
         ? nullptr : &matchExpressionBindings_[found->second];
 }
 
+const MethodLoopExpressionBinding* ProjectMethodBodyModel::loopExpressionBinding(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto found = loopExpressionBindingBySyntax_.find(syntax);
+    return found == loopExpressionBindingBySyntax_.end()
+        ? nullptr : &loopExpressionBindings_[found->second];
+}
+
+const MethodLoopBreakBinding* ProjectMethodBodyModel::loopBreakBinding(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto found = loopBreakBindingBySyntax_.find(syntax);
+    return found == loopBreakBindingBySyntax_.end()
+        ? nullptr : &loopBreakBindings_[found->second];
+}
+
 std::optional<MethodDeconstructionBinding> ProjectMethodBodyModel::bindDeconstructionSource(
     const ast::AstNode* syntax,
     const ast::AstNode* sourceSyntax,
@@ -4464,6 +4480,11 @@ void ProjectMethodBodyModel::analyzeStatement(
                 activeCleanupRegions_.size(),
                 activeCleanupRegions_.size(),
                 {},
+                {},
+                false,
+                nullptr,
+                {},
+                false,
                 {}});
             analyzeBlock(statement->second(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
             const OwnershipFlowSnapshot fallthroughState = captureOwnershipFlow();
@@ -6570,6 +6591,11 @@ void ProjectMethodBodyModel::analyzeFor(
         breakCleanupDepth,
         continueCleanupDepth,
         {},
+        {},
+        false,
+        nullptr,
+        {},
+        false,
         {}});
 
     if (!statement->children().empty())
@@ -7798,7 +7824,11 @@ void ProjectMethodBodyModel::analyzeSwitch(
         activeCleanupRegions_.size(),
         {},
         {},
-        true});
+        true,
+        nullptr,
+        {},
+        false,
+        {}});
 
     std::vector<OwnershipFlowSnapshot> sectionExitStates;
     for (const ast::AstNode* section : statement->children())
@@ -7862,7 +7892,31 @@ bool ProjectMethodBodyModel::analyzeLoopExit(
     // the while. Getting this backwards is not a compile error anywhere downstream; it is a jump
     // to the wrong label.
     std::size_t targetLoopIndex = loopStack_.size() - 1;
-    if (kind == MethodStructuredExitKind::Continue)
+    if (statement != nullptr && !statement->text().empty())
+    {
+        bool found = false;
+        for (std::size_t index = loopStack_.size(); index > 0; --index)
+        {
+            const LoopContext& candidate = loopStack_[index - 1];
+            if (!candidate.isSwitch && candidate.label == statement->text())
+            {
+                targetLoopIndex = index - 1;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->range(),
+                std::string(kind == MethodStructuredExitKind::Break ? "break" : "continue") +
+                    " targets unknown loop label '" + statement->text() + "'");
+            return false;
+        }
+    }
+    else if (kind == MethodStructuredExitKind::Continue)
     {
         while (loopStack_[targetLoopIndex].isSwitch)
         {
@@ -7894,15 +7948,62 @@ bool ProjectMethodBodyModel::analyzeLoopExit(
         }
     }
 
-    LoopContext& loop = loopStack_[targetLoopIndex];
     if (kind == MethodStructuredExitKind::Break)
     {
-        loop.breakStates.push_back(captureOwnershipFlow());
+        if (loopStack_[targetLoopIndex].isExpression)
+        {
+            ExpressionResult value;
+            if (statement != nullptr && statement->first() != nullptr)
+            {
+                value = analyzeExpression(
+                    statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+                    false, false, true);
+            }
+            else
+            {
+                value.typeKey = "builtin:void";
+                value.valid = true;
+            }
+            LoopContext& targetLoop = loopStack_[targetLoopIndex];
+            if (value.valid && value.ownership == sema::OwnershipKind::Borrowed)
+            {
+                std::optional<std::size_t> borrowedRoot = value.ownershipSourceLocalOrdinal;
+                if (!borrowedRoot.has_value()) borrowedRoot = value.borrowedLocalOrdinal;
+                if (borrowedRoot.has_value() && *borrowedRoot < locals_.size() &&
+                    scopeContains(targetLoop.targetScopeOrdinal, locals_[*borrowedRoot].scopeOrdinal))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error,
+                        statement->range(),
+                        "loop break value borrows from local '" + locals_[*borrowedRoot].name +
+                            "' whose lifetime ends when the loop expression exits");
+                    value.valid = false;
+                }
+            }
+            targetLoop.breakValues.push_back(LoopContext::BreakValue{statement, value});
+            if (value.valid && value.typeKey != "builtin:never")
+                targetLoop.breakStates.push_back(captureOwnershipFlow());
+        }
+        else
+        {
+            if (statement != nullptr && statement->first() != nullptr)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->range(),
+                    "break with a value may target only a loop expression");
+                return false;
+            }
+            loopStack_[targetLoopIndex].breakStates.push_back(captureOwnershipFlow());
+        }
     }
     else
     {
-        loop.continueStates.push_back(captureOwnershipFlow());
+        loopStack_[targetLoopIndex].continueStates.push_back(captureOwnershipFlow());
     }
+    const LoopContext& loop = loopStack_[targetLoopIndex];
     recordStructuredExit(
         kind,
         statement,
@@ -8451,6 +8552,229 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMatchExp
     return result;
 }
 
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeLoopExpression(
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    ExpressionResult result;
+    if (expression == nullptr || expression->first() == nullptr ||
+        expression->first()->kind() != ast::AstNodeKind::BlockStatement)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression != nullptr ? expression->range() : SourceRange(),
+            "a loop expression requires a block body");
+        return result;
+    }
+
+    if (!expression->text().empty() && std::ranges::any_of(
+            loopStack_, [&](const LoopContext& active)
+            {
+                return active.isExpression && active.label == expression->text();
+            }))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "nested loop label '" + expression->text() + "' is already active");
+        return result;
+    }
+
+    const std::size_t loopScope = createScope(
+        MethodScopeKind::Block, methodMemberOrdinal, scopeOrdinal);
+    const OwnershipFlowSnapshot loopEntry = captureOwnershipFlow();
+    const std::size_t localCountAtBodyEntry = locals_.size();
+    const ClassMemberSymbol* loopMethod = methodSymbol(methodMemberOrdinal);
+
+    LoopContext context;
+    context.targetScopeOrdinal = loopScope;
+    context.breakCleanupDepth = activeCleanupRegions_.size();
+    context.continueCleanupDepth = activeCleanupRegions_.size();
+    context.syntax = expression;
+    context.label = expression->text();
+    context.isExpression = true;
+    loopStack_.push_back(std::move(context));
+
+    analyzeBlock(expression->first(), methodMemberOrdinal, loopScope, true, diagnostics);
+    const OwnershipFlowSnapshot fallthroughState = captureOwnershipFlow();
+    LoopContext completed = std::move(loopStack_.back());
+    loopStack_.pop_back();
+
+    std::vector<OwnershipFlowSnapshot> backEdges = std::move(completed.continueStates);
+    if (fallthroughState.reachable) backEdges.push_back(fallthroughState);
+    OwnershipFlowSnapshot noBackEdge;
+    noBackEdge.reachable = false;
+    const OwnershipFlowSnapshot backEdge = joinOwnershipFlows(noBackEdge, backEdges);
+    if (backEdge.reachable)
+    {
+        for (std::size_t localOrdinal = 0; localOrdinal < localCountAtBodyEntry; ++localOrdinal)
+        {
+            if (localOrdinal >= locals_.size() ||
+                (!locals_[localOrdinal].isRaii && !locals_[localOrdinal].isMoveOnly)) continue;
+            const bool aliveAtEntry = !loopEntry.movedRaiiLocals.contains(localOrdinal) &&
+                !loopEntry.maybeMovedRaiiLocals.contains(localOrdinal);
+            const bool movedAtBackEdge = backEdge.movedRaiiLocals.contains(localOrdinal) ||
+                backEdge.maybeMovedRaiiLocals.contains(localOrdinal);
+            if (aliveAtEntry && movedAtBackEdge)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "RAII owner '" + locals_[localOrdinal].name +
+                        "' may remain moved across a loop-expression back-edge; "
+                        "reinitialize it before the next iteration");
+            }
+        }
+        if (loopMethod != nullptr)
+        {
+            for (std::size_t parameterOrdinal = 0;
+                 parameterOrdinal < loopMethod->parameters.size(); ++parameterOrdinal)
+            {
+                if (loopMethod->parameters[parameterOrdinal].ownership !=
+                    sema::OwnershipKind::Owned) continue;
+                const bool aliveAtEntry =
+                    !loopEntry.movedOwnedParameters.contains(parameterOrdinal) &&
+                    !loopEntry.maybeMovedOwnedParameters.contains(parameterOrdinal);
+                const bool movedAtBackEdge =
+                    backEdge.movedOwnedParameters.contains(parameterOrdinal) ||
+                    backEdge.maybeMovedOwnedParameters.contains(parameterOrdinal);
+                if (aliveAtEntry && movedAtBackEdge)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "owned parameter '" + loopMethod->parameters[parameterOrdinal].name +
+                            "' may remain moved across a loop-expression back-edge; "
+                            "transfer it only on an exiting path");
+                }
+            }
+        }
+        std::unordered_set<std::string> entryPartial = loopEntry.partiallyMovedPlaces;
+        entryPartial.insert(
+            loopEntry.maybePartiallyMovedPlaces.begin(),
+            loopEntry.maybePartiallyMovedPlaces.end());
+        std::unordered_set<std::string> backPartial = backEdge.partiallyMovedPlaces;
+        backPartial.insert(
+            backEdge.maybePartiallyMovedPlaces.begin(),
+            backEdge.maybePartiallyMovedPlaces.end());
+        for (const std::string& place : backPartial)
+        {
+            if (entryPartial.contains(place)) continue;
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "field path '" + place +
+                    "' may remain moved across a loop-expression back-edge; "
+                    "reinitialize it before the next iteration");
+        }
+    }
+
+    OwnershipFlowSnapshot postLoop;
+    postLoop.reachable = false;
+    postLoop = joinOwnershipFlows(postLoop, completed.breakStates);
+    restoreOwnershipFlow(postLoop);
+
+    if (std::ranges::any_of(completed.breakValues, [](const LoopContext::BreakValue& item)
+        {
+            return !item.value.valid;
+        }))
+    {
+        return result;
+    }
+
+    std::string commonType;
+    for (const LoopContext::BreakValue& item : completed.breakValues)
+    {
+        const ExpressionResult& value = item.value;
+        if (value.typeKey == "builtin:never") continue;
+        if (commonType.empty())
+        {
+            commonType = value.typeKey;
+            continue;
+        }
+        if (value.typeKey == commonType) continue;
+        const std::optional<std::string> numeric = ProjectTypeConversion::commonNumericType(
+            commonType, value.typeKey, std::nullopt, value.integerConstant);
+        if (numeric.has_value())
+        {
+            commonType = *numeric;
+            continue;
+        }
+        if (classifyImplicit(value.typeKey, commonType, value.integerConstant).exists()) continue;
+        if (classifyImplicit(commonType, value.typeKey).exists())
+        {
+            commonType = value.typeKey;
+            continue;
+        }
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            item.syntax != nullptr ? item.syntax->range() : expression->range(),
+            "loop expression break values have no common type between '" + commonType +
+                "' and '" + value.typeKey + "'");
+        return result;
+    }
+    if (commonType.empty()) commonType = "builtin:never";
+
+    MethodLoopExpressionBinding loopBinding;
+    loopBinding.syntax = expression;
+    loopBinding.methodMemberOrdinal = methodMemberOrdinal;
+    loopBinding.scopeOrdinal = loopScope;
+    loopBinding.label = expression->text();
+    loopBinding.resultTypeKey = commonType;
+    loopExpressionBindingBySyntax_[expression] = loopExpressionBindings_.size();
+    loopExpressionBindings_.push_back(std::move(loopBinding));
+
+    for (const LoopContext::BreakValue& item : completed.breakValues)
+    {
+        MethodLoopBreakBinding breakBinding;
+        breakBinding.syntax = item.syntax;
+        breakBinding.targetLoopSyntax = expression;
+        breakBinding.resultTypeKey = commonType;
+        if (item.value.typeKey != "builtin:never")
+            breakBinding.conversion = classifyImplicit(
+                item.value.typeKey, commonType, item.value.integerConstant);
+        loopBreakBindingBySyntax_[item.syntax] = loopBreakBindings_.size();
+        loopBreakBindings_.push_back(std::move(breakBinding));
+    }
+
+    result.typeKey = commonType;
+    result.valid = true;
+    if (!completed.breakValues.empty())
+    {
+        const auto firstValue = std::ranges::find_if(
+            completed.breakValues, [](const LoopContext::BreakValue& item)
+            {
+                return item.value.typeKey != "builtin:never";
+            });
+        if (firstValue != completed.breakValues.end())
+        {
+            result.ownership = firstValue->value.ownership;
+            result.ownershipTransfer = std::ranges::all_of(
+                completed.breakValues, [&](const LoopContext::BreakValue& item)
+                {
+                    return item.value.typeKey == "builtin:never" ||
+                        (item.value.ownership == result.ownership &&
+                         item.value.ownershipTransfer);
+                });
+            result.ownershipFreshOwner = std::ranges::all_of(
+                completed.breakValues, [](const LoopContext::BreakValue& item)
+                {
+                    return item.value.typeKey == "builtin:never" ||
+                        item.value.ownershipFreshOwner;
+                });
+        }
+    }
+    return result;
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpression(
     const ast::AstNode* expression,
     std::size_t methodMemberOrdinal,
@@ -8472,6 +8796,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
     ExpressionResult result;
     switch (expression->kind())
     {
+        case ast::AstNodeKind::LoopExpression:
+            result = analyzeLoopExpression(
+                expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            break;
         case ast::AstNodeKind::MatchExpression:
             result = analyzeMatchExpression(
                 expression, methodMemberOrdinal, scopeOrdinal, diagnostics);

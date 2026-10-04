@@ -455,6 +455,9 @@ enum class ProjectOopHirNodeKind
     // T07-F01. children[0] is the Result carrier evaluated exactly once. The node freezes both
     // variant protocols and the cleanup path for its conditional Error return.
     ResultPropagation,
+    // T07-F05. children[0] is the loop body. typeKey is the unified break-value type (or never),
+    // stringValue is the optional label, and breaks carry their converted value as child[0].
+    LoopExpression,
     // T03-F03. children[0] is the governing value evaluated exactly once; remaining children are
     // ordered MatchArm nodes. A MatchValue inside an arm reads that frozen value. MatchArm keeps
     // [condition, guard, bindings..., result] and owns cleanupRegionOrdinals for its local scope.

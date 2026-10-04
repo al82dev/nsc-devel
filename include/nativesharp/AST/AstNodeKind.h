@@ -161,7 +161,11 @@ enum class AstNodeKind
     // MatchValueExpression is the compiler-owned reference to the single governing value.
     MatchExpression,
     MatchArmExpression,
-    MatchValueExpression
+    MatchValueExpression,
+    // NativeSharp 3.0 T07-F05. `loop [label] { ... }` is a value expression. first() is the
+    // body block and text() is the optional label. BreakStatement::first() carries an optional
+    // result value; BreakStatement/ContinueStatement::text() carries an optional target label.
+    LoopExpression
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

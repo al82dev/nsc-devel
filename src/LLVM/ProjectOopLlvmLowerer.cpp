@@ -550,6 +550,8 @@ private:
         LLVMBasicBlockRef continueTarget = nullptr;
         std::size_t funcletDepth = 0;
         std::size_t continueFuncletDepth = 0;
+        std::string label;
+        LLVMValueRef resultStorage = nullptr;
     };
 
     struct FuncletContext final
@@ -6307,12 +6309,13 @@ private:
     // that frame leaves the innermost clause exactly when it already existed when the clause body
     // began. Testing the innermost clause is enough: an exit that does not leave the innermost one
     // leaves none, and one call clears the single TLS slot however many it leaves.
-    bool structuredExitLeavesCatchBody(bool isReturn) const noexcept
+    bool structuredExitLeavesCatchBody(
+        bool isReturn, std::size_t targetLoopIndex) const noexcept
     {
         if (activeCatchExceptions_.empty()) return false;
         if (isReturn) return true;
         if (loopStack_.empty()) return false;
-        return (loopStack_.size() - 1U) < activeCatchExceptions_.back().loopDepthAtEntry;
+        return targetLoopIndex < activeCatchExceptions_.back().loopDepthAtEntry;
     }
 
     // The clear is emitted into a block of its own rather than inline, so that what the obligation
@@ -6338,19 +6341,35 @@ private:
             return fail(error, "Stage 45.10 structured-exit helper received a non-exit MIR node");
 
         std::size_t targetFuncletDepth = 0;
+        std::size_t targetLoopIndex = loopStack_.empty() ? 0U : loopStack_.size() - 1U;
         if (isBreak || isContinue)
         {
             if (loopStack_.empty()) return fail(error, "Stage 45.10 loop exit has no LLVM loop target");
+            if (!node->stringValue.empty())
+            {
+                bool found = false;
+                for (std::size_t index = loopStack_.size(); index > 0; --index)
+                {
+                    if (loopStack_[index - 1U].label == node->stringValue)
+                    {
+                        targetLoopIndex = index - 1U;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                    return fail(error, "T07-F05 labelled loop exit lost its LLVM target");
+            }
             // A switch frame carries its own break target but the ENCLOSING LOOP's continue
             // target, so the two sides can sit at different funclet depths. Picking the wrong one
             // here would make a break unwind funclets it must not, or a continue skip funclets it
             // must.
             targetFuncletDepth = isBreak
-                ? loopStack_.back().funcletDepth
-                : loopStack_.back().continueFuncletDepth;
+                ? loopStack_[targetLoopIndex].funcletDepth
+                : loopStack_[targetLoopIndex].continueFuncletDepth;
             if (targetFuncletDepth > funcletStack_.size())
                 return fail(error, "Stage 45.10 loop target has an invalid funclet depth");
-            if (isContinue && loopStack_.back().continueTarget == nullptr)
+            if (isContinue && loopStack_[targetLoopIndex].continueTarget == nullptr)
                 return fail(error, "continue reached the backend with no enclosing loop target");
         }
 
@@ -6363,6 +6382,18 @@ private:
             // complete return path; emitting a second return, cleanup branch, or spill after it
             // would create invalid IR and a fictitious value.
             if (terminated()) return true;
+        }
+        if (isBreak && !node->children.empty())
+        {
+            if (node->children.size() != 1 || node->children.front() == nullptr)
+                return fail(error, "T07-F05 break value contract is malformed");
+            LLVMValueRef breakValue = lowerExpression(node->children.front().get(), error);
+            if (breakValue == nullptr) return false;
+            if (terminated()) return true;
+            LLVMValueRef storage = loopStack_[targetLoopIndex].resultStorage;
+            if (storage == nullptr)
+                return fail(error, "T07-F05 value break targets a non-value loop");
+            LLVMBuildStore(builder_, breakValue, storage);
         }
 
         const bool complexExit = !node->cleanupRegionOrdinals.empty() ||
@@ -6380,7 +6411,7 @@ private:
         // matching what eh.catch.handled.N already does (it clears, then branches into the
         // `finally`): a destructor running on the way out may itself throw and publish a new
         // current exception, and clearing afterwards would wipe that one instead of this one.
-        if (structuredExitLeavesCatchBody(isReturn))
+        if (structuredExitLeavesCatchBody(isReturn, targetLoopIndex))
         {
             emitCatchBodyExceptionClear();
         }
@@ -6393,8 +6424,8 @@ private:
                 if (returnValue == nullptr) LLVMBuildRetVoid(builder_);
                 else emitAbiReturn(returnValue);
             }
-            else if (isBreak) LLVMBuildBr(builder_, loopStack_.back().breakTarget);
-            else LLVMBuildBr(builder_, loopStack_.back().continueTarget);
+            else if (isBreak) LLVMBuildBr(builder_, loopStack_[targetLoopIndex].breakTarget);
+            else LLVMBuildBr(builder_, loopStack_[targetLoopIndex].continueTarget);
             return true;
         }
 
@@ -6496,11 +6527,11 @@ private:
         }
         else if (isBreak)
         {
-            LLVMBuildBr(builder_, loopStack_.back().breakTarget);
+            LLVMBuildBr(builder_, loopStack_[targetLoopIndex].breakTarget);
         }
         else
         {
-            LLVMBuildBr(builder_, loopStack_.back().continueTarget);
+            LLVMBuildBr(builder_, loopStack_[targetLoopIndex].continueTarget);
         }
         restoreState();
         return true;
@@ -7609,7 +7640,8 @@ private:
             return true;
         }
         LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
-        loopStack_.push_back({endBlock, condBlock, funcletStack_.size(), funcletStack_.size()});
+        loopStack_.push_back({
+            endBlock, condBlock, funcletStack_.size(), funcletStack_.size(), {}, nullptr});
         LLVMPositionBuilderAtEnd(builder_, bodyBlock);
         const bool ok = lowerStatement(node->children[1].get(), error);
         if (ok && !terminated()) LLVMBuildBr(builder_, condBlock);
@@ -7617,6 +7649,51 @@ private:
         if (!ok) return false;
         LLVMPositionBuilderAtEnd(builder_, endBlock);
         return true;
+    }
+
+    LLVMValueRef lowerLoopExpression(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 1 || node->children.front() == nullptr ||
+            node->children.front()->kind != frontend::ProjectOopMirNodeKind::Block)
+        {
+            return failValue(error, "T07-F05 loop expression MIR requires one block body");
+        }
+
+        LLVMValueRef resultStorage = nullptr;
+        LLVMTypeRef resultType = nullptr;
+        if (node->typeKey != "builtin:never" && node->typeKey != "builtin:void")
+        {
+            resultType = llvmType(node->typeKey, error);
+            if (resultType == nullptr) return nullptr;
+            resultStorage = LLVMBuildAlloca(builder_, resultType, "loop.result.addr");
+        }
+
+        LLVMBasicBlockRef bodyBlock = appendBlock("loop.body");
+        LLVMBasicBlockRef endBlock = appendBlock("loop.end");
+        LLVMBuildBr(builder_, bodyBlock);
+        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        loopStack_.push_back({
+            endBlock,
+            bodyBlock,
+            funcletStack_.size(),
+            funcletStack_.size(),
+            node->stringValue,
+            resultStorage});
+        const bool ok = lowerStatement(node->children.front().get(), error);
+        if (ok && !terminated()) LLVMBuildBr(builder_, bodyBlock);
+        loopStack_.pop_back();
+        if (!ok) return nullptr;
+
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        if (node->typeKey == "builtin:never")
+        {
+            LLVMBuildUnreachable(builder_);
+            return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+        }
+        if (node->typeKey == "builtin:void")
+            return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+        return LLVMBuildLoad2(builder_, resultType, resultStorage, "loop.result");
     }
 
     // `do { body } while (cond);` -- the same loop as lowerWhile with one difference: the entry
@@ -7633,7 +7710,8 @@ private:
         LLVMBasicBlockRef endBlock = appendBlock("dowhile.end");
         LLVMBuildBr(builder_, bodyBlock);
         LLVMPositionBuilderAtEnd(builder_, bodyBlock);
-        loopStack_.push_back({endBlock, condBlock, funcletStack_.size(), funcletStack_.size()});
+        loopStack_.push_back({
+            endBlock, condBlock, funcletStack_.size(), funcletStack_.size(), {}, nullptr});
         const bool ok = lowerStatement(node->children[1].get(), error);
         if (ok && !terminated()) LLVMBuildBr(builder_, condBlock);
         loopStack_.pop_back();
@@ -7730,7 +7808,7 @@ private:
         const std::size_t enclosingContinueDepth =
             loopStack_.empty() ? 0 : loopStack_.back().continueFuncletDepth;
         loopStack_.push_back(
-            {endBlock, enclosingContinue, funcletStack_.size(), enclosingContinueDepth});
+            {endBlock, enclosingContinue, funcletStack_.size(), enclosingContinueDepth, {}, nullptr});
 
         bool ok = true;
         for (std::size_t index = 0; index < sectionCount && ok; ++index)
@@ -7789,7 +7867,8 @@ private:
         }
         else LLVMBuildBr(builder_, bodyBlock);
 
-        loopStack_.push_back({endBlock, incBlock, funcletStack_.size(), funcletStack_.size()});
+        loopStack_.push_back({
+            endBlock, incBlock, funcletStack_.size(), funcletStack_.size(), {}, nullptr});
         LLVMPositionBuilderAtEnd(builder_, bodyBlock);
         const bool bodyOk = lowerStatement(node->children[3].get(), error);
         if (bodyOk && !terminated()) LLVMBuildBr(builder_, incBlock);
@@ -8286,6 +8365,8 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::Conditional:
                 return lowerConditional(node, error);
+            case frontend::ProjectOopMirNodeKind::LoopExpression:
+                return lowerLoopExpression(node, error);
             case frontend::ProjectOopMirNodeKind::MatchExpression:
                 return lowerMatchExpression(node, error);
             case frontend::ProjectOopMirNodeKind::MatchValue:

@@ -79,6 +79,14 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
     if (node->referenceLocal) output << " reference-local=true";
     if (node->pinnedStorage) output << " pinned=true";
     if (node->referenceResult) output << " reference-result=true";
+    if (node->kind == ProjectOopHirNodeKind::LoopExpression)
+        output << " label=" << (node->stringValue.empty() ? "<none>" : node->stringValue)
+               << " break-result=" << node->typeKey;
+    if ((node->kind == ProjectOopHirNodeKind::Break ||
+         node->kind == ProjectOopHirNodeKind::Continue) && !node->stringValue.empty())
+        output << " target-label=" << node->stringValue;
+    if (node->kind == ProjectOopHirNodeKind::Break)
+        output << " value=" << (node->children.empty() ? "none" : node->elementTypeKey);
     if (node->nullConditionalCall) output << " null-conditional=true";
     if (node->kind == ProjectOopHirNodeKind::Binary && node->booleanValue &&
         (node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent))

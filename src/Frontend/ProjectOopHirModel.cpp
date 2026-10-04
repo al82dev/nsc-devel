@@ -1216,6 +1216,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::ObjectDestruction: return "object-destruction";
         case ProjectOopHirNodeKind::Panic: return "panic";
         case ProjectOopHirNodeKind::ResultPropagation: return "result-propagation";
+        case ProjectOopHirNodeKind::LoopExpression: return "loop-expression";
         case ProjectOopHirNodeKind::MatchExpression: return "match-expression";
         case ProjectOopHirNodeKind::MatchArm: return "match-arm";
         case ProjectOopHirNodeKind::MatchValue: return "match-value";
@@ -3105,12 +3106,34 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
         {
             auto node = makeNode(ProjectOopHirNodeKind::Break, statement, "builtin:void");
             attachStructuredExit(*node);
+            node->stringValue = statement->text();
+            if (statement->first() != nullptr)
+            {
+                const MethodLoopBreakBinding* binding = methodBodyModel_ != nullptr
+                    ? methodBodyModel_->loopBreakBinding(statement) : nullptr;
+                if (binding == nullptr)
+                {
+                    error = "T07-F05 break value has no loop-expression semantic binding";
+                    return nullptr;
+                }
+                auto value = lowerExpression(statement->first(), memberOrdinal, false, error);
+                if (value == nullptr) return nullptr;
+                if (binding->conversion.exists() &&
+                    binding->conversion.kind != ProjectConversionKind::Identity)
+                {
+                    value = wrapImplicitConversion(
+                        std::move(value), binding->conversion, statement->first());
+                }
+                node->children.push_back(std::move(value));
+                node->elementTypeKey = binding->resultTypeKey;
+            }
             return node;
         }
         case ast::AstNodeKind::ContinueStatement:
         {
             auto node = makeNode(ProjectOopHirNodeKind::Continue, statement, "builtin:void");
             attachStructuredExit(*node);
+            node->stringValue = statement->text();
             return node;
         }
 
@@ -3737,6 +3760,28 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
 
     switch (expression->kind())
     {
+        case ast::AstNodeKind::LoopExpression:
+        {
+            if (addressContext)
+            {
+                error = "a loop expression produces a value, not addressable storage";
+                return nullptr;
+            }
+            const MethodLoopExpressionBinding* binding = methodBodyModel_ != nullptr
+                ? methodBodyModel_->loopExpressionBinding(expression) : nullptr;
+            if (binding == nullptr)
+            {
+                error = "T07-F05 loop expression has no semantic binding";
+                return nullptr;
+            }
+            auto node = makeNode(
+                ProjectOopHirNodeKind::LoopExpression, expression, binding->resultTypeKey);
+            node->stringValue = binding->label;
+            auto body = lowerBlock(expression->first(), memberOrdinal, error);
+            if (body == nullptr) return nullptr;
+            node->children.push_back(std::move(body));
+            return node;
+        }
         case ast::AstNodeKind::ThisExpression:
         {
             if (currentLambda_ != nullptr)
