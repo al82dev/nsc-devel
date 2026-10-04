@@ -245,9 +245,57 @@ std::optional<std::size_t> generatorResumeState(
 
 bool mayFuse(const EvaluationContract& source, const EvaluationContract& adapter) noexcept
 {
-    return source.lazy && adapter.lazy && source.preservesLeftToRightEffects &&
-        adapter.preservesLeftToRightEffects &&
-        !(source.category == TraversalCategory::SinglePass &&
-          adapter.category == TraversalCategory::MultiPass);
+    return analyzeFusion(FusionRequest{source, adapter}).allowed;
+}
+
+FusionDecision analyzeFusion(const FusionRequest& request) noexcept
+{
+    FusionDecision decision;
+    decision.resultCategory =
+        request.source.category == TraversalCategory::MultiPass &&
+        request.adapter.category == TraversalCategory::MultiPass
+            ? TraversalCategory::MultiPass : TraversalCategory::SinglePass;
+
+    if (!request.source.lazy || !request.adapter.lazy || !request.fusedIsLazy)
+    {
+        decision.rejection = FusionRejection::EagerBoundary;
+        return decision;
+    }
+    if (!request.source.preservesLeftToRightEffects ||
+        !request.adapter.preservesLeftToRightEffects ||
+        !request.fusedPreservesLeftToRightEffects)
+    {
+        decision.rejection = FusionRejection::EffectReordering;
+        return decision;
+    }
+    if (request.source.category == TraversalCategory::SinglePass &&
+        request.adapter.category == TraversalCategory::MultiPass)
+    {
+        decision.rejection = FusionRejection::TraversalUpgrade;
+        return decision;
+    }
+    if ((request.source.category == TraversalCategory::SinglePass ||
+         request.adapter.repeatsElements) &&
+        !request.fusedEvaluatesEachSourceAtMostOnce)
+    {
+        decision.rejection = FusionRejection::RepeatedEvaluation;
+        return decision;
+    }
+    if ((request.source.mayShortCircuit || request.adapter.mayShortCircuit) &&
+        !request.fusedPreservesShortCircuit)
+    {
+        decision.rejection = FusionRejection::ShortCircuitLost;
+        return decision;
+    }
+    if ((request.source.yieldsBorrowedItems || request.adapter.yieldsBorrowedItems) &&
+        request.adapter.buffersElements)
+    {
+        decision.rejection = FusionRejection::BorrowedItemBuffered;
+        return decision;
+    }
+
+    decision.allowed = true;
+    decision.rejection = FusionRejection::None;
+    return decision;
 }
 }

@@ -135,6 +135,42 @@ struct EvaluationContract final
     TraversalCategory category = TraversalCategory::SinglePass;
     bool lazy = true;
     bool preservesLeftToRightEffects = true;
+    bool mayShortCircuit = false;
+    bool repeatsElements = false;
+    bool buffersElements = false;
+    bool yieldsBorrowedItems = false;
 };
+
+enum class FusionRejection
+{
+    None,
+    EagerBoundary,
+    EffectReordering,
+    TraversalUpgrade,
+    RepeatedEvaluation,
+    ShortCircuitLost,
+    BorrowedItemBuffered
+};
+
+struct FusionRequest final
+{
+    EvaluationContract source;
+    EvaluationContract adapter;
+    // The optimizer states what the fused loop will actually preserve. These are proof facts,
+    // not optimization wishes; a missing fact rejects fusion conservatively.
+    bool fusedIsLazy = true;
+    bool fusedPreservesLeftToRightEffects = true;
+    bool fusedPreservesShortCircuit = true;
+    bool fusedEvaluatesEachSourceAtMostOnce = true;
+};
+
+struct FusionDecision final
+{
+    bool allowed = false;
+    FusionRejection rejection = FusionRejection::None;
+    TraversalCategory resultCategory = TraversalCategory::SinglePass;
+};
+
+FusionDecision analyzeFusion(const FusionRequest& request) noexcept;
 bool mayFuse(const EvaluationContract& source, const EvaluationContract& adapter) noexcept;
 }
