@@ -217,7 +217,10 @@ int main()
     std::filesystem::create_directories(root, cleanupError);
 
     const std::filesystem::path nsLink = configuredTool(
-        "NSC_P1_NSLINK", configuredTool("NSLINK_EXE", "A:/nslink-devel/build-debug/bin/nslink.exe"));
+        "NSC_P1_NSLINK",
+        configuredTool(
+            "NSC_LINKER",
+            configuredTool("NSLINK_EXE", "A:/nslink-devel/bin/release/nslink.exe")));
     tests.expect(std::filesystem::is_regular_file(nsLink),
                  "DLL-P1 locates the NSLink executable");
     if (!std::filesystem::is_regular_file(nsLink))
