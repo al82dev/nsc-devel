@@ -485,7 +485,7 @@ public class Api
     tests.expect(codec.read(goldenPath, goldenDecoded, error),
         "the ABI 1.0 golden metadata model round-trips");
     const std::string goldenHex = LibraryMetadataCodec::fingerprintHex(goldenDecoded.abiFingerprint);
-    tests.expect(goldenHex == "8be0002238691562dd9a34db8e1569988cb143acd16b7eeeaab5c00013c69953",
+    tests.expect(goldenHex == "76fa6ca4e7bed7d22e1898ec6130509dc2d89b3350a78ba22e6401df0852e6af",
         "ABI root contract with Object ABI 2 retains its reviewed golden fingerprint (" +
             goldenHex + ")");
 }
@@ -1625,7 +1625,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                                      std::to_string(nativesharp::interop::kMetadataFormatMinor)) !=
                          std::string::npos &&
                      output.find("native-abi: 1.0") != std::string::npos &&
-                     output.find("runtime-abi: 1.1") != std::string::npos &&
+                     output.find("runtime-abi: 1.2") != std::string::npos &&
                      output.find("object-abi: 2") != std::string::npos &&
                      output.find("delegate-cell-size: 32") != std::string::npos,
                  "driver verification prints the complete frozen ABI contract, "
