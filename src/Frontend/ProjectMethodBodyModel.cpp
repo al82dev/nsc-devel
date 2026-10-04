@@ -21337,9 +21337,13 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                     name.syntax->range(),
                     local.ownership == sema::OwnershipKind::Borrowed
                         ? "borrowed local '" + local.name +
-                            "' cannot be captured because its source owner may not outlive the closure"
-                        : "move-only owner '" + local.name +
-                            "' requires an explicit move capture");
+                            "' cannot be captured by a lambda because its source owner may not "
+                            "outlive the closure"
+                        : local.isRaii
+                            ? "RAII owner '" + local.name +
+                                "' cannot be captured by a lambda without an explicit move capture"
+                            : "move-only owner '" + local.name +
+                                "' cannot be captured by a lambda without an explicit move capture");
                 safe = false;
             }
             if (local.isReference)
@@ -21440,9 +21444,10 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                     name.syntax->range(),
                     parameter.ownership == sema::OwnershipKind::Borrowed
                         ? "borrowed parameter '" + parameter.name +
-                            "' cannot be captured because its source owner may not outlive the closure"
+                            "' cannot be captured by a lambda because its source owner may not "
+                            "outlive the closure"
                         : "owned parameter '" + parameter.name +
-                            "' requires an explicit move capture");
+                            "' cannot be captured by a lambda without an explicit move capture");
                 safe = false;
             }
             if (parameter.passKind != ParameterPassKind::Value)
