@@ -9474,11 +9474,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     parameter.ownership == sema::OwnershipKind::Owned ||
                     (parameter.passKind == ParameterPassKind::Value &&
                      (memberModel_->typeIsMoveOnly(parameter.typeKey) ||
-                      isGenericValueTypeKey(parameter.typeKey) ||
-                      callableBelongsToGenericTypeSpecialization(methodMemberOrdinal))) ||
+                      isGenericValueTypeKey(parameter.typeKey))) ||
                     compilerVariantResultTransfer;
+                const bool genericCopyShapedMove =
+                    parameter.passKind == ParameterPassKind::Value &&
+                    callableBelongsToGenericTypeSpecialization(methodMemberOrdinal) &&
+                    !sourceRequiresMove;
                 copiedForDefer = (deferValueCapture || compilerVariantPayloadTransfer) &&
                     !sourceRequiresMove;
+                copiedForDefer = copiedForDefer || genericCopyShapedMove;
                 if (!sourceRequiresMove && !copiedForDefer)
                 {
                     diagnostics.report(
@@ -19210,6 +19214,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // fields (see ProjectOopMirDispatchTable::ownedFields), so ownership handed to a field is
     // discharged when the object dies, exactly once.
     bool ownedFieldMoveTarget = false;
+    bool genericFieldMoveTarget = false;
     // True only when the owned field also OWNS a separate allocation (reference type or native
     // string) -- the storage classes whose stores must be ownership transfers. A generic `owned T`
     // field closed over a value type keeps plain assignment: `owned` is the no-op it has always
@@ -19241,6 +19246,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             (targetMember.declaredOwnership == sema::OwnershipKind::Owned ||
              memberModel_->typeIsMoveOnly(targetMember.declaredTypeKey) ||
              isGenericValueTypeKey(targetMember.declaredTypeKey));
+        genericFieldMoveTarget = targetMember.kind == ClassMemberKind::Field &&
+            !targetMember.isStatic &&
+            callableBelongsToGenericTypeSpecialization(methodMemberOrdinal);
         ownedFieldOwnsStorage = ownedFieldMoveTarget &&
             (isReferenceTypeKey(targetMember.declaredTypeKey) ||
              targetMember.declaredTypeKey == "builtin:string");
@@ -19432,7 +19440,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             delegateTarget, false,
             raiiTargetLocal.has_value() || moveOnlyTargetLocal.has_value() ||
                 moveOnlyTargetParameter.has_value() || arrayElementMoveTarget ||
-                ownedFieldMoveTarget || ownedSetterMoveTarget);
+                ownedFieldMoveTarget || genericFieldMoveTarget || ownedSetterMoveTarget);
     if (right.methodGroup && delegateTarget)
     {
         right = bindMethodGroupToDelegate(
