@@ -162,6 +162,7 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
             case FunctionCallingConventionSyntaxKind::StdCall: output << " stdcall"; break;
             case FunctionCallingConventionSyntaxKind::FastCall: output << " fastcall"; break;
             case FunctionCallingConventionSyntaxKind::VectorCall: output << " vectorcall"; break;
+            case FunctionCallingConventionSyntaxKind::Win64: output << " win64"; break;
         }
         output << '(';
         for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)

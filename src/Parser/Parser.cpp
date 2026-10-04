@@ -554,8 +554,10 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
              tokens_[cursor].kind() == TokenKind::KwVectorCall ||
              (tokens_[cursor].kind() == TokenKind::Identifier &&
               (tokens_[cursor].lexeme() == "native" ||
+               tokens_[cursor].lexeme() == "cdecl" ||
                tokens_[cursor].lexeme() == "stdcall" ||
-               tokens_[cursor].lexeme() == "fastcall"))))
+               tokens_[cursor].lexeme() == "fastcall" ||
+               tokens_[cursor].lexeme() == "win64"))))
             ++cursor;
         if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::LeftParen)
             return false;
@@ -1087,6 +1089,11 @@ ast::TypeSyntax* Parser::parseType()
         {
             consume();
         }
+        else if (atContextualKeyword("cdecl"))
+        {
+            convention = ast::FunctionCallingConventionSyntaxKind::C;
+            consume();
+        }
         else if (atContextualKeyword("stdcall"))
         {
             convention = ast::FunctionCallingConventionSyntaxKind::StdCall;
@@ -1095,6 +1102,11 @@ ast::TypeSyntax* Parser::parseType()
         else if (atContextualKeyword("fastcall"))
         {
             convention = ast::FunctionCallingConventionSyntaxKind::FastCall;
+            consume();
+        }
+        else if (atContextualKeyword("win64"))
+        {
+            convention = ast::FunctionCallingConventionSyntaxKind::Win64;
             consume();
         }
         if (carrier == ast::FunctionTypeCarrierSyntaxKind::Reference &&
@@ -1226,6 +1238,16 @@ ast::TypeSyntax* Parser::parseType()
                 diagnostics::DiagnosticSeverity::Error,
                 functionStart,
                 "variadicity requires a foreign function pointer calling convention");
+        }
+        if (function->functionIsVariadic() &&
+            convention != ast::FunctionCallingConventionSyntaxKind::C &&
+            convention != ast::FunctionCallingConventionSyntaxKind::Win64)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                functionStart,
+                "a variadic function pointer requires the cdecl/C or win64 calling convention on Windows x64");
         }
 
         const SourceRange complete = index_ == 0

@@ -58,6 +58,7 @@ std::optional<CallingConvention> parseConvention(std::string_view value) noexcep
     if (value == "stdcall") return CallingConvention::StdCall;
     if (value == "fastcall") return CallingConvention::FastCall;
     if (value == "vectorcall") return CallingConvention::VectorCall;
+    if (value == "win64") return CallingConvention::Win64;
     return std::nullopt;
 }
 }
@@ -81,6 +82,7 @@ std::string_view callingConventionName(CallingConvention convention) noexcept
         case CallingConvention::StdCall: return "stdcall";
         case CallingConvention::FastCall: return "fastcall";
         case CallingConvention::VectorCall: return "vectorcall";
+        case CallingConvention::Win64: return "win64";
     }
     return "native";
 }

@@ -10,7 +10,7 @@
 namespace nativesharp::language
 {
 enum class FunctionCarrier { Pointer, Reference };
-enum class CallingConvention { NativeSharp, C, StdCall, FastCall, VectorCall };
+enum class CallingConvention { NativeSharp, C, StdCall, FastCall, VectorCall, Win64 };
 
 struct FunctionType final
 {

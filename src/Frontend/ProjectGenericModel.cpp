@@ -4922,6 +4922,8 @@ std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) con
                 function.callingConvention = language::CallingConvention::FastCall; break;
             case ast::FunctionCallingConventionSyntaxKind::VectorCall:
                 function.callingConvention = language::CallingConvention::VectorCall; break;
+            case ast::FunctionCallingConventionSyntaxKind::Win64:
+                function.callingConvention = language::CallingConvention::Win64; break;
         }
         for (const ast::TypeSyntax* parameter : syntax->typeArguments())
             function.parameters.push_back(typeSpelling(parameter));

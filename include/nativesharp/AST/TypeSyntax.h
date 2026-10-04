@@ -43,7 +43,8 @@ enum class FunctionCallingConventionSyntaxKind
     C,
     StdCall,
     FastCall,
-    VectorCall
+    VectorCall,
+    Win64
 };
 
 struct TypeModifierSyntax

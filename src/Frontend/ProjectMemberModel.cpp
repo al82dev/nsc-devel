@@ -1207,6 +1207,9 @@ std::string ProjectMemberModel::canonicalTypeKey(
             case ast::FunctionCallingConventionSyntaxKind::VectorCall:
                 function.callingConvention = language::CallingConvention::VectorCall;
                 break;
+            case ast::FunctionCallingConventionSyntaxKind::Win64:
+                function.callingConvention = language::CallingConvention::Win64;
+                break;
         }
         function.parameters.reserve(syntax->typeArguments().size());
         for (const ast::TypeSyntax* parameter : syntax->typeArguments())
