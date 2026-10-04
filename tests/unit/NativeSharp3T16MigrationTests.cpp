@@ -1,5 +1,6 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Driver/DeprecationPolicy.h"
 #include "nativesharp/Driver/ExecutableMigrationGuide.h"
 #include "nativesharp/Driver/MigrationAnalyzer.h"
 #include "nativesharp/Driver/MigrationCompatibilityMatrix.h"
@@ -75,7 +76,9 @@ byte suppressed = 7;
     tests.expect(result == ExitCode::Success && error.str().empty() &&
             output.str().find("NSMIGRATION-ANALYSIS 1") != std::string::npos &&
             output.str().find("MIG3001") != std::string::npos &&
-            output.str().find("MIG3007") != std::string::npos,
+            output.str().find("MIG3007") != std::string::npos &&
+            output.str().find("state=warning") != std::string::npos &&
+            output.str().find("removal-not-before=4.0") != std::string::npos,
         "nsc exposes the migration analyzer as a productive driver command");
 
     const std::filesystem::path migratedPath = path.parent_path() /
@@ -163,6 +166,38 @@ byte suppressed = 7;
             writtenGuide.find("Action: automatic-safe") != std::string::npos &&
             writtenGuide.find("MIG3002 at") != std::string::npos,
         "nsc writes the validated source-specific guide through the productive driver path");
+
+    const driver::DeprecatedFeature* importAlias =
+        driver::deprecatedFeature("using-import-alias");
+    tests.expect(importAlias != nullptr &&
+            driver::evaluateDeprecation(*importAlias, language::LanguageEdition::V2,
+                {3, 0}, false, false).state == driver::DeprecationState::Active &&
+            driver::evaluateDeprecation(*importAlias, language::LanguageEdition::V3,
+                {3, 0}, false, false).state == driver::DeprecationState::Warning &&
+            driver::evaluateDeprecation(*importAlias, language::LanguageEdition::V3,
+                {3, 0}, true, false).state == driver::DeprecationState::Suppressed &&
+            driver::evaluateDeprecation(*importAlias, language::LanguageEdition::V3,
+                {3, 0}, false, true).state == driver::DeprecationState::Error &&
+            driver::evaluateDeprecation(*importAlias, language::LanguageEdition::V3,
+                {4, 0}, false, false).state == driver::DeprecationState::Removed,
+        "deprecation state depends on language edition, release, suppression, and CI policy");
+    tests.expect(importAlias != nullptr &&
+            !driver::deprecationRemovalAllowed(*importAlias, {3, 2}, true, false) &&
+            driver::deprecationRemovalAllowed(*importAlias, {3, 2}, false, true) &&
+            driver::deprecationRemovalAllowed(*importAlias, {4, 0}, true, false),
+        "removal simulation enforces the 4.0 window and documented security/UB exception");
+    tests.expect(driver::currentDeprecationPolicy().find("NSDEPRECATION 1") !=
+            std::string::npos && driver::deprecatedFeatures().size() == 7,
+        "deprecation policy publishes all syntax aliases and 2.x behaviors deterministically");
+
+    output.str({});
+    error.str({});
+    const std::vector<std::string_view> strictArguments = {
+        "--analyze-migration-strict", pathText};
+    const ExitCode strictResult = compiler.run(strictArguments, output, error);
+    tests.expect(strictResult == ExitCode::CompilationError &&
+            error.str().find("migration warnings are errors") != std::string::npos,
+        "strict migration analysis turns unsuppressed deprecations into CI failures");
     std::error_code removeError;
     std::filesystem::remove(path, removeError);
     std::filesystem::remove(migratedPath, removeError);

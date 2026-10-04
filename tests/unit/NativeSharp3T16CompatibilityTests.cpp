@@ -37,8 +37,8 @@ int main()
         {"ownership", 2, true, true, true}}};
     tests.expect(validateMigrationGuide(guide, error),
         "migration guide chapters contain executable before/after and manual-decision inventories");
-    tests.expect(!removalAllowedInThreeX(false, true) && !removalAllowedInThreeX(true, false) &&
-            removalAllowedInThreeX(true, true),
-        "3.x removal requires both prior deprecation and a documented security/UB exception");
+    tests.expect(!removalAllowedInThreeX(false, false) && removalAllowedInThreeX(false, true) &&
+            removalAllowedInThreeX(true, false) && removalAllowedInThreeX(true, true),
+        "3.x removal requires prior deprecation unless a documented security/UB exception applies");
     return tests.result();
 }

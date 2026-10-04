@@ -7,6 +7,7 @@
 #include "nativesharp/Driver/CompilationTelemetry.h"
 #include "nativesharp/Driver/CompilerConsole.h"
 #include "nativesharp/Driver/DiagnosticBundle.h"
+#include "nativesharp/Driver/DeprecationPolicy.h"
 #include "nativesharp/Driver/FinalBaselineContract.h"
 #include "nativesharp/Driver/ExecutableMigrationGuide.h"
 #include "nativesharp/Driver/InstallationManifest.h"
@@ -4763,6 +4764,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << currentMigrationGuide();
             return ExitCode::Success;
         }
+        if (argument == "--print-deprecation-policy")
+        {
+            output << currentDeprecationPolicy();
+            return ExitCode::Success;
+        }
         if (argument == "--print-release-candidate-freeze")
         {
             output << currentReleaseCandidateFreeze();
@@ -4808,6 +4814,24 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << renderMigrationAnalysis(analysis);
+            return ExitCode::Success;
+        }
+        if (action == "--analyze-migration-strict")
+        {
+            MigrationAnalysis analysis;
+            std::string migrationError;
+            if (!analyzeMigrationFile(std::filesystem::path(args[1]), analysis, migrationError))
+            {
+                error << "nsc: error: " << migrationError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << renderMigrationAnalysis(analysis);
+            if (!analysis.findings.empty())
+            {
+                error << "nsc: error: migration warnings are errors; "
+                      << analysis.findings.size() << " finding(s)\n";
+                return ExitCode::CompilationError;
+            }
             return ExitCode::Success;
         }
         if (action == "--check-runtime-capability")
@@ -5256,6 +5280,27 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         return diffLibraryApi(args[1], args[2], output, error);
     }
 
+    if ((args.size() == 3 || args.size() == 4) &&
+        args[0] == "--simulate-deprecation-removal")
+    {
+        const DeprecatedFeature* feature = deprecatedFeature(args[1]);
+        const std::optional<DeprecationRelease> release = parseDeprecationRelease(args[2]);
+        const bool securityException = args.size() == 4 && args[3] == "--security-ub";
+        if (feature == nullptr || !release.has_value() ||
+            (args.size() == 4 && !securityException))
+        {
+            error << "nsc: error: invalid deprecation-removal simulation\n";
+            return ExitCode::CommandLineError;
+        }
+        const bool allowed = deprecationRemovalAllowed(
+            *feature, *release, true, securityException);
+        output << "deprecation removal feature=" << feature->identity
+               << " release=" << release->major << '.' << release->minor
+               << " security-ub=" << (securityException ? "yes" : "no")
+               << " allowed=" << (allowed ? "yes" : "no") << '\n';
+        return allowed ? ExitCode::Success : ExitCode::CompilationError;
+    }
+
     if (args.size() == 3 && args[0] == "--migration-compatibility-matrix")
     {
         interop::LibraryMetadataCodec codec;
@@ -5622,9 +5667,12 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --write-migration-baseline <file.baseline>\n"
            << "  nsc --verify-migration-baseline <file.baseline>\n"
            << "  nsc --analyze-migration <source.ns>\n"
+           << "  nsc --analyze-migration-strict <source.ns>\n"
            << "  nsc --apply-migration-fixes <source.ns> -o <migrated.ns>\n"
            << "  nsc --migration-compatibility-matrix <old.nsmeta> <new.nsmeta>\n"
            << "  nsc --write-source-migration-guide <source.ns> -o <guide.md>\n"
+           << "  nsc --print-deprecation-policy\n"
+           << "  nsc --simulate-deprecation-removal <feature> <major.minor> [--security-ub]\n"
            << "  nsc --print-migration-guide\n"
            << "  nsc --write-migration-guide <file.guide>\n"
            << "  nsc --verify-migration-guide <file.guide>\n"

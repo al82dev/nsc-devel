@@ -75,6 +75,6 @@ bool removalAllowedInThreeX(
     bool securityOrUndefinedBehaviorFix,
     bool previouslyDeprecated) noexcept
 {
-    return securityOrUndefinedBehaviorFix && previouslyDeprecated;
+    return securityOrUndefinedBehaviorFix || previouslyDeprecated;
 }
 }

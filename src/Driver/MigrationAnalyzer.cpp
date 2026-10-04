@@ -1,4 +1,5 @@
 #include "nativesharp/Driver/MigrationAnalyzer.h"
+#include "nativesharp/Driver/DeprecationPolicy.h"
 
 #include <algorithm>
 #include <array>
@@ -378,6 +379,17 @@ std::string renderMigrationAnalysis(const MigrationAnalysis& analysis)
                << finding.line << ':' << finding.column << ' '
                << finding.message << '\n'
                << "  alternative: " << finding.alternative << '\n';
+        if (const DeprecatedFeature* feature = deprecatedFeature(finding.issue))
+        {
+            const DeprecationDecision decision = evaluateDeprecation(*feature,
+                language::LanguageEdition::V3, {3, 0}, false, false);
+            output << "  deprecation: feature=" << feature->identity
+                   << " state=" << deprecationStateName(decision.state)
+                   << " since=" << feature->deprecatedSince.major << '.'
+                   << feature->deprecatedSince.minor
+                   << " removal-not-before=" << feature->removalNotBefore.major << '.'
+                   << feature->removalNotBefore.minor << '\n';
+        }
         if (finding.safeFix.has_value())
             output << "  safe-fix: " << finding.safeFix->replacement
                    << " proof=" << finding.safeFix->equivalenceProof << '\n';

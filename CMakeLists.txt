@@ -574,6 +574,7 @@ add_library(nsc_driver STATIC
     src/Driver/CompilerConsole.cpp
     src/Driver/CompatibilityPolicy.cpp
     src/Driver/DiagnosticBundle.cpp
+    src/Driver/DeprecationPolicy.cpp
     src/Driver/FinalBaselineContract.cpp
     src/Driver/ExecutableMigrationGuide.cpp
     src/Driver/Driver.cpp
