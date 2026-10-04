@@ -711,6 +711,13 @@ evidencia del commit: `docs/3.0/items/NS3-T06-F01-move-only-defaults.md`.
 - **Implementación:** captura solo errores declarados; patterns en catch; `finally` comparte el modelo de cleanup; no existe búsqueda por RTTI administrado.
 - **Pruebas dirigidas:** exhaustividad, rethrow, return en finally restringido, destructor order, nested try y codegen sin heap.
 - **Markdown ES/EN:** flujo, precedence y perfiles de implementación.
+- **Estado:** `TERMINADA`; typed/wildcard patterns y `when (bool)` se seleccionan en orden fuente,
+  el análisis distingue coincidencia posible de cobertura garantizada y MIR 1.25 publica filtro,
+  matches y exhaustividad acumulada.
+- **Evidencia:** objetivo exacto `nsc_ns3_t07_error_tests`, `PASS: 28 checks`; ejecución O0/NSLink
+  exit 42 y LLVM del nested catch sin allocator ni CLR.
+- **Expediente:** `docs/3.0/items/NS3-T07-F03-typed-catch.md` y
+  `docs/3.0/language/typed-catch-finally.md`.
 
 ## NS3-T07-F04 — Expresiones divergentes y tipo `never` / Diverging expressions and never type
 

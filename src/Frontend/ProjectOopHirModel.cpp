@@ -3307,11 +3307,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                 catchNode->elementTypeKey = catchBinding->exceptionTypeKey;
                 catchNode->exceptionTypeOrdinal = catchBinding->exceptionTypeOrdinal;
                 catchNode->catchAll = catchBinding->catchAll;
+                catchNode->catchHasFilter = catchBinding->hasFilter;
+                catchNode->catchExhaustive = catchBinding->exhaustive;
+                catchNode->catchMatchedErrorTypeKeys = catchBinding->matchedErrorTypeKeys;
                 if (const MethodLocalSymbol* local = localSymbol(catchClause); local != nullptr)
                 {
                     catchNode->localOrdinal = static_cast<std::size_t>(
                         local - methodBodyModel_->locals().data());
                     catchNode->stringValue = local->name;
+                }
+                if (catchBinding->hasFilter)
+                {
+                    auto catchFilter = lowerExpression(
+                        catchClause->second(), memberOrdinal, false, error);
+                    if (catchFilter == nullptr)
+                    {
+                        if (cleanupOrdinal.has_value()) activeHirCleanupRegions_.pop_back();
+                        return nullptr;
+                    }
+                    catchNode->children.push_back(std::move(catchFilter));
                 }
                 auto catchBody = lowerBlock(catchClause->first(), memberOrdinal, error);
                 if (catchBody == nullptr)

@@ -10871,6 +10871,18 @@ ast::AstNode* Parser::parseCatchClause()
         clause->setFlag(true);
     }
 
+    // Edition 3 catch filters are contextual so existing identifiers named `when` remain
+    // source-compatible outside this exact position. Keep the predicate separate from the
+    // handler body: first() is the body and second() is the optional boolean filter.
+    if (atContextualKeyword("when"))
+    {
+        const SourceRange whenRange = consume().range();
+        requireEdition3(whenRange, "catch filters");
+        expect(TokenKind::LeftParen, "'(' after catch filter 'when'");
+        clause->setSecond(parseExpression());
+        expect(TokenKind::RightParen, "')' after catch filter expression");
+    }
+
     if (at(TokenKind::LeftBrace))
     {
         clause->setFirst(parseBlock());

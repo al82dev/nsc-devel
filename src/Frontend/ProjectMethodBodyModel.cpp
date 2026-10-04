@@ -4872,6 +4872,12 @@ void ProjectMethodBodyModel::analyzeTry(
     {
         if (catchClause == nullptr || catchClause->kind() != ast::AstNodeKind::CatchClause)
             continue;
+        const bool filterAlwaysTrue = catchClause->second() == nullptr ||
+            (catchClause->second()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+             catchClause->second()->tokenKind() == lexer::TokenKind::KwTrue);
+        // A runtime filter can decline the exception. Only an unfiltered (or literal-true)
+        // clause proves that the protected operation is handled on every execution path.
+        if (!filterAlwaysTrue) continue;
         if (catchClause->flag())
         {
             handlers.catchAll = true;
@@ -4881,9 +4887,13 @@ void ProjectMethodBodyModel::analyzeTry(
             handlers.typeKeys.push_back(
                 memberModel_->canonicalTypeKey(catchClause->typeSyntax(), *nameLookup_));
     }
+    activeTryErrorSets_.push_back({});
     activeErrorHandlers_.push_back(std::move(handlers));
     analyzeBlock(statement->first(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
     activeErrorHandlers_.pop_back();
+    std::vector<std::string> declaredTryErrors =
+        std::move(activeTryErrorSets_.back().typeKeys);
+    activeTryErrorSets_.pop_back();
     const OwnershipFlowSnapshot tryExitState = captureOwnershipFlow();
 
     // A catch can observe ownership state from any explicit throw point and, conservatively,
@@ -4898,6 +4908,17 @@ void ProjectMethodBodyModel::analyzeTry(
     const std::optional<std::size_t> exceptionRoot = exceptionRootTypeOrdinal();
     bool sawCatchAll = false;
     std::vector<std::size_t> previousTypedCatchOrdinals;
+    std::vector<bool> fullyCoveredErrors(declaredTryErrors.size(), false);
+    const auto isSameOrDerived = [&](std::string_view source, std::string_view target)
+    {
+        if (source == target) return true;
+        const std::optional<std::size_t> sourceOrdinal =
+            inheritanceModel_->typeOrdinalForTypeKey(source);
+        const std::optional<std::size_t> targetOrdinal =
+            inheritanceModel_->typeOrdinalForTypeKey(target);
+        return sourceOrdinal.has_value() && targetOrdinal.has_value() &&
+            inheritanceModel_->isDerivedFrom(*sourceOrdinal, *targetOrdinal, true);
+    };
     for (const ast::AstNode* catchClause : statement->children())
     {
         if (catchClause == nullptr || catchClause->kind() != ast::AstNodeKind::CatchClause)
@@ -4911,6 +4932,10 @@ void ProjectMethodBodyModel::analyzeTry(
         binding.methodMemberOrdinal = methodMemberOrdinal;
         binding.scopeOrdinal = catchScope;
         binding.catchAll = catchClause->flag();
+        binding.hasFilter = catchClause->second() != nullptr;
+        binding.filterAlwaysTrue = !binding.hasFilter ||
+            (catchClause->second()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+             catchClause->second()->tokenKind() == lexer::TokenKind::KwTrue);
 
         if (sawCatchAll)
         {
@@ -4923,7 +4948,7 @@ void ProjectMethodBodyModel::analyzeTry(
 
         if (catchClause->flag())
         {
-            sawCatchAll = true;
+            if (binding.filterAlwaysTrue) sawCatchAll = true;
             binding.exceptionTypeKey = "<any-exception>";
         }
         else
@@ -4963,7 +4988,8 @@ void ProjectMethodBodyModel::analyzeTry(
                         break;
                     }
                 }
-                previousTypedCatchOrdinals.push_back(*typeOrdinal);
+                if (binding.filterAlwaysTrue)
+                    previousTypedCatchOrdinals.push_back(*typeOrdinal);
             }
             if (!catchClause->text().empty())
             {
@@ -4971,8 +4997,62 @@ void ProjectMethodBodyModel::analyzeTry(
             }
         }
 
-        exceptionBindings_.push_back(std::move(binding));
         restoreOwnershipFlow(catchEntryState);
+        if (binding.hasFilter)
+        {
+            const ExpressionResult filter = analyzeExpression(
+                catchClause->second(), methodMemberOrdinal, catchScope, diagnostics);
+            if (filter.valid && filter.typeKey != "builtin:bool")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidCondition,
+                    diagnostics::DiagnosticSeverity::Error,
+                    catchClause->second()->range(),
+                    "catch filter expression must have type bool");
+            }
+            if (catchClause->second()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+                catchClause->second()->tokenKind() == lexer::TokenKind::KwFalse)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    catchClause->second()->range(),
+                    "catch filter is unreachable because its condition is always false");
+            }
+        }
+
+        if (languageEdition_ == language::LanguageEdition::V3)
+        {
+            for (std::size_t errorIndex = 0; errorIndex < declaredTryErrors.size(); ++errorIndex)
+            {
+                if (fullyCoveredErrors[errorIndex]) continue;
+                const std::string& declaredError = declaredTryErrors[errorIndex];
+                const bool possibleMatch = binding.catchAll ||
+                    isSameOrDerived(declaredError, binding.exceptionTypeKey) ||
+                    isSameOrDerived(binding.exceptionTypeKey, declaredError);
+                if (!possibleMatch) continue;
+                binding.matchedErrorTypeKeys.push_back(declaredError);
+                if (binding.filterAlwaysTrue && (binding.catchAll ||
+                    isSameOrDerived(declaredError, binding.exceptionTypeKey))
+                )
+                    fullyCoveredErrors[errorIndex] = true;
+            }
+            binding.exhaustive = !declaredTryErrors.empty() &&
+                std::ranges::all_of(fullyCoveredErrors, [](bool covered) { return covered; });
+            if (binding.matchedErrorTypeKeys.empty())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    catchClause->range(),
+                    binding.catchAll
+                        ? "catch-all pattern cannot match because the protected region declares no errors"
+                        : "catch pattern '" + binding.exceptionTypeKey +
+                            "' cannot match any declared error from the protected region");
+            }
+        }
+
+        exceptionBindings_.push_back(std::move(binding));
         ++currentCatchDepth_;
         currentCatchErrorTypes_.push_back(catchClause->flag()
             ? (exceptionRoot.has_value()
@@ -4983,6 +5063,18 @@ void ProjectMethodBodyModel::analyzeTry(
         currentCatchErrorTypes_.pop_back();
         --currentCatchDepth_;
         joinedExitState = joinOwnershipFlow(joinedExitState, captureOwnershipFlow());
+    }
+
+    if (languageEdition_ == language::LanguageEdition::V3 &&
+        !activeTryErrorSets_.empty())
+    {
+        for (std::size_t errorIndex = 0; errorIndex < declaredTryErrors.size(); ++errorIndex)
+        {
+            if (fullyCoveredErrors[errorIndex]) continue;
+            auto& parentErrors = activeTryErrorSets_.back().typeKeys;
+            if (std::ranges::find(parentErrors, declaredTryErrors[errorIndex]) == parentErrors.end())
+                parentErrors.push_back(declaredTryErrors[errorIndex]);
+        }
     }
 
     restoreOwnershipFlow(joinedExitState);
@@ -5112,9 +5204,16 @@ bool ProjectMethodBodyModel::validateErrorPropagation(
     diagnostics::DiagnosticEngine& diagnostics,
     std::string_view operation)
 {
-    if (languageEdition_ != language::LanguageEdition::V3 || errorTypeKey.empty() ||
-        errorIsHandled(errorTypeKey))
+    if (languageEdition_ != language::LanguageEdition::V3 || errorTypeKey.empty())
         return true;
+
+    if (!activeTryErrorSets_.empty())
+    {
+        auto& errors = activeTryErrorSets_.back().typeKeys;
+        if (std::ranges::find(errors, errorTypeKey) == errors.end())
+            errors.emplace_back(errorTypeKey);
+    }
+    if (errorIsHandled(errorTypeKey)) return true;
 
     std::string_view declaredErrorTypeKey = currentLambdaErrorTypeKey_;
     const ClassMemberSymbol* caller = methodSymbol(callerCallableOrdinal);

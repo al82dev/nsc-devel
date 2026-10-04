@@ -1882,6 +1882,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->objectLifetimeOwnership = node->objectLifetimeOwnership;
     result->storageOwnership = node->storageOwnership;
     result->catchAll = node->catchAll;
+    result->catchHasFilter = node->catchHasFilter;
+    result->catchExhaustive = node->catchExhaustive;
+    result->catchMatchedErrorTypeKeys = node->catchMatchedErrorTypeKeys;
     result->interfaceCleanupDispatch = node->interfaceCleanupDispatch;
     result->argumentCount = node->argumentCount;
     result->argumentParameterOrdinals = node->argumentParameterOrdinals;

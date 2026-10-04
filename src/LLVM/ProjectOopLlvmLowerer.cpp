@@ -7165,13 +7165,18 @@ private:
             {
                 if (sawCatchAll)
                     return fail(error, "Stage 45.11 catch-all handler must remain terminal");
-                if (child->children.size() != 1 || child->children.front() == nullptr)
+                const std::size_t expectedChildren = child->catchHasFilter ? 2U : 1U;
+                if (child->children.size() != expectedChildren ||
+                    std::ranges::any_of(child->children, [](const auto& value)
+                    {
+                        return value == nullptr;
+                    }))
                     return fail(error, "Stage 45.11 catch MIR handler body is incomplete");
                 if (child->catchAll)
                 {
                     if (child->exceptionTypeOrdinal.has_value())
                         return fail(error, "Stage 45.11 catch-all unexpectedly carries a typed RTTI ordinal");
-                    sawCatchAll = true;
+                    if (!child->catchHasFilter) sawCatchAll = true;
                 }
                 else
                 {
@@ -7211,13 +7216,19 @@ private:
         LLVMBasicBlockRef dispatchBlock = !catchNodes.empty()
             ? appendBlock("eh.catch.dispatch")
             : nullptr;
+        std::vector<LLVMBasicBlockRef> clauseTestBlocks;
         std::vector<LLVMBasicBlockRef> catchBlocks;
+        std::vector<LLVMBasicBlockRef> handlerBlocks;
         std::vector<LLVMBasicBlockRef> handledBlocks;
+        clauseTestBlocks.reserve(catchNodes.size());
         catchBlocks.reserve(catchNodes.size());
+        handlerBlocks.reserve(catchNodes.size());
         handledBlocks.reserve(catchNodes.size());
         for (std::size_t index = 0; index < catchNodes.size(); ++index)
         {
+            clauseTestBlocks.push_back(appendBlock("eh.catch.test." + std::to_string(index)));
             catchBlocks.push_back(appendBlock("eh.catch." + std::to_string(index)));
+            handlerBlocks.push_back(appendBlock("eh.catch.body." + std::to_string(index)));
             handledBlocks.push_back(appendBlock("eh.catch.handled." + std::to_string(index)));
         }
 
@@ -7327,16 +7338,22 @@ private:
             }
 
             // Clause selection, in source order. A catch-all clause terminates the chain; anything
-            // after it was already rejected up front ("catch-all handler must remain terminal").
+            // after an unfiltered catch-all was already rejected up front. A filtered catch-all can
+            // decline the exception and therefore legitimately precedes another clause.
             LLVMBasicBlockRef unmatchedBlock = appendBlock("eh.catch.unmatched");
             LLVMTypeRef i64Type = LLVMInt64TypeInContext(context_);
+            LLVMBuildBr(builder_, clauseTestBlocks.front());
             for (std::size_t index = 0; index < catchNodes.size(); ++index)
             {
                 const frontend::ProjectOopMirNode* catchNode = catchNodes[index];
+                LLVMPositionBuilderAtEnd(builder_, clauseTestBlocks[index]);
+                LLVMBasicBlockRef nextTest = index + 1U < catchNodes.size()
+                    ? clauseTestBlocks[index + 1U]
+                    : unmatchedBlock;
                 if (catchNode->catchAll)
                 {
                     LLVMBuildBr(builder_, catchBlocks[index]);
-                    break;
+                    continue;
                 }
                 const auto typeIdFound = typedCatchTypeIds_.find(*catchNode->exceptionTypeOrdinal);
                 if (typeIdFound == typedCatchTypeIds_.end())
@@ -7354,20 +7371,7 @@ private:
                     if (hasFinally) activeCleanupRegions_.pop_back();
                     return fail(error, "Stage 45.11 failed to emit a catch clause RTTI test");
                 }
-                const bool isLast = (index + 1 == catchNodes.size());
-                LLVMBasicBlockRef nextTest = isLast
-                    ? unmatchedBlock
-                    : appendBlock("eh.catch.next." + std::to_string(index));
                 LLVMBuildCondBr(builder_, matches, catchBlocks[index], nextTest);
-                LLVMPositionBuilderAtEnd(builder_, nextTest);
-            }
-            // Only when the chain did NOT already end by falling into unmatchedBlock itself: the
-            // last typed test uses unmatchedBlock as its own "no match" successor, which leaves the
-            // builder sitting in that block, and branching from there to itself would put a second
-            // terminator in it.
-            if (LLVMGetInsertBlock(builder_) != unmatchedBlock && !terminated())
-            {
-                LLVMBuildBr(builder_, unmatchedBlock);
             }
 
             // No clause matched: this exception really is leaving the try, so the enclosing cleanup
@@ -7427,6 +7431,26 @@ private:
                     }
                 }
 
+                if (catchNode->catchHasFilter)
+                {
+                    LLVMValueRef filter = lowerExpression(catchNode->children.front().get(), error);
+                    if (filter == nullptr)
+                    {
+                        if (hasFinally) activeCleanupRegions_.pop_back();
+                        return false;
+                    }
+                    LLVMBasicBlockRef nextTest = index + 1U < catchNodes.size()
+                        ? clauseTestBlocks[index + 1U]
+                        : unmatchedBlock;
+                    LLVMBuildCondBr(builder_, filter, handlerBlocks[index], nextTest);
+                }
+                else
+                {
+                    LLVMBuildBr(builder_, handlerBlocks[index]);
+                }
+
+                LLVMPositionBuilderAtEnd(builder_, handlerBlocks[index]);
+
                 // `rethrow` inside this body used to find its exception by walking funcletStack_ for
                 // an active catch funclet. The body is ordinary parent code now, so it looks here.
                 // CC1 EH-001: loopStack_.size() is recorded HERE, before the body is lowered, so
@@ -7434,7 +7458,8 @@ private:
                 // or switch opened inside this catch".
                 activeCatchExceptions_.push_back(
                     ActiveCatchBody{caughtException, loopStack_.size()});
-                const bool handlerOk = lowerStatement(catchNode->children.front().get(), error);
+                const std::size_t bodyIndex = catchNode->catchHasFilter ? 1U : 0U;
+                const bool handlerOk = lowerStatement(catchNode->children[bodyIndex].get(), error);
                 const bool handlerTerminated = terminated();
                 activeCatchExceptions_.pop_back();
                 if (!handlerOk)
@@ -7454,7 +7479,7 @@ private:
                 // source statement (or to `catch` for an empty body).  Instructions that survive
                 // from the body keep their more precise nested locations; this is only the stable
                 // anchor that mem2reg cannot erase.
-                const frontend::ProjectOopMirNode* catchBody = catchNode->children.front().get();
+                const frontend::ProjectOopMirNode* catchBody = catchNode->children[bodyIndex].get();
                 const frontend::ProjectOopMirNode* catchAnchor = catchNode;
                 if (catchBody != nullptr &&
                     catchBody->kind == frontend::ProjectOopMirNodeKind::Block &&

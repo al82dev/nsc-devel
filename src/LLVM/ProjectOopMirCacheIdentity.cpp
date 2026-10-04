@@ -131,6 +131,9 @@ void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
     output.scalar(node->objectLifetimeOwnership);
     output.scalar(node->storageOwnership);
     output.scalar(node->catchAll);
+    output.scalar(node->catchHasFilter);
+    output.scalar(node->catchExhaustive);
+    output.texts(node->catchMatchedErrorTypeKeys);
     output.scalar(node->interfaceCleanupDispatch);
     output.scalar(node->inlineAssemblyHasSideEffects);
     output.scalar(node->inlineAssemblyClobbersMemory);

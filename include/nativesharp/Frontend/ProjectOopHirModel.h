@@ -565,6 +565,9 @@ struct ProjectOopHirNode final
     sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
     sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
     bool catchAll = false;
+    bool catchHasFilter = false;
+    bool catchExhaustive = false;
+    std::vector<std::string> catchMatchedErrorTypeKeys;
     bool interfaceCleanupDispatch = false;
     std::size_t argumentCount = 0;
     std::vector<std::string> argumentTypeKeys;

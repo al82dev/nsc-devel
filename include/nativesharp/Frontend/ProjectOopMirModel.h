@@ -35,7 +35,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 22: value layouts publish producer-owned, versioned drop-glue identities.
 // MINOR 23: Result propagation publishes both carrier protocols, error conversion, and cleanup.
 // 1.24 publishes each callable's typed-throws contract independently from native EH regions.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 24;
+// 1.25 publishes source-ordered catch patterns, their declared-error matches and exhaustiveness.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 25;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -456,6 +457,9 @@ struct ProjectOopMirNode final
     sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
     sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
     bool catchAll = false;
+    bool catchHasFilter = false;
+    bool catchExhaustive = false;
+    std::vector<std::string> catchMatchedErrorTypeKeys;
     bool interfaceCleanupDispatch = false;
     // Item 300: explicit optimization contract for InlineAssembly. These are derived once from
     // the validated MIR children; late consumers do not guess barrier semantics from raw text.

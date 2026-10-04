@@ -228,7 +228,7 @@ public class Program
         : std::string();
     tests.expect(
         mirBuilt && compilationError.empty() &&
-            mir.find("schema=1.24") != std::string::npos &&
+            mir.find("schema=1.25") != std::string::npos &&
             mir.find("result-propagation") != std::string::npos &&
             mir.find("conversion=__nsc_method_") != std::string::npos &&
             mir.find("continuation=return") != std::string::npos,
@@ -256,6 +256,13 @@ namespace TypedThrows
     public class Error : Exception {}
     public class ParseError : Error {}
 
+    public class Guard
+    {
+        public int Digit;
+        public Guard(int digit) { Digit = digit; }
+        ~Guard() { Program.Order = Program.Order * 10 + Digit; }
+    }
+
     public delegate int Work(bool fail) throws Error;
 
     public class Base
@@ -279,6 +286,7 @@ namespace TypedThrows
     public class Program
     {
         public static int Cleanups = 0;
+        public static int Order = 0;
 
         private static int Parse(bool fail) throws ParseError
         {
@@ -295,6 +303,41 @@ namespace TypedThrows
         private static int Invoke(Work work, bool fail) throws Error
         {
             return work(fail);
+        }
+
+        private static int Nested(bool accept)
+        {
+            try
+            {
+                try
+                {
+                    Forward(true);
+                }
+                catch (Error problem) when (problem != null && accept)
+                {
+                    return 40;
+                }
+                catch (Error problem)
+                {
+                    throw;
+                }
+                finally
+                {
+                    Cleanups = Cleanups + 10;
+                }
+            }
+            catch (Error problem)
+            {
+                return Cleanups;
+            }
+            return 1;
+        }
+
+        private static void Guarded() throws Error
+        {
+            owned Guard first = new Guard(1);
+            owned Guard second = new Guard(2);
+            throw new Error();
         }
 
         public static int Main()
@@ -315,9 +358,15 @@ namespace TypedThrows
             catch (Error problem)
             {
                 if (Cleanups != 3) { return 30; }
-                return 42;
             }
-            return 40;
+            Cleanups = 0;
+            if (Nested(true) != 40 || Cleanups != 11) { return 31; }
+            Cleanups = 0;
+            if (Nested(false) != 11 || Cleanups != 11) { return 32; }
+            try { Guarded(); }
+            catch (Error problem) {}
+            if (Order != 21) { return 33; }
+            return 42;
         }
     }
 }
@@ -325,16 +374,42 @@ namespace TypedThrows
     const CompilationEvidence typed = compileMir(typedProject);
     tests.expect(
         typed.succeeded && typed.error.empty() &&
-            typed.mir.find("schema=1.24") != std::string::npos &&
+            typed.mir.find("schema=1.25") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.Error") != std::string::npos &&
-            typed.mir.find("throws=type:TypedThrows::TypedThrows.ParseError") != std::string::npos,
-        "throws E reaches MIR 1.24 while overrides narrow and delegates preserve the exact error type (" +
+            typed.mir.find("throws=type:TypedThrows::TypedThrows.ParseError") != std::string::npos &&
+            typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=true exhaustive=false") != std::string::npos &&
+            typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=false exhaustive=true") != std::string::npos,
+        "throws E and source-ordered filtered catches reach MIR 1.25 with exact error identity (" +
             typed.error + typed.diagnostics + typed.mir + ")");
     executionDiagnostic.clear();
     tests.expect(
         compileAndRun(typedProject, 42, executionDiagnostic),
         "O0/NSLink executes typed propagation through a delegate and runs defer during native unwind (" +
             executionDiagnostic + ")");
+    const std::string typedProjectText = typedProject.string();
+    const std::array<std::string_view, 2> llvmArguments = {
+        "--dump-project-oop-llvm", typedProjectText};
+    std::string llvmOutput;
+    std::string llvmError;
+    const ExitCode llvmResult = runDriver(llvmArguments, llvmOutput, llvmError);
+    const std::size_t nestedName = llvmOutput.find("Nested");
+    const std::size_t nestedBegin = nestedName == std::string::npos
+        ? std::string::npos
+        : llvmOutput.rfind("define ", nestedName);
+    const std::size_t nestedEnd = nestedBegin == std::string::npos
+        ? std::string::npos
+        : llvmOutput.find("\n}", nestedBegin);
+    const std::string nestedLlvm = nestedBegin == std::string::npos || nestedEnd == std::string::npos
+        ? std::string()
+        : llvmOutput.substr(nestedBegin, nestedEnd - nestedBegin);
+    tests.expect(
+        llvmResult == ExitCode::Success &&
+            nestedLlvm.find("eh.catch.test.0") != std::string::npos &&
+            nestedLlvm.find("__nativesharp_rtti_is_class") != std::string::npos &&
+            nestedLlvm.find("__nativesharp_alloc") == std::string::npos &&
+            nestedLlvm.find("clr") == std::string::npos,
+        "catch filtering lowers to ordered native RTTI branches without hidden heap or CLR machinery (" +
+            llvmError + nestedLlvm + ")");
 
     const auto expectRejected = [&](std::string_view name, std::string_view source,
                                     std::string_view expectedText)
@@ -385,6 +460,74 @@ public class Error : NativeSharp.Core.Exception {}
 public extern C delegate int NativeWork() throws Error;
 public class Program { public static int Main() { return 0; } }
 )NS", "cannot declare throws");
+    expectRejected("UnrelatedCatchPattern", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Other : NativeSharp.Core.Exception {}
+public class Program
+{
+    private static void Risk() throws Error { throw new Error(); }
+    public static int Main()
+    {
+        try { Risk(); }
+        catch (Other problem) {}
+        return 42;
+    }
+}
+)NS", "cannot match any declared error from the protected region");
+    expectRejected("NonExhaustiveCatch", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Narrow : Error {}
+public class Program
+{
+    private static void Risk() throws Error { throw new Error(); }
+    public static int Main()
+    {
+        try { Risk(); }
+        catch (Narrow problem) {}
+        return 42;
+    }
+}
+)NS", "NS3071");
+    expectRejected("CatchFilterType", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Program
+{
+    private static void Risk() throws Error { throw new Error(); }
+    public static int Main() throws Error
+    {
+        try { Risk(); }
+        catch (Error problem) when (1) { return 1; }
+        catch (Error problem) { return 42; }
+    }
+}
+)NS", "catch filter expression must have type bool");
+    expectRejected("CatchFilterFalse", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Program
+{
+    private static void Risk() throws Error { throw new Error(); }
+    public static int Main()
+    {
+        try { Risk(); }
+        catch (Error problem) when (false) { return 1; }
+        catch (Error problem) { return 42; }
+    }
+}
+)NS", "catch filter is unreachable because its condition is always false");
+    expectRejected("ReturnFromFinally", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        try { return 1; }
+        finally { return 42; }
+    }
+}
+)NS", "return cannot leave a finally block");
 
     const std::filesystem::path edition2 = root / "edition2";
     const std::filesystem::path edition2Project = edition2 / "Edition2Identifier.nsproj";

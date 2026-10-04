@@ -31,6 +31,19 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
     if (node->targetScopeOrdinal.has_value()) output << " target-scope=#" << *node->targetScopeOrdinal;
     if (node->exceptionTypeOrdinal.has_value()) output << " exception-type=#" << *node->exceptionTypeOrdinal;
     if (node->catchAll) output << " catch=all";
+    if (node->kind == ProjectOopHirNodeKind::CatchRegion)
+    {
+        output << " pattern=" << (node->catchAll ? "_" : node->elementTypeKey)
+               << " filter=" << (node->catchHasFilter ? "true" : "false")
+               << " exhaustive=" << (node->catchExhaustive ? "true" : "false")
+               << " matches=[";
+        for (std::size_t index = 0; index < node->catchMatchedErrorTypeKeys.size(); ++index)
+        {
+            if (index != 0) output << ',';
+            output << node->catchMatchedErrorTypeKeys[index];
+        }
+        output << ']';
+    }
     if (node->disposeContractMemberOrdinal.has_value()) output << " dispose-contract=#" << *node->disposeContractMemberOrdinal;
     if (node->disposeImplementationMemberOrdinal.has_value()) output << " dispose-implementation=#" << *node->disposeImplementationMemberOrdinal;
     if (node->interfaceCleanupDispatch) output << " cleanup-dispatch=interface";

@@ -375,6 +375,13 @@ struct MethodExceptionBinding final
     std::string exceptionTypeKey;
     std::optional<std::size_t> exceptionTypeOrdinal;
     bool catchAll = false;
+    bool hasFilter = false;
+    bool filterAlwaysTrue = false;
+    // NativeSharp 3.0 T07-F03. Declared errors from the protected region that can reach this
+    // source-ordered type/wildcard pattern. `exhaustive` means this clause completes coverage of
+    // every declared error still possible at the try boundary.
+    std::vector<std::string> matchedErrorTypeKeys;
+    bool exhaustive = false;
 };
 
 enum class MethodCleanupRegionKind
@@ -2294,7 +2301,12 @@ private:
         bool catchAll = false;
         std::vector<std::string> typeKeys;
     };
+    struct ActiveTryErrorSet final
+    {
+        std::vector<std::string> typeKeys;
+    };
     std::vector<ActiveErrorHandlers> activeErrorHandlers_;
+    std::vector<ActiveTryErrorSet> activeTryErrorSets_;
     std::vector<std::string> currentCatchErrorTypes_;
     std::vector<MethodSwitchBinding> switchBindings_;
     std::vector<MethodStructuredExitBinding> structuredExits_;
