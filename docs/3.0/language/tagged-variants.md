@@ -30,14 +30,21 @@ métodos ordenada alfabéticamente.
 - Un pointer nulo no se usa como niche implícito: sin una autorización de lenguaje, el tag sigue
   presente. Por ello `variant Optional { None, Some(int*) }` mide 16 bytes en Windows x64.
 
-`pack`, `align`, `size`, `readonly` y `borrowed` no pueden cambiar este contrato canónico.
+`pack`, `align`, `size`, `readonly` y `borrowed` no pueden cambiar este contrato canónico. En
+NativeSharp 3.0 no existe una autorización alternativa de niche: todos los variants usan este tag
+explícito y estable.
 
 ### Recursión y lifetime
 
 La recursión indirecta mediante pointer o referencia es válida. Un payload que contiene el mismo
-variant por valor forma un layout infinito y se rechaza. En esta vertical sólo son productivos los
-payloads con lifetime trivial. `owned`/`borrowed`, move-only, drop por caso y unwind dependen del
-contrato de payload activo de T06; hasta entonces se rechazan con diagnóstico causal.
+variant por valor forma un layout infinito y se rechaza. Los payloads `owned` y move-only son
+productivos: el cambio de caso destruye el payload desplazado después de evaluar el reemplazo, y la
+salida normal o excepcional destruye exactamente una vez el caso que permanezca activo.
+
+Un `variant` posee su almacenamiento activo. Por ello `borrowed variant` y un payload calificado
+directamente como `borrowed` no forman parte del contrato 3.0. Cuando un caso necesita transportar
+una vista, ésta se encapsula en un `borrowed struct` con lifetime nombrado. `readonly` también sigue
+siendo un modificador exclusivo de structs no-union y no altera la construcción interna del variant.
 
 Los tipos genéricos variant son productivos dentro del proyecto que los declara. La importación
 nominal de un tipo genérico desde `LibraryReference` pertenece al frente general de genéricos
@@ -65,13 +72,20 @@ reconstructs the declaration instead of guessing it from an alphabetically sorte
   remains present, so `variant Optional { None, Some(int*) }` is 16 bytes on Windows x64.
 
 `pack`, `align`, `size`, `readonly`, and `borrowed` cannot override this canonical contract.
+NativeSharp 3.0 defines no alternate niche authorization: every variant keeps this explicit,
+stable tag.
 
 ### Recursion and lifetime
 
 Indirect recursion through a pointer or reference is valid. Carrying the same variant by value
-would create an infinite layout and is rejected. This vertical supports lifetime-trivial payloads.
-`owned`/`borrowed`, move-only payloads, per-case drop, and unwind depend on T06 active-payload
-tracking and remain causally rejected until that contract lands.
+would create an infinite layout and is rejected. `owned` and move-only payloads are productive:
+changing the active case destroys the displaced payload after evaluating the replacement, while
+normal or exceptional scope exit destroys the remaining active case exactly once.
+
+A `variant` owns its active storage. Consequently, `borrowed variant` and directly qualified
+`borrowed` payloads are outside the 3.0 contract. A case that transports a view wraps it in a
+`borrowed struct` with a named lifetime. `readonly` also remains exclusive to non-union structs and
+does not alter a variant's internal construction.
 
 Generic variants are productive in their declaring project. Nominal import of a generic type from
 a `LibraryReference` belongs to the general precompiled-generics frontier; NSMETA 1.27 preserves

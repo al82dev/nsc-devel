@@ -5246,9 +5246,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             }
             auto node = makeNode(ProjectOopHirNodeKind::Assignment, expression, resultType);
             node->operation = expression->tokenKind();
-            if (expression->first() != nullptr && expression->second() != nullptr &&
-                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
-                expression->second()->kind() == ast::AstNodeKind::MoveExpression)
+            if (node->operation == lexer::TokenKind::Equal &&
+                expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
             {
                 const MethodNameBinding* targetBinding = nameBinding(expression->first());
                 if (targetBinding != nullptr && targetBinding->localOrdinal.has_value() &&
@@ -5269,6 +5269,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 const MethodExpressionTypeBinding* assignmentType = expressionType(expression);
                 node->booleanValue = assignmentType != nullptr &&
                     assignmentType->ownsStorageDestination;
+            }
+            // T03-F01/T06-F08: a move-only aggregate owns its current active payload even when
+            // the replacement is a freshly returned value rather than an explicit move(local).
+            // Mark every ordinary store of a drop-bearing value so the backend destroys the
+            // displaced value after evaluating the RHS and before writing the replacement.
+            if (!node->booleanValue && node->operation == lexer::TokenKind::Equal &&
+                memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(resultType))
+            {
+                node->booleanValue = true;
             }
             if (node->operation != lexer::TokenKind::Equal)
             {

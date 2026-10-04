@@ -3019,7 +3019,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 declaration->range(),
-                "borrowed variant declarations require the T06 active-payload lifetime contract");
+                "'borrowed' applies only to struct view declarations; variants own their active storage");
         }
         if (isReadonlyType)
         {
@@ -3572,7 +3572,8 @@ ast::AstNode* Parser::parseVariantDeclaration()
                         diagnostics::DiagnosticId::InvalidType,
                         diagnostics::DiagnosticSeverity::Error,
                         item.payloadType->range(),
-                        "borrowed variant payloads require an explicit lifetime binding");
+                        "borrowed variant payloads are outside the NativeSharp 3.0 storage contract; "
+                        "wrap the borrow in a borrowed struct view");
                 }
             }
             if (at(TokenKind::Comma))

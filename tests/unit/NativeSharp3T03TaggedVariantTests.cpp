@@ -149,6 +149,56 @@ namespace TaggedVariants
             "tag construction, tests and generic payload extraction execute correctly");
     }
 
+    const std::filesystem::path owning = root / "owning";
+    writeProject(owning, "OwningVariant", R"NS(
+public class Resource
+{
+    public static int Drops = 0;
+    public int Value;
+    public Resource(int value) { Value = value; }
+    ~Resource() { Drops = Drops + 1; }
+}
+
+public variant Owner
+{
+    Empty,
+    Value(owned Resource)
+}
+
+public class Program
+{
+    public static int Main()
+    {
+        {
+            Owner owner = Owner.Value(new Resource(20));
+            owner = Owner.Empty();
+            if (Resource.Drops != 1) { return 10; }
+            owner = Owner.Value(new Resource(22));
+        }
+        if (Resource.Drops != 2) { return 11; }
+        return 42;
+    }
+}
+)NS");
+    const std::string owningProject = (owning / "OwningVariant.nsproj").string();
+    const std::string owningExecutable = (owning / "OwningVariant.exe").string();
+    const std::array<std::string_view, 5> owningArguments = {
+        "--emit-project-oop-exe", owningProject, "-O0", "-o", owningExecutable};
+    output.clear();
+    error.clear();
+    const ExitCode owningResult = runDriver(owningArguments, output, error);
+    tests.expect(
+        owningResult == ExitCode::Success,
+        "a move-only owned payload compiles through the selected linker (" +
+            error + output + ")");
+    if (owningResult == ExitCode::Success)
+    {
+        tests.expect(
+            std::system(("\"" + owningExecutable + "\"").c_str()) == 42,
+            "changing the active case drops the displaced payload and scope exit drops the "
+            "remaining payload exactly once");
+    }
+
     std::string diagnostic;
     tests.expect(
         rejected(root / "empty", "variant Empty { }", "at least one case", diagnostic),
@@ -162,13 +212,6 @@ namespace TaggedVariants
         rejected(root / "recursive", "variant Loop { Next(Loop) }", "recursive", diagnostic),
         "a direct by-value recursive variant is rejected while pointer recursion remains legal (" +
             diagnostic + ")");
-    diagnostic.clear();
-    tests.expect(
-        rejected(root / "owned", "variant Owner { Value(owned string) }",
-            "T06 active-payload drop contract", diagnostic),
-        "move-only payloads are rejected until T06 supplies active-payload drop glue (" +
-            diagnostic + ")");
-    diagnostic.clear();
     tests.expect(
         rejected(root / "layout", "pack(1) variant Packed { Value(int) }",
             "cannot override the canonical tagged-variant layout", diagnostic),
@@ -177,14 +220,21 @@ namespace TaggedVariants
     tests.expect(
         rejected(root / "readonly", "readonly variant Frozen { Value(int) }",
             "readonly applies only to non-union struct", diagnostic),
-        "readonly variants remain rejected until active-payload mutation has a contract (" +
+        "readonly remains a struct-view modifier and cannot redefine variant construction (" +
             diagnostic + ")");
     diagnostic.clear();
     tests.expect(
         rejected(root / "borrowed", "borrowed variant View { Value(int) }",
-            "borrowed variant declarations require the T06", diagnostic),
-        "borrowed variants remain rejected until their active payload has lifetime tracking (" +
+            "variants own their active storage", diagnostic),
+        "borrowed remains a struct-view declaration rather than a variant layout modifier (" +
             diagnostic + ")");
+    diagnostic.clear();
+    tests.expect(
+        rejected(root / "borrowed-payload",
+            "variant View { Value(borrowed string) }",
+            "outside the NativeSharp 3.0 storage contract", diagnostic),
+        "a direct borrowed payload is rejected with a final 3.0 contract rather than a stale "
+        "future-stage dependency (" + diagnostic + ")");
     diagnostic.clear();
     tests.expect(
         rejected(root / "reserved", "variant Collision { CaseTag }",

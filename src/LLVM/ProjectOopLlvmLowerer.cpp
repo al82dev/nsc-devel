@@ -10376,6 +10376,17 @@ private:
                         });
                     if (cleanup == cleanupRegions_.end() || !emitRaiiDestroy(cleanup->second, error)) return nullptr;
                 }
+                else if (node->booleanValue && memberModel_ != nullptr &&
+                         memberModel_->typeRequiresValueDrop(node->typeKey))
+                {
+                    // T03-F01: replacement of a move-only value is a two-phase operation. The
+                    // complete RHS is already materialized above, so it is now safe to destroy
+                    // the currently active payload in the destination before storing the new
+                    // carrier. This path covers parameters, fields and elements; locals use their
+                    // cleanup region above so their initialized flag is updated consistently.
+                    if (!emitValueDropAddress(address, node->typeKey, "value.replace", error))
+                        return nullptr;
+                }
                 else if (node->booleanValue && requiresOwnedDestruction(node->typeKey))
                 {
                     // Bloque 1 item 1 (owning field storage) -- a write into a field that ALREADY
