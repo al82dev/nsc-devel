@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Generate the compact item-by-item NativeSharp 3.0 tracking table."""
+"""Compatibility helpers for the NativeSharp 3.0 tracking table.
+
+The command-line entry point delegates all writes to the canonical catalogue in
+``A:/DOCUMENTO-MAESTRO-NATIVESHARP-3.0.md``.  The parsing helpers remain for
+older focused tests, but this module can no longer recreate the obsolete
+167-item table as an independent source of truth.
+"""
 
 from __future__ import annotations
 
@@ -151,7 +157,8 @@ def generate(repo_root: Path, states: dict[str, str] | None = None) -> str:
 
 
 def main() -> int:
-    repo_root = Path(__file__).resolve().parents[1]
+    import native_sharp_3_catalog as canonical
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path)
     parser.add_argument(
@@ -162,16 +169,21 @@ def main() -> int:
         help="update an item state while preserving every other existing state",
     )
     args = parser.parse_args()
-    states = read_states(args.output)
     for assignment in args.set_state:
         item_id, separator, state = assignment.partition("=")
-        if not separator or state not in ALLOWED_STATES:
+        if not separator or state not in canonical.ALLOWED_STATES:
             raise RuntimeError(f"invalid state assignment: {assignment!r}")
-        states[item_id] = state
-    result = generate(repo_root, states)
-    if args.output:
-        args.output.write_text(result, encoding="utf-8")
-    else:
+        canonical.update_item(
+            Path("A:/DOCUMENTO-MAESTRO-NATIVESHARP-3.0.md"), item_id, state, None
+        )
+    result = canonical.render_tracking(
+        canonical.parse_catalogue(Path("A:/DOCUMENTO-MAESTRO-NATIVESHARP-3.0.md"))
+    )
+    canonical_output = Path("A:/NATIVESHARP-3.0-TRACKING.md")
+    canonical_output.write_text(result, encoding="utf-8", newline="\n")
+    if args.output and args.output != canonical_output:
+        args.output.write_text(result, encoding="utf-8", newline="\n")
+    if not args.output:
         print(result, end="")
     return 0
 

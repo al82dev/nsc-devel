@@ -4,6 +4,8 @@
 > **Plataforma normativa inicial:** Windows 64-bit (`x86_64-pc-windows-msvc`)  
 > **Filosofía:** semántica nativa tipo C++, ergonomía familiar para C#, costo predecible, control explícito de memoria  
 > **No depende de:** CLR, GC, metadata/reflection administrada, JIT ni runtime obligatorio de objetos
+> **Autoridad de estado:** Documento maestro §24 (`A:\DOCUMENTO-MAESTRO-NATIVESHARP-3.0.md`). Este roadmap conserva el diseño
+> detallado; no declara por sí solo que un ítem esté terminado.
 
 ---
 

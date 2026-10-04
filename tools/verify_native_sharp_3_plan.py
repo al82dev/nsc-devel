@@ -174,6 +174,8 @@ def default_tracking_path() -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from verify_native_sharp_3_catalog import main as verify_canonical_catalogue
+
     repo_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -183,20 +185,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--tracking", type=Path, default=default_tracking_path())
     args = parser.parse_args(argv)
-
-    try:
-        verify_nsc_roadmap(args.roadmap)
-        verify_tracking(args.tracking)
-    except VerificationError as error:
-        print(f"verify_native_sharp_3_plan: error: {error}", file=sys.stderr)
-        return 1
-
-    print(
-        "verify_native_sharp_3_plan: OK: "
-        f"NSC {len(expected_nsc_feature_ids())}/120; "
-        f"tracking {len(COMPONENT_TOTALS)} components/{sum(COMPONENT_TOTALS.values())} items"
+    return verify_canonical_catalogue(
+        ["--roadmap", str(args.roadmap), "--tracking", str(args.tracking)]
     )
-    return 0
 
 
 if __name__ == "__main__":
