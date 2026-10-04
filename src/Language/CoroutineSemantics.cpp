@@ -15,6 +15,125 @@ bool borrowMayCrossAwait(bool sourceOutlivesFrame, bool addressStable) noexcept
     return sourceOutlivesFrame && addressStable;
 }
 
+namespace
+{
+GeneratorStorage generatorStorage(FrameStorage storage) noexcept
+{
+    switch (storage)
+    {
+        case FrameStorage::CallerStack: return GeneratorStorage::Stack;
+        case FrameStorage::CallerArena: return GeneratorStorage::Arena;
+        case FrameStorage::ExplicitHeap: return GeneratorStorage::ExplicitHeap;
+    }
+    return GeneratorStorage::Stack;
+}
+
+std::string asyncFutureIdentity(
+    std::string_view returnType,
+    FrameStorage storage,
+    const SynchronousGeneratorPlan& stateMachine)
+{
+    constexpr std::uint64_t offsetBasis = 14695981039346656037ULL;
+    constexpr std::uint64_t prime = 1099511628211ULL;
+    std::uint64_t value = offsetBasis;
+    const auto append = [&](std::string_view text)
+    {
+        for (const char byte : text)
+        {
+            value ^= static_cast<unsigned char>(byte);
+            value *= prime;
+        }
+    };
+    append(returnType);
+    append("|");
+    append(std::to_string(static_cast<unsigned>(storage)));
+    append("|");
+    append(std::to_string(stateMachine.frame.size));
+    append("|");
+    append(std::to_string(stateMachine.frame.alignment));
+    append("|");
+    append(std::to_string(stateMachine.states.size()));
+    std::ostringstream stream;
+    stream << "future<" << returnType << ">#" << std::hex << std::setfill('0')
+           << std::setw(16) << value;
+    return stream.str();
+}
+}
+
+std::optional<AsyncFunctionPlan> buildAsyncFunctionPlan(
+    std::string_view returnType,
+    std::span<const GeneratorLocal> locals,
+    std::span<const AwaitSuspension> awaits,
+    FrameStorage storage,
+    bool hasSelfReference,
+    std::string& error) noexcept
+{
+    error.clear();
+    if (returnType.empty())
+    {
+        error = "an async function requires a resolved return type";
+        return std::nullopt;
+    }
+
+    AsyncFunctionPlan result;
+    result.returnType = std::string(returnType);
+    result.storage = storage;
+    result.start = nativeFutureStart();
+    result.hasImplicitHeapAllocation = asyncFrameHasImplicitHeap(storage);
+
+    if (awaits.empty())
+    {
+        for (const GeneratorLocal& local : locals)
+        {
+            if (local.livesAcrossYield)
+            {
+                error = "an async function without await cannot have locals live across suspension";
+                return std::nullopt;
+            }
+        }
+        result.completesSynchronously = true;
+        result.stateMachine.storage = generatorStorage(storage);
+        result.stateMachine.itemType = result.returnType;
+        result.stateMachine.frame = GeneratorFrame{1, 1, hasSelfReference};
+        result.stateMachine.completedState = 1;
+        result.opaqueFutureIdentity = asyncFutureIdentity(
+            returnType, storage, result.stateMachine);
+        return result;
+    }
+
+    std::vector<GeneratorSuspension> suspensions;
+    suspensions.reserve(awaits.size());
+    for (std::size_t index = 0; index < awaits.size(); ++index)
+    {
+        const AwaitSuspension& await = awaits[index];
+        if (await.state != index + 1U)
+        {
+            error = "async await states must be contiguous and start at one";
+            return std::nullopt;
+        }
+        if (await.carriesBorrow &&
+            !borrowMayCrossAwait(await.borrowSourceOutlivesFrame, await.borrowAddressStable))
+        {
+            error = "borrow across await requires source lifetime and stable address proofs";
+            return std::nullopt;
+        }
+        suspensions.push_back(GeneratorSuspension{
+            await.state,
+            result.returnType,
+            GeneratorYieldKind::Value,
+            await.cleanupDepth,
+            false});
+    }
+
+    const auto stateMachine = buildSynchronousGeneratorPlan(
+        locals, suspensions, generatorStorage(storage), hasSelfReference, error);
+    if (!stateMachine.has_value()) return std::nullopt;
+    result.stateMachine = *stateMachine;
+    result.opaqueFutureIdentity = asyncFutureIdentity(
+        returnType, storage, result.stateMachine);
+    return result;
+}
+
 bool FutureState::poll(bool ready, std::string& error)
 {
     error.clear();

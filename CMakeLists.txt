@@ -1856,6 +1856,14 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.t10.coroutines COMMAND nsc_ns3_t10_coroutine_tests)
 
     add_executable(
+        nsc_ns3_t10_async_function_tests
+        tests/unit/NativeSharp3T10AsyncFunctionTests.cpp)
+    target_link_libraries(nsc_ns3_t10_async_function_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_ns3_t10_async_function_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_t10_async_function_tests)
+    add_test(NAME nsc.ns3.t10.async-functions COMMAND nsc_ns3_t10_async_function_tests)
+
+    add_executable(
         nsc_ns3_t10_memory_model_tests
         tests/unit/NativeSharp3T10MemoryModelTests.cpp)
     target_link_libraries(

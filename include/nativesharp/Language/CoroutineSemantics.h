@@ -2,12 +2,14 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "nativesharp/Language/MemoryModel.h"
+#include "nativesharp/Language/IterationSemantics.h"
 
 namespace nativesharp::language
 {
@@ -19,6 +21,37 @@ enum class FrameStorage { CallerStack, CallerArena, ExplicitHeap };
 FutureStart nativeFutureStart() noexcept;
 bool asyncFrameHasImplicitHeap(FrameStorage storage) noexcept;
 bool borrowMayCrossAwait(bool sourceOutlivesFrame, bool addressStable) noexcept;
+
+struct AwaitSuspension final
+{
+    std::size_t state = 0;
+    std::size_t cleanupDepth = 0;
+    bool carriesBorrow = false;
+    bool borrowSourceOutlivesFrame = false;
+    bool borrowAddressStable = false;
+};
+
+struct AsyncFunctionPlan final
+{
+    std::string returnType;
+    std::string opaqueFutureIdentity;
+    FutureStart start = FutureStart::Lazy;
+    FrameStorage storage = FrameStorage::CallerStack;
+    SynchronousGeneratorPlan stateMachine;
+    bool completesSynchronously = false;
+    bool hasImplicitHeapAllocation = false;
+};
+
+// Builds the opaque future and native frame contract from liveness computed by the frontend.
+// GeneratorLocal is intentionally shared with synchronous generators so await/yield cannot drift
+// into two incompatible frame ABIs.
+std::optional<AsyncFunctionPlan> buildAsyncFunctionPlan(
+    std::string_view returnType,
+    std::span<const GeneratorLocal> locals,
+    std::span<const AwaitSuspension> awaits,
+    FrameStorage storage,
+    bool hasSelfReference,
+    std::string& error) noexcept;
 
 enum class PollState { Created, Pending, Ready, Cancelled, Consumed };
 class FutureState final
