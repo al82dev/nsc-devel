@@ -4438,6 +4438,12 @@ class MainWindow(QMainWindow):
         refresh = QPushButton("Actualizar historial")
         refresh.clicked.connect(self.refresh_history)
         controls.addWidget(refresh)
+        remove_selected = QPushButton("Eliminar corrida")
+        remove_selected.clicked.connect(self.remove_selected_history)
+        controls.addWidget(remove_selected)
+        clear_history = QPushButton("Vaciar historial")
+        clear_history.clicked.connect(self.clear_run_history)
+        controls.addWidget(clear_history)
         layout.addLayout(controls)
 
         self.history_table = QTableWidget(0, 11)
@@ -4540,6 +4546,91 @@ class MainWindow(QMainWindow):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(destination)))
             return
         QMessageBox.warning(self, APP_NAME, f"La evidencia ya no existe:\n{destination}")
+
+    def _remove_history_directories(self, directories: Iterable[Path]) -> list[str]:
+        history_root = HISTORY_ROOT.resolve()
+        failures: list[str] = []
+        removed_current = False
+        for directory in directories:
+            try:
+                resolved = directory.resolve()
+                if resolved.parent != history_root:
+                    raise ValueError(f"ruta fuera del historial administrado: {resolved}")
+                if resolved.is_dir():
+                    shutil.rmtree(resolved)
+                if self.current_run_dir is not None and self.current_run_dir.resolve() == resolved:
+                    removed_current = True
+            except (OSError, ValueError) as exc:
+                failures.append(f"{directory}: {exc}")
+        if removed_current:
+            self.current_run_dir = None
+            self.open_button.setEnabled(False)
+        self.refresh_history()
+        return failures
+
+    @Slot()
+    def remove_selected_history(self) -> None:
+        if self.worker is not None:
+            QMessageBox.warning(
+                self, APP_NAME, "No se puede borrar historial durante una ejecución activa."
+            )
+            return
+        row = self.history_table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, APP_NAME, "Selecciona una corrida del historial.")
+            return
+        item = self.history_table.item(row, 0)
+        run_dir = Path(str(item.data(Qt.ItemDataRole.UserRole + 1) or ""))
+        answer = QMessageBox.question(
+            self,
+            APP_NAME,
+            "Se eliminarán permanentemente los logs y la evidencia de esta corrida:\n\n"
+            f"{run_dir}\n\n¿Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        failures = self._remove_history_directories([run_dir])
+        if failures:
+            QMessageBox.warning(self, APP_NAME, "No se pudo eliminar:\n\n" + "\n".join(failures))
+        else:
+            QMessageBox.information(self, APP_NAME, "La corrida fue eliminada del historial.")
+
+    @Slot()
+    def clear_run_history(self) -> None:
+        if self.worker is not None:
+            QMessageBox.warning(
+                self, APP_NAME, "No se puede vaciar el historial durante una ejecución activa."
+            )
+            return
+        entries = load_run_history(HISTORY_ROOT)
+        directories = [Path(str(entry.get("run_dir", ""))) for entry in entries]
+        if not directories:
+            QMessageBox.information(self, APP_NAME, "El historial ya está vacío.")
+            return
+        answer = QMessageBox.question(
+            self,
+            APP_NAME,
+            f"Se eliminarán permanentemente {len(directories)} corrida(s), incluyendo todos "
+            "sus logs y evidencia.\n\nLos baselines y gates certificados no se eliminarán.\n\n"
+            "¿Vaciar el historial?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        failures = self._remove_history_directories(directories)
+        if failures:
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                "El historial se limpió parcialmente:\n\n" + "\n".join(failures),
+            )
+        else:
+            QMessageBox.information(
+                self, APP_NAME, f"Se eliminaron {len(directories)} corrida(s) del historial."
+            )
 
     def _create_dock(
         self, title: str, widget: QWidget, area: Qt.DockWidgetArea, object_name: str
