@@ -173,7 +173,10 @@ enum class TokenKind
     QuestionQuestion,
     QuestionQuestionEqual,
     QuestionDot,
-    DotDot
+    DotDot,
+    // NativeSharp 3.0 T09-F02. Inclusive lazy-range delimiter. Appended to
+    // preserve every serialized token identity from earlier compiler lines.
+    DotDotEqual
 };
 
 std::string_view tokenKindName(TokenKind kind) noexcept;

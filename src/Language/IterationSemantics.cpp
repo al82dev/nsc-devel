@@ -29,7 +29,12 @@ std::optional<std::size_t> lazyRangeCount(const LazyIntegerRange& range, std::st
         ? 0U - static_cast<std::uint64_t>(range.step)
         : static_cast<std::uint64_t>(range.step);
     std::uint64_t count = distance / step + ((distance % step) != 0 ? 1U : 0U);
-    if (range.inclusive && distance % step == 0) ++count;
+    if (range.inclusive && distance % step == 0)
+    {
+        if (count == std::numeric_limits<std::uint64_t>::max())
+        { error = "range element count overflows size_t"; return std::nullopt; }
+        ++count;
+    }
     if (count > std::numeric_limits<std::size_t>::max())
     { error = "range element count overflows size_t"; return std::nullopt; }
     return static_cast<std::size_t>(count);

@@ -10869,6 +10869,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             };
             checkEndpoint(expression->first());
             checkEndpoint(expression->second());
+            checkEndpoint(expression->third());
             result.typeKey = "internal:range";
             result.valid = valid;
             break;

@@ -6,6 +6,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
+#include "nativesharp/Language/IterationSemantics.h"
 #include "nativesharp/Language/Language3Surface.h"
 #include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
@@ -52,6 +53,27 @@ bool contains(std::span<const TokenKind> values, TokenKind kind) noexcept
         }
     }
     return false;
+}
+
+std::optional<std::int64_t> signedIntegerLiteral(const ast::AstNode* expression) noexcept
+{
+    if (expression == nullptr) return std::nullopt;
+    if (expression->kind() == ast::AstNodeKind::IntegerLiteralExpression)
+    {
+        if (expression->integerValue() >
+            static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+            return std::nullopt;
+        return static_cast<std::int64_t>(expression->integerValue());
+    }
+    if (expression->kind() != ast::AstNodeKind::UnaryExpression ||
+        expression->tokenKind() != TokenKind::Minus || expression->first() == nullptr ||
+        expression->first()->kind() != ast::AstNodeKind::IntegerLiteralExpression)
+        return std::nullopt;
+    const std::uint64_t magnitude = expression->first()->integerValue();
+    if (magnitude > (std::uint64_t{1} << 63U)) return std::nullopt;
+    if (magnitude == (std::uint64_t{1} << 63U))
+        return std::numeric_limits<std::int64_t>::min();
+    return -static_cast<std::int64_t>(magnitude);
 }
 
 ast::TypeSyntax* cloneParsedType(ast::AstArena& arena, const ast::TypeSyntax* source)
@@ -11196,10 +11218,9 @@ ast::AstNode* Parser::parseForeachStatement()
     };
 
     // A bounded integer RangeExpression is a storage-free foreach source. Lower it immediately
-    // to ordinary locals plus a ForStatement so HIR/MIR/LLVM reuse the already verified loop,
-    // integer arithmetic, break and continue paths. Both endpoints are bound before the loop and
-    // therefore evaluated exactly once from left to right. The cursor remains compiler-owned;
-    // the user-visible element is a fresh const local on every iteration.
+    // to ordinary scalar locals plus a ForStatement so HIR/MIR/LLVM reuse the verified loop,
+    // arithmetic, break and continue paths. Begin, end, and step are bound exactly once from left
+    // to right. No array, list, or enumerator is materialized.
     if (collection != nullptr && collection->kind() == ast::AstNodeKind::RangeExpression)
     {
         if (elementByReference)
@@ -11213,6 +11234,7 @@ ast::AstNode* Parser::parseForeachStatement()
         }
         ast::AstNode* begin = collection->first();
         ast::AstNode* end = collection->second();
+        ast::AstNode* step = collection->third();
         if (begin == nullptr)
             begin = makeIntegerLiteralExpression(range, 0);
         if (end == nullptr)
@@ -11233,24 +11255,41 @@ ast::AstNode* Parser::parseForeachStatement()
                 collection->range(),
                 "a from-end endpoint requires a sized receiver and cannot bound a foreach integer range");
         }
+        if (step == nullptr) step = makeIntegerLiteralExpression(range, 1);
 
         ast::AstNode* beginDecl = makeVariableDeclaration(
             varMarker(), "$__foreach_range_begin", begin, false, true);
         ast::AstNode* endDecl = makeVariableDeclaration(
             varMarker(), "$__foreach_range_end", end, false, true);
+        ast::AstNode* stepDecl = makeVariableDeclaration(
+            varMarker(), "$__foreach_range_step", step, false, true);
         ast::AstNode* cursorDecl = makeVariableDeclaration(
             varMarker(), "$__foreach_range_cursor",
             makeIdentifierExpression(range, "$__foreach_range_begin"), false);
-        ast::AstNode* condition = makeBinaryExpression(
-            TokenKind::Less,
-            makeIdentifierExpression(range, "$__foreach_range_cursor"),
-            makeIdentifierExpression(range, "$__foreach_range_end"));
+
+        const auto id = [&](std::string name)
+        {
+            return makeIdentifierExpression(range, std::move(name));
+        };
+        ast::AstNode* ascending = makeBinaryExpression(
+            TokenKind::AmpAmp,
+            makeBinaryExpression(TokenKind::Greater, id("$__foreach_range_step"),
+                makeIntegerLiteralExpression(range, 0)),
+            makeBinaryExpression(collection->flag() ? TokenKind::LessEqual : TokenKind::Less,
+                id("$__foreach_range_cursor"), id("$__foreach_range_end")));
+        ast::AstNode* descending = makeBinaryExpression(
+            TokenKind::AmpAmp,
+            makeBinaryExpression(TokenKind::Less, id("$__foreach_range_step"),
+                makeIntegerLiteralExpression(range, 0)),
+            makeBinaryExpression(collection->flag() ? TokenKind::GreaterEqual : TokenKind::Greater,
+                id("$__foreach_range_cursor"), id("$__foreach_range_end")));
+        ast::AstNode* condition = makeBinaryExpression(TokenKind::PipePipe, ascending, descending);
         ast::AstNode* increment = makeAssignmentExpression(
-            makeIdentifierExpression(range, "$__foreach_range_cursor"),
+            id("$__foreach_range_cursor"),
             makeBinaryExpression(
                 TokenKind::Plus,
-                makeIdentifierExpression(range, "$__foreach_range_cursor"),
-                makeIntegerLiteralExpression(range, 1)));
+                id("$__foreach_range_cursor"),
+                id("$__foreach_range_step")));
         ast::AstNode* elementDecl = makeVariableDeclaration(
             elementType,
             elementName,
@@ -11267,9 +11306,40 @@ ast::AstNode* Parser::parseForeachStatement()
         loop->setThird(increment);
         loop->addChild(forBody);
         ast::AstNode* lowered = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
-        lowered->setAuxiliaryText("foreach:integer-range-exclusive");
+        lowered->setAuxiliaryText(collection->flag()
+            ? "foreach:integer-range-inclusive" : "foreach:integer-range-exclusive");
         lowered->addChild(beginDecl);
         lowered->addChild(endDecl);
+        lowered->addChild(stepDecl);
+
+        // Dynamic steps retain the same contract as compile-time steps. Constant zero and
+        // wrong-direction ranges were diagnosed while parsing; this assertion prevents a value
+        // computed at runtime from silently turning an invalid range into an empty sequence.
+        ast::AstNode* validDirection = makeBinaryExpression(
+            TokenKind::PipePipe,
+            makeBinaryExpression(
+                TokenKind::AmpAmp,
+                makeBinaryExpression(TokenKind::Less, id("$__foreach_range_begin"),
+                    id("$__foreach_range_end")),
+                makeBinaryExpression(TokenKind::Greater, id("$__foreach_range_step"),
+                    makeIntegerLiteralExpression(range, 0))),
+            makeBinaryExpression(
+                TokenKind::PipePipe,
+                makeBinaryExpression(
+                    TokenKind::AmpAmp,
+                    makeBinaryExpression(TokenKind::Greater, id("$__foreach_range_begin"),
+                        id("$__foreach_range_end")),
+                    makeBinaryExpression(TokenKind::Less, id("$__foreach_range_step"),
+                        makeIntegerLiteralExpression(range, 0))),
+                makeBinaryExpression(TokenKind::EqualEqual, id("$__foreach_range_begin"),
+                    id("$__foreach_range_end"))));
+        ast::AstNode* nonZero = makeBinaryExpression(
+            TokenKind::BangEqual, id("$__foreach_range_step"),
+            makeIntegerLiteralExpression(range, 0));
+        ast::AstNode* assertion = makeZeroArgCallExpression(id("assert"));
+        assertion->setAuxiliaryText("builtin-assert");
+        assertion->addChild(makeBinaryExpression(TokenKind::AmpAmp, nonZero, validDirection));
+        lowered->addChild(makeExpressionStatement(assertion));
         lowered->addChild(loop);
         return lowered;
     }
@@ -11909,9 +11979,11 @@ ast::AstNode* Parser::parseNullCoalescingExpression()
 ast::AstNode* Parser::parseRangeExpression()
 {
     ast::AstNode* begin = parseLogicalOrExpression();
-    if (!at(TokenKind::DotDot)) return begin;
+    if (!at(TokenKind::DotDot) && !at(TokenKind::DotDotEqual)) return begin;
 
-    const SourceRange operation = consume().range();
+    const lexer::Token& delimiter = consume();
+    const SourceRange operation = delimiter.range();
+    const bool inclusive = delimiter.kind() == TokenKind::DotDotEqual;
     requireEdition3(operation, "range expressions");
     ast::AstNode* end = nullptr;
     if (!at(TokenKind::RightParen) && !at(TokenKind::RightBracket) &&
@@ -11919,13 +11991,60 @@ ast::AstNode* Parser::parseRangeExpression()
     {
         end = parseLogicalOrExpression();
     }
+    ast::AstNode* step = nullptr;
+    if (atContextualKeyword("step"))
+    {
+        const SourceRange stepKeyword = consume().range();
+        if (at(TokenKind::RightParen) || at(TokenKind::RightBracket) ||
+            at(TokenKind::Comma) || at(TokenKind::Semicolon))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedExpression,
+                diagnostics::DiagnosticSeverity::Error,
+                stepKeyword,
+                "expected an integral expression after range step");
+        }
+        else
+        {
+            step = parseLogicalOrExpression();
+        }
+    }
+    if (inclusive && end == nullptr)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidIndex,
+            diagnostics::DiagnosticSeverity::Error,
+            operation,
+            "an inclusive range requires an end endpoint");
+    }
     ast::AstNode* range = arena_.make<ast::AstNode>(
         ast::AstNodeKind::RangeExpression,
         SourceRange(begin != nullptr ? begin->range().begin() : operation.begin(),
-            end != nullptr ? end->range().end() : operation.end()));
-    range->setTokenKind(TokenKind::DotDot);
+            step != nullptr ? step->range().end() :
+            (end != nullptr ? end->range().end() : operation.end())));
+    range->setTokenKind(delimiter.kind());
     range->setFirst(begin);
     range->setSecond(end);
+    range->setThird(step);
+    range->setFlag(inclusive);
+
+    const std::optional<std::int64_t> constantBegin = signedIntegerLiteral(begin);
+    const std::optional<std::int64_t> constantEnd = signedIntegerLiteral(end);
+    const std::optional<std::int64_t> constantStep = step != nullptr
+        ? signedIntegerLiteral(step) : std::optional<std::int64_t>(1);
+    if (constantBegin.has_value() && constantEnd.has_value() && constantStep.has_value())
+    {
+        std::string rangeError;
+        if (!language::lazyRangeCount(
+                {*constantBegin, *constantEnd, *constantStep, inclusive}, rangeError).has_value())
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                range->range(),
+                rangeError);
+        }
+    }
     return range;
 }
 

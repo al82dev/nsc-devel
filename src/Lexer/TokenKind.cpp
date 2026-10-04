@@ -154,6 +154,7 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(QuestionQuestionEqual);
         NS_TOKEN_CASE(QuestionDot);
         NS_TOKEN_CASE(DotDot);
+        NS_TOKEN_CASE(DotDotEqual);
 #undef NS_TOKEN_CASE
     }
 

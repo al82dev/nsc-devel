@@ -937,7 +937,11 @@ Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
                 advance();
                 return makeToken(TokenKind::Ellipsis, begin);
             }
-            if (match('.')) return makeToken(TokenKind::DotDot, begin);
+            if (match('.'))
+            {
+                if (match('=')) return makeToken(TokenKind::DotDotEqual, begin);
+                return makeToken(TokenKind::DotDot, begin);
+            }
             return makeToken(TokenKind::Dot, begin);
         case '~':
             return makeToken(TokenKind::Tilde, begin);
