@@ -109,6 +109,14 @@ class NativeSharp3CatalogueTests(unittest.TestCase):
             self.assertEqual(len(parsed), 308)
             self.assertEqual(parsed[0].evidence, "")
 
+    def test_component_summary_is_derived_from_catalogue_states(self) -> None:
+        items = fixture_items()
+        items[0] = items[0]._replace(state="EN CURSO")
+        summary = catalog.component_summary_section(items)
+        self.assertIn("<!-- NS3-COMPONENT-SUMMARY-BEGIN -->", summary)
+        self.assertIn("| NSC | 120 | 0 | 0 | 0 | 1 | 119 | 0 | — |", summary)
+        self.assertIn("| NSLink | 9 | 0 | 0 | 0 | 0 | 9 | 0 | — |", summary)
+
     def test_terminal_state_requires_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             master = Path(temporary) / "master.md"

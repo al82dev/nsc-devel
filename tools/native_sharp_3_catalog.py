@@ -17,6 +17,8 @@ from typing import NamedTuple
 
 CATALOG_BEGIN = "<!-- NS3-CANONICAL-CATALOG-BEGIN -->"
 CATALOG_END = "<!-- NS3-CANONICAL-CATALOG-END -->"
+COMPONENT_SUMMARY_BEGIN = "<!-- NS3-COMPONENT-SUMMARY-BEGIN -->"
+COMPONENT_SUMMARY_END = "<!-- NS3-COMPONENT-SUMMARY-END -->"
 
 ALLOWED_STATES = {
     "PENDIENTE",
@@ -492,6 +494,54 @@ def render_tracking(items: list[CatalogItem]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def component_summary_section(items: list[CatalogItem]) -> str:
+    states = (
+        "TERMINADA",
+        "CERTIFICADA",
+        "PRUEBAS DIRIGIDAS",
+        "EN CURSO",
+        "PENDIENTE",
+        "REQUIERE AUDITORÍA",
+    )
+    by_component: dict[str, list[CatalogItem]] = {}
+    for item in items:
+        by_component.setdefault(item.component, []).append(item)
+    lines = [
+        COMPONENT_SUMMARY_BEGIN,
+        "| Componente | Total | Terminada | Certificada | Pruebas dirigidas | En curso | Pendiente | Requiere auditoría | Otros |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for component in sorted(
+        by_component, key=lambda value: COMPONENT_ORDER.get(value, 999)
+    ):
+        counts: dict[str, int] = {}
+        for item in by_component[component]:
+            counts[item.state] = counts.get(item.state, 0) + 1
+        other = ", ".join(
+            f"{state}={count}"
+            for state, count in sorted(counts.items())
+            if state not in states
+        )
+        lines.append(
+            f"| {clean_cell(component)} | {len(by_component[component])} | "
+            + " | ".join(str(counts.get(state, 0)) for state in states)
+            + f" | {clean_cell(other) if other else '—'} |"
+        )
+    lines.append(COMPONENT_SUMMARY_END)
+    return "\n".join(lines)
+
+
+def replace_component_summary(master: Path, items: list[CatalogItem]) -> None:
+    text = master.read_text(encoding="utf-8-sig")
+    begin = text.find(COMPONENT_SUMMARY_BEGIN)
+    end = text.find(COMPONENT_SUMMARY_END)
+    if begin < 0 or end <= begin:
+        raise RuntimeError("component summary markers are missing from the master document")
+    end += len(COMPONENT_SUMMARY_END)
+    result = text[:begin] + component_summary_section(items) + text[end:]
+    master.write_text(result, encoding="utf-8", newline="\n")
+
+
 def update_item(master: Path, item_id: str, state: str, evidence: str | None) -> None:
     if state not in ALLOWED_STATES:
         raise RuntimeError(f"invalid state: {state}")
@@ -538,6 +588,7 @@ def main() -> int:
         update_item(args.master, item_id, state, args.evidence)
 
     items = parse_catalogue(args.master)
+    replace_component_summary(args.master, items)
     result = render_tracking(items)
     if args.stdout:
         print(result, end="")

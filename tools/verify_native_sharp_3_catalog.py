@@ -311,6 +311,22 @@ def verify_tracking(tracking: Path, items: list[catalog.CatalogItem]) -> None:
         )
 
 
+def verify_component_summary(master: Path, items: list[catalog.CatalogItem]) -> None:
+    text = master.read_text(encoding="utf-8-sig")
+    begin = text.find(catalog.COMPONENT_SUMMARY_BEGIN)
+    end = text.find(catalog.COMPONENT_SUMMARY_END)
+    if begin < 0 or end <= begin:
+        raise VerificationError("component summary markers are missing from the master document")
+    end += len(catalog.COMPONENT_SUMMARY_END)
+    observed = text[begin:end]
+    expected = catalog.component_summary_section(items)
+    if observed != expected:
+        raise VerificationError(
+            "component summary differs from the canonical catalogue; regenerate with "
+            "tools/native_sharp_3_catalog.py"
+        )
+
+
 def verify_secondary_authority_notice(paths: list[Path]) -> None:
     marker = "Documento maestro §24"
     missing = [str(path) for path in paths if marker not in path.read_text(encoding="utf-8-sig")]
@@ -354,6 +370,7 @@ def main(argv: list[str] | None = None) -> int:
         verify_master_backlogs(args.master)
         verify_limitation_ledger(args.limitation_ledger)
         items = verify_catalogue(args.master, repo_root)
+        verify_component_summary(args.master, items)
         verify_tracking(args.tracking, items)
         verify_secondary_authority_notice(args.secondary)
     except (OSError, VerificationError, RuntimeError) as error:
