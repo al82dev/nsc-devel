@@ -513,6 +513,7 @@ struct ProjectOopHirNode final
     std::optional<MethodCleanupContinuationKind> cleanupContinuationKind;
     std::optional<MethodBorrowKind> borrowKind;
     std::optional<MethodLocalBorrowSourceKind> localBorrowSourceKind;
+    language::CaptureMode captureMode = language::CaptureMode::Reference;
     std::optional<ProjectImplicitConversion> conversion;
     // Set only on a SwitchSection node: the folded constant value of every label on that section,
     // in source order. Empty on a section whose only label is `default`. Signed even when the
@@ -639,6 +640,11 @@ struct ProjectOopHirFunction final
     // MIR dumps, cache identities and debugger consumers can distinguish direct and inherited
     // captures without reconstructing the method-body model.
     std::vector<MethodLambdaCaptureSourceKind> captureSourceKinds;
+    std::vector<language::CaptureMode> captureModes;
+    std::vector<bool> captureOwnsValues;
+    language::CallableTrait callableTrait = language::CallableTrait::Fn;
+    std::uint64_t closureLayoutSize = 0;
+    std::uint64_t closureLayoutAlignment = 1;
     std::vector<std::size_t> capturedLocalOrdinals;
     std::vector<std::size_t> capturedParameterOrdinals;
     bool capturesThisCell = false;

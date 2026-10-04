@@ -40,7 +40,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // 1.26 publishes value-producing exhaustive match control flow and arm cleanup boundaries.
 // 1.27 publishes value-producing loop control flow, labelled exits and converted break values.
 // 1.28 publishes explicit assert, unreachable, assume and project-wide panic-profile semantics.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 28;
+// 1.29 publishes explicit closure capture modes, callable trait and native environment layout.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 29;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -412,6 +413,7 @@ struct ProjectOopMirNode final
     std::optional<MethodCleanupContinuationKind> cleanupContinuationKind;
     std::optional<MethodBorrowKind> borrowKind;
     std::optional<MethodLocalBorrowSourceKind> localBorrowSourceKind;
+    language::CaptureMode captureMode = language::CaptureMode::Reference;
     std::optional<std::size_t> virtualSlot;
     std::optional<std::size_t> interfaceSlot;
     std::optional<ProjectConversionKind> conversionKind;
@@ -760,6 +762,11 @@ struct ProjectOopMirFunction final
     std::vector<std::string> captureTypeKeys;
     std::vector<std::string> captureNames;
     std::vector<MethodLambdaCaptureSourceKind> captureSourceKinds;
+    std::vector<language::CaptureMode> captureModes;
+    std::vector<bool> captureOwnsValues;
+    language::CallableTrait callableTrait = language::CallableTrait::Fn;
+    std::uint64_t closureLayoutSize = 0;
+    std::uint64_t closureLayoutAlignment = 1;
     std::vector<std::size_t> capturedLocalOrdinals;
     std::vector<std::size_t> capturedParameterOrdinals;
     bool capturesThisCell = false;

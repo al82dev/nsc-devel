@@ -1330,6 +1330,11 @@ bool ProjectOopMirModel::build(
         function.captureTypeKeys = source.captureTypeKeys;
         function.captureNames = source.captureNames;
         function.captureSourceKinds = source.captureSourceKinds;
+        function.captureModes = source.captureModes;
+        function.captureOwnsValues = source.captureOwnsValues;
+        function.callableTrait = source.callableTrait;
+        function.closureLayoutSize = source.closureLayoutSize;
+        function.closureLayoutAlignment = source.closureLayoutAlignment;
         function.capturedLocalOrdinals = source.capturedLocalOrdinals;
         function.capturedParameterOrdinals = source.capturedParameterOrdinals;
         function.capturesThisCell = source.capturesThisCell;
@@ -1909,6 +1914,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->cleanupContinuationKind = node->cleanupContinuationKind;
     result->borrowKind = node->borrowKind;
     result->localBorrowSourceKind = node->localBorrowSourceKind;
+    result->captureMode = node->captureMode;
     if (node->conversion.has_value())
     {
         result->conversionKind = node->conversion->kind;

@@ -2136,6 +2136,9 @@ bool ProjectOopHirModel::buildImpl(
         function.isLambda = true;
         function.lambdaOrdinal = lambda.lambdaOrdinal;
         function.hasClosureEnvironment = !lambda.captures.empty();
+        function.callableTrait = lambda.callableTrait;
+        function.closureLayoutSize = lambda.closureLayout.size;
+        function.closureLayoutAlignment = lambda.closureLayout.alignment;
         function.isStatic = !function.hasClosureEnvironment;
         function.mangledName = lambda.generatedName;
         function.returnTypeKey = lambda.returnTypeKey;
@@ -2151,6 +2154,8 @@ bool ProjectOopHirModel::buildImpl(
             function.captureTypeKeys.push_back(capture.typeKey);
             function.captureNames.push_back(capture.name);
             function.captureSourceKinds.push_back(capture.sourceKind);
+            function.captureModes.push_back(capture.mode);
+            function.captureOwnsValues.push_back(capture.ownsCapturedValue);
         }
         for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel.locals().size(); ++localOrdinal)
         {
@@ -3561,6 +3566,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 error = "Stage 43 lambda capture source is unavailable";
                 return nullptr;
             }
+            value->captureMode = capture.mode;
+            value->booleanValue = capture.clearMovedSource;
             node->children.push_back(std::move(value));
         }
         return node;

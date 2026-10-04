@@ -252,7 +252,7 @@ public class Program
         : std::string();
     tests.expect(
         mirBuilt && compilationError.empty() &&
-            mir.find("schema=1.28") != std::string::npos &&
+            mir.find("schema=1.29") != std::string::npos &&
             mir.find("result-propagation") != std::string::npos &&
             mir.find("conversion=__nsc_method_") != std::string::npos &&
             mir.find("continuation=return") != std::string::npos,
@@ -398,12 +398,12 @@ namespace TypedThrows
     const CompilationEvidence typed = compileMir(typedProject);
     tests.expect(
         typed.succeeded && typed.error.empty() &&
-            typed.mir.find("schema=1.28") != std::string::npos &&
+            typed.mir.find("schema=1.29") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.Error") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.ParseError") != std::string::npos &&
             typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=true exhaustive=false") != std::string::npos &&
             typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=false exhaustive=true") != std::string::npos,
-        "throws E and source-ordered filtered catches retain exact error identity in MIR 1.28 (" +
+        "throws E and source-ordered filtered catches retain exact error identity in MIR 1.29 (" +
             typed.error + typed.diagnostics + typed.mir + ")");
     executionDiagnostic.clear();
     tests.expect(
@@ -603,13 +603,13 @@ public class Program
     const CompilationEvidence loopEvidence = compileMir(loopProject);
     tests.expect(
         loopEvidence.succeeded && loopEvidence.error.empty() &&
-            loopEvidence.mir.find("schema=1.28") != std::string::npos &&
+            loopEvidence.mir.find("schema=1.29") != std::string::npos &&
             loopEvidence.mir.find("loop-expression type=builtin:int") != std::string::npos &&
             loopEvidence.mir.find("label=outer break-result=builtin:int") != std::string::npos &&
             loopEvidence.mir.find("target-label=outer") != std::string::npos &&
             loopEvidence.mir.find("target-label=retry") != std::string::npos &&
             loopEvidence.mir.find("continuation=break") != std::string::npos,
-        "loop expressions publish typed values, labelled exits, and cleanup edges in MIR 1.28 (" +
+        "loop expressions publish typed values, labelled exits, and cleanup edges in MIR 1.29 (" +
             loopEvidence.error + loopEvidence.diagnostics + loopEvidence.mir + ")");
     executionDiagnostic.clear();
     tests.expect(

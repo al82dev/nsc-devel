@@ -90,6 +90,7 @@ void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
     output.optional(node->cleanupContinuationKind);
     output.optional(node->borrowKind);
     output.optional(node->localBorrowSourceKind);
+    output.scalar(node->captureMode);
     output.optional(node->virtualSlot);
     output.optional(node->interfaceSlot);
     output.optional(node->conversionKind);
@@ -192,6 +193,11 @@ void writeFunction(
     output.texts(function.captureTypeKeys);
     output.texts(function.captureNames);
     output.scalars(function.captureSourceKinds);
+    output.scalars(function.captureModes);
+    output.scalars(function.captureOwnsValues);
+    output.scalar(function.callableTrait);
+    output.scalar(function.closureLayoutSize);
+    output.scalar(function.closureLayoutAlignment);
     output.scalars(function.capturedLocalOrdinals);
     output.scalars(function.capturedParameterOrdinals);
     output.scalar(function.capturesThisCell);

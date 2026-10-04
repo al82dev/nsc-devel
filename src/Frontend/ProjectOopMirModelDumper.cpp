@@ -285,8 +285,9 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
         if (function.isLambda)
         {
             output << " captures=" << function.captureTypeKeys.size()
+                   << " callable-trait=" << methodLambdaCallableTraitName(function.callableTrait)
                    << " closure-layout="
-                   << (function.hasClosureEnvironment ? "cell-pointer-slots" : "none")
+                   << function.closureLayoutSize << ':' << function.closureLayoutAlignment
                    << " closure-allocation="
                    << (function.hasClosureEnvironment ? "managed-heap" : "none");
         }
@@ -317,7 +318,19 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                 output << methodLambdaCaptureSourceKindName(function.captureSourceKinds[index]);
             else
                 output << "<missing>";
-            output << " storage=shared-cell-reference\n";
+            output << " mode=";
+            if (index < function.captureModes.size())
+                output << methodLambdaCaptureModeName(function.captureModes[index]);
+            else
+                output << "<missing>";
+            output << " storage="
+                   << (index < function.captureModes.size() &&
+                       (function.captureModes[index] == language::CaptureMode::Copy ||
+                        function.captureModes[index] == language::CaptureMode::Move)
+                       ? "owned-value-cell" : "shared-reference-cell")
+                   << " owns-value="
+                   << (index < function.captureOwnsValues.size() && function.captureOwnsValues[index]
+                       ? "true" : "false") << '\n';
         }
         for (const ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
         {

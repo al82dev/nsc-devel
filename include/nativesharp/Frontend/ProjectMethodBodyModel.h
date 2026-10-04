@@ -11,6 +11,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/LanguageEdition.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
 
 #include <cstddef>
@@ -141,6 +142,9 @@ struct MethodLocalSymbol final
     // Copy. It shares the existing path-sensitive moved-from sets with RAII owners, but it does
     // not acquire a cleanup region merely for being move-only.
     bool isMoveOnly = false;
+    // T08-F03. Present for locals initialized from an explicit-capture closure. The delegate
+    // carrier stays ABI-compatible; this semantic capability controls invocation rules.
+    std::optional<language::CallableTrait> callableTrait;
     // T06-F02. A value local with an owned field or a (possibly nested) custom destructor owns
     // cleanup despite not being a reference-shaped `raii` local.
     bool requiresValueDrop = false;
@@ -1248,6 +1252,13 @@ struct MethodLambdaCapture final
     std::optional<std::size_t> parameterOrdinal;
     MethodLambdaCaptureSourceKind sourceKind = MethodLambdaCaptureSourceKind::OriginalLocal;
     std::optional<std::size_t> sourceOrdinal;
+    // T08-F03. Reference modes share the source cell. Copy/move modes materialize an
+    // independent cell when the closure value is created.
+    language::CaptureMode mode = language::CaptureMode::Reference;
+    // True only for a move capture which transfers a real destruction obligation into the
+    // closure environment (RAII pointer/array/string or a value with drop glue).
+    bool ownsCapturedValue = false;
+    bool clearMovedSource = false;
 };
 
 struct MethodLambdaValueBinding final
@@ -1278,6 +1289,9 @@ struct MethodLambdaBinding final
     std::vector<std::string> parameterValueTypeKeys;
     std::vector<bool> parameterByReference;
     std::vector<MethodLambdaCapture> captures;
+    language::CallableTrait callableTrait = language::CallableTrait::Fn;
+    language::ClosureLayout closureLayout;
+    bool explicitCaptureList = false;
     bool blockBody = false;
     bool anonymousNominal = false;
     std::string generatedName;
@@ -1595,6 +1609,8 @@ private:
         std::unordered_set<std::size_t> maybeMovedRaiiLocals;
         std::unordered_set<std::size_t> movedOwnedParameters;
         std::unordered_set<std::size_t> maybeMovedOwnedParameters;
+        std::unordered_set<std::size_t> invokedFnOnceLocals;
+        std::unordered_set<std::size_t> maybeInvokedFnOnceLocals;
         // T06-F02 uses canonical strings (`L4/Header/Token`, `P1/Payload`) so snapshots and joins
         // remain independent of AST pointer identity. Definite and maybe sets use the same
         // three-state join as whole-value moves.
@@ -1646,6 +1662,7 @@ private:
         bool onePastEndPointer = false;
         std::vector<std::size_t> methodCandidates;
         std::optional<ProjectIntegerConstant> integerConstant;
+        std::optional<language::CallableTrait> callableTrait;
         sema::OwnershipKind ownership = sema::OwnershipKind::None;
         bool ownershipTransfer = false;
         // NSC-LIMIT-010. ESTA EXPRESION ACABA DE CREAR UN OWNER que no pertenece a nadie todavia:
@@ -2368,6 +2385,8 @@ private:
     std::unordered_set<std::size_t> maybeMovedRaiiLocals_;
     std::unordered_set<std::size_t> movedOwnedParameters_;
     std::unordered_set<std::size_t> maybeMovedOwnedParameters_;
+    std::unordered_set<std::size_t> invokedFnOnceLocals_;
+    std::unordered_set<std::size_t> maybeInvokedFnOnceLocals_;
     std::unordered_set<std::string> partiallyMovedPlaces_;
     std::unordered_set<std::string> maybePartiallyMovedPlaces_;
     std::unordered_set<std::size_t> invalidLocalBorrows_;
@@ -2460,6 +2479,8 @@ const char* methodCleanupRegionKindName(MethodCleanupRegionKind kind) noexcept;
 const char* methodStructuredExitKindName(MethodStructuredExitKind kind) noexcept;
 const char* methodCleanupContinuationKindName(MethodCleanupContinuationKind kind) noexcept;
 const char* methodOwnershipTransferKindName(MethodOwnershipTransferKind kind) noexcept;
+const char* methodLambdaCaptureModeName(language::CaptureMode mode) noexcept;
+const char* methodLambdaCallableTraitName(language::CallableTrait trait) noexcept;
 const char* methodBorrowKindName(MethodBorrowKind kind) noexcept;
 const char* methodLocalBorrowSourceKindName(MethodLocalBorrowSourceKind kind) noexcept;
 const char* methodBorrowStateName(MethodBorrowState state) noexcept;

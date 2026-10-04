@@ -905,6 +905,8 @@ bool ProjectMethodBodyModel::build(
         maybeMovedRaiiLocals_.clear();
         movedOwnedParameters_.clear();
         maybeMovedOwnedParameters_.clear();
+        invokedFnOnceLocals_.clear();
+        maybeInvokedFnOnceLocals_.clear();
         partiallyMovedPlaces_.clear();
         maybePartiallyMovedPlaces_.clear();
         invalidLocalBorrows_.clear();
@@ -3044,6 +3046,8 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwn
     state.maybeMovedRaiiLocals = maybeMovedRaiiLocals_;
     state.movedOwnedParameters = movedOwnedParameters_;
     state.maybeMovedOwnedParameters = maybeMovedOwnedParameters_;
+    state.invokedFnOnceLocals = invokedFnOnceLocals_;
+    state.maybeInvokedFnOnceLocals = maybeInvokedFnOnceLocals_;
     state.partiallyMovedPlaces = partiallyMovedPlaces_;
     state.maybePartiallyMovedPlaces = maybePartiallyMovedPlaces_;
     state.invalidLocalBorrows = invalidLocalBorrows_;
@@ -3064,6 +3068,8 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
     maybeMovedRaiiLocals_ = state.maybeMovedRaiiLocals;
     movedOwnedParameters_ = state.movedOwnedParameters;
     maybeMovedOwnedParameters_ = state.maybeMovedOwnedParameters;
+    invokedFnOnceLocals_ = state.invokedFnOnceLocals;
+    maybeInvokedFnOnceLocals_ = state.maybeInvokedFnOnceLocals;
     partiallyMovedPlaces_ = state.partiallyMovedPlaces;
     maybePartiallyMovedPlaces_ = state.maybePartiallyMovedPlaces;
     invalidLocalBorrows_ = state.invalidLocalBorrows;
@@ -3179,6 +3185,13 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwners
         right.maybeMovedOwnedParameters,
         result.movedOwnedParameters,
         result.maybeMovedOwnedParameters);
+    joinTriState(
+        left.invokedFnOnceLocals,
+        left.maybeInvokedFnOnceLocals,
+        right.invokedFnOnceLocals,
+        right.maybeInvokedFnOnceLocals,
+        result.invokedFnOnceLocals,
+        result.maybeInvokedFnOnceLocals);
     const auto joinPartialState = [](
         const std::unordered_set<std::string>& leftDefinite,
         const std::unordered_set<std::string>& leftMaybe,
@@ -5948,6 +5961,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     }
     sema::OwnershipKind pendingObjectLifetimeOwnership = sema::OwnershipKind::None;
     sema::OwnershipKind pendingStorageOwnership = sema::OwnershipKind::None;
+    std::optional<language::CallableTrait> pendingCallableTrait;
     bool pendingOnePastEndPointer = false;
     const bool declaredPointerPointeeReadonly = variable->typeSyntax() != nullptr &&
         variable->typeSyntax()->isPointeeConst();
@@ -5984,6 +5998,7 @@ void ProjectMethodBodyModel::analyzeVariable(
                     variable->first(), initializer, typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
             }
         }
+        pendingCallableTrait = initializer.callableTrait;
         // Pattern matching materializes one compiler-owned, non-owning snapshot so the governing
         // expression is evaluated once.  It is deliberately not an owner and receives no cleanup;
         // rejecting that snapshot as a user copy makes every lvalue variant unmatchable.  This
@@ -6382,6 +6397,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     }
     local.isRaii = isRaii;
     local.isMoveOnly = isMoveOnly;
+    local.callableTrait = pendingCallableTrait;
     local.requiresValueDrop = memberModel_->typeRequiresValueDrop(typeKey);
     local.isPinned = isPinnedLocal;
     local.ownership = isBorrowed ? sema::OwnershipKind::Borrowed : sema::OwnershipKind::None;
@@ -9422,6 +9438,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     invalidateHistoricalBorrowsOfOwnerLocal(source->semanticOrdinal);
                 }
                 result.typeKey = local.typeKey;
+                result.callableTrait = local.callableTrait;
                 result.ownershipSourceLocalOrdinal = source->semanticOrdinal;
                 result.objectLifetimeOwnership = local.objectLifetimeOwnership;
                 result.storageOwnership = local.storageOwnership;
@@ -12006,6 +12023,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                     return result;
                 }
                 result.typeKey = local.typeKey;
+                result.callableTrait = local.callableTrait;
                 result.valid = true;
                 applyFlowFacts(scopeName->semanticOrdinal * 2U);
                 result.objectLifetimeOwnership = local.objectLifetimeOwnership;
@@ -14697,6 +14715,44 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 return result;
             }
             binding.argumentConversions.push_back(std::move(conversion));
+        }
+        if (callee.callableTrait.has_value() && expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const std::optional<ScopeName> callableName = lookupScopeName(
+                scopeOrdinal, expression->first()->text());
+            if (callableName.has_value() && callableName->kind == ScopeNameKind::Local &&
+                callableName->semanticOrdinal < locals_.size())
+            {
+                const std::size_t localOrdinal = callableName->semanticOrdinal;
+                const MethodLocalSymbol& callableLocal = locals_[localOrdinal];
+                if (*callee.callableTrait == language::CallableTrait::FnMut &&
+                    callableLocal.isConst)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidCall,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "FnMut closure local '" + callableLocal.name +
+                            "' cannot be invoked through a const binding");
+                    return result;
+                }
+                if (*callee.callableTrait == language::CallableTrait::FnOnce)
+                {
+                    if (invokedFnOnceLocals_.contains(localOrdinal) ||
+                        maybeInvokedFnOnceLocals_.contains(localOrdinal))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "FnOnce closure local '" + callableLocal.name +
+                                "' was already invoked or may have been invoked on another path");
+                        return result;
+                    }
+                    invokedFnOnceLocals_.insert(localOrdinal);
+                }
+            }
         }
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
@@ -20103,6 +20159,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             movedRaiiLocals_.erase(*raiiTargetLocal);
             maybeMovedRaiiLocals_.erase(*raiiTargetLocal);
         }
+        if (assignmentTargetLocal.has_value())
+        {
+            MethodLocalSymbol& targetLocal = locals_[*assignmentTargetLocal];
+            targetLocal.callableTrait = right.callableTrait;
+            invokedFnOnceLocals_.erase(*assignmentTargetLocal);
+            maybeInvokedFnOnceLocals_.erase(*assignmentTargetLocal);
+        }
         if (moveOnlyTargetLocal.has_value())
         {
             movedRaiiLocals_.erase(*moveOnlyTargetLocal);
@@ -20978,11 +21041,76 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     bool safe = true;
+    std::unordered_map<std::string, language::CaptureMode> explicitModes;
+    std::unordered_set<std::string> reportedImplicitCaptures;
+    const std::string_view captureContract = binding.syntax != nullptr
+        ? std::string_view(binding.syntax->auxiliaryText()) : std::string_view{};
+    binding.explicitCaptureList = captureContract.starts_with("captures:");
+    if (binding.explicitCaptureList)
+    {
+        std::string_view remaining = captureContract.substr(std::string_view("captures:").size());
+        while (!remaining.empty())
+        {
+            const std::size_t separator = remaining.find(';');
+            const std::string_view entry = remaining.substr(0, separator);
+            const std::size_t equals = entry.find('=');
+            if (equals != std::string_view::npos && equals + 1U < entry.size())
+            {
+                const std::string_view spelling = entry.substr(0, equals);
+                language::CaptureMode mode = language::CaptureMode::Reference;
+                if (spelling == "copy") mode = language::CaptureMode::Copy;
+                else if (spelling == "move") mode = language::CaptureMode::Move;
+                else if (spelling == "mutref") mode = language::CaptureMode::MutableReference;
+                explicitModes.emplace(std::string(entry.substr(equals + 1U)), mode);
+            }
+            if (separator == std::string_view::npos) break;
+            remaining.remove_prefix(separator + 1U);
+        }
+    }
+    const auto requestedMode = [&](std::string_view name, SourceRange range)
+        -> std::optional<language::CaptureMode>
+    {
+        if (!binding.explicitCaptureList) return language::CaptureMode::Reference;
+        const auto found = explicitModes.find(std::string(name));
+        if (found != explicitModes.end()) return found->second;
+        if (reportedImplicitCaptures.insert(std::string(name)).second)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                range,
+                "lambda capture '" + std::string(name) +
+                    "' is not present in the explicit capture list");
+        }
+        safe = false;
+        return std::nullopt;
+    };
     const auto addCaptureTo = [&](MethodLambdaBinding& target, MethodLambdaCapture capture) -> std::size_t
     {
         const std::optional<std::size_t> existing = lambdaCaptureOrdinal(
             target, capture.kind, capture.localOrdinal, capture.parameterOrdinal);
-        if (existing.has_value()) return *existing;
+        if (existing.has_value())
+        {
+            MethodLambdaCapture& prior = target.captures[*existing];
+            // A transitive nested capture may require a stronger carrier than another child.
+            // Move dominates because it owns the value; mutable reference dominates immutable
+            // reference; copy remains independent only when no stronger requirement exists.
+            if (prior.mode != capture.mode)
+            {
+                if (prior.mode == language::CaptureMode::Move ||
+                    capture.mode == language::CaptureMode::Move)
+                    prior.mode = language::CaptureMode::Move;
+                else if (prior.mode == language::CaptureMode::MutableReference ||
+                         capture.mode == language::CaptureMode::MutableReference)
+                    prior.mode = language::CaptureMode::MutableReference;
+                else if (prior.mode == language::CaptureMode::Reference ||
+                         capture.mode == language::CaptureMode::Reference)
+                    prior.mode = language::CaptureMode::Reference;
+            }
+            prior.ownsCapturedValue = prior.ownsCapturedValue || capture.ownsCapturedValue;
+            prior.clearMovedSource = prior.clearMovedSource || capture.clearMovedSource;
+            return *existing;
+        }
         const std::size_t ordinal = target.captures.size();
         target.captures.push_back(std::move(capture));
         return ordinal;
@@ -21066,6 +21194,8 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                 }
                 continue;
             }
+            const std::optional<language::CaptureMode> mode = requestedMode(local.name, name.syntax->range());
+            if (!mode.has_value()) continue;
             // SHR-013: una VISTA capturada por un lambda es el mismo defecto que las dos de
             // abajo llegando por el tipo en vez de por el calificativo. El delegate se puede
             // guardar en un campo, devolver, o llamar horas despues; lo prestado no lo sabe.
@@ -21093,17 +21223,21 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                         "' cannot be captured by a lambda because the delegate may outlive its stack frame");
                 safe = false;
             }
-            if (local.isRaii || local.ownership == sema::OwnershipKind::Borrowed)
+            if (local.ownership == sema::OwnershipKind::Borrowed ||
+                ((*mode == language::CaptureMode::Copy ||
+                  *mode == language::CaptureMode::Reference ||
+                  *mode == language::CaptureMode::MutableReference) &&
+                 (local.isRaii || local.isMoveOnly || local.requiresValueDrop)))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     name.syntax->range(),
-                    local.isRaii
-                        ? "RAII owner '" + local.name +
-                            "' cannot be captured by a lambda because the delegate may outlive the owner"
-                        : "borrowed local '" + local.name +
-                            "' cannot be captured by a lambda because the delegate may outlive its source owner");
+                    local.ownership == sema::OwnershipKind::Borrowed
+                        ? "borrowed local '" + local.name +
+                            "' cannot be captured because its source owner may not outlive the closure"
+                        : "move-only owner '" + local.name +
+                            "' requires an explicit move capture");
                 safe = false;
             }
             if (local.isReference)
@@ -21116,10 +21250,53 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                         "' cannot be captured by a lambda because the delegate may outlive the referenced storage");
                 safe = false;
             }
+            if (*mode == language::CaptureMode::Move)
+            {
+                if (local.isPinned)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        name.syntax->range(),
+                        "cannot move-capture pinned owner '" + local.name + "'");
+                    safe = false;
+                }
+                if (movedRaiiLocals_.contains(*name.localOrdinal) ||
+                    maybeMovedRaiiLocals_.contains(*name.localOrdinal))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error,
+                        name.syntax->range(),
+                        "cannot move-capture already moved or possibly moved local '" + local.name + "'");
+                    safe = false;
+                }
+                if (hasActiveBorrowOfOwnerLocal(*name.localOrdinal, binding.scopeOrdinal))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        name.syntax->range(),
+                        "cannot move-capture owner '" + local.name + "' while a borrow is alive");
+                    safe = false;
+                }
+                if (local.isRaii || local.isMoveOnly || local.requiresValueDrop)
+                {
+                    maybeMovedRaiiLocals_.erase(*name.localOrdinal);
+                    movedRaiiLocals_.insert(*name.localOrdinal);
+                    invalidateHistoricalBorrowsOfOwnerLocal(*name.localOrdinal);
+                }
+            }
+            const bool ownsCapturedValue = *mode == language::CaptureMode::Move &&
+                (local.isRaii || local.requiresValueDrop ||
+                 local.ownership == sema::OwnershipKind::Owned);
+            const bool clearMovedSource = *mode == language::CaptureMode::Move &&
+                (ownsCapturedValue || local.isMoveOnly);
             MethodLambdaCapture captureDescription{
                 MethodLambdaCaptureKind::Local, local.name, local.typeKey,
                 *name.localOrdinal, std::nullopt,
-                MethodLambdaCaptureSourceKind::OriginalLocal, *name.localOrdinal};
+                MethodLambdaCaptureSourceKind::OriginalLocal, *name.localOrdinal,
+                *mode, ownsCapturedValue, clearMovedSource};
             captureDescription = routeThroughParents(std::move(captureDescription));
             const std::size_t capture = addCaptureTo(binding, std::move(captureDescription));
             lambdaValueBindings_.push_back(MethodLambdaValueBinding{
@@ -21132,6 +21309,9 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
             const ClassMemberSymbol* owner = methodSymbol(methodMemberOrdinal);
             if (owner == nullptr || *name.parameterOrdinal >= owner->parameters.size()) continue;
             const MethodParameterSymbol& parameter = owner->parameters[*name.parameterOrdinal];
+            const std::optional<language::CaptureMode> mode = requestedMode(
+                parameter.name, name.syntax->range());
+            if (!mode.has_value()) continue;
             // SHR-013: y lo mismo para un PARAMETRO de tipo vista. Un parametro sobrevive a la
             // llamada, pero no al delegate que lo captura.
             if (typeKeyIsViewLike(parameter.typeKey))
@@ -21146,7 +21326,11 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                 safe = false;
             }
             if (parameter.ownership == sema::OwnershipKind::Borrowed ||
-                parameter.ownership == sema::OwnershipKind::Owned)
+                (parameter.ownership == sema::OwnershipKind::Owned &&
+                 *mode != language::CaptureMode::Move) ||
+                (*mode == language::CaptureMode::Copy && memberModel_ != nullptr &&
+                 (memberModel_->typeIsMoveOnly(parameter.typeKey) ||
+                  memberModel_->typeRequiresValueDrop(parameter.typeKey))))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
@@ -21154,9 +21338,9 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                     name.syntax->range(),
                     parameter.ownership == sema::OwnershipKind::Borrowed
                         ? "borrowed parameter '" + parameter.name +
-                            "' cannot be captured by a lambda because the delegate may outlive its source owner"
+                            "' cannot be captured because its source owner may not outlive the closure"
                         : "owned parameter '" + parameter.name +
-                            "' cannot be captured by a lambda because the delegate may outlive the owner");
+                            "' requires an explicit move capture");
                 safe = false;
             }
             if (parameter.passKind != ParameterPassKind::Value)
@@ -21169,10 +21353,47 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                         "' cannot be captured by a lambda because the delegate may outlive the referenced storage");
                 safe = false;
             }
+            const bool moveTracked = parameter.ownership == sema::OwnershipKind::Owned ||
+                (parameter.passKind == ParameterPassKind::Value && memberModel_ != nullptr &&
+                 (memberModel_->typeIsMoveOnly(parameter.typeKey) ||
+                  memberModel_->typeRequiresValueDrop(parameter.typeKey)));
+            if (*mode == language::CaptureMode::Move && moveTracked)
+            {
+                if (movedOwnedParameters_.contains(*name.parameterOrdinal) ||
+                    maybeMovedOwnedParameters_.contains(*name.parameterOrdinal))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error,
+                        name.syntax->range(),
+                        "cannot move-capture already moved or possibly moved parameter '" +
+                            parameter.name + "'");
+                    safe = false;
+                }
+                if (hasActiveBorrowOfOwnedParameter(*name.parameterOrdinal, binding.scopeOrdinal))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        name.syntax->range(),
+                        "cannot move-capture parameter '" + parameter.name +
+                            "' while a borrow is alive");
+                    safe = false;
+                }
+                maybeMovedOwnedParameters_.erase(*name.parameterOrdinal);
+                movedOwnedParameters_.insert(*name.parameterOrdinal);
+                invalidateHistoricalBorrowsOfOwnedParameter(*name.parameterOrdinal);
+            }
+            const bool ownsCapturedValue = *mode == language::CaptureMode::Move &&
+                (parameter.ownership == sema::OwnershipKind::Owned ||
+                 (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(parameter.typeKey)));
+            const bool clearMovedSource = *mode == language::CaptureMode::Move &&
+                (ownsCapturedValue || moveTracked);
             MethodLambdaCapture captureDescription{
                 MethodLambdaCaptureKind::Parameter, parameter.name, parameter.typeKey,
                 std::nullopt, *name.parameterOrdinal,
-                MethodLambdaCaptureSourceKind::OriginalParameter, *name.parameterOrdinal};
+                MethodLambdaCaptureSourceKind::OriginalParameter, *name.parameterOrdinal,
+                *mode, ownsCapturedValue, clearMovedSource};
             captureDescription = routeThroughParents(std::move(captureDescription));
             const std::size_t capture = addCaptureTo(binding, std::move(captureDescription));
             lambdaValueBindings_.push_back(MethodLambdaValueBinding{
@@ -21193,11 +21414,14 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
             name.kind == MethodNameBindingKind::ExplicitThisEvent;
         if (needsThis)
         {
+            const std::optional<language::CaptureMode> mode = requestedMode("this", name.syntax->range());
+            if (!mode.has_value()) continue;
             const std::string typeKey = implicitThisTypeKey(methodMemberOrdinal);
             MethodLambdaCapture captureDescription{
                 MethodLambdaCaptureKind::ThisReference, "this", typeKey,
                 std::nullopt, std::nullopt,
-                MethodLambdaCaptureSourceKind::OriginalThis, std::nullopt};
+                MethodLambdaCaptureSourceKind::OriginalThis, std::nullopt,
+                *mode, false, false};
             captureDescription = routeThroughParents(std::move(captureDescription));
             const std::size_t capture = addCaptureTo(binding, std::move(captureDescription));
             if (name.kind == MethodNameBindingKind::ThisReference || name.kind == MethodNameBindingKind::BaseReference)
@@ -21475,6 +21699,37 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     {
         bodyValid = false;
     }
+    std::vector<language::Capture> closureCaptures;
+    closureCaptures.reserve(binding.captures.size());
+    for (const MethodLambdaCapture& capture : binding.captures)
+    {
+        // The current native environment stores one cell pointer per capture. Copy/move own an
+        // independent cell; ref/ref-mut share the source cell, but the environment slot layout
+        // is deliberately identical and therefore stable at the MIR boundary.
+        closureCaptures.push_back(language::Capture{
+            capture.name, sizeof(void*), alignof(void*), capture.mode, true});
+    }
+    std::string closureLayoutError;
+    if (!language::computeClosureLayout(
+            closureCaptures, binding.closureLayout, closureLayoutError))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(), closureLayoutError);
+        bodyValid = false;
+    }
+    binding.callableTrait = language::callableTrait(closureCaptures);
+    const ClassMemberSymbol* lambdaOwner = methodSymbol(methodMemberOrdinal);
+    if (lambdaOwner != nullptr && lambdaOwner->isNoHeap && !binding.captures.empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "capturing closure allocates an environment and is not allowed in a noheap callable");
+        bodyValid = false;
+    }
     if (isExternCDelegateTypeKey(delegateTypeKey) && !binding.captures.empty())
     {
         diagnostics.report(
@@ -21504,10 +21759,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
         resultTypeKey = language::anonymousLambdaTypeIdentity(anonymousIdentity);
         binding.delegateTypeKey = resultTypeKey;
     }
+    const language::CallableTrait callableTrait = binding.callableTrait;
     lambdaBindings_.push_back(std::move(binding));
 
     if (!bodyValid) return result;
     result.typeKey = std::move(resultTypeKey);
+    result.callableTrait = callableTrait;
     result.valid = true;
     result.assignable = false;
     result.ownershipFreshOwner = !inferAnonymous && !isExternCDelegateTypeKey(delegateTypeKey);
@@ -22790,6 +23047,29 @@ const char* methodOwnershipTransferKindName(MethodOwnershipTransferKind kind) no
         case MethodOwnershipTransferKind::MoveLocalToOwnedReturn: return "move-local-to-owned-return";
         case MethodOwnershipTransferKind::MoveParameterToOwnedReturn: return "move-parameter-to-owned-return";
         case MethodOwnershipTransferKind::OwnedReturnForward: return "owned-return-forward";
+    }
+    return "unknown";
+}
+
+const char* methodLambdaCaptureModeName(language::CaptureMode mode) noexcept
+{
+    switch (mode)
+    {
+        case language::CaptureMode::Copy: return "copy";
+        case language::CaptureMode::Move: return "move";
+        case language::CaptureMode::Reference: return "ref";
+        case language::CaptureMode::MutableReference: return "ref-mut";
+    }
+    return "unknown";
+}
+
+const char* methodLambdaCallableTraitName(language::CallableTrait trait) noexcept
+{
+    switch (trait)
+    {
+        case language::CallableTrait::Fn: return "Fn";
+        case language::CallableTrait::FnMut: return "FnMut";
+        case language::CallableTrait::FnOnce: return "FnOnce";
     }
     return "unknown";
 }

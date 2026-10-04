@@ -11809,34 +11809,51 @@ ast::AstNode* Parser::parseRangeExpression()
 
 bool Parser::looksLikeLambdaExpression() const noexcept
 {
-    if (at(TokenKind::Identifier))
+    const auto looksLikeParameterHead = [&](std::size_t begin) noexcept
     {
-        return index_ + 1 < tokens_.size() && tokens_[index_ + 1].kind() == TokenKind::FatArrow;
-    }
-    if (!at(TokenKind::LeftParen)) return false;
+        if (begin >= tokens_.size()) return false;
+        if (tokens_[begin].kind() == TokenKind::Identifier)
+            return begin + 1 < tokens_.size() && tokens_[begin + 1].kind() == TokenKind::FatArrow;
+        if (tokens_[begin].kind() != TokenKind::LeftParen) return false;
 
-    // E11: the old recognizer only admitted `(x, y) => ...`; consequently an explicitly typed
-    // C#-shaped lambda such as `(int x, int y) => ...` was parsed as a parenthesized expression
-    // and failed before semantic analysis could compare it with its delegate target.  `=>` is
-    // not an operator in an ordinary parenthesized expression, so the unambiguous lexical rule
-    // is simply: the matching ')' is followed by `=>`.  Track nesting so generic/array type
-    // syntax inside the parameter list does not terminate the probe early.
+        // E11: the old recognizer only admitted `(x, y) => ...`; consequently an explicitly
+        // typed lambda was parsed as a parenthesized expression. `=>` after the matching ')'
+        // is unambiguous. Track nesting so array/generic syntax cannot terminate the probe.
+        std::size_t cursor = begin + 1;
+        std::size_t parenthesisDepth = 1;
+        std::size_t bracketDepth = 0;
+        while (cursor < tokens_.size())
+        {
+            const TokenKind kind = tokens_[cursor].kind();
+            if (kind == TokenKind::LeftParen) ++parenthesisDepth;
+            else if (kind == TokenKind::RightParen)
+            {
+                if (--parenthesisDepth == 0)
+                    return cursor + 1 < tokens_.size() &&
+                        tokens_[cursor + 1].kind() == TokenKind::FatArrow;
+            }
+            else if (kind == TokenKind::LeftBracket) ++bracketDepth;
+            else if (kind == TokenKind::RightBracket && bracketDepth != 0) --bracketDepth;
+            else if (kind == TokenKind::Semicolon && parenthesisDepth == 1 && bracketDepth == 0)
+                return false;
+            ++cursor;
+        }
+        return false;
+    };
+
+    if (!at(TokenKind::LeftBracket)) return looksLikeParameterHead(index_);
+
+    // T08-F03. A leading capture list is recognized only when the token after its matching ']'
+    // is itself a complete lambda head. This keeps ordinary array/index expressions out of the
+    // lambda parser without reserving copy/ref/mut as global keywords.
     std::size_t cursor = index_ + 1;
-    std::size_t parenthesisDepth = 1;
-    std::size_t bracketDepth = 0;
+    std::size_t depth = 1;
     while (cursor < tokens_.size())
     {
-        const TokenKind kind = tokens_[cursor].kind();
-        if (kind == TokenKind::LeftParen) ++parenthesisDepth;
-        else if (kind == TokenKind::RightParen)
-        {
-            if (--parenthesisDepth == 0)
-                return cursor + 1 < tokens_.size() && tokens_[cursor + 1].kind() == TokenKind::FatArrow;
-        }
-        else if (kind == TokenKind::LeftBracket) ++bracketDepth;
-        else if (kind == TokenKind::RightBracket && bracketDepth != 0) --bracketDepth;
-        else if (kind == TokenKind::Semicolon && parenthesisDepth == 1 && bracketDepth == 0)
-            return false;
+        if (tokens_[cursor].kind() == TokenKind::LeftBracket) ++depth;
+        else if (tokens_[cursor].kind() == TokenKind::RightBracket && --depth == 0)
+            return looksLikeParameterHead(cursor + 1);
+        else if (tokens_[cursor].kind() == TokenKind::Semicolon) return false;
         ++cursor;
     }
     return false;
@@ -11845,6 +11862,80 @@ bool Parser::looksLikeLambdaExpression() const noexcept
 ast::AstNode* Parser::parseLambdaExpression()
 {
     const std::size_t beginIndex = index_;
+    std::string captureContract;
+    if (consumeIf(TokenKind::LeftBracket))
+    {
+        requireEdition3(tokens_[beginIndex].range(), "explicit lambda capture lists");
+        captureContract = "captures:";
+        std::unordered_set<std::string> captureNames;
+        if (!at(TokenKind::RightBracket))
+        {
+            while (true)
+            {
+                std::string mode;
+                if (atContextualKeyword("copy"))
+                {
+                    consume();
+                    mode = "copy";
+                }
+                else if (at(TokenKind::KwMove) || atContextualKeyword("move"))
+                {
+                    consume();
+                    mode = "move";
+                }
+                else if (atContextualKeyword("ref"))
+                {
+                    consume();
+                    if (atContextualKeyword("mut"))
+                    {
+                        consume();
+                        mode = "mutref";
+                    }
+                    else
+                    {
+                        mode = "ref";
+                    }
+                }
+                else
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedToken,
+                        diagnostics::DiagnosticSeverity::Error,
+                        current().range(),
+                        "expected capture mode 'copy', 'move', 'ref', or 'ref mut'");
+                    if (!at(TokenKind::RightBracket) && !at(TokenKind::EndOfFile)) consume();
+                    mode = "invalid";
+                }
+
+                std::string name;
+                SourceRange nameRange = current().range();
+                if (at(TokenKind::Identifier))
+                {
+                    name = std::string(consume().lexeme());
+                }
+                else
+                {
+                    expect(TokenKind::Identifier, "capture name");
+                }
+                if (!name.empty() && !captureNames.insert(name).second)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::DuplicateSymbol,
+                        diagnostics::DiagnosticSeverity::Error,
+                        nameRange,
+                        "duplicate lambda capture '" + name + "'");
+                }
+                if (!name.empty())
+                {
+                    if (captureContract.size() != std::string_view("captures:").size())
+                        captureContract += ';';
+                    captureContract += mode + "=" + name;
+                }
+                if (!consumeIf(TokenKind::Comma)) break;
+            }
+        }
+        expect(TokenKind::RightBracket, "']' after lambda capture list");
+    }
     std::vector<ast::AstNode*> parameters;
     if (at(TokenKind::Identifier))
     {
@@ -11885,6 +11976,7 @@ ast::AstNode* Parser::parseLambdaExpression()
     expect(TokenKind::FatArrow, "'=>'");
 
     auto* lambda = arena_.make<ast::AstNode>(ast::AstNodeKind::LambdaExpression, tokenRangeFrom(beginIndex));
+    lambda->setAuxiliaryText(std::move(captureContract));
     for (ast::AstNode* parameter : parameters) lambda->addChild(parameter);
     if (at(TokenKind::LeftBrace))
     {
