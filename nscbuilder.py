@@ -42,7 +42,7 @@ import traceback
 import uuid
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable
@@ -1182,6 +1182,124 @@ def load_run_history(history_root: Path) -> list[dict]:
         reverse=True,
     )
     return entries
+
+
+_CTEST_FAILURE_STATUS = r"(?:Failed|Timeout|Not Run|Exception|SEGFAULT|BAD_COMMAND)"
+
+
+def failed_ctests_from_output(output: str) -> list[str]:
+    """Extract exact failed CTest names from complete or cancelled CTest output."""
+    names = re.findall(
+        rf"^\s*\d+\s+-\s+([^\s]+)\s+\({_CTEST_FAILURE_STATUS}\)\s*$",
+        output,
+        re.MULTILINE | re.IGNORECASE,
+    )
+    names.extend(
+        re.findall(
+            rf"Test\s+#\d+:\s+([^\s]+).*?\*{{3}}\s*{_CTEST_FAILURE_STATUS}",
+            output,
+            re.IGNORECASE,
+        )
+    )
+    return list(dict.fromkeys(names))
+
+
+def rerunnable_ctest_failures(run_dir: Path) -> tuple[dict, list[str]]:
+    """Load failed CTests from one run, including failures recorded before cancellation.
+
+    A cancelled CTest process does not report a failed stage to the pipeline, but its log still
+    contains every test that had already failed. Reading both metadata and stage logs makes the
+    UI action useful for precisely the interrupted long runs for which it is intended.
+    """
+    metadata_path = run_dir / "metadata.json"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError, TypeError):
+        return {}, []
+    if not isinstance(metadata, dict) or not isinstance(metadata.get("plan"), dict):
+        return {}, []
+
+    names: list[str] = []
+    failures = metadata.get("failures", [])
+    if isinstance(failures, list):
+        for failure in failures:
+            if not isinstance(failure, dict) or str(failure.get("kind", "")) != "CTest":
+                continue
+            source = str(failure.get("source", "")).strip()
+            if source and not source.startswith("CTest "):
+                names.append(source)
+
+    logs: list[Path] = []
+    stages = metadata.get("stages", [])
+    if isinstance(stages, list):
+        for stage in stages:
+            if not isinstance(stage, dict) or not str(stage.get("name", "")).startswith("CTest"):
+                continue
+            value = str(stage.get("log", "")).strip()
+            if value:
+                path = Path(value)
+                logs.append(path if path.is_absolute() else run_dir / path)
+    stages_dir = run_dir / "stages"
+    if stages_dir.is_dir():
+        logs.extend(stages_dir.glob("CTest*.log"))
+    for log in dict.fromkeys(path.resolve() for path in logs):
+        try:
+            names.extend(
+                failed_ctests_from_output(log.read_text(encoding="utf-8", errors="replace"))
+            )
+        except OSError:
+            continue
+    return metadata, list(dict.fromkeys(names))
+
+
+def latest_rerunnable_ctest_run(history_root: Path) -> tuple[Path, dict, list[str]] | None:
+    """Return failures from the newest CTest run, never stale failures from an older run."""
+    for entry in load_run_history(history_root):
+        run_dir = Path(str(entry.get("run_dir", "")))
+        metadata, names = rerunnable_ctest_failures(run_dir)
+        plan = metadata.get("plan", {}) if isinstance(metadata, dict) else {}
+        if not isinstance(plan, dict) or not bool(plan.get("run_ctest")):
+            continue
+        return (run_dir, metadata, names) if names else None
+    return None
+
+
+def make_failure_rerun_plan(metadata: dict, failed_ctests: Iterable[str]) -> RunPlan:
+    """Turn a historical plan into a non-baseline, exact CTest rerun."""
+    raw_plan = metadata.get("plan")
+    if not isinstance(raw_plan, dict):
+        raise ValueError("la corrida no contiene un plan reutilizable")
+    try:
+        original = RunPlan(**raw_plan)
+    except TypeError as exc:
+        raise ValueError("el plan histórico no es compatible con esta versión") from exc
+    names = list(dict.fromkeys(str(name).strip() for name in failed_ctests if str(name).strip()))
+    if not names:
+        raise ValueError("la corrida no contiene nombres CTest fallidos")
+    if "NSLink" not in original.linkers or "NSLink" not in original.test_build_dirs:
+        raise ValueError("la corrida no contiene un árbol CTest de NSLink reutilizable")
+    return replace(
+        original,
+        operation="language",
+        run_id="",
+        certify_baseline=False,
+        reuse_results=False,
+        lld_diagnostics=False,
+        build_mode="skip",
+        build_target="",
+        build_test_trees=False,
+        test_build_target="",
+        test_build_mode="skip",
+        test_build_dirs={"NSLink": original.test_build_dirs["NSLink"]},
+        linkers=["NSLink"],
+        run_build=False,
+        sync_libraries=False,
+        run_ctest=True,
+        run_cases=False,
+        run_triage=False,
+        selected_ctests=names,
+        selected_cases=[],
+    )
 
 
 def project_inputs(project: Path) -> list[Path]:
@@ -2747,18 +2865,7 @@ class PipelineWorker(QObject):
                 )
             if result.exit_code == 0:
                 return []
-        failure_status = r"(?:Failed|Timeout|Not Run|Exception|SEGFAULT|BAD_COMMAND)"
-        failed_names = re.findall(
-            rf"^\s*\d+\s+-\s+([^\s]+)\s+\({failure_status}\)\s*$",
-            result.output,
-            re.MULTILINE | re.IGNORECASE,
-        )
-        if not failed_names:
-            failed_names = re.findall(
-                rf"Test\s+#\d+:\s+([^\s]+).*?\*{{3}}\s*{failure_status}",
-                result.output,
-                re.IGNORECASE,
-            )
+        failed_names = failed_ctests_from_output(result.output)
         if not failed_names and len(selected) == 1:
             failed_names = list(selected)
         failed_names = list(dict.fromkeys(failed_names))
@@ -4255,6 +4362,12 @@ class MainWindow(QMainWindow):
         self.open_button = QPushButton("Abrir resultados")
         self.open_button.setEnabled(False)
         self.open_button.clicked.connect(self.open_results)
+        self.retry_failures_button = QPushButton("Repetir últimos fallos")
+        self.retry_failures_button.setEnabled(False)
+        self.retry_failures_button.setToolTip(
+            "Ejecuta únicamente los fallos de la corrida CTest más reciente"
+        )
+        self.retry_failures_button.clicked.connect(self.rerun_latest_failures)
         self.clear_button = QPushButton("Limpiar consola")
         self.clear_button.clicked.connect(self.clear_current_console)
         self.cleanup_button = QPushButton("Limpiar")
@@ -4265,6 +4378,7 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("Listo")
         controls.addWidget(self.cancel_button)
         controls.addWidget(self.open_button)
+        controls.addWidget(self.retry_failures_button)
         controls.addWidget(self.cleanup_button)
         controls.addWidget(self.clear_button)
         controls.addWidget(self.status_label, 1)
@@ -4536,6 +4650,41 @@ class MainWindow(QMainWindow):
         self.output_channel_tabs.setTabText(
             self.history_outer_index, f"Historial ({len(entries)})"
         )
+        self.refresh_failure_rerun_action()
+
+    def refresh_failure_rerun_action(self) -> None:
+        candidate = latest_rerunnable_ctest_run(HISTORY_ROOT)
+        enabled = candidate is not None and self.worker is None
+        self.retry_failures_button.setEnabled(enabled)
+        if candidate is None:
+            self.retry_failures_button.setText("Repetir últimos fallos")
+            self.retry_failures_button.setToolTip("No hay fallos CTest recuperables en el historial")
+            return
+        run_dir, _metadata, names = candidate
+        self.retry_failures_button.setText(f"Repetir últimos fallos ({len(names)})")
+        self.retry_failures_button.setToolTip(
+            f"Ejecutará sólo {len(names)} CTest fallido(s) de {run_dir.name}; no inicia un baseline"
+        )
+
+    @Slot()
+    def rerun_latest_failures(self) -> None:
+        if self.worker is not None:
+            return
+        candidate = latest_rerunnable_ctest_run(HISTORY_ROOT)
+        if candidate is None:
+            QMessageBox.information(self, APP_NAME, "No hay fallos CTest para repetir.")
+            self.refresh_failure_rerun_action()
+            return
+        run_dir, metadata, names = candidate
+        try:
+            plan = make_failure_rerun_plan(metadata, names)
+        except ValueError as exc:
+            QMessageBox.warning(self, APP_NAME, f"No se puede repetir la corrida:\n{exc}")
+            return
+        self.status_label.setText(
+            f"Repitiendo {len(names)} fallo(s) de {run_dir.name} con NSLink..."
+        )
+        self.start_run("language", plan)
 
     @Slot(QTableWidgetItem)
     def open_history_report(self, item: QTableWidgetItem) -> None:
@@ -5855,10 +6004,10 @@ class MainWindow(QMainWindow):
             selected_cases=selected_cases,
         )
 
-    def start_run(self, operation: str) -> None:
+    def start_run(self, operation: str, prepared_plan: RunPlan | None = None) -> None:
         if self.worker is not None:
             return
-        plan = self._make_plan(operation)
+        plan = prepared_plan if prepared_plan is not None else self._make_plan(operation)
         if plan is None:
             return
         if not any((plan.run_build, plan.sync_libraries, plan.run_ctest, plan.run_cases, plan.run_triage)):
@@ -5934,8 +6083,8 @@ class MainWindow(QMainWindow):
                 self.channel_optimization_indices[(channel, "General")]
             )
         initial_channel = (
-            "LLD-link" if plan.linkers and plan.linkers[0] == "lld-link" else plan.linkers[0]
-        ) if plan.operation == "tests" and plan.linkers else "Compilador"
+            "LLD-link" if plan.linkers[0] == "lld-link" else plan.linkers[0]
+        ) if plan.operation in ("unit", "harness", "language") and plan.linkers else "Compilador"
         self.output_channel_tabs.setCurrentIndex(self.channel_outer_indices[initial_channel])
         for channel in self.active_result_channels:
             self.stage_tables[channel].setRowCount(0)
@@ -5950,6 +6099,7 @@ class MainWindow(QMainWindow):
         self.baseline_clean_button.setEnabled(False)
         self.abi_archive_button.setEnabled(False)
         self.cleanup_button.setEnabled(False)
+        self.retry_failures_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.status_label.setText("Ejecutando...")
 
@@ -6033,6 +6183,7 @@ class MainWindow(QMainWindow):
         self.baseline_clean_button.setEnabled(False)
         self.abi_archive_button.setEnabled(False)
         self.cleanup_button.setEnabled(False)
+        self.retry_failures_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.status_label.setText("Limpiando artefactos...")
 
@@ -6313,6 +6464,7 @@ class MainWindow(QMainWindow):
     def _thread_finished(self) -> None:
         self.worker = None
         self.thread = None
+        self.refresh_failure_rerun_action()
         if self.close_after_cancel:
             QTimer.singleShot(0, self.close)
 

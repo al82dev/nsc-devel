@@ -239,6 +239,128 @@ class NscBuilderPipelineTests(unittest.TestCase):
             self.assertIn("second complete evidence line", report)
             self.assertNotIn("derived gate detail", report)
 
+    def test_cancelled_ctest_log_preserves_exact_rerunnable_failures(self) -> None:
+        with tempfile.TemporaryDirectory(dir=nscbuilder.ROOT) as temporary:
+            run_dir = Path(temporary) / "run"
+            stages = run_dir / "stages"
+            stages.mkdir(parents=True)
+            plan = nscbuilder.make_baseline_plan(
+                1,
+                prefix=Path(temporary) / "staging",
+                nslink_exe=Path(temporary) / "nslink.exe",
+                history_root=Path(temporary) / "history",
+                test_work_root=Path(temporary) / "work",
+                temp_root=Path(temporary) / "temp",
+            )
+            (run_dir / "metadata.json").write_text(
+                nscbuilder.json.dumps(
+                    {
+                        "plan": nscbuilder.asdict(plan),
+                        "status": "cancelled",
+                        "failures": [],
+                        "stages": [
+                            {
+                                "name": "CTest [NSLink]",
+                                "log": "stages/CTest_NSLink.log",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (stages / "CTest_NSLink.log").write_text(
+                "17/610 Test #4: nsc.ns3.first ....***Failed 0.44 sec\n"
+                "18/610 Test #5: nsc.ns3.ok .... Passed 0.12 sec\n"
+                "19/610 Test #6: nsc.ns3.second ....***Exception 0.20 sec\n"
+                "Cancelado\n",
+                encoding="utf-8",
+            )
+
+            _metadata, names = nscbuilder.rerunnable_ctest_failures(run_dir)
+
+            self.assertEqual(names, ["nsc.ns3.first", "nsc.ns3.second"])
+
+    def test_failure_rerun_plan_cannot_rebuild_or_certify_baseline(self) -> None:
+        with tempfile.TemporaryDirectory(dir=nscbuilder.ROOT) as temporary:
+            root = Path(temporary)
+            original = nscbuilder.make_baseline_plan(
+                12,
+                prefix=root / "staging",
+                nslink_exe=root / "nslink.exe",
+                test_build_nslink=root / "build-test-nslink",
+                history_root=root / "history",
+                test_work_root=root / "work",
+                temp_root=root / "temp",
+            )
+
+            rerun = nscbuilder.make_failure_rerun_plan(
+                {"plan": nscbuilder.asdict(original)},
+                ["nsc.ns3.first", "nsc.ns3.second", "nsc.ns3.first"],
+            )
+
+            self.assertEqual(rerun.operation, "language")
+            self.assertEqual(rerun.linkers, ["NSLink"])
+            self.assertEqual(rerun.selected_ctests, ["nsc.ns3.first", "nsc.ns3.second"])
+            self.assertFalse(rerun.run_build)
+            self.assertFalse(rerun.build_test_trees)
+            self.assertFalse(rerun.sync_libraries)
+            self.assertFalse(rerun.run_cases)
+            self.assertFalse(rerun.run_triage)
+            self.assertFalse(rerun.certify_baseline)
+            self.assertFalse(rerun.lld_diagnostics)
+
+    def test_successful_newer_ctest_run_hides_stale_failures(self) -> None:
+        with tempfile.TemporaryDirectory(dir=nscbuilder.ROOT) as temporary:
+            root = Path(temporary)
+            history = root / "history"
+            original = nscbuilder.make_baseline_plan(
+                1,
+                prefix=root / "staging",
+                nslink_exe=root / "nslink.exe",
+                test_build_nslink=root / "build-test-nslink",
+                history_root=history,
+                test_work_root=root / "work",
+                temp_root=root / "temp",
+            )
+            old = history / "old"
+            new = history / "new"
+            old.mkdir(parents=True)
+            new.mkdir(parents=True)
+            common = {
+                "plan": nscbuilder.asdict(original),
+                "finished_at": "2026-10-04T06:00:00+00:00",
+                "stages": [],
+                "cases": [],
+            }
+            (old / "metadata.json").write_text(
+                nscbuilder.json.dumps(
+                    {
+                        **common,
+                        "id": "old",
+                        "started_at": "2026-10-04T05:00:00+00:00",
+                        "status": "failed",
+                        "failed": 1,
+                        "failures": [{"kind": "CTest", "source": "nsc.old.failure"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (new / "metadata.json").write_text(
+                nscbuilder.json.dumps(
+                    {
+                        **common,
+                        "id": "new",
+                        "started_at": "2026-10-04T06:00:00+00:00",
+                        "status": "passed",
+                        "failed": 0,
+                        "failures": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertIsNone(nscbuilder.latest_rerunnable_ctest_run(history))
+
 
 if __name__ == "__main__":
     unittest.main()
