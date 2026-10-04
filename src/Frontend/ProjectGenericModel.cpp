@@ -1801,6 +1801,115 @@ void ProjectGenericModel::collectTemplates(
     }
 }
 
+bool ProjectGenericModel::specializeGenericLambdaCall(
+    ProjectSyntaxUnit& unit,
+    ast::AstNode* call,
+    const GenericLookupScope::GenericLambda& local,
+    const GenericLookupScope& scope,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (call == nullptr || local.templateSyntax == nullptr || local.declaration == nullptr)
+        return false;
+    const ast::AstNode* source = local.templateSyntax;
+    const auto& parameters = source->genericParameterSyntaxes();
+    if (parameters.empty()) return false;
+
+    GenericTemplateRecord inferenceRecord;
+    inferenceRecord.parameters = source->genericParameters();
+    inferenceRecord.parameterSyntaxes = parameters;
+    inferenceRecord.constraints = source->genericConstraints();
+    const std::unordered_set<std::string> names(
+        inferenceRecord.parameters.begin(), inferenceRecord.parameters.end());
+    std::unordered_map<std::string, ast::TypeSyntax*> inferred;
+
+    if (!call->typeSyntaxes().empty() || call->flag())
+    {
+        if (call->typeSyntaxes().size() != parameters.size())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidArgumentCount,
+                diagnostics::DiagnosticSeverity::Error,
+                call->range(),
+                "generic lambda expects " + std::to_string(parameters.size()) +
+                    " generic arguments but received " +
+                    std::to_string(call->typeSyntaxes().size()));
+            return false;
+        }
+        for (std::size_t index = 0; index < parameters.size(); ++index)
+            inferred.emplace(parameters[index].name, call->typeSyntaxes()[index]);
+    }
+    else
+    {
+        std::vector<const ast::AstNode*> valueParameters;
+        for (const ast::AstNode* child : source->children())
+            if (child != nullptr && child->kind() == ast::AstNodeKind::ParameterDeclaration)
+                valueParameters.push_back(child);
+        if (valueParameters.size() != call->children().size())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidArgumentCount,
+                diagnostics::DiagnosticSeverity::Error,
+                call->range(), "generic lambda argument count does not match its parameter list");
+            return false;
+        }
+        for (std::size_t index = 0; index < valueParameters.size(); ++index)
+        {
+            const ast::TypeSyntax* actual = inferExpressionType(unit, call->children()[index], scope);
+            if (actual == nullptr || valueParameters[index]->typeSyntax() == nullptr ||
+                !inferTypeArguments(
+                    unit, valueParameters[index]->typeSyntax(), actual, inferenceRecord, names,
+                    inferred))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidCall,
+                    diagnostics::DiagnosticSeverity::Error,
+                    call->children()[index]->range(),
+                    "cannot infer generic-lambda arguments from value argument " +
+                        std::to_string(index + 1U));
+                return false;
+            }
+        }
+    }
+
+    std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
+    for (const ast::GenericParameterSyntax& parameter : parameters)
+    {
+        const auto found = inferred.find(parameter.name);
+        if (found == inferred.end())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error,
+                call->range(),
+                "generic-lambda parameter '" + parameter.name + "' could not be inferred");
+            return false;
+        }
+        substitutions.emplace(parameter.name, found->second);
+    }
+
+    ast::AstNode* specialized = cloneNode(unit.arena(), source, substitutions, {}, {});
+    specialized->clearGenericParameters();
+    specialized->clearGenericConstraints();
+    const std::string localName = call->first() != nullptr ? call->first()->text() : std::string{};
+    specialized->setText("generic-lambda-instance:" + localName);
+    call->setFirst(specialized);
+    call->clearTypeSyntaxes();
+    call->setFlag(false);
+
+    // Keep the lexical binding a concrete zero-size lambda value as well. Calls are rewritten to
+    // their own concrete callable, so this carrier is never used for erased dispatch; it merely
+    // gives `var` an ABI-valid native type and preserves ordinary declaration/capture analysis.
+    if (materializedGenericLambdas_.insert(source).second)
+    {
+        ast::AstNode* carrier = cloneNode(unit.arena(), source, substitutions, {}, {});
+        carrier->clearGenericParameters();
+        carrier->clearGenericConstraints();
+        carrier->setText("generic-lambda-carrier");
+        local.declaration->setFirst(carrier);
+    }
+    return true;
+}
+
 void ProjectGenericModel::processNode(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
@@ -1820,6 +1929,12 @@ void ProjectGenericModel::processNode(
     // LOS `using` DE ESTE AMBITO, recogidos como los recoge ProjectNameLookup::bindScope: del
     // mismo AST, en el mismo sitio, y heredando los de fuera.
     GenericLookupScope currentScope = scope;
+    if (node->kind() == ast::AstNodeKind::LambdaExpression &&
+        node->text().starts_with("generic-lambda-instance:"))
+    {
+        currentScope.genericLambdas.erase(
+            node->text().substr(std::string_view("generic-lambda-instance:").size()));
+    }
     for (const ast::AstNode* child : node->children())
     {
         if (child == nullptr) continue;
@@ -1896,7 +2011,11 @@ void ProjectGenericModel::processNode(
     // e.g. Box<T> and leak the alias parameter T into the concrete program.
     if (node->kind() == ast::AstNodeKind::UsingAliasDirective) return;
 
-    const bool templateNode = isGenericTypeTemplateNode(node) || isGenericMethodTemplateNode(node);
+    const bool genericLambdaTemplate =
+        node->kind() == ast::AstNodeKind::LambdaExpression &&
+        !node->genericParameters().empty();
+    const bool templateNode = isGenericTypeTemplateNode(node) ||
+        isGenericMethodTemplateNode(node) || genericLambdaTemplate;
     // Constraint types are declaration dependencies, not executable template-body syntax. Closed
     // constraints such as `where T : IValue<int>` must be materialized even while the remaining
     // body is deferred until a concrete specialization exists.
@@ -1938,13 +2057,22 @@ void ProjectGenericModel::processNode(
         processTypeSyntax(unit, node->typeSyntax(), currentNamespace, currentScope, diagnostics);
     }
 
-    if (node->kind() == ast::AstNodeKind::CallExpression &&
+    bool specializedGenericLambda = false;
+    if (node->kind() == ast::AstNodeKind::CallExpression && node->first() != nullptr &&
+        node->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto local = currentScope.genericLambdas.find(node->first()->text());
+        if (local != currentScope.genericLambdas.end())
+            specializedGenericLambda = specializeGenericLambdaCall(
+                unit, node, local->second, currentScope, diagnostics);
+    }
+    if (!specializedGenericLambda && node->kind() == ast::AstNodeKind::CallExpression &&
         node->typeSyntaxes().empty() && !node->flag())
     {
         inferGenericCall(
             unit, node, currentNamespace, ownerName, currentScope, diagnostics);
     }
-    if (node->kind() == ast::AstNodeKind::CallExpression &&
+    if (!specializedGenericLambda && node->kind() == ast::AstNodeKind::CallExpression &&
         (!node->typeSyntaxes().empty() || node->flag()))
     {
         processGenericCall(unit, node, currentNamespace, ownerName, currentScope, diagnostics);
@@ -2019,6 +2147,14 @@ void ProjectGenericModel::processNode(
         processNode(unit, child, currentNamespace, childOwner, sequentialScope, false, diagnostics);
         if (child == nullptr || child->kind() != ast::AstNodeKind::VariableDeclarationStatement)
             continue;
+        const ast::AstNode* initializer = child->first();
+        if (initializer != nullptr && initializer->kind() == ast::AstNodeKind::LambdaExpression &&
+            !initializer->genericParameters().empty())
+        {
+            sequentialScope.genericLambdas[child->text()] =
+                GenericLookupScope::GenericLambda{initializer, child};
+            continue;
+        }
         if (declaredLocalType == nullptr && child->first() != nullptr)
             declaredLocalType = inferExpressionType(unit, child->first(), sequentialScope);
         if (declaredLocalType != nullptr)
@@ -4441,6 +4577,7 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     ast::AstNode* result = arena.make<ast::AstNode>(clonedKind, source->range());
     result->setText(source->text());
     result->setAuxiliaryText(source->auxiliaryText());
+    result->setArgumentName(source->argumentName());
     result->setTokenKind(source->tokenKind());
     result->setFlag(source->flag());
     result->setReference(source->isReference());

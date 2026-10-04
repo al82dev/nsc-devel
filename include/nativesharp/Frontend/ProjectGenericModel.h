@@ -276,6 +276,11 @@ private:
     // todas. Un import que no acierte no elige mal: no acierta y se baja al escalon siguiente.
     struct GenericLookupScope final
     {
+        struct GenericLambda final
+        {
+            const ast::AstNode* templateSyntax = nullptr;
+            ast::AstNode* declaration = nullptr;
+        };
         std::vector<std::string> importedNamespaces;
         std::unordered_map<std::string, std::string> aliases;
         // Item 276. Type aliases have to disappear before generic templates are registered:
@@ -286,10 +291,21 @@ private:
         // Item 277. Types written on parameters, fields, and preceding locals are sufficient for
         // local generic inference without running a second semantic pipeline before Stage 44.
         std::unordered_map<std::string, const ast::TypeSyntax*> valueTypes;
+        // T08-F04. Generic lambdas are lexical templates, not members and therefore not entries
+        // in the project-wide template catalogue. The generic pass closes each invocation in
+        // the lexical scope where the `var` binding was introduced.
+        std::unordered_map<std::string, GenericLambda> genericLambdas;
         // Return type before closed generic spellings are rewritten. It provides expected-type
         // evidence to a direct generic call in a return statement.
         const ast::TypeSyntax* expectedReturnType = nullptr;
     };
+
+    bool specializeGenericLambdaCall(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* call,
+        const GenericLookupScope::GenericLambda& lambda,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics);
 
     bool expandAliasesInNode(
         ProjectSyntaxUnit& unit,
@@ -487,6 +503,7 @@ private:
     bool templateVisible(std::size_t from, const GenericTemplateRecord& target) const noexcept;
 
     std::vector<TemplateState> templateStates_;
+    std::unordered_set<const ast::AstNode*> materializedGenericLambdas_;
     std::vector<DeclaredTypeIdentity> declaredTypeIdentities_;
     std::vector<GenericTemplateRecord> templateRecords_;
     std::vector<GenericSpecializationRecord> specializations_;

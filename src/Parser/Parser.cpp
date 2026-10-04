@@ -11812,6 +11812,30 @@ bool Parser::looksLikeLambdaExpression() const noexcept
     const auto looksLikeParameterHead = [&](std::size_t begin) noexcept
     {
         if (begin >= tokens_.size()) return false;
+        // T08-F04.  `<T>(T value) => ...` is unambiguous only after the complete generic head
+        // and parameter list have been seen.  Do not treat an arbitrary less-than expression as
+        // a lambda: find the matching `>` first and then reuse the ordinary parameter probe.
+        if (tokens_[begin].kind() == TokenKind::Less)
+        {
+            std::size_t cursor = begin + 1;
+            std::size_t depth = 1;
+            while (cursor < tokens_.size())
+            {
+                const TokenKind kind = tokens_[cursor].kind();
+                if (kind == TokenKind::Less) ++depth;
+                else if (kind == TokenKind::Greater && --depth == 0)
+                {
+                    begin = cursor + 1;
+                    break;
+                }
+                else if (kind == TokenKind::Semicolon || kind == TokenKind::FatArrow)
+                {
+                    return false;
+                }
+                ++cursor;
+            }
+            if (depth != 0 || begin >= tokens_.size()) return false;
+        }
         if (tokens_[begin].kind() == TokenKind::Identifier)
             return begin + 1 < tokens_.size() && tokens_[begin + 1].kind() == TokenKind::FatArrow;
         if (tokens_[begin].kind() != TokenKind::LeftParen) return false;
@@ -11829,8 +11853,25 @@ bool Parser::looksLikeLambdaExpression() const noexcept
             else if (kind == TokenKind::RightParen)
             {
                 if (--parenthesisDepth == 0)
-                    return cursor + 1 < tokens_.size() &&
-                        tokens_[cursor + 1].kind() == TokenKind::FatArrow;
+                {
+                    if (cursor + 1 >= tokens_.size()) return false;
+                    if (tokens_[cursor + 1].kind() == TokenKind::FatArrow) return true;
+                    if (tokens_[cursor + 1].kind() != TokenKind::Identifier ||
+                        tokens_[cursor + 1].lexeme() != "where")
+                        return false;
+                    // Constraint clauses contain types, commas and equality operators but no
+                    // statement boundary. The first fat arrow closes the generic-lambda head.
+                    for (std::size_t constraint = cursor + 2; constraint < tokens_.size(); ++constraint)
+                    {
+                        const TokenKind constraintKind = tokens_[constraint].kind();
+                        if (constraintKind == TokenKind::FatArrow) return true;
+                        if (constraintKind == TokenKind::Semicolon ||
+                            constraintKind == TokenKind::LeftBrace ||
+                            constraintKind == TokenKind::RightBrace)
+                            return false;
+                    }
+                    return false;
+                }
             }
             else if (kind == TokenKind::LeftBracket) ++bracketDepth;
             else if (kind == TokenKind::RightBracket && bracketDepth != 0) --bracketDepth;
@@ -11862,6 +11903,8 @@ bool Parser::looksLikeLambdaExpression() const noexcept
 ast::AstNode* Parser::parseLambdaExpression()
 {
     const std::size_t beginIndex = index_;
+    auto* lambda = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::LambdaExpression, tokens_[beginIndex].range());
     std::string captureContract;
     if (consumeIf(TokenKind::LeftBracket))
     {
@@ -11936,6 +11979,11 @@ ast::AstNode* Parser::parseLambdaExpression()
         }
         expect(TokenKind::RightBracket, "']' after lambda capture list");
     }
+    if (at(TokenKind::Less))
+    {
+        requireEdition3(current().range(), "generic lambdas");
+        parseGenericParameterList(lambda);
+    }
     std::vector<ast::AstNode*> parameters;
     if (at(TokenKind::Identifier))
     {
@@ -11973,9 +12021,30 @@ ast::AstNode* Parser::parseLambdaExpression()
         }
         expect(TokenKind::RightParen, "')'");
     }
+    // `auto` is intentionally restricted to generic-lambda parameters.  Each occurrence is an
+    // independent inferred type parameter; users who want equality write the explicit `<T>`
+    // form twice.  Rewriting the TypeSyntax here lets every later generic substitution path use
+    // the same representation as an explicitly named parameter.
+    std::size_t automaticOrdinal = 0;
+    for (ast::AstNode* parameter : parameters)
+    {
+        if (parameter == nullptr || parameter->typeSyntax() == nullptr ||
+            parameter->typeSyntax()->baseName() != "auto")
+            continue;
+        requireEdition3(parameter->range(), "auto generic-lambda parameters");
+        const std::string name = "__lambda_auto_" + std::to_string(automaticOrdinal++);
+        ast::GenericParameterSyntax inferred;
+        inferred.name = name;
+        inferred.kind = ast::GenericParameterSyntaxKind::Type;
+        inferred.range = parameter->typeSyntax()->range();
+        lambda->addGenericParameter(std::move(inferred));
+        parameter->typeSyntax()->setBaseName(name);
+    }
+    if (!lambda->genericParameters().empty())
+        parseGenericConstraintClauses(lambda);
     expect(TokenKind::FatArrow, "'=>'");
 
-    auto* lambda = arena_.make<ast::AstNode>(ast::AstNodeKind::LambdaExpression, tokenRangeFrom(beginIndex));
+    lambda->setRange(tokenRangeFrom(beginIndex));
     lambda->setAuxiliaryText(std::move(captureContract));
     for (ast::AstNode* parameter : parameters) lambda->addChild(parameter);
     if (at(TokenKind::LeftBrace))
