@@ -49,7 +49,28 @@ bool normalizeImports(
     std::string& error)
 {
     error.clear();
-    result.assign(imports.begin(), imports.end());
+    result.clear();
+    result.reserve(imports.size());
+    for (const Import& item : imports)
+    {
+        if (item.identity.empty())
+        {
+            error = "import target cannot be empty";
+            return false;
+        }
+        if ((item.kind == ImportKind::Extensions || item.kind == ImportKind::RestrictedGlob) &&
+            !item.alias.empty())
+        {
+            error = "extension and restricted-glob imports cannot declare an alias";
+            return false;
+        }
+        const auto duplicate = std::ranges::find_if(result, [&](const Import& existing)
+        {
+            return existing.kind == item.kind && existing.identity == item.identity &&
+                existing.alias == item.alias;
+        });
+        if (duplicate == result.end()) result.push_back(item);
+    }
     std::ranges::sort(result, [](const Import& a, const Import& b)
     {
         return std::tie(a.alias, a.identity, a.kind) < std::tie(b.alias, b.identity, b.kind);
@@ -57,8 +78,24 @@ bool normalizeImports(
     std::unordered_set<std::string> names;
     for (const Import& item : result)
     {
-        const std::string visible = item.alias.empty() ? item.identity.substr(item.identity.rfind('.') + 1) : item.alias;
-        if (!names.insert(visible).second) { error = "import name collision: " + visible; return false; }
+        // Namespace/extension/glob imports contribute a candidate scope rather than a local
+        // declaration. Collisions are decided only when a name is requested from those scopes.
+        if (item.alias.empty() &&
+            (item.kind == ImportKind::Module || item.kind == ImportKind::Extensions ||
+             item.kind == ImportKind::RestrictedGlob))
+            continue;
+        std::string visible = item.alias.empty()
+            ? item.identity.substr(item.identity.rfind('.') + 1)
+            : item.alias;
+        std::ranges::transform(visible, visible.begin(), [](unsigned char value)
+        {
+            return static_cast<char>(std::tolower(value));
+        });
+        if (!names.insert(visible).second)
+        {
+            error = "import name collision: " + visible;
+            return false;
+        }
     }
     return true;
 }

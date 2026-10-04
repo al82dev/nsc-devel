@@ -69,6 +69,9 @@ private:
     ast::AstNode* parseNamespaceDeclaration();
     ast::AstNode* parseExtensionDeclaration();
     ast::AstNode* parseUsingDirective();
+    // NativeSharp 3.0 T12-F02. Explicit imports lower to the existing using nodes so name
+    // lookup, generic materialization and extension lookup all observe one deterministic table.
+    ast::AstNode* parseImportDirective();
     ast::AstNode* parseGlobalDeclaration();
     // C2.2 "union and explicit layout": a union is parsed by the same routine as a struct --
     // they differ only in where their fields land, which is a layout question, not a syntax one.

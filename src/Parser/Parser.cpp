@@ -2470,6 +2470,10 @@ ast::AstNode* Parser::parseNamespaceMember()
     {
         return parseExtensionDeclaration();
     }
+    if (languageEdition_ == language::LanguageEdition::V3 && atContextualKeyword("import"))
+    {
+        return parseImportDirective();
+    }
     if (at(TokenKind::KwUsing))
     {
         return parseUsingDirective();
@@ -2479,6 +2483,120 @@ ast::AstNode* Parser::parseNamespaceMember()
         return parseNamespaceDeclaration();
     }
     return parseGlobalDeclaration();
+}
+
+ast::AstNode* Parser::parseImportDirective()
+{
+    const std::size_t beginIndex = index_;
+    consume(); // contextual `import`
+
+    enum class ExplicitImportKind : std::uint64_t
+    {
+        Module = 1,
+        Symbol = 2,
+        Trait = 3,
+        Extensions = 4,
+        RestrictedGlob = 5
+    };
+
+    ExplicitImportKind kind = ExplicitImportKind::Module;
+    if (atContextualKeyword("module"))
+    {
+        consume();
+    }
+    else if (atContextualKeyword("symbol"))
+    {
+        kind = ExplicitImportKind::Symbol;
+        consume();
+    }
+    else if (atContextualKeyword("trait"))
+    {
+        kind = ExplicitImportKind::Trait;
+        consume();
+    }
+    else if (atContextualKeyword("extensions"))
+    {
+        kind = ExplicitImportKind::Extensions;
+        consume();
+    }
+
+    if (!at(TokenKind::Identifier))
+    {
+        expect(TokenKind::Identifier, "module, symbol or trait import target");
+        synchronizeGlobal();
+        return nullptr;
+    }
+
+    const lexer::Token first = current();
+    lexer::Token last = first;
+    std::string target(first.lexeme());
+    consume();
+    while (at(TokenKind::Dot) && peek().kind() == TokenKind::Identifier)
+    {
+        consume();
+        last = current();
+        target.push_back('.');
+        target.append(current().lexeme());
+        consume();
+    }
+
+    if (at(TokenKind::Dot) && peek().kind() == TokenKind::Star)
+    {
+        consume();
+        last = consume();
+        kind = ExplicitImportKind::RestrictedGlob;
+    }
+
+    std::string alias;
+    if (at(TokenKind::KwAs) || atContextualKeyword("as"))
+    {
+        consume();
+        if (!at(TokenKind::Identifier))
+        {
+            expect(TokenKind::Identifier, "local import alias");
+            synchronizeGlobal();
+            return nullptr;
+        }
+        alias = std::string(current().lexeme());
+        last = consume();
+    }
+
+    if ((kind == ExplicitImportKind::Extensions || kind == ExplicitImportKind::RestrictedGlob) &&
+        !alias.empty())
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidUsingTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            tokenRangeFrom(beginIndex),
+            "extension and restricted-glob imports cannot declare an alias");
+    }
+
+    expect(TokenKind::Semicolon, "';'");
+    const SourceRange range = tokenRangeFrom(beginIndex);
+    const bool importsSingleName = kind == ExplicitImportKind::Symbol ||
+        kind == ExplicitImportKind::Trait || !alias.empty();
+    if (!importsSingleName)
+    {
+        ast::AstNode* node = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::UsingNamespaceDirective, range);
+        node->setText(std::move(target));
+        node->setIntegerValue(static_cast<std::uint64_t>(kind));
+        return node;
+    }
+
+    if (alias.empty())
+    {
+        const std::size_t dot = target.rfind('.');
+        alias = dot == std::string::npos ? target : target.substr(dot + 1);
+    }
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::UsingAliasDirective, range);
+    node->setText(std::move(alias));
+    node->setAuxiliaryText(target);
+    node->setTypeSyntax(arena_.make<ast::TypeSyntax>(
+        join(first.range(), last.range()), TokenKind::Identifier, std::move(target)));
+    node->setIntegerValue(static_cast<std::uint64_t>(kind));
+    return node;
 }
 
 ast::AstNode* Parser::parseExtensionDeclaration()
