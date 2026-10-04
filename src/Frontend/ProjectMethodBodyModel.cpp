@@ -6927,6 +6927,19 @@ void ProjectMethodBodyModel::analyzeForeach(
     else chosenCandidate = const_cast<ast::AstNode*>(statement->third());
     if (chosenCandidate != nullptr)
     {
+        const bool lendingIteration =
+            statement->auxiliaryText() == "foreach:ref" ||
+            statement->auxiliaryText() == "foreach:ref-mut";
+        const std::optional<std::string> borrowedSourcePlace = lendingIteration &&
+                statement->first()->first() != nullptr
+            ? storagePlaceKey(statement->first()->first(), foreachScope)
+            : std::nullopt;
+        if (borrowedSourcePlace.has_value())
+        {
+            activeIterationBorrows_.push_back(ActiveIterationBorrow{
+                *borrowedSourcePlace,
+                statement->auxiliaryText() == "foreach:ref-mut"});
+        }
         // Everything past this point is ordinary VariableDeclarationStatement/WhileStatement
         // analysis -- including, for the enumerator-mode candidate, the
         // `GetEnumerator()`/`MoveNext()`/`Current` member lookups. Those go through the SAME
@@ -6935,6 +6948,7 @@ void ProjectMethodBodyModel::analyzeForeach(
         // reported by the ordinary "no accessible member" / argument-mismatch diagnostics --
         // foreach needs no bespoke "does this type support foreach" pre-check.
         analyzeBlock(chosenCandidate, methodMemberOrdinal, foreachScope, true, diagnostics);
+        if (borrowedSourcePlace.has_value()) activeIterationBorrows_.pop_back();
     }
 
     // Teardown for $__foreach_source's OWN cleanup region, mirroring analyzeFor's end-of-forScope
@@ -15702,6 +15716,41 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+        if (!selectedMember.isStatic && !selectedMember.isReadonly &&
+            callee.receiverSyntax != nullptr && !activeIterationBorrows_.empty())
+        {
+            const std::optional<std::string> receiverPlace =
+                storagePlaceKey(callee.receiverSyntax, scopeOrdinal);
+            if (receiverPlace.has_value())
+            {
+                for (auto iterator = activeIterationBorrows_.rbegin();
+                     iterator != activeIterationBorrows_.rend(); ++iterator)
+                {
+                    if (!placesOverlap(iterator->sourcePlace, *receiverPlace)) continue;
+                    bool compatibleElementCall = false;
+                    if (iterator->mutableElements &&
+                        callee.receiverSyntax->kind() == ast::AstNodeKind::IndexExpression &&
+                        callee.receiverSyntax->first() != nullptr)
+                    {
+                        const std::optional<std::string> indexedSource =
+                            storagePlaceKey(callee.receiverSyntax->first(), scopeOrdinal);
+                        compatibleElementCall = indexedSource.has_value() &&
+                            *indexedSource == iterator->sourcePlace;
+                    }
+                    if (compatibleElementCall) break;
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidCall,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "cannot invoke mutating member '" + selectedMember.name +
+                            "' on a foreach source while a lending iteration is active; "
+                            "the operation could invalidate yielded references");
+                    call.resolution = MethodCallResolutionKind::NoViableCandidate;
+                    calls_.push_back(std::move(call));
+                    return result;
+                }
+            }
+        }
         const std::string_view variantMarker = selectedMember.syntax != nullptr
             ? std::string_view(selectedMember.syntax->auxiliaryText()) : std::string_view{};
         const auto markerCase = [](std::string_view marker) -> std::optional<std::size_t>
@@ -19041,6 +19090,50 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    if (expression->first() != nullptr && !activeIterationBorrows_.empty())
+    {
+        const std::optional<std::string> targetPlace =
+            storagePlaceKey(expression->first(), scopeOrdinal);
+        if (targetPlace.has_value())
+        {
+            for (auto iterator = activeIterationBorrows_.rbegin();
+                 iterator != activeIterationBorrows_.rend(); ++iterator)
+            {
+                if (!placesOverlap(iterator->sourcePlace, *targetPlace)) continue;
+                bool directElementWrite = false;
+                if (iterator->mutableElements &&
+                    expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+                {
+                    const std::optional<ScopeName> targetName =
+                        lookupScopeName(scopeOrdinal, expression->first()->text());
+                    directElementWrite = targetName.has_value() &&
+                        targetName->kind == ScopeNameKind::Local &&
+                        targetName->semanticOrdinal < locals_.size() &&
+                        locals_[targetName->semanticOrdinal].syntax != nullptr &&
+                        locals_[targetName->semanticOrdinal].syntax->auxiliaryText() ==
+                            "local:foreach-ref-mut";
+                }
+                if (iterator->mutableElements &&
+                    !directElementWrite &&
+                    expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
+                    expression->first()->first() != nullptr)
+                {
+                    const std::optional<std::string> indexedSource =
+                        storagePlaceKey(expression->first()->first(), scopeOrdinal);
+                    directElementWrite = indexedSource.has_value() &&
+                        *indexedSource == iterator->sourcePlace;
+                }
+                if (directElementWrite) break;
+                diagnostics.report(
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->first()->range(),
+                    "cannot mutate foreach source storage while a lending iteration is active; "
+                    "use the ref mut element binding for compatible element writes");
+                return {};
+            }
+        }
+    }
     const auto invalidateAssignedStorage = [&]
     {
         const ast::AstNode* root = definiteAssignmentTargetRoot(expression->first());
