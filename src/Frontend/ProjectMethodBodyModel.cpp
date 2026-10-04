@@ -19090,8 +19090,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             !targetMember.isStatic &&
             (targetMember.declaredOwnership == sema::OwnershipKind::Owned ||
              memberModel_->typeIsMoveOnly(targetMember.declaredTypeKey) ||
-             isGenericValueTypeKey(targetMember.declaredTypeKey) ||
-             callableBelongsToGenericTypeSpecialization(methodMemberOrdinal));
+             isGenericValueTypeKey(targetMember.declaredTypeKey));
         ownedFieldOwnsStorage = ownedFieldMoveTarget &&
             (isReferenceTypeKey(targetMember.declaredTypeKey) ||
              targetMember.declaredTypeKey == "builtin:string");

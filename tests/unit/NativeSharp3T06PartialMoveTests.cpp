@@ -277,6 +277,34 @@ public class Program
         "Optional<T> extracts and returns a move-only generic field while exact drop state "
         "destroys each selected payload once (" + diagnostic + ")");
 
+    const std::filesystem::path borrowedGenericField = writeProject(
+        root / "borrowed-generic-field", "BorrowedGenericField", R"NS(
+public class Source<T>
+{
+    public int Value;
+    public Source(int value) { Value = value; }
+}
+public class Enumerator<T>
+{
+    private Source<T> source;
+    public Enumerator(Source<T> value) { source = value; }
+    public int Current() { return source.Value; }
+}
+public class Program
+{
+    public static int Main()
+    {
+        Source<int> source = new Source<int>(42);
+        Enumerator<int> iterator = new Enumerator<int>(source);
+        return iterator.Current();
+    }
+}
+)NS");
+    diagnostic.clear();
+    tests.expect(compileAndRun(borrowedGenericField, 42, diagnostic),
+        "a plain reference field in a generic class remains borrowed and accepts ordinary "
+        "assignment without an ownership transfer (" + diagnostic + ")");
+
     const std::string declarations = R"NS(
 public struct Token { public int Value; public Token(int value) { Value = value; } }
 public struct Pair { public Token Left; public Token Right; public Pair(Token left, Token right) { Left = move(left); Right = move(right); } }
