@@ -1055,9 +1055,9 @@ int main(int argc, char** argv)
     // =====================================================================================
 
     // T01-F05. Generalized initializers must not partially construct an owner-bearing value and
-    // then leak an earlier field when a later expression fails. Value-type drop flags arrive with
-    // T06; until then the product contract is an explicit, stable rejection rather than silent
-    // resource loss.
+    // then leak an earlier field when a later expression fails. T06 provides value drop flags and
+    // T02-F06 makes transfer explicit: a move-only generalized initializer must contain exactly
+    // one move-spread rather than silently manufacturing ownership.
     checkRejected(
         tests, root, "cc1-t01-f05-nontrivial-generalized-initializer",
         R"NS(
@@ -1072,7 +1072,7 @@ class Program
     }
 }
 )NS",
-        "requires a trivially destructible target",
+        "requires exactly one '..move(source)' spread",
         "3");
 
     // Copiar un owner a un parametro `owned` sin `move`. La resolucion de constructores no miraba
@@ -1916,7 +1916,7 @@ namespace limit007param
     class P { public static int Main() { return 42; } }
 }
 )NS",
-        "'U' is not a generic type parameter of this declaration");
+        "'U' is not a generic or lifetime parameter of this declaration");
 
     // Dos clausulas para el mismo parametro. C# tampoco lo permite, y aceptarlo aqui obligaria a
     // decidir si se fusionan o si gana la ultima -- una decision que nadie necesita.
