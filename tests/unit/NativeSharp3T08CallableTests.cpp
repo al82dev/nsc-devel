@@ -1,6 +1,7 @@
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
 #include "../support/TestContext.h"
@@ -90,7 +91,7 @@ int main()
 {
     nativesharp::tests::TestContext tests;
     const std::filesystem::path directedRoot =
-        std::filesystem::path(NSC_BINARY_DIR) / "ns3-t08-f01-directed";
+        std::filesystem::path(NSC_BINARY_DIR) / "ns3-t08-directed";
     std::error_code cleanupError;
     std::filesystem::remove_all(directedRoot, cleanupError);
     const std::string developmentRuntime =
@@ -135,6 +136,35 @@ int main()
             !isFunctionTypeIdentity("fn:ptr:c:00000:0#:1:11#builtin:int"),
         "function identity recognition rejects truncated structural keys");
 
+    AnonymousLambdaType anonymous;
+    anonymous.ownerOrdinal = 7;
+    anonymous.lambdaOrdinal = 3;
+    anonymous.signature = native;
+    const std::string anonymousIdentity = anonymousLambdaTypeIdentity(anonymous);
+    const std::optional<AnonymousLambdaType> decodedAnonymous =
+        parseAnonymousLambdaTypeIdentity(anonymousIdentity);
+    AnonymousLambdaType distinctAnonymous = anonymous;
+    ++distinctAnonymous.lambdaOrdinal;
+    tests.expect(decodedAnonymous.has_value() &&
+            decodedAnonymous->ownerOrdinal == anonymous.ownerOrdinal &&
+            decodedAnonymous->lambdaOrdinal == anonymous.lambdaOrdinal &&
+            decodedAnonymous->signature.parameters == native.parameters &&
+            decodedAnonymous->signature.result == native.result &&
+            anonymousLambdaGeneratedName(*decodedAnonymous) == "__nsc_lambda_7_3" &&
+            anonymousLambdaTypeIdentity(distinctAnonymous) != anonymousIdentity,
+        "unconverted lambdas have distinct nominal identities with recoverable signatures");
+
+    FunctionType reference = native;
+    reference.carrier = FunctionCarrier::Reference;
+    tests.expect(
+        nativesharp::frontend::ProjectTypeConversion::classifyImplicit(
+            anonymousIdentity, functionTypeIdentity(native)).exists() &&
+            !nativesharp::frontend::ProjectTypeConversion::classifyImplicit(
+                anonymousIdentity, functionTypeIdentity(c)).exists() &&
+            !nativesharp::frontend::ProjectTypeConversion::classifyImplicit(
+                anonymousIdentity, functionTypeIdentity(reference)).exists(),
+        "an anonymous lambda converts only to a compatible raw function pointer");
+
     FunctionType safe = native;
     FunctionType unsafe = native;
     unsafe.isUnsafe = true;
@@ -178,6 +208,7 @@ namespace FunctionTypes
 {
     public class Program
     {
+        private static fn* C(int) -> int StaticCallback = (int value) => value + 2;
         private static int Increment(int value) { return value + 1; }
         private static int ApplyRaw(fn* C(int) -> int callback, int value)
         {
@@ -189,23 +220,101 @@ namespace FunctionTypes
         }
         private static int Pick(fn* C(int) -> int callback) { return 1; }
         private static int Pick(fn&(int) -> int callback) { return 2; }
+        private static int Select(fn*(int) -> int callback) { return 5; }
+        private static int Select(fn*(long) -> long callback) { return 6; }
         private static T Identity<T>(T value) { return value; }
+        private static T Apply<T>(T value, fn*(T) -> T callback)
+        {
+            return callback(value);
+        }
         public static int Main()
         {
             fn* C(int) -> int raw = Increment;
             fn&(int) -> int reference = Increment;
             fn* C(int) -> int genericRaw = Identity<fn* C(int) -> int>(raw);
+            var direct = (int value) => value + 1;
+            fn*(int) -> int converted = direct;
+            var folded = (int value) => value + #run(2);
+            nuint zeroSize = sizeof(direct);
             return ApplyRaw(genericRaw, 20) + ApplyReference(reference, 20) +
-                Pick(raw) + Pick(reference);
+                Pick(raw) + Pick(reference) + direct(1) + converted(1) +
+                StaticCallback(1) + Select((int value) => value) +
+                Apply(1, (int value) => value + 3) + folded(1) +
+                (zeroSize == 0 ? 0 : 100);
         }
     }
 }
 )NS");
     std::string executionDiagnostic;
-    const bool executionPassed = compileAndRun(executionProject, 45, executionDiagnostic);
+    const bool executionPassed = compileAndRun(executionProject, 64, executionDiagnostic);
     tests.expect(executionPassed,
-        "O0/NSLink executes structural function pointers and references (" +
+        "O0/NSLink executes structural callables, zero-size lambdas, overloads, generic context, "
+        "comptime constants, static storage, and C callbacks (" +
             executionDiagnostic + ")");
+
+    const std::string executionProjectText = executionProject.string();
+    const std::array<std::string_view, 2> mirArguments = {
+        "--dump-project-oop-mir", executionProjectText};
+    std::string mirOutput;
+    std::string mirError;
+    const bool mirWritten = runDriver(mirArguments, mirOutput, mirError) == ExitCode::Success;
+    tests.expect(mirWritten && mirOutput.find("direct-static-call") != std::string::npos &&
+            mirOutput.find("callee=__nsc_lambda_") != std::string::npos,
+        "an anonymous lambda invocation lowers to its generated direct static callable (" +
+            mirError + ")");
+
+    const std::filesystem::path captureProject = writeProject(
+        directedRoot / "capture-invalid", "InvalidAnonymousCapture", R"NS(
+namespace InvalidAnonymousCapture
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            int bias = 1;
+            var callback = (int value) => value + bias;
+            return callback(1);
+        }
+    }
+}
+)NS");
+    nativesharp::frontend::ProjectCompilation captureCompilation;
+    std::string captureError;
+    const bool captureBuilt = captureCompilation.compileProjectOopMir(
+        captureProject, captureError);
+    std::string captureDiagnostics;
+    for (const auto& diagnostic : captureCompilation.diagnostics().diagnostics())
+        captureDiagnostics += diagnostic.message() + " | ";
+    tests.expect(!captureBuilt &&
+            captureDiagnostics.find("zero-size non-capturing value") != std::string::npos,
+        "an unconverted anonymous lambda rejects captured state (" +
+            captureError + captureDiagnostics + ")");
+
+    const std::filesystem::path untypedProject = writeProject(
+        directedRoot / "untyped-invalid", "InvalidAnonymousInference", R"NS(
+namespace InvalidAnonymousInference
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            var callback = value => value + 1;
+            return 0;
+        }
+    }
+}
+)NS");
+    nativesharp::frontend::ProjectCompilation untypedCompilation;
+    std::string untypedError;
+    const bool untypedBuilt = untypedCompilation.compileProjectOopMir(
+        untypedProject, untypedError);
+    std::string untypedDiagnostics;
+    for (const auto& diagnostic : untypedCompilation.diagnostics().diagnostics())
+        untypedDiagnostics += diagnostic.message() + " | ";
+    tests.expect(!untypedBuilt &&
+            untypedDiagnostics.find("explicit type for every parameter") != std::string::npos,
+        "an unconverted lambda does not guess parameter types without context (" +
+            untypedError + untypedDiagnostics + ")");
 
     const std::filesystem::path invalidProject = writeProject(
         directedRoot / "invalid", "InvalidFunctionTypes", R"NS(

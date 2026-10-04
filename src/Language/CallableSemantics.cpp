@@ -179,6 +179,57 @@ bool isFunctionTypeIdentity(std::string_view identity) noexcept
     return identity.starts_with("fn:") && parseFunctionTypeIdentity(identity).has_value();
 }
 
+std::string anonymousLambdaTypeIdentity(const AnonymousLambdaType& type)
+{
+    return "lambda:" + std::to_string(type.ownerOrdinal) + ":" +
+        std::to_string(type.lambdaOrdinal) + ":" + functionTypeIdentity(type.signature);
+}
+
+std::optional<AnonymousLambdaType> parseAnonymousLambdaTypeIdentity(std::string_view identity)
+{
+    if (!identity.starts_with("lambda:")) return std::nullopt;
+    std::size_t cursor = 7U;
+    const auto consumeOrdinal = [&](std::size_t& value) -> bool
+    {
+        const char* first = identity.data() + cursor;
+        const char* last = identity.data() + identity.size();
+        const auto parsed = std::from_chars(first, last, value);
+        if (parsed.ec != std::errc{} || parsed.ptr == first || parsed.ptr == last ||
+            *parsed.ptr != ':')
+            return false;
+        cursor = static_cast<std::size_t>(parsed.ptr - identity.data()) + 1U;
+        return true;
+    };
+
+    AnonymousLambdaType type;
+    if (!consumeOrdinal(type.ownerOrdinal) || !consumeOrdinal(type.lambdaOrdinal))
+        return std::nullopt;
+    const std::optional<FunctionType> signature =
+        parseFunctionTypeIdentity(identity.substr(cursor));
+    if (!signature.has_value()) return std::nullopt;
+    type.signature = *signature;
+    return type;
+}
+
+bool isAnonymousLambdaTypeIdentity(std::string_view identity) noexcept
+{
+    try
+    {
+        return identity.starts_with("lambda:") &&
+            parseAnonymousLambdaTypeIdentity(identity).has_value();
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+
+std::string anonymousLambdaGeneratedName(const AnonymousLambdaType& type)
+{
+    return "__nsc_lambda_" + std::to_string(type.ownerOrdinal) + "_" +
+        std::to_string(type.lambdaOrdinal);
+}
+
 bool functionTypesAssignable(const FunctionType& source, const FunctionType& target) noexcept
 {
     return source.parameters == target.parameters && source.result == target.result &&

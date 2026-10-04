@@ -35,6 +35,19 @@ La identidad canónica incluye carrier, calling convention, variadicidad, efecto
 nullability, lifetime, parámetros, resultado y error. Una prueba única dirigida cubre ejecución
 O0/NSLink, overloads, sustitución genérica, unsafe, DLL callback y round-trip de metadata.
 
+### Lambdas sin captura nominales y zero-cost (F02, 2026-10-04)
+
+Una lambda no convertida con parámetros explícitos y cuerpo de expresión recibe identidad nominal
+anónima distinta por expresión, layout zero-size y nombre estático estable. Su invocación se baja a
+`direct-static-call`, sin crear celda delegate, environment o asignación. Cuando un contexto exige un
+`fn*`, la conversión sólo existe si firma y calling convention son compatibles; el backend materializa
+entonces el thunk protegido ya existente.
+
+La inferencia contextual cubre overloads y métodos genéricos cuyo resto de argumentos ya determina
+el tipo. `#run` dentro del cuerpo, almacenamiento en campo estático y `sizeof == 0` también quedan
+ejercitados. Las lambdas genéricas reales siguen en F04. Los `static local` no se atribuyen a F02:
+siguen diferidos a edición 4 por el contrato aún abierto de inicialización y lifetime.
+
 ### Procedencia estable
 
 `methodLambdaCaptureSourceKindName` asigna nombres estables a las seis procedencias existentes:
@@ -106,6 +119,9 @@ Una herramienta, usuario o futura integración del debugger puede responder sin 
 - si el callable C permanece libre de estado;
 - y si el artefacto cacheado corresponde al mismo contrato de captura.
 
+Además, el compilador conserva una lambda sin captura como valor nominal zero-size hasta que existe
+una conversión real, y sus llamadas locales evitan por completo el camino de delegate administrado.
+
 ## Validación dirigida ejecutada
 
 1. `nsc` Debug/O0 construido en `A:\nsc-devel\build-clang`: correcto.
@@ -116,6 +132,8 @@ Una herramienta, usuario o futura integración del debugger puede responder sin 
 5. Dump method-body: captura local con fuente y storage explícitos.
 6. Negativo dirigido: una lambda `extern C` capturante termina con exit 1 y el diagnóstico causal
    `extern C lambda must not capture state; a C function pointer has no environment channel`.
+7. Prueba T08 exacta: `PASS: 22 checks`; incluye llamada directa, conversión posterior a `fn*`,
+   overload, contexto genérico, `#run`, campo estático, zero-size y negativos de inferencia/captura.
 
 No se ejecutó baseline, CTest general, O1/O2/O3, instalación, deploy ni operación remota. El
 compilador utilizado fue exclusivamente `A:\nsc-devel\build-clang\bin\nsc.exe`.
@@ -125,7 +143,7 @@ compilador utilizado fue exclusivamente `A:\nsc-devel\build-clang\bin\nsc.exe`.
 - sintaxis y lowering real de capturas `copy`, `move` y `ref`;
 - clasificación productiva `Fn`, `FnMut` y `FnOnce`;
 - escape analysis que permita referencias cuando la lifetime lo demuestre;
-- lambdas genéricas y monomorfización;
+- lambdas genéricas y monomorfización (F04; no confundir con contexto genérico de F02);
 - consumo cross-module integral de closures capturantes;
 - `must_tail` con verificación ABI/cleanup;
 - visualización y evaluación de captures en debugger;

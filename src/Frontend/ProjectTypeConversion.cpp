@@ -346,6 +346,19 @@ ProjectImplicitConversion ProjectTypeConversion::classifyImplicit(
         language::parseFunctionTypeIdentity(sourceTypeKey);
     const std::optional<language::FunctionType> targetFunction =
         language::parseFunctionTypeIdentity(targetTypeKey);
+    const std::optional<language::AnonymousLambdaType> sourceLambda =
+        language::parseAnonymousLambdaTypeIdentity(sourceTypeKey);
+    if (sourceLambda.has_value() && targetFunction.has_value())
+    {
+        // A nominal non-capturing lambda has no runtime payload. Its one implicit materialization
+        // is the address of its generated callable, and only an exactly compatible raw function
+        // pointer can receive that address. A managed fn& would require allocating a delegate cell,
+        // which would violate the zero-size/no-hidden-allocation contract of F02.
+        if (targetFunction->carrier != language::FunctionCarrier::Pointer ||
+            !language::functionTypesAssignable(sourceLambda->signature, *targetFunction))
+            return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+        return makeConversion(ProjectConversionKind::Function, 1, sourceTypeKey, targetTypeKey);
+    }
     if (sourceFunction.has_value() || targetFunction.has_value())
     {
         if (!sourceFunction.has_value() || !targetFunction.has_value() ||

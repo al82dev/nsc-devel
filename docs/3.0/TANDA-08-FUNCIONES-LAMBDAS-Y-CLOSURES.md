@@ -9,7 +9,9 @@
 
 ## Resultado / Outcome
 
-ES: Los tipos función son valores estructurales completos; las lambdas sin captura pueden cruzar como punteros C reales, las closures administradas tienen
+ES: Los tipos función son valores estructurales completos; una lambda sin captura no convertida tiene
+tipo nominal anónimo zero-size, invoca directamente su cuerpo estático y sólo materializa un puntero
+cuando el contexto lo exige. También puede cruzar como puntero C real. Las closures administradas tienen
 un environment ejecutable y los métodos ligados conservan su receptor. MIR 1.19 publica el costo y
 procedencia de cada captura. EN: Non-capturing lambdas can cross as real C function pointers,
 function types have complete structural identity, managed closures have an executable environment, and bound methods preserve their receiver. MIR
@@ -24,7 +26,9 @@ function types have complete structural identity, managed closures have an execu
 - `tests/cc1/c66_ns3_callable_values`: callback C, closure capturante y método ligado ejecutables.
 - `CallableSemantics.h/.cpp`, `TypeSyntax`, parser, frontend, NSMETA y LLVM: identidad y ejecución
   productiva de `fn*`/`fn&`.
-- `tests/unit/NativeSharp3T08CallableTests.cpp`: compatibilidad, negativos, O0/NSLink y NSMETA.
+- `tests/unit/NativeSharp3T08CallableTests.cpp`: compatibilidad, identidad nominal, invocación
+  directa, inferencia contextual, negativos, O0/NSLink y NSMETA.
+- `docs/3.0/language/noncapturing-lambdas.md`: contrato bilingüe de F02.
 
 ## Mejora / Improvement
 
@@ -39,12 +43,14 @@ closure ya no coincide.
 Este vertical no implementa sintaxis explícita `copy/move/ref`, `Fn/FnMut/FnOnce`, lambdas genéricas,
 `must_tail` ni soporte de debugger. La
 representación actual es honesta: toda captura productiva es una referencia a celda compartida y el
-environment capturante usa heap administrado.
+environment capturante usa heap administrado. Los `static local` siguen diferidos a edición 4; F02
+ejercita almacenamiento estático mediante un campo `fn*`.
 
 ## Validación / Validation
 
-`nsc` O0; prueba T08 17/17 con NSLink; c66 histórico; dumps MIR/method-body; negativos de callback
-C capturante e invocación `unsafe`. Sin baseline, CTest general, optimizaciones O1+ ni instalación.
+`nsc` O0; prueba T08 22/22 con NSLink; c66 histórico; dumps MIR/method-body; negativos de callback
+C capturante, lambda anónima capturante, parámetro sin tipo e invocación `unsafe`. Sin baseline,
+CTest general, optimizaciones O1+ ni instalación.
 
 El expediente reproducible está en
 [TANDA-OPERATIVA-16-T08-CALLABLE-VALUES.md](TANDA-OPERATIVA-16-T08-CALLABLE-VALUES.md).

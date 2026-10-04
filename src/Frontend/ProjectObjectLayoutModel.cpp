@@ -8,6 +8,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -187,6 +188,7 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
     const ProjectNameLookup& nameLookup,
     std::string_view typeKey) const
 {
+    if (language::isAnonymousLambdaTypeIdentity(typeKey)) return {{0, 1}};
     if (typeKey == "builtin:bool" || typeKey == "builtin:sbyte" || typeKey == "builtin:byte" ||
         typeKey == "builtin:char") return {{1, 1}};
     if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return {{2, 2}};

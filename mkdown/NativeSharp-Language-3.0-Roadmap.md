@@ -791,9 +791,10 @@ T07 pasa 34/34 con ejecución O0/NSLink.
 
 **Commit:** `ns3(t08-f02): noncapturing-lambdas`
 
-- **Implementación:** conversión a function pointer con calling convention conocida; inferencia contextual; cada lambda tiene tipo nominal anónimo zero-size cuando no se convierte.
-- **Pruebas dirigidas:** overloads, generic lambdas, consteval, C callbacks, static locals y codegen directo.
-- **Markdown ES/EN:** conversiones y garantías de tamaño.
+- **Estado:** `TERMINADA` en `development`; validación dirigida O0/NSLink, sin baseline.
+- **Implementación:** conversión a `fn*` con calling convention conocida; inferencia contextual; cada lambda tiene tipo nominal anónimo zero-size cuando no se convierte; invocación directa sin delegate ni heap.
+- **Pruebas dirigidas:** overloads, contexto desde método genérico, `#run`, callbacks C, campo estático, `sizeof == 0`, MIR/codegen directo y negativos de captura/tipo omitido. Los `static local` permanecen diferidos a 4.0 por su contrato de inicialización y lifetime; las lambdas genéricas reales pertenecen a F04.
+- **Markdown ES/EN:** `docs/3.0/language/noncapturing-lambdas.md` y ficha individual F02.
 
 ## NS3-T08-F03 — Closures con captura explícita / Explicit-capture closures
 

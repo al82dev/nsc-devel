@@ -11394,6 +11394,14 @@ private:
         if (found == functions_.end() || found->second.function == nullptr)
             return failValue(error, "Stage 43 lambda generated callable is unavailable: " + node->calleeName);
 
+        if (language::isAnonymousLambdaTypeIdentity(node->typeKey))
+        {
+            if (!node->children.empty())
+                return failValue(error, "T08-F02 anonymous lambda reached LLVM with captured state");
+            LLVMTypeRef zeroSize = llvmType(node->typeKey, error);
+            return zeroSize == nullptr ? nullptr : LLVMConstNull(zeroSize);
+        }
+
         if (isExternCDelegateType(node->typeKey))
         {
             if (!node->children.empty())
@@ -15560,6 +15568,19 @@ private:
         if (source == target || source == "builtin:null") return value;
         LLVMTypeRef destination = llvmType(target, error);
         if (destination == nullptr) return nullptr;
+        if (const std::optional<language::AnonymousLambdaType> lambdaType =
+                language::parseAnonymousLambdaTypeIdentity(source))
+        {
+            const std::optional<language::FunctionType> targetFunction =
+                language::parseFunctionTypeIdentity(target);
+            if (!targetFunction.has_value() ||
+                targetFunction->carrier != language::FunctionCarrier::Pointer ||
+                !language::functionTypesAssignable(lambdaType->signature, *targetFunction))
+                return failValue(error, "invalid T08-F02 anonymous lambda function-pointer conversion");
+            return callbackGuardThunk(
+                language::anonymousLambdaGeneratedName(*lambdaType), error,
+                targetFunction->callingConvention == language::CallingConvention::VectorCall);
+        }
         const std::optional<std::vector<std::string>> sourceTuple =
             frontend::ProjectTypeConversion::tupleElementTypeKeys(source);
         const std::optional<std::vector<std::string>> targetTuple =
@@ -15707,6 +15728,8 @@ private:
         if (typeKey == "builtin:long" || typeKey == "builtin:ulong" || typeKey == "builtin:nint" || typeKey == "builtin:nuint") return LLVMInt64TypeInContext(context_);
         if (typeKey == "builtin:float") return LLVMFloatTypeInContext(context_);
         if (typeKey == "builtin:double") return LLVMDoubleTypeInContext(context_);
+        if (language::isAnonymousLambdaTypeIdentity(typeKey))
+            return LLVMStructTypeInContext(context_, nullptr, 0, 0);
         if (typeKey == "builtin:null" || typeKey == "string-literal" || typeKey == "builtin:string" ||
             frontend::ProjectTypeConversion::isNativeArray(typeKey) || isPointerLike(typeKey) ||
             isClassReference(typeKey) || isDelegateReference(typeKey))

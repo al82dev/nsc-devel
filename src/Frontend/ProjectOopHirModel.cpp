@@ -5870,11 +5870,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     error = "Stage 42 delegate invocation is not addressable";
                     return nullptr;
                 }
-                auto callee = lowerExpression(expression->first(), memberOrdinal, false, error);
-                if (callee == nullptr) return nullptr;
                 auto node = makeNode(ProjectOopHirNodeKind::DelegateInvoke, expression, invoke->resultTypeKey);
                 node->elementTypeKey = invoke->delegateTypeKey;
-                node->children.push_back(std::move(callee));
+                node->stringValue = invoke->directLambdaName;
+                if (invoke->directLambdaName.empty())
+                {
+                    auto callee = lowerExpression(expression->first(), memberOrdinal, false, error);
+                    if (callee == nullptr) return nullptr;
+                    node->children.push_back(std::move(callee));
+                }
                 for (std::size_t index = 0; index < expression->children().size(); ++index)
                 {
                     const ast::AstNode* argumentSyntax = expression->children()[index];

@@ -5552,6 +5552,9 @@ bool ProjectMethodBodyModel::validateErrorPropagation(
 std::string ProjectMethodBodyModel::delegateErrorTypeKey(
     std::string_view delegateTypeKey) const
 {
+    if (const std::optional<language::AnonymousLambdaType> lambdaType =
+            language::parseAnonymousLambdaTypeIdentity(delegateTypeKey))
+        return lambdaType->signature.errorType;
     if (const std::optional<language::FunctionType> functionType =
             language::parseFunctionTypeIdentity(delegateTypeKey))
         return functionType->errorType;
@@ -8956,10 +8959,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.valid = true;
             break;
         case ast::AstNodeKind::LambdaExpression:
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidConversion, diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "Stage 43 lambda expression requires a target delegate type");
+            result = bindLambdaToDelegate(
+                expression, {}, methodMemberOrdinal, scopeOrdinal, diagnostics);
             break;
         case ast::AstNodeKind::MoveExpression:
         {
@@ -14636,6 +14637,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         binding.scopeOrdinal = scopeOrdinal;
         binding.delegateTypeKey = callee.typeKey;
         binding.delegateTypeOrdinal = delegateOrdinal;
+        if (const std::optional<language::AnonymousLambdaType> lambdaType =
+                language::parseAnonymousLambdaTypeIdentity(callee.typeKey))
+            binding.directLambdaName = language::anonymousLambdaGeneratedName(*lambdaType);
         binding.resultTypeKey = returnType;
         for (std::size_t index = 0; index < arguments.size(); ++index)
         {
@@ -20850,6 +20854,7 @@ std::optional<std::size_t> ProjectMethodBodyModel::delegateTypeOrdinalForTypeKey
 bool ProjectMethodBodyModel::isDelegateTypeKey(std::string_view typeKey) const noexcept
 {
     return language::isFunctionTypeIdentity(typeKey) ||
+        language::isAnonymousLambdaTypeIdentity(typeKey) ||
         delegateTypeOrdinalForTypeKey(typeKey).has_value();
 }
 
@@ -20861,6 +20866,14 @@ bool ProjectMethodBodyModel::delegateSignature(
 {
     returnTypeKey.clear();
     parameterTypeKeys.clear();
+    if (const std::optional<language::AnonymousLambdaType> lambdaType =
+            language::parseAnonymousLambdaTypeIdentity(delegateTypeKey))
+    {
+        returnTypeKey = lambdaType->signature.result;
+        parameterTypeKeys = lambdaType->signature.parameters;
+        delegateTypeOrdinal = std::numeric_limits<std::size_t>::max();
+        return true;
+    }
     if (const std::optional<language::FunctionType> functionType =
             language::parseFunctionTypeIdentity(delegateTypeKey))
     {
@@ -21193,10 +21206,46 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     ExpressionResult result;
     if (syntax == nullptr || syntax->kind() != ast::AstNodeKind::LambdaExpression)
         return result;
+    const bool inferAnonymous = delegateTypeKey.empty();
     std::string returnType;
     std::vector<std::string> parameterTypes;
-    std::size_t delegateOrdinal = 0;
-    if (!delegateSignature(delegateTypeKey, returnType, parameterTypes, delegateOrdinal))
+    std::size_t delegateOrdinal = std::numeric_limits<std::size_t>::max();
+    if (inferAnonymous)
+    {
+        if (languageEdition_ != language::LanguageEdition::V3)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                syntax->range(),
+                "an unconverted lambda value requires NativeSharp language edition 3");
+            return result;
+        }
+        for (const ast::AstNode* parameter : syntax->children())
+        {
+            if (parameter == nullptr || parameter->typeSyntax() == nullptr)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    parameter != nullptr ? parameter->range() : syntax->range(),
+                    "an unconverted lambda requires an explicit type for every parameter");
+                return result;
+            }
+            if (!parameter->auxiliaryText().empty())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    parameter->range(),
+                    "an unconverted lambda parameter must be passed by value; ref/out/in require a target function type");
+                return result;
+            }
+            parameterTypes.push_back(
+                memberModel_->canonicalTypeKey(parameter->typeSyntax(), *nameLookup_));
+        }
+    }
+    else if (!delegateSignature(delegateTypeKey, returnType, parameterTypes, delegateOrdinal))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion, diagnostics::DiagnosticSeverity::Error,
@@ -21223,8 +21272,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     binding.errorTypeKey = delegateErrorTypeKey(delegateTypeKey);
     binding.parameterTypeKeys = parameterTypes;
     binding.blockBody = syntax->flag();
-    binding.generatedName = "__nsc_lambda_" + std::to_string(methodMemberOrdinal) + "_" +
-        std::to_string(binding.lambdaOrdinal);
+    binding.anonymousNominal = inferAnonymous;
+    language::AnonymousLambdaType anonymousIdentity;
+    anonymousIdentity.ownerOrdinal = methodMemberOrdinal;
+    anonymousIdentity.lambdaOrdinal = binding.lambdaOrdinal;
+    binding.generatedName = language::anonymousLambdaGeneratedName(anonymousIdentity);
 
     std::vector<const ast::AstNode*> delegateParameters;
     if (nameLookup_ != nullptr && delegateOrdinal < nameLookup_->namedTypes().size())
@@ -21273,7 +21325,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
                     diagnostics::DiagnosticId::InvalidConversion,
                     diagnostics::DiagnosticSeverity::Error,
                     parameterSyntax != nullptr ? parameterSyntax->range() : syntax->range(),
-                    "lambda parameter '" + name + "' pass mode does not match target delegate");
+                    inferAnonymous
+                        ? "an unconverted lambda parameter must be passed by value"
+                        : "lambda parameter '" + name + "' pass mode does not match target delegate");
                 return result;
             }
         }
@@ -21343,6 +21397,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
             diagnostics::DiagnosticId::ExpectedExpression, diagnostics::DiagnosticSeverity::Error,
             syntax->range(), "lambda requires a body");
     }
+    else if (binding.blockBody && inferAnonymous)
+    {
+        bodyValid = false;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "an unconverted lambda with an inferred return type requires an expression body; "
+            "convert a block-bodied lambda to an explicit fn* target");
+    }
     else if (binding.blockBody)
     {
         analyzeBlock(syntax->first(), methodMemberOrdinal, lambdaScope, false, diagnostics);
@@ -21356,14 +21420,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
             body = bindMethodGroupToDelegate(
                 syntax->first(), body, returnType, methodMemberOrdinal, lambdaScope, diagnostics);
         bodyValid = body.valid;
-        if (body.valid && returnType == "builtin:void" && body.typeKey != "builtin:void")
+        if (body.valid && inferAnonymous)
+        {
+            returnType = body.typeKey;
+            binding.returnTypeKey = returnType;
+        }
+        else if (body.valid && returnType == "builtin:void" && body.typeKey != "builtin:void")
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidConversion, diagnostics::DiagnosticSeverity::Error,
                 syntax->first()->range(), "void delegate lambda expression body must have type void");
             bodyValid = false;
         }
-        if (body.valid && returnType != "builtin:void" &&
+        if (body.valid && !inferAnonymous && returnType != "builtin:void" &&
             !classifyImplicit(body.typeKey, returnType, body.integerConstant).exists())
         {
             diagnostics.report(
@@ -21401,13 +21470,33 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
             "extern C lambda must not capture state; a C function pointer has no environment channel");
         bodyValid = false;
     }
+    if (inferAnonymous && !binding.captures.empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "an unconverted lambda is a zero-size non-capturing value and cannot capture state; "
+            "use an explicit closure target");
+        bodyValid = false;
+    }
+    std::string resultTypeKey(delegateTypeKey);
+    if (inferAnonymous && bodyValid)
+    {
+        anonymousIdentity.signature.parameters = parameterTypes;
+        anonymousIdentity.signature.result = returnType;
+        anonymousIdentity.signature.carrier = language::FunctionCarrier::Pointer;
+        anonymousIdentity.signature.callingConvention = language::CallingConvention::NativeSharp;
+        resultTypeKey = language::anonymousLambdaTypeIdentity(anonymousIdentity);
+        binding.delegateTypeKey = resultTypeKey;
+    }
     lambdaBindings_.push_back(std::move(binding));
 
     if (!bodyValid) return result;
-    result.typeKey = std::string(delegateTypeKey);
+    result.typeKey = std::move(resultTypeKey);
     result.valid = true;
     result.assignable = false;
-    result.ownershipFreshOwner = !isExternCDelegateTypeKey(delegateTypeKey);
+    result.ownershipFreshOwner = !inferAnonymous && !isExternCDelegateTypeKey(delegateTypeKey);
     recordExpressionType(syntax, methodMemberOrdinal, scopeOrdinal, result);
     return result;
 }

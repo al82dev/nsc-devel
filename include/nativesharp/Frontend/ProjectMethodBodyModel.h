@@ -1279,6 +1279,7 @@ struct MethodLambdaBinding final
     std::vector<bool> parameterByReference;
     std::vector<MethodLambdaCapture> captures;
     bool blockBody = false;
+    bool anonymousNominal = false;
     std::string generatedName;
 };
 
@@ -1301,6 +1302,10 @@ struct MethodDelegateBinding final
     std::string receiverTypeKey;
     std::optional<std::size_t> receiverTypeOrdinal;
     bool staticTarget = false;
+    // T08-F02. Non-empty only when invoking a zero-size anonymous non-capturing lambda. In that
+    // case there is no delegate cell/function-pointer child to evaluate: HIR/MIR call this
+    // generated static callable directly.
+    std::string directLambdaName;
     std::string resultTypeKey;
     std::vector<ProjectImplicitConversion> argumentConversions;
 };

@@ -2705,7 +2705,17 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         }
         case ProjectOopHirNodeKind::DelegateInvoke:
-            result->kind = ProjectOopMirNodeKind::DelegateInvoke;
+            if (!node->stringValue.empty())
+            {
+                // T08-F02: the nominal lambda value has no payload. Its generated function is the
+                // callee, so this becomes the same direct static call used by an ordinary method.
+                result->kind = ProjectOopMirNodeKind::DirectStaticCall;
+                result->calleeName = node->stringValue;
+            }
+            else
+            {
+                result->kind = ProjectOopMirNodeKind::DelegateInvoke;
+            }
             break;
         case ProjectOopHirNodeKind::EventAdd:
             result->kind = ProjectOopMirNodeKind::EventAdd;

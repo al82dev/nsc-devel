@@ -34,6 +34,23 @@ bool functionTypesAssignable(const FunctionType& source, const FunctionType& tar
 std::string_view functionCarrierName(FunctionCarrier carrier) noexcept;
 std::string_view callingConventionName(CallingConvention convention) noexcept;
 
+// T08-F02. A non-capturing lambda which is not immediately target-converted is a nominal,
+// zero-size value. Its identity keeps the source-order owner/lambda ordinals separate from the
+// structural call signature: two textually distinct lambdas never become the same type even when
+// their parameter and result types are identical. The structural signature is embedded so later
+// semantic and backend stages can invoke or convert the value without consulting source syntax.
+struct AnonymousLambdaType final
+{
+    std::size_t ownerOrdinal = 0;
+    std::size_t lambdaOrdinal = 0;
+    FunctionType signature;
+};
+
+std::string anonymousLambdaTypeIdentity(const AnonymousLambdaType& type);
+std::optional<AnonymousLambdaType> parseAnonymousLambdaTypeIdentity(std::string_view identity);
+bool isAnonymousLambdaTypeIdentity(std::string_view identity) noexcept;
+std::string anonymousLambdaGeneratedName(const AnonymousLambdaType& type);
+
 enum class CaptureMode { Copy, Move, Reference, MutableReference };
 struct Capture final
 {
