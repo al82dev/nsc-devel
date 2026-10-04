@@ -5880,7 +5880,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 auto node = makeNode(ProjectOopHirNodeKind::DelegateInvoke, expression, invoke->resultTypeKey);
                 node->elementTypeKey = invoke->delegateTypeKey;
                 node->stringValue = invoke->directLambdaName;
-                if (invoke->directLambdaName.empty())
+                node->booleanValue = invoke->directLambdaUsesEnvironment;
+                if (invoke->directLambdaName.empty() || invoke->directLambdaUsesEnvironment)
                 {
                     auto callee = lowerExpression(expression->first(), memberOrdinal, false, error);
                     if (callee == nullptr) return nullptr;

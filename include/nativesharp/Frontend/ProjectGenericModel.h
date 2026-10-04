@@ -280,6 +280,7 @@ private:
         {
             const ast::AstNode* templateSyntax = nullptr;
             ast::AstNode* declaration = nullptr;
+            ast::AstNode* declarationContainer = nullptr;
         };
         std::vector<std::string> importedNamespaces;
         std::unordered_map<std::string, std::string> aliases;
@@ -295,6 +296,7 @@ private:
         // in the project-wide template catalogue. The generic pass closes each invocation in
         // the lexical scope where the `var` binding was introduced.
         std::unordered_map<std::string, GenericLambda> genericLambdas;
+        ast::AstNode* declarationContainer = nullptr;
         // Return type before closed generic spellings are rewritten. It provides expected-type
         // evidence to a direct generic call in a return statement.
         const ast::TypeSyntax* expectedReturnType = nullptr;
@@ -505,6 +507,7 @@ private:
     std::vector<TemplateState> templateStates_;
     std::unordered_set<const ast::AstNode*> materializedGenericLambdas_;
     std::unordered_map<const ast::AstNode*, std::size_t> genericLambdaTemplateOrdinals_;
+    std::unordered_map<const ast::AstNode*, std::string> genericLambdaCarrierKeys_;
     std::vector<DeclaredTypeIdentity> declaredTypeIdentities_;
     std::vector<GenericTemplateRecord> templateRecords_;
     std::vector<GenericSpecializationRecord> specializations_;

@@ -14562,6 +14562,81 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         analyzeArguments();
     }
 
+    if (expression->auxiliaryText() == "generic-lambda-specialized-call")
+    {
+        if (!allArgumentsValid || expression->second() == nullptr ||
+            expression->typeSyntax() == nullptr || memberModel_ == nullptr || nameLookup_ == nullptr)
+            return result;
+        const std::string targetType =
+            memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_);
+        const ExpressionResult specialized = bindLambdaToDelegate(
+            expression->second(), targetType, methodMemberOrdinal, scopeOrdinal, diagnostics);
+        if (!specialized.valid) return result;
+        const auto lambda = std::ranges::find_if(
+            lambdaBindings_.rbegin(), lambdaBindings_.rend(), [&](const MethodLambdaBinding& item)
+            {
+                return item.syntax == expression->second();
+            });
+        if (lambda == lambdaBindings_.rend()) return result;
+
+        std::string returnType;
+        std::vector<std::string> parameterTypes;
+        std::size_t delegateOrdinal = 0;
+        if (!delegateSignature(targetType, returnType, parameterTypes, delegateOrdinal)) return result;
+        if (parameterTypes.size() != arguments.size())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidArgumentCount,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "generic lambda invocation argument count does not match its specialized signature");
+            return result;
+        }
+
+        MethodDelegateBinding binding;
+        binding.kind = MethodDelegateOperationKind::Invoke;
+        binding.syntax = expression;
+        binding.methodMemberOrdinal = methodMemberOrdinal;
+        binding.scopeOrdinal = scopeOrdinal;
+        binding.delegateTypeKey = targetType;
+        binding.delegateTypeOrdinal = delegateOrdinal;
+        binding.directLambdaName = lambda->generatedName;
+        binding.directLambdaUsesEnvironment = true;
+        binding.resultTypeKey = returnType;
+        for (std::size_t index = 0; index < arguments.size(); ++index)
+        {
+            if (memberModel_->typeIsMoveOnly(parameterTypes[index]) &&
+                arguments[index].addressable && !arguments[index].ownershipTransfer)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->children()[index]->range(),
+                    "move-only argument cannot be copied into a by-value generic-lambda parameter; use move(argument)");
+                return result;
+            }
+            ProjectImplicitConversion conversion = classifyImplicit(
+                arguments[index].typeKey, parameterTypes[index], arguments[index].integerConstant);
+            if (!conversion.exists())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->children()[index]->range(),
+                    "generic lambda argument is not implicitly convertible to its specialized parameter type");
+                return result;
+            }
+            binding.argumentConversions.push_back(std::move(conversion));
+        }
+        validateErrorPropagation(
+            delegateErrorTypeKey(targetType), expression, methodMemberOrdinal,
+            diagnostics, "generic lambda invocation");
+        delegateBindings_.push_back(std::move(binding));
+        result.typeKey = returnType;
+        result.valid = true;
+        return result;
+    }
+
     if (callee.eventMemberOrdinal.has_value())
     {
         if (!allArgumentsValid || memberModel_ == nullptr ||

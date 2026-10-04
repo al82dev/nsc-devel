@@ -1320,6 +1320,10 @@ struct MethodDelegateBinding final
     // case there is no delegate cell/function-pointer child to evaluate: HIR/MIR call this
     // generated static callable directly.
     std::string directLambdaName;
+    // T08-F04. A capturing generic lambda can have several monomorphized entry points while
+    // retaining one lexical environment. The callee expression supplies the delegate cell whose
+    // receiver is passed to directLambdaName; its stored code pointer is intentionally ignored.
+    bool directLambdaUsesEnvironment = false;
     std::string resultTypeKey;
     std::vector<ProjectImplicitConversion> argumentConversions;
 };

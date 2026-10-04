@@ -10685,7 +10685,8 @@ private:
                     ? lowerNullConditionalCall(node, error)
                     : lowerCall(node, error);
             case frontend::ProjectOopMirNodeKind::DirectStaticCall:
-                return lowerStaticCall(node, error);
+                return node->booleanValue ? lowerDirectClosureCall(node, error)
+                                          : lowerStaticCall(node, error);
             case frontend::ProjectOopMirNodeKind::VirtualInstanceCall:
                 return node->nullConditionalCall
                     ? lowerNullConditionalCall(node, error)
@@ -14413,6 +14414,68 @@ private:
             return nullptr;
         }
         return globalFound->second;
+    }
+
+    LLVMValueRef lowerDirectClosureCall(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error)
+    {
+        if (node->children.empty() || node->children.size() != node->argumentCount + 1)
+            return failValue(error, "generic closure call has invalid MIR children");
+        const auto found = functions_.find(node->calleeName);
+        if (found == functions_.end())
+            return failValue(error, "generic closure target was not declared: " + node->calleeName);
+
+        LLVMValueRef delegateCell = lowerExpression(node->children.front().get(), error);
+        if (delegateCell == nullptr) return nullptr;
+        delegateCell = checkedReceiver(delegateCell, error);
+        if (delegateCell == nullptr) return nullptr;
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef receiver = LLVMBuildLoad2(
+            builder_, ptr, byteOffset(delegateCell, 8, "generic.closure.receiver.addr"),
+            "generic.closure.receiver");
+        receiver = checkedReceiver(receiver, error);
+        if (receiver == nullptr) return nullptr;
+
+        std::vector<LLVMValueRef> arguments;
+        arguments.reserve(node->argumentCount + 2);
+        arguments.push_back(receiver);
+        LLVMValueRef sretSlot = nullptr;
+        if (!node->referenceResult && isIndirectStructTypeKey(node->typeKey))
+        {
+            LLVMTypeRef carrier = llvmType(node->typeKey, error);
+            if (carrier == nullptr) return nullptr;
+            sretSlot = entryBlockAlloca(
+                carrier, structAlignmentFor(node->typeKey), "abi.sret.slot");
+            arguments.push_back(sretSlot);
+        }
+        for (std::size_t index = 1; index < node->children.size(); ++index)
+        {
+            LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+            if (value == nullptr) return nullptr;
+            if (terminated()) return value;
+            value = wrapIndirectArgument(value, node->children[index]->typeKey, error);
+            if (value == nullptr) return nullptr;
+            arguments.push_back(value);
+        }
+        LLVMValueRef call = buildPotentiallyThrowingCall(
+            found->second.functionType, found->second.function,
+            arguments.data(), static_cast<unsigned>(arguments.size()),
+            node->typeKey == "builtin:void" || sretSlot != nullptr
+                ? "" : "generic.closure.call",
+            error);
+        if (call == nullptr) return nullptr;
+        if (sretSlot != nullptr)
+        {
+            applySretAttributes(
+                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddCallSiteAttribute(call, index, attribute); },
+                1U, node->typeKey);
+            LLVMTypeRef carrier = llvmType(node->typeKey, error);
+            if (carrier == nullptr) return nullptr;
+            return LLVMBuildLoad2(builder_, carrier, sretSlot, "abi.sret.load");
+        }
+        return call;
     }
 
     LLVMValueRef lowerStaticCall(

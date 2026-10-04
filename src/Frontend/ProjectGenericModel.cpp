@@ -1514,6 +1514,9 @@ bool ProjectGenericModel::expandAliasesInNode(
         currentNamespace = namespaceAppend(namespaceName, node->text());
 
     GenericLookupScope currentScope = scope;
+    if (node->kind() == ast::AstNodeKind::CompilationUnit ||
+        node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+        currentScope.declarationContainer = node;
     for (const ast::GenericParameterSyntax& parameter : node->genericParameterSyntaxes())
         if (parameter.kind == ast::GenericParameterSyntaxKind::Type ||
             parameter.kind == ast::GenericParameterSyntaxKind::TypePack)
@@ -1954,6 +1957,26 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
         if (ast::TypeSyntax* inferredReturn =
                 inferExpressionType(unit, specialized->first(), bodyScope))
             specialized->setTypeSyntax(inferredReturn);
+        else
+        {
+            // A captured name can be intentionally absent from the early generic value-type
+            // table (the definitive body model owns capture lookup). Use the first concrete
+            // value parameter as a bounded return candidate; semantic analysis still verifies
+            // the complete body conversion against it before HIR is built.
+            const auto firstParameter = std::ranges::find_if(
+                specialized->children(), [](const ast::AstNode* item)
+                {
+                    return item != nullptr &&
+                        item->kind() == ast::AstNodeKind::ParameterDeclaration &&
+                        item->typeSyntax() != nullptr;
+                });
+            if (firstParameter != specialized->children().end())
+            {
+                bool conflict = false;
+                specialized->setTypeSyntax(cloneAliasType(
+                    unit.arena(), (*firstParameter)->typeSyntax(), {}, conflict));
+            }
+        }
     }
 
     std::size_t templateOrdinal = 0;
@@ -2010,8 +2033,59 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
             specialization.specializationKey += "|" + identity;
         }
     }
+    const std::string instanceKey = specialization.specializationKey;
+    const std::size_t instanceOrdinal = specialization.cacheOrdinal;
     specializations_.push_back(std::move(specialization));
-    call->setFirst(specialized);
+    const bool captures = source->auxiliaryText().starts_with("captures:") &&
+        source->auxiliaryText().size() > std::string_view("captures:").size();
+    const auto synthesizeDelegate = [&](ast::AstNode* lambda, std::string_view suffix)
+        -> std::optional<std::string>
+    {
+        ast::AstNode* declarationContainer = local.declarationContainer != nullptr
+            ? local.declarationContainer : unit.syntaxTree();
+        if (declarationContainer == nullptr || lambda == nullptr || lambda->typeSyntax() == nullptr)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                call->range(),
+                "capturing generic lambda cannot synthesize its concrete delegate carrier (" +
+                    std::string(declarationContainer == nullptr ? "missing container" : "missing return type") + ")");
+            return std::nullopt;
+        }
+        const std::string delegateName = "__nsc_generic_closure_" +
+            std::to_string(unit.sourceOrdinal()) + "_" +
+            std::to_string(source->range().begin().offset()) + std::string(suffix);
+        ast::AstNode* delegate = unit.arena().make<ast::AstNode>(
+            ast::AstNodeKind::DelegateDeclaration, source->range());
+        delegate->setText(delegateName);
+        bool ownershipConflict = false;
+        delegate->setTypeSyntax(cloneAliasType(
+            unit.arena(), lambda->typeSyntax(), {}, ownershipConflict));
+        for (const ast::AstNode* parameter : lambda->children())
+        {
+            if (parameter != nullptr &&
+                parameter->kind() == ast::AstNodeKind::ParameterDeclaration)
+                delegate->addChild(cloneNode(unit.arena(), parameter, {}, {}, {}));
+        }
+        declarationContainer->addChild(delegate);
+        return delegateName;
+    };
+    if (!captures)
+    {
+        call->setFirst(specialized);
+    }
+    else if (const auto carrier = genericLambdaCarrierKeys_.find(source);
+             carrier != genericLambdaCarrierKeys_.end() && carrier->second != instanceKey)
+    {
+        const std::optional<std::string> delegateName = synthesizeDelegate(
+            specialized, "_" + std::to_string(instanceOrdinal));
+        if (!delegateName.has_value()) return false;
+        call->setTypeSyntax(unit.arena().make<ast::TypeSyntax>(
+            source->range(), lexer::TokenKind::Identifier, *delegateName));
+        call->setSecond(specialized);
+        call->setAuxiliaryText("generic-lambda-specialized-call");
+    }
     call->clearTypeSyntaxes();
     call->setFlag(false);
 
@@ -2023,6 +2097,14 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
         ast::AstNode* carrier = cloneNode(unit.arena(), specialized, {}, {}, {});
         carrier->setText("generic-lambda-carrier");
         local.declaration->setFirst(carrier);
+        genericLambdaCarrierKeys_[source] = instanceKey;
+        if (captures)
+        {
+            const std::optional<std::string> delegateName = synthesizeDelegate(carrier, "");
+            if (!delegateName.has_value()) return false;
+            local.declaration->setTypeSyntax(unit.arena().make<ast::TypeSyntax>(
+                source->range(), lexer::TokenKind::Identifier, *delegateName));
+        }
     }
     return true;
 }
@@ -2269,7 +2351,8 @@ void ProjectGenericModel::processNode(
             !initializer->genericParameters().empty())
         {
             sequentialScope.genericLambdas[child->text()] =
-                GenericLookupScope::GenericLambda{initializer, child};
+                GenericLookupScope::GenericLambda{
+                    initializer, child, sequentialScope.declarationContainer};
             continue;
         }
         if (declaredLocalType == nullptr && child->first() != nullptr)

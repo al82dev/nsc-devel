@@ -194,6 +194,30 @@ namespace GenericLambdaRecursion
         "a closed generic-lambda instance recurses through its direct self binding (" +
             recursiveDiagnostic + ")");
 
+    const std::filesystem::path captured = writeProject(
+        root / "captured", "GenericLambdaCapture", R"NS(
+namespace GenericLambdaCapture
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            int bias = 2;
+            var add = [copy bias] <T>(T value) => value + bias;
+            bias = 20;
+            int first = add(40);
+            long second = add<long>(40);
+            return first + (int)second - 42;
+        }
+    }
+}
+)NS");
+    std::string capturedDiagnostic;
+    const bool capturedPassed = compileAndRun(captured, 42, capturedDiagnostic);
+    tests.expect(capturedPassed,
+        "capturing generic-lambda instances with different signatures share one lexical copy environment (" +
+            capturedDiagnostic + ")");
+
     tests.expect(!nativesharp::language::genericLambdaUsesErasedDispatch(),
         "generic lambda instances remain monomorphized native callables");
 
