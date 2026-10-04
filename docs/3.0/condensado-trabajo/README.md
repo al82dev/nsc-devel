@@ -4,6 +4,13 @@ Este directorio es una copia de consulta de los documentos técnicos producidos 
 `NS3-*` terminados o trabajados en el compilador. Los documentos originales y autoritativos
 permanecen en `docs/3.0/items`; esta carpeta no sustituye el tracking maestro.
 
+## Punto de entrada para agentes
+
+Antes de conservar un workaround de NativeSharp 2.0, consultar
+[`limitaciones-resueltas.md`](../limitaciones-resueltas.md). Ese documento indica qué limitación
+ya está cerrada, desde qué commit, qué forma 3.0 debe usarse y cuáles dos limitaciones importadas
+siguen sin cierre.
+
 ## Organización
 
 - `NS3-T00-*` a `NS3-T08-*`: contratos base, lenguaje, ownership, errores y callables.
