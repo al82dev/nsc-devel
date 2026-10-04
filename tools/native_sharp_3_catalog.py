@@ -34,6 +34,8 @@ ALLOWED_STATES = {
     "REFERENCIA",
 }
 
+TERMINAL_STATES = {"TERMINADA", "CERTIFICADA", "DIFERIDA", "NO APLICA"}
+
 COMPONENT_ORDER = {
     name: index
     for index, name in enumerate(
@@ -554,7 +556,7 @@ def update_item(master: Path, item_id: str, state: str, evidence: str | None) ->
             continue
         found = True
         replacement_evidence = item.evidence if evidence is None else evidence
-        if state in {"TERMINADA", "CERTIFICADA", "DIFERIDA", "NO APLICA"} and not replacement_evidence:
+        if state in TERMINAL_STATES and not replacement_evidence:
             raise RuntimeError(f"{state} requires evidence or a recorded decision")
         updated.append(item._replace(state=state, evidence=replacement_evidence))
     if not found:

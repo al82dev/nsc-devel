@@ -11,6 +11,7 @@ from collections import Counter
 from pathlib import Path
 
 import native_sharp_3_catalog as catalog
+import generate_native_sharp_3_status_views as status_views
 import native_sharp_3_source_inventory as source_inventory
 
 
@@ -53,8 +54,6 @@ COMPONENT_TOTALS = {
     "Limitaciones importadas": 26,
     "Gobernanza documental": 4,
 }
-
-TERMINAL_STATES = {"TERMINADA", "CERTIFICADA", "DIFERIDA", "NO APLICA"}
 
 LIMITATION_RESOLVED_IDS = {
     *(f"NS3-LIM-CV-{item:03d}" for item in range(1, 14)),
@@ -277,7 +276,7 @@ def verify_catalogue(master: Path, repo_root: Path) -> list[catalog.CatalogItem]
             errors.append(f"{item.item_id}: invalid state {item.state!r}")
         if not item.title or not item.contract or not item.evidence:
             errors.append(f"{item.item_id}: empty title, closure contract or evidence/source")
-        if item.state in TERMINAL_STATES and not item.evidence:
+        if item.state in catalog.TERMINAL_STATES and not item.evidence:
             errors.append(f"{item.item_id}: terminal state without evidence/decision")
         if item.component == "NSC" and item.state in {"TERMINADA", "CERTIFICADA"}:
             docs = list((repo_root / "docs" / "3.0" / "items").glob(item.item_id + "-*.md"))
@@ -307,7 +306,7 @@ def verify_catalogue(master: Path, repo_root: Path) -> list[catalog.CatalogItem]
         if by_id[item_id].state not in {"TERMINADA", "CERTIFICADA"}:
             errors.append(f"{item_id}: ledger records a directed closure but catalogue is {by_id[item_id].state}")
     for item_id in LIMITATION_OPEN_IDS:
-        if by_id[item_id].state in TERMINAL_STATES:
+        if by_id[item_id].state in catalog.TERMINAL_STATES:
             errors.append(f"{item_id}: ledger still leaves this route open but catalogue is terminal")
     if errors:
         raise VerificationError("; ".join(errors))
@@ -324,6 +323,23 @@ def verify_tracking(tracking: Path, items: list[catalog.CatalogItem]) -> None:
             "tracking differs from the canonical master; regenerate with "
             "tools/native_sharp_3_catalog.py"
         )
+
+
+def verify_status_views(
+    finished_path: Path,
+    pending_path: Path,
+    items: list[catalog.CatalogItem],
+) -> None:
+    finished, pending = status_views.partition_items(items)
+    expected = {
+        finished_path: status_views.render_finished(finished, len(items)),
+        pending_path: status_views.render_pending(pending, len(items)),
+    }
+    for path, content in expected.items():
+        if not path.is_file() or path.read_text(encoding="utf-8-sig") != content:
+            raise VerificationError(
+                f"status view differs from canonical tracking; regenerate: {path}"
+            )
 
 
 def verify_component_summary(master: Path, items: list[catalog.CatalogItem]) -> None:
@@ -364,6 +380,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--master", type=Path, default=Path("A:/DOCUMENTO-MAESTRO-NATIVESHARP-3.0.md"))
     parser.add_argument("--tracking", type=Path, default=Path("A:/NATIVESHARP-3.0-TRACKING.md"))
+    parser.add_argument("--finished", type=Path, default=status_views.DEFAULT_FINISHED)
+    parser.add_argument("--pending", type=Path, default=status_views.DEFAULT_PENDING)
     parser.add_argument(
         "--roadmap",
         type=Path,
@@ -399,6 +417,7 @@ def main(argv: list[str] | None = None) -> int:
         items = verify_catalogue(args.master, repo_root)
         verify_component_summary(args.master, items)
         verify_tracking(args.tracking, items)
+        verify_status_views(args.finished, args.pending, items)
         verify_secondary_authority_notice(args.secondary)
         verify_source_inventory(args.source_registry, args.source_inventory)
     except (OSError, VerificationError, RuntimeError) as error:
