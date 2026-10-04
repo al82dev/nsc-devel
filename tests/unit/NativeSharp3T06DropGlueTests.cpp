@@ -123,6 +123,11 @@ namespace DropApi
         public owned Resource Value;
         public Box(owned Resource value) { Value = move(value); }
     }
+    public class ResourceOwner
+    {
+        public owned Resource Value;
+        public ResourceOwner(owned Resource value) { Value = move(value); }
+    }
     public class Factory
     {
         public static Box Make() { return new Box(new Resource(42)); }
@@ -147,11 +152,21 @@ namespace DropApi
     {
         return type.fullyQualifiedName == "DropApi.Box";
     });
+    const auto resourceOwner = std::ranges::find_if(metadata.types, [](const auto& type)
+    {
+        return type.fullyQualifiedName == "DropApi.ResourceOwner";
+    });
     tests.expect(
         metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
             box != metadata.types.end() &&
             !box->dropGlueEntryName.empty(),
         "NSMETA 1.36 publishes the producer-owned value drop-glue identity (" +
+            metadataError + error + output + ")");
+    tests.expect(
+        metadataRead && resourceOwner != metadata.types.end() &&
+            resourceOwner->kind == nativesharp::interop::LibraryMetadataTypeKind::Class &&
+            resourceOwner->dropGlueEntryName.empty(),
+        "NSMETA 1.36 keeps class destruction separate from value drop glue (" +
             metadataError + error + output + ")");
     if (metadataRead && box != metadata.types.end())
     {

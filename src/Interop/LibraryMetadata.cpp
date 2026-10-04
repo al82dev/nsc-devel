@@ -4007,7 +4007,8 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             {
                 return field.ownership == LibraryMetadataOwnershipKind::Owned;
             });
-        if (metadata.formatMinor >= 36 && directlyOwnsStorage &&
+        if (metadata.formatMinor >= 36 &&
+            type.kind == LibraryMetadataTypeKind::Struct && directlyOwnsStorage &&
             type.dropGlueEntryName.empty())
         {
             error = "metadata owning value type '" + type.fullyQualifiedName +
