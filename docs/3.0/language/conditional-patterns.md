@@ -21,9 +21,9 @@ Use(required);
 ```
 
 Las tres formas aceptan wildcard, literales, rangos enteros, tuples, structs, variants y OR
-patterns sin bindings. Los modos `var`, `ref` y `move` conservan las mismas reglas que en
-`match`: un `ref` no puede atravesar una copia de tuple o payload, y un OR pattern todavía no
-puede fusionar bindings entre alternativas.
+patterns. Un OR puede publicar bindings cuando cada alternativa usa los mismos nombres y modos.
+Los modos `var`, `ref` y `move` conservan las mismas reglas que en `match`: un `ref` no puede
+atravesar una proyección por valor de tuple o payload.
 
 ### Evaluación y alcance
 
@@ -73,5 +73,5 @@ Conditional patterns are frontend sugar with no runtime object, allocation, boxi
 protocol. They share the actual pattern parser and decision-tree lowerer with statement `match`.
 O0 MIR therefore uses the same case-test and payload-extraction primitives for both spellings.
 
-OR-pattern binding joins and `never`-typed expression divergence remain owned by their dedicated
-T03-F05 and T07 work; the currently accepted forms do not claim those later contracts.
+OR-pattern bindings are merged only when every alternative publishes identical names and modes.
+`never`-typed expression divergence remains owned by T07.

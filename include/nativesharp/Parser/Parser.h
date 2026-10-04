@@ -268,6 +268,8 @@ private:
     using PatternExpressionFactory = std::function<ast::AstNode*()>;
     Pattern parsePattern(bool implicitBinding);
     Pattern parsePatternPrimary(bool implicitBinding);
+    bool patternHasBindings(const Pattern& pattern) const;
+    std::vector<Pattern> expandPatternAlternatives(const Pattern& pattern) const;
     ast::AstNode* makeBooleanLiteral(const SourceRange& range, bool value);
     bool patternIsConditionOnly(const Pattern& pattern) const;
     ast::AstNode* makePatternCondition(

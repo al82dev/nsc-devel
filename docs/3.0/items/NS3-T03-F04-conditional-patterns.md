@@ -17,7 +17,8 @@
 - La divergencia estructural cubre `return`, `throw`, `break`, `continue` y `if` total divergente.
 - Las sentencias embebidas sin llaves funcionan para `if let` y `while let` bajo las reglas ya
   existentes del lenguaje.
-- Se preservaron las restricciones causales de `ref`/`move` y OR patterns del matcher común.
+- Se preservaron las restricciones causales de `ref`/`move`; F02 completa la fusión de bindings
+  compatibles en OR patterns para las tres formas condicionales.
 
 ## Archivos modificados
 

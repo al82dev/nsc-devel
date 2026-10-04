@@ -90,6 +90,7 @@ namespace FundamentalPatterns
         Number(int),
         Empty
     }
+    public copy variant Choice { Left(int), Right(int), None }
 
     public class Program
     {
@@ -123,12 +124,49 @@ namespace FundamentalPatterns
                 _ => { return 5; }
             }
 
+            Choice right = Choice.Right(21);
+            match (right)
+            {
+                Left(var merged) | Right(var merged) =>
+                    { if (merged != 21) { return 7; } },
+                _ => { return 8; }
+            }
+            Choice expressionChoice = Choice.Right(22);
+            int expressionSingle = match (expressionChoice)
+            {
+                Right(var selected) => selected,
+                _ => 0
+            };
+            if (expressionSingle != 22) { return 16; }
+            int expressionMerged = match (expressionChoice)
+            {
+                Left(var merged) | Right(var merged) => merged,
+                _ => 0
+            };
+            if (expressionMerged != 22) { return 9; }
+            if (let Left(var merged) | Right(var merged) = Choice.Right(23))
+            {
+                if (merged != 23) { return 10; }
+            }
+            else { return 11; }
+            let Left(var merged) | Right(var merged) = Choice.Left(24)
+                else { return 12; };
+            if (merged != 24) { return 13; }
+
             int aliased = 40;
             match (aliased)
             {
                 ref value => { value = value + 2; }
             }
             if (aliased != 42) { return 6; }
+
+            Point aliasPoint = { 20, 22 };
+            match (aliasPoint)
+            {
+                { X: ref x, Y: _ } => { x = x + 1; },
+                _ => { return 14; }
+            }
+            if (aliasPoint.X != 21) { return 15; }
 
             match (2)
             {
@@ -152,9 +190,11 @@ namespace FundamentalPatterns
             error + output + ")");
     if (emitResult == ExitCode::Success)
     {
+        const int executionResult = std::system(("\"" + executable + "\"").c_str());
         tests.expect(
-            std::system(("\"" + executable + "\"").c_str()) == 42,
-            "fundamental patterns preserve decision order, bindings and ref aliasing");
+            executionResult == 42,
+            "fundamental patterns preserve decision order, bindings and ref aliasing (exit " +
+                std::to_string(executionResult) + ")");
     }
 
     std::string diagnostic;
