@@ -5,6 +5,7 @@ import json
 import os
 import runpy
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -511,6 +512,50 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(by_id["llvm-c-library"]["sha256"], original_llvm_hash)
         self.assertEqual(json.loads(template.read_text())["artifacts"][0]["sha256"], "0" * 64)
         self.assertTrue(output.is_file())
+
+    def test_run_bootstrap_lock_freezes_captured_tool_version(self) -> None:
+        template = self.root / "bootstrap.lock"
+        template.write_text(
+            json.dumps(
+                {
+                    "schema": "nativesharp-bootstrap-lock",
+                    "version": 1,
+                    "artifacts": [
+                        {
+                            "id": "python",
+                            "path": "${PYTHON_EXE}",
+                            "state": "locked",
+                            "sha256": "0" * 64,
+                            "version_args": ["--version"],
+                            "version_contains": "Python histórico",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        output = self.root / "run" / "bootstrap.lock"
+        captured = nscbuilder.write_run_bootstrap_lock(
+            template,
+            output,
+            {"python": Path(sys.executable)},
+        )
+        python = captured["artifacts"][0]
+        expected_version = subprocess.run(
+            [sys.executable, "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        ).stdout.strip().splitlines()[0]
+        self.assertEqual(python["sha256"], nscbuilder.sha256_file(Path(sys.executable)))
+        self.assertEqual(python["version_contains"], expected_version)
+        self.assertEqual(
+            json.loads(template.read_text())["artifacts"][0]["version_contains"],
+            "Python histórico",
+        )
 
     def test_environment_verifier_rejects_pending_hash(self) -> None:
         artifact = self.root / "artifact.bin"

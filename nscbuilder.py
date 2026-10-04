@@ -962,10 +962,11 @@ def write_run_bootstrap_lock(
     """Congela los artefactos mutables del bootstrap para una corrida concreta.
 
     El lock versionado conserva la identidad del último bootstrap promovido. Un baseline nuevo no
-    debe reescribirlo ni comparar el nsc recién instalado contra un hash histórico. En su lugar se
-    crea una copia dentro de la evidencia de la corrida y sólo se actualizan las identidades que
-    el propio plan seleccionó explícitamente (hoy nsc0 y NSLink). Las herramientas externas
-    continúan usando, sin cambios, los hashes estrictos del lock versionado.
+    debe reescribirlo ni comparar los ejecutables seleccionados en otra máquina contra hashes
+    históricos. En su lugar se crea una copia dentro de la evidencia de la corrida y se congelan
+    allí las identidades y versiones de todos los artefactos que el plan realmente utilizará.
+    SH53 vuelve a comprobar esa copia al final, de modo que sigue detectando cualquier sustitución
+    durante la corrida sin convertir el lock canónico en una dependencia de una sola máquina.
     """
     value = json.loads(template.read_text(encoding="utf-8"))
     if value.get("schema") != "nativesharp-bootstrap-lock" or value.get("version") != 1:
@@ -984,6 +985,38 @@ def write_run_bootstrap_lock(
         if not artifact.is_file():
             raise FileNotFoundError(f"artefacto de bootstrap ausente: {artifact}")
         item["sha256"] = sha256_file(artifact)
+        version_arguments = item.get("version_args", [])
+        if version_arguments:
+            if not isinstance(version_arguments, list) or not all(
+                isinstance(argument, str) for argument in version_arguments
+            ):
+                raise ValueError(
+                    f"version_args inválido para artefacto de bootstrap: {identifier}"
+                )
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+            try:
+                completed = subprocess.run(
+                    [str(artifact), *version_arguments],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    creationflags=flags,
+                    timeout=30,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise ValueError(
+                    f"no se pudo consultar la versión de {identifier}: {exc}"
+                ) from exc
+            version_output = completed.stdout.strip()
+            if completed.returncode != 0 or not version_output:
+                raise ValueError(
+                    f"no se pudo congelar la versión de {identifier}: "
+                    f"exit {completed.returncode}"
+                )
+            item["version_contains"] = version_output.splitlines()[0]
         pending.remove(str(identifier))
     if pending:
         raise ValueError("artefactos ausentes del lock de bootstrap: " + ", ".join(sorted(pending)))
@@ -2260,13 +2293,29 @@ class PipelineWorker(QObject):
         assert self.run_dir is not None
         compiler = Path(self.plan.prefix) / "bin" / "nsc.exe"
         nslink = self._effective_nslink_executable()
+        llvm = Path(self.plan.llvm_root).resolve()
         template = Path(self.plan.root) / "selfhost" / "bootstrap" / "bootstrap.lock"
         output = self.run_dir / "bootstrap" / "bootstrap.lock"
         try:
+            cmake_executable = shutil.which("cmake")
+            ninja_executable = shutil.which("ninja")
+            if cmake_executable is None:
+                raise FileNotFoundError("cmake no está disponible en PATH")
+            if ninja_executable is None:
+                raise FileNotFoundError("ninja no está disponible en PATH")
             value = write_run_bootstrap_lock(
                 template,
                 output,
-                {"nsc0": compiler, "nslink": nslink},
+                {
+                    "nsc0": compiler,
+                    "clang-cl": llvm / "bin" / "clang-cl.exe",
+                    "lld-link": llvm / "bin" / "lld-link.exe",
+                    "llvm-c-library": llvm / "lib" / "LLVM-C.lib",
+                    "nslink": nslink,
+                    "python": Path(sys.executable),
+                    "cmake": Path(cmake_executable),
+                    "ninja": Path(ninja_executable),
+                },
             )
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             self._emit(f"No se pudo congelar el bootstrap de la corrida: {exc}", "error")
@@ -2286,7 +2335,7 @@ class PipelineWorker(QObject):
         hashes = {
             str(item["id"]): str(item["sha256"])
             for item in value["artifacts"]
-            if isinstance(item, dict) and item.get("id") in ("nsc0", "nslink")
+            if isinstance(item, dict) and item.get("id") is not None
         }
         self.metadata["bootstrap_lock"] = {
             "path": str(self.bootstrap_lock_path),
