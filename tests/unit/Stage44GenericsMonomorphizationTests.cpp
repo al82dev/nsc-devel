@@ -485,7 +485,7 @@ class Box<T, T> { public T Value; }
     // de constraints-- y el parser lo sigue rechazando, ahora por lo que de verdad le pasa.
     syntaxReject("ConstraintWithoutConstraintList", R"NS(
 class Box<T> where T { public T Value; }
-)NS", "expected ':' after the constrained type parameter");
+)NS", "expected ':' or '==' after the constrained generic parameter");
 }
 }
 

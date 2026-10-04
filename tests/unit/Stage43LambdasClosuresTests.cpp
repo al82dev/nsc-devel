@@ -43,7 +43,8 @@ void writeProject(const std::filesystem::path& directory, std::string_view name)
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
-            "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+            "</Name><Language>3</Language></PropertyGroup>"
+            "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
 }
 
 bool hasDiagnosticText(const ProjectCompilation& compilation, std::string_view text)
@@ -426,7 +427,7 @@ void testNegativeContracts(TestContext& tests, const std::filesystem::path& root
 
     expectMethodReject("LambdaNeedsTarget", R"NS(
 class H { public static void F() { int value = x => x; } }
-)NS", "requires a target delegate type");
+)NS", "requires an explicit type for every parameter");
 
     expectMethodReject("WrongArity", R"NS(
 delegate int D(int x, int y);
@@ -467,7 +468,7 @@ class H
     public static int Use(B value) { return 2; }
     public static int F() { return Use(x => x); }
 }
-)NS", "requires a target delegate type");
+)NS", "requires an explicit type for every parameter");
 
     const auto directory = root / "LargeStructCapture";
     writeProject(directory, "LargeStructCapture");
