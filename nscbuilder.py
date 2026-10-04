@@ -1738,6 +1738,19 @@ class PipelineWorker(QObject):
                 env["NSC_KEEP_LINK_TEMPS"] = str(self.run_dir / linker_name / "linktemps")
         return env
 
+    def _compiler_build_environment(self) -> dict[str, str]:
+        """Environment for building the host compiler and its generated runtime archive.
+
+        CMake links ``nsc.exe`` with the configured host linker (LLD), but the ``nsc`` target also
+        runs the freshly built compiler to generate ``NativeSharp.Runtime.Win32.lib``.  That
+        NativeSharp-side post-build command needs NSLink.  During a baseline the staged copy does
+        not exist until after the compiler is installed, so this step must use the explicitly
+        configured source executable rather than ``_effective_nslink_executable()``.
+        """
+        env = self._base_environment()
+        env["NSC_LINKER"] = str(Path(self.plan.nslink_exe).resolve())
+        return env
+
     def _effective_nslink_executable(self) -> Path:
         if self.plan.operation == "baseline":
             return Path(self.plan.prefix).resolve() / "bin" / "nslink.exe"
@@ -1858,6 +1871,8 @@ class PipelineWorker(QObject):
                 required.append(Path("cmake.exe (PATH)"))
             if self.plan.build_runner == "ninja" and shutil.which("ninja") is None:
                 required.append(Path("ninja.exe (PATH)"))
+            if building and self.plan.operation != "baseline":
+                required.append(Path(self.plan.nslink_exe))
         elif installing and shutil.which("cmake") is None:
             required.append(Path("cmake.exe (PATH)"))
         if running_tests:
@@ -2134,7 +2149,7 @@ class PipelineWorker(QObject):
             if targets:
                 command.extend(["--target", *targets])
             command.extend(["--parallel", str(self.plan.jobs), "--", "-k", "0"])
-        if not self._command_stage("Construir", command, self._base_environment()):
+        if not self._command_stage("Construir", command, self._compiler_build_environment()):
             return False
         if not self._prepare_baseline_prefix():
             return False
@@ -3122,6 +3137,12 @@ class PipelineWorker(QObject):
                 "S0 != S1: el arbol de fuentes cambio durante la corrida "
                 f"({str(s0.get('source_digest'))[:16]} -> {str(final.get('source_digest'))[:16]})"
             )
+        # If an earlier stage failed, B0/I0 was never captured.  Comparing its intentional empty
+        # placeholder with the final snapshot used to manufacture four secondary errors (missing
+        # hashes plus tools that supposedly "appeared").  The failed stage is already recorded as
+        # the causal error; source immutability can still be checked, but binary/tool drift cannot.
+        if built.get("status") == "not-captured":
+            return problems
         b0 = built["binaries"].get("built_nsc")
         i0 = built["binaries"].get("installed_nsc")
         b1 = final["binaries"].get("built_nsc")
@@ -3177,7 +3198,13 @@ class PipelineWorker(QObject):
         lines: list[str] = []
         try:
             if built is None:
-                built = {"moment": "after-build", "binaries": {}, "tools": {}}
+                built = {
+                    "moment": "after-build",
+                    "status": "not-captured",
+                    "reason": "the pipeline failed before the after-build measurement",
+                    "binaries": {},
+                    "tools": {},
+                }
             after = self._abi_measure("after-run")
             problems = self._abi_compare(s0, built, after)
             payload = {
