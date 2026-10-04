@@ -1,4 +1,5 @@
 #include "nativesharp/Compilation/ProjectGraph.h"
+#include "nativesharp/Language/ModuleSemantics.h"
 
 #include <algorithm>
 #include <cctype>
@@ -185,6 +186,8 @@ bool ProjectGraph::replaceLibraryReferencesWithSourceProjects(
         if (state[ordinal] == 2U) return true;
         if (state[ordinal] == 1U)
         {
+            if (rewired[ordinal].languageEdition() == language::LanguageEdition::V3)
+                return true;
             error = "source-preferred project reference introduces a cycle at module '" +
                 rewired[ordinal].moduleName() + "'";
             return false;
@@ -239,7 +242,9 @@ bool ProjectGraph::addPrecompiledProjects(
     std::unordered_map<std::string, std::string> moduleOwners;
     for (const Project& project : projects_)
     {
-        moduleOwners.emplace(project.moduleName(), project.projectFile().generic_string());
+        moduleOwners.emplace(
+            language::canonicalWindowsModuleIdentity({}, project.moduleName()),
+            project.projectFile().generic_string());
     }
 
     std::vector<PrecompiledProjectDescriptor> uniqueDescriptors;
@@ -272,7 +277,9 @@ bool ProjectGraph::addPrecompiledProjects(
         const auto existing = descriptorByPath.find(metadataKey);
         if (existing != descriptorByPath.end())
         {
-            if (uniqueDescriptors[existing->second].moduleName != descriptor.moduleName)
+            if (language::canonicalWindowsModuleIdentity(
+                    {}, uniqueDescriptors[existing->second].moduleName) !=
+                language::canonicalWindowsModuleIdentity({}, descriptor.moduleName))
             {
                 error = "precompiled metadata '" + descriptor.metadataPath.generic_string() +
                     "' was assigned conflicting module identities";
@@ -280,19 +287,25 @@ bool ProjectGraph::addPrecompiledProjects(
             }
             continue;
         }
-        const auto moduleOwner = moduleOwners.find(descriptor.moduleName);
+        const std::string moduleKey =
+            language::canonicalWindowsModuleIdentity({}, descriptor.moduleName);
+        const auto moduleOwner = moduleOwners.find(moduleKey);
         if (moduleOwner != moduleOwners.end())
         {
             error = "duplicate module name '" + descriptor.moduleName + "' in precompiled metadata '" +
                 descriptor.metadataPath.generic_string() + "' and '" + moduleOwner->second + "'";
             return false;
         }
-        moduleOwners.emplace(descriptor.moduleName, descriptor.metadataPath.generic_string());
+        moduleOwners.emplace(moduleKey, descriptor.metadataPath.generic_string());
         descriptorByPath.emplace(metadataKey, uniqueDescriptors.size());
         uniqueDescriptors.push_back(descriptor);
     }
     std::ranges::sort(uniqueDescriptors, [](const auto& left, const auto& right) {
-        if (left.moduleName != right.moduleName) return left.moduleName < right.moduleName;
+        const std::string leftIdentity =
+            language::canonicalWindowsModuleIdentity({}, left.moduleName);
+        const std::string rightIdentity =
+            language::canonicalWindowsModuleIdentity({}, right.moduleName);
+        if (leftIdentity != rightIdentity) return leftIdentity < rightIdentity;
         return foldedPath(left.metadataPath) < foldedPath(right.metadataPath);
     });
 

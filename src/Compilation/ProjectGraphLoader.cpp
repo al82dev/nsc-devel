@@ -2,6 +2,7 @@
 
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
+#include "nativesharp/Language/ModuleSemantics.h"
 
 #include <algorithm>
 #include <cctype>
@@ -28,6 +29,7 @@ struct GraphLoadState final
     std::unordered_map<std::string, VisitState> visits;
     std::vector<std::filesystem::path> pathStack;
     std::vector<std::string> moduleStack;
+    std::vector<language::LanguageEdition> editionStack;
     std::vector<Project> orderedProjects;
 };
 
@@ -92,6 +94,20 @@ std::string cycleMessage(const GraphLoadState& state, const std::filesystem::pat
     return message;
 }
 
+bool semanticBindingCycleAllowed(
+    const GraphLoadState& state,
+    const std::filesystem::path& repeatedPath) noexcept
+{
+    const std::string repeatedKey = pathKey(repeatedPath);
+    std::size_t begin = 0;
+    while (begin < state.pathStack.size() && pathKey(state.pathStack[begin]) != repeatedKey)
+        ++begin;
+    if (begin == state.pathStack.size()) return false;
+    for (std::size_t index = begin; index < state.editionStack.size(); ++index)
+        if (state.editionStack[index] != language::LanguageEdition::V3) return false;
+    return true;
+}
+
 bool visitProject(
     const std::filesystem::path& projectFile,
     const std::map<std::string, Project>& projects,
@@ -107,6 +123,10 @@ bool visitProject(
         {
             return true;
         }
+        // Edition 3 modules are semantic declaration spaces rather than an include order. A
+        // binding cycle is therefore admissible here; recursive by-value layout remains a later
+        // object-layout error once every declaration in the strongly connected component exists.
+        if (semanticBindingCycleAllowed(state, canonical)) return true;
         error = cycleMessage(state, canonical);
         return false;
     }
@@ -122,6 +142,7 @@ bool visitProject(
     state.visits.emplace(key, VisitState::Visiting);
     state.pathStack.push_back(project.projectFile());
     state.moduleStack.push_back(project.moduleName());
+    state.editionStack.push_back(project.languageEdition());
 
     std::vector<std::filesystem::path> references(
         project.projectReferences().begin(), project.projectReferences().end());
@@ -155,6 +176,7 @@ bool visitProject(
 
     state.pathStack.pop_back();
     state.moduleStack.pop_back();
+    state.editionStack.pop_back();
     state.visits[key] = VisitState::Complete;
     state.orderedProjects.push_back(project);
     return true;
@@ -163,48 +185,30 @@ bool normalizeTransitiveSourceOwnership(
     std::vector<Project>& projects,
     std::string& error)
 {
-    std::unordered_map<std::string, std::size_t> projectByPath;
+    // A source file has one semantic module owner even when broad globs in several referenced
+    // projects discover it. Dependency-first graph order preserves the historical owner for
+    // acyclic graphs; strongly connected edition-3 components use their deterministic DFS order.
+    std::unordered_map<std::string, std::size_t> sourceOwner;
     for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
     {
-        projectByPath.emplace(pathKey(canonicalPath(projects[ordinal].projectFile())), ordinal);
+        for (const ProjectSource& source : projects[ordinal].sourceSet().sources())
+            sourceOwner.try_emplace(pathKey(canonicalPath(source.absolutePath)), ordinal);
     }
 
-    std::vector<std::unordered_set<std::string>> visibleSources;
-    visibleSources.reserve(projects.size());
     std::vector<Project> normalized;
     normalized.reserve(projects.size());
-
     for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
     {
         const Project& project = projects[ordinal];
-        std::unordered_set<std::string> dependencySources;
-        for (const std::filesystem::path& reference : project.projectReferences())
-        {
-            const auto dependency = projectByPath.find(pathKey(canonicalPath(reference)));
-            if (dependency == projectByPath.end() || dependency->second >= ordinal)
-            {
-                error = "internal error: project source ownership requires topological references";
-                return false;
-            }
-            dependencySources.insert(
-                visibleSources[dependency->second].begin(),
-                visibleSources[dependency->second].end());
-        }
-
         ProjectSourceSet ownSources(project.sourceSet().projectDirectory());
         for (const ProjectSource& source : project.sourceSet().sources())
         {
             const std::string sourceKey = pathKey(canonicalPath(source.absolutePath));
-            if (dependencySources.contains(sourceKey)) continue;
+            const auto owner = sourceOwner.find(sourceKey);
+            if (owner == sourceOwner.end() || owner->second != ordinal) continue;
             if (!ownSources.add(source.absolutePath, error)) return false;
         }
         if (!ownSources.finalize(error, true)) return false;
-
-        std::unordered_set<std::string> closure = std::move(dependencySources);
-        for (const ProjectSource& source : ownSources.sources())
-            closure.insert(pathKey(canonicalPath(source.absolutePath)));
-        visibleSources.push_back(std::move(closure));
-
         normalized.emplace_back(
             project.projectFile(),
             project.moduleName(),
@@ -240,7 +244,8 @@ void preferExactSourceModuleArtifacts(
             const std::string libraryStem = reference.libraryPath.stem().string();
             const std::string metadataStem = reference.metadataPath.stem().string();
             const auto source = libraryStem == metadataStem
-                ? moduleOwners.find(libraryStem)
+                ? moduleOwners.find(
+                    language::canonicalWindowsModuleIdentity({}, libraryStem))
                 : moduleOwners.end();
             if (source == moduleOwners.end() ||
                 pathKey(canonicalPath(source->second)) ==
@@ -346,7 +351,9 @@ std::optional<ProjectGraph> ProjectGraphLoader::load(
             }
             const std::string key = pathKey(entry.path);
             const std::string& moduleName = entry.project->moduleName();
-            const auto owner = moduleOwners.find(moduleName);
+            const std::string moduleKey =
+                language::canonicalWindowsModuleIdentity({}, moduleName);
+            const auto owner = moduleOwners.find(moduleKey);
             if (owner != moduleOwners.end() && pathKey(owner->second) != key)
             {
                 error = "duplicate module name '" + moduleName + "' in projects '" +
@@ -354,7 +361,7 @@ std::optional<ProjectGraph> ProjectGraphLoader::load(
                     entry.project->projectFile().generic_string() + "'";
                 return std::nullopt;
             }
-            moduleOwners[moduleName] = entry.project->projectFile();
+            moduleOwners[moduleKey] = entry.project->projectFile();
             for (const std::filesystem::path& reference : entry.project->projectReferences())
             {
                 const std::filesystem::path canonicalReference = canonicalPath(reference);
