@@ -3097,7 +3097,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             layoutAlign.reset();
             layoutSize.reset();
         }
-        declaration = parseOpaqueTypeDeclaration();
+        declaration = parseOpaqueTypeDeclaration(isCopyType);
     }
     else if (at(TokenKind::KwStruct) ||
              (atContextualKeyword("union") && peek().kind() == TokenKind::Identifier))
@@ -4175,7 +4175,7 @@ ast::AstNode* Parser::parseVariantDeclaration()
     return node;
 }
 
-ast::AstNode* Parser::parseOpaqueTypeDeclaration()
+ast::AstNode* Parser::parseOpaqueTypeDeclaration(bool explicitCopy)
 {
     const std::size_t beginIndex = index_;
     const lexer::Token& opaqueKeyword = consume();
@@ -4205,7 +4205,9 @@ ast::AstNode* Parser::parseOpaqueTypeDeclaration()
     ast::AstNode* node = arena_.make<ast::AstNode>(
         ast::AstNodeKind::StructDeclaration, name.range());
     node->setText(typeName);
-    node->setAuxiliaryText("opaque-type,ns3-value");
+    node->setAuxiliaryText(explicitCopy
+        ? "opaque-type,ns3-value,copy"
+        : "opaque-type,ns3-value");
     parseGenericParameterList(node);
     KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
 
@@ -4253,6 +4255,13 @@ ast::AstNode* Parser::parseOpaqueTypeDeclaration()
         statement->setFirst(expression);
         return statement;
     };
+    const auto makeMove = [&](ast::AstNode* expression)
+    {
+        ast::AstNode* move = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::MoveExpression, expression->range());
+        move->setFirst(expression);
+        return move;
+    };
 
     constexpr std::string_view representationField = "__nsc_opaque_value";
     ast::AstNode* field = arena_.make<ast::AstNode>(
@@ -4288,8 +4297,8 @@ ast::AstNode* Parser::parseOpaqueTypeDeclaration()
             makeIdentifierExpression(name.range(), "__nsc_opaque_result"),
             std::string(representationField)),
         makeIdentifierExpression(name.range(), "value"))));
-    fromBody->addChild(makeReturn(
-        makeIdentifierExpression(name.range(), "__nsc_opaque_result")));
+    ast::AstNode* result = makeIdentifierExpression(name.range(), "__nsc_opaque_result");
+    fromBody->addChild(makeReturn(explicitCopy ? result : makeMove(result)));
     from->setFirst(fromBody);
     node->addChild(from);
 

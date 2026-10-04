@@ -121,8 +121,8 @@ int main()
     std::string diagnostic;
     tests.expect(compileAndRun(root / "productive", "TypeAliases", R"NS(
 using Counter = int;
-public opaque type Meters = int;
-public opaque type Handle<T> = T* where T : unmanaged;
+public copy opaque type Meters = int;
+public copy opaque type Handle<T> = T* where T : unmanaged;
 struct Box<T> { public T Value; }
 class Boundary
 {
@@ -177,8 +177,8 @@ class Program
 
     diagnostic.clear();
     tests.expect(rejected(root / "cycle", "OpaqueCycle", R"NS(
-opaque type First = Second;
-opaque type Second = First;
+copy opaque type First = Second;
+copy opaque type Second = First;
 class Program { public static int Main() { return 0; } }
 )NS", "recursive by-value struct field", diagnostic),
         "opaque representation cycles terminate with the ordinary deterministic layout diagnostic (" +
@@ -188,7 +188,7 @@ class Program { public static int Main() { return 0; } }
     const auto producerProject = writeProject(producer, "OpaqueApi", "StaticLibrary", R"NS(
 namespace OpaqueApi
 {
-    public opaque type Token = int;
+    public copy opaque type Token = int;
     public class Api
     {
         public static Token Create(int value) { return Token.FromRepresentation(value); }

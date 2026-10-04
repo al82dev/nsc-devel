@@ -91,7 +91,7 @@ private:
     // single-field struct machinery. The parser synthesizes the private representation and the
     // module-internal explicit boundary operations, so every later phase sees one productive
     // value type rather than a parallel alias-only backend path.
-    ast::AstNode* parseOpaqueTypeDeclaration();
+    ast::AstNode* parseOpaqueTypeDeclaration(bool explicitCopy);
     ast::AstNode* parseStructBody(
         ast::AstNode* declaration,
         std::string_view structName,

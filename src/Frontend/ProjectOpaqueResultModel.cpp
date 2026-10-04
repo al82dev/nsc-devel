@@ -449,8 +449,14 @@ AstNode* makeFactory(
     AstNode* statement = arena.make<AstNode>(AstNodeKind::ExpressionStatement, range);
     statement->setFirst(assignment);
     body->addChild(statement);
-    body->addChild(returnStatement(
-        arena, range, identifier(arena, range, "__nsc_opaque_result")));
+    AstNode* result = identifier(arena, range, "__nsc_opaque_result");
+    if (declaration.syntax->auxiliaryText().find("copy") == std::string::npos)
+    {
+        AstNode* movedResult = arena.make<AstNode>(AstNodeKind::MoveExpression, range);
+        movedResult->setFirst(result);
+        result = movedResult;
+    }
+    body->addChild(returnStatement(arena, range, result));
     factory->setFirst(body);
     return factory;
 }
