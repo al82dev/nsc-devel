@@ -110,7 +110,7 @@ if HEADLESS:
     QTextCharFormat = QTextCursor = _GuiUnavailable
     QAbstractItemView = QApplication = QCheckBox = QComboBox = QDockWidget = _GuiUnavailable
     QFormLayout = QGridLayout = QGroupBox = QHBoxLayout = QHeaderView = QLabel = _GuiUnavailable
-    QLineEdit = QListWidget = QListWidgetItem = QMessageBox = QPlainTextEdit = _GuiUnavailable
+    QFileDialog = QLineEdit = QListWidget = QListWidgetItem = QMessageBox = QPlainTextEdit = _GuiUnavailable
     QProgressBar = QPushButton = QSpinBox = QTableWidget = QTableWidgetItem = _GuiUnavailable
     QTabWidget = QTextEdit = QVBoxLayout = QWidget = _GuiUnavailable
 else:
@@ -131,6 +131,7 @@ else:
             QCheckBox,
             QComboBox,
             QDockWidget,
+            QFileDialog,
             QFormLayout,
             QGridLayout,
             QGroupBox,
@@ -168,7 +169,16 @@ DEFAULT_TEST_BUILD_NSLINK = ROOT / "build-test-nslink"
 DEFAULT_PREFIX = Path(r"C:\native-sharp")
 DEFAULT_BASELINE_PREFIX = Path(r"A:\native-sharp-3.0-baseline")
 DEFAULT_LLVM = Path(r"C:\clang-llvm")
-DEFAULT_NSLINK = Path(r"A:\nslink-devel\build-debug\bin\nslink.exe")
+DEFAULT_NSLINK_ROOT = Path(r"A:\nslink-devel")
+DEFAULT_NSLINK_CONFIGURATION = "Release"
+
+
+def nslink_executable(configuration: str) -> Path:
+    normalized = "debug" if configuration.casefold() == "debug" else "release"
+    return DEFAULT_NSLINK_ROOT / "bin" / normalized / "nslink.exe"
+
+
+DEFAULT_NSLINK = nslink_executable(DEFAULT_NSLINK_CONFIGURATION)
 HISTORY_ROOT = ROOT / "_nscbuilder" / "history"
 DEFAULT_TEST_WORK_ROOT = ROOT / "_nscbuilder" / "work" / "tests"
 DEFAULT_TEMP_ROOT = ROOT / "_nscbuilder" / "temp"
@@ -4100,6 +4110,17 @@ class MainWindow(QMainWindow):
         self.test_prefix_path = QLineEdit(str(DEFAULT_PREFIX))
         self.test_llvm_path = QLineEdit(str(DEFAULT_LLVM))
         self.nslink_path = QLineEdit(str(DEFAULT_NSLINK))
+        self.nslink_configuration = QComboBox()
+        self.nslink_configuration.addItem("Release", "Release")
+        self.nslink_configuration.addItem("Debug", "Debug")
+        self.nslink_browse_button = QPushButton("Examinar…")
+        self.nslink_browse_button.clicked.connect(self._browse_nslink)
+        nslink_selector = QWidget()
+        nslink_selector_layout = QHBoxLayout(nslink_selector)
+        nslink_selector_layout.setContentsMargins(0, 0, 0, 0)
+        nslink_selector_layout.addWidget(self.nslink_configuration)
+        nslink_selector_layout.addWidget(self.nslink_path, 1)
+        nslink_selector_layout.addWidget(self.nslink_browse_button)
         self.test_build_runner = QComboBox()
         self.test_build_runner.addItem("CMake", "cmake")
         self.test_build_runner.addItem("Ninja", "ninja")
@@ -4123,7 +4144,7 @@ class MainWindow(QMainWindow):
         test_grid.addWidget(QLabel("LLVM / LLD-link"), 6, 0)
         test_grid.addWidget(self.test_llvm_path, 6, 1, 1, 3)
         test_grid.addWidget(QLabel("Ejecutable NSLink"), 7, 0)
-        test_grid.addWidget(self.nslink_path, 7, 1, 1, 3)
+        test_grid.addWidget(nslink_selector, 7, 1, 1, 3)
         test_grid.addWidget(self.keep_temps, 8, 0, 1, 4)
         test_grid.addWidget(self.reuse_results, 9, 0, 1, 4)
         linker_note = QLabel(
@@ -4331,8 +4352,12 @@ class MainWindow(QMainWindow):
             self.host_optimization,
             self.test_build_runner,
             self.linker_mode,
+            self.nslink_configuration,
         ):
             widget.currentIndexChanged.connect(self._update_plan_summary)
+        self.nslink_configuration.currentIndexChanged.connect(
+            self._apply_nslink_configuration
+        )
         for widget in (self.stage_ctest, self.stage_cases, self.stage_triage, self.opt_o0, self.opt_o1,
                        self.opt_o2, self.opt_o3, self.reuse_results):
             widget.toggled.connect(self._update_plan_summary)
@@ -4342,6 +4367,7 @@ class MainWindow(QMainWindow):
         self.test_build_nslink_path.textChanged.connect(self._update_plan_summary)
         self.test_prefix_path.textChanged.connect(self._update_plan_summary)
         self.test_llvm_path.textChanged.connect(self._update_plan_summary)
+        self.nslink_path.textChanged.connect(self._update_plan_summary)
         self._update_plan_summary()
         self._update_linker_note()
 
@@ -4352,6 +4378,21 @@ class MainWindow(QMainWindow):
         console.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         console.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
         return console
+
+    def _apply_nslink_configuration(self, *_args: object) -> None:
+        configuration = str(self.nslink_configuration.currentData())
+        self.nslink_path.setText(str(nslink_executable(configuration)))
+
+    def _browse_nslink(self) -> None:
+        current = Path(self.nslink_path.text().strip() or str(DEFAULT_NSLINK))
+        selected, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar nslink.exe",
+            str(current.parent),
+            "NSLink (nslink.exe);;Ejecutables (*.exe);;Todos los archivos (*)",
+        )
+        if selected:
+            self.nslink_path.setText(selected)
 
     def _create_error_table(self) -> QTableWidget:
         table = QTableWidget(0, 5)
@@ -5117,7 +5158,9 @@ class MainWindow(QMainWindow):
                 "LLD reutilizará el árbol NSLink sólo para fallos. "
                 if selected_linkers == ["NSLink"] else ""
             )
-            + "El nsc instalado no se modifica."
+            + "El nsc instalado no se modifica.\n"
+            + f"NSLink {self.nslink_configuration.currentText()}: "
+            + self.nslink_path.text().strip()
         )
 
     def _load_settings(self) -> None:
@@ -5136,10 +5179,29 @@ class MainWindow(QMainWindow):
         self.test_llvm_path.setText(
             self.settings.value("test_llvm_path", str(DEFAULT_LLVM))
         )
-        saved_nslink = str(self.settings.value("nslink_path", str(DEFAULT_NSLINK)))
+        saved_nslink_configuration = str(
+            self.settings.value(
+                "nslink_configuration", DEFAULT_NSLINK_CONFIGURATION
+            )
+        )
+        nslink_configuration_index = self.nslink_configuration.findData(
+            saved_nslink_configuration
+        )
+        if nslink_configuration_index >= 0:
+            self.nslink_configuration.setCurrentIndex(nslink_configuration_index)
+        selected_nslink_default = nslink_executable(
+            str(self.nslink_configuration.currentData())
+        )
+        saved_nslink = str(
+            self.settings.value("nslink_path", str(selected_nslink_default))
+        )
         legacy_nslink = str(DEFAULT_PREFIX / "bin" / "nslink.exe")
-        if Path(saved_nslink) == Path(legacy_nslink):
-            saved_nslink = str(DEFAULT_NSLINK)
+        legacy_build_outputs = {
+            Path(r"A:\nslink-devel\build-debug\bin\nslink.exe"),
+            Path(r"A:\nslink-devel\build-release\bin\nslink.exe"),
+        }
+        if Path(saved_nslink) == Path(legacy_nslink) or Path(saved_nslink) in legacy_build_outputs:
+            saved_nslink = str(selected_nslink_default)
         self.nslink_path.setText(saved_nslink)
         old_jobs = int(self.settings.value("jobs", min(os.cpu_count() or 4, 16)))
         self.compiler_jobs.setValue(int(self.settings.value("compiler_jobs", old_jobs)))
@@ -5189,6 +5251,9 @@ class MainWindow(QMainWindow):
         self.settings.setValue("test_prefix_path", self.test_prefix_path.text())
         self.settings.setValue("test_llvm_path", self.test_llvm_path.text())
         self.settings.setValue("nslink_path", self.nslink_path.text())
+        self.settings.setValue(
+            "nslink_configuration", self.nslink_configuration.currentData()
+        )
         self.settings.setValue("compiler_jobs", self.compiler_jobs.value())
         self.settings.setValue("test_jobs", self.test_jobs.value())
         self.settings.setValue("build_mode", self.build_mode.currentData())
