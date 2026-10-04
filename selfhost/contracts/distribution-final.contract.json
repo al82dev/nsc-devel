@@ -14,10 +14,9 @@
     "nsc.windows-runtime"
   ],
   "recovery_markers": [
-    "verify_environment.py",
-    "bootstrap.lock",
     "directorio de salida nuevo",
     "nunca reutilizar objetos",
-    "ruta absoluta de `nsc0`"
+    "ruta absoluta de `nsc0`",
+    "compilador semilla"
   ]
 }

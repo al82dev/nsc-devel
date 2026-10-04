@@ -29,10 +29,7 @@ def main() -> int:
     parser.add_argument("--compiler", type=Path, required=True)
     parser.add_argument("--selfhost-compiler", type=Path, required=True)
     parser.add_argument("--bootstrap-compiler", type=Path, required=True)
-    parser.add_argument("--bootstrap-lock", type=Path, required=True)
     parser.add_argument("--cmake", type=Path, required=True)
-    parser.add_argument("--ninja", type=Path, required=True)
-    parser.add_argument("--llvm-root", type=Path, required=True)
     parser.add_argument("--nslink", type=Path, required=True)
     parser.add_argument("--ctest", type=Path, required=True)
     parser.add_argument("--build-dir", type=Path, required=True)
@@ -110,20 +107,6 @@ def main() -> int:
     missing_markers = [marker for marker in contract["recovery_markers"] if marker not in recovery_text]
     if missing_markers:
         failures.append(f"recovery recipe omits {missing_markers}")
-    environment_report = output / "bootstrap-environment.json"
-    environment = run([
-        sys.executable, "-B", str(root / "selfhost/bootstrap/verify_environment.py"),
-        "--lock", str(args.bootstrap_lock),
-        "--set", f"NSC0_EXE={args.bootstrap_compiler}",
-        "--set", f"NSC_LLVM_ROOT={args.llvm_root}",
-        "--set", f"NSLINK_EXE={args.nslink}",
-        "--set", f"PYTHON_EXE={Path(sys.executable)}",
-        "--set", f"CMAKE_EXE={args.cmake}",
-        "--set", f"NINJA_EXE={args.ninja}",
-        "--report", str(environment_report)], root)
-    if environment.returncode != 0:
-        failures.append(f"frozen bootstrap recovery environment failed: {environment.stdout}{environment.stderr}")
-
     names = contract["ctests"]
     expression = "^(" + "|".join(re.escape(name) for name in names) + ")$"
     ctest = run([str(args.ctest), "--test-dir", str(args.build_dir), "-C", "Release",
@@ -139,7 +122,6 @@ def main() -> int:
         "status": "passed" if not failures else "failed",
         "compiler_sha256": digest(args.compiler),
         "bootstrap_compiler_sha256": digest(args.bootstrap_compiler),
-        "bootstrap_lock_sha256": digest(args.bootstrap_lock),
         "nslink_sha256": digest(args.nslink),
         "selfhost_compiler_sha256": digest(args.selfhost_compiler),
         "contract_sha256": digest(args.contract),
@@ -149,8 +131,6 @@ def main() -> int:
         "update_transaction_leaks": leaked_update_files,
         "side_by_side": {"passed": coexist_ok, "nsc0_sha256": digest(nsc0), "nsc2_sha256": digest(nsc2)},
         "rollback": rolled_back is not None and rolled_back.returncode == 0,
-        "recovery_environment": environment.returncode == 0,
-        "recovery_report_sha256": digest(environment_report) if environment_report.is_file() else None,
         "ctests": {"expected": len(names), "passed": len(names) if ctest.returncode == 0 else 0,
                     "names": names},
         "failures": failures,
@@ -161,7 +141,7 @@ def main() -> int:
         for failure in failures:
             print(f"NSH5302: {failure}", file=sys.stderr)
         return 1
-    print(f"SH53 distribution passed: install/update/rollback/recovery, {len(names)}/{len(names)} CTests")
+    print(f"SH53 distribution passed: install/update/rollback, {len(names)}/{len(names)} compiler CTests")
     return 0
 
 

@@ -39,16 +39,15 @@ quedan incluidas en `metadata.json` mediante la serialización del `RunPlan`.
 
 ## Lock físico por corrida
 
-Después de construir e instalar `nsc` y antes de configurar los dos árboles CTest, el baseline crea
-`<run_dir>/bootstrap/bootstrap.lock`. La copia captura los SHA-256 del `nsc0` instalado y del NSLink
-seleccionado por el plan. Los hashes de clang-cl, LLD, LLVM-C, Python, CMake y Ninja se conservan
-sin cambios desde el lock versionado. Ambos árboles CTest reciben la misma copia mediante
-`NSC_BOOTSTRAP_LOCK`; SH53 usa además `NSC_TEST_COMPILER` como semilla explícita.
+Después de construir e instalar `nsc` y antes de configurar los árboles CTest, el runner puede
+crear `<run_dir>/bootstrap/bootstrap.lock` como evidencia descriptiva de la corrida. Esa captura
+no es un requisito de aprobación para SH53 y no convierte las versiones o hashes de Python,
+CMake, Ninja, clang-cl o LLD en parte del contrato del compilador. SH53 recibe
+`NSC_TEST_COMPILER` únicamente para seleccionar de forma explícita la semilla NativeSharp.
 
-Esto evita dos errores de diseño: comparar un build nuevo contra el hash histórico del último
-bootstrap promovido y tratar como si fueran la misma semilla los `nsc.exe` privados de dos árboles
-CTest, cuyas identidades de construcción pueden ser distintas. El lock versionado nunca se
-reescribe durante el baseline y la copia queda dentro de su evidencia para reproducir la corrida.
+La evidencia permite investigar una corrida, pero cambiar herramientas de construcción no invalida
+por sí solo los resultados. La certificación compara los artefactos NativeSharp y su comportamiento,
+no la identidad física del entorno que los produjo.
 
 ## Corrida aislada en A:
 

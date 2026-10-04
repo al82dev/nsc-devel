@@ -689,6 +689,34 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertTrue(contract["runtime_library"].endswith(".lib"))
         self.assertTrue(contract["runtime_abi_contract"].endswith(".abi"))
 
+    def test_sh53_certifies_products_not_the_build_environment(self) -> None:
+        verifier = (ROOT / "selfhost/bootstrap/verify_distribution_final.py").read_text(
+            encoding="utf-8"
+        )
+        launcher = (ROOT / "cmake/VerifyNativeSharpDistributionFinal.cmake").read_text(
+            encoding="utf-8"
+        )
+        contract = json.loads(
+            (ROOT / "selfhost/contracts/distribution-final.contract.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        for frozen_build_input in (
+            "bootstrap-lock",
+            "NINJA_EXECUTABLE",
+            "CLANG_CL_EXECUTABLE",
+            "LLD_LINK_EXECUTABLE",
+            "verify_environment.py",
+            "PYTHON_EXE=",
+            "CMAKE_EXE=",
+            "NINJA_EXE=",
+        ):
+            self.assertNotIn(frozen_build_input, verifier + launcher)
+        self.assertNotIn("verify_environment.py", contract["recovery_markers"])
+        self.assertNotIn("bootstrap.lock", contract["recovery_markers"])
+        self.assertIn("compiler_sha256", verifier)
+        self.assertIn("nslink_sha256", verifier)
+
     def test_sh04_diagnostics_map_freezes_codes_and_exit_codes(self) -> None:
         contract = verify_nsc_next_skeleton.load_contract(
             ROOT / "selfhost/contracts/diagnostics.map.json"
