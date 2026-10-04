@@ -300,7 +300,7 @@ class Api
         return owner.Read();
     }
 }
-)NS", "use of moved-from owned parameter 'owner'");
+)NS", "use of moved-from parameter 'owner'");
 
     expectInvalid(tests, root, "OwnedReturnIntoNonOwner", prefix + R"NS(
 class Api

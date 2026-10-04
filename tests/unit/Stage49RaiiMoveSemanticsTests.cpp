@@ -480,7 +480,7 @@ class Resource
 
     expectInvalid(tests, root, "MoveNeedsOwnerDestination", prefix +
         "class H { public static void F() { raii Resource a = new Resource(); Resource b = move(a); } }",
-        "move construction requires a raii destination local");
+        "move construction requires a RAII or move-only destination local");
 
     expectInvalid(tests, root, "MoveNonOwner", prefix +
         "class H { public static void F() { Resource a = new Resource(); raii Resource b = move(a); } }",
@@ -513,7 +513,7 @@ class Resource
 
     expectInvalid(tests, root, "BranchJoinUseAfterMove", prefix +
         "class H { public static int F(bool choose) { raii Resource a = new Resource(); if (choose) { raii Resource b = move(a); } else { int ok = a.Read(); } return a.Read(); } }",
-        "use of moved-from RAII local 'a'");
+        "use of possibly moved RAII local 'a'");
 
     expectInvalid(tests, root, "WhileBackEdge", prefix +
         "class H { public static void F(bool run) { raii Resource a = new Resource(); while (run) { raii Resource b = move(a); } } }",
