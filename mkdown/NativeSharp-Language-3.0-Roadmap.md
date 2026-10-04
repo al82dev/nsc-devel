@@ -723,6 +723,10 @@ evidencia del commit: `docs/3.0/items/NS3-T06-F01-move-only-defaults.md`.
 
 **Commit:** `ns3(t07-f04): never-type`
 
+**Estado 2026-10-03:** `TERMINADA`. `builtin:never` es una conversión bottom productiva; ramas
+divergentes no alimentan PHIs/stores y los locales inferidos no tienen layout. El target dirigido
+T07 pasa 34/34 con ejecución O0/NSLink.
+
 - **Implementación:** tipo `never` coercible a cualquier tipo resultado; usado por `panic`, loops infinitos demostrados, `return` y branches imposibles.
 - **Pruebas dirigidas:** inference, overloads, match, generic constraints, unreachable diagnostics y layout sin valores.
 - **Markdown ES/EN:** inhabitation, coerciones y control flow.

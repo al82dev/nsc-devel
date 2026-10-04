@@ -5105,6 +5105,15 @@ private:
                         node->referenceLocal
                     ? typeKey + "*"
                     : typeKey;
+                // T07-F04. A local inferred as `never` is a control-flow fact, not an object.
+                // Its initializer terminates the block, so reserving even one byte would invent
+                // a layout and debugger lifetime for an uninhabited type.
+                if (storageTypeKey == "builtin:never")
+                {
+                    for (const auto& child : node->children)
+                        collectLocalAllocas(child.get(), error);
+                    return;
+                }
                 LLVMTypeRef type = llvmType(storageTypeKey, error);
                 if (type == nullptr) return;
                 const bool captured = currentMirFunction_ != nullptr && std::ranges::find(
@@ -6350,6 +6359,10 @@ private:
         {
             returnValue = lowerExpression(node->children.front().get(), error);
             if (returnValue == nullptr) return false;
+            // The value expression may itself diverge (`return panic()`). Its terminator is the
+            // complete return path; emitting a second return, cleanup branch, or spill after it
+            // would create invalid IR and a fictitious value.
+            if (terminated()) return true;
         }
 
         const bool complexExit = !node->cleanupRegionOrdinals.empty() ||
@@ -6992,6 +7005,16 @@ private:
 
             case frontend::ProjectOopMirNodeKind::LocalDeclaration:
             {
+                if (node->typeKey == "builtin:never")
+                {
+                    if (node->children.size() != 1 || node->children.front() == nullptr)
+                        return fail(error, "T07 never local requires one divergent initializer");
+                    LLVMValueRef ignored = lowerExpression(node->children.front().get(), error);
+                    if (ignored == nullptr) return false;
+                    if (!terminated())
+                        return fail(error, "T07 never local initializer unexpectedly produced a value");
+                    return true;
+                }
                 bool initialized = true;
                 LLVMValueRef localAddress = nullptr;
                 if (node->localOrdinal.has_value())
@@ -7026,6 +7049,10 @@ private:
                                 "Stage 34 local initialization failed" +
                                     (cause.empty() ? std::string() : ": " + cause));
                         }
+                        // `T local = panic()` type-checks through the bottom conversion but never
+                        // initializes storage. Do not store the lowering sentinel or mark a drop
+                        // flag/debug lifetime after the block has terminated.
+                        if (terminated()) return true;
                         LLVMBuildStore(builder_, value, address);
                     }
                 }
@@ -7513,6 +7540,7 @@ private:
             return fail(error, "Stage 45.10 throw MIR requires one exception object value");
         LLVMValueRef exception = lowerExpression(node->children.front().get(), error);
         if (exception == nullptr) return false;
+        if (terminated()) return true;
         return lowerExceptionalTransfer(exception, node, error);
     }
 
@@ -7521,6 +7549,7 @@ private:
         if (node->children.size() < 2) return fail(error, "Stage 34 if MIR is incomplete");
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return false;
+        if (terminated()) return true;
         LLVMBasicBlockRef thenBlock = appendBlock("if.then");
         LLVMBasicBlockRef elseBlock = node->children.size() >= 3 ? appendBlock("if.else") : nullptr;
         LLVMBasicBlockRef endBlock = appendBlock("if.end");
@@ -7550,6 +7579,11 @@ private:
         LLVMPositionBuilderAtEnd(builder_, condBlock);
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return false;
+        if (terminated())
+        {
+            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            return true;
+        }
         LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
         loopStack_.push_back({endBlock, condBlock, funcletStack_.size(), funcletStack_.size()});
         LLVMPositionBuilderAtEnd(builder_, bodyBlock);
@@ -7583,7 +7617,7 @@ private:
         LLVMPositionBuilderAtEnd(builder_, condBlock);
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return false;
-        LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
+        if (!terminated()) LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
         LLVMPositionBuilderAtEnd(builder_, endBlock);
         return true;
     }
@@ -7607,6 +7641,7 @@ private:
 
         LLVMValueRef governing = lowerExpression(node->children[0].get(), error);
         if (governing == nullptr) return false;
+        if (terminated()) return true;
         const std::string& governingTypeKey = node->children[0]->typeKey;
         LLVMTypeRef governingType = llvmType(governingTypeKey, error);
         if (governingType == nullptr) return false;
@@ -7714,6 +7749,7 @@ private:
                     activeCleanupRegions_.push_back(*node->children[0]->cleanupRegionOrdinal);
             }
             else if (lowerExpression(node->children[0].get(), error) == nullptr) return false;
+            if (terminated()) return true;
         }
         LLVMBasicBlockRef condBlock = appendBlock("for.cond");
         LLVMBasicBlockRef bodyBlock = appendBlock("for.body");
@@ -7725,7 +7761,7 @@ private:
         {
             LLVMValueRef condition = lowerExpression(node->children[1].get(), error);
             if (condition == nullptr) return false;
-            LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
+            if (!terminated()) LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
         }
         else LLVMBuildBr(builder_, bodyBlock);
 
@@ -10248,6 +10284,7 @@ private:
                     return failValue(error, "tuple deconstruction source has no physical carrier");
                 LLVMValueRef sourceValue = lowerExpression(node->children.front().get(), error);
                 if (sourceValue == nullptr) return nullptr;
+                if (terminated()) return sourceValue;
                 LLVMValueRef sourceSlot = entryBlockAlloca(
                     sourceCarrier,
                     static_cast<unsigned>(sourceLayout->alignment),
@@ -10302,6 +10339,7 @@ private:
                 // ready blocks and is transferred by the final store.
                 LLVMValueRef value = lowerExpression(node->children[1].get(), error);
                 if (value == nullptr) return nullptr;
+                if (terminated()) return value;
                 if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::BitFieldAddress)
                 {
                     const frontend::ProjectOopMirNode* field = node->children[0].get();
@@ -10418,6 +10456,7 @@ private:
                 if (node->children.size() != 1) return failValue(error, "convert MIR requires one operand");
                 LLVMValueRef value = lowerExpression(node->children.front().get(), error);
                 if (value == nullptr) return nullptr;
+                if (terminated()) return value;
                 return convert(value, node->children.front()->typeKey, node->typeKey, error);
             }
             case frontend::ProjectOopMirNodeKind::RuntimeTypeTest:
@@ -12707,6 +12746,7 @@ private:
         if (node->children.size() != 1) return failValue(error, "unary MIR requires one operand");
         LLVMValueRef value = lowerExpression(node->children.front().get(), error);
         if (value == nullptr) return nullptr;
+        if (terminated()) return value;
         if (node->operation == lexer::TokenKind::Plus) return value;
         if (node->operation == lexer::TokenKind::Bang) return LLVMBuildNot(builder_, value, "not");
         if (node->operation == lexer::TokenKind::Tilde) return LLVMBuildNot(builder_, value, "bitnot");
@@ -12721,8 +12761,10 @@ private:
         if (node->operation == lexer::TokenKind::AmpAmp || node->operation == lexer::TokenKind::PipePipe)
             return lowerShortCircuit(node, error);
         LLVMValueRef left = lowerExpression(node->children[0].get(), error);
-        LLVMValueRef right = left != nullptr ? lowerExpression(node->children[1].get(), error) : nullptr;
+        if (left == nullptr || terminated()) return left;
+        LLVMValueRef right = lowerExpression(node->children[1].get(), error);
         if (left == nullptr || right == nullptr) return nullptr;
+        if (terminated()) return right;
         // NSC-LUNAR-007. LLVM requires both operands of shl/lshr/ashr to have exactly the same
         // integer type. NativeSharp keeps the counter's semantic type, then validates and converts
         // it immediately before emission. Thus `ulong << int` is valid without producing
@@ -12939,6 +12981,7 @@ private:
             return failValue(error, "conditional expression MIR is incomplete");
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return nullptr;
+        if (terminated()) return condition;
         LLVMBasicBlockRef trueBlock = appendBlock("cond.true");
         LLVMBasicBlockRef falseBlock = appendBlock("cond.false");
         LLVMBasicBlockRef endBlock = appendBlock("cond.end");
@@ -12948,15 +12991,24 @@ private:
         LLVMValueRef whenTrue = lowerExpression(node->children[1].get(), error);
         if (whenTrue == nullptr) return nullptr;
         LLVMBasicBlockRef trueExit = LLVMGetInsertBlock(builder_);
-        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+        const bool trueReachesEnd = !terminated();
+        if (trueReachesEnd) LLVMBuildBr(builder_, endBlock);
 
         LLVMPositionBuilderAtEnd(builder_, falseBlock);
         LLVMValueRef whenFalse = lowerExpression(node->children[2].get(), error);
         if (whenFalse == nullptr) return nullptr;
         LLVMBasicBlockRef falseExit = LLVMGetInsertBlock(builder_);
-        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+        const bool falseReachesEnd = !terminated();
+        if (falseReachesEnd) LLVMBuildBr(builder_, endBlock);
 
         LLVMPositionBuilderAtEnd(builder_, endBlock);
+        if (!trueReachesEnd && !falseReachesEnd)
+        {
+            LLVMBuildUnreachable(builder_);
+            return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+        }
+        if (trueReachesEnd && !falseReachesEnd) return whenTrue;
+        if (!trueReachesEnd && falseReachesEnd) return whenFalse;
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
         if (resultType == nullptr) return nullptr;
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "cond");
@@ -12976,6 +13028,7 @@ private:
             return failValue(error, "null-coalescing MIR requires left and fallback values");
         LLVMValueRef left = lowerExpression(node->children[0].get(), error);
         if (left == nullptr) return nullptr;
+        if (terminated()) return left;
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
         LLVMValueRef hasValue = LLVMBuildICmp(
             builder_, LLVMIntNE, left, LLVMConstNull(pointerType), "coalesce.hasvalue");
@@ -12988,9 +13041,11 @@ private:
         LLVMValueRef fallback = lowerExpression(node->children[1].get(), error);
         if (fallback == nullptr) return nullptr;
         LLVMBasicBlockRef fallbackExit = LLVMGetInsertBlock(builder_);
-        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+        const bool fallbackReachesEnd = !terminated();
+        if (fallbackReachesEnd) LLVMBuildBr(builder_, endBlock);
 
         LLVMPositionBuilderAtEnd(builder_, endBlock);
+        if (!fallbackReachesEnd) return left;
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
         if (resultType == nullptr) return nullptr;
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "coalesce");
@@ -13020,6 +13075,7 @@ private:
 
         LLVMValueRef carrier = lowerExpression(node->children[0].get(), error);
         if (carrier == nullptr) return nullptr;
+        if (terminated()) return carrier;
         LLVMTypeRef carrierType = llvmType(node->elementTypeKey, error);
         if (carrierType == nullptr) return nullptr;
         LLVMValueRef carrierSlot = entryBlockAlloca(
@@ -13074,9 +13130,11 @@ private:
         LLVMValueRef fallback = lowerExpression(node->children[1].get(), error);
         if (fallback == nullptr) return nullptr;
         LLVMBasicBlockRef fallbackExit = LLVMGetInsertBlock(builder_);
-        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+        const bool fallbackReachesEnd = !terminated();
+        if (fallbackReachesEnd) LLVMBuildBr(builder_, endBlock);
 
         LLVMPositionBuilderAtEnd(builder_, endBlock);
+        if (!fallbackReachesEnd) return presentValue;
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
         if (resultType == nullptr) return nullptr;
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "optional.coalesce");
@@ -13210,6 +13268,7 @@ private:
             return failValue(error, "null-coalescing store MIR requires address and fallback");
         LLVMValueRef address = lowerExpression(node->children[0].get(), error);
         if (address == nullptr) return nullptr;
+        if (terminated()) return address;
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
         LLVMValueRef current = LLVMBuildLoad2(builder_, pointerType, address, "coalesce.current");
         if (node->children[0]->volatileAccess) LLVMSetVolatile(current, 1);
@@ -13223,10 +13282,16 @@ private:
         LLVMPositionBuilderAtEnd(builder_, fallbackBlock);
         LLVMValueRef fallback = lowerExpression(node->children[1].get(), error);
         if (fallback == nullptr) return nullptr;
+        const bool fallbackReachesEnd = !terminated();
+        if (!fallbackReachesEnd)
+        {
+            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            return current;
+        }
         LLVMValueRef store = LLVMBuildStore(builder_, fallback, address);
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
         LLVMBasicBlockRef fallbackExit = LLVMGetInsertBlock(builder_);
-        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+        LLVMBuildBr(builder_, endBlock);
 
         LLVMPositionBuilderAtEnd(builder_, endBlock);
         LLVMValueRef phi = LLVMBuildPhi(builder_, pointerType, "coalesce.store");
@@ -13277,6 +13342,7 @@ private:
     {
         LLVMValueRef left = lowerExpression(node->children[0].get(), error);
         if (left == nullptr) return nullptr;
+        if (terminated()) return left;
         LLVMBasicBlockRef leftBlock = LLVMGetInsertBlock(builder_);
         LLVMBasicBlockRef rhsBlock = appendBlock("logic.rhs");
         LLVMBasicBlockRef endBlock = appendBlock("logic.end");
@@ -13286,10 +13352,13 @@ private:
         LLVMValueRef right = lowerExpression(node->children[1].get(), error);
         if (right == nullptr) return nullptr;
         LLVMBasicBlockRef rightBlock = LLVMGetInsertBlock(builder_);
-        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+        const bool rightReachesEnd = !terminated();
+        if (rightReachesEnd) LLVMBuildBr(builder_, endBlock);
         LLVMPositionBuilderAtEnd(builder_, endBlock);
+        LLVMValueRef shortValue = LLVMConstInt(
+            LLVMInt1TypeInContext(context_), isAnd ? 0U : 1U, 0);
+        if (!rightReachesEnd) return shortValue;
         LLVMValueRef phi = LLVMBuildPhi(builder_, LLVMInt1TypeInContext(context_), "logic");
-        LLVMValueRef shortValue = LLVMConstInt(LLVMInt1TypeInContext(context_), isAnd ? 0U : 1U, 0);
         LLVMValueRef values[] = {shortValue, right};
         LLVMBasicBlockRef blocks[] = {leftBlock, rightBlock};
         LLVMAddIncoming(phi, values, blocks, 2);
@@ -13482,6 +13551,7 @@ private:
         {
             return nullptr;
         }
+        if (terminated()) return receiver;
         const bool structReceiver = node->children.front() != nullptr &&
             isStructValue(node->children.front()->typeKey);
         if (!structReceiver)
@@ -13523,6 +13593,7 @@ private:
             {
                 return nullptr;
             }
+            if (terminated()) return value;
             value = wrapIndirectArgument(value, node->children[index]->typeKey, error);
             if (value == nullptr) return nullptr;
             sourceArguments.push_back(value);
@@ -13639,6 +13710,7 @@ private:
             {
                 return nullptr;
             }
+            if (terminated()) return value;
             value = wrapIndirectArgument(value, child->typeKey, error);
             if (value == nullptr) return nullptr;
             sourceArguments.push_back(value);

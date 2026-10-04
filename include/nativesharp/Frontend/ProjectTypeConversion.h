@@ -14,6 +14,7 @@ enum class ProjectConversionKind
 {
     None,
     Identity,
+    Never,
     IntegralPromotion,
     ConstantInteger,
     Numeric,

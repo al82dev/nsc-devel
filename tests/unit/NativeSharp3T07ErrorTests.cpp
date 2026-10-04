@@ -2,6 +2,7 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
 #include "../support/TestContext.h"
@@ -139,6 +140,17 @@ int main()
         "typed catch coverage is checked without managed RTTI");
     tests.expect(neverCoercesTo("builtin:int") && neverCoercesTo("type:Packet"),
         "never coerces to every inhabited result type without producing a value");
+    const auto neverToInt = nativesharp::frontend::ProjectTypeConversion::classifyImplicit(
+        "builtin:never", "builtin:int");
+    const auto neverToTuple = nativesharp::frontend::ProjectTypeConversion::classifyImplicit(
+        "builtin:never", "tuple:2:11:builtin:int,12:builtin:long");
+    tests.expect(
+        neverToInt.kind == nativesharp::frontend::ProjectConversionKind::Never &&
+            neverToInt.rank == 0 &&
+            neverToTuple.kind == nativesharp::frontend::ProjectConversionKind::Never &&
+            std::string(nativesharp::frontend::projectConversionKindName(neverToInt.kind)) ==
+                "never",
+        "the production conversion classifier exposes never as one bottom conversion, not a fabricated structural value");
     tests.expect(unifyLoopBreakTypes(std::array<std::string, 3>{"never", "builtin:int", "builtin:int"}) ==
             "builtin:int" && !unifyLoopBreakTypes(
                 std::array<std::string, 2>{"builtin:int", "builtin:long"}).has_value(),
@@ -411,6 +423,97 @@ namespace TypedThrows
         "catch filtering lowers to ordered native RTTI branches without hidden heap or CLR machinery (" +
             llvmError + nestedLlvm + ")");
 
+    const std::filesystem::path neverRoot = root / "never";
+    const std::filesystem::path neverProject = writeProject(
+        neverRoot, "NeverType", R"NS(
+public variant Decision { Value, Stop }
+
+public class Program
+{
+    private static T AcceptCopy<T>(T value) where T : copy { return value; }
+
+    private static int FromConditional(bool stop)
+    {
+        return stop ? panic() : 40;
+    }
+
+    private static int FromGeneric(bool stop)
+    {
+        return stop ? AcceptCopy<int>(panic()) : 2;
+    }
+
+    private static int FromMatch()
+    {
+        match (Decision.Value())
+        {
+            Value => { return 0; },
+            Stop => { panic(); }
+        }
+    }
+
+    private static int NeverLocal()
+    {
+        var impossible = panic();
+        return impossible;
+    }
+
+    private static int InfiniteWhile()
+    {
+        while (true) { panic(); }
+    }
+
+    private static int InfiniteFor()
+    {
+        for (;;) { panic(); }
+    }
+
+    public static int Main()
+    {
+        return FromConditional(false) + FromGeneric(false) +
+            FromMatch();
+    }
+}
+)NS");
+    const CompilationEvidence neverEvidence = compileMir(neverProject);
+    tests.expect(
+        neverEvidence.succeeded && neverEvidence.error.empty() &&
+            neverEvidence.mir.find("builtin:never") != std::string::npos &&
+            neverEvidence.mir.find("panic") != std::string::npos,
+        "conditional inference, explicit constrained generics, match arms, inferred locals, and proven infinite loops preserve never in MIR (" +
+            neverEvidence.error + neverEvidence.diagnostics + neverEvidence.mir + ")");
+    executionDiagnostic.clear();
+    tests.expect(
+        compileAndRun(neverProject, 42, executionDiagnostic),
+        "O0/NSLink executes the reachable sides of conditional, generic, and match joins with never (" +
+            executionDiagnostic + ")");
+
+    const std::string neverProjectText = neverProject.string();
+    const std::array<std::string_view, 2> neverLlvmArguments = {
+        "--dump-project-oop-llvm", neverProjectText};
+    std::string neverLlvmOutput;
+    std::string neverLlvmError;
+    const ExitCode neverLlvmResult = runDriver(
+        neverLlvmArguments, neverLlvmOutput, neverLlvmError);
+    const std::size_t neverLocalName = neverLlvmOutput.find("NeverLocal");
+    const std::size_t neverLocalBegin = neverLocalName == std::string::npos
+        ? std::string::npos
+        : neverLlvmOutput.rfind("define ", neverLocalName);
+    const std::size_t neverLocalEnd = neverLocalBegin == std::string::npos
+        ? std::string::npos
+        : neverLlvmOutput.find("\n}", neverLocalBegin);
+    const std::string neverLocalLlvm =
+        neverLocalBegin == std::string::npos || neverLocalEnd == std::string::npos
+        ? std::string()
+        : neverLlvmOutput.substr(neverLocalBegin, neverLocalEnd - neverLocalBegin);
+    tests.expect(
+        neverLlvmResult == ExitCode::Success &&
+            neverLocalLlvm.find("__nativesharp_trap") != std::string::npos &&
+            neverLocalLlvm.find("unreachable") != std::string::npos &&
+            neverLocalLlvm.find("alloca") == std::string::npos &&
+            neverLocalLlvm.find("store i1 false") == std::string::npos,
+        "an inferred never local has no alloca, layout, store, or fabricated runtime value (" +
+            neverLlvmError + neverLocalLlvm + ")");
+
     const auto expectRejected = [&](std::string_view name, std::string_view source,
                                     std::string_view expectedText)
     {
@@ -528,6 +631,27 @@ public class Program
     }
 }
 )NS", "return cannot leave a finally block");
+    expectRejected("NeverOverloadAmbiguity", R"NS(
+public class Program
+{
+    private class Left {}
+    private class Right {}
+    private static int Pick(Left value) { return 1; }
+    private static int Pick(Right value) { return 2; }
+    public static int Main() { return Pick(panic()); }
+}
+)NS", "ambiguous");
+    expectRejected("NeverDoesNotHideDeadErrors", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        int value;
+        panic();
+        return value;
+    }
+}
+)NS", "use of unassigned local variable 'value'");
 
     const std::filesystem::path edition2 = root / "edition2";
     const std::filesystem::path edition2Project = edition2 / "Edition2Identifier.nsproj";

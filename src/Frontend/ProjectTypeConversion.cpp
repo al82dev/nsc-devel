@@ -311,6 +311,15 @@ ProjectImplicitConversion ProjectTypeConversion::classifyImplicit(
         return makeConversion(ProjectConversionKind::Identity, 0, sourceTypeKey, targetTypeKey);
     }
 
+    // NativeSharp 3.0 T07-F04. `never` is the bottom type: a divergent expression can
+    // inhabit every result context precisely because it never produces a runtime value.
+    // Keep this ahead of structural conversions so a never expression does not pretend to
+    // manufacture tuple elements, reference objects, or numeric bits.
+    if (sourceTypeKey == "builtin:never")
+    {
+        return makeConversion(ProjectConversionKind::Never, 0, sourceTypeKey, targetTypeKey);
+    }
+
     const std::optional<std::vector<std::string>> sourceTuple =
         tupleElementTypeKeys(sourceTypeKey);
     const std::optional<std::vector<std::string>> targetTuple =
@@ -672,6 +681,7 @@ const char* projectConversionKindName(ProjectConversionKind kind) noexcept
     {
         case ProjectConversionKind::None: return "none";
         case ProjectConversionKind::Identity: return "identity";
+        case ProjectConversionKind::Never: return "never";
         case ProjectConversionKind::IntegralPromotion: return "integral-promotion";
         case ProjectConversionKind::ConstantInteger: return "constant-integer";
         case ProjectConversionKind::Numeric: return "numeric";

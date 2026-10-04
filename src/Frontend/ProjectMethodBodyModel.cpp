@@ -4082,7 +4082,9 @@ void ProjectMethodBodyModel::analyzeStatement(
         {
             const ExpressionResult condition = analyzeExpression(
                 statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-            if (condition.valid && condition.typeKey != "builtin:bool")
+            if (condition.valid &&
+                condition.typeKey != "builtin:bool" &&
+                condition.typeKey != "builtin:never")
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidCondition,
@@ -4151,6 +4153,10 @@ void ProjectMethodBodyModel::analyzeStatement(
         case ast::AstNodeKind::WhileStatement:
         {
             const bool isDoWhile = statement->kind() == ast::AstNodeKind::DoWhileStatement;
+            const bool conditionAlwaysTrue =
+                statement->first() != nullptr &&
+                statement->first()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+                statement->first()->tokenKind() == lexer::TokenKind::KwTrue;
 
             // La condicion se analiza EXACTAMENTE UNA VEZ, aqui para un while y despues del cuerpo
             // para un do-while. Una vez y no cero: aunque el punto en que se analiza sea
@@ -4159,7 +4165,9 @@ void ProjectMethodBodyModel::analyzeStatement(
             {
                 const ExpressionResult condition = analyzeExpression(
                     statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-                if (condition.valid && condition.typeKey != "builtin:bool")
+                if (condition.valid &&
+                    condition.typeKey != "builtin:bool" &&
+                    condition.typeKey != "builtin:never")
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidCondition,
@@ -4312,12 +4320,22 @@ void ProjectMethodBodyModel::analyzeStatement(
             }
             else
             {
-                postLoop = loopEntry;
+                // T07-F04. `while (true)` has no zero-iteration/fallthrough edge. Its only
+                // reachable successor is an explicit `break`; if none exists, the statement is
+                // proven divergent. Ordinary while loops retain the conservative entry edge.
+                postLoop.reachable = false;
+                if (!conditionAlwaysTrue) postLoop = loopEntry;
                 postLoop = joinOwnershipFlows(postLoop, loopContext.breakStates);
-                if (backEdgeState.reachable)
+                if (!conditionAlwaysTrue && backEdgeState.reachable)
                 {
                     postLoop = joinOwnershipFlow(postLoop, backEdgeState);
                 }
+            }
+            if (isDoWhile && conditionAlwaysTrue)
+            {
+                OwnershipFlowSnapshot onlyBreaks;
+                onlyBreaks.reachable = false;
+                postLoop = joinOwnershipFlows(onlyBreaks, loopContext.breakStates);
             }
             restoreOwnershipFlow(postLoop);
             break;
@@ -4349,7 +4367,9 @@ void ProjectMethodBodyModel::analyzeStatement(
         {
             const ExpressionResult condition = analyzeExpression(
                 statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-            if (condition.valid && condition.typeKey != "builtin:bool")
+            if (condition.valid &&
+                condition.typeKey != "builtin:bool" &&
+                condition.typeKey != "builtin:never")
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidCondition,
@@ -5002,7 +5022,9 @@ void ProjectMethodBodyModel::analyzeTry(
         {
             const ExpressionResult filter = analyzeExpression(
                 catchClause->second(), methodMemberOrdinal, catchScope, diagnostics);
-            if (filter.valid && filter.typeKey != "builtin:bool")
+            if (filter.valid &&
+                filter.typeKey != "builtin:bool" &&
+                filter.typeKey != "builtin:never")
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidCondition,
@@ -6240,11 +6262,16 @@ void ProjectMethodBodyModel::analyzeFor(
         }
     }
 
+    const bool conditionAlwaysTrue = statement->second() == nullptr ||
+        (statement->second()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+         statement->second()->tokenKind() == lexer::TokenKind::KwTrue);
     if (statement->second() != nullptr)
     {
         const ExpressionResult condition = analyzeExpression(
             statement->second(), methodMemberOrdinal, forScope, diagnostics);
-        if (condition.valid && condition.typeKey != "builtin:bool")
+        if (condition.valid &&
+            condition.typeKey != "builtin:bool" &&
+            condition.typeKey != "builtin:never")
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidCondition,
@@ -6373,9 +6400,13 @@ void ProjectMethodBodyModel::analyzeFor(
         }
     }
 
-    OwnershipFlowSnapshot postLoop = loopEntry;
+    // T07-F04. A conditionless `for` and `for (; true; ...)` can leave only through `break`.
+    // Do not retain the fictitious zero-iteration edge used by ordinary conditional loops.
+    OwnershipFlowSnapshot postLoop;
+    postLoop.reachable = false;
+    if (!conditionAlwaysTrue) postLoop = loopEntry;
     postLoop = joinOwnershipFlows(postLoop, loopContext.breakStates);
-    if (backEdgeState.reachable)
+    if (!conditionAlwaysTrue && backEdgeState.reachable)
     {
         postLoop = joinOwnershipFlow(postLoop, backEdgeState);
     }
@@ -8922,7 +8953,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             // tapaba el bug del analisis.
             const ExpressionResult condition = analyzeExpression(
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-            if (condition.valid && condition.typeKey != "builtin:bool")
+            if (condition.valid &&
+                condition.typeKey != "builtin:bool" &&
+                condition.typeKey != "builtin:never")
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidCondition,
@@ -8960,6 +8993,36 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
             if (!whenTrue.valid || !whenFalse.valid)
             {
+                break;
+            }
+
+            // T07-F04. A divergent arm contributes no value and no ownership state to the
+            // join. The other arm therefore determines the conditional's complete result.
+            // Two divergent arms retain the bottom type. This happens before equality and
+            // numeric inference so `panic()` never becomes a fabricated bool/integer/reference.
+            const auto adoptReachableBranch = [&](const ExpressionResult& branch)
+            {
+                result = branch;
+                result.assignable = false;
+                result.addressable = false;
+            };
+            if (whenTrue.typeKey == "builtin:never" &&
+                whenFalse.typeKey == "builtin:never")
+            {
+                result.typeKey = "builtin:never";
+                result.valid = true;
+                result.assignable = false;
+                result.addressable = false;
+                break;
+            }
+            if (whenTrue.typeKey == "builtin:never")
+            {
+                adoptReachableBranch(whenFalse);
+                break;
+            }
+            if (whenFalse.typeKey == "builtin:never")
+            {
+                adoptReachableBranch(whenTrue);
                 break;
             }
 
@@ -12856,6 +12919,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         coreBindings_.push_back(std::move(binding));
         result.typeKey = "builtin:never";
         result.valid = true;
+        ownershipFlowReachable_ = false;
         return result;
     }
     if (namespaceFunctionModel_ != nullptr)

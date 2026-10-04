@@ -7498,6 +7498,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapImplicitConversion(
     const ProjectImplicitConversion& conversion,
     const ast::AstNode* syntax)
 {
+    // `never -> T` is a semantic coercion only. There is no source value to convert and no
+    // destination value to materialize, so HIR preserves the divergent node itself. Parents use
+    // their declared result type for reachable paths and LLVM observes the terminating block.
+    if (conversion.kind == ProjectConversionKind::Never)
+    {
+        return value;
+    }
     if ((conversion.kind == ProjectConversionKind::UserDefinedImplicit ||
          conversion.kind == ProjectConversionKind::UserDefinedExplicit) &&
         conversion.userDefinedMemberOrdinal.has_value())
