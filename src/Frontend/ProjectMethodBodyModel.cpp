@@ -9146,8 +9146,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 expression->auxiliaryText() == "variant-payload-extract";
             const bool compilerVariantResultTransfer =
                 expression->auxiliaryText() == "variant-result-transfer";
+            const bool compilerComprehensionResult =
+                expression->auxiliaryText() == "comprehension-result";
             const bool moveAllowed = allowMove || compilerVariantPayloadTransfer ||
-                compilerVariantPayloadExtract || compilerVariantResultTransfer;
+                compilerVariantPayloadExtract || compilerVariantResultTransfer ||
+                compilerComprehensionResult;
             // T08-F05. `move(receiver.Method)` is the explicit owning method-value form.  It is
             // recognized before ordinary field/element moves because the MemberExpression is a
             // method group, not storage.  The delegate cell will receive the receiver's dynamic
@@ -9637,7 +9640,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
                 const bool sourceRequiresMove = local.isRaii || local.isMoveOnly ||
                     compilerVariantResultTransfer;
-                copiedForDefer = (deferValueCapture || compilerVariantPayloadTransfer) &&
+                copiedForDefer = (deferValueCapture || compilerVariantPayloadTransfer ||
+                    compilerComprehensionResult) &&
                     !sourceRequiresMove;
                 if (!sourceRequiresMove && !copiedForDefer)
                 {
@@ -9759,7 +9763,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     parameter.passKind == ParameterPassKind::Value &&
                     callableBelongsToGenericTypeSpecialization(methodMemberOrdinal) &&
                     !sourceRequiresMove;
-                copiedForDefer = (deferValueCapture || compilerVariantPayloadTransfer) &&
+                copiedForDefer = (deferValueCapture || compilerVariantPayloadTransfer ||
+                    compilerComprehensionResult) &&
                     !sourceRequiresMove;
                 copiedForDefer = copiedForDefer || genericCopyShapedMove;
                 if (!sourceRequiresMove && !copiedForDefer)

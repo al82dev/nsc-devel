@@ -8222,6 +8222,9 @@ ast::AstNode* Parser::parseStatement()
         atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
         return parseMatchStatement();
 
+    if (!comprehensionContexts_.empty() && atContextualKeyword("yield"))
+        return parseComprehensionYieldStatement();
+
     if (atContextualKeyword("yield") &&
         (peek().kind() == TokenKind::KwReturn || peek().kind() == TokenKind::KwBreak))
     {
@@ -10895,6 +10898,90 @@ ast::AstNode* Parser::parseLoopExpression()
     return loop;
 }
 
+ast::AstNode* Parser::parseComprehensionYieldStatement()
+{
+    const std::size_t beginIndex = index_;
+    const SourceRange yieldRange = consume().range();
+    requireEdition3(yieldRange, "comprehension yields");
+    const ComprehensionContext& context = comprehensionContexts_.back();
+
+    if (consumeIf(TokenKind::KwBreak))
+    {
+        expect(TokenKind::Semicolon, "';' after 'yield break'");
+        ast::AstNode* stop = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BreakStatement, tokenRangeFrom(beginIndex));
+        stop->setText(context.loopLabel);
+        ast::AstNode* result = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::MoveExpression, yieldRange);
+        result->setFirst(makeIdentifierExpression(yieldRange, context.builderName));
+        result->setAuxiliaryText("comprehension-result");
+        stop->setFirst(result);
+        return stop;
+    }
+
+    consumeIf(TokenKind::KwReturn);
+    ast::AstNode* value = parseExpression();
+    expect(TokenKind::Semicolon, "';' after comprehension yield");
+    ast::AstNode* add = makeZeroArgCallExpression(makeMemberExpression(
+        makeIdentifierExpression(yieldRange, context.builderName), "Add"));
+    if (value != nullptr) add->addChild(value);
+    add->setAuxiliaryText("comprehension-builder-add");
+    return makeExpressionStatement(add);
+}
+
+ast::AstNode* Parser::parseComprehensionExpression()
+{
+    const std::size_t beginIndex = index_;
+    const SourceRange keywordRange = consume().range();
+    requireEdition3(keywordRange, "comprehension expressions");
+    expect(TokenKind::LeftParen, "'(' after comprehend");
+    ast::AstNode* builder = parseExpression();
+    expect(TokenKind::RightParen, "')' after comprehension builder");
+
+    const std::size_t ordinal = nextComprehensionTemporary_++;
+    ComprehensionContext context{
+        "$__comprehension_builder_" + std::to_string(ordinal),
+        "$__comprehension_loop_" + std::to_string(ordinal)};
+    comprehensionContexts_.push_back(context);
+    ast::AstNode* body = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
+    if (body == nullptr)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "expected '{' after comprehension builder");
+        body = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, keywordRange);
+    }
+    comprehensionContexts_.pop_back();
+
+    const SourceRange range = tokenRangeFrom(beginIndex);
+    ast::AstNode* loopBody = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
+    ast::TypeSyntax* inferred = arena_.make<ast::TypeSyntax>(
+        range, TokenKind::KwVar, std::string("var"));
+    ast::AstNode* builderDeclaration = makeVariableDeclaration(
+        inferred, context.builderName, builder, false);
+    builderDeclaration->setAuxiliaryText("local:comprehension-builder");
+    loopBody->addChild(builderDeclaration);
+    loopBody->addChild(body);
+
+    ast::AstNode* finish = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::BreakStatement, range);
+    finish->setText(context.loopLabel);
+    ast::AstNode* result = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::MoveExpression, range);
+    result->setFirst(makeIdentifierExpression(range, context.builderName));
+    result->setAuxiliaryText("comprehension-result");
+    finish->setFirst(result);
+    loopBody->addChild(finish);
+
+    ast::AstNode* loop = arena_.make<ast::AstNode>(ast::AstNodeKind::LoopExpression, range);
+    loop->setText(context.loopLabel);
+    loop->setAuxiliaryText("comprehension:explicit-builder");
+    loop->setFirst(loopBody);
+    return loop;
+}
+
 ast::AstNode* Parser::parseForStatement()
 {
     const std::size_t beginIndex = index_;
@@ -13206,6 +13293,21 @@ ast::AstNode* Parser::parsePrimaryExpression()
         (peek().kind() == TokenKind::LeftBrace ||
          (peek().kind() == TokenKind::Identifier && peek(2).kind() == TokenKind::LeftBrace)))
         return parseLoopExpression();
+    if (atContextualKeyword("comprehend") && peek().kind() == TokenKind::LeftParen)
+    {
+        std::size_t cursor = index_ + 1U;
+        std::size_t depth = 0;
+        for (; cursor < tokens_.size(); ++cursor)
+        {
+            if (tokens_[cursor].kind() == TokenKind::LeftParen) ++depth;
+            else if (tokens_[cursor].kind() == TokenKind::RightParen)
+            {
+                if (--depth == 0) break;
+            }
+        }
+        if (cursor + 1U < tokens_.size() && tokens_[cursor + 1U].kind() == TokenKind::LeftBrace)
+            return parseComprehensionExpression();
+    }
     const lexer::Token& token = current();
     ast::AstNodeKind kind = ast::AstNodeKind::IdentifierExpression;
 

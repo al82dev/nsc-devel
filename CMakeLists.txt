@@ -1792,6 +1792,23 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_ns3_t09_lazy_range_tests)
 
     add_executable(
+        nsc_ns3_t09_comprehension_tests
+        tests/unit/NativeSharp3T09ComprehensionTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t09_comprehension_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_ns3_t09_comprehension_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_ns3_t09_comprehension_tests
+        PRIVATE
+            NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    add_dependencies(nsc_ns3_t09_comprehension_tests nsc)
+    nsc_enable_warnings(nsc_ns3_t09_comprehension_tests)
+    add_test(
+        NAME nsc.ns3.t09.comprehensions
+        COMMAND nsc_ns3_t09_comprehension_tests)
+
+    add_executable(
         nsc_ns3_t10_coroutine_tests
         tests/unit/NativeSharp3T10CoroutineTests.cpp)
     target_link_libraries(nsc_ns3_t10_coroutine_tests PRIVATE nsc_compilation)

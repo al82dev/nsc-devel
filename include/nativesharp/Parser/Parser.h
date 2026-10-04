@@ -310,6 +310,8 @@ private:
     ast::AstNode* parseMatchStatement();
     ast::AstNode* parseMatchExpression();
     ast::AstNode* parseLoopExpression();
+    ast::AstNode* parseComprehensionExpression();
+    ast::AstNode* parseComprehensionYieldStatement();
     // True when the cursor sits on `case` or on the `default` OF A LABEL. `default` is also an
     // expression keyword (`default(T)`), so it only opens a label when a colon follows it
     // immediately -- otherwise a section that begins with `default(int)` would be misread.
@@ -378,6 +380,13 @@ private:
     std::size_t pendingGenericGreater_ = 0;
     std::size_t nextMatchTemporary_ = 0;
     std::size_t nextDeferTemporary_ = 0;
+    struct ComprehensionContext final
+    {
+        std::string builderName;
+        std::string loopLabel;
+    };
+    std::vector<ComprehensionContext> comprehensionContexts_;
+    std::size_t nextComprehensionTemporary_ = 0;
     bool parsingExtensionBody_ = false;
     std::unordered_set<std::string> knownTypeNames_;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
