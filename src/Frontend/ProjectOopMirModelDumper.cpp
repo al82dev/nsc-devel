@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
 
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <sstream>
@@ -18,6 +19,16 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
         return;
     }
     output << indent << projectOopMirNodeKindName(node->kind);
+    if (node->syntax != nullptr)
+    {
+        switch (node->syntax->floatingPointMode())
+        {
+            case ast::FloatingPointModeSyntaxKind::Inherit: break;
+            case ast::FloatingPointModeSyntaxKind::Strict: output << " fp=strict"; break;
+            case ast::FloatingPointModeSyntaxKind::Precise: output << " fp=precise"; break;
+            case ast::FloatingPointModeSyntaxKind::Fast: output << " fp=fast"; break;
+        }
+    }
     if (!node->typeKey.empty()) output << " type=" << node->typeKey;
     if (node->memberOrdinal.has_value()) output << " member=#" << *node->memberOrdinal;
     if (node->namespaceFunctionOrdinal.has_value())

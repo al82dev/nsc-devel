@@ -3942,8 +3942,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                              "unsupported floating-point mode '",
                              "modo de punto flotante no compatible '")
                       << argument << compilerText(
-                             "'; expected --fp-mode=precise, fast, or deterministic\n",
-                             "'; se esperaba --fp-mode=precise, fast o deterministic\n");
+                             "'; expected --fp-mode=strict, precise, fast, or deterministic\n",
+                             "'; se esperaba --fp-mode=strict, precise, fast o deterministic\n");
                 return ExitCode::CommandLineError;
             }
             floatingPointMode = *parsed;
@@ -4534,7 +4534,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         fmaContractPolicy = llvm_backend::FmaContractPolicy::Fast;
     floatingPointModeScope.setFmaContractPolicy(fmaContractPolicy);
     if (!floatingPointRoundingModeSeen &&
-        floatingPointMode == llvm_backend::FloatingPointMode::Deterministic)
+        (floatingPointMode == llvm_backend::FloatingPointMode::Deterministic ||
+         floatingPointMode == llvm_backend::FloatingPointMode::Strict))
         floatingPointRoundingMode = llvm_backend::FloatingPointRoundingMode::NearestEven;
     floatingPointModeScope.setRoundingMode(floatingPointRoundingMode);
     floatingPointModeScope.setDenormalMode(floatingPointDenormalMode);
@@ -5769,7 +5770,7 @@ void Driver::printHelp(std::ostream &output)
     }
     output << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a "
               "compilation command.\n"
-           << "--fp-mode=precise|fast|deterministic selects the floating-point IR contract; "
+           << "--fp-mode=strict|precise|fast|deterministic selects the floating-point IR contract; "
               "precise is the default and fast is explicit opt-in.\n"
            << "--fp-contract=off|on|fast controls whether multiply/add sequences may contract "
               "to FMA; off is the strict default.\n"

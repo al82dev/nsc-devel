@@ -126,6 +126,13 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
     {
         output << " variadic=true";
     }
+    switch (node->floatingPointMode())
+    {
+        case FloatingPointModeSyntaxKind::Inherit: break;
+        case FloatingPointModeSyntaxKind::Strict: output << " fp=strict"; break;
+        case FloatingPointModeSyntaxKind::Precise: output << " fp=precise"; break;
+        case FloatingPointModeSyntaxKind::Fast: output << " fp=fast"; break;
+    }
 
     output << '\n';
 

@@ -4789,6 +4789,7 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     result->setLifetimeName(source->lifetimeName());
     result->setVariadic(source->isVariadic());
     result->setUnsafe(source->isUnsafe());
+    result->setFloatingPointMode(source->floatingPointMode());
     result->setIntegerValue(source->integerValue());
     result->setFloatingValue(source->floatingValue());
     // A scalar `new T` inside a generic template allocates one raw storage slot whose element

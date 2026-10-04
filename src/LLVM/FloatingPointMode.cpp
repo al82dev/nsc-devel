@@ -9,6 +9,7 @@ thread_local FloatingPointState gActiveState;
 
 std::optional<FloatingPointMode> parseFloatingPointMode(std::string_view value) noexcept
 {
+    if (value == "strict") return FloatingPointMode::Strict;
     if (value == "precise") return FloatingPointMode::Precise;
     if (value == "fast") return FloatingPointMode::Fast;
     if (value == "deterministic") return FloatingPointMode::Deterministic;
@@ -19,6 +20,7 @@ std::string_view floatingPointModeName(FloatingPointMode mode) noexcept
 {
     switch (mode)
     {
+        case FloatingPointMode::Strict: return "strict";
         case FloatingPointMode::Precise: return "precise";
         case FloatingPointMode::Fast: return "fast";
         case FloatingPointMode::Deterministic: return "deterministic";

@@ -85,9 +85,16 @@ bool implicitNumericConversionIsLossless(NumericType source, NumericType target)
 
 FloatingPointContract floatingPointContract(FloatingPointMode mode) noexcept
 {
-    if (mode == FloatingPointMode::Strict) return {true, true, false, false};
-    if (mode == FloatingPointMode::Precise) return {true, true, true, false};
-    return {false, false, true, true};
+    // Windows x64 strict mode fixes nearest-even, preserves denormals, forbids contraction and
+    // reassociation, and therefore shares the compiler's IEEE constant-evaluation result.
+    if (mode == FloatingPointMode::Strict)
+        return {true, true, false, false, true, true, true};
+    // Precise retains observable NaN/zero/payload/denormal behavior but explicitly allows FMA;
+    // a contracted runtime result may therefore differ in the final bit from an uncontracted
+    // constant expression even though reassociation remains forbidden.
+    if (mode == FloatingPointMode::Precise)
+        return {true, true, true, false, true, true, false};
+    return {false, false, true, true, false, true, false};
 }
 
 bool strongNumericHasRuntimeWrapper() noexcept { return false; }

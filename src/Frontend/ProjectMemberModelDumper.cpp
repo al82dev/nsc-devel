@@ -66,6 +66,17 @@ void ProjectMemberModelDumper::dump(
                        << " throws=" << (member.declaredErrorTypeKey.empty()
                             ? "<none>" : member.declaredErrorTypeKey)
                        << " effects=" << member.effects.bits()
+                       << " fp=";
+                switch (member.syntax != nullptr
+                        ? member.syntax->floatingPointMode()
+                        : ast::FloatingPointModeSyntaxKind::Inherit)
+                {
+                    case ast::FloatingPointModeSyntaxKind::Inherit: output << "inherit"; break;
+                    case ast::FloatingPointModeSyntaxKind::Strict: output << "strict"; break;
+                    case ast::FloatingPointModeSyntaxKind::Precise: output << "precise"; break;
+                    case ast::FloatingPointModeSyntaxKind::Fast: output << "fast"; break;
+                }
+                output
                        << " override=" << (member.isOverride ? "true" : "false")
                        << " abstract=" << (member.isAbstract ? "true" : "false")
                        << " sealed=" << (member.isSealed ? "true" : "false");

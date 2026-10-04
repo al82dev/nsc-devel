@@ -43,6 +43,16 @@ struct LifetimeOutlivesConstraint
     SourceRange range;
 };
 
+// T14-F04. Source-level floating-point policy is an optimization/semantic contract, not a
+// physical type property. Inherit means the command-line/project policy remains authoritative.
+enum class FloatingPointModeSyntaxKind
+{
+    Inherit,
+    Strict,
+    Precise,
+    Fast
+};
+
 // NSC-LIMIT-007. Una clausula `where T : class, Base, IFoo` tal como se escribio.
 //
 // SE GUARDA SIN RESOLVER, y esa es la decision: los tipos quedan como `TypeSyntax*`, no como
@@ -182,6 +192,9 @@ public:
     bool isUnsafe() const noexcept;
     void setUnsafe(bool value = true) noexcept;
 
+    FloatingPointModeSyntaxKind floatingPointMode() const noexcept;
+    void setFloatingPointMode(FloatingPointModeSyntaxKind mode) noexcept;
+
     std::uint64_t integerValue() const noexcept;
     void setIntegerValue(std::uint64_t value) noexcept;
 
@@ -213,6 +226,7 @@ private:
     bool reference_ = false;
     bool variadic_ = false;
     bool unsafe_ = false;
+    FloatingPointModeSyntaxKind floatingPointMode_ = FloatingPointModeSyntaxKind::Inherit;
     std::uint64_t integerValue_ = 0;
     double floatingValue_ = 0.0;
 };

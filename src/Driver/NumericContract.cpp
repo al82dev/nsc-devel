@@ -16,7 +16,8 @@ namespace
 std::string numericContractPayload(const llvm_backend::FloatingPointState& state)
 {
     const bool fast = state.mode == llvm_backend::FloatingPointMode::Fast;
-    const bool deterministic = state.mode == llvm_backend::FloatingPointMode::Deterministic;
+    const bool deterministic = state.mode == llvm_backend::FloatingPointMode::Deterministic ||
+        state.mode == llvm_backend::FloatingPointMode::Strict;
     std::string result = "NSNUMERIC 1.0\n";
     result += "target=windows-x64\n";
     result += "integer-representation=twos-complement\n";

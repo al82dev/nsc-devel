@@ -77,6 +77,21 @@ std::optional<std::int64_t> signedIntegerLiteral(const ast::AstNode* expression)
     return -static_cast<std::int64_t>(magnitude);
 }
 
+void applyFloatingPointModeToTree(
+    ast::AstNode* node,
+    ast::FloatingPointModeSyntaxKind mode)
+{
+    if (node == nullptr || node->floatingPointMode() !=
+            ast::FloatingPointModeSyntaxKind::Inherit)
+        return;
+    node->setFloatingPointMode(mode);
+    applyFloatingPointModeToTree(node->first(), mode);
+    applyFloatingPointModeToTree(node->second(), mode);
+    applyFloatingPointModeToTree(node->third(), mode);
+    for (ast::AstNode* child : node->children())
+        applyFloatingPointModeToTree(child, mode);
+}
+
 ast::TypeSyntax* cloneParsedType(ast::AstArena& arena, const ast::TypeSyntax* source)
 {
     if (source == nullptr) return nullptr;
@@ -131,6 +146,7 @@ ast::AstNode* cloneParsedNode(ast::AstArena& arena, const ast::AstNode* source)
     result->setLifetimeName(source->lifetimeName());
     result->setVariadic(source->isVariadic());
     result->setUnsafe(source->isUnsafe());
+    result->setFloatingPointMode(source->floatingPointMode());
     result->setIntegerValue(source->integerValue());
     result->setFloatingValue(source->floatingValue());
     for (const TokenKind modifier : source->modifiers()) result->addModifier(modifier);
@@ -7366,6 +7382,7 @@ ast::AstNode* Parser::parseOperatorTail(
     }
     expect(TokenKind::RightParen, "')'");
     parseThrowsClause(method);
+    parseFloatingPointModeClause(method);
     method->setText(operatorMethodName(operation.kind(), method->children().size()));
 
     const std::size_t arity = method->children().size();
@@ -7410,6 +7427,9 @@ ast::AstNode* Parser::parseOperatorTail(
             "user-defined operator requires a body");
         if (!consumeIf(TokenKind::Semicolon)) synchronizeStatement();
     }
+    if (method->first() != nullptr && method->floatingPointMode() !=
+            ast::FloatingPointModeSyntaxKind::Inherit)
+        applyFloatingPointModeToTree(method->first(), method->floatingPointMode());
     method->setRange(tokenRangeFrom(beginIndex));
     return method;
 }
@@ -7755,6 +7775,7 @@ ast::AstNode* Parser::parseMethodTail(
     parseThrowsClause(method);
     // NSC-LIMIT-007: `void M<T>(T x) where T : class { ... }` -- despues de la lista de
     // parametros y antes del cuerpo o del punto y coma.
+    parseFloatingPointModeClause(method);
     parseGenericConstraintClauses(method);
 
     if (isAbstract)
@@ -7795,6 +7816,9 @@ ast::AstNode* Parser::parseMethodTail(
         }
     }
 
+    if (method->first() != nullptr && method->floatingPointMode() !=
+            ast::FloatingPointModeSyntaxKind::Inherit)
+        applyFloatingPointModeToTree(method->first(), method->floatingPointMode());
     method->setRange(tokenRangeFrom(beginIndex));
     return method;
 }
@@ -8079,6 +8103,7 @@ ast::AstNode* Parser::parseFunctionTail(
     function->setVariadic(variadic);
     expect(TokenKind::RightParen, "')'");
     parseThrowsClause(function);
+    parseFloatingPointModeClause(function);
     if (variadic && !externalOnly)
     {
         diagnostics_.report(
@@ -8152,8 +8177,36 @@ ast::AstNode* Parser::parseFunctionTail(
         synchronizeGlobal();
     }
 
+    if (function->first() != nullptr && function->floatingPointMode() !=
+            ast::FloatingPointModeSyntaxKind::Inherit)
+        applyFloatingPointModeToTree(function->first(), function->floatingPointMode());
     function->setRange(tokenRangeFrom(beginIndex));
     return function;
+}
+
+void Parser::parseFloatingPointModeClause(ast::AstNode* callable)
+{
+    if (callable == nullptr || !atContextualKeyword("fp") ||
+        peek().kind() != TokenKind::LeftParen)
+        return;
+    const SourceRange clauseRange = consume().range();
+    requireEdition3(clauseRange, "floating-point function modes");
+    consume();
+    ast::FloatingPointModeSyntaxKind mode = ast::FloatingPointModeSyntaxKind::Inherit;
+    if (atContextualKeyword("strict")) mode = ast::FloatingPointModeSyntaxKind::Strict;
+    else if (atContextualKeyword("precise")) mode = ast::FloatingPointModeSyntaxKind::Precise;
+    else if (atContextualKeyword("fast")) mode = ast::FloatingPointModeSyntaxKind::Fast;
+    else
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "floating-point mode must be strict, precise, or fast");
+    }
+    if (mode != ast::FloatingPointModeSyntaxKind::Inherit) consume();
+    expect(TokenKind::RightParen, "')' after floating-point mode");
+    callable->setFloatingPointMode(mode);
 }
 
 void Parser::parseThrowsClause(ast::AstNode* callable)
@@ -8298,6 +8351,35 @@ ast::AstNode* Parser::parseBlock()
 ast::AstNode* Parser::parseStatement()
 {
     if (at(TokenKind::LeftBrace)) return parseBlock();
+    if (atContextualKeyword("fp") && peek().kind() == TokenKind::LeftParen)
+    {
+        const SourceRange clauseRange = consume().range();
+        requireEdition3(clauseRange, "scoped floating-point modes");
+        consume();
+        ast::FloatingPointModeSyntaxKind mode = ast::FloatingPointModeSyntaxKind::Inherit;
+        if (atContextualKeyword("strict")) mode = ast::FloatingPointModeSyntaxKind::Strict;
+        else if (atContextualKeyword("precise")) mode = ast::FloatingPointModeSyntaxKind::Precise;
+        else if (atContextualKeyword("fast")) mode = ast::FloatingPointModeSyntaxKind::Fast;
+        else
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "floating-point scope mode must be strict, precise, or fast");
+        }
+        std::string modeName;
+        if (mode != ast::FloatingPointModeSyntaxKind::Inherit)
+        {
+            modeName = std::string(current().lexeme());
+            consume();
+        }
+        expect(TokenKind::RightParen, "')' after floating-point scope mode");
+        ast::AstNode* block = parseBlock();
+        block->setAuxiliaryText("fp-scope:" + modeName);
+        applyFloatingPointModeToTree(block, mode);
+        return block;
+    }
     if (atContextualKeyword("unsafe") &&
         (peek().kind() == TokenKind::LeftBrace || peek().kind() == TokenKind::LeftParen))
     {

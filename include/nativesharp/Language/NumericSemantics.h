@@ -29,6 +29,9 @@ struct FloatingPointContract final
     bool preservesNanSemantics;
     bool allowsContraction;
     bool allowsReassociation;
+    bool preservesNanPayload;
+    bool preservesDenormals;
+    bool constevalMatchesRuntime;
 };
 FloatingPointContract floatingPointContract(FloatingPointMode mode) noexcept;
 

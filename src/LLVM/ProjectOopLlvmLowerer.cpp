@@ -295,6 +295,34 @@ LLVMValueRef applyFloatingPointMode(LLVMValueRef instruction, bool contractable 
     return instruction;
 }
 
+FloatingPointState sourceFloatingPointState(
+    ast::FloatingPointModeSyntaxKind mode,
+    FloatingPointState inherited) noexcept
+{
+    inherited.denormalMode = FloatingPointDenormalMode::Preserve;
+    switch (mode)
+    {
+        case ast::FloatingPointModeSyntaxKind::Inherit:
+            return inherited;
+        case ast::FloatingPointModeSyntaxKind::Strict:
+            inherited.mode = FloatingPointMode::Strict;
+            inherited.fmaContractPolicy = FmaContractPolicy::Off;
+            inherited.roundingMode = FloatingPointRoundingMode::NearestEven;
+            return inherited;
+        case ast::FloatingPointModeSyntaxKind::Precise:
+            inherited.mode = FloatingPointMode::Precise;
+            inherited.fmaContractPolicy = FmaContractPolicy::On;
+            inherited.roundingMode = FloatingPointRoundingMode::Dynamic;
+            return inherited;
+        case ast::FloatingPointModeSyntaxKind::Fast:
+            inherited.mode = FloatingPointMode::Fast;
+            inherited.fmaContractPolicy = FmaContractPolicy::Fast;
+            inherited.roundingMode = FloatingPointRoundingMode::Dynamic;
+            return inherited;
+    }
+    return inherited;
+}
+
 // LA TERCERA Y LA CUARTA COPIA de la tabla de tipos enteros, encontradas al arreglar la division
 // el 2026-09-03 y quitadas en el mismo sitio. Estas dos funciones repetian los anchos y los
 // signos que ya estaban en include/nativesharp/Frontend/BuiltinIntegerTypes.h -- y esta copia era
@@ -8017,6 +8045,13 @@ private:
     LLVMValueRef lowerExpression(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr) return nullptr;
+        FloatingPointModeScope sourceModeScope;
+        if (node->syntax != nullptr && node->syntax->floatingPointMode() !=
+                ast::FloatingPointModeSyntaxKind::Inherit)
+        {
+            sourceModeScope.setState(sourceFloatingPointState(
+                node->syntax->floatingPointMode(), captureFloatingPointState()));
+        }
         ScopedDebugLocation scopedDebugLocation(builder_, debugLocation(node));
         switch (node->kind)
         {
@@ -13237,7 +13272,9 @@ private:
         if (node->operation == lexer::TokenKind::Bang) return LLVMBuildNot(builder_, value, "not");
         if (node->operation == lexer::TokenKind::Tilde) return LLVMBuildNot(builder_, value, "bitnot");
         if (node->operation == lexer::TokenKind::Minus)
-            return isFloating(node->typeKey) ? LLVMBuildFNeg(builder_, value, "fneg") : LLVMBuildNeg(builder_, value, "neg");
+            return isFloating(node->typeKey)
+                ? applyFloatingPointMode(LLVMBuildFNeg(builder_, value, "fneg"))
+                : LLVMBuildNeg(builder_, value, "neg");
         return failValue(error, "unsupported unary operation in Stage 34 LLVM lowering");
     }
 

@@ -256,6 +256,7 @@ AstNode* cloneNode(
     result->setReference(source->isReference());
     result->setVariadic(source->isVariadic());
     result->setUnsafe(source->isUnsafe());
+    result->setFloatingPointMode(source->floatingPointMode());
     result->setIntegerValue(source->integerValue());
     result->setFloatingValue(source->floatingValue());
     for (TokenKind modifier : source->modifiers()) result->addModifier(modifier);

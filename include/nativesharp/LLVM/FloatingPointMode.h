@@ -7,6 +7,7 @@ namespace nativesharp::llvm_backend
 {
 enum class FloatingPointMode
 {
+    Strict,
     Precise,
     Fast,
     Deterministic
