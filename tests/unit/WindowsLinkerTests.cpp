@@ -94,6 +94,20 @@ bool containsLibrary(const std::vector<std::string>& libraries, std::string_view
 {
     return std::find(libraries.begin(), libraries.end(), expected) != libraries.end();
 }
+
+bool importsSymbol(
+    const nativesharp::linker::PeExecutableInfo& info,
+    std::string_view library,
+    std::string_view symbol)
+{
+    return std::any_of(
+        info.importedSymbols.begin(),
+        info.importedSymbols.end(),
+        [&](const nativesharp::linker::PeImportedSymbol& imported)
+        {
+            return imported.library == library && imported.name == symbol;
+        });
+}
 }
 
 int main()
@@ -187,8 +201,11 @@ int main()
             "linked executable imports the minimal Win32 runtime API from KERNEL32.dll");
         tests.expect(containsLibrary(verifier.info().importedLibraries, "KERNELBASE.dll"),
             "dynamic stack allocation resolves the real x64 __chkstk from KERNELBASE.dll");
-        tests.expect(!containsLibrary(verifier.info().importedLibraries, "ucrtbase.dll"),
-            "Stage 19 executable has no UCRT dependency");
+        tests.expect(containsLibrary(verifier.info().importedLibraries, "ucrtbase.dll") &&
+                importsSymbol(verifier.info(), "ucrtbase.dll", "__C_specific_handler"),
+            "Stage 19 executable resolves its Win64 panic personality from the Windows UCRT");
+        tests.expect(!containsLibrary(verifier.info().importedLibraries, "vcruntime140.dll"),
+            "Stage 19 executable does not require the Visual C++ redistributable DLL");
 
         const std::vector<unsigned char> original = readBytes(executablePath);
         tests.expect(original.size() > 512, "PE corruption tests start from a complete executable image");
