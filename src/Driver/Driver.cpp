@@ -5334,6 +5334,22 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         return result;
     }
 
+    if (args.size() == 4 && args[0] == "--apply-migration-fixes" && args[2] == "-o")
+    {
+        MigrationAnalysis analysis;
+        std::size_t appliedFixCount = 0;
+        std::string migrationError;
+        if (!applySafeMigrationFixesToFile(std::filesystem::path(args[1]),
+                std::filesystem::path(args[3]), analysis, appliedFixCount, migrationError))
+        {
+            error << "nsc: error: " << migrationError << '\n';
+            return ExitCode::CompilationError;
+        }
+        output << "safe migration fixes applied: " << appliedFixCount << '\n'
+               << "migration output written: " << args[3] << '\n';
+        return ExitCode::Success;
+    }
+
     if (args.size() == 5 && args[0] == "--verify-library-artifacts")
     {
         return verifyLibraryArtifacts(args[1], args[2], args[3], args[4], output, error);
@@ -5559,6 +5575,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --write-migration-baseline <file.baseline>\n"
            << "  nsc --verify-migration-baseline <file.baseline>\n"
            << "  nsc --analyze-migration <source.ns>\n"
+           << "  nsc --apply-migration-fixes <source.ns> -o <migrated.ns>\n"
            << "  nsc --print-migration-guide\n"
            << "  nsc --write-migration-guide <file.guide>\n"
            << "  nsc --verify-migration-guide <file.guide>\n"

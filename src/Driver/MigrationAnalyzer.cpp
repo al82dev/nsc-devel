@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <charconv>
 #include <fstream>
 #include <iterator>
 #include <optional>
@@ -191,17 +192,35 @@ void addFinding(MigrationAnalysis& analysis,
     const Token& token,
     language::MigrationIssue issue,
     std::string message,
-    std::string alternative)
+    std::string alternative,
+    std::optional<MigrationTextEdit> safeFix = std::nullopt)
 {
     if (isSuppressed(disabled, token.line, issue)) return;
     analysis.findings.push_back({issue, token.offset,
         static_cast<std::uint32_t>(token.text.size()), token.line, token.column,
-        std::move(message), std::move(alternative)});
+        std::move(message), std::move(alternative), std::move(safeFix)});
 }
 
 bool isNarrowIntegerType(std::string_view text) noexcept
 {
     return text == "sbyte" || text == "byte" || text == "short" || text == "ushort";
+}
+
+std::optional<std::uint64_t> decimalValue(std::string_view text) noexcept
+{
+    std::uint64_t value = 0;
+    const auto result = std::from_chars(text.data(), text.data() + text.size(), value, 10);
+    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) return std::nullopt;
+    return value;
+}
+
+bool representableBy(std::string_view type, std::uint64_t value) noexcept
+{
+    if (type == "sbyte") return value <= 127;
+    if (type == "byte") return value <= 255;
+    if (type == "short") return value <= 32767;
+    if (type == "ushort") return value <= 65535;
+    return false;
 }
 }
 
@@ -281,10 +300,20 @@ MigrationAnalysis analyzeMigrationSource(
             tokens[index + 1].identifier && tokens[index + 2].text == "=" &&
             tokens[index + 3].number)
         {
+            std::optional<MigrationTextEdit> safeFix;
+            const std::optional<std::uint64_t> value = decimalValue(tokens[index + 3].text);
+            if (value.has_value() && representableBy(token.text, *value))
+            {
+                safeFix = MigrationTextEdit{tokens[index + 3].offset,
+                    static_cast<std::uint32_t>(tokens[index + 3].text.size()),
+                    "(" + std::string(token.text) + ")" + std::string(tokens[index + 3].text),
+                    "the decimal constant is exactly representable by the declared type"};
+            }
             addFinding(analysis, disabled, tokens[index + 3],
                 language::MigrationIssue::NumericNarrowing,
                 "implicit numeric conversion must be checked under the 3.0 range rules",
-                "use a checked explicit conversion after proving the value is representable");
+                "use a checked explicit conversion after proving the value is representable",
+                std::move(safeFix));
         }
 
         if (token.text == "return")
@@ -349,7 +378,105 @@ std::string renderMigrationAnalysis(const MigrationAnalysis& analysis)
                << finding.line << ':' << finding.column << ' '
                << finding.message << '\n'
                << "  alternative: " << finding.alternative << '\n';
+        if (finding.safeFix.has_value())
+            output << "  safe-fix: " << finding.safeFix->replacement
+                   << " proof=" << finding.safeFix->equivalenceProof << '\n';
     }
     return output.str();
+}
+
+bool applySafeMigrationFixes(
+    std::string_view source,
+    const MigrationAnalysis& analysis,
+    std::string& migratedSource,
+    std::string& error)
+{
+    error.clear();
+    std::vector<MigrationTextEdit> edits;
+    for (const MigrationFinding& finding : analysis.findings)
+    {
+        if (!finding.safeFix.has_value()) continue;
+        const language::MigrationFix policyFix{finding.issue,
+            finding.safeFix->replacement, !finding.safeFix->equivalenceProof.empty()};
+        if (!language::mayApplyAutomaticFix(policyFix))
+        {
+            error = "migration edit lacks a semantic-equivalence proof";
+            return false;
+        }
+        edits.push_back(*finding.safeFix);
+    }
+    std::sort(edits.begin(), edits.end(), [](const MigrationTextEdit& left,
+        const MigrationTextEdit& right) { return left.offset < right.offset; });
+    std::uint64_t previousEnd = 0;
+    for (const MigrationTextEdit& edit : edits)
+    {
+        const std::uint64_t end = static_cast<std::uint64_t>(edit.offset) + edit.length;
+        if (end > source.size() || edit.offset < previousEnd)
+        {
+            error = "migration edits are out of bounds or overlap";
+            return false;
+        }
+        previousEnd = end;
+    }
+
+    migratedSource.assign(source);
+    for (auto iterator = edits.rbegin(); iterator != edits.rend(); ++iterator)
+        migratedSource.replace(iterator->offset, iterator->length, iterator->replacement);
+    return true;
+}
+
+bool applySafeMigrationFixesToFile(
+    const std::filesystem::path& sourcePath,
+    const std::filesystem::path& destinationPath,
+    MigrationAnalysis& analysis,
+    std::size_t& appliedFixCount,
+    std::string& error)
+{
+    appliedFixCount = 0;
+    if (sourcePath == destinationPath)
+    {
+        error = "safe migration fixes require a distinct output path";
+        return false;
+    }
+    std::ifstream stream(sourcePath, std::ios::binary);
+    if (!stream)
+    {
+        error = "cannot open migration source: " + sourcePath.string();
+        return false;
+    }
+    const std::string source{std::istreambuf_iterator<char>(stream),
+        std::istreambuf_iterator<char>()};
+    if (!stream.good() && !stream.eof())
+    {
+        error = "cannot read migration source: " + sourcePath.string();
+        return false;
+    }
+    analysis = analyzeMigrationSource(sourcePath, source);
+    std::string migrated;
+    if (!applySafeMigrationFixes(source, analysis, migrated, error)) return false;
+    for (const MigrationFinding& finding : analysis.findings)
+        if (finding.safeFix.has_value()) ++appliedFixCount;
+
+    const std::filesystem::path parent = destinationPath.parent_path();
+    std::error_code directoryError;
+    if (!parent.empty()) std::filesystem::create_directories(parent, directoryError);
+    if (directoryError)
+    {
+        error = "cannot create migration output directory: " + directoryError.message();
+        return false;
+    }
+    std::ofstream destination(destinationPath, std::ios::binary | std::ios::trunc);
+    if (!destination)
+    {
+        error = "cannot open migration output: " + destinationPath.string();
+        return false;
+    }
+    destination.write(migrated.data(), static_cast<std::streamsize>(migrated.size()));
+    if (!destination)
+    {
+        error = "cannot write migration output: " + destinationPath.string();
+        return false;
+    }
+    return true;
 }
 }

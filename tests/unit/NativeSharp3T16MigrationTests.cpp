@@ -4,6 +4,7 @@
 
 #include "../support/TestContext.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -74,7 +75,32 @@ byte suppressed = 7;
             output.str().find("MIG3001") != std::string::npos &&
             output.str().find("MIG3007") != std::string::npos,
         "nsc exposes the migration analyzer as a productive driver command");
+
+    const std::filesystem::path migratedPath = path.parent_path() /
+        "nativesharp-t16-migration-fixed.ns";
+    const std::string migratedPathText = migratedPath.string();
+    output.str({});
+    error.str({});
+    const std::vector<std::string_view> fixArguments = {
+        "--apply-migration-fixes", pathText, "-o", migratedPathText};
+    const ExitCode fixResult = compiler.run(fixArguments, output, error);
+    std::ifstream migratedStream(migratedPath, std::ios::binary);
+    const std::string migratedText{std::istreambuf_iterator<char>(migratedStream),
+        std::istreambuf_iterator<char>()};
+    tests.expect(fixResult == ExitCode::Success && error.str().empty() &&
+            output.str().find("safe migration fixes applied: 1") != std::string::npos &&
+            migratedText.find("byte narrow = (byte)42;") != std::string::npos &&
+            migratedText.find("// Select(null); byte ignored = 1;") != std::string::npos,
+        "nsc applies only proven edits while preserving formatting and comments");
+    const auto fixedAnalysis = driver::analyzeMigrationSource("fixed.ns", migratedText);
+    const bool hasAnotherSafeFix = std::any_of(fixedAnalysis.findings.begin(),
+        fixedAnalysis.findings.end(), [](const driver::MigrationFinding& finding) {
+            return finding.safeFix.has_value();
+        });
+    tests.expect(!hasAnotherSafeFix,
+        "safe migration fixes are idempotent and ambiguous findings remain manual");
     std::error_code removeError;
     std::filesystem::remove(path, removeError);
+    std::filesystem::remove(migratedPath, removeError);
     return tests.result();
 }
