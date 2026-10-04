@@ -3704,17 +3704,14 @@ bool LibraryMetadataCodec::writeModelImpl(
     }
     if (metadata.formatMinor < 35)
     {
-        const auto hasEscapeSummary = [](const auto& callable)
-        {
-            return !callable.parameterEscapeSummary.empty();
-        };
-        if (std::ranges::any_of(metadata.members, hasEscapeSummary) ||
-            std::ranges::any_of(metadata.namespaceFunctions, hasEscapeSummary))
-        {
-            error = "NativeSharp metadata before 1.35 cannot represent interprocedural "
-                "escape summaries";
-            return false;
-        }
+        // Old consumers already treat a missing summary conservatively. Dropping the 1.35 field
+        // therefore preserves safety and is the canonical historical encoding; rejecting every
+        // current model made deliberate 1.12/1.13/1.16 production impossible even when none of
+        // those formats promised interprocedural escape precision.
+        for (LibraryMetadataMember& member : metadata.members)
+            member.parameterEscapeSummary.clear();
+        for (LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+            function.parameterEscapeSummary.clear();
     }
     if (metadata.formatMinor < 36 &&
         std::ranges::any_of(metadata.types, [](const LibraryMetadataType& type)
