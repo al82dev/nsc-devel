@@ -812,13 +812,14 @@ public class Program
 public class Program
 {
     private static int throws() { return 42; }
-    public static int Main() { return throws(); }
+    private static int match(int value) { return value; }
+    public static int Main() { return match(throws()); }
 }
 )NS");
     executionDiagnostic.clear();
     tests.expect(
         compileAndRun(edition2Project, 42, executionDiagnostic),
-        "throws remains a contextual keyword and preserves edition-2 identifiers (" +
+        "throws and match remain contextual keywords and preserve edition-2 identifiers (" +
             executionDiagnostic + ")");
 
     const std::filesystem::path producer = root / "producer";

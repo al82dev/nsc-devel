@@ -8187,7 +8187,8 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::KwFor)) return parseForStatement();
     if (at(TokenKind::KwForeach)) return parseForeachStatement();
     if (at(TokenKind::KwSwitch)) return parseSwitchStatement();
-    if (atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
+    if (languageEdition_ == language::LanguageEdition::V3 &&
+        atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
         return parseMatchStatement();
 
     if (atContextualKeyword("yield") &&
@@ -12775,7 +12776,8 @@ ast::AstNode* Parser::parseWithExpression(ast::AstNode* source)
 
 ast::AstNode* Parser::parsePrimaryExpression()
 {
-    if (atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
+    if (languageEdition_ == language::LanguageEdition::V3 &&
+        atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
         return parseMatchExpression();
     if (atContextualKeyword("loop") &&
         (peek().kind() == TokenKind::LeftBrace ||
