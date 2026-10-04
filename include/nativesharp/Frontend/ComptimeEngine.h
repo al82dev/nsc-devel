@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <memory>
@@ -82,12 +83,15 @@ struct ComptimeLimits final
     std::size_t maximumDirectives = 1024;
     std::size_t maximumSteps = 100'000;
     std::size_t maximumNesting = 128;
+    std::size_t maximumMemoryBytes = 128U * 1024U * 1024U;
+    std::size_t maximumMacroExpansions = 64;
 };
 
 struct ComptimeExecutionContext final
 {
     std::filesystem::path sourceDirectory;
     bool hermetic = true;
+    std::function<bool()> cancellationRequested;
 };
 
 struct ComptimeResult final
@@ -104,6 +108,7 @@ struct ComptimeResult final
     std::size_t executedSteps = 0;
     std::size_t cacheHits = 0;
     std::size_t cacheMisses = 0;
+    std::size_t memoryUsed = 0;
     std::string reproducibilityDigest;
 };
 

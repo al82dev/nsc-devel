@@ -38,8 +38,10 @@ public:
         std::string_view text,
         std::size_t maximumSteps,
         std::size_t maximumNesting,
-        std::size_t& steps)
-        : text_(text), maximumSteps_(maximumSteps), maximumNesting_(maximumNesting), steps_(steps)
+        std::size_t& steps,
+        const std::function<bool()>& cancellationRequested)
+        : text_(text), maximumSteps_(maximumSteps), maximumNesting_(maximumNesting), steps_(steps),
+          cancellationRequested_(cancellationRequested)
     {
     }
 
@@ -58,6 +60,11 @@ public:
 private:
     bool tick(std::string& error)
     {
+        if (cancellationRequested_ && cancellationRequested_())
+        {
+            error = "comptime evaluation cancelled";
+            return false;
+        }
         if (steps_ >= maximumSteps_)
         {
             error = "comptime step budget exceeded";
@@ -290,6 +297,7 @@ private:
     std::size_t maximumNesting_ = 0;
     std::size_t& steps_;
     std::size_t nesting_ = 0;
+    const std::function<bool()>& cancellationRequested_;
 };
 
 bool startsWord(std::string_view source, std::size_t offset, std::string_view word)
@@ -542,6 +550,8 @@ bool resolveCapabilityCalls(
     const ComptimeExecutionContext& context,
     std::string& resolved,
     std::vector<ComptimeDependency>& dependencies,
+    std::size_t& memoryUsed,
+    std::size_t maximumMemoryBytes,
     std::string& error)
 {
     resolved.assign(expression);
@@ -593,6 +603,9 @@ bool resolveCapabilityCalls(
                 content.assign(value, valueLength == 0 ? 0 : valueLength - 1);
                 std::free(value);
             }
+            if (content.size() > maximumMemoryBytes - std::min(memoryUsed, maximumMemoryBytes))
+            { error = "comptime memory budget exceeded while reading declared input"; return false; }
+            memoryUsed += content.size();
             std::string_view number = trim(content);
             std::int64_t parsed = 0;
             const auto converted = std::from_chars(number.data(), number.data() + number.size(), parsed);
@@ -682,7 +695,18 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         result.error = "comptime source byte limit exceeded";
         return result;
     }
-    MacroExpansionResult macros = MacroExpansionEngine().expand(source);
+    if (source.size() > limits_.maximumMemoryBytes)
+    {
+        result.error = "comptime memory budget exceeded by source buffer";
+        return result;
+    }
+    result.memoryUsed = source.size();
+    if (context_.cancellationRequested && context_.cancellationRequested())
+    {
+        result.error = "comptime evaluation cancelled";
+        return result;
+    }
+    MacroExpansionResult macros = MacroExpansionEngine(limits_.maximumMacroExpansions).expand(source);
     if (!macros.success)
     {
         result.error = macros.error;
@@ -691,10 +715,21 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
     result.source = std::move(macros.source);
     result.macroExpansions = std::move(macros.expansions);
     source = result.source;
+    if (result.source.size() > limits_.maximumMemoryBytes)
+    {
+        result.error = "comptime memory budget exceeded by macro expansion";
+        return result;
+    }
+    result.memoryUsed = result.source.size();
     enum class Scan { Code, LineComment, BlockComment, String, Character } state = Scan::Code;
     bool escaped = false;
     for (std::size_t cursor = 0; cursor < source.size(); ++cursor)
     {
+        if (context_.cancellationRequested && context_.cancellationRequested())
+        {
+            result.error = "comptime evaluation cancelled";
+            return result;
+        }
         const char current = source[cursor];
         const char next = cursor + 1 < source.size() ? source[cursor + 1] : '\0';
         if (state == Scan::LineComment)
@@ -844,7 +879,8 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         std::vector<ComptimeDependency> externalDependencies;
         std::string capabilityError;
         if (!resolveCapabilityCalls(expression, result.declaredCapabilities, context_,
-                resolvedExpression, externalDependencies, capabilityError))
+                resolvedExpression, externalDependencies, result.memoryUsed,
+                limits_.maximumMemoryBytes, capabilityError))
         {
             result.error = capabilityError + " (directive at byte " + std::to_string(cursor) + ")";
             return result;
@@ -882,7 +918,8 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         {
             const std::size_t stepsBefore = result.executedSteps;
             IntegerExpression evaluator(resolvedExpression,
-                limits_.maximumSteps, limits_.maximumNesting, result.executedSteps);
+                limits_.maximumSteps, limits_.maximumNesting, result.executedSteps,
+                context_.cancellationRequested);
             value = evaluator.evaluate(error);
             ++result.cacheMisses;
             if (value.has_value() && cache_)

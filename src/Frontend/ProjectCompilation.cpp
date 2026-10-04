@@ -1016,7 +1016,7 @@ bool ProjectCompilation::compileSyntaxCore(
             syntaxWorkers.submit([&, index](std::size_t) {
                 sourceReads[index].comptime =
                     ComptimeEngine({}, comptimeCache,
-                        ComptimeExecutionContext{sourceReads[index].path.parent_path(), true})
+                        ComptimeExecutionContext{sourceReads[index].path.parent_path(), true, {}})
                         .execute(*sourceReads[index].buffer);
                 reportSourceProgress(progressSink_, "syntax-comptime", sourceReads[index].path,
                     completed.fetch_add(1, std::memory_order_relaxed) + 1U,

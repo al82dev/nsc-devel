@@ -35,8 +35,8 @@ int main()
 namespace Meta; public int Value() { return #run(file_i64("input.txt") + 2); }
 )";
 
-    const ComptimeResult a = ComptimeEngine({}, {}, {first, true}).execute(source);
-    const ComptimeResult b = ComptimeEngine({}, {}, {second, true}).execute(source);
+    const ComptimeResult a = ComptimeEngine({}, {}, {first, true, {}}).execute(source);
+    const ComptimeResult b = ComptimeEngine({}, {}, {second, true, {}}).execute(source);
     tests.expect(a.success && b.success && a.reproducibilityDigest == b.reproducibilityDigest,
         "declared file input is root-independent and bit-identical across directories");
     tests.expect(a.evaluations.size() == 1 && a.evaluations[0].value == 42 &&
@@ -45,15 +45,15 @@ namespace Meta; public int Value() { return #run(file_i64("input.txt") + 2); }
         "file_i64 consumes only an explicitly declared project-relative input");
 
     const auto cache = std::make_shared<ComptimeCache>();
-    const ComptimeResult cached = ComptimeEngine({}, cache, {first, true}).execute(source);
+    const ComptimeResult cached = ComptimeEngine({}, cache, {first, true, {}}).execute(source);
     writeFile(first / "input.txt", "41\n");
-    const ComptimeResult changed = ComptimeEngine({}, cache, {first, true}).execute(source);
+    const ComptimeResult changed = ComptimeEngine({}, cache, {first, true, {}}).execute(source);
     tests.expect(cached.success && changed.success && changed.evaluations[0].value == 43 &&
             changed.cacheMisses == 1 && changed.reproducibilityDigest != cached.reproducibilityDigest,
         "external content digest invalidates the incremental #run cache");
 
     _putenv_s("NSC_T11_VALUE", "38");
-    const ComptimeResult environment = ComptimeEngine({}, {}, {first, true}).execute(R"(
+    const ComptimeResult environment = ComptimeEngine({}, {}, {first, true, {}}).execute(R"(
 #capability("env", "NSC_T11_VALUE")
 int Value() { return #run(env_i64("NSC_T11_VALUE") + 4); }
 )");
@@ -62,17 +62,17 @@ int Value() { return #run(env_i64("NSC_T11_VALUE") + 4); }
         "declared environment input participates in evaluation and dependency identity");
     _putenv_s("NSC_T11_VALUE", "");
 
-    const ComptimeResult undeclared = ComptimeEngine({}, {}, {first, true}).execute(
+    const ComptimeResult undeclared = ComptimeEngine({}, {}, {first, true, {}}).execute(
         "int Value() { return #run(file_i64(\"input.txt\")); }");
     tests.expect(!undeclared.success && undeclared.error.find("was not declared") != std::string::npos,
         "host input cannot be observed without an explicit capability");
-    const ComptimeResult escape = ComptimeEngine({}, {}, {first, true}).execute(R"(
+    const ComptimeResult escape = ComptimeEngine({}, {}, {first, true, {}}).execute(R"(
 #capability("file", "../secret.txt")
 int Value() { return #run(file_i64("../secret.txt")); }
 )");
     tests.expect(!escape.success && escape.error.find("cannot escape") != std::string::npos,
         "declared file capabilities remain confined to the source root");
-    const ComptimeResult clock = ComptimeEngine({}, {}, {first, true}).execute(
+    const ComptimeResult clock = ComptimeEngine({}, {}, {first, true, {}}).execute(
         "#capability(\"clock\", \"now\") int Value(){ return 0; }");
     tests.expect(!clock.success && clock.error.find("hermetic") != std::string::npos,
         "normative hermetic compilation rejects clock capability deterministically");

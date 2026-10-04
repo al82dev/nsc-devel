@@ -208,7 +208,14 @@ MacroExpansionResult MacroExpansionEngine::expand(std::string_view source) const
         const std::size_t invocation = result.source.find("#expand");
         if (invocation == std::string::npos) break;
         if (result.expansions.size() >= maximumExpansions_)
-        { result.error = "macro expansion limit exceeded"; return result; }
+        {
+            result.error = "macro expansion limit exceeded\ncomptime backtrace:";
+            const std::size_t first = result.expansions.size() > 8
+                ? result.expansions.size() - 8 : 0;
+            for (std::size_t index = result.expansions.size(); index > first; --index)
+                result.error += "\n  #expand " + result.expansions[index - 1].macroName;
+            return result;
+        }
         std::size_t cursor = invocation + 7;
         std::string name;
         if (!readIdentifier(result.source, cursor, name))

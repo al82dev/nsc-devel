@@ -37,7 +37,7 @@ bool FrontendCompilation::compileFile(
         return false;
     }
     ComptimeResult comptime = ComptimeEngine({}, {},
-        ComptimeExecutionContext{path.parent_path(), true}).execute(*buffer);
+        ComptimeExecutionContext{path.parent_path(), true, {}}).execute(*buffer);
     if (!comptime.success)
     {
         loadError = comptime.error;
@@ -64,7 +64,7 @@ bool FrontendCompilation::compileBuffer(
     bool requireMain)
 {
     ComptimeResult comptime = ComptimeEngine({}, {},
-        ComptimeExecutionContext{path.parent_path(), true}).execute(buffer);
+        ComptimeExecutionContext{path.parent_path(), true, {}}).execute(buffer);
     if (!comptime.success) return false;
     const FileId fileId = sourceManager_.addBuffer(std::move(path), std::move(comptime.source));
     for (const ComptimeAuthoredDiagnostic& diagnostic : comptime.authoredDiagnostics)

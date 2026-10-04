@@ -60,7 +60,8 @@ public class Calculator
         "source cannot forge the compiler-reserved hygienic namespace");
     const auto recursive = MacroExpansionEngine(3).expand(
         "#macro again(value) { #expand again($value) } void F(){ #expand again(1) }");
-    tests.expect(!recursive.success && recursive.error == "macro expansion limit exceeded",
+    tests.expect(!recursive.success && recursive.error.find("macro expansion limit exceeded") !=
+            std::string::npos && recursive.error.find("comptime backtrace") != std::string::npos,
         "recursive macro expansion stops at a deterministic bound");
 
     std::filesystem::remove_all(root, ignored);
