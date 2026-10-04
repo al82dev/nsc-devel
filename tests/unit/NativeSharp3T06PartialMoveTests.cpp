@@ -205,6 +205,78 @@ public class Program
         "whole moves, value parameters, early returns and native unwind execute each custom "
         "destructor exactly once (" + diagnostic + ")");
 
+    const std::filesystem::path genericOptional = writeProject(
+        root / "generic-optional", "GenericOptionalPartialMove", R"NS(
+namespace NativeSharp.Core
+{
+    public struct Optional<T>
+    {
+        private T value;
+        private bool present;
+
+        public Optional(T item)
+        {
+            value = move(item);
+            present = true;
+        }
+
+        public bool HasValue()
+        {
+            return present;
+        }
+
+        public T UncheckedValue()
+        {
+            return move(value);
+        }
+    }
+}
+
+using NativeSharp.Core;
+
+public class Resource
+{
+    public static int Drops = 0;
+    public int Value;
+    public Resource(int value) { Value = value; }
+    ~Resource() { Drops = Drops + 1; }
+}
+
+public struct Payload
+{
+    public owned Resource ResourceValue;
+    public Payload(owned Resource value) { ResourceValue = move(value); }
+}
+
+public class Program
+{
+    private static Optional<Payload> Source(bool present, int value)
+    {
+        if (present)
+        {
+            return new Optional<Payload>(new Payload(new Resource(value)));
+        }
+        return new Optional<Payload>();
+    }
+
+    public static int Main()
+    {
+        int answer = 0;
+        {
+            Payload first = Source(true, 20) ?? new Payload(new Resource(90));
+            Payload second = Source(false, 0) ?? new Payload(new Resource(22));
+            answer = first.ResourceValue.Value + second.ResourceValue.Value;
+        }
+        if (Resource.Drops != 2) { return 17; }
+        return answer;
+    }
+}
+)NS");
+    diagnostic.clear();
+    tests.expect(compileAndRun(genericOptional, 42, diagnostic),
+        "Optional<T> extracts and returns a move-only generic field while exact drop state "
+        "destroys each selected payload once (" + diagnostic + ")");
+
     const std::string declarations = R"NS(
 public struct Token { public int Value; public Token(int value) { Value = value; } }
 public struct Pair { public Token Left; public Token Right; public Pair(Token left, Token right) { Left = move(left); Right = move(right); } }

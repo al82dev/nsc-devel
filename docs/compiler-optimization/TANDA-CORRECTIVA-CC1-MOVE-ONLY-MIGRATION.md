@@ -15,10 +15,11 @@ estaba en las fixtures que no fueron migradas por el commit que activó la regla
   Copy únicamente bajo `where T : copy`. Son carriers POD y la prueba necesita copiarlos.
 - `c56_ns3_null_with` declara `Pair` como Copy, porque el caso valida `with` sobre un valor POD y
   no la transferencia de ownership.
-- `c67_ns3_optional_coalescing` declara `Optional<T> where T : copy` y `LargeValue` como Copy. El
-  protocolo comprobado por E017 usa payloads POD; extraer un T move-only desde el field interno
-  requiere movimientos parciales de fields, cuyo contrato pertenece a NS3-T06-F02 y no debe
-  simularse con un `move(...)` que el lenguaje todavía rechaza correctamente.
+- `c67_ns3_optional_coalescing` dejó inicialmente `Optional<T> where T : copy` y `LargeValue`
+  como Copy mientras la extracción genérica estaba pendiente. El cierre de NS3-T06-F02 elimina
+  ese workaround: `Optional<T>` vuelve a ser move-only por defecto, mueve el argumento hacia su
+  field y `UncheckedValue()` retorna mediante `move(value)`; `LargeValue` también vuelve a ser
+  move-only.
 
 ## Archivos
 
@@ -31,13 +32,13 @@ estaba en las fixtures que no fueron migradas por el commit que activó la regla
 
 Las fixtures vuelven a medir llamadas, inicializadores, `with` y coalescencia opcional sin violar
 el contrato de movimiento. La corrección no relaja el compilador ni convierte implícitamente tipos
-move-only en Copy. La ampliación futura de Optional a payloads move-only queda documentada como
-dependencia de NS3-T06-F02.
+move-only en Copy. `c67` mide ahora directamente Optional con payloads move-only y deja de ocultar
+la transferencia de ownership detrás de una restricción `copy`.
 
 ## Validación permitida
 
 Los tres proyectos se compilan y ejecutan individualmente en O0 con NSLink. No se ejecuta baseline,
 CTest general ni matriz de optimizaciones.
 
-Resultado: `c55`, `c56` y `c67` compilaron individualmente y terminaron con exit 42. Baseline,
-CTest general y matrices no ejecutados.
+Resultado del cierre de NS3-T06-F02: `c67` compila individualmente en O0 con NSLink y termina con
+exit 42 usando el contrato move-only. Baseline, CTest general y matrices no ejecutados.

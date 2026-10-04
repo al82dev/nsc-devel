@@ -2306,6 +2306,8 @@ private:
         std::string_view sourceTypeKey,
         std::string_view targetTypeKey) const noexcept;
     const ClassMemberSymbol* methodSymbol(std::size_t methodMemberOrdinal) const noexcept;
+    bool callableBelongsToGenericTypeSpecialization(
+        std::size_t methodMemberOrdinal) const noexcept;
     bool betterCandidate(
         const MethodCallCandidate& left,
         const MethodCallCandidate& right) const;

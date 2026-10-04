@@ -37,6 +37,15 @@ namespace
 {
 constexpr std::string_view kGenericRawNewAuxiliary = "stage52-generic-raw-new";
 
+bool isGenericValueTypeKey(std::string_view typeKey) noexcept
+{
+    // An unconstrained generic value may specialize to either Copy or move-only storage. An
+    // explicit move is valid for both: it is copy-shaped for a Copy specialization and the
+    // required transfer for a move-only specialization. Keep this rule local to explicit-move
+    // admission; classifying every generic as globally move-only would break `where T : copy`.
+    return typeKey.starts_with("generic:");
+}
+
 bool declaredLifetimeOutlives(
     const ClassMemberSymbol& callable,
     std::string_view longer,
@@ -9173,7 +9182,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     !sourceField.isStatic &&
                     (compilerVariantPayloadExtract ||
                      sourceField.declaredOwnership == sema::OwnershipKind::Owned ||
-                     memberModel_->typeIsMoveOnly(sourceField.declaredTypeKey));
+                     memberModel_->typeIsMoveOnly(sourceField.declaredTypeKey) ||
+                     isGenericValueTypeKey(sourceField.declaredTypeKey) ||
+                     callableBelongsToGenericTypeSpecialization(methodMemberOrdinal));
                 if (!movableStorageField) return false;
 
                 std::vector<std::string> fieldPath;
@@ -9426,7 +9437,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 const bool sourceRequiresMove =
                     parameter.ownership == sema::OwnershipKind::Owned ||
                     (parameter.passKind == ParameterPassKind::Value &&
-                     memberModel_->typeIsMoveOnly(parameter.typeKey)) ||
+                     (memberModel_->typeIsMoveOnly(parameter.typeKey) ||
+                      isGenericValueTypeKey(parameter.typeKey) ||
+                      callableBelongsToGenericTypeSpecialization(methodMemberOrdinal))) ||
                     compilerVariantResultTransfer;
                 copiedForDefer = (deferValueCapture || compilerVariantPayloadTransfer) &&
                     !sourceRequiresMove;
@@ -19076,7 +19089,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         ownedFieldMoveTarget = targetMember.kind == ClassMemberKind::Field &&
             !targetMember.isStatic &&
             (targetMember.declaredOwnership == sema::OwnershipKind::Owned ||
-             memberModel_->typeIsMoveOnly(targetMember.declaredTypeKey));
+             memberModel_->typeIsMoveOnly(targetMember.declaredTypeKey) ||
+             isGenericValueTypeKey(targetMember.declaredTypeKey) ||
+             callableBelongsToGenericTypeSpecialization(methodMemberOrdinal));
         ownedFieldOwnsStorage = ownedFieldMoveTarget &&
             (isReferenceTypeKey(targetMember.declaredTypeKey) ||
              targetMember.declaredTypeKey == "builtin:string");
@@ -22453,6 +22468,22 @@ const ClassMemberSymbol* ProjectMethodBodyModel::methodSymbol(
     const std::size_t functionOrdinal = methodMemberOrdinal - namespaceCallableBase_;
     return functionOrdinal < namespaceCallableAdapters_.size()
         ? &namespaceCallableAdapters_[functionOrdinal] : nullptr;
+}
+
+bool ProjectMethodBodyModel::callableBelongsToGenericTypeSpecialization(
+    std::size_t methodMemberOrdinal) const noexcept
+{
+    if (memberModel_ == nullptr || methodMemberOrdinal >= memberModel_->members().size())
+    {
+        return false;
+    }
+    const ClassMemberSymbol* callable = methodSymbol(methodMemberOrdinal);
+    if (callable == nullptr || genericModel_ == nullptr || inheritanceModel_ == nullptr)
+    {
+        return false;
+    }
+    return genericModel_->specializationForTypeKey(
+        inheritanceModel_->typeKeyForOrdinal(callable->declaringTypeOrdinal)) != nullptr;
 }
 
 bool ProjectMethodBodyModel::betterCandidate(

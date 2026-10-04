@@ -21,6 +21,9 @@ move parcial del valor completo que observa.
   sólo para valores con destructor personalizado.
 - Particionado LLVM: cada unidad declara los destructores implícitamente invocados por su drop
   glue, incluidos los anidados, sin depender de que exista una llamada fuente explícita.
+- Genéricos: un field `T` especializado con un tipo move-only puede extraerse con `move(field)`,
+  retornarse por valor y vaciar su estado de drop; el protocolo `Optional<T>` ya no requiere el
+  workaround `where T : copy`.
 
 ## Archivos nuevos
 
@@ -38,6 +41,10 @@ move parcial del valor completo que observa.
 - `src/LLVM/{ProjectOopCodePartition.cpp,ProjectOopLlvmLowerer.cpp}`.
 - `CMakeLists.txt` y las expectativas dirigidas de inicializadores, records y ownership que
   conservan compatibilidad textual con edición 2.
+- Cierre genérico: `ProjectMethodBodyModel` admite `move` explícito en parámetros y fields de una
+  especialización genérica sin clasificar globalmente los tipos `where T : copy` como move-only;
+  `c67_ns3_optional_coalescing` elimina el workaround Copy y el test dirigido añade el payload
+  move-only con conteo exacto de drops.
 
 ## Mejora observable
 
@@ -48,8 +55,10 @@ requiere el valor completo.
 
 ## Validación dirigida
 
-- `nsc.ns3.t06.partial-moves`: 7/7 checks, O0/NSLink, incluida ejecución real de cleanup por scope,
-  value parameter, early return y excepción nativa.
+- `nsc.ns3.t06.partial-moves`: 8/8 checks, O0/NSLink, incluida ejecución real de cleanup por scope,
+  value parameter, early return, excepción nativa y extracción de payload genérico move-only
+  desde `Optional<T>` con destrucción exacta.
+- `c67_ns3_optional_coalescing`: O0/NSLink, exit 42 con `Optional<T>` y `LargeValue` move-only.
 - Matriz de regresión directamente afectada: 7/7 tests (`T01 generalized initializers`, `T02 native
   records`, F01, F02, Stage 40 struct ABI, Stage 50.11 ownership y C6 struct members), verde.
 - Particionado backend: `nsc.namespace-function-llvm` y `nsc.project-oop-lowering`, 2/2 verdes;
