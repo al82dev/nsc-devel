@@ -7291,6 +7291,88 @@ void ProjectMethodBodyModel::analyzeReturn(
         }
         return;
     }
+
+    // NativeSharp 3.0 T08-F06. Unlike `inline`/`noinline`, must_tail is a checked
+    // source contract. It is accepted only for a direct return-call whose selected callable has
+    // the same physical source signature and while no lexical cleanup remains pending.
+    if (statement->flag())
+    {
+        if (statement->first()->kind() != ast::AstNodeKind::CallExpression)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->range(),
+                "must_tail return requires a direct call expression");
+            return;
+        }
+
+        const ClassMemberSymbol* callee = nullptr;
+        if (const NamespaceFunctionCallBinding* call =
+                namespaceFunctionCall(statement->first());
+            call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            call->selectedFunctionOrdinal.has_value())
+        {
+            callee = methodSymbol(namespaceCallableBase_ + *call->selectedFunctionOrdinal);
+        }
+        if (callee == nullptr)
+        {
+            for (auto iterator = calls_.rbegin(); iterator != calls_.rend(); ++iterator)
+            {
+                if (iterator->syntax != statement->first() ||
+                    iterator->resolution != MethodCallResolutionKind::Resolved ||
+                    !iterator->selectedMemberOrdinal.has_value())
+                {
+                    continue;
+                }
+                callee = methodSymbol(*iterator->selectedMemberOrdinal);
+                break;
+            }
+        }
+        if (callee == nullptr)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->range(),
+                "must_tail return requires a statically resolved function or method call");
+            return;
+        }
+
+        const auto functionType = [](const ClassMemberSymbol& callable)
+        {
+            language::FunctionType type;
+            if (callable.hasImplicitThis) type.parameters.emplace_back("abi:this");
+            for (const MethodParameterSymbol& parameter : callable.parameters)
+                type.parameters.push_back(parameter.typeKey);
+            type.result = callable.declaredTypeKey;
+            type.callingConvention = callable.isExternC
+                ? language::CallingConvention::C
+                : language::CallingConvention::NativeSharp;
+            type.errorType = callable.declaredErrorTypeKey;
+            type.lifetime = callable.returnLifetimeName;
+            type.variadic = callable.isVariadic;
+            type.isNoHeap = callable.isNoHeap;
+            return type;
+        };
+
+        std::string mustTailError;
+        if (conversion.kind != ProjectConversionKind::Identity)
+            mustTailError = "must_tail return cannot apply a result conversion after the call";
+        else
+            language::validateMustTail(
+                functionType(*method), functionType(*callee),
+                !activeCleanupRegions_.empty(), mustTailError);
+        if (!mustTailError.empty())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->range(),
+                std::move(mustTailError));
+            return;
+        }
+    }
     if (value.pointerPointeeReadonly &&
         ProjectTypeConversion::isPointer(method->declaredTypeKey) &&
         !method->declaredPointerPointeeReadonly)

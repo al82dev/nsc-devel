@@ -41,7 +41,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // 1.27 publishes value-producing loop control flow, labelled exits and converted break values.
 // 1.28 publishes explicit assert, unreachable, assume and project-wide panic-profile semantics.
 // 1.29 publishes explicit closure capture modes, callable trait and native environment layout.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 29;
+// 1.30 publishes verified must-tail call sites independently from optimization hints.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 30;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -451,6 +452,8 @@ struct ProjectOopMirNode final
     bool referenceResult = false;
     // T01-F03. Mirrors ProjectOopHirNode::nullConditionalCall.
     bool nullConditionalCall = false;
+    // NativeSharp 3.0 T08-F06. A semantic requirement, not an optimizer hint.
+    bool mustTailCall = false;
     // Item 377. Retained for CodeView/PDB ownership and borrow visualization.
     sema::OwnershipKind ownership = sema::OwnershipKind::None;
     // Item 378. Scope-bound destruction remains visible to late debug-info lowering.

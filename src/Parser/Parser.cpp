@@ -8249,6 +8249,26 @@ ast::AstNode* Parser::parseStatement()
         return exit;
     }
 
+    // NativeSharp 3.0 T08-F06. `must_tail` is a call-site contract rather than a
+    // declaration hint: the following return must lower to one ABI-compatible tail call.
+    if (atContextualKeyword("must_tail"))
+    {
+        const SourceRange attributeRange = consume().range();
+        requireEdition3(attributeRange, "must_tail returns");
+        if (!at(TokenKind::KwReturn))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "must_tail must be followed by a return statement");
+            synchronizeStatement();
+            return arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, attributeRange);
+        }
+        ast::AstNode* statement = parseReturnStatement();
+        statement->setFlag(true);
+        return statement;
+    }
     if (at(TokenKind::KwReturn)) return parseReturnStatement();
     if (atContextualKeyword("defer")) return parseDeferStatement();
     if (at(TokenKind::KwTry)) return parseTryStatement();

@@ -1940,6 +1940,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->pinnedStorage = node->pinnedStorage;
     result->referenceResult = node->referenceResult;
     result->nullConditionalCall = node->nullConditionalCall;
+    result->mustTailCall = node->mustTailCall;
     result->ownership = node->ownership;
     result->automaticDestruction = node->automaticDestruction;
     result->variableLengthArray = node->variableLengthArray;

@@ -3224,6 +3224,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                         value = std::move(borrowed);
                     }
                 }
+                if (statement->flag())
+                {
+                    switch (value->kind)
+                    {
+                        case ProjectOopHirNodeKind::InstanceCall:
+                        case ProjectOopHirNodeKind::StaticCall:
+                            value->mustTailCall = true;
+                            break;
+                        default:
+                            error = "T08-F06 validated must_tail return did not lower to a direct call";
+                            return nullptr;
+                    }
+                }
                 node->children.push_back(std::move(value));
             }
             return node;

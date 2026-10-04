@@ -115,6 +115,7 @@ void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
     output.scalar(node->referenceLocal);
     output.scalar(node->pinnedStorage);
     output.scalar(node->referenceResult);
+    output.scalar(node->mustTailCall);
     output.scalar(node->ownership);
     output.scalar(node->automaticDestruction);
     output.scalar(node->variableLengthArray);

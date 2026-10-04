@@ -42,6 +42,14 @@ using LLVMDbgRecordRef = LLVMOpaqueDbgRecord*;
 using LLVMComdatRef = LLVMComdat*;
 using LLVMBool = int;
 
+enum LLVMTailCallKind
+{
+    LLVMTailCallKindNone = 0,
+    LLVMTailCallKindTail = 1,
+    LLVMTailCallKindMustTail = 2,
+    LLVMTailCallKindNoTail = 3,
+};
+
 // llvm-c/Core.h LLVMCallConv::LLVMX86VectorCallCallConv.
 inline constexpr unsigned LLVMX86VectorCallCallConv = 80;
 
@@ -1093,6 +1101,8 @@ LLVMValueRef LLVMBuildCall2(
     LLVMValueRef* arguments,
     unsigned argumentCount,
     const char* name);
+LLVMValueRef LLVMIsACallInst(LLVMValueRef value);
+void LLVMSetTailCallKind(LLVMValueRef call, LLVMTailCallKind kind);
 void LLVMSetInstructionCallConv(LLVMValueRef instruction, unsigned callingConvention);
 LLVMValueRef LLVMGetInlineAsm(
     LLVMTypeRef functionType,

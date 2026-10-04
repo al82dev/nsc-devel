@@ -554,6 +554,9 @@ struct ProjectOopHirNode final
     // first child as for every other instance call, but the backend must test it before lowering
     // the remaining children so argument/default expressions stay lazy on the null edge.
     bool nullConditionalCall = false;
+    // NativeSharp 3.0 T08-F06. Set only after the frontend proves ABI identity and an empty
+    // cleanup path for `must_tail return call(...)`.
+    bool mustTailCall = false;
     // Item 377. Debug information must distinguish an owner from a borrow even though both use
     // the same physical pointer representation. This is the declaration-level qualifier;
     // objectLifetimeOwnership/storageOwnership remain the independent placement axes.

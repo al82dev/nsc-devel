@@ -14160,6 +14160,20 @@ private:
         return true;
     }
 
+    bool applyMustTail(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef call,
+        std::string& error)
+    {
+        if (!node->mustTailCall) return true;
+        if (!node->referenceResult && isIndirectStructTypeKey(node->typeKey))
+            return fail(error, "T08-F06 must_tail cannot use the current indirect aggregate return ABI");
+        if (call == nullptr || LLVMIsACallInst(call) == nullptr)
+            return fail(error, "T08-F06 must_tail lowered to an invoke or non-call instruction");
+        LLVMSetTailCallKind(call, LLVMTailCallKindMustTail);
+        return true;
+    }
+
     // T01-F03. `?.` shares the ordinary direct/virtual/interface call lowerers.  Only the
     // scheduling differs: evaluate the receiver, branch on null, and lower every argument plus
     // the actual dispatch inside the non-null block.  This makes effectful arguments lazy and
@@ -14371,6 +14385,7 @@ private:
             arguments.data(), static_cast<unsigned>(arguments.size()),
             node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "call", error);
         if (call == nullptr) return nullptr;
+        if (!applyMustTail(node, call, error)) return nullptr;
         if (sretSlot != nullptr)
         {
             applySretAttributes(
@@ -14485,6 +14500,7 @@ private:
                 ? "" : "generic.closure.call",
             error);
         if (call == nullptr) return nullptr;
+        if (!applyMustTail(node, call, error)) return nullptr;
         if (sretSlot != nullptr)
         {
             applySretAttributes(
@@ -14551,6 +14567,7 @@ private:
             static_cast<unsigned>(arguments.size()),
             node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "static.call", error);
         if (call == nullptr) return nullptr;
+        if (!applyMustTail(node, call, error)) return nullptr;
         if (sretSlot != nullptr)
         {
             applySretAttributes(
@@ -14681,6 +14698,7 @@ private:
             arguments.data(), static_cast<unsigned>(arguments.size()),
             node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "vcall", error);
         if (call == nullptr) return nullptr;
+        if (!applyMustTail(node, call, error)) return nullptr;
         if (sretSlot != nullptr)
         {
             applySretAttributes(
@@ -14871,6 +14889,7 @@ private:
             arguments.data(), static_cast<unsigned>(arguments.size()),
             node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "icall", error);
         if (interfaceCall == nullptr) return nullptr;
+        if (!applyMustTail(node, interfaceCall, error)) return nullptr;
         if (sretSlot != nullptr)
         {
             applySretAttributes(

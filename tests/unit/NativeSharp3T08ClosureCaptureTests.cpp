@@ -128,11 +128,11 @@ class Program
     if (modelBuilt && compilation.oopMirModel() != nullptr)
     {
         const std::string dump = ProjectOopMirModelDumper::dump(*compilation.oopMirModel());
-        tests.expect(dump.find("schema=1.29") != std::string::npos &&
+        tests.expect(dump.find("schema=1.30") != std::string::npos &&
                 dump.find("mode=copy storage=owned-value-cell") != std::string::npos &&
                 dump.find("mode=ref-mut storage=shared-reference-cell") != std::string::npos &&
                 dump.find("callable-trait=FnMut") != std::string::npos,
-            "MIR 1.29 publishes capture modes, storage and callable trait");
+            "MIR 1.30 retains capture modes, storage and callable trait");
     }
     std::string executionDiagnostic;
     const bool positiveExecuted = compileAndRun(positive, 42, executionDiagnostic);

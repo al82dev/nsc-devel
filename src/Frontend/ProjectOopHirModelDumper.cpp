@@ -88,6 +88,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
     if (node->kind == ProjectOopHirNodeKind::Break)
         output << " value=" << (node->children.empty() ? "none" : node->elementTypeKey);
     if (node->nullConditionalCall) output << " null-conditional=true";
+    if (node->mustTailCall) output << " must-tail=true";
     if (node->kind == ProjectOopHirNodeKind::Binary && node->booleanValue &&
         (node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent))
         output << " check=elided-flow";

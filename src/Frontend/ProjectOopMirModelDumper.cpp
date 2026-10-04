@@ -163,6 +163,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
         }
     }
     if (node->nullConditionalCall) output << " null-conditional=true";
+    if (node->mustTailCall) output << " must-tail=true";
     if (node->kind == ProjectOopMirNodeKind::Binary && node->booleanValue &&
         (node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent))
         output << " check=elided-flow";

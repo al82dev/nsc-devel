@@ -252,7 +252,7 @@ public class Program
         : std::string();
     tests.expect(
         mirBuilt && compilationError.empty() &&
-            mir.find("schema=1.29") != std::string::npos &&
+            mir.find("schema=1.30") != std::string::npos &&
             mir.find("result-propagation") != std::string::npos &&
             mir.find("conversion=__nsc_method_") != std::string::npos &&
             mir.find("continuation=return") != std::string::npos,
@@ -398,7 +398,7 @@ namespace TypedThrows
     const CompilationEvidence typed = compileMir(typedProject);
     tests.expect(
         typed.succeeded && typed.error.empty() &&
-            typed.mir.find("schema=1.29") != std::string::npos &&
+            typed.mir.find("schema=1.30") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.Error") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.ParseError") != std::string::npos &&
             typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=true exhaustive=false") != std::string::npos &&
@@ -603,7 +603,7 @@ public class Program
     const CompilationEvidence loopEvidence = compileMir(loopProject);
     tests.expect(
         loopEvidence.succeeded && loopEvidence.error.empty() &&
-            loopEvidence.mir.find("schema=1.29") != std::string::npos &&
+            loopEvidence.mir.find("schema=1.30") != std::string::npos &&
             loopEvidence.mir.find("loop-expression type=builtin:int") != std::string::npos &&
             loopEvidence.mir.find("label=outer break-result=builtin:int") != std::string::npos &&
             loopEvidence.mir.find("target-label=outer") != std::string::npos &&
