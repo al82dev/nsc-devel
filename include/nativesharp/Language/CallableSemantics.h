@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -8,21 +9,30 @@
 
 namespace nativesharp::language
 {
-enum class CallingConvention { NativeSharp, C, StdCall, FastCall };
+enum class FunctionCarrier { Pointer, Reference };
+enum class CallingConvention { NativeSharp, C, StdCall, FastCall, VectorCall };
 
 struct FunctionType final
 {
     std::vector<std::string> parameters;
     std::string result;
+    FunctionCarrier carrier = FunctionCarrier::Pointer;
     CallingConvention callingConvention = CallingConvention::NativeSharp;
     std::string errorType;
+    std::string lifetime;
     bool variadic = false;
     bool isUnsafe = false;
+    bool isNoHeap = false;
+    bool isAsync = false;
     bool nullable = false;
 };
 
 std::string functionTypeIdentity(const FunctionType& type);
+std::optional<FunctionType> parseFunctionTypeIdentity(std::string_view identity);
+bool isFunctionTypeIdentity(std::string_view identity) noexcept;
 bool functionTypesAssignable(const FunctionType& source, const FunctionType& target) noexcept;
+std::string_view functionCarrierName(FunctionCarrier carrier) noexcept;
+std::string_view callingConventionName(CallingConvention convention) noexcept;
 
 enum class CaptureMode { Copy, Move, Reference, MutableReference };
 struct Capture final

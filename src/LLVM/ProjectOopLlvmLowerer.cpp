@@ -18,6 +18,7 @@
 #include "nativesharp/LLVM/LlvmVersion.h"
 #include "nativesharp/LLVM/LlvmTrapReason.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Source/SourceManager.h"
 
 #include <algorithm>
@@ -4496,6 +4497,9 @@ private:
 
     bool isExternCDelegateType(std::string_view typeKey) const noexcept
     {
+        if (const std::optional<language::FunctionType> functionType =
+                language::parseFunctionTypeIdentity(typeKey))
+            return functionType->carrier == language::FunctionCarrier::Pointer;
         if (!typeKey.starts_with("type:")) return false;
         const std::string_view key = typeKey.substr(5);
         for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
@@ -4509,6 +4513,9 @@ private:
 
     bool isVectorCallDelegateType(std::string_view typeKey) const noexcept
     {
+        if (const std::optional<language::FunctionType> functionType =
+                language::parseFunctionTypeIdentity(typeKey))
+            return functionType->callingConvention == language::CallingConvention::VectorCall;
         if (!typeKey.starts_with("type:")) return false;
         const std::string_view key = typeKey.substr(5);
         for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
@@ -11597,6 +11604,7 @@ private:
         const std::vector<LLVMValueRef>& argumentValues,
         const std::vector<std::string>& argumentTypeKeys,
         std::string_view returnTypeKey,
+        std::string_view delegateTypeKey,
         bool vectorCall,
         std::string& error)
     {
@@ -11621,11 +11629,19 @@ private:
             ? LLVMVoidTypeInContext(context_)
             : (vectorReturnType != nullptr ? vectorReturnType : llvmType(returnTypeKey, error));
         if (returnType == nullptr) return nullptr;
+        const std::optional<language::FunctionType> structuralFunction =
+            language::parseFunctionTypeIdentity(delegateTypeKey);
+        const bool variadic = structuralFunction.has_value() && structuralFunction->variadic;
+        const std::size_t fixedParameterCount = variadic
+            ? structuralFunction->parameters.size() : argumentTypeKeys.size();
+        if (fixedParameterCount > argumentTypeKeys.size())
+            return failValue(error, "variadic function pointer invocation lost a fixed argument");
         std::vector<LLVMTypeRef> parameterTypes;
-        parameterTypes.reserve(argumentTypeKeys.size() + 1);
+        parameterTypes.reserve(fixedParameterCount + 1);
         if (sretReturn) parameterTypes.push_back(LLVMPointerTypeInContext(context_, 0));
-        for (const std::string& typeKey : argumentTypeKeys)
+        for (std::size_t index = 0; index < fixedParameterCount; ++index)
         {
+            const std::string& typeKey = argumentTypeKeys[index];
             LLVMTypeRef type = vectorCall ? vectorCallAbiType(typeKey) : nullptr;
             if (type == nullptr) type = abiParameterType(typeKey, error);
             if (type == nullptr || type == LLVMVoidTypeInContext(context_))
@@ -11634,7 +11650,7 @@ private:
         }
         LLVMTypeRef functionType = LLVMFunctionType(
             returnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
-            static_cast<unsigned>(parameterTypes.size()), 0);
+            static_cast<unsigned>(parameterTypes.size()), variadic ? 1 : 0);
         std::vector<LLVMValueRef> callArguments;
         callArguments.reserve(argumentValues.size() + 1);
         if (sretSlot != nullptr) callArguments.push_back(sretSlot);
@@ -11719,7 +11735,7 @@ private:
         {
             return emitExternCDelegateCall(
                 delegateValue, arguments, node->argumentTypeKeys, node->typeKey,
-                vectorCall, error);
+                node->elementTypeKey, vectorCall, error);
         }
         return emitDelegateCall(delegateValue, arguments, node->argumentTypeKeys, node->typeKey, error);
     }
@@ -15801,6 +15817,9 @@ private:
 
     bool isDelegateReference(std::string_view typeKey) const noexcept
     {
+        if (const std::optional<language::FunctionType> functionType =
+                language::parseFunctionTypeIdentity(typeKey))
+            return functionType->carrier == language::FunctionCarrier::Reference;
         if (!typeKey.starts_with("type:")) return false;
         const std::string_view key = typeKey.substr(5);
         for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
@@ -16114,6 +16133,7 @@ private:
     static bool isPointerLike(std::string_view typeKey) noexcept
     {
         return (!typeKey.empty() && typeKey.back() == '*') ||
+            frontend::ProjectTypeConversion::isFunctionPointer(typeKey) ||
             typeKey == "string-literal" ||
             frontend::ProjectTypeConversion::isNativeCoreReference(typeKey);
     }

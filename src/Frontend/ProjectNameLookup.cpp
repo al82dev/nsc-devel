@@ -1352,7 +1352,8 @@ void ProjectNameLookup::bindTypeSyntax(
         ast::TypeSyntax* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
         constexpr int kMaxAliasDepth = 64;
         int depth = 0;
-        while (!lexer::isBuiltinTypeKeyword(mutableSyntax->baseTokenKind()) &&
+        while (!mutableSyntax->isFunction() &&
+               !lexer::isBuiltinTypeKeyword(mutableSyntax->baseTokenKind()) &&
                mutableSyntax->typeArguments().empty())
         {
             const auto alias = environment.typeAliases.find(mutableSyntax->baseName());
@@ -1370,6 +1371,24 @@ void ProjectNameLookup::bindTypeSyntax(
             if (target == mutableSyntax) break;
             mutableSyntax->setBaseTokenKind(target->baseTokenKind());
             mutableSyntax->setBaseName(target->baseName());
+            if (target->isFunction())
+            {
+                mutableSyntax->setFunction();
+                mutableSyntax->setFunctionCarrier(target->functionCarrier());
+                mutableSyntax->setFunctionCallingConvention(
+                    target->functionCallingConvention());
+                mutableSyntax->setFunctionReturnType(target->functionReturnType());
+                mutableSyntax->setFunctionErrorType(target->functionErrorType());
+                mutableSyntax->setFunctionVariadic(target->functionIsVariadic());
+                mutableSyntax->setFunctionUnsafe(target->functionIsUnsafe());
+                mutableSyntax->setFunctionNoHeap(target->functionIsNoHeap());
+                mutableSyntax->setFunctionAsync(target->functionIsAsync());
+                mutableSyntax->setFunctionNullable(target->functionIsNullable());
+                mutableSyntax->setFunctionLifetimeName(target->functionLifetimeName());
+                mutableSyntax->clearTypeArguments();
+                for (ast::TypeSyntax* parameter : target->typeArguments())
+                    mutableSyntax->addTypeArgument(parameter);
+            }
             mutableSyntax->setDynamicTrait(
                 mutableSyntax->isDynamicTrait() || target->isDynamicTrait());
             mutableSyntax->setOpaqueResult(
@@ -1383,6 +1402,15 @@ void ProjectNameLookup::bindTypeSyntax(
     for (const ast::TypeSyntax* argument : syntax->typeArguments())
     {
         bindTypeSyntax(unit, argument, namespaceSegments, environment, diagnostics, index);
+    }
+    if (syntax->isFunction())
+    {
+        bindTypeSyntax(
+            unit, syntax->functionReturnType(), namespaceSegments,
+            environment, diagnostics, index);
+        bindTypeSyntax(
+            unit, syntax->functionErrorType(), namespaceSegments,
+            environment, diagnostics, index);
     }
 
     // Stage 52 fix: a generic type argument substituted into a specialization cloned from a
@@ -1410,7 +1438,8 @@ void ProjectNameLookup::bindTypeSyntax(
     binding.writtenName = writtenName;
     binding.enclosingTypeOrdinals = environment.enclosingTypeOrdinals;
 
-    if (syntax->isTuple() || lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
+    if (syntax->isFunction() || syntax->isTuple() ||
+        lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         binding.kind = TypeNameBindingKind::Builtin;
         if (syntax->isDynamicTrait())
@@ -1419,7 +1448,7 @@ void ProjectNameLookup::bindTypeSyntax(
                 diagnostics::DiagnosticId::InvalidType,
                 diagnostics::DiagnosticSeverity::Error,
                 syntax->range(),
-                "'dyn' requires a trait or interface type, not a builtin or tuple");
+                "'dyn' requires a trait or interface type, not a builtin, tuple, or function type");
         }
     }
     else

@@ -60,12 +60,24 @@ ast::TypeSyntax* cloneParsedType(ast::AstArena& arena, const ast::TypeSyntax* so
     ast::TypeSyntax* result = arena.make<ast::TypeSyntax>(
         source->range(), source->baseTokenKind(), source->baseName());
     result->setOwnershipQualifier(source->ownershipQualifier());
+    result->setLifetimeName(source->lifetimeName());
     result->setDynamicTrait(source->isDynamicTrait());
     result->setOpaqueResult(source->isOpaqueResult());
     result->setOpaqueResultTraitName(source->opaqueResultTraitName());
     result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
     result->setPointeeConst(source->isPointeeConst());
     result->setTuple(source->isTuple());
+    result->setFunction(source->isFunction());
+    result->setFunctionCarrier(source->functionCarrier());
+    result->setFunctionCallingConvention(source->functionCallingConvention());
+    result->setFunctionVariadic(source->functionIsVariadic());
+    result->setFunctionUnsafe(source->functionIsUnsafe());
+    result->setFunctionNoHeap(source->functionIsNoHeap());
+    result->setFunctionAsync(source->functionIsAsync());
+    result->setFunctionNullable(source->functionIsNullable());
+    result->setFunctionLifetimeName(source->functionLifetimeName());
+    result->setFunctionReturnType(cloneParsedType(arena, source->functionReturnType()));
+    result->setFunctionErrorType(cloneParsedType(arena, source->functionErrorType()));
     result->setPackExpansion(source->isPackExpansion());
     for (std::size_t index = 0; index < source->typeArguments().size(); ++index)
     {
@@ -446,6 +458,11 @@ bool Parser::canStartType(const lexer::Token& token) const noexcept
         return true;
     }
 
+    if (token.kind() == TokenKind::Identifier && token.lexeme() == "fn")
+    {
+        return true;
+    }
+
     return token.kind() == TokenKind::Identifier && knownTypeNames_.contains(std::string(token.lexeme()));
 }
 
@@ -482,6 +499,105 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
             afterType = afterDynamicType;
             return true;
         }
+    }
+
+    // T08-F01 structural function type. The carrier is mandatory so `fn * value` can never be
+    // confused with multiplication and a callable reference remains visibly different from a
+    // raw code pointer: `fn*(...) -> R` versus `fn&(...) -> R`.
+    if (tokenIndex < tokens_.size() &&
+        tokens_[tokenIndex].kind() == TokenKind::Identifier &&
+        tokens_[tokenIndex].lexeme() == "fn")
+    {
+        std::size_t cursor = tokenIndex + 1U;
+        if (cursor >= tokens_.size() ||
+            (tokens_[cursor].kind() != TokenKind::Star &&
+             tokens_[cursor].kind() != TokenKind::Amp))
+            return false;
+        ++cursor;
+        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Question)
+            ++cursor;
+        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::LeftBracket)
+        {
+            if (cursor + 2U >= tokens_.size() ||
+                (tokens_[cursor + 1U].kind() != TokenKind::Identifier &&
+                 tokens_[cursor + 1U].kind() != TokenKind::KwThis &&
+                 tokens_[cursor + 1U].kind() != TokenKind::KwStatic) ||
+                tokens_[cursor + 2U].kind() != TokenKind::RightBracket)
+                return false;
+            cursor += 3U;
+        }
+        if (cursor < tokens_.size() &&
+            ((tokens_[cursor].kind() == TokenKind::Identifier &&
+              tokens_[cursor].lexeme() == "C") ||
+             tokens_[cursor].kind() == TokenKind::KwVectorCall ||
+             (tokens_[cursor].kind() == TokenKind::Identifier &&
+              (tokens_[cursor].lexeme() == "native" ||
+               tokens_[cursor].lexeme() == "stdcall" ||
+               tokens_[cursor].lexeme() == "fastcall"))))
+            ++cursor;
+        if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::LeftParen)
+            return false;
+        ++cursor;
+        bool sawParameter = false;
+        while (cursor < tokens_.size() && tokens_[cursor].kind() != TokenKind::RightParen)
+        {
+            if (tokens_[cursor].kind() == TokenKind::Ellipsis)
+            {
+                if (!sawParameter || cursor + 1U >= tokens_.size() ||
+                    tokens_[cursor + 1U].kind() != TokenKind::RightParen)
+                    return false;
+                ++cursor;
+                break;
+            }
+            std::size_t afterParameter = cursor;
+            if (!scanTypeAt(cursor, afterParameter)) return false;
+            cursor = afterParameter;
+            sawParameter = true;
+            if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Comma)
+            {
+                ++cursor;
+                continue;
+            }
+            break;
+        }
+        if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::RightParen)
+            return false;
+        ++cursor;
+        if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Arrow)
+            return false;
+        ++cursor;
+        std::size_t afterResult = cursor;
+        if (!scanTypeAt(cursor, afterResult)) return false;
+        cursor = afterResult;
+        bool sawUnsafe = false;
+        bool sawNoHeap = false;
+        bool sawAsync = false;
+        while (cursor < tokens_.size())
+        {
+            const bool unsafeEffect = tokens_[cursor].kind() == TokenKind::Identifier &&
+                tokens_[cursor].lexeme() == "unsafe";
+            const bool noHeapEffect = tokens_[cursor].kind() == TokenKind::KwNoHeap;
+            const bool asyncEffect = tokens_[cursor].kind() == TokenKind::Identifier &&
+                tokens_[cursor].lexeme() == "async";
+            if ((!unsafeEffect && !noHeapEffect && !asyncEffect) ||
+                (unsafeEffect && sawUnsafe) || (noHeapEffect && sawNoHeap) ||
+                (asyncEffect && sawAsync))
+                break;
+            sawUnsafe = sawUnsafe || unsafeEffect;
+            sawNoHeap = sawNoHeap || noHeapEffect;
+            sawAsync = sawAsync || asyncEffect;
+            ++cursor;
+        }
+        if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier &&
+            tokens_[cursor].lexeme() == "throws")
+        {
+            ++cursor;
+            std::size_t afterError = cursor;
+            if (!scanTypeAt(cursor, afterError)) return false;
+            cursor = afterError;
+        }
+        afterType = cursor;
+        return true;
     }
 
     if (tokens_[tokenIndex].kind() == TokenKind::LeftParen)
@@ -889,6 +1005,215 @@ ast::TypeSyntax* Parser::parseType()
     {
         reportDeferredLanguage3(
             diagnostics_, current().range(), language::Language3Feature::Decimal);
+    }
+
+    if (atContextualKeyword("fn"))
+    {
+        const SourceRange functionStart = current().range();
+        consume();
+        requireEdition3(functionStart, "structural function types");
+        if (dynamicTrait || opaqueResult)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                dynamicTrait ? dynamicRange : opaqueRange,
+                "a function type cannot use 'dyn' or 'some'");
+        }
+
+        ast::FunctionTypeCarrierSyntaxKind carrier;
+        if (consumeIf(TokenKind::Star))
+            carrier = ast::FunctionTypeCarrierSyntaxKind::Pointer;
+        else if (consumeIf(TokenKind::Amp))
+            carrier = ast::FunctionTypeCarrierSyntaxKind::Reference;
+        else
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "expected '*' (function pointer) or '&' (function reference) after 'fn'");
+            return nullptr;
+        }
+
+        const bool nullable = consumeIf(TokenKind::Question);
+        std::string functionLifetime;
+        if (at(TokenKind::LeftBracket))
+            functionLifetime = parseOptionalLifetimeAnnotation("function reference");
+        if (!functionLifetime.empty() && carrier != ast::FunctionTypeCarrierSyntaxKind::Reference)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                functionStart,
+                "only a function reference may carry a named lifetime");
+        }
+
+        ast::FunctionCallingConventionSyntaxKind convention =
+            ast::FunctionCallingConventionSyntaxKind::NativeSharp;
+        if (atContextualKeyword("C"))
+        {
+            convention = ast::FunctionCallingConventionSyntaxKind::C;
+            consume();
+        }
+        else if (at(TokenKind::KwVectorCall))
+        {
+            convention = ast::FunctionCallingConventionSyntaxKind::VectorCall;
+            consume();
+        }
+        else if (atContextualKeyword("native"))
+        {
+            consume();
+        }
+        else if (atContextualKeyword("stdcall"))
+        {
+            convention = ast::FunctionCallingConventionSyntaxKind::StdCall;
+            consume();
+        }
+        else if (atContextualKeyword("fastcall"))
+        {
+            convention = ast::FunctionCallingConventionSyntaxKind::FastCall;
+            consume();
+        }
+        if (carrier == ast::FunctionTypeCarrierSyntaxKind::Reference &&
+            convention != ast::FunctionCallingConventionSyntaxKind::NativeSharp)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                functionStart,
+                "a function reference uses the NativeSharp calling convention; foreign conventions require fn*");
+        }
+
+        if (!expect(TokenKind::LeftParen, "'(' after function type carrier")) return nullptr;
+        ast::TypeSyntax* function = arena_.make<ast::TypeSyntax>(
+            functionStart, TokenKind::Invalid, "$function");
+        function->setFunction();
+        function->setOwnershipQualifier(ownershipQualifier);
+        function->setLifetimeName(std::move(lifetimeName));
+        function->setFunctionCarrier(carrier);
+        function->setFunctionCallingConvention(convention);
+        function->setFunctionNullable(nullable);
+        function->setFunctionLifetimeName(std::move(functionLifetime));
+
+        bool sawParameter = false;
+        while (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile))
+        {
+            if (consumeIf(TokenKind::Ellipsis))
+            {
+                function->setFunctionVariadic();
+                if (!sawParameter)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        tokens_[index_ - 1U].range(),
+                        "a variadic function type requires at least one fixed parameter");
+                }
+                if (!at(TokenKind::RightParen))
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        current().range(),
+                        "'...' must be the final item in a function type parameter list");
+                }
+                break;
+            }
+            ast::TypeSyntax* parameter = parseType();
+            if (parameter == nullptr) return nullptr;
+            if (parameter->baseTokenKind() == TokenKind::KwVoid &&
+                parameter->modifiers().empty())
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    parameter->range(),
+                    "a function type parameter cannot have type void");
+            }
+            function->addTypeArgument(parameter);
+            sawParameter = true;
+            if (!consumeIf(TokenKind::Comma)) break;
+            if (at(TokenKind::RightParen))
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    "a function type parameter list cannot end with ','; use ', ...' for variadicity");
+                break;
+            }
+        }
+        if (!expect(TokenKind::RightParen, "')' after function type parameters")) return nullptr;
+        if (!expect(TokenKind::Arrow, "'->' after function type parameters")) return nullptr;
+        ast::TypeSyntax* returnType = parseType();
+        if (returnType == nullptr) return nullptr;
+        function->setFunctionReturnType(returnType);
+
+        bool sawUnsafe = false;
+        bool sawNoHeap = false;
+        bool sawAsync = false;
+        while (true)
+        {
+            const bool unsafeEffect = atContextualKeyword("unsafe");
+            const bool noHeapEffect = at(TokenKind::KwNoHeap);
+            const bool asyncEffect = atContextualKeyword("async");
+            if (!unsafeEffect && !noHeapEffect && !asyncEffect) break;
+            const bool duplicate = (unsafeEffect && sawUnsafe) ||
+                (noHeapEffect && sawNoHeap) || (asyncEffect && sawAsync);
+            const SourceRange effectRange = consume().range();
+            if (duplicate)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    effectRange,
+                    "duplicate function type effect");
+                continue;
+            }
+            sawUnsafe = sawUnsafe || unsafeEffect;
+            sawNoHeap = sawNoHeap || noHeapEffect;
+            sawAsync = sawAsync || asyncEffect;
+        }
+        function->setFunctionUnsafe(sawUnsafe);
+        function->setFunctionNoHeap(sawNoHeap);
+        function->setFunctionAsync(sawAsync);
+
+        if (atContextualKeyword("throws"))
+        {
+            const SourceRange throwsRange = consume().range();
+            if (carrier == ast::FunctionTypeCarrierSyntaxKind::Pointer &&
+                convention != ast::FunctionCallingConventionSyntaxKind::NativeSharp)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    throwsRange,
+                    "a foreign function pointer cannot propagate a NativeSharp typed error");
+            }
+            ast::TypeSyntax* errorType = parseType();
+            if (errorType == nullptr) return nullptr;
+            function->setFunctionErrorType(errorType);
+        }
+        if (function->functionIsVariadic() &&
+            (carrier != ast::FunctionTypeCarrierSyntaxKind::Pointer ||
+             convention == ast::FunctionCallingConventionSyntaxKind::NativeSharp))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                functionStart,
+                "variadicity requires a foreign function pointer calling convention");
+        }
+
+        const SourceRange complete = index_ == 0
+            ? functionStart
+            : join(
+                ownershipQualifier == ast::OwnershipQualifierSyntaxKind::None
+                    ? functionStart : qualifierRange,
+                tokens_[index_ - 1U].range());
+        function->setRange(complete);
+        return function;
     }
 
     if (at(TokenKind::LeftParen))
@@ -1854,6 +2179,10 @@ bool Parser::canAppearInTypeArgumentList(TokenKind kind) noexcept
         case TokenKind::RightBracket:
         case TokenKind::LeftParen:
         case TokenKind::RightParen:
+        case TokenKind::Question:
+        case TokenKind::Arrow:
+        case TokenKind::KwNoHeap:
+        case TokenKind::KwVectorCall:
         // El contador de un arreglo fijo: `Foo<float[4]>(x)`.
         case TokenKind::IntegerLiteral:
         case TokenKind::Less:
@@ -1897,12 +2226,15 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
         {
             return false;
         }
+        const bool functionReferenceCarrier = kind == TokenKind::Amp && cursor > 0 &&
+            tokens_[cursor - 1U].kind() == TokenKind::Identifier &&
+            tokens_[cursor - 1U].lexeme() == "fn";
         if (parenthesisDepth == 0 &&
             (kind == TokenKind::AmpAmp || kind == TokenKind::PipePipe ||
              kind == TokenKind::EqualEqual || kind == TokenKind::BangEqual ||
              kind == TokenKind::LessEqual || kind == TokenKind::GreaterEqual ||
              kind == TokenKind::Slash || kind == TokenKind::Percent ||
-             kind == TokenKind::Amp || kind == TokenKind::Pipe ||
+             (kind == TokenKind::Amp && !functionReferenceCarrier) || kind == TokenKind::Pipe ||
              kind == TokenKind::Caret || kind == TokenKind::LessLess))
             return false;
         if (parenthesisDepth == 0 &&
@@ -1990,12 +2322,15 @@ bool Parser::looksLikeClosedGenericTypeReference() const noexcept
         {
             return false;
         }
+        const bool functionReferenceCarrier = kind == TokenKind::Amp && cursor > 0 &&
+            tokens_[cursor - 1U].kind() == TokenKind::Identifier &&
+            tokens_[cursor - 1U].lexeme() == "fn";
         if (parenthesisDepth == 0 &&
             (kind == TokenKind::AmpAmp || kind == TokenKind::PipePipe ||
              kind == TokenKind::EqualEqual || kind == TokenKind::BangEqual ||
              kind == TokenKind::LessEqual || kind == TokenKind::GreaterEqual ||
              kind == TokenKind::Slash || kind == TokenKind::Percent ||
-             kind == TokenKind::Amp || kind == TokenKind::Pipe ||
+             (kind == TokenKind::Amp && !functionReferenceCarrier) || kind == TokenKind::Pipe ||
              kind == TokenKind::Caret || kind == TokenKind::LessLess))
             return false;
         if (parenthesisDepth == 0 &&

@@ -7,6 +7,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -1334,6 +1335,19 @@ ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
         result = arena.make<ast::TypeSyntax>(
             source->range(), source->baseTokenKind(), source->baseName());
         result->setTuple(source->isTuple());
+        result->setFunction(source->isFunction());
+        result->setFunctionCarrier(source->functionCarrier());
+        result->setFunctionCallingConvention(source->functionCallingConvention());
+        result->setFunctionVariadic(source->functionIsVariadic());
+        result->setFunctionUnsafe(source->functionIsUnsafe());
+        result->setFunctionNoHeap(source->functionIsNoHeap());
+        result->setFunctionAsync(source->functionIsAsync());
+        result->setFunctionNullable(source->functionIsNullable());
+        result->setFunctionLifetimeName(source->functionLifetimeName());
+        result->setFunctionReturnType(cloneAliasType(
+            arena, source->functionReturnType(), substitutions, ownershipConflict));
+        result->setFunctionErrorType(cloneAliasType(
+            arena, source->functionErrorType(), substitutions, ownershipConflict));
         for (std::size_t index = 0; index < source->typeArguments().size(); ++index)
         {
             ast::TypeSyntax* argument = cloneAliasType(
@@ -1363,6 +1377,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
         else
             result->setOwnershipQualifier(source->ownershipQualifier());
     }
+    result->setLifetimeName(source->lifetimeName());
     for (const ast::TypeModifierSyntax& modifier : source->modifiers())
     {
         // Array extents are immutable expression syntax owned by the same source unit.  Alias
@@ -2034,6 +2049,17 @@ bool ProjectGenericModel::processTypeSyntax(
     for (ast::TypeSyntax* argument : syntax->typeArguments())
     {
         if (!processTypeSyntax(unit, argument, namespaceName, scope, diagnostics)) return false;
+    }
+    if (syntax->isFunction())
+    {
+        if (!processTypeSyntax(
+                unit, syntax->functionReturnType(), namespaceName, scope, diagnostics))
+            return false;
+        if (syntax->functionErrorType() != nullptr &&
+            !processTypeSyntax(
+                unit, syntax->functionErrorType(), namespaceName, scope, diagnostics))
+            return false;
+        return true;
     }
     // A tuple is structural, not an invocation of a generic type named "$tuple". Its element
     // types were still processed above so closed generic elements are materialized normally.
@@ -4063,6 +4089,19 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     else
     {
         result = arena.make<ast::TypeSyntax>(source->range(), source->baseTokenKind(), source->baseName());
+        result->setFunction(source->isFunction());
+        result->setFunctionCarrier(source->functionCarrier());
+        result->setFunctionCallingConvention(source->functionCallingConvention());
+        result->setFunctionVariadic(source->functionIsVariadic());
+        result->setFunctionUnsafe(source->functionIsUnsafe());
+        result->setFunctionNoHeap(source->functionIsNoHeap());
+        result->setFunctionAsync(source->functionIsAsync());
+        result->setFunctionNullable(source->functionIsNullable());
+        result->setFunctionLifetimeName(source->functionLifetimeName());
+        result->setFunctionReturnType(cloneType(
+            arena, source->functionReturnType(), substitutions));
+        result->setFunctionErrorType(cloneType(
+            arena, source->functionErrorType(), substitutions));
         if (source->constExpression() != nullptr)
         {
             result->setConstExpression(cloneNode(
@@ -4522,7 +4561,40 @@ std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) con
     if (decodeConstGenericArgument(syntax, constType, constValue))
         return "const(" + constType + "=" + constValue + ")";
     std::string result;
-    if (syntax->isTuple())
+    if (syntax->isFunction())
+    {
+        language::FunctionType function;
+        function.carrier = syntax->functionCarrier() ==
+                ast::FunctionTypeCarrierSyntaxKind::Pointer
+            ? language::FunctionCarrier::Pointer
+            : language::FunctionCarrier::Reference;
+        switch (syntax->functionCallingConvention())
+        {
+            case ast::FunctionCallingConventionSyntaxKind::NativeSharp:
+                function.callingConvention = language::CallingConvention::NativeSharp; break;
+            case ast::FunctionCallingConventionSyntaxKind::C:
+                function.callingConvention = language::CallingConvention::C; break;
+            case ast::FunctionCallingConventionSyntaxKind::StdCall:
+                function.callingConvention = language::CallingConvention::StdCall; break;
+            case ast::FunctionCallingConventionSyntaxKind::FastCall:
+                function.callingConvention = language::CallingConvention::FastCall; break;
+            case ast::FunctionCallingConventionSyntaxKind::VectorCall:
+                function.callingConvention = language::CallingConvention::VectorCall; break;
+        }
+        for (const ast::TypeSyntax* parameter : syntax->typeArguments())
+            function.parameters.push_back(typeSpelling(parameter));
+        function.result = typeSpelling(syntax->functionReturnType());
+        function.errorType = syntax->functionErrorType() == nullptr
+            ? std::string{} : typeSpelling(syntax->functionErrorType());
+        function.lifetime = syntax->functionLifetimeName();
+        function.variadic = syntax->functionIsVariadic();
+        function.isUnsafe = syntax->functionIsUnsafe();
+        function.isNoHeap = syntax->functionIsNoHeap();
+        function.isAsync = syntax->functionIsAsync();
+        function.nullable = syntax->functionIsNullable();
+        result = language::functionTypeIdentity(function);
+    }
+    else if (syntax->isTuple())
     {
         result.push_back('(');
         for (std::size_t index = 0; index < syntax->typeArguments().size(); ++index)
@@ -4533,7 +4605,8 @@ std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) con
         result.push_back(')');
     }
     else result = syntax->baseName();
-    if (!syntax->isTuple() && !syntax->typeArguments().empty())
+    if (!syntax->isFunction() && !syntax->isTuple() &&
+        !syntax->typeArguments().empty())
     {
         result.push_back('<');
         for (std::size_t index = 0; index < syntax->typeArguments().size(); ++index)
@@ -4605,7 +4678,8 @@ const ProjectGenericModel::DeclaredTypeIdentity* ProjectGenericModel::resolveDec
     std::string_view namespaceName,
     const GenericLookupScope& scope) const
 {
-    if (syntax == nullptr || lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()) ||
+    if (syntax == nullptr || syntax->isFunction() ||
+        lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()) ||
         !syntax->typeArguments().empty())
     {
         return nullptr;

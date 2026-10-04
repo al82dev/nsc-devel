@@ -779,9 +779,13 @@ T07 pasa 34/34 con ejecución O0/NSLink.
 
 **Commit:** `ns3(t08-f01): function-types`
 
-- **Implementación:** tipos incluyen parámetros, retorno, calling convention, variadicidad, efectos relevantes, safety y nullability; sintaxis uniforme para pointers y references a función.
-- **Pruebas dirigidas:** asignabilidad, overloads, DLL imports, `throws`, `unsafe`, generics y mangling.
-- **Markdown ES/EN:** identidad de tipo y tabla de compatibilidad.
+- **Estado:** `TERMINADA`; vertical AST/parser → binding/generics → ownership/HIR → NSMETA → LLVM Win64.
+- **Implementación:** `fn*` y `fn&` incluyen parámetros, retorno, calling convention,
+  variadicidad, `unsafe`, `noheap`, `async`, `throws`, lifetime y nullability en una identidad
+  estructural canónica y recursiva.
+- **Pruebas dirigidas:** `PASS: 17 checks`; asignabilidad, overloads, DLL imports, `throws`,
+  `unsafe`, genéricos, mangling, NSMETA y ejecución O0 enlazada por NSLink. Sin baseline ni O1+.
+- **Markdown ES/EN:** `docs/3.0/language/function-types.md` y ficha individual F01.
 
 ## NS3-T08-F02 — Lambdas sin captura / Non-capturing lambdas
 

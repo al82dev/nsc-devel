@@ -31,6 +31,21 @@ enum class TypeModifierSyntaxKind
     FlexibleArray
 };
 
+enum class FunctionTypeCarrierSyntaxKind
+{
+    Pointer,
+    Reference
+};
+
+enum class FunctionCallingConventionSyntaxKind
+{
+    NativeSharp,
+    C,
+    StdCall,
+    FastCall,
+    VectorCall
+};
+
 struct TypeModifierSyntax
 {
     TypeModifierSyntaxKind kind = TypeModifierSyntaxKind::Pointer;
@@ -108,6 +123,32 @@ public:
     void addTupleElement(TypeSyntax* type, std::string name = {});
     const std::vector<std::string>& tupleElementNames() const noexcept;
 
+    // NativeSharp 3.0 T08-F01. Function types are structural source types rather than hidden
+    // nominal delegates. typeArguments() stores the ordered parameter types; the return and
+    // typed-error components are separate so nesting stays unambiguous.
+    bool isFunction() const noexcept;
+    void setFunction(bool value = true) noexcept;
+    FunctionTypeCarrierSyntaxKind functionCarrier() const noexcept;
+    void setFunctionCarrier(FunctionTypeCarrierSyntaxKind carrier) noexcept;
+    FunctionCallingConventionSyntaxKind functionCallingConvention() const noexcept;
+    void setFunctionCallingConvention(FunctionCallingConventionSyntaxKind convention) noexcept;
+    TypeSyntax* functionReturnType() const noexcept;
+    void setFunctionReturnType(TypeSyntax* type) noexcept;
+    TypeSyntax* functionErrorType() const noexcept;
+    void setFunctionErrorType(TypeSyntax* type) noexcept;
+    bool functionIsVariadic() const noexcept;
+    void setFunctionVariadic(bool value = true) noexcept;
+    bool functionIsUnsafe() const noexcept;
+    void setFunctionUnsafe(bool value = true) noexcept;
+    bool functionIsNoHeap() const noexcept;
+    void setFunctionNoHeap(bool value = true) noexcept;
+    bool functionIsAsync() const noexcept;
+    void setFunctionAsync(bool value = true) noexcept;
+    bool functionIsNullable() const noexcept;
+    void setFunctionNullable(bool value = true) noexcept;
+    const std::string& functionLifetimeName() const noexcept;
+    void setFunctionLifetimeName(std::string name);
+
     // NativeSharp 3 const-generic argument. The parser temporarily keeps the ordinary expression
     // AST here; ProjectGenericModel evaluates it deterministically and replaces this carrier with
     // the canonical const marker before specialization identity or lowering observes the type.
@@ -173,6 +214,18 @@ private:
     std::vector<TypeSyntax*> typeArguments_;
     bool isTuple_ = false;
     std::vector<std::string> tupleElementNames_;
+    bool isFunction_ = false;
+    FunctionTypeCarrierSyntaxKind functionCarrier_ = FunctionTypeCarrierSyntaxKind::Pointer;
+    FunctionCallingConventionSyntaxKind functionCallingConvention_ =
+        FunctionCallingConventionSyntaxKind::NativeSharp;
+    TypeSyntax* functionReturnType_ = nullptr;
+    TypeSyntax* functionErrorType_ = nullptr;
+    bool functionIsVariadic_ = false;
+    bool functionIsUnsafe_ = false;
+    bool functionIsNoHeap_ = false;
+    bool functionIsAsync_ = false;
+    bool functionIsNullable_ = false;
+    std::string functionLifetimeName_;
     AstNode* constExpression_ = nullptr;
     bool isPackExpansion_ = false;
     std::vector<TypeModifierSyntax> modifiers_;

@@ -2,7 +2,7 @@
 
 Fecha: 2026-09-29  
 Rama: `development`  
-Alcance: T08-F02 y porción productiva T08-F05  
+Alcance: T08-F01, T08-F02 y porción productiva T08-F05
 Estado del bloque T08: `IMPLEMENTING`
 
 ## Objetivo
@@ -12,8 +12,8 @@ captura como callback C, closure administrada capturante y método de instancia 
 observable el costo real de la closure en la frontera versionada MIR; antes se escondía bajo un
 simple contador de capturas.
 
-No se tomó como implementación el helper declarativo `CallableSemantics`: sus contratos de
-`copy/move/ref`, `FnOnce` y `must_tail` siguen sin conexión con parser y backend.
+El helper declarativo `CallableSemantics` ya es productivo para la identidad completa de tipos
+función (F01). Sus contratos futuros de `copy/move/ref`, `FnOnce` y `must_tail` siguen separados.
 
 ## Diagnóstico previo
 
@@ -27,6 +27,13 @@ No se tomó como implementación el helper declarativo `CallableSemantics`: sus 
 - El dump MIR sólo emitía `captures=N`; no declaraba layout, asignación o storage.
 
 ## Cambios de implementación
+
+### Tipos función estructurales completos (F01, 2026-10-04)
+
+`fn*` y `fn&` atraviesan AST, parser, binding, overloads, genéricos, ownership/HIR, NSMETA y LLVM.
+La identidad canónica incluye carrier, calling convention, variadicidad, efectos, safety,
+nullability, lifetime, parámetros, resultado y error. Una prueba única dirigida cubre ejecución
+O0/NSLink, overloads, sustitución genérica, unsafe, DLL callback y round-trip de metadata.
 
 ### Procedencia estable
 
@@ -115,12 +122,11 @@ compilador utilizado fue exclusivamente `A:\nsc-devel\build-clang\bin\nsc.exe`.
 
 ## Deuda explícita
 
-- identidad completa de tipos función: calling convention, efectos, safety, nullability y lifetime;
 - sintaxis y lowering real de capturas `copy`, `move` y `ref`;
 - clasificación productiva `Fn`, `FnMut` y `FnOnce`;
 - escape analysis que permita referencias cuando la lifetime lo demuestre;
 - lambdas genéricas y monomorfización;
-- metadata cross-module de callables/closures;
+- consumo cross-module integral de closures capturantes;
 - `must_tail` con verificación ABI/cleanup;
 - visualización y evaluación de captures en debugger;
 - alternativa stack/noheap cuando escape analysis pruebe que no escapa.

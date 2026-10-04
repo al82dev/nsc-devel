@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 #include "nativesharp/Frontend/BuiltinIntegerTypes.h"
+#include "nativesharp/Language/CallableSemantics.h"
 
 #include <algorithm>
 #include <array>
@@ -341,6 +342,18 @@ ProjectImplicitConversion ProjectTypeConversion::classifyImplicit(
         return makeConversion(ProjectConversionKind::Tuple, rank + 1, sourceTypeKey, targetTypeKey);
     }
 
+    const std::optional<language::FunctionType> sourceFunction =
+        language::parseFunctionTypeIdentity(sourceTypeKey);
+    const std::optional<language::FunctionType> targetFunction =
+        language::parseFunctionTypeIdentity(targetTypeKey);
+    if (sourceFunction.has_value() || targetFunction.has_value())
+    {
+        if (!sourceFunction.has_value() || !targetFunction.has_value() ||
+            !language::functionTypesAssignable(*sourceFunction, *targetFunction))
+            return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+        return makeConversion(ProjectConversionKind::Function, 1, sourceTypeKey, targetTypeKey);
+    }
+
     if (isIntegralPromotion(sourceTypeKey, targetTypeKey))
     {
         return makeConversion(ProjectConversionKind::IntegralPromotion, 1, sourceTypeKey, targetTypeKey);
@@ -359,6 +372,24 @@ ProjectImplicitConversion ProjectTypeConversion::classifyImplicit(
             targetTypeKey))
     {
         return makeConversion(ProjectConversionKind::ConstantInteger, 2, sourceTypeKey, targetTypeKey);
+    }
+
+    if (sourceTypeKey == "builtin:null" && isFunctionPointer(targetTypeKey))
+    {
+        const std::optional<language::FunctionType> target =
+            language::parseFunctionTypeIdentity(targetTypeKey);
+        return target.has_value() && target->nullable
+            ? makeConversion(ProjectConversionKind::NullPointer, 4, sourceTypeKey, targetTypeKey)
+            : makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+    }
+
+    if (sourceTypeKey == "builtin:null" && isFunctionReference(targetTypeKey))
+    {
+        const std::optional<language::FunctionType> target =
+            language::parseFunctionTypeIdentity(targetTypeKey);
+        return target.has_value() && target->nullable
+            ? makeConversion(ProjectConversionKind::NullReference, 4, sourceTypeKey, targetTypeKey)
+            : makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
     }
 
     if (sourceTypeKey == "builtin:null" && isPointer(targetTypeKey))
@@ -585,7 +616,21 @@ bool ProjectTypeConversion::isIntegral(std::string_view typeKey) noexcept
 
 bool ProjectTypeConversion::isPointer(std::string_view typeKey) noexcept
 {
-    return !typeKey.empty() && typeKey.back() == '*';
+    return (!typeKey.empty() && typeKey.back() == '*') || isFunctionPointer(typeKey);
+}
+
+bool ProjectTypeConversion::isFunctionPointer(std::string_view typeKey) noexcept
+{
+    const std::optional<language::FunctionType> type =
+        language::parseFunctionTypeIdentity(typeKey);
+    return type.has_value() && type->carrier == language::FunctionCarrier::Pointer;
+}
+
+bool ProjectTypeConversion::isFunctionReference(std::string_view typeKey) noexcept
+{
+    const std::optional<language::FunctionType> type =
+        language::parseFunctionTypeIdentity(typeKey);
+    return type.has_value() && type->carrier == language::FunctionCarrier::Reference;
 }
 
 bool ProjectTypeConversion::isNativeString(std::string_view typeKey) noexcept
@@ -686,6 +731,7 @@ const char* projectConversionKindName(ProjectConversionKind kind) noexcept
         case ProjectConversionKind::ConstantInteger: return "constant-integer";
         case ProjectConversionKind::Numeric: return "numeric";
         case ProjectConversionKind::Tuple: return "tuple";
+        case ProjectConversionKind::Function: return "function";
         case ProjectConversionKind::NullPointer: return "null-pointer";
         case ProjectConversionKind::NullReference: return "null-reference";
         case ProjectConversionKind::ReferenceUpcast: return "reference-upcast";

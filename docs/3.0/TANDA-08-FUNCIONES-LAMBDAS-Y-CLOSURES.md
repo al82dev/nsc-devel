@@ -1,16 +1,18 @@
 # Tanda 08 — Funciones, lambdas y closures / Functions, lambdas, and closures
 
-> **Estado físico 2026-09-29:** `IMPLEMENTING`. T08-F02 y la porción productiva de T08-F05 ya
+> **Estado físico 2026-10-04:** `IMPLEMENTING`. T08-F01, T08-F02 y la porción productiva de T08-F05 ya
 > atraviesan parser, semántica, HIR, MIR 1.19, LLVM, PE y ejecución. El compilador distingue
 > callbacks C sin environment, closures administradas con celdas compartidas y métodos de
-> instancia ligados. Los contratos declarativos restantes no se presentan como implementación.
+> instancia ligados. Los tipos estructurales `fn*`/`fn&` conservan ABI, efectos, nullability,
+> lifetime y componentes anidados hasta NSMETA y LLVM. Los contratos restantes no se presentan
+> como implementación.
 
 ## Resultado / Outcome
 
-ES: Las lambdas sin captura pueden cruzar como punteros C reales, las closures administradas tienen
+ES: Los tipos función son valores estructurales completos; las lambdas sin captura pueden cruzar como punteros C reales, las closures administradas tienen
 un environment ejecutable y los métodos ligados conservan su receptor. MIR 1.19 publica el costo y
 procedencia de cada captura. EN: Non-capturing lambdas can cross as real C function pointers,
-managed closures have an executable environment, and bound methods preserve their receiver. MIR
+function types have complete structural identity, managed closures have an executable environment, and bound methods preserve their receiver. MIR
 1.19 publishes every capture's cost and provenance.
 
 ## Archivos / Files
@@ -20,8 +22,9 @@ managed closures have an executable environment, and bound methods preserve thei
 - `ProjectOopMirModel.h/.cpp`, dumper e identidad de caché: MIR 1.19 hace visible layout,
   asignación, storage y origen del environment.
 - `tests/cc1/c66_ns3_callable_values`: callback C, closure capturante y método ligado ejecutables.
-- `CallableSemantics.h/.cpp` y su prueba aislada continúan siendo contratos de diseño para las
-  partes aún no conectadas.
+- `CallableSemantics.h/.cpp`, `TypeSyntax`, parser, frontend, NSMETA y LLVM: identidad y ejecución
+  productiva de `fn*`/`fn&`.
+- `tests/unit/NativeSharp3T08CallableTests.cpp`: compatibilidad, negativos, O0/NSLink y NSMETA.
 
 ## Mejora / Improvement
 
@@ -34,14 +37,14 @@ closure ya no coincide.
 ## Límite / Boundary
 
 Este vertical no implementa sintaxis explícita `copy/move/ref`, `Fn/FnMut/FnOnce`, lambdas genéricas,
-identidad completa de tipos función, `must_tail`, metadata cross-module ni soporte de debugger. La
+`must_tail` ni soporte de debugger. La
 representación actual es honesta: toda captura productiva es una referencia a celda compartida y el
 environment capturante usa heap administrado.
 
 ## Validación / Validation
 
-`nsc` Debug/O0; c66 con lld-link y NSLink (exit 42); dumps MIR/method-body; negativo callback C
-capturante. Sin baseline, CTest general, optimizaciones O1+ ni instalación.
+`nsc` O0; prueba T08 17/17 con NSLink; c66 histórico; dumps MIR/method-body; negativos de callback
+C capturante e invocación `unsafe`. Sin baseline, CTest general, optimizaciones O1+ ni instalación.
 
 El expediente reproducible está en
 [TANDA-OPERATIVA-16-T08-CALLABLE-VALUES.md](TANDA-OPERATIVA-16-T08-CALLABLE-VALUES.md).

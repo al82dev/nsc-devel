@@ -148,7 +148,43 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
         output << ' ';
     }
     if (typeSyntax->isDynamicTrait()) output << "dyn ";
-    if (typeSyntax->isTuple())
+    if (typeSyntax->isFunction())
+    {
+        output << "fn" << (typeSyntax->functionCarrier() ==
+            FunctionTypeCarrierSyntaxKind::Pointer ? '*' : '&');
+        if (typeSyntax->functionIsNullable()) output << '?';
+        if (!typeSyntax->functionLifetimeName().empty())
+            output << '[' << typeSyntax->functionLifetimeName() << ']';
+        switch (typeSyntax->functionCallingConvention())
+        {
+            case FunctionCallingConventionSyntaxKind::NativeSharp: output << " native"; break;
+            case FunctionCallingConventionSyntaxKind::C: output << " C"; break;
+            case FunctionCallingConventionSyntaxKind::StdCall: output << " stdcall"; break;
+            case FunctionCallingConventionSyntaxKind::FastCall: output << " fastcall"; break;
+            case FunctionCallingConventionSyntaxKind::VectorCall: output << " vectorcall"; break;
+        }
+        output << '(';
+        for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)
+        {
+            if (index != 0) output << ',';
+            dumpType(typeSyntax->typeArguments()[index], output);
+        }
+        if (typeSyntax->functionIsVariadic())
+            output << (typeSyntax->typeArguments().empty() ? "..." : ",...");
+        output << ")->";
+        if (typeSyntax->functionReturnType() != nullptr)
+            dumpType(typeSyntax->functionReturnType(), output);
+        else output << "<missing>";
+        if (typeSyntax->functionIsUnsafe()) output << " unsafe";
+        if (typeSyntax->functionIsNoHeap()) output << " noheap";
+        if (typeSyntax->functionIsAsync()) output << " async";
+        if (typeSyntax->functionErrorType() != nullptr)
+        {
+            output << " throws ";
+            dumpType(typeSyntax->functionErrorType(), output);
+        }
+    }
+    else if (typeSyntax->isTuple())
     {
         output << '(';
         for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)
@@ -162,7 +198,8 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
         output << ')';
     }
     else output << typeSyntax->baseName();
-    if (!typeSyntax->isTuple() && !typeSyntax->typeArguments().empty())
+    if (!typeSyntax->isFunction() && !typeSyntax->isTuple() &&
+        !typeSyntax->typeArguments().empty())
     {
         output << '<';
         for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)

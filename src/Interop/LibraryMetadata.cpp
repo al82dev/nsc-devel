@@ -17,6 +17,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -1655,7 +1656,16 @@ bool buildMetadataModel(
     // such as List<ProducerValue> carried the generated nominal type key in `types`/`members`, but
     // NSMETA omitted the record that tells a consumer how to recreate that nominal declaration.
     std::unordered_set<std::string> referencedTypeKeys;
-    const auto rememberType = [&](const std::string& typeKey) {
+    std::function<void(const std::string&)> rememberType;
+    rememberType = [&](const std::string& typeKey) {
+        if (const std::optional<language::FunctionType> functionType =
+                language::parseFunctionTypeIdentity(typeKey))
+        {
+            for (const std::string& parameter : functionType->parameters) rememberType(parameter);
+            rememberType(functionType->result);
+            rememberType(functionType->errorType);
+            return;
+        }
         const std::string base = metadataBaseTypeKey(typeKey);
         if (base.starts_with("type:")) referencedTypeKeys.insert(base);
     };
@@ -4524,8 +4534,27 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
 
     if (metadata.formatMinor >= 7)
     {
-        const auto verifyTypeReference = [&](const std::string& writtenTypeKey,
-                                             std::string_view owner) -> bool {
+        std::function<bool(const std::string&, std::string_view)> verifyTypeReference;
+        verifyTypeReference = [&](const std::string& writtenTypeKey,
+                                  std::string_view owner) -> bool {
+            if (writtenTypeKey.starts_with("fn:"))
+            {
+                const std::optional<language::FunctionType> functionType =
+                    language::parseFunctionTypeIdentity(writtenTypeKey);
+                if (!functionType.has_value())
+                {
+                    error = "metadata " + std::string(owner) +
+                        " contains malformed function type identity '" + writtenTypeKey + "'";
+                    return false;
+                }
+                for (const std::string& parameter : functionType->parameters)
+                    if (!verifyTypeReference(parameter, owner)) return false;
+                if (!verifyTypeReference(functionType->result, owner)) return false;
+                if (!functionType->errorType.empty() &&
+                    !verifyTypeReference(functionType->errorType, owner))
+                    return false;
+                return true;
+            }
             const std::string typeKey = metadataBaseTypeKey(writtenTypeKey);
             if (!typeKey.starts_with("type:") || declaredTypeKeys.contains(typeKey) ||
                 specializedTypeKeys.contains(typeKey) || externalTypeKeys.contains(typeKey))

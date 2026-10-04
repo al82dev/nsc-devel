@@ -19,6 +19,7 @@ enum class ProjectConversionKind
     ConstantInteger,
     Numeric,
     Tuple,
+    Function,
     NullPointer,
     NullReference,
     ReferenceUpcast,
@@ -70,6 +71,8 @@ public:
     static bool isNumeric(std::string_view typeKey) noexcept;
     static bool isIntegral(std::string_view typeKey) noexcept;
     static bool isPointer(std::string_view typeKey) noexcept;
+    static bool isFunctionPointer(std::string_view typeKey) noexcept;
+    static bool isFunctionReference(std::string_view typeKey) noexcept;
     static bool isNativeString(std::string_view typeKey) noexcept;
     static bool isNativeArray(std::string_view typeKey) noexcept;
     static bool isNativeRangeArray(std::string_view typeKey) noexcept;

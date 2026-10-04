@@ -3,6 +3,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
@@ -90,6 +91,8 @@ bool isReferenceTypeArgument(
     const NamedTypeDeclaration* declaration)
 {
     if (syntax == nullptr) return false;
+    if (syntax->isFunction())
+        return syntax->functionCarrier() == ast::FunctionTypeCarrierSyntaxKind::Reference;
     if (!syntax->modifiers().empty())
     {
         // SOLO EL ARREGLO DINAMICO. `T[]` es una referencia --un objeto con cabecera, longitud y
@@ -113,6 +116,8 @@ bool isValueTypeArgument(
     const NamedTypeDeclaration* declaration)
 {
     if (syntax == nullptr) return false;
+    if (syntax->isFunction())
+        return syntax->functionCarrier() == ast::FunctionTypeCarrierSyntaxKind::Pointer;
     if (!syntax->modifiers().empty())
     {
         const ast::TypeModifierSyntaxKind outermost = syntax->modifiers().back().kind;
@@ -145,6 +150,9 @@ bool typeKeyIsUnmanaged(
     if (typeKey.empty() || typeKey == "builtin:void" || typeKey == "builtin:string" ||
         typeKey.ends_with("[]"))
         return false;
+    if (const std::optional<language::FunctionType> functionType =
+            language::parseFunctionTypeIdentity(typeKey))
+        return functionType->carrier == language::FunctionCarrier::Pointer;
     if (typeKey.starts_with("builtin:") || typeKey.ends_with("*")) return true;
     if (const auto element = ProjectMemberModel::fixedArrayElementTypeKey(typeKey); element.has_value())
         return typeKeyIsUnmanaged(*element, nameLookup, memberModel, visiting);
@@ -194,6 +202,7 @@ bool hasTrackedLifetime(
     const NamedTypeDeclaration* declaration)
 {
     if (syntax == nullptr) return false;
+    if (syntax->isFunction()) return true;
     if (syntax->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::None) return true;
     if (!syntax->modifiers().empty())
     {
@@ -217,6 +226,7 @@ bool isDefinitelyNonNull(
     const NamedTypeDeclaration* declaration)
 {
     if (syntax == nullptr) return false;
+    if (syntax->isFunction()) return !syntax->functionIsNullable();
     if (!syntax->modifiers().empty())
     {
         const ast::TypeModifierSyntaxKind outermost = syntax->modifiers().back().kind;

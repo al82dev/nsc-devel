@@ -8,6 +8,7 @@
 
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
+#include "nativesharp/Language/CallableSemantics.h"
 
 #include "nativesharp/AST/AstNodeKind.h"
 #include "nativesharp/Lexer/TokenKind.h"
@@ -8582,6 +8583,9 @@ bool ProjectOopHirModel::isClassReferenceType(std::string_view typeKey) const no
 
 bool ProjectOopHirModel::isReferenceType(std::string_view typeKey) const noexcept
 {
+    if (const std::optional<language::FunctionType> functionType =
+            language::parseFunctionTypeIdentity(typeKey))
+        return functionType->carrier == language::FunctionCarrier::Reference;
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:"))
     {
         return false;

@@ -83,6 +83,47 @@ const std::vector<std::string>& TypeSyntax::tupleElementNames() const noexcept
 {
     return tupleElementNames_;
 }
+bool TypeSyntax::isFunction() const noexcept { return isFunction_; }
+void TypeSyntax::setFunction(bool value) noexcept { isFunction_ = value; }
+FunctionTypeCarrierSyntaxKind TypeSyntax::functionCarrier() const noexcept
+{
+    return functionCarrier_;
+}
+void TypeSyntax::setFunctionCarrier(FunctionTypeCarrierSyntaxKind carrier) noexcept
+{
+    functionCarrier_ = carrier;
+}
+FunctionCallingConventionSyntaxKind TypeSyntax::functionCallingConvention() const noexcept
+{
+    return functionCallingConvention_;
+}
+void TypeSyntax::setFunctionCallingConvention(
+    FunctionCallingConventionSyntaxKind convention) noexcept
+{
+    functionCallingConvention_ = convention;
+}
+TypeSyntax* TypeSyntax::functionReturnType() const noexcept { return functionReturnType_; }
+void TypeSyntax::setFunctionReturnType(TypeSyntax* type) noexcept { functionReturnType_ = type; }
+TypeSyntax* TypeSyntax::functionErrorType() const noexcept { return functionErrorType_; }
+void TypeSyntax::setFunctionErrorType(TypeSyntax* type) noexcept { functionErrorType_ = type; }
+bool TypeSyntax::functionIsVariadic() const noexcept { return functionIsVariadic_; }
+void TypeSyntax::setFunctionVariadic(bool value) noexcept { functionIsVariadic_ = value; }
+bool TypeSyntax::functionIsUnsafe() const noexcept { return functionIsUnsafe_; }
+void TypeSyntax::setFunctionUnsafe(bool value) noexcept { functionIsUnsafe_ = value; }
+bool TypeSyntax::functionIsNoHeap() const noexcept { return functionIsNoHeap_; }
+void TypeSyntax::setFunctionNoHeap(bool value) noexcept { functionIsNoHeap_ = value; }
+bool TypeSyntax::functionIsAsync() const noexcept { return functionIsAsync_; }
+void TypeSyntax::setFunctionAsync(bool value) noexcept { functionIsAsync_ = value; }
+bool TypeSyntax::functionIsNullable() const noexcept { return functionIsNullable_; }
+void TypeSyntax::setFunctionNullable(bool value) noexcept { functionIsNullable_ = value; }
+const std::string& TypeSyntax::functionLifetimeName() const noexcept
+{
+    return functionLifetimeName_;
+}
+void TypeSyntax::setFunctionLifetimeName(std::string name)
+{
+    functionLifetimeName_ = std::move(name);
+}
 AstNode* TypeSyntax::constExpression() const noexcept { return constExpression_; }
 void TypeSyntax::setConstExpression(AstNode* expression) noexcept
 {

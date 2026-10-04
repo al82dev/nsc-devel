@@ -206,6 +206,19 @@ TypeSyntax* cloneType(
     result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
     result->setPointeeConst(source->isPointeeConst());
     result->setTuple(source->isTuple());
+    result->setFunction(source->isFunction());
+    result->setFunctionCarrier(source->functionCarrier());
+    result->setFunctionCallingConvention(source->functionCallingConvention());
+    result->setFunctionVariadic(source->functionIsVariadic());
+    result->setFunctionUnsafe(source->functionIsUnsafe());
+    result->setFunctionNoHeap(source->functionIsNoHeap());
+    result->setFunctionAsync(source->functionIsAsync());
+    result->setFunctionNullable(source->functionIsNullable());
+    result->setFunctionLifetimeName(source->functionLifetimeName());
+    result->setFunctionReturnType(cloneType(
+        arena, source->functionReturnType(), substitutions));
+    result->setFunctionErrorType(cloneType(
+        arena, source->functionErrorType(), substitutions));
     result->setPackExpansion(source->isPackExpansion());
     if (source->originProjectOrdinal().has_value())
         result->setOriginProjectOrdinal(*source->originProjectOrdinal());

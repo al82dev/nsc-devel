@@ -404,6 +404,12 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutBaseType(
             static_cast<std::uint64_t>(layout->size),
             static_cast<std::uint64_t>(layout->alignment)};
     }
+    if (syntax->isFunction())
+    {
+        // Both structural carriers are one Windows x64 pointer in storage. A function reference
+        // points at the existing delegate cell; a function pointer points directly at code.
+        return targetLayout_.layoutOf(BuiltinLayoutKind::Pointer);
+    }
     if (const std::optional<BuiltinLayoutKind> builtin = builtinLayoutKind(syntax->baseTokenKind()); builtin.has_value())
     {
         return targetLayout_.layoutOf(*builtin);

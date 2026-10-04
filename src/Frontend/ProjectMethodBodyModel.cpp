@@ -12,6 +12,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Language/SumTypeSemantics.h"
@@ -5551,6 +5552,9 @@ bool ProjectMethodBodyModel::validateErrorPropagation(
 std::string ProjectMethodBodyModel::delegateErrorTypeKey(
     std::string_view delegateTypeKey) const
 {
+    if (const std::optional<language::FunctionType> functionType =
+            language::parseFunctionTypeIdentity(delegateTypeKey))
+        return functionType->errorType;
     const std::optional<std::size_t> ordinal =
         delegateTypeOrdinalForTypeKey(delegateTypeKey);
     if (!ordinal.has_value() || nameLookup_ == nullptr || memberModel_ == nullptr ||
@@ -14594,11 +14598,26 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (!callee.methodGroup && isDelegateTypeKey(callee.typeKey))
     {
         if (!allArgumentsValid) return result;
+        if (const std::optional<language::FunctionType> functionType =
+                language::parseFunctionTypeIdentity(callee.typeKey);
+            functionType.has_value() && functionType->isUnsafe && unsafeBlockDepth_ == 0)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "invoking an unsafe function value requires an explicit unsafe { ... } block");
+            return result;
+        }
         std::string returnType;
         std::vector<std::string> parameterTypes;
         std::size_t delegateOrdinal = 0;
         if (!delegateSignature(callee.typeKey, returnType, parameterTypes, delegateOrdinal)) return result;
-        if (parameterTypes.size() != arguments.size())
+        const std::optional<language::FunctionType> structuralFunction =
+            language::parseFunctionTypeIdentity(callee.typeKey);
+        const bool variadic = structuralFunction.has_value() && structuralFunction->variadic;
+        if ((!variadic && parameterTypes.size() != arguments.size()) ||
+            (variadic && arguments.size() < parameterTypes.size()))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidArgumentCount,
@@ -14620,6 +14639,25 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         binding.resultTypeKey = returnType;
         for (std::size_t index = 0; index < arguments.size(); ++index)
         {
+            if (index >= parameterTypes.size())
+            {
+                ProjectImplicitConversion conversion =
+                    classifyCVariadicPromotion(arguments[index].typeKey);
+                if (!conversion.exists() ||
+                    arguments[index].argumentPassKind != ParameterPassKind::Value ||
+                    arguments[index].ownership != sema::OwnershipKind::None ||
+                    arguments[index].ownershipTransfer || arguments[index].ownershipFreshOwner)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->children()[index]->range(),
+                        "variadic function-pointer arguments must be by-value C ABI scalars, raw pointers, enums, or function pointers");
+                    return result;
+                }
+                binding.argumentConversions.push_back(std::move(conversion));
+                continue;
+            }
             if (memberModel_->typeIsMoveOnly(parameterTypes[index]) &&
                 arguments[index].addressable && !arguments[index].ownershipTransfer)
             {
@@ -20811,7 +20849,8 @@ std::optional<std::size_t> ProjectMethodBodyModel::delegateTypeOrdinalForTypeKey
 
 bool ProjectMethodBodyModel::isDelegateTypeKey(std::string_view typeKey) const noexcept
 {
-    return delegateTypeOrdinalForTypeKey(typeKey).has_value();
+    return language::isFunctionTypeIdentity(typeKey) ||
+        delegateTypeOrdinalForTypeKey(typeKey).has_value();
 }
 
 bool ProjectMethodBodyModel::delegateSignature(
@@ -20822,6 +20861,14 @@ bool ProjectMethodBodyModel::delegateSignature(
 {
     returnTypeKey.clear();
     parameterTypeKeys.clear();
+    if (const std::optional<language::FunctionType> functionType =
+            language::parseFunctionTypeIdentity(delegateTypeKey))
+    {
+        returnTypeKey = functionType->result;
+        parameterTypeKeys = functionType->parameters;
+        delegateTypeOrdinal = std::numeric_limits<std::size_t>::max();
+        return true;
+    }
     const std::optional<std::size_t> ordinal = delegateTypeOrdinalForTypeKey(delegateTypeKey);
     if (!ordinal.has_value() || nameLookup_ == nullptr || memberModel_ == nullptr ||
         *ordinal >= nameLookup_->namedTypes().size())
@@ -21460,11 +21507,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
     // LLVM signature is the Win64 C ABI for every C-expressible type since Stage 40.2 --
     // certified against an MSVC-ABI host executing under Wine.
     {
-        const std::optional<std::size_t> delegateType = delegateTypeOrdinalForTypeKey(delegateTypeKey);
-        const bool externCTarget = delegateType.has_value() && nameLookup_ != nullptr &&
-            *delegateType < nameLookup_->namedTypes().size() &&
-            nameLookup_->namedTypes()[*delegateType].syntax != nullptr &&
-            nameLookup_->namedTypes()[*delegateType].syntax->hasModifier(lexer::TokenKind::KwExtern);
+        const bool externCTarget = isExternCDelegateTypeKey(delegateTypeKey);
         if (externCTarget && !target.isStatic)
         {
             diagnostics.report(
@@ -21549,7 +21592,8 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyImplicit(
     std::string_view targetTypeKey,
     std::optional<ProjectIntegerConstant> integerConstant) const
 {
-    if (sourceTypeKey == "builtin:null" && isDelegateTypeKey(targetTypeKey))
+    if (sourceTypeKey == "builtin:null" &&
+        delegateTypeOrdinalForTypeKey(targetTypeKey).has_value())
     {
         return ProjectImplicitConversion{
             ProjectConversionKind::NullReference, 4, std::string(sourceTypeKey),
@@ -21937,6 +21981,9 @@ std::optional<std::size_t> ProjectMethodBodyModel::accessorReceiverTypeOrdinalFo
 
 bool ProjectMethodBodyModel::isReferenceTypeKey(std::string_view typeKey) const noexcept
 {
+    if (const std::optional<language::FunctionType> functionType =
+            language::parseFunctionTypeIdentity(typeKey))
+        return functionType->carrier == language::FunctionCarrier::Reference;
     return referenceTypeOrdinalForTypeKey(typeKey).has_value();
 }
 
@@ -21956,6 +22003,7 @@ bool ProjectMethodBodyModel::typeKeyIsOwnable(std::string_view typeKey) const no
 // places that must agree, so both read the syntax modifier rather than a cached flag.
 bool ProjectMethodBodyModel::isAnyDelegateTypeKey(std::string_view typeKey) const noexcept
 {
+    if (language::isFunctionTypeIdentity(typeKey)) return true;
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
     const std::string_view key = typeKey.substr(5);
     for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
@@ -22221,6 +22269,9 @@ bool ProjectMethodBodyModel::elementTypeHasTrivialLifetime(std::string_view type
 
 bool ProjectMethodBodyModel::isExternCDelegateTypeKey(std::string_view typeKey) const noexcept
 {
+    if (const std::optional<language::FunctionType> functionType =
+            language::parseFunctionTypeIdentity(typeKey))
+        return functionType->carrier == language::FunctionCarrier::Pointer;
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
     const std::string_view key = typeKey.substr(5);
     for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
@@ -22236,6 +22287,9 @@ bool ProjectMethodBodyModel::isRawPointerTypeKey(std::string_view typeKey) noexc
 {
     // `T*` / `void*`. Native arrays ("...[]") are a different shape and are deliberately not
     // pointers here, even though both lower to `ptr`.
+    if (const std::optional<language::FunctionType> functionType =
+            language::parseFunctionTypeIdentity(typeKey))
+        return functionType->carrier == language::FunctionCarrier::Pointer;
     return !typeKey.empty() && typeKey.back() == '*';
 }
 

@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 
 #include "nativesharp/Language/AggregateSemantics.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 
@@ -278,6 +279,19 @@ bool isStage47CAbiType(
     bool allowVoid) noexcept
 {
     if (typeKey == "builtin:void") return allowVoid;
+    if (const std::optional<language::FunctionType> functionType =
+            language::parseFunctionTypeIdentity(typeKey))
+    {
+        if (functionType->carrier != language::FunctionCarrier::Pointer ||
+            functionType->callingConvention == language::CallingConvention::NativeSharp ||
+            functionType->isAsync || !functionType->errorType.empty())
+            return false;
+        if (!isStage47CAbiType(functionType->result, nameLookup, true)) return false;
+        return std::ranges::all_of(
+            functionType->parameters,
+            [&](const std::string& parameter)
+            { return isStage47CAbiType(parameter, nameLookup, false); });
+    }
     // ID 89. `sbyte` en la lista de tipos que cruzan la ABI de C, y esta es LA razon por la que
     // el tipo existe: `signed char` es un parametro corriente en las cabeceras de C, y sin
     // `sbyte` no habia forma de declararlo honestamente -- habia que mentir con `byte` y dejar
@@ -1018,6 +1032,7 @@ bool ProjectMemberModel::typeRequiresValueDrop(std::string_view typeKey) const
 bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) const
 {
     if (typeKey.empty() || typeKey == "<error>" || typeKey == "builtin:void") return false;
+    if (language::isFunctionTypeIdentity(typeKey)) return true;
     if (typeKey.starts_with("builtin:") || typeKey.ends_with("*") || typeKey.ends_with("[]"))
         return true;
     if (const std::optional<std::vector<std::string>> tuple =
@@ -1035,6 +1050,7 @@ bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) cons
     {
         if (candidate.empty() || candidate == "<error>" || candidate == "builtin:void")
             return false;
+        if (language::isFunctionTypeIdentity(candidate)) return true;
         if (candidate.starts_with("builtin:") || candidate.ends_with("*") ||
             candidate.ends_with("[]"))
             return true;
@@ -1167,7 +1183,47 @@ std::string ProjectMemberModel::canonicalTypeKey(
     }
 
     std::string result;
-    if (syntax->isTuple())
+    if (syntax->isFunction())
+    {
+        language::FunctionType function;
+        function.carrier = syntax->functionCarrier() ==
+                ast::FunctionTypeCarrierSyntaxKind::Pointer
+            ? language::FunctionCarrier::Pointer
+            : language::FunctionCarrier::Reference;
+        switch (syntax->functionCallingConvention())
+        {
+            case ast::FunctionCallingConventionSyntaxKind::NativeSharp:
+                function.callingConvention = language::CallingConvention::NativeSharp;
+                break;
+            case ast::FunctionCallingConventionSyntaxKind::C:
+                function.callingConvention = language::CallingConvention::C;
+                break;
+            case ast::FunctionCallingConventionSyntaxKind::StdCall:
+                function.callingConvention = language::CallingConvention::StdCall;
+                break;
+            case ast::FunctionCallingConventionSyntaxKind::FastCall:
+                function.callingConvention = language::CallingConvention::FastCall;
+                break;
+            case ast::FunctionCallingConventionSyntaxKind::VectorCall:
+                function.callingConvention = language::CallingConvention::VectorCall;
+                break;
+        }
+        function.parameters.reserve(syntax->typeArguments().size());
+        for (const ast::TypeSyntax* parameter : syntax->typeArguments())
+            function.parameters.push_back(canonicalTypeKey(parameter, nameLookup));
+        function.result = canonicalTypeKey(syntax->functionReturnType(), nameLookup);
+        function.errorType = syntax->functionErrorType() == nullptr
+            ? std::string{}
+            : canonicalTypeKey(syntax->functionErrorType(), nameLookup);
+        function.lifetime = syntax->functionLifetimeName();
+        function.variadic = syntax->functionIsVariadic();
+        function.isUnsafe = syntax->functionIsUnsafe();
+        function.isNoHeap = syntax->functionIsNoHeap();
+        function.isAsync = syntax->functionIsAsync();
+        function.nullable = syntax->functionIsNullable();
+        result = language::functionTypeIdentity(function);
+    }
+    else if (syntax->isTuple())
     {
         std::vector<language::TupleElement> elements;
         elements.reserve(syntax->typeArguments().size());
