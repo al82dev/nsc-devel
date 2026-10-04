@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <memory>
@@ -83,6 +84,12 @@ struct ComptimeLimits final
     std::size_t maximumNesting = 128;
 };
 
+struct ComptimeExecutionContext final
+{
+    std::filesystem::path sourceDirectory;
+    bool hermetic = true;
+};
+
 struct ComptimeResult final
 {
     bool success = false;
@@ -93,6 +100,7 @@ struct ComptimeResult final
     std::vector<ComptimeAttributeDirective> attributes;
     std::vector<MacroExpansionRecord> macroExpansions;
     std::vector<ComptimeAuthoredDiagnostic> authoredDiagnostics;
+    std::vector<std::pair<std::string, std::string>> declaredCapabilities;
     std::size_t executedSteps = 0;
     std::size_t cacheHits = 0;
     std::size_t cacheMisses = 0;
@@ -114,6 +122,7 @@ struct ProjectComptimeRecord final
     std::vector<ComptimeAttributeDirective> attributes;
     std::vector<MacroExpansionRecord> macroExpansions;
     std::vector<ComptimeAuthoredDiagnostic> authoredDiagnostics;
+    std::vector<std::pair<std::string, std::string>> declaredCapabilities;
 };
 
 // Executes the deliberately small NativeSharp 2.0 comptime core. `comptime` is a contextual
@@ -125,11 +134,13 @@ class ComptimeEngine final
 public:
     explicit ComptimeEngine(
         ComptimeLimits limits = {},
-        std::shared_ptr<ComptimeCache> cache = {}) noexcept;
+        std::shared_ptr<ComptimeCache> cache = {},
+        ComptimeExecutionContext context = {}) noexcept;
     ComptimeResult execute(std::string_view source) const;
 
 private:
     ComptimeLimits limits_;
     std::shared_ptr<ComptimeCache> cache_;
+    ComptimeExecutionContext context_;
 };
 }

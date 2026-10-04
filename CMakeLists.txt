@@ -1920,6 +1920,17 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_ns3_t11_f06_comptime_diagnostics_tests)
 
     add_executable(
+        nsc_ns3_t11_f05_comptime_capabilities_tests
+        tests/unit/NativeSharp3T11ComptimeCapabilitiesTests.cpp)
+    target_link_libraries(nsc_ns3_t11_f05_comptime_capabilities_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_ns3_t11_f05_comptime_capabilities_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_ns3_t11_f05_comptime_capabilities_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t11_f05_comptime_capabilities_tests)
+    add_test(NAME nsc.ns3.t11.f05.comptime-capabilities
+        COMMAND nsc_ns3_t11_f05_comptime_capabilities_tests)
+
+    add_executable(
         nsc_ns3_t11_comptime_integration_tests
         tests/unit/NativeSharp3T11ComptimeIntegrationTests.cpp)
     target_link_libraries(nsc_ns3_t11_comptime_integration_tests PRIVATE nsc_frontend)

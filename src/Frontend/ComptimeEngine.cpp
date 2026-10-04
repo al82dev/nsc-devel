@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdlib>
+#include <fstream>
 #include <limits>
 #include <optional>
 #include <span>
@@ -516,18 +518,116 @@ std::string comptimeCacheKey(std::string_view expression)
     return basic::sha256Hex(basic::sha256(bytes));
 }
 
+std::string digestText(std::string_view text)
+{
+    const auto bytes = std::span(
+        reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
+bool declaredCapability(
+    std::span<const std::pair<std::string, std::string>> declarations,
+    std::string_view kind,
+    std::string_view identity)
+{
+    return std::ranges::any_of(declarations, [&](const auto& declaration)
+    {
+        return declaration.first == kind && declaration.second == identity;
+    });
+}
+
+bool resolveCapabilityCalls(
+    std::string_view expression,
+    std::span<const std::pair<std::string, std::string>> declarations,
+    const ComptimeExecutionContext& context,
+    std::string& resolved,
+    std::vector<ComptimeDependency>& dependencies,
+    std::string& error)
+{
+    resolved.assign(expression);
+    struct Call final { std::string_view name; std::string_view kind; };
+    static constexpr Call calls[] = {{"file_i64", "file"}, {"env_i64", "env"}};
+    for (const Call call : calls)
+    {
+        std::size_t search = 0;
+        while ((search = resolved.find(call.name, search)) != std::string::npos)
+        {
+            std::size_t cursor = search + call.name.size();
+            while (cursor < resolved.size() && asciiSpace(resolved[cursor])) ++cursor;
+            if (cursor >= resolved.size() || resolved[cursor] != '(')
+            { search += call.name.size(); continue; }
+            ++cursor;
+            while (cursor < resolved.size() && asciiSpace(resolved[cursor])) ++cursor;
+            if (cursor >= resolved.size() || resolved[cursor] != '"')
+            { error = std::string(call.name) + " requires one string literal identity"; return false; }
+            const std::size_t identityBegin = ++cursor;
+            while (cursor < resolved.size() && resolved[cursor] != '"') ++cursor;
+            if (cursor == resolved.size()) { error = "unterminated capability identity"; return false; }
+            const std::string identity = resolved.substr(identityBegin, cursor - identityBegin);
+            ++cursor;
+            while (cursor < resolved.size() && asciiSpace(resolved[cursor])) ++cursor;
+            if (cursor >= resolved.size() || resolved[cursor] != ')')
+            { error = std::string(call.name) + " accepts exactly one argument"; return false; }
+            const std::size_t callEnd = cursor + 1;
+            if (!declaredCapability(declarations, call.kind, identity))
+            { error = "comptime capability '" + std::string(call.kind) + ":" + identity + "' was not declared"; return false; }
+
+            std::string content;
+            if (call.kind == "file")
+            {
+                const std::filesystem::path relative(identity);
+                if (relative.is_absolute() || identity.find("..") != std::string::npos)
+                { error = "comptime file capability must be project-relative and cannot escape its root"; return false; }
+                const std::filesystem::path path = (context.sourceDirectory / relative).lexically_normal();
+                std::ifstream stream(path, std::ios::binary);
+                if (!stream) { error = "cannot read declared comptime file '" + identity + "'"; return false; }
+                content.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+            }
+            else
+            {
+                char* value = nullptr;
+                std::size_t valueLength = 0;
+                const errno_t environmentError = _dupenv_s(&value, &valueLength, identity.c_str());
+                if (environmentError != 0 || value == nullptr)
+                { error = "declared comptime environment variable is unset: '" + identity + "'"; return false; }
+                content.assign(value, valueLength == 0 ? 0 : valueLength - 1);
+                std::free(value);
+            }
+            std::string_view number = trim(content);
+            std::int64_t parsed = 0;
+            const auto converted = std::from_chars(number.data(), number.data() + number.size(), parsed);
+            if (converted.ec != std::errc{} || converted.ptr != number.data() + number.size())
+            { error = "declared comptime input '" + identity + "' is not a signed integer"; return false; }
+            dependencies.push_back({std::string(call.kind), identity, digestText(content)});
+            const std::string replacement = std::to_string(parsed);
+            resolved.replace(search, callEnd - search, replacement);
+            search += replacement.size();
+        }
+    }
+    if (resolved.find("clock_i64") != std::string::npos ||
+        resolved.find("random_i64") != std::string::npos || resolved.find("ffi") != std::string::npos)
+    {
+        error = context.hermetic
+            ? "hermetic comptime forbids clock, randomness, and FFI capabilities"
+            : "non-hermetic clock/random/FFI execution requires an out-of-profile host provider";
+        return false;
+    }
+    return true;
+}
+
 std::string reproducibilityDigestOf(const ComptimeResult& result)
 {
     std::string payload = "nativesharp-comptime-result-v1\n";
     payload.append(result.source);
     payload.push_back('\n');
-    for (std::size_t index = 0; index < result.dependencies.size(); ++index)
+    for (const ComptimeDependency& dependency : result.dependencies)
     {
-        const ComptimeDependency& dependency = result.dependencies[index];
         payload.append(dependency.kind).push_back(':');
-        payload.append(dependency.digest).push_back(':');
-        payload.append(std::to_string(result.evaluations[index].value)).push_back('\n');
+        payload.append(dependency.identity).push_back(':');
+        payload.append(dependency.digest).push_back('\n');
     }
+    for (const ComptimeEvaluation& evaluation : result.evaluations)
+        payload.append("value:").append(std::to_string(evaluation.value)).push_back('\n');
     for (const ComptimeAttributeDirective& attribute : result.attributes)
     {
         payload.append(attribute.isDefinition ? "attribute-definition:" : "attribute-use:");
@@ -568,8 +668,9 @@ std::size_t ComptimeCache::size() const
 
 ComptimeEngine::ComptimeEngine(
     ComptimeLimits limits,
-    std::shared_ptr<ComptimeCache> cache) noexcept
-    : limits_(limits), cache_(std::move(cache))
+    std::shared_ptr<ComptimeCache> cache,
+    ComptimeExecutionContext context) noexcept
+    : limits_(limits), cache_(std::move(cache)), context_(std::move(context))
 {
 }
 
@@ -622,6 +723,34 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         {
             result.source.replace(cursor, 8, 8, ' ');
             cursor += 7;
+            continue;
+        }
+        if (source.substr(cursor, 11) == "#capability")
+        {
+            std::size_t open = cursor + 11;
+            while (open < source.size() && asciiSpace(source[open])) ++open;
+            if (open == source.size() || source[open] != '(')
+            { result.error = "expected '(' after #capability"; return result; }
+            std::size_t close = source.find(')', open + 1);
+            if (close == std::string_view::npos)
+            { result.error = "unterminated #capability declaration"; return result; }
+            std::vector<std::string> arguments;
+            std::string error;
+            if (!parseConstantArguments(source.substr(open + 1, close - open - 1), arguments, error) ||
+                arguments.size() != 2 || arguments[0].size() < 2 || arguments[1].size() < 2 ||
+                arguments[0].front() != '"' || arguments[0].back() != '"' ||
+                arguments[1].front() != '"' || arguments[1].back() != '"')
+            { result.error = "#capability expects string kind and string identity"; return result; }
+            const std::string kind = arguments[0].substr(1, arguments[0].size() - 2);
+            const std::string identity = arguments[1].substr(1, arguments[1].size() - 2);
+            if (kind != "file" && kind != "env" && kind != "clock" && kind != "random" && kind != "ffi")
+            { result.error = "unknown comptime capability kind '" + kind + "'"; return result; }
+            if (context_.hermetic && kind != "file" && kind != "env")
+            { result.error = "hermetic comptime forbids capability kind '" + kind + "'"; return result; }
+            result.declaredCapabilities.emplace_back(kind, identity);
+            for (std::size_t index = cursor; index <= close; ++index)
+                if (result.source[index] != '\r' && result.source[index] != '\n') result.source[index] = ' ';
+            cursor = close;
             continue;
         }
         std::string_view diagnosticName;
@@ -711,11 +840,25 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         }
         const std::size_t end = close;
         const std::string_view expression = source.substr(open + 1, end - open - 2);
-        const std::string dependencyDigest = comptimeCacheKey(expression);
+        std::string resolvedExpression;
+        std::vector<ComptimeDependency> externalDependencies;
+        std::string capabilityError;
+        if (!resolveCapabilityCalls(expression, result.declaredCapabilities, context_,
+                resolvedExpression, externalDependencies, capabilityError))
+        {
+            result.error = capabilityError + " (directive at byte " + std::to_string(cursor) + ")";
+            return result;
+        }
+        std::string cacheMaterial = resolvedExpression;
+        for (const ComptimeDependency& dependency : externalDependencies)
+            cacheMaterial += "\n" + dependency.kind + ":" + dependency.identity + "=" + dependency.digest;
+        const std::string dependencyDigest = comptimeCacheKey(cacheMaterial);
         result.dependencies.push_back({
             "source-expression",
             "#run@" + std::to_string(cursor),
             dependencyDigest});
+        result.dependencies.insert(result.dependencies.end(),
+            externalDependencies.begin(), externalDependencies.end());
         std::string error;
         std::optional<std::int64_t> value;
         bool cacheHit = false;
@@ -738,7 +881,7 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         if (!value.has_value())
         {
             const std::size_t stepsBefore = result.executedSteps;
-            IntegerExpression evaluator(expression,
+            IntegerExpression evaluator(resolvedExpression,
                 limits_.maximumSteps, limits_.maximumNesting, result.executedSteps);
             value = evaluator.evaluate(error);
             ++result.cacheMisses;

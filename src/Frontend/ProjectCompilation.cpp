@@ -1015,7 +1015,9 @@ bool ProjectCompilation::compileSyntaxCore(
         {
             syntaxWorkers.submit([&, index](std::size_t) {
                 sourceReads[index].comptime =
-                    ComptimeEngine({}, comptimeCache).execute(*sourceReads[index].buffer);
+                    ComptimeEngine({}, comptimeCache,
+                        ComptimeExecutionContext{sourceReads[index].path.parent_path(), true})
+                        .execute(*sourceReads[index].buffer);
                 reportSourceProgress(progressSink_, "syntax-comptime", sourceReads[index].path,
                     completed.fetch_add(1, std::memory_order_relaxed) + 1U,
                     sourceReads.size());
@@ -1048,7 +1050,8 @@ bool ProjectCompilation::compileSyntaxCore(
             read.comptime->dependencies,
             read.comptime->attributes,
             read.comptime->macroExpansions,
-            read.comptime->authoredDiagnostics});
+            read.comptime->authoredDiagnostics,
+            read.comptime->declaredCapabilities});
             const FileId fileId = sourceManager_.addBuffer(
                 read.path, std::move(read.comptime->source));
             for (const ComptimeAuthoredDiagnostic& diagnostic : read.comptime->authoredDiagnostics)
