@@ -28,6 +28,21 @@ struct ComptimeDependency final
     std::string digest;
 };
 
+enum class ComptimeAttributeTarget { Type, Field, Method };
+enum class ComptimeAttributeRetention { CompileTime, NativeRuntimeSection };
+
+struct ComptimeAttributeDirective final
+{
+    std::size_t offset = 0;
+    std::size_t length = 0;
+    std::string identity;
+    bool isDefinition = false;
+    std::vector<ComptimeAttributeTarget> targets;
+    bool repeatable = false;
+    ComptimeAttributeRetention retention = ComptimeAttributeRetention::CompileTime;
+    std::vector<std::string> constantArguments;
+};
+
 class ComptimeCache final
 {
 public:
@@ -61,10 +76,26 @@ struct ComptimeResult final
     std::string error;
     std::vector<ComptimeEvaluation> evaluations;
     std::vector<ComptimeDependency> dependencies;
+    std::vector<ComptimeAttributeDirective> attributes;
     std::size_t executedSteps = 0;
     std::size_t cacheHits = 0;
     std::size_t cacheMisses = 0;
     std::string reproducibilityDigest;
+};
+
+struct ProjectComptimeRecord final
+{
+    std::size_t projectOrdinal = 0;
+    std::size_t sourceOrdinal = 0;
+    std::string moduleName;
+    std::string relativeSourcePath;
+    std::size_t evaluationCount = 0;
+    std::size_t executedSteps = 0;
+    std::size_t cacheHits = 0;
+    std::size_t cacheMisses = 0;
+    std::string reproducibilityDigest;
+    std::vector<ComptimeDependency> dependencies;
+    std::vector<ComptimeAttributeDirective> attributes;
 };
 
 // Executes the deliberately small NativeSharp 2.0 comptime core. `comptime` is a contextual

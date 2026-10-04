@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
 
 #include <algorithm>
+#include <unordered_map>
 
 namespace nativesharp::frontend
 {
@@ -23,10 +24,14 @@ StaticMemberKind staticKind(ClassMemberKind kind) noexcept
 bool ProjectMetaprogrammingModel::build(
     const ProjectNameLookup& names,
     const ProjectMemberModel& members,
-    const ProjectObjectLayoutModel& layouts)
+    const ProjectObjectLayoutModel& layouts,
+    std::span<const ProjectComptimeRecord> comptimeRecords)
 {
     types_.clear();
+    attributes_.clear();
+    runtimeAttributes_.clear();
     visibleScratch_.clear();
+    error_.clear();
     built_ = false;
     if (!names.isBuilt() || !members.isBuilt() || !layouts.isBuilt()) return false;
 
@@ -68,6 +73,107 @@ bool ProjectMetaprogrammingModel::build(
         types_.push_back(std::move(type));
     }
     std::ranges::sort(types_, {}, &StaticTypeInfo::typeOrdinal);
+
+    struct Definition final
+    {
+        std::vector<ComptimeAttributeTarget> targets;
+        bool repeatable = false;
+        ComptimeAttributeRetention retention = ComptimeAttributeRetention::CompileTime;
+    };
+    std::unordered_map<std::string, Definition> definitions;
+    for (const ProjectComptimeRecord& record : comptimeRecords)
+    {
+        for (const ComptimeAttributeDirective& directive : record.attributes)
+        {
+            if (!directive.isDefinition) continue;
+            if (!definitions.emplace(directive.identity,
+                    Definition{directive.targets, directive.repeatable, directive.retention}).second)
+            {
+                error_ = "duplicate attribute definition '" + directive.identity + "'";
+                return false;
+            }
+        }
+    }
+
+    std::unordered_map<std::string, std::size_t> nonRepeatableUses;
+    for (const ProjectComptimeRecord& record : comptimeRecords)
+    {
+        for (const ComptimeAttributeDirective& directive : record.attributes)
+        {
+            if (directive.isDefinition) continue;
+            const auto definition = definitions.find(directive.identity);
+            if (definition == definitions.end())
+            {
+                error_ = "attribute use refers to undefined attribute '" + directive.identity + "'";
+                return false;
+            }
+
+            std::optional<std::size_t> targetType;
+            std::optional<std::size_t> targetMember;
+            std::uint32_t nearest = UINT32_MAX;
+            for (std::size_t typeOrdinal = 0; typeOrdinal < names.namedTypes().size(); ++typeOrdinal)
+            {
+                const NamedTypeDeclaration& type = names.namedTypes()[typeOrdinal];
+                if (type.projectOrdinal != record.projectOrdinal ||
+                    type.sourceOrdinal != record.sourceOrdinal || !type.range.isValid() ||
+                    type.range.begin().offset() < directive.offset) continue;
+                if (type.range.begin().offset() < nearest)
+                {
+                    nearest = type.range.begin().offset();
+                    targetType = typeOrdinal;
+                    targetMember.reset();
+                }
+            }
+            for (std::size_t memberOrdinal = 0; memberOrdinal < members.members().size(); ++memberOrdinal)
+            {
+                const ClassMemberSymbol& member = members.members()[memberOrdinal];
+                if (member.sourceOrdinal != record.sourceOrdinal || !member.range.isValid() ||
+                    member.range.begin().offset() < directive.offset ||
+                    member.declaringTypeOrdinal >= names.namedTypes().size() ||
+                    names.namedTypes()[member.declaringTypeOrdinal].projectOrdinal != record.projectOrdinal)
+                    continue;
+                if (member.range.begin().offset() < nearest)
+                {
+                    nearest = member.range.begin().offset();
+                    targetType = member.declaringTypeOrdinal;
+                    targetMember = memberOrdinal;
+                }
+            }
+            if (!targetType.has_value())
+            {
+                error_ = "attribute '" + directive.identity + "' has no following declaration target";
+                return false;
+            }
+
+            ComptimeAttributeTarget targetKind = ComptimeAttributeTarget::Type;
+            if (targetMember.has_value())
+            {
+                const ClassMemberKind kind = members.members()[*targetMember].kind;
+                targetKind = kind == ClassMemberKind::Field
+                    ? ComptimeAttributeTarget::Field : ComptimeAttributeTarget::Method;
+            }
+            if (std::ranges::find(definition->second.targets, targetKind) ==
+                definition->second.targets.end())
+            {
+                error_ = "attribute '" + directive.identity + "' is not valid on this declaration target";
+                return false;
+            }
+            const std::string targetKey = directive.identity + "@" +
+                (targetMember.has_value() ? "member:" + std::to_string(*targetMember)
+                                          : "type:" + std::to_string(*targetType));
+            if (!definition->second.repeatable && !nonRepeatableUses.emplace(targetKey, 1).second)
+            {
+                error_ = "non-repeatable attribute '" + directive.identity +
+                    "' appears more than once on one declaration";
+                return false;
+            }
+            StaticAttributeInfo attribute{directive.identity, directive.constantArguments,
+                definition->second.retention, targetType, targetMember};
+            attributes_.push_back(attribute);
+            if (attribute.retention == ComptimeAttributeRetention::NativeRuntimeSection)
+                runtimeAttributes_.push_back(std::move(attribute));
+        }
+    }
     built_ = true;
     return true;
 }
@@ -94,6 +200,15 @@ std::span<const StaticMemberInfo> ProjectMetaprogrammingModel::visibleMembers(
 }
 
 std::span<const StaticTypeInfo> ProjectMetaprogrammingModel::types() const noexcept { return types_; }
+std::span<const StaticAttributeInfo> ProjectMetaprogrammingModel::attributes() const noexcept
+{
+    return attributes_;
+}
+std::span<const StaticAttributeInfo> ProjectMetaprogrammingModel::runtimeAttributes() const noexcept
+{
+    return runtimeAttributes_;
+}
+const std::string& ProjectMetaprogrammingModel::error() const noexcept { return error_; }
 bool ProjectMetaprogrammingModel::emitsRuntimeMetadata() const noexcept { return false; }
 bool ProjectMetaprogrammingModel::isBuilt() const noexcept { return built_; }
 }

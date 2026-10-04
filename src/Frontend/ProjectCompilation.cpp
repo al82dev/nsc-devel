@@ -819,7 +819,13 @@ bool ProjectCompilation::compileProjectObjectLayouts(
             *nameLookup_, *memberModel_, *inheritanceModel_, *constructionModel_, diagnostics_))
         return false;
     metaprogrammingModel_ = std::make_unique<ProjectMetaprogrammingModel>();
-    return metaprogrammingModel_->build(*nameLookup_, *memberModel_, *objectLayoutModel_);
+    if (!metaprogrammingModel_->build(
+            *nameLookup_, *memberModel_, *objectLayoutModel_, comptimeRecords_))
+    {
+        loadError = metaprogrammingModel_->error();
+        return false;
+    }
+    return true;
 }
 
 bool ProjectCompilation::compileProjectOopHir(
@@ -1039,7 +1045,8 @@ bool ProjectCompilation::compileSyntaxCore(
                 read.comptime->cacheHits,
                 read.comptime->cacheMisses,
                 read.comptime->reproducibilityDigest,
-                read.comptime->dependencies});
+            read.comptime->dependencies,
+            read.comptime->attributes});
             const FileId fileId = sourceManager_.addBuffer(
                 read.path, std::move(read.comptime->source));
             units_.push_back(std::make_unique<ProjectSyntaxUnit>(

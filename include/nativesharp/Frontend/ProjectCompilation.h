@@ -49,20 +49,6 @@ struct PrecompiledSyntaxModule final
     language::LanguageEdition languageEdition = language::LanguageEdition::V2;
 };
 
-struct ProjectComptimeRecord final
-{
-    std::size_t projectOrdinal = 0;
-    std::size_t sourceOrdinal = 0;
-    std::string moduleName;
-    std::string relativeSourcePath;
-    std::size_t evaluationCount = 0;
-    std::size_t executedSteps = 0;
-    std::size_t cacheHits = 0;
-    std::size_t cacheMisses = 0;
-    std::string reproducibilityDigest;
-    std::vector<ComptimeDependency> dependencies;
-};
-
 class ProjectCompilation final
 {
 public:

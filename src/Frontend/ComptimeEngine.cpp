@@ -297,6 +297,133 @@ bool startsWord(std::string_view source, std::size_t offset, std::string_view wo
     return after >= source.size() || !identifierByte(source[after]);
 }
 
+std::string_view trim(std::string_view text) noexcept
+{
+    while (!text.empty() && asciiSpace(text.front())) text.remove_prefix(1);
+    while (!text.empty() && asciiSpace(text.back())) text.remove_suffix(1);
+    return text;
+}
+
+bool attributeIdentity(std::string_view text) noexcept
+{
+    if (text.empty() || (!asciiAlpha(text.front()) && text.front() != '_')) return false;
+    for (const char value : text)
+        if (!identifierByte(value) && value != '.') return false;
+    return true;
+}
+
+std::optional<std::string_view> optionValue(std::string_view text, std::string_view option)
+{
+    const std::string needle = std::string(option) + "(";
+    const std::size_t begin = text.find(needle);
+    if (begin == std::string_view::npos) return std::nullopt;
+    const std::size_t valueBegin = begin + needle.size();
+    const std::size_t end = text.find(')', valueBegin);
+    if (end == std::string_view::npos) return std::nullopt;
+    return trim(text.substr(valueBegin, end - valueBegin));
+}
+
+bool parseConstantArguments(
+    std::string_view text,
+    std::vector<std::string>& arguments,
+    std::string& error)
+{
+    text = trim(text);
+    if (text.empty()) return true;
+    std::size_t begin = 0;
+    bool string = false;
+    bool escaped = false;
+    for (std::size_t cursor = 0; cursor <= text.size(); ++cursor)
+    {
+        const char value = cursor < text.size() ? text[cursor] : ',';
+        if (string)
+        {
+            if (escaped) escaped = false;
+            else if (value == '\\') escaped = true;
+            else if (value == '"') string = false;
+            continue;
+        }
+        if (value == '"') { string = true; continue; }
+        if (value != ',') continue;
+        const std::string_view item = trim(text.substr(begin, cursor - begin));
+        const bool quoted = item.size() >= 2 && item.front() == '"' && item.back() == '"';
+        const bool boolean = item == "true" || item == "false";
+        std::size_t digit = (!item.empty() && (item.front() == '+' || item.front() == '-')) ? 1 : 0;
+        bool integer = digit < item.size();
+        for (; integer && digit < item.size(); ++digit) integer = asciiDigit(item[digit]);
+        if ((!quoted && !boolean && !integer) || string)
+        {
+            error = "attribute arguments must be string, boolean, or integer constants";
+            return false;
+        }
+        arguments.emplace_back(item);
+        begin = cursor + 1;
+    }
+    return true;
+}
+
+bool parseAttributeDirective(
+    std::string_view payload,
+    std::size_t offset,
+    std::size_t length,
+    ComptimeAttributeDirective& directive,
+    std::string& error)
+{
+    payload = trim(payload);
+    directive.offset = offset;
+    directive.length = length;
+    if (payload.starts_with("attribute "))
+    {
+        directive.isDefinition = true;
+        payload.remove_prefix(10);
+        payload = trim(payload);
+        const std::size_t separator = payload.find_first_of(" \t\r\n");
+        const std::string_view identity = payload.substr(0, separator);
+        if (!attributeIdentity(identity)) { error = "invalid attribute definition identity"; return false; }
+        directive.identity.assign(identity);
+        const std::string_view options = separator == std::string_view::npos
+            ? std::string_view{} : payload.substr(separator + 1);
+        const auto targets = optionValue(options, "targets");
+        if (!targets.has_value()) { error = "attribute definition requires targets(...)"; return false; }
+        std::size_t begin = 0;
+        while (begin <= targets->size())
+        {
+            const std::size_t pipe = targets->find('|', begin);
+            const std::string_view target = trim(targets->substr(begin, pipe - begin));
+            if (target == "type") directive.targets.push_back(ComptimeAttributeTarget::Type);
+            else if (target == "field") directive.targets.push_back(ComptimeAttributeTarget::Field);
+            else if (target == "method") directive.targets.push_back(ComptimeAttributeTarget::Method);
+            else { error = "unknown attribute target '" + std::string(target) + "'"; return false; }
+            if (pipe == std::string_view::npos) break;
+            begin = pipe + 1;
+        }
+        if (const auto repeatable = optionValue(options, "repeatable"); repeatable.has_value())
+        {
+            if (*repeatable == "true") directive.repeatable = true;
+            else if (*repeatable != "false") { error = "repeatable(...) expects true or false"; return false; }
+        }
+        if (const auto retention = optionValue(options, "retention"); retention.has_value())
+        {
+            if (*retention == "runtime")
+                directive.retention = ComptimeAttributeRetention::NativeRuntimeSection;
+            else if (*retention != "compiletime")
+            { error = "retention(...) expects compiletime or runtime"; return false; }
+        }
+        return true;
+    }
+
+    const std::size_t open = payload.find('(');
+    const std::size_t close = payload.rfind(')');
+    const std::string_view identity = trim(payload.substr(0, open));
+    if (!attributeIdentity(identity)) { error = "invalid attribute use identity"; return false; }
+    if ((open == std::string_view::npos) != (close == std::string_view::npos) ||
+        (open != std::string_view::npos && close != payload.size() - 1))
+    { error = "malformed attribute constant argument list"; return false; }
+    directive.identity.assign(identity);
+    return open == std::string_view::npos ||
+        parseConstantArguments(payload.substr(open + 1, close - open - 1), directive.constantArguments, error);
+}
+
 std::string comptimeCacheKey(std::string_view expression)
 {
     std::string payload = "nativesharp-comptime-expression-v1\n";
@@ -317,6 +444,14 @@ std::string reproducibilityDigestOf(const ComptimeResult& result)
         payload.append(dependency.kind).push_back(':');
         payload.append(dependency.digest).push_back(':');
         payload.append(std::to_string(result.evaluations[index].value)).push_back('\n');
+    }
+    for (const ComptimeAttributeDirective& attribute : result.attributes)
+    {
+        payload.append(attribute.isDefinition ? "attribute-definition:" : "attribute-use:");
+        payload.append(attribute.identity).push_back(':');
+        for (const std::string& argument : attribute.constantArguments)
+            payload.append(argument).push_back(',');
+        payload.push_back('\n');
     }
     const auto bytes = std::span(
         reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
@@ -391,6 +526,44 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         {
             result.source.replace(cursor, 8, 8, ' ');
             cursor += 7;
+            continue;
+        }
+        if (source.substr(cursor, 2) == "#[")
+        {
+            std::size_t close = cursor + 2;
+            bool inString = false;
+            bool stringEscape = false;
+            for (; close < source.size(); ++close)
+            {
+                const char value = source[close];
+                if (inString)
+                {
+                    if (stringEscape) stringEscape = false;
+                    else if (value == '\\') stringEscape = true;
+                    else if (value == '"') inString = false;
+                    continue;
+                }
+                if (value == '"') { inString = true; continue; }
+                if (value == ']') break;
+            }
+            if (close == source.size())
+            {
+                result.error = "unterminated attribute directive at byte " + std::to_string(cursor);
+                return result;
+            }
+            ComptimeAttributeDirective directive;
+            std::string error;
+            const std::size_t length = close + 1 - cursor;
+            if (!parseAttributeDirective(
+                    source.substr(cursor + 2, close - cursor - 2), cursor, length, directive, error))
+            {
+                result.error = error + " (attribute at byte " + std::to_string(cursor) + ")";
+                return result;
+            }
+            result.attributes.push_back(std::move(directive));
+            for (std::size_t index = cursor; index <= close; ++index)
+                if (result.source[index] != '\r' && result.source[index] != '\n') result.source[index] = ' ';
+            cursor = close;
             continue;
         }
         if (source.substr(cursor, 4) != "#run" ||
