@@ -102,8 +102,8 @@ int main()
         tests.expect(text.find("ucrtbase") == std::string::npos &&
                 text.find("printf") == std::string::npos,
             "runtime does not depend on CRT startup or formatted I/O");
-        tests.expect(text.find("call i32 @Main()") != std::string::npos,
-            "runtime entry point transfers control to NativeSharp Main");
+        tests.expect(text.find("invoke i32 @Main()") != std::string::npos,
+            "runtime entry point invokes NativeSharp Main through the panic boundary");
         tests.expect(text.find("call void @ExitProcess(i32 %result)") != std::string::npos,
             "runtime terminates the process with Main's result");
         tests.expect(text.find("add i32 %0, 128") != std::string::npos ||
