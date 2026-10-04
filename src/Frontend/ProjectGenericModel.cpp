@@ -1924,6 +1924,37 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
     specialized->clearGenericParameters();
     const std::string localName = call->first() != nullptr ? call->first()->text() : std::string{};
     specialized->setText("generic-lambda-instance:" + localName);
+    const auto markRecursiveCalls = [&](auto&& self, ast::AstNode* node) -> void
+    {
+        if (node == nullptr) return;
+        if (node->kind() == ast::AstNodeKind::CallExpression && node->first() != nullptr &&
+            node->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+            node->first()->text() == localName)
+        {
+            node->first()->setAuxiliaryText("generic-lambda-self");
+        }
+        self(self, node->first());
+        self(self, node->second());
+        self(self, node->third());
+        for (ast::AstNode* child : node->children()) self(self, child);
+    };
+    markRecursiveCalls(markRecursiveCalls, specialized->first());
+    if (!specialized->flag() && specialized->first() != nullptr)
+    {
+        GenericLookupScope bodyScope = scope;
+        for (const ast::AstNode* parameter : specialized->children())
+        {
+            if (parameter != nullptr &&
+                parameter->kind() == ast::AstNodeKind::ParameterDeclaration &&
+                parameter->typeSyntax() != nullptr)
+            {
+                bodyScope.valueTypes[parameter->text()] = parameter->typeSyntax();
+            }
+        }
+        if (ast::TypeSyntax* inferredReturn =
+                inferExpressionType(unit, specialized->first(), bodyScope))
+            specialized->setTypeSyntax(inferredReturn);
+    }
 
     std::size_t templateOrdinal = 0;
     const auto priorTemplate = genericLambdaTemplateOrdinals_.find(source);
@@ -1989,10 +2020,7 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
     // gives `var` an ABI-valid native type and preserves ordinary declaration/capture analysis.
     if (materializedGenericLambdas_.insert(source).second)
     {
-        activePackSubstitutions_ = packSubstitutions;
-        ast::AstNode* carrier = cloneNode(unit.arena(), source, substitutions, {}, {});
-        activePackSubstitutions_ = savedPackSubstitutions;
-        carrier->clearGenericParameters();
+        ast::AstNode* carrier = cloneNode(unit.arena(), specialized, {}, {}, {});
         carrier->setText("generic-lambda-carrier");
         local.declaration->setFirst(carrier);
     }
@@ -2503,8 +2531,12 @@ ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
         {
             ast::TypeSyntax* whenTrue = inferExpressionType(unit, expression->second(), scope);
             ast::TypeSyntax* whenFalse = inferExpressionType(unit, expression->third(), scope);
-            if (whenTrue == nullptr || whenFalse == nullptr ||
-                typeSpelling(whenTrue) != typeSpelling(whenFalse)) return nullptr;
+            // A recursive generic lambda has no callable return entry until its first closed
+            // body is inferred. One arm can still provide the fixed point (`n == 0 ? 0 : self`).
+            // Keep the ordinary exact-equality rule when both arms are known.
+            if (whenTrue == nullptr) return whenFalse;
+            if (whenFalse == nullptr) return whenTrue;
+            if (typeSpelling(whenTrue) != typeSpelling(whenFalse)) return nullptr;
             return whenTrue;
         }
         case ast::AstNodeKind::BinaryExpression:
@@ -2524,8 +2556,9 @@ ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
             }
             ast::TypeSyntax* left = inferExpressionType(unit, expression->first(), scope);
             ast::TypeSyntax* right = inferExpressionType(unit, expression->second(), scope);
-            if (left == nullptr || right == nullptr || typeSpelling(left) != typeSpelling(right))
-                return nullptr;
+            if (left == nullptr) return right;
+            if (right == nullptr) return left;
+            if (typeSpelling(left) != typeSpelling(right)) return nullptr;
             return left;
         }
         case ast::AstNodeKind::TupleExpression:

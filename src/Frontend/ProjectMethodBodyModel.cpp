@@ -8858,9 +8858,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 "a match arm cannot be used as a standalone expression");
             break;
         case ast::AstNodeKind::IdentifierExpression:
-            result = analyzeIdentifier(
-                expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup, allowEvent,
-                allowConstructorPropertyWrite);
+            if (expression->auxiliaryText() == "generic-lambda-self" &&
+                !activeLambdaBindings_.empty())
+            {
+                const MethodLambdaBinding& active = *activeLambdaBindings_.back();
+                language::AnonymousLambdaType self;
+                self.ownerOrdinal = active.ownerMemberOrdinal;
+                self.lambdaOrdinal = active.lambdaOrdinal;
+                self.signature.parameters = active.parameterTypeKeys;
+                self.signature.result = active.returnTypeKey;
+                self.signature.carrier = language::FunctionCarrier::Pointer;
+                self.signature.callingConvention = language::CallingConvention::NativeSharp;
+                result.typeKey = language::anonymousLambdaTypeIdentity(self);
+                result.callableTrait = active.callableTrait;
+                result.valid = !active.returnTypeKey.empty();
+                result.assignable = false;
+            }
+            else
+            {
+                result = analyzeIdentifier(
+                    expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup,
+                    allowEvent, allowConstructorPropertyWrite);
+            }
             break;
         case ast::AstNodeKind::ThisExpression:
             if (!deferCaptureAllowsThis())
@@ -21489,6 +21508,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
             parameterTypes.push_back(
                 memberModel_->canonicalTypeKey(parameter->typeSyntax(), *nameLookup_));
         }
+        if (syntax->typeSyntax() != nullptr)
+            returnType = memberModel_->canonicalTypeKey(syntax->typeSyntax(), *nameLookup_);
     }
     else if (!delegateSignature(delegateTypeKey, returnType, parameterTypes, delegateOrdinal))
     {
@@ -21665,10 +21686,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
             body = bindMethodGroupToDelegate(
                 syntax->first(), body, returnType, methodMemberOrdinal, lambdaScope, diagnostics);
         bodyValid = body.valid;
-        if (body.valid && inferAnonymous)
+        if (body.valid && inferAnonymous && returnType.empty())
         {
             returnType = body.typeKey;
             binding.returnTypeKey = returnType;
+        }
+        else if (body.valid && inferAnonymous &&
+            !classifyImplicit(body.typeKey, returnType, body.integerConstant).exists())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                syntax->first()->range(), "recursive generic-lambda body type '" +
+                    body.typeKey + "' is not implicitly convertible to inferred return type '" +
+                    returnType + "'");
+            bodyValid = false;
         }
         else if (body.valid && returnType == "builtin:void" && body.typeKey != "builtin:void")
         {

@@ -29,7 +29,7 @@ marcar F04 como terminado hasta cerrar constraints, packs, recursión y captures
 
 ## Evidencia puntual
 
-`nsc_ns3_t08_generic_lambda_tests.exe`: 4/4 checks.
+`nsc_ns3_t08_generic_lambda_tests.exe`: 5/5 checks.
 
 - `identity(10)` infiere `T=int`.
 - `identity<long>(20)` materializa otra instancia nativa.
@@ -37,13 +37,13 @@ marcar F04 como terminado hasta cerrar constraints, packs, recursión y captures
 - `<const int N>` sustituye el valor en el cuerpo.
 - `<pack const int Ns>` expande y pliega sus argumentos explícitos.
 - `where T : struct, copy` acepta `int`; `where T : class` lo rechaza en la instancia.
+- una instancia cerrada recursiva obtiene su retorno por punto fijo y usa self-binding directo.
 - un parámetro no inferible produce un diagnóstico que nombra a `T`.
 
 No se ejecutó baseline, minibaseline ni suite general.
 
 ## Pendiente antes del cierre
 
-- Recursión de instancia con límite y cache deterministas.
 - Capturas cuyo environment se crea una sola vez al declarar la lambda y es compartido por todas
   sus especializaciones.
 - Dumps/identidad de cache que publiquen las instancias genéricas.

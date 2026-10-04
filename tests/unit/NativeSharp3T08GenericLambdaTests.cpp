@@ -174,6 +174,26 @@ namespace GenericLambdaConstraintDiagnostic
         "generic-lambda constraints reject an invalid concrete instance (" +
             constraintError + constraintDiagnostics + ")");
 
+    const std::filesystem::path recursive = writeProject(
+        root / "recursive", "GenericLambdaRecursion", R"NS(
+namespace GenericLambdaRecursion
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            var count = <T>(T value) => value == 0 ? 0 : 1 + count(value - 1);
+            return count(42);
+        }
+    }
+}
+)NS");
+    std::string recursiveDiagnostic;
+    const bool recursivePassed = compileAndRun(recursive, 42, recursiveDiagnostic);
+    tests.expect(recursivePassed,
+        "a closed generic-lambda instance recurses through its direct self binding (" +
+            recursiveDiagnostic + ")");
+
     tests.expect(!nativesharp::language::genericLambdaUsesErasedDispatch(),
         "generic lambda instances remain monomorphized native callables");
 
