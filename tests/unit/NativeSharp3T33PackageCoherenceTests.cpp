@@ -111,7 +111,7 @@ public class Program
     output.clear();
     error.clear();
     const ExitCode built = run({"build", consumerProject, "--precompiled-only", "--no-restore",
-        "--dependency-report", "--output-format=json", "--linker", "lld-link", "-O0"},
+        "--dependency-report", "--output-format=json", "--linker", "NSLink", "-O0"},
         output, error);
     tests.expect(built == ExitCode::Success &&
             output.find("\"identity\":\"NativeSharp.Core.IO@3.0.0\"") != std::string::npos &&
