@@ -146,6 +146,99 @@ class NscBuilderPipelineTests(unittest.TestCase):
                 "A:\\tests\\Fixture.cpp(17,84): missing field initializer",
             )
 
+    def test_optimization_logs_are_complete_and_general_is_aggregate(self) -> None:
+        selected = ("-O0", "-O2")
+
+        self.assertEqual(
+            nscbuilder.output_optimization_targets("NSLink", "General", selected),
+            ("General", "O0", "O2"),
+        )
+        self.assertEqual(
+            nscbuilder.output_optimization_targets("NSLink", "O0", selected),
+            ("General", "O0"),
+        )
+        self.assertEqual(
+            nscbuilder.output_optimization_targets("Compilador", "O0", selected),
+            ("General",),
+        )
+
+    def test_worker_writes_shared_context_and_specific_output_to_complete_logs(self) -> None:
+        with tempfile.TemporaryDirectory(dir=nscbuilder.ROOT) as temporary:
+            root = Path(temporary)
+            plan = nscbuilder.make_baseline_plan(
+                1,
+                prefix=root / "staging",
+                nslink_exe=root / "nslink.exe",
+                history_root=root / "history",
+                test_work_root=root / "work",
+                temp_root=root / "temp",
+                optimizations=("-O0", "-O2"),
+            )
+            worker = nscbuilder.PipelineWorker(plan, [])
+            worker.run_dir = root / "run"
+            worker.run_dir.mkdir()
+            worker.console_path = worker.run_dir / "console.log"
+            worker.console_path.touch()
+
+            worker._emit("shared context", channel="NSLink")
+            worker._emit("only O0", channel="NSLink", optimization="O0")
+
+            general = (worker.run_dir / "NSLink" / "General" / "console.log").read_text()
+            o0 = (worker.run_dir / "NSLink" / "O0" / "console.log").read_text()
+            o2 = (worker.run_dir / "NSLink" / "O2" / "console.log").read_text()
+            self.assertIn("shared context", general)
+            self.assertIn("only O0", general)
+            self.assertIn("shared context", o0)
+            self.assertIn("only O0", o0)
+            self.assertIn("shared context", o2)
+            self.assertNotIn("only O0", o2)
+
+    def test_condensed_report_embeds_complete_logs_without_clicks(self) -> None:
+        with tempfile.TemporaryDirectory(dir=nscbuilder.ROOT) as temporary:
+            root = Path(temporary)
+            first = root / "first.log"
+            second = root / "second.log"
+            gate = root / "gate.log"
+            first.write_text(
+                "A:\\src\\HashSet.ns:238:21: error[NS3002]: shared cause\n"
+                "first complete evidence line\n",
+                encoding="utf-8",
+            )
+            second.write_text(
+                "A:\\src\\HashSet.ns:238:21: error[NS3002]: shared cause\n"
+                "second complete evidence line\n",
+                encoding="utf-8",
+            )
+            gate.write_text("derived gate detail\n", encoding="utf-8")
+            rows = [
+                {
+                    "linker": "NSLink",
+                    "optimization": "O0",
+                    "source": "c27",
+                    "error_log": str(first),
+                },
+                {
+                    "linker": "NSLink",
+                    "optimization": "O0",
+                    "source": "c52",
+                    "error_log": str(second),
+                },
+                {
+                    "linker": "NSLink",
+                    "optimization": "General",
+                    "source": "Cerrar validación de alcance reducido",
+                    "error_log": str(gate),
+                },
+            ]
+
+            report = nscbuilder.render_condensed_error_report(rows, "NSLink")
+
+            self.assertIn("Causas únicas      : 1", report)
+            self.assertIn("Afecta        : c27, c52", report)
+            self.assertIn("first complete evidence line", report)
+            self.assertIn("second complete evidence line", report)
+            self.assertNotIn("derived gate detail", report)
+
 
 if __name__ == "__main__":
     unittest.main()

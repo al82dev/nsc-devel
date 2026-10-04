@@ -108,7 +108,7 @@ if HEADLESS:
     QProcess = QSettings = QThread = QTimer = Qt = QUrl = _GuiUnavailable
     QColor = QDesktopServices = QFontDatabase = QKeySequence = QShortcut = _GuiUnavailable
     QTextCharFormat = QTextCursor = _GuiUnavailable
-    QAbstractItemView = QApplication = QCheckBox = QComboBox = QDialog = QDockWidget = _GuiUnavailable
+    QAbstractItemView = QApplication = QCheckBox = QComboBox = QDockWidget = _GuiUnavailable
     QFormLayout = QGridLayout = QGroupBox = QHBoxLayout = QHeaderView = QLabel = _GuiUnavailable
     QLineEdit = QListWidget = QListWidgetItem = QMessageBox = QPlainTextEdit = _GuiUnavailable
     QProgressBar = QPushButton = QSpinBox = QTableWidget = QTableWidgetItem = _GuiUnavailable
@@ -130,7 +130,6 @@ else:
             QApplication,
             QCheckBox,
             QComboBox,
-            QDialog,
             QDockWidget,
             QFormLayout,
             QGridLayout,
@@ -797,6 +796,93 @@ def condensed_failures(failures: Iterable[dict]) -> list[dict]:
             group["logs"].append(log_path)
         group["occurrences"] += 1
     return list(groups.values())
+
+
+def canonical_output_channel(channel: str) -> str:
+    aliases = {"General": "Compilador", "lld-link": "LLD-link"}
+    normalized = aliases.get(channel, channel)
+    return normalized if normalized in {"Compilador", "LLD-link", "NSLink"} else "Compilador"
+
+
+def output_optimization_targets(
+    channel: str,
+    optimization: str,
+    selected_optimizations: Iterable[str],
+) -> tuple[str, ...]:
+    """Return complete-log destinations for a worker message."""
+    if canonical_output_channel(channel) == "Compilador":
+        return ("General",)
+    normalized = optimization.lstrip("-")
+    selected = tuple(
+        dict.fromkeys(
+            value.lstrip("-")
+            for value in selected_optimizations
+            if value.lstrip("-") in {"O0", "O1", "O2", "O3"}
+        )
+    )
+    if normalized == "General":
+        return tuple(dict.fromkeys(("General", *selected)))
+    if normalized in {"O0", "O1", "O2", "O3"}:
+        return ("General", normalized)
+    return ("General",)
+
+
+def render_condensed_error_report(failures: Iterable[dict], channel: str) -> str:
+    """Render grouped causes and complete original logs as a self-contained report."""
+    channel = canonical_output_channel(channel)
+    rows = [
+        dict(failure)
+        for failure in failures
+        if canonical_output_channel(str(failure.get("linker", "Compilador"))) == channel
+    ]
+    groups = condensed_failures(rows)
+    if not rows:
+        return f"REPORTE CONDENSADO DE ERRORES — {channel}\n\nNo hay errores registrados.\n"
+    causal_count = sum(int(group["occurrences"]) for group in groups)
+    omitted = len(rows) - causal_count
+    lines = [
+        f"REPORTE CONDENSADO DE ERRORES — {channel}",
+        "=" * 88,
+        f"Fallos registrados : {len(rows)}",
+        f"Causas únicas      : {len(groups)}",
+        f"Cierres derivados  : {omitted}",
+        "",
+    ]
+    for index, group in enumerate(groups, 1):
+        lines.extend(
+            [
+                f"CAUSA {index}/{len(groups)}",
+                "-" * 88,
+                f"Optimización : {group['optimization']}",
+                f"Ocurrencias  : {group['occurrences']}",
+                "Afecta        : " + ", ".join(str(value) for value in group["sources"]),
+                "Diagnóstico   : " + str(group["cause"]),
+                "",
+                "EVIDENCIA COMPLETA",
+            ]
+        )
+        logs = list(group["logs"])
+        if not logs:
+            lines.append("(No hay log asociado.)")
+        for log_number, log_value in enumerate(logs, 1):
+            log_path = Path(str(log_value))
+            lines.extend(("", f"[{log_number}/{len(logs)}] {log_path}", "~" * 88))
+            try:
+                detail = log_path.read_text(encoding="utf-8", errors="replace")
+            except OSError as error:
+                detail = f"No se pudo leer el log: {error}"
+            detail = _ANSI_ESCAPE.sub("", detail).rstrip()
+            lines.append(detail or "(Log vacío.)")
+        lines.extend(("", "=" * 88, ""))
+    if omitted:
+        lines.extend(
+            (
+                f"Se omitieron {omitted} cierre(s) derivado(s) del resumen causal.",
+                "Esas filas siguen conservadas en metadata.json y en la pestaña Errores.",
+                "",
+            )
+        )
+    return "\n".join(lines)
 
 
 def cleanup_targets(configured_builds: Iterable[Path]) -> tuple[list[Path], list[Path]]:
@@ -1591,17 +1677,23 @@ class PipelineWorker(QObject):
                     handle.write(stamped + "\n")
             if self.run_dir is not None:
                 for current_channel in channels:
-                    channel_path = (
-                        self.run_dir
-                        / safe_name(current_channel)
-                        / safe_name(optimization)
-                        / "console.log"
-                    )
-                    channel_path.parent.mkdir(parents=True, exist_ok=True)
-                    with channel_path.open("a", encoding="utf-8", errors="replace") as handle:
-                        handle.write(stamped + "\n")
+                    for target_optimization in output_optimization_targets(
+                        current_channel, optimization, self.plan.optimizations
+                    ):
+                        channel_path = (
+                            self.run_dir
+                            / safe_name(current_channel)
+                            / safe_name(target_optimization)
+                            / "console.log"
+                        )
+                        channel_path.parent.mkdir(parents=True, exist_ok=True)
+                        with channel_path.open("a", encoding="utf-8", errors="replace") as handle:
+                            handle.write(stamped + "\n")
         for current_channel in channels:
-            self.output.emit(stamped, level, current_channel, optimization)
+            for target_optimization in output_optimization_targets(
+                current_channel, optimization, self.plan.optimizations
+            ):
+                self.output.emit(stamped, level, current_channel, target_optimization)
 
     def _report_failure(self, failure: dict) -> None:
         row = dict(failure)
@@ -4166,9 +4258,11 @@ class MainWindow(QMainWindow):
         self.output_optimizations = ("General", "O0", "O1", "O2", "O3")
         self.channel_consoles: dict[tuple[str, str], QTextEdit] = {}
         self.channel_error_tables: dict[str, QTableWidget] = {}
+        self.channel_condensed_reports: dict[str, QTextEdit] = {}
         self.channel_error_counts: dict[str, int] = {}
         self.channel_output_tabs: dict[str, QTabWidget] = {}
         self.channel_error_tab_indices: dict[str, int] = {}
+        self.channel_condensed_tab_indices: dict[str, int] = {}
         self.channel_results_tab_indices: dict[str, int] = {}
         self.channel_outer_indices: dict[str, int] = {}
         self.channel_titles: dict[str, str] = {}
@@ -4190,15 +4284,24 @@ class MainWindow(QMainWindow):
                 self.channel_optimization_indices[key] = optimization_index
             error_table = self._create_error_table()
             error_index = channel_tabs.addTab(error_table, "Errores (0)")
+            condensed_report = self._create_console()
+            condensed_report.setPlainText(
+                f"REPORTE CONDENSADO DE ERRORES — {channel}\n\nNo hay errores registrados.\n"
+            )
+            condensed_index = channel_tabs.addTab(
+                condensed_report, "Reporte de errores (0)"
+            )
             stage_table = self._create_stage_table()
             results_index = channel_tabs.addTab(stage_table, "Resultados")
             title = channel
             outer_index = self.output_channel_tabs.addTab(channel_tabs, title)
             self.channel_titles[channel] = title
             self.channel_error_tables[channel] = error_table
+            self.channel_condensed_reports[channel] = condensed_report
             self.channel_error_counts[channel] = 0
             self.channel_output_tabs[channel] = channel_tabs
             self.channel_error_tab_indices[channel] = error_index
+            self.channel_condensed_tab_indices[channel] = condensed_index
             self.channel_results_tab_indices[channel] = results_index
             self.channel_optimization_tabs[channel] = channel_tabs
             self.channel_outer_indices[channel] = outer_index
@@ -5657,9 +5760,15 @@ class MainWindow(QMainWindow):
                 key = (channel, optimization)
                 self.channel_consoles[key].clear()
             self.channel_error_tables[channel].setRowCount(0)
+            self.channel_condensed_reports[channel].setPlainText(
+                f"REPORTE CONDENSADO DE ERRORES — {channel}\n\nNo hay errores registrados.\n"
+            )
             self.channel_error_counts[channel] = 0
             tabs = self.channel_output_tabs[channel]
             tabs.setTabText(self.channel_error_tab_indices[channel], "Errores (0)")
+            tabs.setTabText(
+                self.channel_condensed_tab_indices[channel], "Reporte de errores (0)"
+            )
             tabs.setTabText(self.channel_results_tab_indices[channel], "Resultados")
             tabs.setCurrentIndex(0)
             self.output_channel_tabs.setTabText(
@@ -5793,9 +5902,7 @@ class MainWindow(QMainWindow):
             self.cancel_button.setEnabled(False)
 
     def _known_output_channel(self, channel: str) -> str:
-        aliases = {"General": "Compilador", "lld-link": "LLD-link"}
-        normalized = aliases.get(channel, channel)
-        return normalized if normalized in self.output_channels else "Compilador"
+        return canonical_output_channel(channel)
 
     def _known_optimization(self, optimization: str) -> str:
         normalized = optimization.lstrip("-")
@@ -5816,6 +5923,14 @@ class MainWindow(QMainWindow):
         )
         optimization_tabs = self.channel_optimization_tabs[channel]
         optimization_index = optimization_tabs.currentIndex()
+        if optimization_index == self.channel_condensed_tab_indices[channel]:
+            self.channel_condensed_reports[channel].clear()
+            return
+        if optimization_index in {
+            self.channel_error_tab_indices[channel],
+            self.channel_results_tab_indices[channel],
+        }:
+            return
         optimization = next(
             (
                 name
@@ -5886,6 +6001,20 @@ class MainWindow(QMainWindow):
         channel_tabs = self.channel_output_tabs[channel]
         error_index = self.channel_error_tab_indices[channel]
         channel_tabs.setTabText(error_index, f"Errores ({count})")
+        channel_failures = sum(
+            1
+            for row in self.current_failures
+            if self._known_output_channel(str(row.get("linker", "Compilador"))) == channel
+        )
+        self.channel_output_tabs[channel].setTabText(
+            self.channel_condensed_tab_indices[channel],
+            f"Reporte de errores ({channel_failures})",
+        )
+        self.channel_condensed_reports[channel].setPlainText(
+            f"REPORTE CONDENSADO DE ERRORES — {channel}\n\n"
+            f"Fallos registrados hasta ahora: {channel_failures}\n"
+            "El reporte autocontenido se completa al terminar la corrida.\n"
+        )
         channel_tabs.setCurrentIndex(error_index)
         self.output_channel_tabs.setTabText(
             self.channel_outer_indices[channel],
@@ -5901,66 +6030,19 @@ class MainWindow(QMainWindow):
             return
         QMessageBox.warning(self, APP_NAME, f"El log no existe:\n{log_path}")
 
-    def show_condensed_errors(self) -> None:
-        groups = condensed_failures(self.current_failures)
-        if not groups:
-            return
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Resumen condensado de errores")
-        dialog.resize(1180, 460)
-        layout = QVBoxLayout(dialog)
-        omitted = len(self.current_failures) - sum(
-            int(group["occurrences"]) for group in groups
+    def refresh_condensed_error_report(self, channel: str) -> None:
+        channel = self._known_output_channel(channel)
+        report = render_condensed_error_report(self.current_failures, channel)
+        self.channel_condensed_reports[channel].setPlainText(report)
+        groups = condensed_failures(
+            failure
+            for failure in self.current_failures
+            if self._known_output_channel(str(failure.get("linker", "Compilador"))) == channel
         )
-        summary = (
-            f"{len(self.current_failures)} fallo(s) registrados · "
-            f"{len(groups)} causa(s) única(s)"
+        self.channel_output_tabs[channel].setTabText(
+            self.channel_condensed_tab_indices[channel],
+            f"Reporte de errores ({len(groups)})",
         )
-        if omitted:
-            summary += f" · {omitted} cierre(s) derivado(s) omitido(s)"
-        layout.addWidget(QLabel(summary))
-
-        table = QTableWidget(len(groups), 5)
-        table.setHorizontalHeaderLabels(
-            ["Canal", "Optimización", "Causa condensada", "Afecta", "Log"]
-        )
-        table.verticalHeader().setVisible(False)
-        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        for row, group in enumerate(groups):
-            logs = list(group["logs"])
-            log_path = logs[0] if logs else ""
-            values = (
-                str(group["linker"]),
-                str(group["optimization"]),
-                str(group["cause"]),
-                ", ".join(str(source) for source in group["sources"]),
-                Path(log_path).name if log_path else "",
-            )
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                item.setData(Qt.ItemDataRole.UserRole, log_path)
-                item.setToolTip(value)
-                table.setItem(row, column, item)
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        table.itemDoubleClicked.connect(self.open_error_log)
-        layout.addWidget(table, 1)
-
-        buttons = QHBoxLayout()
-        buttons.addStretch(1)
-        open_results = QPushButton("Abrir resultados")
-        open_results.clicked.connect(self.open_results)
-        buttons.addWidget(open_results)
-        close = QPushButton("Cerrar")
-        close.clicked.connect(dialog.accept)
-        buttons.addWidget(close)
-        layout.addLayout(buttons)
-        dialog.exec()
 
     def _result_channels_for_stage(self, name: str) -> list[str]:
         if name.endswith("[lld-link]"):
@@ -6024,7 +6106,19 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self.refresh_ctests)
         QTimer.singleShot(0, self.refresh_history)
         if summary.get("status") == "failed" and self.current_failures:
-            QTimer.singleShot(0, self.show_condensed_errors)
+            error_channels = list(
+                dict.fromkeys(
+                    self._known_output_channel(str(row.get("linker", "Compilador")))
+                    for row in self.current_failures
+                )
+            )
+            for channel in error_channels:
+                self.refresh_condensed_error_report(channel)
+            channel = error_channels[0]
+            self.output_channel_tabs.setCurrentIndex(self.channel_outer_indices[channel])
+            self.channel_output_tabs[channel].setCurrentIndex(
+                self.channel_condensed_tab_indices[channel]
+            )
 
     @Slot(dict)
     def on_cleanup_finished(self, summary: dict) -> None:
@@ -6094,7 +6188,7 @@ class MainWindow(QMainWindow):
 def dark_stylesheet() -> str:
     return """
     QWidget { background: #1e1e2e; color: #cdd6f4; font-size: 10pt; }
-    QMainWindow, QDialog { background: #181825; }
+    QMainWindow { background: #181825; }
     QGroupBox { border: 1px solid #45475a; border-radius: 6px; margin-top: 10px; padding-top: 8px; }
     QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #89b4fa; }
     QLineEdit, QComboBox, QSpinBox, QListWidget, QTextEdit, QTableWidget {
