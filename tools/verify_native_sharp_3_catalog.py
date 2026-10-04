@@ -11,6 +11,7 @@ from collections import Counter
 from pathlib import Path
 
 import native_sharp_3_catalog as catalog
+import native_sharp_3_source_inventory as source_inventory
 
 
 FEATURE_COUNTS = {
@@ -348,6 +349,16 @@ def verify_secondary_authority_notice(paths: list[Path]) -> None:
         raise VerificationError("secondary documents lack authority notice: " + ", ".join(missing))
 
 
+def verify_source_inventory(registry: Path, inventory: Path) -> None:
+    entries = source_inventory.collect_sources()
+    expected_inventory = source_inventory.render_inventory(entries)
+    expected_registry = source_inventory.render_registry(entries, expected_inventory)
+    if not inventory.is_file() or inventory.read_text(encoding="utf-8-sig") != expected_inventory:
+        raise VerificationError("source inventory differs; regenerate it")
+    if not registry.is_file() or registry.read_text(encoding="utf-8-sig") != expected_registry:
+        raise VerificationError("source registry differs; regenerate it")
+
+
 def main(argv: list[str] | None = None) -> int:
     repo_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser()
@@ -378,6 +389,8 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=Path("A:/NATIVESHARP-3.0-LEDGER-LIMITACIONES.md"),
     )
+    parser.add_argument("--source-registry", type=Path, default=source_inventory.REGISTRY_PATH)
+    parser.add_argument("--source-inventory", type=Path, default=source_inventory.INVENTORY_PATH)
     args = parser.parse_args(argv)
     try:
         verify_roadmap(args.roadmap)
@@ -387,6 +400,7 @@ def main(argv: list[str] | None = None) -> int:
         verify_component_summary(args.master, items)
         verify_tracking(args.tracking, items)
         verify_secondary_authority_notice(args.secondary)
+        verify_source_inventory(args.source_registry, args.source_inventory)
     except (OSError, VerificationError, RuntimeError) as error:
         print(f"verify_native_sharp_3_catalog: error: {error}", file=sys.stderr)
         return 1

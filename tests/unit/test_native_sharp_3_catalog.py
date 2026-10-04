@@ -9,6 +9,7 @@ from pathlib import Path
 TOOLS = Path(__file__).resolve().parents[2] / "tools"
 sys.path.insert(0, str(TOOLS))
 import native_sharp_3_catalog as catalog  # noqa: E402
+import native_sharp_3_source_inventory as source_inventory  # noqa: E402
 import verify_native_sharp_3_catalog as verifier  # noqa: E402
 
 
@@ -167,6 +168,29 @@ class NativeSharp3CatalogueTests(unittest.TestCase):
         self.assertIn("C:/native-sharp-2.0 conserva 2.0", source)
         self.assertIn("A:/porting-to-3.0.0/SaruFrameworkNativeSharp", source)
         self.assertIn("A:/porting-to-3.0.0/SaruFrameworkGLNativeSharp", source)
+
+    def test_source_inventory_rendering_is_deterministic_and_subordinate(self) -> None:
+        entries = [
+            source_inventory.SourceEntry(
+                "NSC", "A:/nsc-devel/roadmap.md", "roadmap", "a" * 64, "SUBORDINADA A §24"
+            ),
+            source_inventory.SourceEntry(
+                "Raíz A:", "A:/DOCUMENTO-MAESTRO-NATIVESHARP-3.0.md", "autoridad", "b" * 64, "CANÓNICA"
+            ),
+        ]
+        inventory = source_inventory.render_inventory(entries)
+        registry = source_inventory.render_registry(entries, inventory)
+        self.assertEqual(inventory, source_inventory.render_inventory(entries))
+        self.assertIn('"schema": "NativeSharp3SourceInventory/1"', inventory)
+        self.assertIn("Autoridad de estado", registry)
+        self.assertIn("Fuentes registradas: **2**", registry)
+
+    def test_versioned_historical_plans_are_not_filtered_as_build_artifacts(self) -> None:
+        root = Path("A:/nsc-vscode")
+        self.assertFalse(
+            source_inventory.excluded(root / "historicos/049_progreso_compilacion.md", root)
+        )
+        self.assertTrue(source_inventory.excluded(root / "build-clang/notes.md", root))
 
 
 if __name__ == "__main__":
