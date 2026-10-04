@@ -640,7 +640,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(contract["schema"], "nativesharp-runtime-bootstrap-contract")
         self.assertEqual(contract["runtime_abi"], "1.2")
         self.assertEqual(contract["runtime_symbol_set"], 4)
-        self.assertEqual(len(contract["required_symbols"]), 13)
+        self.assertEqual(len(contract["required_symbols"]), 14)
         self.assertTrue(contract["runtime_library"].endswith(".lib"))
         self.assertTrue(contract["runtime_abi_contract"].endswith(".abi"))
 
