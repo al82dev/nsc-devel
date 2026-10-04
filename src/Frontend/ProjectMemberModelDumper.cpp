@@ -43,6 +43,17 @@ void ProjectMemberModelDumper::dump(
                         (member.returnLifetimeName.empty() ? "none" : member.returnLifetimeName)
                    << " volatile=" << (member.isVolatile ? "true" : "false")
                    << " const=" << (member.isConst ? "true" : "false");
+            if (member.declaredTypeKey.ends_with("*"))
+            {
+                output << " pointer-nullable=" <<
+                              (member.declaredPointerNullable ? "true" : "false")
+                       << " pointer-mutable=" <<
+                              (member.declaredPointerPointeeReadonly ? "false" : "true")
+                       << " pointer-provenance=" <<
+                              (member.declaredPointerHasProvenance ? "tracked" : "none")
+                       << " pointer-align=" << member.declaredPointerKnownAlignment
+                       << " pointer-addrspace=" << member.declaredPointerAddressSpace;
+            }
             if (member.kind == ClassMemberKind::Method || member.kind == ClassMemberKind::Constructor ||
                 member.kind == ClassMemberKind::Destructor)
             {
@@ -85,8 +96,19 @@ void ProjectMemberModelDumper::dump(
                        << " ownership=" << sema::ownershipKindName(parameter.ownership)
                        << " pass=" << parameterPassKindName(parameter.passKind)
                        << " lifetime=" <<
-                            (parameter.lifetimeName.empty() ? "none" : parameter.lifetimeName)
-                       << '\n';
+                            (parameter.lifetimeName.empty() ? "none" : parameter.lifetimeName);
+                if (parameter.typeKey.ends_with("*"))
+                {
+                    output << " pointer-nullable=" <<
+                                  (parameter.pointerNullable ? "true" : "false")
+                           << " pointer-mutable=" <<
+                                  (parameter.pointerPointeeReadonly ? "false" : "true")
+                           << " pointer-provenance=" <<
+                                  (parameter.pointerHasProvenance ? "tracked" : "none")
+                           << " pointer-align=" << parameter.pointerKnownAlignment
+                           << " pointer-addrspace=" << parameter.pointerAddressSpace;
+                }
+                output << '\n';
             }
         }
         for (const std::size_t memberOrdinal : model.promotedMembersOfType(typeOrdinal))

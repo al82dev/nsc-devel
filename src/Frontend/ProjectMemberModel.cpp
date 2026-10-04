@@ -2,6 +2,7 @@
 
 #include "nativesharp/Language/AggregateSemantics.h"
 #include "nativesharp/Language/CallableSemantics.h"
+#include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 
@@ -30,6 +31,24 @@ namespace nativesharp::frontend
 {
 namespace
 {
+language::PointerContract pointerContractFromSyntax(const ast::TypeSyntax* syntax) noexcept
+{
+    language::PointerContract contract;
+    if (syntax == nullptr) return contract;
+    contract.mutablePointee = !syntax->isPointeeConst();
+    for (auto modifier = syntax->modifiers().rbegin(); modifier != syntax->modifiers().rend(); ++modifier)
+    {
+        if (modifier->kind != ast::TypeModifierSyntaxKind::Pointer) continue;
+        contract.nullable = modifier->pointerNullability !=
+            ast::PointerNullabilitySyntaxKind::NonNull;
+        contract.hasProvenance = modifier->pointerHasProvenance;
+        contract.knownAlignment = modifier->pointerKnownAlignment;
+        contract.addressSpace = modifier->pointerAddressSpace;
+        break;
+    }
+    return contract;
+}
+
 sema::OwnershipKind ownershipKindFromSyntax(const ast::TypeSyntax* syntax) noexcept
 {
     if (syntax == nullptr)
@@ -1678,6 +1697,12 @@ bool ProjectMemberModel::collectTypeMembers(
                 : canonicalTypeKey(memberNode->throwsTypeSyntax(), nameLookup);
             symbol.declaredPointerPointeeReadonly = memberNode->typeSyntax() != nullptr &&
                 memberNode->typeSyntax()->isPointeeConst();
+            const language::PointerContract declaredPointer =
+                pointerContractFromSyntax(memberNode->typeSyntax());
+            symbol.declaredPointerNullable = declaredPointer.nullable;
+            symbol.declaredPointerHasProvenance = declaredPointer.hasProvenance;
+            symbol.declaredPointerKnownAlignment = declaredPointer.knownAlignment;
+            symbol.declaredPointerAddressSpace = declaredPointer.addressSpace;
             symbol.declaredOwnership =
                 (symbol.kind == ClassMemberKind::Constructor || symbol.kind == ClassMemberKind::Destructor)
                 ? sema::OwnershipKind::None
@@ -2077,6 +2102,12 @@ bool ProjectMemberModel::collectTypeMembers(
                     parameter.typeKey = canonicalTypeKey(parameterNode->typeSyntax(), nameLookup);
                     parameter.pointerPointeeReadonly = parameter.typeSyntax != nullptr &&
                         parameter.typeSyntax->isPointeeConst();
+                    const language::PointerContract parameterPointer =
+                        pointerContractFromSyntax(parameter.typeSyntax);
+                    parameter.pointerNullable = parameterPointer.nullable;
+                    parameter.pointerHasProvenance = parameterPointer.hasProvenance;
+                    parameter.pointerKnownAlignment = parameterPointer.knownAlignment;
+                    parameter.pointerAddressSpace = parameterPointer.addressSpace;
                     parameter.ownership = ownershipKindFromSyntax(parameterNode->typeSyntax());
                     parameter.fileId = part.fileId;
                     parameter.range = parameterNode->range();

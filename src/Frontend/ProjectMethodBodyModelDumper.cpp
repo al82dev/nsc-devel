@@ -73,6 +73,16 @@ void ProjectMethodBodyModelDumper::dump(
                << " ownership=" << sema::ownershipKindName(local.ownership)
                << " object-ownership=" << sema::ownershipKindName(local.objectLifetimeOwnership)
                << " storage-ownership=" << sema::ownershipKindName(local.storageOwnership);
+        if (local.typeKey.ends_with("*"))
+        {
+            output << " pointer-nullable=" << (local.pointerNullable ? "true" : "false")
+                   << " pointer-mutable=" <<
+                          (local.pointerPointeeReadonly ? "false" : "true")
+                   << " pointer-provenance=" <<
+                          (local.pointerHasProvenance ? "tracked" : "none")
+                   << " pointer-align=" << local.pointerKnownAlignment
+                   << " pointer-addrspace=" << local.pointerAddressSpace;
+        }
         if (local.isReference)
         {
             output << " escape-origin=";

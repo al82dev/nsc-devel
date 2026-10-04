@@ -216,6 +216,16 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
         if (modifier.kind == TypeModifierSyntaxKind::Pointer)
         {
             output << '*';
+            if (modifier.pointerNullability == PointerNullabilitySyntaxKind::Nullable)
+                output << '?';
+            else if (modifier.pointerNullability == PointerNullabilitySyntaxKind::NonNull)
+                output << '!';
+            if (modifier.pointerKnownAlignment != 1)
+                output << " align(" << modifier.pointerKnownAlignment << ')';
+            if (modifier.pointerAddressSpace != 0)
+                output << " addrspace(" << modifier.pointerAddressSpace << ')';
+            if (!modifier.pointerHasProvenance)
+                output << " provenance(none)";
         }
         else if (modifier.kind == TypeModifierSyntaxKind::DynamicArray)
         {

@@ -126,6 +126,10 @@ struct MethodLocalSymbol final
     bool isVolatile = false;
     bool onePastEndPointer = false;
     bool pointerPointeeReadonly = false;
+    bool pointerNullable = true;
+    bool pointerHasProvenance = true;
+    std::size_t pointerKnownAlignment = 1;
+    unsigned pointerAddressSpace = 0;
     // El VALOR de un local `const` de tipo entero, plegado al declararlo.
     //
     // POR QUE SE GUARDA AQUI y no se recalcula al usarlo: la expresion que lo inicializa esta en
@@ -1674,6 +1678,10 @@ private:
         // opaque and the qualifier has no ABI/layout effect; semantic assignment/dereference
         // still observes it.
         bool pointerPointeeReadonly = false;
+        bool pointerNullable = true;
+        bool pointerHasProvenance = true;
+        std::size_t pointerKnownAlignment = 1;
+        unsigned pointerAddressSpace = 0;
         bool onePastEndAddress = false;
         bool onePastEndPointer = false;
         std::vector<std::size_t> methodCandidates;

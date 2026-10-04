@@ -39,6 +39,17 @@ bool pointerCastRequiresUnsafe(const PointerContract& source, const PointerContr
         source.knownAlignment < target.knownAlignment || source.addressSpace != target.addressSpace;
 }
 
+bool pointerContractImplicitlyAssignable(
+    const PointerContract& source,
+    const PointerContract& target) noexcept
+{
+    return (!source.nullable || target.nullable) &&
+        (!target.mutablePointee || source.mutablePointee) &&
+        (!target.hasProvenance || source.hasProvenance) &&
+        source.knownAlignment >= target.knownAlignment &&
+        source.addressSpace == target.addressSpace;
+}
+
 bool callingConventionSupportedOnWindowsX64(
     AbiCallingConvention convention,
     bool variadic) noexcept

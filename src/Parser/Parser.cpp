@@ -503,6 +503,32 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
         return false;
     }
 
+    const auto scanPointerQualifiers = [&](std::size_t cursor) noexcept
+    {
+        if (cursor < tokens_.size() &&
+            (tokens_[cursor].kind() == TokenKind::Question ||
+             tokens_[cursor].kind() == TokenKind::Bang))
+            ++cursor;
+        while (cursor + 1U < tokens_.size() &&
+               tokens_[cursor].kind() == TokenKind::Identifier &&
+               (tokens_[cursor].lexeme() == "align" ||
+                tokens_[cursor].lexeme() == "addrspace" ||
+                tokens_[cursor].lexeme() == "provenance") &&
+               tokens_[cursor + 1U].kind() == TokenKind::LeftParen)
+        {
+            cursor += 2U;
+            while (cursor < tokens_.size() &&
+                   tokens_[cursor].kind() != TokenKind::RightParen &&
+                   tokens_[cursor].kind() != TokenKind::EndOfFile)
+                ++cursor;
+            if (cursor >= tokens_.size() ||
+                tokens_[cursor].kind() != TokenKind::RightParen)
+                return tokens_.size();
+            ++cursor;
+        }
+        return cursor;
+    };
+
     if (lexer::isOwnershipQualifierKeyword(tokens_[tokenIndex].kind()))
     {
         ++tokenIndex;
@@ -666,7 +692,7 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
         {
             if (tokens_[cursor].kind() == TokenKind::Star)
             {
-                ++cursor;
+                cursor = scanPointerQualifiers(cursor + 1U);
                 continue;
             }
             if (tokens_[cursor].kind() != TokenKind::LeftBracket) break;
@@ -743,7 +769,7 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
     {
         if (tokens_[cursor].kind() == TokenKind::Star)
         {
-            ++cursor;
+            cursor = scanPointerQualifiers(cursor + 1U);
             continue;
         }
         if (tokens_[cursor].kind() != TokenKind::LeftBracket) break;
@@ -836,78 +862,9 @@ bool Parser::looksLikeParenthesizedType() const noexcept
         return false;
     }
 
-    std::size_t cursor = index_ + 1;
-    if (cursor >= tokens_.size() || !canStartTypeAt(cursor))
-    {
-        return false;
-    }
-
-    if (lexer::isOwnershipQualifierKeyword(tokens_[cursor].kind()))
-    {
-        ++cursor;
-    }
-
-    if (tokens_[cursor].kind() == TokenKind::Identifier)
-    {
-        ++cursor;
-        if (cursor + 2 < tokens_.size() &&
-            tokens_[cursor].kind() == TokenKind::Colon &&
-            tokens_[cursor + 1].kind() == TokenKind::Colon &&
-            tokens_[cursor + 2].kind() == TokenKind::Identifier)
-        {
-            cursor += 3;
-        }
-        while (cursor + 1 < tokens_.size() &&
-               tokens_[cursor].kind() == TokenKind::Dot &&
-               tokens_[cursor + 1].kind() == TokenKind::Identifier)
-        {
-            cursor += 2;
-        }
-    }
-    else
-    {
-        ++cursor;
-    }
-
-    while (cursor < tokens_.size())
-    {
-        if (tokens_[cursor].kind() == TokenKind::Star)
-        {
-            ++cursor;
-            continue;
-        }
-
-        if (tokens_[cursor].kind() == TokenKind::LeftBracket)
-        {
-            int depth = 1;
-            ++cursor;
-            while (cursor < tokens_.size() && depth != 0)
-            {
-                if (tokens_[cursor].kind() == TokenKind::LeftBracket)
-                {
-                    ++depth;
-                }
-                else if (tokens_[cursor].kind() == TokenKind::RightBracket)
-                {
-                    --depth;
-                }
-                else if (tokens_[cursor].kind() == TokenKind::EndOfFile)
-                {
-                    return false;
-                }
-                ++cursor;
-            }
-
-            if (depth != 0)
-            {
-                return false;
-            }
-            continue;
-        }
-        break;
-    }
-
-    return cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::RightParen;
+    std::size_t afterType = index_ + 1U;
+    if (!scanTypeAt(index_ + 1U, afterType)) return false;
+    return afterType < tokens_.size() && tokens_[afterType].kind() == TokenKind::RightParen;
 }
 
 bool Parser::parseQualifiedName(std::string& name, SourceRange& range)
@@ -1387,11 +1344,87 @@ ast::TypeSyntax* Parser::parseType()
         if (at(TokenKind::Star))
         {
             const lexer::Token& star = consume();
-            type->addModifier(ast::TypeModifierSyntax{
+            ast::TypeModifierSyntax pointer{
                 ast::TypeModifierSyntaxKind::Pointer,
                 nullptr,
-                star.range()});
-            completeRange = join(completeRange, star.range());
+                star.range()};
+            if (consumeIf(TokenKind::Question))
+            {
+                pointer.pointerNullability = ast::PointerNullabilitySyntaxKind::Nullable;
+                pointer.range = join(pointer.range, tokens_[index_ - 1U].range());
+            }
+            else if (consumeIf(TokenKind::Bang))
+            {
+                pointer.pointerNullability = ast::PointerNullabilitySyntaxKind::NonNull;
+                pointer.range = join(pointer.range, tokens_[index_ - 1U].range());
+            }
+            while ((atContextualKeyword("align") || atContextualKeyword("addrspace") ||
+                    atContextualKeyword("provenance")) &&
+                   peek().kind() == TokenKind::LeftParen)
+            {
+                const std::string qualifier(current().lexeme());
+                const SourceRange qualifierStart = consume().range();
+                consume();
+                if (qualifier == "provenance")
+                {
+                    if (atContextualKeyword("none"))
+                    {
+                        pointer.pointerHasProvenance = false;
+                        consume();
+                    }
+                    else if (atContextualKeyword("tracked"))
+                    {
+                        pointer.pointerHasProvenance = true;
+                        consume();
+                    }
+                    else
+                    {
+                        expect(TokenKind::Identifier, "'tracked' or 'none' provenance mode");
+                    }
+                }
+                else
+                {
+                    std::optional<std::uint64_t> value;
+                    if (at(TokenKind::IntegerLiteral) &&
+                        std::holds_alternative<std::uint64_t>(current().value()))
+                    {
+                        value = std::get<std::uint64_t>(current().value());
+                        consume();
+                    }
+                    else
+                    {
+                        expect(TokenKind::IntegerLiteral, "pointer qualifier value");
+                    }
+                    if (qualifier == "align" && value.has_value())
+                    {
+                        if (*value == 0 || (*value & (*value - 1U)) != 0 || *value > 4096U)
+                        {
+                            diagnostics_.report(
+                                diagnostics::DiagnosticId::InvalidType,
+                                diagnostics::DiagnosticSeverity::Error,
+                                qualifierStart,
+                                "pointer alignment knowledge must be a power of two no larger than 4096");
+                        }
+                        else pointer.pointerKnownAlignment = static_cast<std::size_t>(*value);
+                    }
+                    else if (qualifier == "addrspace" && value.has_value())
+                    {
+                        if (*value > 255U)
+                        {
+                            diagnostics_.report(
+                                diagnostics::DiagnosticId::InvalidType,
+                                diagnostics::DiagnosticSeverity::Error,
+                                qualifierStart,
+                                "reserved pointer address space must be in range 0..255");
+                        }
+                        else pointer.pointerAddressSpace = static_cast<unsigned>(*value);
+                    }
+                }
+                expect(TokenKind::RightParen, "')' after pointer qualifier");
+                pointer.range = join(pointer.range, tokens_[index_ - 1U].range());
+            }
+            type->addModifier(pointer);
+            completeRange = join(completeRange, pointer.range);
             continue;
         }
 

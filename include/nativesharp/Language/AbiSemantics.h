@@ -37,6 +37,9 @@ struct PointerContract final
     unsigned addressSpace = 0;
 };
 bool pointerCastRequiresUnsafe(const PointerContract& source, const PointerContract& target) noexcept;
+bool pointerContractImplicitlyAssignable(
+    const PointerContract& source,
+    const PointerContract& target) noexcept;
 
 enum class AbiCallingConvention { Native, Cdecl, StdCall, VectorCall, Win64 };
 bool callingConventionSupportedOnWindowsX64(AbiCallingConvention convention, bool variadic) noexcept;

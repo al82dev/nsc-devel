@@ -84,6 +84,10 @@ struct MethodParameterSymbol final
     const ast::TypeSyntax* typeSyntax = nullptr;
     std::string typeKey;
     bool pointerPointeeReadonly = false;
+    bool pointerNullable = true;
+    bool pointerHasProvenance = true;
+    std::size_t pointerKnownAlignment = 1;
+    unsigned pointerAddressSpace = 0;
     sema::OwnershipKind ownership = sema::OwnershipKind::None;
     FileId fileId;
     SourceRange range;
@@ -131,6 +135,10 @@ struct ClassMemberSymbol final
     const ast::TypeSyntax* declaredErrorTypeSyntax = nullptr;
     std::string declaredErrorTypeKey;
     bool declaredPointerPointeeReadonly = false;
+    bool declaredPointerNullable = true;
+    bool declaredPointerHasProvenance = true;
+    std::size_t declaredPointerKnownAlignment = 1;
+    unsigned declaredPointerAddressSpace = 0;
     sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
     std::vector<MethodParameterSymbol> parameters;
     std::string signatureKey;

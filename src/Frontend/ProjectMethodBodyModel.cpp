@@ -13,6 +13,7 @@
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 #include "nativesharp/Language/CallableSemantics.h"
+#include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Language/MemoryModel.h"
@@ -37,6 +38,39 @@ namespace nativesharp::frontend
 namespace
 {
 constexpr std::string_view kGenericRawNewAuxiliary = "stage52-generic-raw-new";
+
+language::PointerContract pointerContractFromSyntax(const ast::TypeSyntax* syntax) noexcept
+{
+    language::PointerContract contract;
+    if (syntax == nullptr) return contract;
+    contract.mutablePointee = !syntax->isPointeeConst();
+    for (auto modifier = syntax->modifiers().rbegin(); modifier != syntax->modifiers().rend(); ++modifier)
+    {
+        if (modifier->kind != ast::TypeModifierSyntaxKind::Pointer) continue;
+        contract.nullable = modifier->pointerNullability !=
+            ast::PointerNullabilitySyntaxKind::NonNull;
+        contract.hasProvenance = modifier->pointerHasProvenance;
+        contract.knownAlignment = modifier->pointerKnownAlignment;
+        contract.addressSpace = modifier->pointerAddressSpace;
+        break;
+    }
+    return contract;
+}
+
+language::PointerContract pointerContract(
+    bool nullable,
+    bool pointeeReadonly,
+    bool hasProvenance,
+    std::size_t knownAlignment,
+    unsigned addressSpace) noexcept
+{
+    return language::PointerContract{
+        nullable,
+        !pointeeReadonly,
+        hasProvenance,
+        knownAlignment,
+        addressSpace};
+}
 
 bool isGenericValueTypeKey(std::string_view typeKey) noexcept
 {
@@ -1113,15 +1147,26 @@ bool ProjectMethodBodyModel::build(
             continue;
         }
 
-        if (initializer.pointerPointeeReadonly &&
-            ProjectTypeConversion::isPointer(field.declaredTypeKey) &&
-            !field.declaredPointerPointeeReadonly)
+        if (ProjectTypeConversion::isPointer(field.declaredTypeKey) &&
+            !language::pointerContractImplicitlyAssignable(
+                pointerContract(
+                    initializer.pointerNullable,
+                    initializer.pointerPointeeReadonly,
+                    initializer.pointerHasProvenance,
+                    initializer.pointerKnownAlignment,
+                    initializer.pointerAddressSpace),
+                pointerContract(
+                    field.declaredPointerNullable,
+                    field.declaredPointerPointeeReadonly,
+                    field.declaredPointerHasProvenance,
+                    field.declaredPointerKnownAlignment,
+                    field.declaredPointerAddressSpace)))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error,
                 field.syntax->first()->range(),
-                "field initializer would discard pointer pointee constness; declare the field as 'T const*' or use const_cast explicitly");
+                "field initializer does not satisfy the destination pointer nullability, mutability, provenance, alignment, or address-space contract");
             continue;
         }
 
@@ -5980,7 +6025,13 @@ void ProjectMethodBodyModel::analyzeVariable(
     bool pendingOnePastEndPointer = false;
     const bool declaredPointerPointeeReadonly = variable->typeSyntax() != nullptr &&
         variable->typeSyntax()->isPointeeConst();
+    const language::PointerContract declaredPointerContract =
+        pointerContractFromSyntax(variable->typeSyntax());
     bool pendingPointerPointeeReadonly = declaredPointerPointeeReadonly;
+    bool pendingPointerNullable = declaredPointerContract.nullable;
+    bool pendingPointerHasProvenance = declaredPointerContract.hasProvenance;
+    std::size_t pendingPointerKnownAlignment = declaredPointerContract.knownAlignment;
+    unsigned pendingPointerAddressSpace = declaredPointerContract.addressSpace;
     if (variable->first() != nullptr)
     {
         ExpressionResult initializer;
@@ -6203,6 +6254,24 @@ void ProjectMethodBodyModel::analyzeVariable(
                     "initialization of mutable-pointee pointer '" + variable->text() +
                         "' would discard pointee constness; declare 'T const*' or use const_cast explicitly");
             }
+            if (!isVarInferred && ProjectTypeConversion::isPointer(typeKey))
+            {
+                const language::PointerContract source{
+                    initializer.pointerNullable,
+                    !initializer.pointerPointeeReadonly,
+                    initializer.pointerHasProvenance,
+                    initializer.pointerKnownAlignment,
+                    initializer.pointerAddressSpace};
+                if (!language::pointerContractImplicitlyAssignable(
+                        source, declaredPointerContract))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        variable->first()->range(),
+                        "pointer initializer does not satisfy the declared nullability, mutability, provenance, alignment, or address-space contract");
+                }
+            }
         }
 
         if (!isBorrowed && !isRaii && initializer.valid &&
@@ -6357,6 +6426,13 @@ void ProjectMethodBodyModel::analyzeVariable(
         pendingOnePastEndPointer = initializer.onePastEndPointer;
         pendingPointerPointeeReadonly = declaredPointerPointeeReadonly ||
             initializer.pointerPointeeReadonly;
+        if (isVarInferred)
+        {
+            pendingPointerNullable = initializer.pointerNullable;
+            pendingPointerHasProvenance = initializer.pointerHasProvenance;
+            pendingPointerKnownAlignment = initializer.pointerKnownAlignment;
+            pendingPointerAddressSpace = initializer.pointerAddressSpace;
+        }
     }
 
     const std::optional<ScopeName> sameScope = lookupScopeNameInScope(scopeOrdinal, variable->text());
@@ -6407,6 +6483,10 @@ void ProjectMethodBodyModel::analyzeVariable(
     local.isVolatile = isVolatile;
     local.onePastEndPointer = pendingOnePastEndPointer;
     local.pointerPointeeReadonly = pendingPointerPointeeReadonly;
+    local.pointerNullable = pendingPointerNullable;
+    local.pointerHasProvenance = pendingPointerHasProvenance;
+    local.pointerKnownAlignment = pendingPointerKnownAlignment;
+    local.pointerAddressSpace = pendingPointerAddressSpace;
     // El valor de un `const` entero, plegado aqui. Ver el comentario del campo: sirve para
     // contestar "¿el divisor es cero?" y para nada mas.
     if (local.isConst && variable->first() != nullptr &&
@@ -7434,15 +7514,26 @@ void ProjectMethodBodyModel::analyzeReturn(
             return;
         }
     }
-    if (value.pointerPointeeReadonly &&
-        ProjectTypeConversion::isPointer(method->declaredTypeKey) &&
-        !method->declaredPointerPointeeReadonly)
+    if (ProjectTypeConversion::isPointer(method->declaredTypeKey) &&
+        !language::pointerContractImplicitlyAssignable(
+            pointerContract(
+                value.pointerNullable,
+                value.pointerPointeeReadonly,
+                value.pointerHasProvenance,
+                value.pointerKnownAlignment,
+                value.pointerAddressSpace),
+            pointerContract(
+                method->declaredPointerNullable,
+                method->declaredPointerPointeeReadonly,
+                method->declaredPointerHasProvenance,
+                method->declaredPointerKnownAlignment,
+                method->declaredPointerAddressSpace)))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error,
             statement->first()->range(),
-            "return would discard pointer pointee constness; declare the return type as 'T const*' or use const_cast explicitly");
+            "return value does not satisfy the declared pointer nullability, mutability, provenance, alignment, or address-space contract");
         return;
     }
 
@@ -10492,10 +10583,26 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
             if (whenTrue.typeKey == whenFalse.typeKey)
             {
+                if (ProjectTypeConversion::isPointer(whenTrue.typeKey) &&
+                    whenTrue.pointerAddressSpace != whenFalse.pointerAddressSpace)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "conditional pointer branches must use the same address space");
+                    break;
+                }
                 result.typeKey = whenTrue.typeKey;
                 result.valid = true;
                 result.pointerPointeeReadonly = whenTrue.pointerPointeeReadonly ||
                     whenFalse.pointerPointeeReadonly;
+                result.pointerNullable = whenTrue.pointerNullable || whenFalse.pointerNullable;
+                result.pointerHasProvenance = whenTrue.pointerHasProvenance &&
+                    whenFalse.pointerHasProvenance;
+                result.pointerKnownAlignment = std::min(
+                    whenTrue.pointerKnownAlignment, whenFalse.pointerKnownAlignment);
+                result.pointerAddressSpace = whenTrue.pointerAddressSpace;
                 result.onePastEndPointer = whenTrue.onePastEndPointer ||
                     whenFalse.onePastEndPointer;
                 mergeOwnership();
@@ -10525,6 +10632,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.typeKey = nonNull.typeKey;
                 result.valid = true;
                 result.pointerPointeeReadonly = nonNull.pointerPointeeReadonly;
+                result.pointerNullable = true;
+                result.pointerHasProvenance = nonNull.pointerHasProvenance;
+                result.pointerKnownAlignment = nonNull.pointerKnownAlignment;
+                result.pointerAddressSpace = nonNull.pointerAddressSpace;
                 result.onePastEndPointer = nonNull.onePastEndPointer;
                 result.ownership = nonNull.ownership;
                 result.ownershipTransfer = nonNull.ownershipTransfer;
@@ -10641,7 +10752,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.storageOwnership = operand.storageOwnership;
                 const bool targetPointeeReadonly = expression->typeSyntax() != nullptr &&
                     expression->typeSyntax()->isPointeeConst();
+                const language::PointerContract targetPointerContract =
+                    pointerContractFromSyntax(expression->typeSyntax());
                 result.pointerPointeeReadonly = targetPointeeReadonly;
+                result.pointerNullable = targetPointerContract.nullable;
+                result.pointerHasProvenance = targetPointerContract.hasProvenance;
+                result.pointerKnownAlignment = targetPointerContract.knownAlignment;
+                result.pointerAddressSpace = targetPointerContract.addressSpace;
                 result.onePastEndPointer = operand.onePastEndPointer;
                 const bool sourceRawPointer = ProjectTypeConversion::isPointer(operand.typeKey);
                 const bool targetRawPointer = ProjectTypeConversion::isPointer(result.typeKey);
@@ -10660,6 +10777,27 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         "integer/pointer casts require an explicit unsafe { ... } block because provenance is not preserved");
                     result.valid = false;
                     break;
+                }
+                if (result.valid && sourceRawPointer && targetRawPointer)
+                {
+                    const language::PointerContract sourcePointerContract{
+                        operand.pointerNullable,
+                        !operand.pointerPointeeReadonly,
+                        operand.pointerHasProvenance,
+                        operand.pointerKnownAlignment,
+                        operand.pointerAddressSpace};
+                    if (language::pointerCastRequiresUnsafe(
+                            sourcePointerContract, targetPointerContract) &&
+                        unsafeBlockDepth_ == 0)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::NS3030MissingEffectContext,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "pointer cast strengthens nullability, mutability, provenance, alignment, or address-space guarantees and requires unsafe { ... }");
+                        result.valid = false;
+                        break;
+                    }
                 }
                 const std::string_view namedCast = expression->auxiliaryText().starts_with("cast:")
                     ? std::string_view(expression->auxiliaryText()).substr(5U)
@@ -12464,6 +12602,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 result.addressable = true;
                 result.readonlyReceiver = local.isConst;
                 result.pointerPointeeReadonly = local.pointerPointeeReadonly;
+                result.pointerNullable = local.pointerNullable;
+                result.pointerHasProvenance = local.pointerHasProvenance;
+                result.pointerKnownAlignment = local.pointerKnownAlignment;
+                result.pointerAddressSpace = local.pointerAddressSpace;
                 result.onePastEndPointer = local.onePastEndPointer;
                 nameBindings_.push_back(MethodNameBinding{
                     MethodNameBindingKind::Local,
@@ -12551,6 +12693,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             result.storageOwnership = parameter.ownership;
             result.pointerPointeeReadonly = !byReferenceParameter &&
                 parameter.pointerPointeeReadonly;
+            if (!byReferenceParameter)
+            {
+                result.pointerNullable = parameter.pointerNullable;
+                result.pointerHasProvenance = parameter.pointerHasProvenance;
+                result.pointerKnownAlignment = parameter.pointerKnownAlignment;
+                result.pointerAddressSpace = parameter.pointerAddressSpace;
+            }
             if (parameter.ownership != sema::OwnershipKind::None)
             {
                 result.ownershipSourceParameterOrdinal = scopeName->semanticOrdinal;
@@ -12757,6 +12906,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         result.addressable = !field.isBitField;
         result.readonlyReceiver = readonlyThis || field.isReadonly;
         result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
+        result.pointerNullable = field.declaredPointerNullable;
+        result.pointerHasProvenance = field.declaredPointerHasProvenance;
+        result.pointerKnownAlignment = field.declaredPointerKnownAlignment;
+        result.pointerAddressSpace = field.declaredPointerAddressSpace;
         result.assignmentMemberOrdinal = fields.front();
         if (!field.isStatic)
         {
@@ -12834,6 +12987,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 result.assignable = true;
                 result.addressable = true;
                 result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
+                result.pointerNullable = field.declaredPointerNullable;
+                result.pointerHasProvenance = field.declaredPointerHasProvenance;
+                result.pointerKnownAlignment = field.declaredPointerKnownAlignment;
+                result.pointerAddressSpace = field.declaredPointerAddressSpace;
                 result.assignmentMemberOrdinal = *backing;
                 result.receiverTypeKey = thisTypeKey;
                 result.receiverTypeOrdinal = accessingTypeOrdinal;
@@ -13665,6 +13822,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.addressable = !field.isBitField;
         result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
         result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
+        result.pointerNullable = field.declaredPointerNullable;
+        result.pointerHasProvenance = field.declaredPointerHasProvenance;
+        result.pointerKnownAlignment = field.declaredPointerKnownAlignment;
+        result.pointerAddressSpace = field.declaredPointerAddressSpace;
         result.receiverSyntax = typeReceiver ? nullptr : expression->first();
         result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
         result.receiverTypeOrdinal = typeReceiver ? std::nullopt : receiverType;
@@ -13723,6 +13884,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
                 result.assignable = true;
                 result.addressable = true;
                 result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
+                result.pointerNullable = field.declaredPointerNullable;
+                result.pointerHasProvenance = field.declaredPointerHasProvenance;
+                result.pointerKnownAlignment = field.declaredPointerKnownAlignment;
+                result.pointerAddressSpace = field.declaredPointerAddressSpace;
                 result.assignmentMemberOrdinal = *backing;
                 result.receiverSyntax = expression->first();
                 result.receiverTypeKey = receiver.typeKey;
@@ -14142,9 +14307,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                     arguments[argumentOrdinal].pointerPointeeReadonly &&
                     ProjectTypeConversion::isPointer(parameter.typeKey) &&
                     !parameter.pointerPointeeReadonly;
+                const bool violatesPointerContract = !packElement &&
+                    ProjectTypeConversion::isPointer(parameter.typeKey) &&
+                    !language::pointerContractImplicitlyAssignable(
+                        pointerContract(
+                            arguments[argumentOrdinal].pointerNullable,
+                            arguments[argumentOrdinal].pointerPointeeReadonly,
+                            arguments[argumentOrdinal].pointerHasProvenance,
+                            arguments[argumentOrdinal].pointerKnownAlignment,
+                            arguments[argumentOrdinal].pointerAddressSpace),
+                        pointerContract(
+                            parameter.pointerNullable,
+                            parameter.pointerPointeeReadonly,
+                            parameter.pointerHasProvenance,
+                            parameter.pointerKnownAlignment,
+                            parameter.pointerAddressSpace));
                 const bool implicitExtensionReceiverPass =
                     forwardedReceiver != nullptr && argumentOrdinal == 0;
-                if (!conversion.exists() || discardsPointeeConst ||
+                if (!conversion.exists() || discardsPointeeConst || violatesPointerContract ||
                     (!implicitExtensionReceiverPass &&
                      parameter.passKind != arguments[argumentOrdinal].argumentPassKind))
                 {
@@ -14349,6 +14529,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     call.resultTypeKey = callable.declaredTypeKey;
     result.typeKey = callable.declaredTypeKey;
     result.pointerPointeeReadonly = callable.declaredPointerPointeeReadonly;
+    result.pointerNullable = callable.declaredPointerNullable;
+    result.pointerHasProvenance = callable.declaredPointerHasProvenance;
+    result.pointerKnownAlignment = callable.declaredPointerKnownAlignment;
+    result.pointerAddressSpace = callable.declaredPointerAddressSpace;
     result.valid = true;
     result.assignable = callable.isReferenceReturn;
     result.addressable = callable.isReferenceReturn;
@@ -15391,7 +15575,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     resolvedArguments[argumentOrdinal].pointerPointeeReadonly &&
                     ProjectTypeConversion::isPointer(parameter.typeKey) &&
                     !parameter.pointerPointeeReadonly;
-                if (!conversion.exists() || discardsPointeeConst)
+                const bool violatesPointerContract = !packElement &&
+                    ProjectTypeConversion::isPointer(parameter.typeKey) &&
+                    !language::pointerContractImplicitlyAssignable(
+                        pointerContract(
+                            resolvedArguments[argumentOrdinal].pointerNullable,
+                            resolvedArguments[argumentOrdinal].pointerPointeeReadonly,
+                            resolvedArguments[argumentOrdinal].pointerHasProvenance,
+                            resolvedArguments[argumentOrdinal].pointerKnownAlignment,
+                            resolvedArguments[argumentOrdinal].pointerAddressSpace),
+                        pointerContract(
+                            parameter.pointerNullable,
+                            parameter.pointerPointeeReadonly,
+                            parameter.pointerHasProvenance,
+                            parameter.pointerKnownAlignment,
+                            parameter.pointerAddressSpace));
+                if (!conversion.exists() || discardsPointeeConst || violatesPointerContract)
                 {
                     candidateBinding.viable = false;
                 }
@@ -15922,6 +16121,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         }
         call.resultTypeKey = selectedMember.declaredTypeKey;
         result.pointerPointeeReadonly = selectedMember.declaredPointerPointeeReadonly;
+        result.pointerNullable = selectedMember.declaredPointerNullable;
+        result.pointerHasProvenance = selectedMember.declaredPointerHasProvenance;
+        result.pointerKnownAlignment = selectedMember.declaredPointerKnownAlignment;
+        result.pointerAddressSpace = selectedMember.declaredPointerAddressSpace;
         result.ownership = selectedMember.declaredOwnership;
         if (selectedMember.declaredOwnership != sema::OwnershipKind::None)
         {
@@ -18232,6 +18435,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
         result.typeKey = operand.typeKey + '*';
         result.valid = true;
         result.pointerPointeeReadonly = !operand.assignable || operand.readonlyReceiver;
+        result.pointerNullable = false;
+        result.pointerHasProvenance = true;
+        result.pointerKnownAlignment = 1;
+        result.pointerAddressSpace = 0;
         result.onePastEndPointer = operand.onePastEndAddress;
         // C4: `f(ref x)` parses as the address-of expression the callee's pointer parameter
         // expects, carrying the keyword the programmer wrote so the call can be checked against
@@ -18990,6 +19197,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
                 result.typeKey = pointerTypeKey;
                 const ExpressionResult& sourcePointer = leftIsPointer ? left : right;
                 result.pointerPointeeReadonly = sourcePointer.pointerPointeeReadonly;
+                result.pointerNullable = sourcePointer.pointerNullable;
+                result.pointerHasProvenance = sourcePointer.pointerHasProvenance;
+                // An arbitrary element offset preserves provenance and address space, but only
+                // byte alignment is guaranteed without proving the offset is a multiple of the
+                // pointee alignment.
+                result.pointerKnownAlignment = 1;
+                result.pointerAddressSpace = sourcePointer.pointerAddressSpace;
                 result.onePastEndPointer = sourcePointer.onePastEndPointer;
             }
 
@@ -19946,14 +20160,26 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     if (assignmentTargetLocal.has_value() &&
         ProjectTypeConversion::isPointer(locals_[*assignmentTargetLocal].typeKey))
     {
-        if (right.pointerPointeeReadonly &&
-            !locals_[*assignmentTargetLocal].pointerPointeeReadonly)
+        const MethodLocalSymbol& target = locals_[*assignmentTargetLocal];
+        if (!language::pointerContractImplicitlyAssignable(
+                pointerContract(
+                    right.pointerNullable,
+                    right.pointerPointeeReadonly,
+                    right.pointerHasProvenance,
+                    right.pointerKnownAlignment,
+                    right.pointerAddressSpace),
+                pointerContract(
+                    target.pointerNullable,
+                    target.pointerPointeeReadonly,
+                    target.pointerHasProvenance,
+                    target.pointerKnownAlignment,
+                    target.pointerAddressSpace)))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->second()->range(),
-                "assignment would discard pointer pointee constness; use a 'T const*' destination or const_cast explicitly");
+                "assignment does not satisfy the destination pointer nullability, mutability, provenance, alignment, or address-space contract");
             return {};
         }
         // Qualifier/provenance joins are MAY properties. Once any reachable assignment can make
@@ -20694,15 +20920,26 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                     left.typeKey + "'");
             return {};
         }
-        if (right.pointerPointeeReadonly &&
-            ProjectTypeConversion::isPointer(left.typeKey) &&
-            !left.pointerPointeeReadonly)
+        if (ProjectTypeConversion::isPointer(left.typeKey) &&
+            !language::pointerContractImplicitlyAssignable(
+                pointerContract(
+                    right.pointerNullable,
+                    right.pointerPointeeReadonly,
+                    right.pointerHasProvenance,
+                    right.pointerKnownAlignment,
+                    right.pointerAddressSpace),
+                pointerContract(
+                    left.pointerNullable,
+                    left.pointerPointeeReadonly,
+                    left.pointerHasProvenance,
+                    left.pointerKnownAlignment,
+                    left.pointerAddressSpace)))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->second()->range(),
-                "assignment would discard pointer pointee constness; use a 'T const*' destination or const_cast explicitly");
+                "assignment does not satisfy the destination pointer nullability, mutability, provenance, alignment, or address-space contract");
             return {};
         }
         if (raiiTargetLocal.has_value())
