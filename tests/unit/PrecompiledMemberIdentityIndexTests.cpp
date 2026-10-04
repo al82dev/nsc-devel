@@ -14,12 +14,12 @@ int main()
 
     TestContext tests;
     const std::vector<PrecompiledMemberIdentity> identities = {
-        {ClassMemberKind::Method, "type:Math.Vector", "Add", "Add(int)", "?add_int"},
-        {ClassMemberKind::Method, "type:Math.Vector", "Add", "Add(float)", "?add_float"},
-        {ClassMemberKind::Constructor, "type:Math.Vector", ".ctor", ".ctor(int)", "?ctor"},
-        {ClassMemberKind::Method, "type:Math.Vector", "Duplicate", "Duplicate()", "?dup1"},
-        {ClassMemberKind::Method, "type:Math.Vector", "Duplicate", "Duplicate()", "?dup2"},
-        {ClassMemberKind::Method, "type:Math.Vector", "Ignored", "Ignored()", ""}};
+        {ClassMemberKind::Method, "type:Math.Vector", "Add", "Add(int)", "?add_int", {}},
+        {ClassMemberKind::Method, "type:Math.Vector", "Add", "Add(float)", "?add_float", {}},
+        {ClassMemberKind::Constructor, "type:Math.Vector", ".ctor", ".ctor(int)", "?ctor", {}},
+        {ClassMemberKind::Method, "type:Math.Vector", "Duplicate", "Duplicate()", "?dup1", {}},
+        {ClassMemberKind::Method, "type:Math.Vector", "Duplicate", "Duplicate()", "?dup2", {}},
+        {ClassMemberKind::Method, "type:Math.Vector", "Ignored", "Ignored()", "", {}}};
 
     const PrecompiledMemberIdentityIndex index(identities);
     const auto exact = index.find(
