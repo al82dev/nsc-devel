@@ -108,7 +108,7 @@ if HEADLESS:
     QProcess = QSettings = QThread = QTimer = Qt = QUrl = _GuiUnavailable
     QColor = QDesktopServices = QFontDatabase = QKeySequence = QShortcut = _GuiUnavailable
     QTextCharFormat = QTextCursor = _GuiUnavailable
-    QAbstractItemView = QApplication = QCheckBox = QComboBox = QDockWidget = _GuiUnavailable
+    QAbstractItemView = QApplication = QCheckBox = QComboBox = QDialog = QDockWidget = _GuiUnavailable
     QFormLayout = QGridLayout = QGroupBox = QHBoxLayout = QHeaderView = QLabel = _GuiUnavailable
     QLineEdit = QListWidget = QListWidgetItem = QMessageBox = QPlainTextEdit = _GuiUnavailable
     QProgressBar = QPushButton = QSpinBox = QTableWidget = QTableWidgetItem = _GuiUnavailable
@@ -130,6 +130,7 @@ else:
             QApplication,
             QCheckBox,
             QComboBox,
+            QDialog,
             QDockWidget,
             QFormLayout,
             QGridLayout,
@@ -713,6 +714,89 @@ def utc_stamp() -> str:
 def safe_name(text: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", text).strip("._")
     return cleaned or "item"
+
+
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_SOURCE_DIAGNOSTIC = re.compile(
+    r"^(?P<location>(?:[A-Za-z]:)?[^\r\n]+?(?:\(\d+(?:,\d+)?\)|:\d+:\d+)):\s*"
+    r"(?:fatal\s+)?error(?:\[[^]]+\])?:\s*(?P<message>.+)$"
+)
+
+
+def first_actionable_log_diagnostic(log_path: str | Path) -> str:
+    """Return one useful root diagnostic instead of a complete compiler cascade."""
+    path = Path(log_path)
+    if not path.is_file():
+        return ""
+    tool_error = ""
+    cmake_error = ""
+    capture_cmake_detail = False
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as stream:
+            for line_number, raw_line in enumerate(stream):
+                if line_number >= 50000:
+                    break
+                line = _ANSI_ESCAPE.sub("", raw_line).strip()
+                if not line:
+                    continue
+                source = _SOURCE_DIAGNOSTIC.match(line)
+                if source is not None:
+                    return f"{source.group('location')}: {source.group('message').strip()}"
+                if line.startswith("nsc: error:") and not tool_error:
+                    tool_error = line.removeprefix("nsc: error:").strip()
+                elif line.startswith("CMake Error at ") and not cmake_error:
+                    cmake_error = line
+                    capture_cmake_detail = True
+                elif capture_cmake_detail and not line.startswith("Call Stack"):
+                    cmake_error += " — " + line
+                    capture_cmake_detail = False
+    except OSError:
+        return ""
+    return tool_error or cmake_error
+
+
+def condensed_failures(failures: Iterable[dict]) -> list[dict]:
+    """Group repeated failures by their first actionable diagnostic.
+
+    Gate-closing failures are consequences when another failure already exists, so they are hidden
+    from this summary while remaining intact in metadata.json, the error tabs and the full logs.
+    """
+    rows = [dict(failure) for failure in failures]
+    causal = [
+        row for row in rows
+        if not str(row.get("source", "")).startswith((
+            "Cerrar validación", "Certificar baseline",
+        ))
+    ]
+    if causal:
+        rows = causal
+    groups: dict[tuple[str, str, str], dict] = {}
+    for row in rows:
+        linker = str(row.get("linker", "Compilador"))
+        optimization = str(row.get("optimization", "General")).lstrip("-")
+        log_path = str(row.get("error_log", ""))
+        cause = first_actionable_log_diagnostic(log_path) or str(
+            row.get("detail", "Error sin diagnóstico condensable")
+        )
+        key = (linker, optimization, cause)
+        group = groups.setdefault(
+            key,
+            {
+                "linker": linker,
+                "optimization": optimization,
+                "cause": cause,
+                "sources": [],
+                "logs": [],
+                "occurrences": 0,
+            },
+        )
+        source = str(row.get("source", ""))
+        if source and source not in group["sources"]:
+            group["sources"].append(source)
+        if log_path and log_path not in group["logs"]:
+            group["logs"].append(log_path)
+        group["occurrences"] += 1
+    return list(groups.values())
 
 
 def cleanup_targets(configured_builds: Iterable[Path]) -> tuple[list[Path], list[Path]]:
@@ -3802,6 +3886,7 @@ class MainWindow(QMainWindow):
         self.inventory_process: QProcess | None = None
         self.inventory_bytes = bytearray()
         self.current_run_dir: Path | None = None
+        self.current_failures: list[dict] = []
         self.stage_rows_by_name: dict[str, list[tuple[str, int]]] = {}
         self.active_result_channels: list[str] = ["Compilador"]
         self.baseline_cleanup_available = False
@@ -5591,6 +5676,7 @@ class MainWindow(QMainWindow):
             self.stage_tables[channel].setRowCount(0)
         self.stage_rows_by_name.clear()
         self.current_run_dir = None
+        self.current_failures.clear()
         self.open_button.setEnabled(False)
         self.compiler_start_button.setEnabled(False)
         self.compiler_install_button.setEnabled(False)
@@ -5765,6 +5851,7 @@ class MainWindow(QMainWindow):
 
     @Slot(dict)
     def on_failure_found(self, failure: dict) -> None:
+        self.current_failures.append(dict(failure))
         channel = self._known_output_channel(str(failure.get("linker", "Compilador")))
         optimization = self._known_optimization(str(failure.get("optimization", "General")))
         error_table = self.channel_error_tables[channel]
@@ -5813,6 +5900,67 @@ class MainWindow(QMainWindow):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_path)))
             return
         QMessageBox.warning(self, APP_NAME, f"El log no existe:\n{log_path}")
+
+    def show_condensed_errors(self) -> None:
+        groups = condensed_failures(self.current_failures)
+        if not groups:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Resumen condensado de errores")
+        dialog.resize(1180, 460)
+        layout = QVBoxLayout(dialog)
+        omitted = len(self.current_failures) - sum(
+            int(group["occurrences"]) for group in groups
+        )
+        summary = (
+            f"{len(self.current_failures)} fallo(s) registrados · "
+            f"{len(groups)} causa(s) única(s)"
+        )
+        if omitted:
+            summary += f" · {omitted} cierre(s) derivado(s) omitido(s)"
+        layout.addWidget(QLabel(summary))
+
+        table = QTableWidget(len(groups), 5)
+        table.setHorizontalHeaderLabels(
+            ["Canal", "Optimización", "Causa condensada", "Afecta", "Log"]
+        )
+        table.verticalHeader().setVisible(False)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        for row, group in enumerate(groups):
+            logs = list(group["logs"])
+            log_path = logs[0] if logs else ""
+            values = (
+                str(group["linker"]),
+                str(group["optimization"]),
+                str(group["cause"]),
+                ", ".join(str(source) for source in group["sources"]),
+                Path(log_path).name if log_path else "",
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setData(Qt.ItemDataRole.UserRole, log_path)
+                item.setToolTip(value)
+                table.setItem(row, column, item)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        table.itemDoubleClicked.connect(self.open_error_log)
+        layout.addWidget(table, 1)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        open_results = QPushButton("Abrir resultados")
+        open_results.clicked.connect(self.open_results)
+        buttons.addWidget(open_results)
+        close = QPushButton("Cerrar")
+        close.clicked.connect(dialog.accept)
+        buttons.addWidget(close)
+        layout.addLayout(buttons)
+        dialog.exec()
 
     def _result_channels_for_stage(self, name: str) -> list[str]:
         if name.endswith("[lld-link]"):
@@ -5875,6 +6023,8 @@ class MainWindow(QMainWindow):
         if summary.get("operation") == "tests":
             QTimer.singleShot(0, self.refresh_ctests)
         QTimer.singleShot(0, self.refresh_history)
+        if summary.get("status") == "failed" and self.current_failures:
+            QTimer.singleShot(0, self.show_condensed_errors)
 
     @Slot(dict)
     def on_cleanup_finished(self, summary: dict) -> None:

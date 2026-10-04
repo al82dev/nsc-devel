@@ -88,6 +88,64 @@ class NscBuilderPipelineTests(unittest.TestCase):
                 problems,
             )
 
+    def test_condensed_failures_groups_shared_root_cause_and_omits_gate_closure(self) -> None:
+        with tempfile.TemporaryDirectory(dir=nscbuilder.ROOT) as temporary:
+            root = Path(temporary)
+            first = root / "first.log"
+            second = root / "second.log"
+            diagnostic = (
+                "A:\\src\\HashSet.ns:238:21: error[NS3002]: "
+                "match expression syntax requires <Language>3</Language>\n"
+            )
+            first.write_text(diagnostic, encoding="utf-8")
+            second.write_text(diagnostic, encoding="utf-8")
+            rows = [
+                {
+                    "linker": "NSLink",
+                    "optimization": "O0",
+                    "source": "c27",
+                    "detail": "falló la emisión",
+                    "error_log": str(first),
+                },
+                {
+                    "linker": "NSLink",
+                    "optimization": "O0",
+                    "source": "c52",
+                    "detail": "falló la emisión",
+                    "error_log": str(second),
+                },
+                {
+                    "linker": "NSLink",
+                    "optimization": "General",
+                    "source": "Cerrar validación de alcance reducido",
+                    "detail": "La etapa terminó con código 1",
+                    "error_log": str(root / "gate.log"),
+                },
+            ]
+
+            groups = nscbuilder.condensed_failures(rows)
+
+            self.assertEqual(len(groups), 1)
+            self.assertEqual(groups[0]["occurrences"], 2)
+            self.assertEqual(groups[0]["sources"], ["c27", "c52"])
+            self.assertIn("match expression syntax", groups[0]["cause"])
+
+    def test_condensed_failure_extracts_msvc_diagnostic(self) -> None:
+        with tempfile.TemporaryDirectory(dir=nscbuilder.ROOT) as temporary:
+            log = Path(temporary) / "build.log"
+            log.write_text(
+                "FAILED: object\n"
+                "A:\\tests\\Fixture.cpp(17,84): error: missing field initializer\n",
+                encoding="utf-8",
+            )
+
+            cause = nscbuilder.first_actionable_log_diagnostic(log)
+
+            self.assertEqual(
+                cause,
+                "A:\\tests\\Fixture.cpp(17,84): missing field initializer",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
