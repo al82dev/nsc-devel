@@ -112,17 +112,20 @@ public class Program
     const std::string ir = dumpIr(root / "ComThunk.nsproj", diagnostic);
     tests.expect(!ir.empty(), "COM thunk fixture lowers to LLVM (" + diagnostic + ")");
     tests.expect(ir.find("boundary.catchswitch") != std::string::npos &&
-            ir.find("boundary.catchpad") != std::string::npos,
-        "COM thunk contains a foreign-boundary catchswitch and catchpad");
+            ir.find("boundary.exception.catchpad") != std::string::npos &&
+            ir.find("boundary.panic.catchpad") != std::string::npos,
+        "COM thunk contains the foreign-boundary catchswitch and both NativeSharp catchpads");
     tests.expect(ir.find("call void @__nativesharp_trap(i32 13)") != std::string::npos,
         "COM thunk maps an escaping exception to CallbackExceptionEscape");
     diagnostic.clear();
-    tests.expect(compileAndRun(
-        root / "ComThunk.nsproj", root / "ComThunkO0.exe", "-O0", 141, diagnostic),
+    const bool o0Passed = compileAndRun(
+        root / "ComThunk.nsproj", root / "ComThunkO0.exe", "-O0", 141, diagnostic);
+    tests.expect(o0Passed,
         "COM thunk contains an exception at O0 (" + diagnostic + ")");
     diagnostic.clear();
-    tests.expect(compileAndRun(
-        root / "ComThunk.nsproj", root / "ComThunkO2.exe", "-O2", 141, diagnostic),
+    const bool o2Passed = compileAndRun(
+        root / "ComThunk.nsproj", root / "ComThunkO2.exe", "-O2", 141, diagnostic);
+    tests.expect(o2Passed,
         "COM thunk contains an exception at O2 (" + diagnostic + ")");
 
     std::filesystem::remove_all(root, filesystemError);
