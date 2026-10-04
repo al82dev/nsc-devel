@@ -1,6 +1,7 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/MigrationAnalyzer.h"
+#include "nativesharp/Driver/MigrationCompatibilityMatrix.h"
 
 #include "../support/TestContext.h"
 
@@ -99,6 +100,35 @@ byte suppressed = 7;
         });
     tests.expect(!hasAnotherSafeFix,
         "safe migration fixes are idempotent and ambiguous findings remain manual");
+
+    interop::LibraryApiDiffReport apiDiff;
+    apiDiff.sourceCompatible = false;
+    apiDiff.abiCompatible = false;
+    apiDiff.oldSourceFingerprint = "source-v2";
+    apiDiff.newSourceFingerprint = "source-v3";
+    apiDiff.oldAbiSurfaceFingerprint = "surface-v2";
+    apiDiff.newAbiSurfaceFingerprint = "surface-v3";
+    apiDiff.changes = {
+        {interop::LibraryApiChangeImpact::Additive, "source", "Added", "added"},
+        {interop::LibraryApiChangeImpact::SourceBreaking, "source", "Renamed", "changed"},
+        {interop::LibraryApiChangeImpact::AbiBreaking, "abi", "Layout", "changed"}};
+    const driver::MigrationCompatibilityMatrix matrix =
+        driver::buildMigrationCompatibilityMatrix(apiDiff, "metadata-v2", "metadata-v3");
+    const std::string matrixText = driver::renderMigrationCompatibilityMatrix(matrix);
+    tests.expect(matrix.changes.size() == 3 &&
+            matrix.changes[0].sourceClassification == "source-compatible" &&
+            matrix.changes[0].abiClassification == "abi-neutral" &&
+            !matrix.changes[0].requiresConsumerRebuild &&
+            matrix.changes[1].sourceClassification == "source-breaking" &&
+            matrix.changes[1].requiresConsumerRebuild &&
+            matrix.changes[2].abiClassification == "abi-breaking" &&
+            matrix.changes[2].requiresConsumerRebuild,
+        "each API change receives independent source/ABI and rebuild classifications");
+    tests.expect(matrixText.find("old-source-fingerprint=source-v2") != std::string::npos &&
+            matrixText.find("new-abi-surface-fingerprint=surface-v3") != std::string::npos &&
+            matrixText.find("old-metadata-abi-fingerprint=metadata-v2") != std::string::npos &&
+            matrixText.find("consumer-rebuild=yes") != std::string::npos,
+        "migration matrix ties every classification to source, ABI-surface, and NSMETA fingerprints");
     std::error_code removeError;
     std::filesystem::remove(path, removeError);
     std::filesystem::remove(migratedPath, removeError);

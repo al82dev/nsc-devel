@@ -12,6 +12,7 @@
 #include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/MigrationAnalyzer.h"
+#include "nativesharp/Driver/MigrationCompatibilityMatrix.h"
 #include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
 #include "nativesharp/Driver/PromotionAct.h"
@@ -5254,6 +5255,36 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         return diffLibraryApi(args[1], args[2], output, error);
     }
 
+    if (args.size() == 3 && args[0] == "--migration-compatibility-matrix")
+    {
+        interop::LibraryMetadataCodec codec;
+        interop::LibraryMetadata oldMetadata;
+        interop::LibraryMetadata newMetadata;
+        std::string metadataError;
+        if (!codec.read(std::filesystem::path(args[1]), oldMetadata, metadataError) ||
+            !codec.verifyCurrentCompiler(oldMetadata, metadataError))
+        {
+            error << "nsc: error: invalid old NativeSharp library metadata: "
+                  << metadataError << '\n';
+            return ExitCode::CompilationError;
+        }
+        if (!codec.read(std::filesystem::path(args[2]), newMetadata, metadataError) ||
+            !codec.verifyCurrentCompiler(newMetadata, metadataError))
+        {
+            error << "nsc: error: invalid new NativeSharp library metadata: "
+                  << metadataError << '\n';
+            return ExitCode::CompilationError;
+        }
+        const interop::LibraryApiDiffReport apiDiff =
+            interop::LibraryApiDiffer::compare(oldMetadata, newMetadata);
+        const MigrationCompatibilityMatrix matrix = buildMigrationCompatibilityMatrix(
+            apiDiff,
+            interop::LibraryMetadataCodec::fingerprintHex(oldMetadata.abiFingerprint),
+            interop::LibraryMetadataCodec::fingerprintHex(newMetadata.abiFingerprint));
+        output << renderMigrationCompatibilityMatrix(matrix);
+        return ExitCode::Success;
+    }
+
     if (args.size() == 3 && args[0] == "--abi-diff")
     {
         return diffLibraryAbi(args[1], args[2], output, error);
@@ -5576,6 +5607,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --verify-migration-baseline <file.baseline>\n"
            << "  nsc --analyze-migration <source.ns>\n"
            << "  nsc --apply-migration-fixes <source.ns> -o <migrated.ns>\n"
+           << "  nsc --migration-compatibility-matrix <old.nsmeta> <new.nsmeta>\n"
            << "  nsc --print-migration-guide\n"
            << "  nsc --write-migration-guide <file.guide>\n"
            << "  nsc --verify-migration-guide <file.guide>\n"

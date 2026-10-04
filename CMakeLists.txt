@@ -580,6 +580,7 @@ add_library(nsc_driver STATIC
     src/Driver/InstallationVerifier.cpp
     src/Driver/MigrationBaseline.cpp
     src/Driver/MigrationAnalyzer.cpp
+    src/Driver/MigrationCompatibilityMatrix.cpp
     src/Driver/MigrationGuide.cpp
     src/Driver/NumericContract.cpp
     src/Driver/PackageLifecycle.cpp
