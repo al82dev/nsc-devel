@@ -70,6 +70,11 @@ void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
     output.optional(node->memberOrdinal);
     output.optional(node->namespaceFunctionOrdinal);
     output.optional(node->secondaryMemberOrdinal);
+    output.optional(node->resultSuccessTestMemberOrdinal);
+    output.optional(node->resultSuccessExtractorMemberOrdinal);
+    output.optional(node->resultErrorExtractorMemberOrdinal);
+    output.optional(node->resultErrorFactoryMemberOrdinal);
+    output.optional(node->resultErrorConversionMemberOrdinal);
     output.optional(node->localOrdinal);
     output.optional(node->parameterOrdinal);
     output.optional(node->constructionOrdinal);
@@ -92,6 +97,13 @@ void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
     output.scalar(node->switchHasDefault);
     output.scalar(node->immediate);
     output.scalar(node->secondaryImmediate);
+    output.scalar(node->resultSuccessTag);
+    output.scalar(node->resultErrorTag);
+    output.scalar(node->resultReturnErrorTag);
+    output.text(node->resultSourceCarrierTypeKey);
+    output.text(node->resultSourceErrorTypeKey);
+    output.text(node->resultReturnCarrierTypeKey);
+    output.text(node->resultReturnErrorTypeKey);
     output.scalar(node->alignment);
     output.optional(node->bitOffset);
     output.optional(node->bitWidth);
@@ -127,6 +139,11 @@ void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
     output.scalars(node->argumentParameterOrdinals);
     output.text(node->calleeName);
     output.text(node->secondaryCalleeName);
+    output.text(node->resultSuccessTestCalleeName);
+    output.text(node->resultSuccessExtractorCalleeName);
+    output.text(node->resultErrorExtractorCalleeName);
+    output.text(node->resultErrorFactoryCalleeName);
+    output.text(node->resultErrorConversionCalleeName);
     output.texts(node->argumentTypeKeys);
     output.scalar(node->children.size());
     for (const auto& child : node->children) writeNode(output, child.get());

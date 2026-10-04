@@ -147,7 +147,13 @@ enum class AstNodeKind
     AssociatedConstantDeclaration,
     // NativeSharp 3.0 T05-F06. Container only: productive extension members are lowered by the
     // parser to ordinary namespace functions with a synthetic receiver parameter.
-    ExtensionDeclaration
+    ExtensionDeclaration,
+
+    // NativeSharp 3.0 T07-F01. `result?` consumes one compatible Result variant. first() is the
+    // carrier expression. The semantic binding freezes both variant contracts, the optional
+    // explicit error adapter, and the cleanup path used by the conditional early return.
+    // Appended so every serialized 2.x/earlier-3.0 node identity remains stable.
+    ResultPropagationExpression
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

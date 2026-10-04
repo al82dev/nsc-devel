@@ -122,7 +122,8 @@ artefactos y ejecutables usados estuvieron en A: y los temporales se eliminaron 
 
 ## Deuda explícita
 
-- `Result<T,E>` productivo y operador postfix `?` con early return, conversion y cleanup.
+- ~~`Result<T,E>` productivo y operador postfix `?` con early return, conversión y cleanup.~~
+  Cerrado por `NS3-T07-F01`; véase `items/NS3-T07-F01-result-propagation.md`.
 - `throws E` en firmas, effect checking de callers, sets tipados y metadata cross-module.
 - `never` escribible y coerción bottom en expresiones/overloads/generics/match.
 - `loop { break value; }`, labels y unificación de tipos/lifetimes.

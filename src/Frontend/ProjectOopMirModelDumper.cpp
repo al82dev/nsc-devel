@@ -141,6 +141,21 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
     if (!node->calleeName.empty()) output << " callee=" << node->calleeName;
     if (!node->secondaryCalleeName.empty())
         output << " secondary-callee=" << node->secondaryCalleeName;
+    if (node->kind == ProjectOopMirNodeKind::ResultPropagation)
+        output << " source-carrier=" << node->resultSourceCarrierTypeKey
+               << " success-tag=" << node->resultSuccessTag
+               << " error=" << node->resultSourceErrorTypeKey
+               << " error-tag=" << node->resultErrorTag
+               << " return-carrier=" << node->resultReturnCarrierTypeKey
+               << " return-error=" << node->resultReturnErrorTypeKey
+               << " return-error-tag=" << node->resultReturnErrorTag
+               << " success-test=" << node->resultSuccessTestCalleeName
+               << " success-extractor=" << node->resultSuccessExtractorCalleeName
+               << " error-extractor=" << node->resultErrorExtractorCalleeName
+               << " error-factory=" << node->resultErrorFactoryCalleeName
+               << (node->resultErrorConversionCalleeName.empty()
+                    ? " conversion=identity" :
+                      " conversion=" + node->resultErrorConversionCalleeName);
     if (node->operation != lexer::TokenKind::Invalid) output << " op=" << lexer::tokenKindName(node->operation);
     if (node->conversionKind.has_value()) output << " conversion=" << projectConversionKindName(*node->conversionKind);
     if (node->kind == ProjectOopMirNodeKind::Deallocate)

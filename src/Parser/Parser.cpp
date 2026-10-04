@@ -3706,14 +3706,16 @@ ast::AstNode* Parser::parseVariantDeclaration()
                 makeIdentifierExpression(item.range, "__nsc_variant_result"),
                 payloadFieldName);
             payload = makeMemberExpression(payload, "__nsc_case_" + item.name);
+            ast::AstNode* payloadValue = makeMove(
+                makeIdentifierExpression(item.range, "value"), item.range);
+            payloadValue->setAuxiliaryText("variant-payload-transfer");
             factoryBody->addChild(makeExpressionStatement(makeAssignmentExpression(
-                payload, makeMove(
-                    makeIdentifierExpression(item.range, "value"), item.range))));
+                payload, payloadValue)));
         }
-        factoryBody->addChild(makeReturn(
-            makeMove(
-                makeIdentifierExpression(item.range, "__nsc_variant_result"), item.range),
-            item.range));
+        ast::AstNode* resultMove = makeMove(
+            makeIdentifierExpression(item.range, "__nsc_variant_result"), item.range);
+        resultMove->setAuxiliaryText("variant-result-transfer");
+        factoryBody->addChild(makeReturn(resultMove, item.range));
         factory->setFirst(factoryBody);
         node->addChild(factory);
 
@@ -3749,9 +3751,11 @@ ast::AstNode* Parser::parseVariantDeclaration()
                 "variant-case-extract:" + item.name + ":" + std::to_string(caseIndex));
             markPublic(payloadMethod);
             ast::AstNode* payloadBody = makeBlock(item.range);
-            payloadBody->addChild(makeReturn(makeMove(makeMemberExpression(
+            ast::AstNode* payloadMove = makeMove(makeMemberExpression(
                 makeIdentifierExpression(item.range, payloadFieldName),
-                "__nsc_case_" + item.name), item.range), item.range));
+                "__nsc_case_" + item.name), item.range);
+            payloadMove->setAuxiliaryText("variant-payload-extract");
+            payloadBody->addChild(makeReturn(payloadMove, item.range));
             payloadMethod->setFirst(payloadBody);
             node->addChild(payloadMethod);
         }
@@ -11883,6 +11887,19 @@ ast::AstNode* Parser::parsePostfixExpression()
             continue;
         }
 
+        if (at(TokenKind::Question) && !questionBeginsConditional())
+        {
+            const lexer::Token& operation = consume();
+            requireEdition3(operation.range(), "the Result propagation operator '?'");
+            ast::AstNode* propagation = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::ResultPropagationExpression,
+                SourceRange(expression->range().begin(), operation.range().end()));
+            propagation->setTokenKind(TokenKind::Question);
+            propagation->setFirst(expression);
+            expression = propagation;
+            continue;
+        }
+
         if (atContextualKeyword("with"))
         {
             expression = parseWithExpression(expression);
@@ -11893,6 +11910,60 @@ ast::AstNode* Parser::parsePostfixExpression()
     }
 
     return expression;
+}
+
+bool Parser::questionBeginsConditional() const noexcept
+{
+    if (!at(TokenKind::Question)) return false;
+
+    // `?` is both a postfix Result operator and the opener of `condition ? a : b`.  Looking only
+    // at the following token is insufficient (`result? + 1` and `condition ? +1 : 0` share it),
+    // so find the colon owned by this exact nesting level. Nested ternaries consume their own
+    // colons; delimiters end the current expression. This keeps the existing conditional grammar
+    // intact while allowing propagation to participate in every higher-precedence expression.
+    std::size_t parentheses = 0;
+    std::size_t brackets = 0;
+    std::size_t braces = 0;
+    std::size_t nestedQuestions = 0;
+    for (std::size_t cursor = index_ + 1U; cursor < tokens_.size(); ++cursor)
+    {
+        const TokenKind kind = tokens_[cursor].kind();
+        switch (kind)
+        {
+            case TokenKind::LeftParen: ++parentheses; break;
+            case TokenKind::LeftBracket: ++brackets; break;
+            case TokenKind::LeftBrace: ++braces; break;
+            case TokenKind::RightParen:
+                if (parentheses != 0) { --parentheses; break; }
+                if (brackets == 0 && braces == 0) return false;
+                break;
+            case TokenKind::RightBracket:
+                if (brackets != 0) { --brackets; break; }
+                if (parentheses == 0 && braces == 0) return false;
+                break;
+            case TokenKind::RightBrace:
+                if (braces != 0) { --braces; break; }
+                if (parentheses == 0 && brackets == 0) return false;
+                break;
+            case TokenKind::Question:
+                if (parentheses == 0 && brackets == 0 && braces == 0) ++nestedQuestions;
+                break;
+            case TokenKind::Colon:
+                if (parentheses == 0 && brackets == 0 && braces == 0)
+                {
+                    if (nestedQuestions == 0) return true;
+                    --nestedQuestions;
+                }
+                break;
+            case TokenKind::Comma:
+            case TokenKind::Semicolon:
+            case TokenKind::EndOfFile:
+                if (parentheses == 0 && brackets == 0 && braces == 0) return false;
+                break;
+            default: break;
+        }
+    }
+    return false;
 }
 
 ast::AstNode* Parser::parseWithExpression(ast::AstNode* source)

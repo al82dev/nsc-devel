@@ -351,6 +351,7 @@ private:
     ast::AstNode* parseMultiplicativeExpression();
     ast::AstNode* parseUnaryExpression();
     ast::AstNode* parsePostfixExpression();
+    bool questionBeginsConditional() const noexcept;
     ast::AstNode* parsePrimaryExpression();
     ast::AstNode* parseDeconstructionPattern();
     ast::AstNode* parseWithExpression(ast::AstNode* source);

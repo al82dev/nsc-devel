@@ -793,6 +793,7 @@ bool ProjectMethodBodyModel::build(
     std::size_t callDemandCursor = 0;
     std::size_t delegateDemandCursor = 0;
     std::size_t optionalDemandCursor = 0;
+    std::size_t resultPropagationDemandCursor = 0;
     while (workCursor < callableWorklist.size())
     {
         const std::size_t waveEnd = callableWorklist.size();
@@ -950,6 +951,27 @@ bool ProjectMethodBodyModel::build(
                 optionalCarrierBindings_[optionalDemandCursor];
             for (const std::size_t target :
                  {binding.hasValueMemberOrdinal, binding.uncheckedValueMemberOrdinal})
+            {
+                if (isDeferredGenericMethod(target) &&
+                    demandedGenericMethods.insert(target).second)
+                {
+                    newlyDemanded.push_back(target);
+                }
+            }
+        }
+        for (; resultPropagationDemandCursor < resultPropagationBindings_.size();
+             ++resultPropagationDemandCursor)
+        {
+            const MethodResultPropagationBinding& binding =
+                resultPropagationBindings_[resultPropagationDemandCursor];
+            std::vector<std::size_t> targets{
+                binding.sourceSuccessTestMemberOrdinal,
+                binding.sourceSuccessExtractorMemberOrdinal,
+                binding.sourceErrorExtractorMemberOrdinal,
+                binding.returnErrorFactoryMemberOrdinal};
+            if (binding.errorConversionMemberOrdinal.has_value())
+                targets.push_back(*binding.errorConversionMemberOrdinal);
+            for (const std::size_t target : targets)
             {
                 if (isDeferredGenericMethod(target) &&
                     demandedGenericMethods.insert(target).second)
@@ -2584,6 +2606,12 @@ std::span<const MethodOptionalCarrierBinding>
 ProjectMethodBodyModel::optionalCarrierBindings() const noexcept
 {
     return optionalCarrierBindings_;
+}
+
+std::span<const MethodResultPropagationBinding>
+ProjectMethodBodyModel::resultPropagationBindings() const noexcept
+{
+    return resultPropagationBindings_;
 }
 
 std::span<const MethodRangeSliceBinding>
@@ -7587,6 +7615,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             break;
         case ast::AstNodeKind::MoveExpression:
         {
+            const bool compilerVariantPayloadTransfer =
+                expression->auxiliaryText() == "variant-payload-transfer";
+            const bool compilerVariantPayloadExtract =
+                expression->auxiliaryText() == "variant-payload-extract";
+            const bool compilerVariantResultTransfer =
+                expression->auxiliaryText() == "variant-result-transfer";
+            const bool moveAllowed = allowMove || compilerVariantPayloadTransfer ||
+                compilerVariantPayloadExtract || compilerVariantResultTransfer;
             // A field/element move mutates one slot without consuming its containing owner. Find
             // the named owner at the root of that storage expression so an outstanding borrowed
             // view cannot observe the mutation behind the borrow checker's back.
@@ -7698,7 +7734,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             // y hace el load-and-empty de siempre, gobernado por `clearSourceStorage`, que sale
             // del tipo del ELEMENTO. Un arreglo fijo de un tipo por valor sigue siendo el no-op
             // que ya era.
-            if (allowMove && expression->first() != nullptr &&
+            if (moveAllowed && expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::IndexExpression)
             {
                 const std::optional<ScopeName> partialRoot = partialMoveRoot(expression->first());
@@ -7782,9 +7818,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 }
                 const ClassMemberSymbol& sourceField =
                     memberModel_->members()[*fieldSource.assignmentMemberOrdinal];
+                const bool compilerVariantPayloadExtract =
+                    expression->auxiliaryText() == "variant-payload-extract";
                 const bool movableStorageField = sourceField.kind == ClassMemberKind::Field &&
                     !sourceField.isStatic &&
-                    (sourceField.declaredOwnership == sema::OwnershipKind::Owned ||
+                    (compilerVariantPayloadExtract ||
+                     sourceField.declaredOwnership == sema::OwnershipKind::Owned ||
                      memberModel_->typeIsMoveOnly(sourceField.declaredTypeKey));
                 if (!movableStorageField) return false;
 
@@ -7863,7 +7902,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.ownershipTransfer = true;
                 return true;
             };
-            if (allowMove && expression->first() != nullptr &&
+            if (moveAllowed && expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::MemberExpression)
             {
                 const std::optional<ScopeName> partialRoot = partialMoveRoot(expression->first());
@@ -7881,7 +7920,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     "move-only field");
                 break;
             }
-            if (!allowMove || expression->first() == nullptr ||
+            if (!moveAllowed || expression->first() == nullptr ||
                 expression->first()->kind() != ast::AstNodeKind::IdentifierExpression)
             {
                 diagnostics.report(
@@ -7922,8 +7961,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     break;
                 }
                 const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
-                const bool sourceRequiresMove = local.isRaii || local.isMoveOnly;
-                copiedForDefer = deferValueCapture && !sourceRequiresMove;
+                const bool sourceRequiresMove = local.isRaii || local.isMoveOnly ||
+                    compilerVariantResultTransfer;
+                copiedForDefer = (deferValueCapture || compilerVariantPayloadTransfer) &&
+                    !sourceRequiresMove;
                 if (!sourceRequiresMove && !copiedForDefer)
                 {
                     diagnostics.report(
@@ -8036,8 +8077,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 const bool sourceRequiresMove =
                     parameter.ownership == sema::OwnershipKind::Owned ||
                     (parameter.passKind == ParameterPassKind::Value &&
-                     memberModel_->typeIsMoveOnly(parameter.typeKey));
-                copiedForDefer = deferValueCapture && !sourceRequiresMove;
+                     memberModel_->typeIsMoveOnly(parameter.typeKey)) ||
+                    compilerVariantResultTransfer;
+                copiedForDefer = (deferValueCapture || compilerVariantPayloadTransfer) &&
+                    !sourceRequiresMove;
                 if (!sourceRequiresMove && !copiedForDefer)
                 {
                     diagnostics.report(
@@ -8220,6 +8263,148 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         case ast::AstNodeKind::CallExpression:
             result = analyzeCall(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
             break;
+        case ast::AstNodeKind::ResultPropagationExpression:
+        {
+            if (languageEdition_ != language::LanguageEdition::V3)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "the Result propagation operator '?' requires language edition 3");
+                break;
+            }
+            if (!finallyStack_.empty())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidReturn,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "Result propagation cannot leave a finally block");
+                break;
+            }
+
+            const ClassMemberSymbol* callable = methodSymbol(methodMemberOrdinal);
+            const std::string returnTypeKey = currentLambdaOrdinal_.has_value()
+                ? currentLambdaReturnTypeKey_
+                : callable != nullptr ? callable->declaredTypeKey : std::string("<error>");
+            if (callable == nullptr || callable->kind == ClassMemberKind::Constructor ||
+                callable->kind == ClassMemberKind::Destructor || returnTypeKey == "builtin:void")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidReturn,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "Result propagation requires a value-returning callable");
+                break;
+            }
+
+            const ExpressionResult operand = analyzeExpression(
+                expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+                false, false, true);
+            if (!operand.valid) break;
+
+            std::optional<MethodResultPropagationBinding> source =
+                resolveResultCarrier(operand.typeKey);
+            if (!source.has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->first() != nullptr
+                        ? expression->first()->range() : expression->range(),
+                    "operand of postfix '?' must be a two-case variant with exactly "
+                    "Ok(value) and Error(error) cases");
+                break;
+            }
+
+            std::optional<MethodResultPropagationBinding> destination =
+                resolveResultCarrier(returnTypeKey);
+            if (!destination.has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidReturn,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "a callable using postfix '?' must return a compatible Ok/Error variant");
+                break;
+            }
+
+            if (memberModel_ != nullptr && memberModel_->typeIsMoveOnly(operand.typeKey) &&
+                operand.addressable && !operand.ownershipTransfer)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->first() != nullptr
+                        ? expression->first()->range() : expression->range(),
+                    "postfix '?' consumes a move-only Result carrier; write move(result)?");
+                break;
+            }
+
+            std::optional<std::size_t> errorConversion;
+            if (source->sourceErrorTypeKey != destination->sourceErrorTypeKey)
+            {
+                if (inheritanceModel_ == nullptr)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "Result propagation cannot resolve the declared error conversion");
+                    break;
+                }
+                const ProjectConversionClassifier classifier(
+                    *inheritanceModel_, interfaceModel_, memberModel_);
+                const ProjectImplicitConversion conversion =
+                    classifier.classifyExplicitUserDefined(
+                        source->sourceErrorTypeKey, destination->sourceErrorTypeKey);
+                if (conversion.kind != ProjectConversionKind::UserDefinedExplicit ||
+                    !conversion.userDefinedMemberOrdinal.has_value())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "postfix '?' requires error type identity or a declared explicit "
+                        "conversion from '" + source->sourceErrorTypeKey + "' to '" +
+                        destination->sourceErrorTypeKey + "'");
+                    break;
+                }
+                errorConversion = conversion.userDefinedMemberOrdinal;
+            }
+
+            source->syntax = expression;
+            source->operandSyntax = expression->first();
+            source->methodMemberOrdinal = methodMemberOrdinal;
+            source->scopeOrdinal = scopeOrdinal;
+            source->returnCarrierTypeKey = returnTypeKey;
+            source->returnErrorTypeKey = destination->sourceErrorTypeKey;
+            source->returnErrorTag = destination->sourceErrorTag;
+            source->returnErrorFactoryMemberOrdinal =
+                destination->returnErrorFactoryMemberOrdinal;
+            source->errorConversionMemberOrdinal = errorConversion;
+            resultPropagationBindings_.push_back(std::move(*source));
+
+            recordStructuredExit(
+                MethodStructuredExitKind::Return,
+                expression,
+                methodMemberOrdinal,
+                scopeOrdinal,
+                std::nullopt,
+                0);
+
+            result.typeKey = resultPropagationBindings_.back().successTypeKey;
+            result.valid = true;
+            result.assignable = false;
+            result.addressable = false;
+            if (memberModel_ != nullptr && memberModel_->typeIsMoveOnly(result.typeKey))
+            {
+                result.ownership = sema::OwnershipKind::Owned;
+                result.ownershipTransfer = true;
+            }
+            break;
+        }
         case ast::AstNodeKind::UnaryExpression:
         case ast::AstNodeKind::PostfixExpression:
             result = analyzeUnary(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
@@ -20066,6 +20251,119 @@ bool ProjectMethodBodyModel::isAnyDelegateTypeKey(std::string_view typeKey) cons
         return type.kind == NamedTypeDeclarationKind::Delegate;
     }
     return false;
+}
+
+std::optional<MethodResultPropagationBinding>
+ProjectMethodBodyModel::resolveResultCarrier(std::string_view typeKey) const
+{
+    if (memberModel_ == nullptr) return std::nullopt;
+    const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(typeKey);
+    if (!typeOrdinal.has_value()) return std::nullopt;
+
+    struct CaseContract final
+    {
+        std::string payloadTypeKey;
+        std::optional<std::size_t> tag;
+        std::optional<std::size_t> factory;
+        std::optional<std::size_t> test;
+        std::optional<std::size_t> extractor;
+    };
+    CaseContract success;
+    CaseContract error;
+    bool sawUnexpectedCase = false;
+
+    constexpr std::string_view factoryPrefix = "variant-case-factory:";
+    constexpr std::string_view testPrefix = "variant-case-test:";
+    constexpr std::string_view extractorPrefix = "variant-case-extract:";
+    const auto decodeMarker = [](std::string_view marker, std::string_view prefix)
+        -> std::optional<std::pair<std::string, std::size_t>>
+    {
+        if (!marker.starts_with(prefix)) return std::nullopt;
+        marker.remove_prefix(prefix.size());
+        const std::size_t separator = marker.rfind(':');
+        if (separator == std::string_view::npos || separator == 0U ||
+            separator + 1U >= marker.size())
+            return std::nullopt;
+        std::size_t tag = 0;
+        const char* begin = marker.data() + separator + 1U;
+        const char* end = marker.data() + marker.size();
+        const auto parsed = std::from_chars(begin, end, tag);
+        if (parsed.ec != std::errc{} || parsed.ptr != end) return std::nullopt;
+        return std::pair<std::string, std::size_t>{
+            std::string(marker.substr(0, separator)), tag};
+    };
+
+    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
+    {
+        if (memberOrdinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Method || member.syntax == nullptr) continue;
+        const std::string_view marker = member.syntax->auxiliaryText();
+        if (const auto decoded = decodeMarker(marker, factoryPrefix))
+        {
+            CaseContract* contract = decoded->first == "Ok" ? &success :
+                decoded->first == "Error" ? &error : nullptr;
+            if (contract == nullptr)
+            {
+                sawUnexpectedCase = true;
+                continue;
+            }
+            if (contract->factory.has_value() || !member.isStatic ||
+                member.parameters.size() != 1U || member.declaredTypeKey != typeKey ||
+                (contract->tag.has_value() && *contract->tag != decoded->second))
+                return std::nullopt;
+            contract->factory = memberOrdinal;
+            contract->payloadTypeKey = member.parameters.front().typeKey;
+            contract->tag = decoded->second;
+        }
+        else if (const auto decoded = decodeMarker(marker, testPrefix))
+        {
+            CaseContract* contract = decoded->first == "Ok" ? &success :
+                decoded->first == "Error" ? &error : nullptr;
+            if (contract == nullptr) continue;
+            if (contract->test.has_value() || member.isStatic ||
+                !member.parameters.empty() || member.declaredTypeKey != "builtin:bool" ||
+                (contract->tag.has_value() && *contract->tag != decoded->second))
+                return std::nullopt;
+            contract->test = memberOrdinal;
+            contract->tag = decoded->second;
+        }
+        else if (const auto decoded = decodeMarker(marker, extractorPrefix))
+        {
+            CaseContract* contract = decoded->first == "Ok" ? &success :
+                decoded->first == "Error" ? &error : nullptr;
+            if (contract == nullptr) continue;
+            if (contract->extractor.has_value() || member.isStatic ||
+                !member.parameters.empty() ||
+                (contract->tag.has_value() && *contract->tag != decoded->second))
+                return std::nullopt;
+            contract->extractor = memberOrdinal;
+            if (contract->payloadTypeKey.empty())
+                contract->payloadTypeKey = member.declaredTypeKey;
+            else if (contract->payloadTypeKey != member.declaredTypeKey)
+                return std::nullopt;
+            contract->tag = decoded->second;
+        }
+    }
+
+    if (sawUnexpectedCase || !success.factory.has_value() || !success.test.has_value() ||
+        !success.extractor.has_value() || !success.tag.has_value() ||
+        !error.factory.has_value() || !error.test.has_value() || !error.extractor.has_value() ||
+        !error.tag.has_value() || success.payloadTypeKey.empty() ||
+        error.payloadTypeKey.empty() || *success.tag == *error.tag)
+        return std::nullopt;
+
+    MethodResultPropagationBinding binding;
+    binding.sourceCarrierTypeKey = std::string(typeKey);
+    binding.successTypeKey = std::move(success.payloadTypeKey);
+    binding.sourceErrorTypeKey = std::move(error.payloadTypeKey);
+    binding.sourceSuccessTag = *success.tag;
+    binding.sourceErrorTag = *error.tag;
+    binding.sourceSuccessTestMemberOrdinal = *success.test;
+    binding.sourceSuccessExtractorMemberOrdinal = *success.extractor;
+    binding.sourceErrorExtractorMemberOrdinal = *error.extractor;
+    binding.returnErrorFactoryMemberOrdinal = *error.factory;
+    return binding;
 }
 
 std::optional<MethodOptionalCarrierBinding>

@@ -6317,7 +6317,10 @@ private:
         buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
     }
 
-    bool lowerStructuredExit(const frontend::ProjectOopMirNode* node, std::string& error)
+    bool lowerStructuredExit(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef returnValueOverride = nullptr)
     {
         const bool isReturn = node->kind == frontend::ProjectOopMirNodeKind::Return;
         const bool isBreak = node->kind == frontend::ProjectOopMirNodeKind::Break;
@@ -6342,8 +6345,8 @@ private:
                 return fail(error, "continue reached the backend with no enclosing loop target");
         }
 
-        LLVMValueRef returnValue = nullptr;
-        if (isReturn && !node->children.empty())
+        LLVMValueRef returnValue = returnValueOverride;
+        if (isReturn && returnValue == nullptr && !node->children.empty())
         {
             returnValue = lowerExpression(node->children.front().get(), error);
             if (returnValue == nullptr) return false;
@@ -7016,7 +7019,13 @@ private:
                     {
                         LLVMValueRef value = lowerExpression(node->children.front().get(), error);
                         if (value == nullptr)
-                            return fail(error, "Stage 34 local initialization failed");
+                        {
+                            const std::string cause = error;
+                            return fail(
+                                error,
+                                "Stage 34 local initialization failed" +
+                                    (cause.empty() ? std::string() : ": " + cause));
+                        }
                         LLVMBuildStore(builder_, value, address);
                     }
                 }
@@ -10475,6 +10484,8 @@ private:
                 // internal error. No instruction may consume it after the terminator.
                 return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
             }
+            case frontend::ProjectOopMirNodeKind::ResultPropagation:
+                return lowerResultPropagation(node, error);
 
             // LOS VEINTE QUE NO SON EXPRESIONES, escritos uno a uno en vez de un `default:`.
             //
@@ -13050,6 +13061,120 @@ private:
         return phi;
     }
 
+    // T07-F01 `carrier?`. The carrier is evaluated and spilled exactly once. The public variant
+    // protocol performs the tag test and payload extraction, so this lowering never reaches into
+    // private variant storage. The Error edge builds the callable's return carrier and then uses
+    // the ordinary structured-return helper, including lexical cleanup and catch-state handling.
+    LLVMValueRef lowerResultPropagation(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 1U || node->children.front() == nullptr ||
+            node->resultSourceCarrierTypeKey.empty() ||
+            node->resultSourceErrorTypeKey.empty() ||
+            node->resultReturnCarrierTypeKey.empty() ||
+            node->resultReturnErrorTypeKey.empty() ||
+            node->resultSuccessTestCalleeName.empty() ||
+            node->resultSuccessExtractorCalleeName.empty() ||
+            node->resultErrorExtractorCalleeName.empty() ||
+            node->resultErrorFactoryCalleeName.empty())
+        {
+            return failValue(error, "T07-F01 Result propagation MIR is incomplete");
+        }
+
+        LLVMValueRef carrier = lowerExpression(node->children.front().get(), error);
+        if (carrier == nullptr) return nullptr;
+        LLVMTypeRef carrierType = llvmType(node->resultSourceCarrierTypeKey, error);
+        if (carrierType == nullptr) return nullptr;
+        LLVMValueRef carrierSlot = entryBlockAlloca(
+            carrierType,
+            structAlignmentFor(node->resultSourceCarrierTypeKey),
+            "result.carrier");
+        LLVMBuildStore(builder_, carrier, carrierSlot);
+
+        const auto makeInstanceCall = [&](
+            std::string_view callee,
+            std::string_view resultType,
+            std::string_view stem) -> LLVMValueRef
+        {
+            frontend::ProjectOopMirNode call;
+            call.kind = frontend::ProjectOopMirNodeKind::DirectInstanceCall;
+            call.typeKey = std::string(resultType);
+            call.calleeName = std::string(callee);
+            auto receiver = std::make_unique<frontend::ProjectOopMirNode>();
+            receiver->typeKey = node->resultSourceCarrierTypeKey;
+            call.children.push_back(std::move(receiver));
+            LLVMValueRef value = lowerCall(&call, error, carrierSlot);
+            if (value != nullptr && !stem.empty()) LLVMSetValueName2(
+                value, stem.data(), stem.size());
+            return value;
+        };
+        const auto makeStaticUnaryCall = [&](
+            std::string_view callee,
+            std::string_view argumentType,
+            LLVMValueRef argument,
+            std::string_view resultType,
+            std::string_view stem) -> LLVMValueRef
+        {
+            frontend::ProjectOopMirNode call;
+            call.kind = frontend::ProjectOopMirNodeKind::DirectStaticCall;
+            call.typeKey = std::string(resultType);
+            call.calleeName = std::string(callee);
+            auto input = std::make_unique<frontend::ProjectOopMirNode>();
+            input->typeKey = std::string(argumentType);
+            call.children.push_back(std::move(input));
+            const std::vector<LLVMValueRef> arguments{argument};
+            LLVMValueRef value = lowerStaticCall(&call, error, &arguments);
+            if (value != nullptr && !stem.empty()) LLVMSetValueName2(
+                value, stem.data(), stem.size());
+            return value;
+        };
+
+        LLVMValueRef isSuccess = makeInstanceCall(
+            node->resultSuccessTestCalleeName, "builtin:bool", "result.is_ok");
+        if (isSuccess == nullptr) return nullptr;
+        LLVMBasicBlockRef successBlock = appendBlock("result.ok");
+        LLVMBasicBlockRef errorBlock = appendBlock("result.error");
+        LLVMBuildCondBr(builder_, isSuccess, successBlock, errorBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, errorBlock);
+        LLVMValueRef errorValue = makeInstanceCall(
+            node->resultErrorExtractorCalleeName,
+            node->resultSourceErrorTypeKey,
+            "result.error.value");
+        if (errorValue == nullptr) return nullptr;
+        if (!node->resultErrorConversionCalleeName.empty())
+        {
+            errorValue = makeStaticUnaryCall(
+                node->resultErrorConversionCalleeName,
+                node->resultSourceErrorTypeKey,
+                errorValue,
+                node->resultReturnErrorTypeKey,
+                "result.error.converted");
+            if (errorValue == nullptr) return nullptr;
+        }
+        LLVMValueRef returnCarrier = makeStaticUnaryCall(
+            node->resultErrorFactoryCalleeName,
+            node->resultReturnErrorTypeKey,
+            errorValue,
+            node->resultReturnCarrierTypeKey,
+            "result.error.carrier");
+        if (returnCarrier == nullptr) return nullptr;
+
+        frontend::ProjectOopMirNode returnNode;
+        returnNode.kind = frontend::ProjectOopMirNodeKind::Return;
+        returnNode.typeKey = "builtin:void";
+        returnNode.cleanupRegionOrdinals = node->cleanupRegionOrdinals;
+        returnNode.cleanupContinuationKind = node->cleanupContinuationKind;
+        returnNode.targetScopeOrdinal = node->targetScopeOrdinal;
+        if (!lowerStructuredExit(&returnNode, error, returnCarrier)) return nullptr;
+
+        LLVMPositionBuilderAtEnd(builder_, successBlock);
+        return makeInstanceCall(
+            node->resultSuccessExtractorCalleeName,
+            node->typeKey,
+            "result.ok.value");
+    }
+
     // T01-F03 `place ??= fallback`. Address, current value and fallback are each evaluated once;
     // the store exists only on the null edge. A null slot owns nothing, so no replacement cleanup
     // is necessary here (unlike an ordinary owning store of a non-null displaced value).
@@ -13450,7 +13575,10 @@ private:
         return globalFound->second;
     }
 
-    LLVMValueRef lowerStaticCall(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef lowerStaticCall(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        const std::vector<LLVMValueRef>* argumentOverrides = nullptr)
     {
         const auto found = functions_.find(node->calleeName);
         if (found == functions_.end())
@@ -13471,9 +13599,17 @@ private:
         }
         std::vector<LLVMValueRef> sourceArguments;
         sourceArguments.reserve(node->children.size());
-        for (const auto& child : node->children)
+        if (argumentOverrides != nullptr &&
+            argumentOverrides->size() != node->children.size())
         {
-            LLVMValueRef value = lowerExpression(child.get(), error);
+            return failValue(error, "static call argument override count does not match MIR operands");
+        }
+        for (std::size_t index = 0; index < node->children.size(); ++index)
+        {
+            const auto& child = node->children[index];
+            LLVMValueRef value = argumentOverrides != nullptr
+                ? (*argumentOverrides)[index]
+                : lowerExpression(child.get(), error);
             if (value == nullptr)
             {
                 return nullptr;

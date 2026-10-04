@@ -102,6 +102,7 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(AssociatedTypeDeclaration);
         NS_AST_KIND(AssociatedConstantDeclaration);
         NS_AST_KIND(ExtensionDeclaration);
+        NS_AST_KIND(ResultPropagationExpression);
 #undef NS_AST_KIND
     }
 

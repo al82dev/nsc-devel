@@ -451,7 +451,10 @@ enum class ProjectOopHirNodeKind
     // entry. A non-dynamic node is a typed no-op for a destructible-free struct lifetime.
     ObjectDestruction,
     // T07 abort-profile panic: no children, builtin:never, no normal successor.
-    Panic
+    Panic,
+    // T07-F01. children[0] is the Result carrier evaluated exactly once. The node freezes both
+    // variant protocols and the cleanup path for its conditional Error return.
+    ResultPropagation
 };
 
 struct ProjectOopHirNode final
@@ -477,6 +480,11 @@ struct ProjectOopHirNode final
     // Stage 54.3 lesson about MethodCoreBinding, which WAS positionally aggregate-initialized and
     // needed all 16 call sites patched for exactly this reason -- this struct has no such risk).
     std::optional<std::size_t> secondaryMemberOrdinal;
+    std::optional<std::size_t> resultSuccessTestMemberOrdinal;
+    std::optional<std::size_t> resultSuccessExtractorMemberOrdinal;
+    std::optional<std::size_t> resultErrorExtractorMemberOrdinal;
+    std::optional<std::size_t> resultErrorFactoryMemberOrdinal;
+    std::optional<std::size_t> resultErrorConversionMemberOrdinal;
     std::optional<std::size_t> localOrdinal;
     std::optional<std::size_t> parameterOrdinal;
     std::optional<std::size_t> constructionOrdinal;
@@ -504,6 +512,13 @@ struct ProjectOopHirNode final
     // T01-F05 AggregateElement descriptors under AggregateSpread use this as the source-relative
     // byte offset while integerValue remains the destination-absolute offset.
     std::uint64_t secondaryIntegerValue = 0;
+    std::uint64_t resultSuccessTag = 0;
+    std::uint64_t resultErrorTag = 0;
+    std::uint64_t resultReturnErrorTag = 0;
+    std::string resultSourceCarrierTypeKey;
+    std::string resultSourceErrorTypeKey;
+    std::string resultReturnCarrierTypeKey;
+    std::string resultReturnErrorTypeKey;
     // Item 329. AggregateElement uses these when a positional initializer targets a bit field.
     // The byte offset remains in integerValue, just like an ordinary aggregate element.
     std::optional<std::uint64_t> bitOffset;
@@ -783,6 +798,8 @@ private:
     const MethodCoreBinding* coreBinding(const ast::AstNode* syntax) const noexcept;
     const MethodOptionalCarrierBinding* optionalCarrierBinding(
         const ast::AstNode* syntax) const noexcept;
+    const MethodResultPropagationBinding* resultPropagationBinding(
+        const ast::AstNode* syntax) const noexcept;
     const MethodRangeSliceBinding* rangeSliceBinding(
         const ast::AstNode* syntax) const noexcept;
     const MethodExceptionBinding* exceptionBinding(const ast::AstNode* syntax) const noexcept;
@@ -848,6 +865,8 @@ private:
     std::unordered_map<const ast::AstNode*, const MethodCoreBinding*> coreBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodOptionalCarrierBinding*>
         optionalCarrierBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodResultPropagationBinding*>
+        resultPropagationBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodRangeSliceBinding*>
         rangeSliceBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodExceptionBinding*> exceptionBindingBySyntax_;

@@ -204,14 +204,27 @@ bool ProjectOopCodePartition::build(
                                  auto& dependencies) -> void
     {
         if (node == nullptr) return;
-        if (!node->calleeName.empty())
+        const auto addCallee = [&](std::string_view name)
         {
-            const auto found = functionsByName.find(node->calleeName);
+            if (name.empty()) return;
+            const auto found = functionsByName.find(name);
             if (found != functionsByName.end())
                 dependencies.insert(found->second.begin(), found->second.end());
-        }
+        };
+        addCallee(node->calleeName);
+        addCallee(node->secondaryCalleeName);
+        addCallee(node->resultSuccessTestCalleeName);
+        addCallee(node->resultSuccessExtractorCalleeName);
+        addCallee(node->resultErrorExtractorCalleeName);
+        addCallee(node->resultErrorFactoryCalleeName);
+        addCallee(node->resultErrorConversionCalleeName);
         addMember(node->memberOrdinal, dependencies);
         addMember(node->secondaryMemberOrdinal, dependencies);
+        addMember(node->resultSuccessTestMemberOrdinal, dependencies);
+        addMember(node->resultSuccessExtractorMemberOrdinal, dependencies);
+        addMember(node->resultErrorExtractorMemberOrdinal, dependencies);
+        addMember(node->resultErrorFactoryMemberOrdinal, dependencies);
+        addMember(node->resultErrorConversionMemberOrdinal, dependencies);
         addMember(node->disposeImplementationMemberOrdinal, dependencies);
         if (node->automaticDestruction)
         {

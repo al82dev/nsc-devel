@@ -678,9 +678,15 @@ evidencia del commit: `docs/3.0/items/NS3-T06-F01-move-only-defaults.md`.
 
 **Commit:** `ns3(t07-f01): result-propagation`
 
-- **Implementación:** `?` trabaja mediante trait/protocolo estático sobre variants compatibles; conversión de error explícita; lowering a branches y early return.
-- **Pruebas dirigidas:** payload move-only, conversión de error, `defer`, loops, coroutines, `noheap` y MIR sin unwind oculto.
-- **Markdown ES/EN:** contrato del protocolo y expansión equivalente.
+**Estado:** `TERMINADA`
+
+- **Implementación:** `?` postfix sobre variants estructurales exactas `Ok(T)`/`Error(E)`;
+  evaluación única; conversión de error mediante `explicit operator`; HIR/MIR 1.23; branches LLVM y
+  early return que reutiliza el cleanup estructurado.
+- **Prueba dirigida ejecutada:** target exacto T07 en O0/NSLink, `PASS: 11 checks`; Ok, Error,
+  conversión explícita, `defer`, ternario conservado y contrato MIR. Sin baseline ni CTest general.
+- **Markdown ES/EN:** `docs/3.0/language/result-propagation.md` y expediente
+  `docs/3.0/items/NS3-T07-F01-result-propagation.md`.
 
 ## NS3-T07-F02 — Funciones `throws` nativas / Native throwing functions
 

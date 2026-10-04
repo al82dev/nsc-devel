@@ -1215,6 +1215,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::Deallocation: return "deallocation";
         case ProjectOopHirNodeKind::ObjectDestruction: return "object-destruction";
         case ProjectOopHirNodeKind::Panic: return "panic";
+        case ProjectOopHirNodeKind::ResultPropagation: return "result-propagation";
     }
     return "unknown";
 }
@@ -1327,6 +1328,8 @@ bool ProjectOopHirModel::buildImpl(
         indexBySyntax(eventBindingBySyntax_, methodBodyModel.eventBindings());
         indexBySyntax(coreBindingBySyntax_, methodBodyModel.coreBindings());
         indexBySyntax(optionalCarrierBindingBySyntax_, methodBodyModel.optionalCarrierBindings());
+        indexBySyntax(
+            resultPropagationBindingBySyntax_, methodBodyModel.resultPropagationBindings());
         indexBySyntax(rangeSliceBindingBySyntax_, methodBodyModel.rangeSliceBindings());
         indexBySyntax(exceptionBindingBySyntax_, methodBodyModel.exceptionBindings());
         indexBySyntax(cleanupRegionBySyntax_, methodBodyModel.cleanupRegions());
@@ -5298,6 +5301,51 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             return node;
         }
 
+        case ast::AstNodeKind::ResultPropagationExpression:
+        {
+            if (addressContext)
+            {
+                error = "postfix '?' produces a value, not addressable storage";
+                return nullptr;
+            }
+            const MethodResultPropagationBinding* binding =
+                resultPropagationBinding(expression);
+            const MethodStructuredExitBinding* exit = structuredExitBinding(expression);
+            if (binding == nullptr || exit == nullptr ||
+                exit->kind != MethodStructuredExitKind::Return)
+            {
+                error = "T07-F01 Result propagation has no complete semantic binding";
+                return nullptr;
+            }
+            auto operand = lowerExpression(
+                binding->operandSyntax, memberOrdinal, false, error);
+            if (operand == nullptr) return nullptr;
+
+            auto node = makeNode(
+                ProjectOopHirNodeKind::ResultPropagation, expression, resultType);
+            node->resultSourceCarrierTypeKey = binding->sourceCarrierTypeKey;
+            node->resultSourceErrorTypeKey = binding->sourceErrorTypeKey;
+            node->resultReturnCarrierTypeKey = binding->returnCarrierTypeKey;
+            node->resultReturnErrorTypeKey = binding->returnErrorTypeKey;
+            node->resultSuccessTag = binding->sourceSuccessTag;
+            node->resultErrorTag = binding->sourceErrorTag;
+            node->resultReturnErrorTag = binding->returnErrorTag;
+            node->resultSuccessTestMemberOrdinal =
+                binding->sourceSuccessTestMemberOrdinal;
+            node->resultSuccessExtractorMemberOrdinal =
+                binding->sourceSuccessExtractorMemberOrdinal;
+            node->resultErrorExtractorMemberOrdinal =
+                binding->sourceErrorExtractorMemberOrdinal;
+            node->resultErrorFactoryMemberOrdinal =
+                binding->returnErrorFactoryMemberOrdinal;
+            node->resultErrorConversionMemberOrdinal =
+                binding->errorConversionMemberOrdinal;
+            node->cleanupRegionOrdinals = exit->cleanupRegionOrdinals;
+            node->cleanupContinuationKind = MethodCleanupContinuationKind::Return;
+            node->children.push_back(std::move(operand));
+            return node;
+        }
+
         case ast::AstNodeKind::CallExpression:
         {
             if (const MethodCoreBinding* panic = coreBinding(expression);
@@ -7791,6 +7839,15 @@ const MethodOptionalCarrierBinding* ProjectOopHirModel::optionalCarrierBinding(
 {
     const auto& index = lookupSource_ == nullptr
         ? optionalCarrierBindingBySyntax_ : lookupSource_->optionalCarrierBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
+}
+
+const MethodResultPropagationBinding* ProjectOopHirModel::resultPropagationBinding(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto& index = lookupSource_ == nullptr
+        ? resultPropagationBindingBySyntax_ : lookupSource_->resultPropagationBindingBySyntax_;
     const auto found = index.find(syntax);
     return found == index.end() ? nullptr : found->second;
 }

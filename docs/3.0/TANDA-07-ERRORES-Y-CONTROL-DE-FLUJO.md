@@ -28,15 +28,18 @@ errors are handled or propagated, unwind cannot silently cross FFI, and panic cl
 
 La tanda operativa 15 conectó una primera vertical física: `panic()` contextual de edición 3,
 tipo interno `builtin:never`, nodo HIR/MIR explícito y perfil abort Win64 estable. El catch tipado
-existente convive con esa vertical en c65. `Result/?`, typed `throws`, coerción general de `never`,
-loop expressions y panic unwind/handler permanecen abiertos; el helper por sí solo no los cierra.
+existente convive con esa vertical en c65. `Result/?` ya tiene una vertical productiva completa en
+NS3-T07-F01. Typed `throws`, coerción general de `never`, loop expressions y panic unwind/handler
+permanecen abiertos; el helper por sí solo no los cierra.
 
 Operational batch 15 connected the first physical vertical: edition-3 contextual `panic()`, the
 internal `builtin:never` type, explicit HIR/MIR nodes, and a stable Win64 abort profile. Existing
-typed catch coexists with that vertical in c65. `Result/?`, typed `throws`, general never coercion,
-loop expressions, and unwind/handler panic profiles remain open; the helper does not close them.
+typed catch coexists with that vertical in c65. `Result/?` is now productive through NS3-T07-F01.
+Typed `throws`, general never coercion, loop expressions, and unwind/handler panic profiles remain
+open; the helper does not close them.
 
 ## Validación / Validation
 
-`nsc` O0, c65 con lld-link y NSLink, probe abort con salida 142, MIR 1.18 y dos negativos
-dirigidos; sin baseline ni CTest general.
+La evidencia acumulada incluye el cierre histórico de panic/never y la prueba dirigida de
+NS3-T07-F01: `nsc` compilado, target T07 compilado y `PASS: 11 checks` con O0/NSLink. No se ejecutó
+baseline ni CTest general para F01.

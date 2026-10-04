@@ -33,7 +33,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 20: Optional<T> coalescing preserves its public HasValue/UncheckedValue protocol calls.
 // MINOR 21: rectangular native arrays preserve rank and use explicit allocate/index operations.
 // MINOR 22: value layouts publish producer-owned, versioned drop-glue identities.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 22;
+// MINOR 23: Result propagation publishes both carrier protocols, error conversion, and cleanup.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 23;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -355,7 +356,9 @@ enum class ProjectOopMirNodeKind
     Deallocate,
     ObjectDestroy,
     // T07 abort-profile panic: __nativesharp_trap(Panic) followed by unreachable.
-    Panic
+    Panic,
+    // T07-F01. One evaluated carrier, an explicit tag branch, and a structured Error return.
+    ResultPropagation
 };
 
 struct ProjectOopMirNode final
@@ -374,6 +377,11 @@ struct ProjectOopMirNode final
     // Stage 54.4 "Condition Variables" -- mirrors ProjectOopHirNode::secondaryMemberOrdinal (see
     // its comment there). Set only on a CoreMonitorWait node.
     std::optional<std::size_t> secondaryMemberOrdinal;
+    std::optional<std::size_t> resultSuccessTestMemberOrdinal;
+    std::optional<std::size_t> resultSuccessExtractorMemberOrdinal;
+    std::optional<std::size_t> resultErrorExtractorMemberOrdinal;
+    std::optional<std::size_t> resultErrorFactoryMemberOrdinal;
+    std::optional<std::size_t> resultErrorConversionMemberOrdinal;
     std::optional<std::size_t> localOrdinal;
     std::optional<std::size_t> parameterOrdinal;
     std::optional<std::size_t> constructionOrdinal;
@@ -402,6 +410,13 @@ struct ProjectOopMirNode final
     // `lock_` field's byte offset. See ProjectOopLlvmLowerer.cpp's CoreMonitorWait case for where
     // both offsets get consumed (two GEPs off one already-lowered receiver pointer).
     std::uint64_t secondaryImmediate = 0;
+    std::uint64_t resultSuccessTag = 0;
+    std::uint64_t resultErrorTag = 0;
+    std::uint64_t resultReturnErrorTag = 0;
+    std::string resultSourceCarrierTypeKey;
+    std::string resultSourceErrorTypeKey;
+    std::string resultReturnCarrierTypeKey;
+    std::string resultReturnErrorTypeKey;
     std::uint64_t alignment = 1;
     // Item 329. Present together on BitFieldLoad/BitFieldAddress. `immediate` remains the byte
     // offset of the allocation unit; these values describe that unit and the logical slice in it.
@@ -450,6 +465,11 @@ struct ProjectOopMirNode final
     std::vector<std::size_t> argumentParameterOrdinals;
     std::string calleeName;
     std::string secondaryCalleeName;
+    std::string resultSuccessTestCalleeName;
+    std::string resultSuccessExtractorCalleeName;
+    std::string resultErrorExtractorCalleeName;
+    std::string resultErrorFactoryCalleeName;
+    std::string resultErrorConversionCalleeName;
     std::vector<std::string> argumentTypeKeys;
     std::vector<std::unique_ptr<ProjectOopMirNode>> children;
 };

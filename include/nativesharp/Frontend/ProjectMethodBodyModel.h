@@ -1284,6 +1284,30 @@ struct MethodOptionalCarrierBinding final
     std::size_t uncheckedValueMemberOrdinal = 0;
 };
 
+// NativeSharp 3.0 T07-F01. Postfix `?` is bound against the compiler-owned
+// two-case variant protocol instead of a type name. Keeping the complete
+// protocol here lets every later layer consume one semantic decision.
+struct MethodResultPropagationBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    std::size_t methodMemberOrdinal = 0;
+    std::size_t scopeOrdinal = 0;
+    const ast::AstNode* operandSyntax = nullptr;
+    std::string sourceCarrierTypeKey;
+    std::string successTypeKey;
+    std::string sourceErrorTypeKey;
+    std::string returnCarrierTypeKey;
+    std::string returnErrorTypeKey;
+    std::size_t sourceSuccessTag = 0;
+    std::size_t sourceErrorTag = 0;
+    std::size_t returnErrorTag = 0;
+    std::size_t sourceSuccessTestMemberOrdinal = 0;
+    std::size_t sourceSuccessExtractorMemberOrdinal = 0;
+    std::size_t sourceErrorExtractorMemberOrdinal = 0;
+    std::size_t returnErrorFactoryMemberOrdinal = 0;
+    std::optional<std::size_t> errorConversionMemberOrdinal;
+};
+
 // NativeSharp 3.0 T01-F04. A range index is structural sugar over two public instance
 // methods on the receiver: `int Length()` and `Slice(int start, int length)`.  The binding
 // keeps both selected methods together because lowering must evaluate the receiver exactly once
@@ -1457,6 +1481,7 @@ public:
     std::span<const MethodDelegateBinding> delegateBindings() const noexcept;
     std::span<const MethodEventBinding> eventBindings() const noexcept;
     std::span<const MethodOptionalCarrierBinding> optionalCarrierBindings() const noexcept;
+    std::span<const MethodResultPropagationBinding> resultPropagationBindings() const noexcept;
     std::span<const MethodRangeSliceBinding> rangeSliceBindings() const noexcept;
     std::span<const MethodCallBinding> calls() const noexcept;
     std::span<const NamespaceFunctionCallBinding> namespaceFunctionCalls() const noexcept;
@@ -2148,6 +2173,8 @@ private:
     bool isAnyDelegateTypeKey(std::string_view typeKey) const noexcept;
     std::optional<MethodOptionalCarrierBinding> resolveOptionalCarrier(
         std::string_view typeKey) const;
+    std::optional<MethodResultPropagationBinding> resolveResultCarrier(
+        std::string_view typeKey) const;
     // True only for a "type:" key that actually names an enum. Structs, classes and delegates
     // share that prefix, so the prefix alone answers nothing. Mirrors the identical predicate the
     // LLVM lowerer keeps for mapping an enum key to i32.
@@ -2271,6 +2298,7 @@ private:
     std::size_t currentCatchDepth_ = 0;
     std::vector<MethodEventBinding> eventBindings_;
     std::vector<MethodOptionalCarrierBinding> optionalCarrierBindings_;
+    std::vector<MethodResultPropagationBinding> resultPropagationBindings_;
     std::vector<MethodRangeSliceBinding> rangeSliceBindings_;
     std::vector<MethodCallBinding> calls_;
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;

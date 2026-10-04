@@ -53,7 +53,9 @@ bool finalizeCleanupContract(ProjectOopMirFunction& function, std::string& error
         std::optional<ProjectOopMirNonlocalExitKind> exitKind;
         switch (node->kind)
         {
-            case ProjectOopMirNodeKind::Return: exitKind = ProjectOopMirNonlocalExitKind::Return; break;
+            case ProjectOopMirNodeKind::Return:
+            case ProjectOopMirNodeKind::ResultPropagation:
+                exitKind = ProjectOopMirNonlocalExitKind::Return; break;
             case ProjectOopMirNodeKind::Break: exitKind = ProjectOopMirNonlocalExitKind::Break; break;
             case ProjectOopMirNodeKind::Continue: exitKind = ProjectOopMirNonlocalExitKind::Continue; break;
             case ProjectOopMirNodeKind::Throw: exitKind = ProjectOopMirNonlocalExitKind::Throw; break;
@@ -912,6 +914,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::Deallocate: return "deallocate";
         case ProjectOopMirNodeKind::ObjectDestroy: return "object-destroy";
         case ProjectOopMirNodeKind::Panic: return "panic";
+        case ProjectOopMirNodeKind::ResultPropagation: return "result-propagation";
     }
     return "unknown";
 }
@@ -1815,6 +1818,14 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->namespaceFunctionOrdinal = node->namespaceFunctionOrdinal;
     result->namespaceStateOrdinal = node->namespaceStateOrdinal;
     result->secondaryMemberOrdinal = node->secondaryMemberOrdinal;
+    result->resultSuccessTestMemberOrdinal = node->resultSuccessTestMemberOrdinal;
+    result->resultSuccessExtractorMemberOrdinal =
+        node->resultSuccessExtractorMemberOrdinal;
+    result->resultErrorExtractorMemberOrdinal =
+        node->resultErrorExtractorMemberOrdinal;
+    result->resultErrorFactoryMemberOrdinal = node->resultErrorFactoryMemberOrdinal;
+    result->resultErrorConversionMemberOrdinal =
+        node->resultErrorConversionMemberOrdinal;
     result->localOrdinal = node->localOrdinal;
     result->parameterOrdinal = node->parameterOrdinal;
     result->constructionOrdinal = node->constructionOrdinal;
@@ -1839,6 +1850,13 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->switchHasDefault = node->switchHasDefault;
     result->integerValue = node->integerValue;
     result->secondaryImmediate = node->secondaryIntegerValue;
+    result->resultSuccessTag = node->resultSuccessTag;
+    result->resultErrorTag = node->resultErrorTag;
+    result->resultReturnErrorTag = node->resultReturnErrorTag;
+    result->resultSourceCarrierTypeKey = node->resultSourceCarrierTypeKey;
+    result->resultSourceErrorTypeKey = node->resultSourceErrorTypeKey;
+    result->resultReturnCarrierTypeKey = node->resultReturnCarrierTypeKey;
+    result->resultReturnErrorTypeKey = node->resultReturnErrorTypeKey;
     result->bitOffset = node->bitOffset;
     result->bitWidth = node->bitWidth;
     result->bitStorageSize = node->bitStorageSize;
@@ -1937,6 +1955,48 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::Throw: result->kind = ProjectOopMirNodeKind::Throw; break;
         case ProjectOopHirNodeKind::Rethrow: result->kind = ProjectOopMirNodeKind::Rethrow; break;
         case ProjectOopHirNodeKind::Panic: result->kind = ProjectOopMirNodeKind::Panic; break;
+        case ProjectOopHirNodeKind::ResultPropagation:
+        {
+            if (hirModel_ == nullptr ||
+                !node->resultSuccessTestMemberOrdinal.has_value() ||
+                !node->resultSuccessExtractorMemberOrdinal.has_value() ||
+                !node->resultErrorExtractorMemberOrdinal.has_value() ||
+                !node->resultErrorFactoryMemberOrdinal.has_value())
+            {
+                error = "T07-F01 Result propagation lost a protocol member identity";
+                return nullptr;
+            }
+            const ProjectOopHirFunction* successTest = hirModel_->functionForMember(
+                *node->resultSuccessTestMemberOrdinal);
+            const ProjectOopHirFunction* successExtractor = hirModel_->functionForMember(
+                *node->resultSuccessExtractorMemberOrdinal);
+            const ProjectOopHirFunction* errorExtractor = hirModel_->functionForMember(
+                *node->resultErrorExtractorMemberOrdinal);
+            const ProjectOopHirFunction* errorFactory = hirModel_->functionForMember(
+                *node->resultErrorFactoryMemberOrdinal);
+            const ProjectOopHirFunction* errorConversion =
+                node->resultErrorConversionMemberOrdinal.has_value()
+                    ? hirModel_->functionForMember(*node->resultErrorConversionMemberOrdinal)
+                    : nullptr;
+            if (successTest == nullptr || successTest->isStatic ||
+                successExtractor == nullptr || successExtractor->isStatic ||
+                errorExtractor == nullptr || errorExtractor->isStatic ||
+                errorFactory == nullptr || !errorFactory->isStatic ||
+                (node->resultErrorConversionMemberOrdinal.has_value() &&
+                 (errorConversion == nullptr || !errorConversion->isStatic)))
+            {
+                error = "T07-F01 Result protocol members have incompatible callable shapes";
+                return nullptr;
+            }
+            result->kind = ProjectOopMirNodeKind::ResultPropagation;
+            result->resultSuccessTestCalleeName = successTest->mangledName;
+            result->resultSuccessExtractorCalleeName = successExtractor->mangledName;
+            result->resultErrorExtractorCalleeName = errorExtractor->mangledName;
+            result->resultErrorFactoryCalleeName = errorFactory->mangledName;
+            if (errorConversion != nullptr)
+                result->resultErrorConversionCalleeName = errorConversion->mangledName;
+            break;
+        }
         case ProjectOopHirNodeKind::CleanupContinuation:
             result->kind = ProjectOopMirNodeKind::CleanupContinuation;
             break;
