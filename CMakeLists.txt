@@ -1832,6 +1832,22 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.t10.memory-model COMMAND nsc_ns3_t10_memory_model_tests)
 
     add_executable(
+        nsc_ns3_t10_reference_count_tests
+        tests/unit/NativeSharp3T10ReferenceCountTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t10_reference_count_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_ns3_t10_reference_count_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_ns3_t10_reference_count_tests
+        PRIVATE
+            NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+            NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    add_dependencies(nsc_ns3_t10_reference_count_tests nsc)
+    nsc_enable_warnings(nsc_ns3_t10_reference_count_tests)
+    add_test(NAME nsc.ns3.t10.reference-counts COMMAND nsc_ns3_t10_reference_count_tests)
+
+    add_executable(
         nsc_ns3_e032_e035_capability_tests
         tests/unit/NativeSharp3E032E035CapabilityTests.cpp)
     target_link_libraries(nsc_ns3_e032_e035_capability_tests PRIVATE nsc_runtime)
