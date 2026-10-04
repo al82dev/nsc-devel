@@ -1473,7 +1473,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     incompatible.runtimeAbiMinor = static_cast<std::uint16_t>(metadata.runtimeAbiMinor + 1U);
     error.clear();
     tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
-                     error.find("runtime ABI expected 1.1, found 1.2") != std::string::npos,
+                     error.find("runtime ABI expected 1.2, found 1.3") != std::string::npos,
                  "E5 names a newer runtime contract instead of collapsing all "
                  "ABI fields into one message");
     incompatible = metadata;

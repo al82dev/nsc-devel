@@ -17,10 +17,10 @@ int main()
     using nativesharp::tests::TestContext;
 
     TestContext tests;
-    tests.expect(kRuntimeAbiMajor == 1 && kRuntimeAbiMinor == 1,
+    tests.expect(kRuntimeAbiMajor == 1 && kRuntimeAbiMinor == 2,
         "runtime ABI has one authoritative semantic version");
-    tests.expect(kRuntimeSymbolSetVersion == 3 && kRuntimeAbiSymbols.size() == 98,
-        "runtime symbol set 3 freezes all 98 NativeSharp-prefixed exports");
+    tests.expect(kRuntimeSymbolSetVersion == 4 && kRuntimeAbiSymbols.size() == 99,
+        "runtime symbol set 4 freezes all 99 NativeSharp-prefixed exports");
     tests.expect(std::is_sorted(kRuntimeAbiSymbols.begin(), kRuntimeAbiSymbols.end(),
                      [](const RuntimeAbiSymbol& left, const RuntimeAbiSymbol& right) {
                          return left.name < right.name;
@@ -28,7 +28,7 @@ int main()
         "runtime ABI symbols have deterministic canonical order");
 
     const std::string manifest = runtimeAbiContractManifest();
-    tests.expect(manifest.starts_with("NSRUNTIMEABI 1.1\nsymbol_set=3\n"),
+    tests.expect(manifest.starts_with("NSRUNTIMEABI 1.2\nsymbol_set=4\n"),
         "runtime ABI manifest carries independent ABI and symbol-set versions");
     tests.expect(manifest.find("target=x86_64-pc-windows-msvc\n") != std::string::npos &&
                      manifest.find("calling_convention=win64-c\n") != std::string::npos,
@@ -38,7 +38,7 @@ int main()
                          std::string::npos &&
                      manifest.find("data __nativesharp_exception_tls_index i32\n") != std::string::npos,
         "runtime ABI manifest distinguishes exact function and data types");
-    tests.expect(runtimeAbiContractFingerprintHex() == "30735111cdb1921f",
+    tests.expect(runtimeAbiContractFingerprintHex() == "2cddeff864c7dfc6",
         "runtime ABI contract fingerprint changes only with reviewed contract evidence");
 
     const std::filesystem::path evidence =
@@ -57,7 +57,7 @@ int main()
         altered << "function __nativesharp_future void()\n";
     }
     tests.expect(!verifyRuntimeAbiContractFile(artifact, error) &&
-                     error.find("expected fingerprint 30735111cdb1921f") != std::string::npos,
+                         error.find("expected fingerprint 2cddeff864c7dfc6") != std::string::npos,
         "runtime ABI artifact rejects unversioned contract drift");
 
     WindowsRuntimeBuilder builder;

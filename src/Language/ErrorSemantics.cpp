@@ -58,6 +58,18 @@ std::optional<std::string> unifyLoopBreakTypes(std::span<const std::string> brea
     return result;
 }
 
+std::optional<PanicProfile> parsePanicProfile(std::string_view value) noexcept
+{
+    if (value == "abort" || value == "Abort") return PanicProfile::Abort;
+    if (value == "unwind-native" || value == "UnwindNative") return PanicProfile::NativeUnwind;
+    return std::nullopt;
+}
+
+std::string_view panicProfileName(PanicProfile profile) noexcept
+{
+    return profile == PanicProfile::Abort ? "abort" : "unwind-native";
+}
+
 PanicContract panicContract(PanicProfile profile) noexcept
 {
     return profile == PanicProfile::Abort ? PanicContract{false, false} : PanicContract{true, false};

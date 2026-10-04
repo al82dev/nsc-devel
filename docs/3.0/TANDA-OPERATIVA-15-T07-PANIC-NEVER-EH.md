@@ -44,7 +44,8 @@ match, retornos, overloads o genéricos. La implementación no afirma lo contrar
 - LLVM emite `__nativesharp_trap(14)` seguido de `unreachable`.
 - El runtime convierte la razón estable en exit code `128 + 14 = 142`.
 - La llamada es `nounwind`, `noreturn`, no recibe payload y no asigna memoria.
-- El perfil abort no ejecuta cleanups léxicos; unwind-native y handler custom siguen pendientes.
+- El perfil abort no ejecuta cleanups léxicos. `NS3-T07-F06` añadió después el perfil
+  `unwind-native`, payload y handler custom; véase `items/NS3-T07-F06-assertions-panic.md`.
 - lld-link y NSLink generan ejecutables con la misma conducta observable.
 
 ### EH tipada conservada
@@ -128,7 +129,8 @@ artefactos y ejecutables usados estuvieron en A: y los temporales se eliminaron 
   `NS3-T07-F02`; los conjuntos de varios errores y exhaustividad avanzada siguen en F03.
 - `never` escribible y coerción bottom en expresiones/overloads/generics/match.
 - `loop { break value; }`, labels y unificación de tipos/lifetimes.
-- panic `unwind-native`, handler custom, payload acotado, source location y debugger break.
+- ~~panic `unwind-native`, handler custom, payload acotado y source location.~~ Cerrado por
+  `NS3-T07-F06`; el debugger break pertenece al contrato posterior de NSDBG.
 - Matrices exhaustivas de cleanup en propagation/throw/panic y fronteras DLL/FFI.
 
 Por estas deudas, la tanda operativa 15 se cierra como vertical T07-F03/F04/F06, mientras el bloque

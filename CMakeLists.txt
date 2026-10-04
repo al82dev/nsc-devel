@@ -1675,6 +1675,7 @@ if(NSC_BUILD_TESTS)
     target_compile_definitions(
         nsc_ns3_t07_error_tests
         PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    add_dependencies(nsc_ns3_t07_error_tests nsc)
     nsc_enable_warnings(nsc_ns3_t07_error_tests)
     add_test(NAME nsc.ns3.t07.errors COMMAND nsc_ns3_t07_error_tests)
 

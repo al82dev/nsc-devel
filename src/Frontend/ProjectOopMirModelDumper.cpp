@@ -226,7 +226,10 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
 {
     std::ostringstream output;
     output << "project.oop.mir functions=" << model.functions().size()
-           << " schema=" << kProjectOopMirSchemaMajor << '.' << kProjectOopMirSchemaMinor << '\n';
+           << " schema=" << kProjectOopMirSchemaMajor << '.' << kProjectOopMirSchemaMinor
+           << " panic-profile=" << language::panicProfileName(model.panicProfile())
+           << " panic-handler=" << (model.panicHandler().empty() ? "none" : model.panicHandler())
+           << '\n';
     output << "struct-values=" << model.structLayouts().size() << '\n';
     for (const ProjectOopMirStructLayout& layout : model.structLayouts())
     {

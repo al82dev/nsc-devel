@@ -26,7 +26,10 @@ ProjectOopMirAbiPassing abiPassingForSize(std::uint64_t size) noexcept
     }
 }
 
-bool finalizeCleanupContract(ProjectOopMirFunction& function, std::string& error)
+bool finalizeCleanupContract(
+    ProjectOopMirFunction& function,
+    language::PanicProfile panicProfile,
+    std::string& error)
 {
     const auto collect = [&](const auto& self, const ProjectOopMirNode* node) -> bool {
         if (node == nullptr) return true;
@@ -48,6 +51,10 @@ bool finalizeCleanupContract(ProjectOopMirFunction& function, std::string& error
             case ProjectOopMirNodeKind::Rethrow:
                 function.exceptionFlow.requiresPersonality = true;
                 break;
+            case ProjectOopMirNodeKind::Panic:
+                if (panicProfile == language::PanicProfile::NativeUnwind)
+                    function.exceptionFlow.requiresPersonality = true;
+                break;
             default: break;
         }
         std::optional<ProjectOopMirNonlocalExitKind> exitKind;
@@ -60,6 +67,7 @@ bool finalizeCleanupContract(ProjectOopMirFunction& function, std::string& error
             case ProjectOopMirNodeKind::Continue: exitKind = ProjectOopMirNonlocalExitKind::Continue; break;
             case ProjectOopMirNodeKind::Throw: exitKind = ProjectOopMirNonlocalExitKind::Throw; break;
             case ProjectOopMirNodeKind::Rethrow: exitKind = ProjectOopMirNonlocalExitKind::Rethrow; break;
+            case ProjectOopMirNodeKind::Panic: exitKind = ProjectOopMirNonlocalExitKind::Panic; break;
             case ProjectOopMirNodeKind::CleanupContinuation:
                 exitKind = ProjectOopMirNonlocalExitKind::CleanupContinuation; break;
             default: break;
@@ -662,6 +670,7 @@ const char* projectOopMirNonlocalExitKindName(ProjectOopMirNonlocalExitKind kind
         case ProjectOopMirNonlocalExitKind::Continue: return "continue";
         case ProjectOopMirNonlocalExitKind::Throw: return "throw";
         case ProjectOopMirNonlocalExitKind::Rethrow: return "rethrow";
+        case ProjectOopMirNonlocalExitKind::Panic: return "panic";
         case ProjectOopMirNonlocalExitKind::CleanupContinuation: return "cleanup-continuation";
     }
     return "unknown";
@@ -913,6 +922,9 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::AllocateAndConstruct: return "allocate-and-construct";
         case ProjectOopMirNodeKind::Deallocate: return "deallocate";
         case ProjectOopMirNodeKind::ObjectDestroy: return "object-destroy";
+        case ProjectOopMirNodeKind::Assert: return "assert";
+        case ProjectOopMirNodeKind::Unreachable: return "unreachable";
+        case ProjectOopMirNodeKind::Assume: return "assume";
         case ProjectOopMirNodeKind::Panic: return "panic";
         case ProjectOopMirNodeKind::ResultPropagation: return "result-propagation";
         case ProjectOopMirNodeKind::LoopExpression: return "loop-expression";
@@ -1366,7 +1378,7 @@ bool ProjectOopMirModel::build(
             // here that actually narrows the search, and it is always available.
             functionError += "\n  while lowering '" + source.mangledName + "'";
         }
-        else if (!finalizeCleanupContract(function, functionError))
+        else if (!finalizeCleanupContract(function, panicProfile_, functionError))
         {
             functionError += "\n  while finalizing ownership/cleanup MIR for '" +
                 source.mangledName + "'";
@@ -1650,6 +1662,32 @@ bool ProjectOopMirModel::build(
         }
     }
 
+    panicHandlerMangledName_.clear();
+    if (!panicHandler_.empty())
+    {
+        const auto found = std::find_if(functions_.begin(), functions_.end(), [&](const auto& function) {
+            return function.debugDisplayName == panicHandler_;
+        });
+        if (found == functions_.end())
+        {
+            error = "PanicHandler '" + panicHandler_ +
+                "' does not name a project namespace function";
+            return false;
+        }
+        static const std::vector<std::string> expectedParameters = {
+            "builtin:string", "builtin:string", "builtin:int", "builtin:int"};
+        if (!found->isStatic || found->referenceReturn || found->isVariadic ||
+            found->returnTypeKey != "builtin:void" || !found->errorTypeKey.empty() ||
+            found->parameterTypeKeys != expectedParameters)
+        {
+            error = "PanicHandler '" + panicHandler_ +
+                "' must be a non-throwing free function with signature "
+                "void(string message, string file, int line, int column)";
+            return false;
+        }
+        panicHandlerMangledName_ = found->mangledName;
+    }
+
     built_ = true;
     return true;
 }
@@ -1662,6 +1700,31 @@ void ProjectOopMirModel::setLanguageEdition(language::LanguageEdition edition) n
 language::LanguageEdition ProjectOopMirModel::languageEdition() const noexcept
 {
     return languageEdition_;
+}
+
+void ProjectOopMirModel::setPanicProfile(language::PanicProfile profile) noexcept
+{
+    panicProfile_ = profile;
+}
+
+language::PanicProfile ProjectOopMirModel::panicProfile() const noexcept
+{
+    return panicProfile_;
+}
+
+void ProjectOopMirModel::setPanicHandler(std::string handler)
+{
+    panicHandler_ = std::move(handler);
+}
+
+std::string_view ProjectOopMirModel::panicHandler() const noexcept
+{
+    return panicHandler_;
+}
+
+std::string_view ProjectOopMirModel::panicHandlerMangledName() const noexcept
+{
+    return panicHandlerMangledName_;
 }
 
 std::span<const ProjectOopMirFunction> ProjectOopMirModel::functions() const noexcept
@@ -1990,6 +2053,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::UsingRegion: result->kind = ProjectOopMirNodeKind::UsingRegion; break;
         case ProjectOopHirNodeKind::Throw: result->kind = ProjectOopMirNodeKind::Throw; break;
         case ProjectOopHirNodeKind::Rethrow: result->kind = ProjectOopMirNodeKind::Rethrow; break;
+        case ProjectOopHirNodeKind::Assert: result->kind = ProjectOopMirNodeKind::Assert; break;
+        case ProjectOopHirNodeKind::Unreachable: result->kind = ProjectOopMirNodeKind::Unreachable; break;
+        case ProjectOopHirNodeKind::Assume: result->kind = ProjectOopMirNodeKind::Assume; break;
         case ProjectOopHirNodeKind::Panic: result->kind = ProjectOopMirNodeKind::Panic; break;
         case ProjectOopHirNodeKind::ResultPropagation:
         {

@@ -450,7 +450,11 @@ enum class ProjectOopHirNodeKind
     // Item 319. One operand; dynamicDestruction selects the class descriptor's object-only
     // entry. A non-dynamic node is a typed no-op for a destructible-free struct lifetime.
     ObjectDestruction,
-    // T07 abort-profile panic: no children, builtin:never, no normal successor.
+    // T07-F06 assertion family. Assert/Assume have one bool child and builtin:void type.
+    // Unreachable/Panic have no children, builtin:never, and no normal successor.
+    Assert,
+    Unreachable,
+    Assume,
     Panic,
     // T07-F01. children[0] is the Result carrier evaluated exactly once. The node freezes both
     // variant protocols and the cleanup path for its conditional Error return.

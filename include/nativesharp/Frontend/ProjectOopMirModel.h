@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Language/LanguageEdition.h"
+#include "nativesharp/Language/ErrorSemantics.h"
 
 #include "nativesharp/Frontend/InliningPolicy.h"
 
@@ -38,7 +39,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // 1.25 publishes source-ordered catch patterns, their declared-error matches and exhaustiveness.
 // 1.26 publishes value-producing exhaustive match control flow and arm cleanup boundaries.
 // 1.27 publishes value-producing loop control flow, labelled exits and converted break values.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 27;
+// 1.28 publishes explicit assert, unreachable, assume and project-wide panic-profile semantics.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 28;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -359,7 +361,10 @@ enum class ProjectOopMirNodeKind
     AllocateAndConstruct,
     Deallocate,
     ObjectDestroy,
-    // T07 abort-profile panic: __nativesharp_trap(Panic) followed by unreachable.
+    // T07-F06 assertion family. Assert/Assume carry one bool child; Unreachable/Panic diverge.
+    Assert,
+    Unreachable,
+    Assume,
     Panic,
     // T07-F01. One evaluated carrier, an explicit tag branch, and a structured Error return.
     ResultPropagation,
@@ -571,6 +576,7 @@ enum class ProjectOopMirNonlocalExitKind
     Continue,
     Throw,
     Rethrow,
+    Panic,
     CleanupContinuation
 };
 
@@ -805,6 +811,11 @@ class ProjectOopMirModel final
 public:
     void setLanguageEdition(language::LanguageEdition edition) noexcept;
     language::LanguageEdition languageEdition() const noexcept;
+    void setPanicProfile(language::PanicProfile profile) noexcept;
+    language::PanicProfile panicProfile() const noexcept;
+    void setPanicHandler(std::string handler);
+    std::string_view panicHandler() const noexcept;
+    std::string_view panicHandlerMangledName() const noexcept;
     bool build(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
@@ -873,6 +884,9 @@ private:
     std::vector<ProjectOopMirInterfaceBinding> interfaceBindings_;
     bool built_ = false;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
+    language::PanicProfile panicProfile_ = language::PanicProfile::Abort;
+    std::string panicHandler_;
+    std::string panicHandlerMangledName_;
 };
 
 const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept;

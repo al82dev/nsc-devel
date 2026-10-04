@@ -24,8 +24,8 @@ int main()
     tests.expect(matrix.find("nsmeta.N=1.37\nnsmeta.N-1=1.21\n") != std::string::npos,
         "the 3.0 window accepts NSMETA 1.21 producers in the NSMETA 1.37 compiler");
     tests.expect(matrix.find("native-abi.N=1.0\nnative-abi.N-1=1.0\n") != std::string::npos &&
-            matrix.find("runtime-abi.N=1.1\nruntime-abi.N-1=1.0\n") != std::string::npos,
-        "Native ABI stays at 1.0 while Runtime ABI advances from 1.0 to 1.1");
+            matrix.find("runtime-abi.N=1.2\nruntime-abi.N-1=1.0\n") != std::string::npos,
+        "Native ABI stays at 1.0 while Runtime ABI advances from 1.0 to 1.2");
     for (const std::string surface : {"compiler", "nsmeta", "native-abi", "runtime-abi"})
     {
         tests.expect(matrix.find("row=" + surface + "|consumer:N|producer:N-1|accept") !=

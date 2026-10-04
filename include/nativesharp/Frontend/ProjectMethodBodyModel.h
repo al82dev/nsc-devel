@@ -1147,8 +1147,12 @@ enum class MethodCoreOperationKind
     // Tres builtin:string entran, un builtin:int sale -- el codigo de salida del hijo, o -1 si no
     // se pudo lanzar. Es la primera operacion nucleo de tres cadenas.
     ProcessRun,
-    // NativeSharp 3.0 T07-F04/F06. Contextual `panic()` is an abort-profile divergent
-    // expression. It has no payload in this first physical contract, so failure never allocates.
+    // NativeSharp 3.0 T07-F06. Compiler-owned assertion intrinsics are contextual unqualified
+    // calls. Assert and Assume consume one bool; Unreachable and Panic are divergent and consume
+    // no values. Assume is accepted only inside an explicit unsafe block.
+    Assert,
+    Unreachable,
+    Assume,
     Panic
 };
 

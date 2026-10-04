@@ -13992,29 +13992,95 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         return name->semanticOrdinal * 2U +
             (name->kind == ScopeNameKind::Parameter ? 1U : 0U);
     };
-    // T07-F04/F06: compiler-owned, allocation-free abort. Abort deliberately skips lexical
-    // cleanup; the enclosing statement turns builtin:never into an unreachable flow state.
-    if (expression->auxiliaryText() == "builtin-panic")
+    // T07-F06: compiler-owned assertion family. These bindings are formed before ordinary name
+    // lookup because the parser marks only unqualified contextual call heads. The argument is
+    // analyzed exactly once here and later becomes the single HIR/MIR child.
+    const std::string_view assertionIntrinsic = expression->auxiliaryText();
+    if (assertionIntrinsic == "builtin-assert" ||
+        assertionIntrinsic == "builtin-unreachable" ||
+        assertionIntrinsic == "builtin-assume" ||
+        assertionIntrinsic == "builtin-panic")
     {
-        if (!expression->children().empty() || !expression->typeSyntaxes().empty())
+        const bool hasCondition = assertionIntrinsic == "builtin-assert" ||
+            assertionIntrinsic == "builtin-assume";
+        const bool isPanic = assertionIntrinsic == "builtin-panic";
+        const std::string_view displayName = assertionIntrinsic.substr(8);
+        const std::size_t expectedArguments = hasCondition ? 1U : 0U;
+        const bool invalidArity = isPanic
+            ? expression->children().size() > 1U
+            : expression->children().size() != expectedArguments;
+        if (invalidArity ||
+            !expression->typeSyntaxes().empty())
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidArgumentCount,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
-                "panic() takes no arguments or generic type arguments in the abort profile");
+                std::string(displayName) + (isPanic
+                    ? "() accepts zero or one string payload and no generic type arguments"
+                    : "() requires exactly " + std::to_string(expectedArguments) +
+                        " value argument" + (expectedArguments == 1U ? "" : "s") +
+                    " and no generic type arguments"));
             return {};
         }
+
+        if (assertionIntrinsic == "builtin-assume" && unsafeBlockDepth_ == 0)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "assume() requires an explicit unsafe { ... } block because a false premise is undefined behavior");
+            return {};
+        }
+
+        if (hasCondition)
+        {
+            const ExpressionResult condition = analyzeExpression(
+                expression->children().front(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (!condition.valid) return {};
+            if (condition.typeKey != "builtin:bool")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidCondition,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->children().front()->range(),
+                    std::string(displayName) + "() condition must have type bool");
+                return {};
+            }
+        }
+        else if (isPanic && !expression->children().empty())
+        {
+            const ExpressionResult payload = analyzeExpression(
+                expression->children().front(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (!payload.valid) return {};
+            if (payload.typeKey != "builtin:string" && payload.typeKey != "string-literal")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->children().front()->range(),
+                    "panic() payload must have type string");
+                return {};
+            }
+        }
+
         MethodCoreBinding binding;
-        binding.kind = MethodCoreOperationKind::Panic;
+        binding.kind = assertionIntrinsic == "builtin-assert"
+            ? MethodCoreOperationKind::Assert
+            : assertionIntrinsic == "builtin-unreachable"
+                ? MethodCoreOperationKind::Unreachable
+                : assertionIntrinsic == "builtin-assume"
+                    ? MethodCoreOperationKind::Assume
+                    : MethodCoreOperationKind::Panic;
         binding.syntax = expression;
         binding.methodMemberOrdinal = methodMemberOrdinal;
         binding.scopeOrdinal = scopeOrdinal;
-        binding.resultTypeKey = "builtin:never";
+        binding.resultTypeKey = hasCondition ? "builtin:void" : "builtin:never";
         coreBindings_.push_back(std::move(binding));
-        result.typeKey = "builtin:never";
+        result.typeKey = hasCondition ? "builtin:void" : "builtin:never";
         result.valid = true;
-        ownershipFlowReachable_ = false;
+        if (!hasCondition) ownershipFlowReachable_ = false;
         return result;
     }
     if (namespaceFunctionModel_ != nullptr)
@@ -22652,6 +22718,9 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::FileWriteAllBytes: return "file-write-all-bytes";
         case MethodCoreOperationKind::EnvironmentCurrentDirectory: return "environment-current-directory";
         case MethodCoreOperationKind::ProcessRun: return "process-run";
+        case MethodCoreOperationKind::Assert: return "assert";
+        case MethodCoreOperationKind::Unreachable: return "unreachable";
+        case MethodCoreOperationKind::Assume: return "assume";
         case MethodCoreOperationKind::Panic: return "panic";
         case MethodCoreOperationKind::FileWriteAllText: return "file-write-all-text";
         case MethodCoreOperationKind::FileAppendAllText: return "file-append-all-text";

@@ -38,6 +38,8 @@ bool neverCoercesTo(std::string_view targetType) noexcept;
 std::optional<std::string> unifyLoopBreakTypes(std::span<const std::string> breakTypes);
 
 enum class PanicProfile { Abort, NativeUnwind };
+std::optional<PanicProfile> parsePanicProfile(std::string_view value) noexcept;
+std::string_view panicProfileName(PanicProfile profile) noexcept;
 struct PanicContract final
 {
     bool runsCleanup = false;

@@ -752,9 +752,14 @@ T07 pasa 34/34 con ejecución O0/NSLink.
 
 **Commit:** `ns3(t07-f06): panic-semantics`
 
-- **Implementación:** definir `assert`, `unreachable`, `assume` y `panic`; perfiles `abort` y `unwind-native`; `assume` inseguro cuando una premisa falsa cause UB.
-- **Pruebas dirigidas:** Debug/Release, cleanup por perfil, optimización, source location, FFI boundary y handlers custom.
-- **Markdown ES/EN:** garantías, UB y contrato del handler.
+- **Estado:** implementado y cerrado en este commit atómico.
+- **Implementación:** `assert`, `unreachable`, `unsafe assume` y `panic` explícitos hasta MIR 1.28;
+  perfiles de proyecto `abort`/`unwind-native`, payload string, cleanup nativo, frontera FFI,
+  handler tipado con ubicación fuente, runtime ABI 1.2 y dependencia correcta entre particiones.
+- **Pruebas dirigidas:** `PASS: 54 checks` en O0/NSLink; ejecución de trap, cleanup y handler,
+  además de negativos de aridad, tipos, unsafe, perfil y firma. Release/O1–O3 y baseline no se
+  ejecutaron por política de la tanda.
+- **Markdown ES/EN:** `docs/3.0/language/assertions-and-panic.md` y ficha individual F06.
 
 ### Baseline T07 / T07 baseline
 

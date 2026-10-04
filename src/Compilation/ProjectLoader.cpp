@@ -37,6 +37,8 @@ struct ProjectDescriptor final
     std::optional<std::string> name;
     std::optional<ProjectOutputKind> outputKind;
     std::optional<language::LanguageEdition> languageEdition;
+    std::optional<language::PanicProfile> panicProfile;
+    std::optional<std::string> panicHandler;
     ProjectBuildSettings buildSettings;
     std::vector<SourceIncludeRule> includes;
     std::vector<GlobPattern> removes;
@@ -310,6 +312,37 @@ bool parsePropertyGroup(
                 error = "Language must be '2' or '3'";
                 return false;
             }
+        }
+        else if (property.name == "PanicProfile")
+        {
+            if (descriptor.panicProfile.has_value())
+            {
+                error = "project property 'PanicProfile' is declared more than once";
+                return false;
+            }
+            descriptor.panicProfile = language::parsePanicProfile(value);
+            if (!descriptor.panicProfile.has_value())
+            {
+                error = "PanicProfile must be 'abort' or 'unwind-native'";
+                return false;
+            }
+        }
+        else if (property.name == "PanicHandler")
+        {
+            if (descriptor.panicHandler.has_value())
+            {
+                error = "project property 'PanicHandler' is declared more than once";
+                return false;
+            }
+            if (value.empty() || value.size() > 255U ||
+                std::ranges::any_of(value, [](unsigned char ch) {
+                    return ch <= 0x20U || ch == 0x7fU;
+                }))
+            {
+                error = "PanicHandler must be a non-empty qualified function name without whitespace";
+                return false;
+            }
+            descriptor.panicHandler = value;
         }
         else if (property.name == "OutputPath")
         {
@@ -1007,7 +1040,9 @@ std::optional<Project> ProjectLoader::load(
         std::move(projectReferences),
         std::move(libraryReferences),
         std::move(sdkReferences),
-        descriptor.languageEdition.value_or(language::LanguageEdition::V2));
+        descriptor.languageEdition.value_or(language::LanguageEdition::V2),
+        descriptor.panicProfile.value_or(language::PanicProfile::Abort),
+        descriptor.panicHandler.value_or(std::string{}));
 }
 
 ProjectLoaderStatistics ProjectLoader::statistics() const

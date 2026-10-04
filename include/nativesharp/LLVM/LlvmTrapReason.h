@@ -36,6 +36,10 @@ enum class LlvmTrapReason : std::uint32_t
     // boundary stops it here. Exit code 128 + 13. See ProjectOopLlvmLowerer::callbackGuardThunk.
     CallbackExceptionEscape = 13,
     // NativeSharp 3.0 T07 abort-profile panic(). Exit code is 128 + 14 = 142.
-    Panic = 14
+    Panic = 14,
+    // T07-F06 assert(false). Kept distinct from unreachable() so crash telemetry preserves intent.
+    AssertionFailed = 15,
+    // T07-F06 explicit unreachable(). Reaching it is a program defect, not an optimizer hint.
+    Unreachable = 16
 };
 }

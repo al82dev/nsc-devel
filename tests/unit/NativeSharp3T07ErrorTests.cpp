@@ -32,12 +32,20 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
 std::filesystem::path writeProject(
     const std::filesystem::path& directory,
     std::string_view name,
-    std::string_view source)
+    std::string_view source,
+    std::string_view panicProfile = {},
+    std::string_view panicHandler = {})
 {
     const std::filesystem::path project = directory / (std::string(name) + ".nsproj");
+    const std::string panicProperties =
+        (panicProfile.empty() ? std::string{} :
+            "<PanicProfile>" + std::string(panicProfile) + "</PanicProfile>") +
+        (panicHandler.empty() ? std::string{} :
+            "<PanicHandler>" + std::string(panicHandler) + "</PanicHandler>");
     writeFile(project,
         "<Project><PropertyGroup><Name>" + std::string(name) +
         "</Name><Language>3</Language><OutputType>Exe</OutputType>"
+        + panicProperties +
         "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
         "</ItemGroup></Project>");
     writeFile(directory / "Main.ns", source);
@@ -114,6 +122,10 @@ CompilationEvidence compileMir(const std::filesystem::path& project)
 int main()
 {
     nativesharp::tests::TestContext tests;
+    const std::string developmentRuntime =
+        (std::filesystem::path(NSC_BINARY_DIR) /
+            "generated/NativeSharp.Runtime.Win32.lib").string();
+    _putenv_s("NSC_WINDOWS_RUNTIME_LIBRARY", developmentRuntime.c_str());
     using namespace nativesharp::language;
     std::string error;
     const ResultProtocol result{"type:Packet", "type:IoError"};
@@ -240,7 +252,7 @@ public class Program
         : std::string();
     tests.expect(
         mirBuilt && compilationError.empty() &&
-            mir.find("schema=1.27") != std::string::npos &&
+            mir.find("schema=1.28") != std::string::npos &&
             mir.find("result-propagation") != std::string::npos &&
             mir.find("conversion=__nsc_method_") != std::string::npos &&
             mir.find("continuation=return") != std::string::npos,
@@ -386,12 +398,12 @@ namespace TypedThrows
     const CompilationEvidence typed = compileMir(typedProject);
     tests.expect(
         typed.succeeded && typed.error.empty() &&
-            typed.mir.find("schema=1.27") != std::string::npos &&
+            typed.mir.find("schema=1.28") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.Error") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.ParseError") != std::string::npos &&
             typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=true exhaustive=false") != std::string::npos &&
             typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=false exhaustive=true") != std::string::npos,
-        "throws E and source-ordered filtered catches reach MIR 1.26 with exact error identity (" +
+        "throws E and source-ordered filtered catches retain exact error identity in MIR 1.28 (" +
             typed.error + typed.diagnostics + typed.mir + ")");
     executionDiagnostic.clear();
     tests.expect(
@@ -591,13 +603,13 @@ public class Program
     const CompilationEvidence loopEvidence = compileMir(loopProject);
     tests.expect(
         loopEvidence.succeeded && loopEvidence.error.empty() &&
-            loopEvidence.mir.find("schema=1.27") != std::string::npos &&
+            loopEvidence.mir.find("schema=1.28") != std::string::npos &&
             loopEvidence.mir.find("loop-expression type=builtin:int") != std::string::npos &&
             loopEvidence.mir.find("label=outer break-result=builtin:int") != std::string::npos &&
             loopEvidence.mir.find("target-label=outer") != std::string::npos &&
             loopEvidence.mir.find("target-label=retry") != std::string::npos &&
             loopEvidence.mir.find("continuation=break") != std::string::npos,
-        "loop expressions publish typed values, labelled exits, and cleanup edges in MIR 1.27 (" +
+        "loop expressions publish typed values, labelled exits, and cleanup edges in MIR 1.28 (" +
             loopEvidence.error + loopEvidence.diagnostics + loopEvidence.mir + ")");
     executionDiagnostic.clear();
     tests.expect(
@@ -916,6 +928,177 @@ public class Program
             compileAndRun(consumerProject, 42, executionDiagnostic),
         "a metadata consumer reconstructs throws E and catches the producer's native exception (" +
             producerError + producerOutput + executionDiagnostic + ")");
+
+    const std::filesystem::path assertionsRoot = root / "assertions";
+    const std::filesystem::path assertionsProject = writeProject(
+        assertionsRoot, "Assertions", R"NS(
+public class Program
+{
+    private static int Impossible()
+    {
+        unreachable();
+    }
+
+    public static int Main()
+    {
+        assert(true);
+        unsafe { assume(true); }
+        return 42;
+    }
+}
+)NS");
+    const CompilationEvidence assertionsEvidence = compileMir(assertionsProject);
+    tests.expect(
+        assertionsEvidence.succeeded && assertionsEvidence.error.empty() &&
+            assertionsEvidence.mir.find("assert type=builtin:void") != std::string::npos &&
+            assertionsEvidence.mir.find("assume type=builtin:void") != std::string::npos &&
+            assertionsEvidence.mir.find("unreachable type=builtin:never") != std::string::npos,
+        "assert, unsafe assume, and unreachable are explicit productive MIR operations (" +
+            assertionsEvidence.error + assertionsEvidence.diagnostics + assertionsEvidence.mir + ")");
+    std::string assertionExecutionDiagnostic;
+    tests.expect(
+        compileAndRun(assertionsProject, 42, assertionExecutionDiagnostic),
+        "assert(true) and unsafe assume(true) preserve O0/NSLink execution (" +
+            assertionExecutionDiagnostic + ")");
+
+    const std::filesystem::path falseAssertProject = writeProject(
+        root / "assert-false", "AssertFalse", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        assert(false);
+        return 0;
+    }
+}
+)NS");
+    std::string falseAssertDiagnostic;
+    tests.expect(
+        compileAndRun(falseAssertProject, 143, falseAssertDiagnostic),
+        "assert(false) terminates through the dedicated assertion trap reason (" +
+            falseAssertDiagnostic + ")");
+
+    const std::filesystem::path unwindProject = writeProject(
+        root / "panic-unwind", "PanicUnwind", R"NS(
+using NativeSharp.Core;
+namespace NativeSharp.Core
+{
+    public class Environment
+    {
+        public static void Exit(int exitCode) { }
+    }
+}
+public class Program
+{
+    private static void Trigger()
+    {
+        defer [] { Environment.Exit(42); }
+        panic("cleanup");
+    }
+    public static int Main() { Trigger(); return 1; }
+}
+)NS", "unwind-native");
+    const CompilationEvidence unwindEvidence = compileMir(unwindProject);
+    tests.expect(
+        unwindEvidence.succeeded && unwindEvidence.error.empty() &&
+            unwindEvidence.mir.find("panic-profile=unwind-native") != std::string::npos &&
+            unwindEvidence.mir.find("nonlocal-exit kind=panic") != std::string::npos &&
+            unwindEvidence.mir.find("cleanup-path=#") != std::string::npos,
+        "unwind-native publishes panic and its cleanup path in MIR (" +
+            unwindEvidence.error + unwindEvidence.diagnostics + unwindEvidence.mir + ")");
+    std::string unwindDiagnostic;
+    tests.expect(
+        compileAndRun(unwindProject, 42, unwindDiagnostic),
+        "unwind-native executes defer cleanup before the top-level panic boundary (" +
+            unwindDiagnostic + ")");
+
+    const std::filesystem::path handlerProject = writeProject(
+        root / "panic-handler", "PanicHandler", R"NS(
+using NativeSharp.Core;
+namespace NativeSharp.Core
+{
+    public class Environment
+    {
+        public static void Exit(int exitCode) { }
+    }
+}
+namespace Hooks
+{
+    public void OnPanic(string message, string file, int line, int column)
+    {
+        if (message == "handled" && file != null && line > 0 && column > 0)
+        {
+            Environment.Exit(42);
+        }
+        Environment.Exit(41);
+    }
+}
+public class Program
+{
+    public static int Main() { panic("handled"); }
+}
+)NS", "abort", "Hooks.OnPanic");
+    const CompilationEvidence handlerEvidence = compileMir(handlerProject);
+    tests.expect(
+        handlerEvidence.succeeded && handlerEvidence.error.empty() &&
+            handlerEvidence.mir.find("panic-handler=Hooks.OnPanic") != std::string::npos,
+        "a project resolves and publishes its typed custom panic handler (" +
+            handlerEvidence.error + handlerEvidence.diagnostics + handlerEvidence.mir + ")");
+    std::string handlerDiagnostic;
+    const bool handlerRan = compileAndRun(handlerProject, 42, handlerDiagnostic);
+    tests.expect(
+        handlerRan,
+        "the custom panic handler receives payload and source location before abort (" +
+            handlerDiagnostic + ")");
+
+    expectRejected("AssumeRequiresUnsafe", R"NS(
+public class Program
+{
+    public static int Main() { assume(true); return 0; }
+}
+)NS", "assume() requires an explicit unsafe");
+    expectRejected("AssertionConditionMustBeBool", R"NS(
+public class Program
+{
+    public static int Main() { assert(42); return 0; }
+}
+)NS", "assert() condition must have type bool");
+    expectRejected("UnreachableHasNoArguments", R"NS(
+public class Program
+{
+    public static int Main() { unreachable(true); }
+}
+)NS", "unreachable() requires exactly 0 value arguments");
+    expectRejected("PanicPayloadMustBeString", R"NS(
+public class Program
+{
+    public static int Main() { panic(42); }
+}
+)NS", "panic() payload must have type string");
+
+    const std::filesystem::path invalidProfileProject = writeProject(
+        root / "invalid-panic-profile", "InvalidPanicProfile",
+        "public class Program { public static int Main() { return 0; } }",
+        "managed-unwind");
+    const CompilationEvidence invalidProfile = compileMir(invalidProfileProject);
+    tests.expect(
+        !invalidProfile.succeeded &&
+            invalidProfile.error.find("PanicProfile must be 'abort' or 'unwind-native'") !=
+                std::string::npos,
+        "project loading rejects unknown panic profiles (" + invalidProfile.error + ")");
+
+    const std::filesystem::path invalidHandlerProject = writeProject(
+        root / "invalid-panic-handler", "InvalidPanicHandler", R"NS(
+namespace Hooks { public int Wrong(string message) { return 0; } }
+public class Program { public static int Main() { panic(); } }
+)NS", "abort", "Hooks.Wrong");
+    const CompilationEvidence invalidHandler = compileMir(invalidHandlerProject);
+    tests.expect(
+        !invalidHandler.succeeded &&
+            (invalidHandler.error + invalidHandler.diagnostics).find(
+                "must be a non-throwing free function with signature") != std::string::npos,
+        "project compilation rejects an invalid custom panic-handler signature (" +
+            invalidHandler.error + invalidHandler.diagnostics + ")");
 
     std::filesystem::remove_all(root, ignored);
     return tests.result();

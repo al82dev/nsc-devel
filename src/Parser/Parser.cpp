@@ -12176,14 +12176,19 @@ ast::AstNode* Parser::parsePostfixExpression()
             }
             expect(TokenKind::RightParen, "')'");
             call->setRange(SourceRange(expression->range().begin(), tokens_[index_ - 1].range().end()));
-            // T07 keeps `panic` contextual: it remains an identifier everywhere except an
-            // unqualified call head. Preserve that decision on the call so later stages never
-            // infer an intrinsic merely from a user member's spelling.
+            // T07-F06 keeps the assertion family contextual: these spellings remain ordinary
+            // identifiers everywhere except an unqualified call head. Preserve the selected
+            // intrinsic on the call so later stages never infer it from a user member's name.
             if (expression->kind() == ast::AstNodeKind::IdentifierExpression &&
-                expression->text() == "panic" && expression->typeSyntax() == nullptr)
+                expression->typeSyntax() == nullptr)
             {
-                requireEdition3(call->range(), "the panic() divergent expression");
-                call->setAuxiliaryText("builtin-panic");
+                const std::string& intrinsic = expression->text();
+                if (intrinsic == "assert" || intrinsic == "unreachable" ||
+                    intrinsic == "assume" || intrinsic == "panic")
+                {
+                    requireEdition3(call->range(), "the " + intrinsic + "() intrinsic");
+                    call->setAuxiliaryText("builtin-" + intrinsic);
+                }
             }
             expression = call;
             continue;

@@ -877,7 +877,11 @@ bool ProjectCompilation::compileProjectOopMir(
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-mir");
     oopMirModel_ = std::make_unique<ProjectOopMirModel>();
     if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr)
+    {
         oopMirModel_->setLanguageEdition(projectGraph_->rootProject()->languageEdition());
+        oopMirModel_->setPanicProfile(projectGraph_->rootProject()->panicProfile());
+        oopMirModel_->setPanicHandler(std::string(projectGraph_->rootProject()->panicHandler()));
+    }
     if (!oopMirModel_->build(
         *nameLookup_, *memberModel_, *objectLayoutModel_, *virtualDispatchModel_, *interfaceModel_,
         *destructionModel_, *oopHirModel_, *namespaceFunctionModel_, loadError, compilationJobs_))

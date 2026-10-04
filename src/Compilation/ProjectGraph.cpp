@@ -85,7 +85,8 @@ bool ProjectGraph::addLibraryReferences(
                 project.projectReferences().begin(), project.projectReferences().end()),
             std::move(libraries),
             std::vector<SdkManifest>(project.sdkReferences().begin(), project.sdkReferences().end()),
-            project.languageEdition());
+            project.languageEdition(), project.panicProfile(),
+            std::string(project.panicHandler()));
     }
     if (!foundOwner)
     {
@@ -173,7 +174,8 @@ bool ProjectGraph::replaceLibraryReferencesWithSourceProjects(
             std::move(projectReferences),
             std::move(libraries),
             std::vector<SdkManifest>(project.sdkReferences().begin(), project.sdkReferences().end()),
-            project.languageEdition());
+            project.languageEdition(), project.panicProfile(),
+            std::string(project.panicHandler()));
     }
 
     std::vector<std::uint8_t> state(rewired.size(), 0U);
@@ -369,7 +371,8 @@ bool ProjectGraph::addPrecompiledProjects(
                 project.libraryReferences().begin(), project.libraryReferences().end()),
             std::vector<SdkManifest>(
                 project.sdkReferences().begin(), project.sdkReferences().end()),
-            project.languageEdition());
+            project.languageEdition(), project.panicProfile(),
+            std::string(project.panicHandler()));
     }
     projects_ = std::move(expanded);
     return true;

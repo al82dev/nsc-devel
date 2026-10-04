@@ -43,8 +43,8 @@ int main()
         "migration baseline identifies its frozen source, current target and pending gate");
     tests.expect(baseline.find("nsmeta=1.33\n") != std::string::npos &&
                      baseline.find("native_abi=1.0\n") != std::string::npos &&
-                     baseline.find("runtime_abi=1.1\n") != std::string::npos &&
-                     baseline.find("runtime_symbol_set=3\n") != std::string::npos &&
+                     baseline.find("runtime_abi=1.2\n") != std::string::npos &&
+                     baseline.find("runtime_symbol_set=4\n") != std::string::npos &&
                      baseline.find("mir_schema=1.21\n") != std::string::npos,
         "migration baseline freezes every cross-component contract");
     tests.expect(baseline.find("breaking_change_ledger=1\n") != std::string::npos &&
@@ -73,10 +73,10 @@ int main()
         "current migration baseline verifies");
 
     std::string incompatible = baseline;
-    const std::size_t runtime = incompatible.find("runtime_abi=1.1");
+    const std::size_t runtime = incompatible.find("runtime_abi=1.2");
     if (runtime != std::string::npos)
     {
-        incompatible.replace(runtime, std::string("runtime_abi=1.1").size(), "runtime_abi=2.0");
+        incompatible.replace(runtime, std::string("runtime_abi=1.2").size(), "runtime_abi=2.0");
     }
     tests.expect(writeFile(path, incompatible) && !driver::verifyMigrationBaseline(path, error) &&
                      error.find("incompatible migration baseline field") != std::string::npos,

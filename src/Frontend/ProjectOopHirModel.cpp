@@ -462,6 +462,9 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::DebugIsDebuggerPresentRaw:
     case MethodCoreOperationKind::DebugCaptureStackFrameCountRaw:
     case MethodCoreOperationKind::EnvironmentCurrentDirectory:
+    case MethodCoreOperationKind::Assert:
+    case MethodCoreOperationKind::Unreachable:
+    case MethodCoreOperationKind::Assume:
     case MethodCoreOperationKind::Panic:
         return std::nullopt;
     }
@@ -1214,6 +1217,9 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::ObjectConstruction: return "object-construction";
         case ProjectOopHirNodeKind::Deallocation: return "deallocation";
         case ProjectOopHirNodeKind::ObjectDestruction: return "object-destruction";
+        case ProjectOopHirNodeKind::Assert: return "assert";
+        case ProjectOopHirNodeKind::Unreachable: return "unreachable";
+        case ProjectOopHirNodeKind::Assume: return "assume";
         case ProjectOopHirNodeKind::Panic: return "panic";
         case ProjectOopHirNodeKind::ResultPropagation: return "result-propagation";
         case ProjectOopHirNodeKind::LoopExpression: return "loop-expression";
@@ -5548,20 +5554,75 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
 
         case ast::AstNodeKind::CallExpression:
         {
-            if (const MethodCoreBinding* panic = coreBinding(expression);
-                panic != nullptr && panic->kind == MethodCoreOperationKind::Panic)
+            if (const MethodCoreBinding* intrinsic = coreBinding(expression);
+                intrinsic != nullptr &&
+                (intrinsic->kind == MethodCoreOperationKind::Assert ||
+                 intrinsic->kind == MethodCoreOperationKind::Unreachable ||
+                 intrinsic->kind == MethodCoreOperationKind::Assume ||
+                 intrinsic->kind == MethodCoreOperationKind::Panic))
             {
                 if (addressContext)
                 {
-                    error = "panic() is divergent and has no addressable result";
+                    error = std::string(methodCoreOperationKindName(intrinsic->kind)) +
+                        "() has no addressable result";
                     return nullptr;
                 }
-                if (!expression->children().empty() || panic->resultTypeKey != "builtin:never")
+
+                const bool hasCondition = intrinsic->kind == MethodCoreOperationKind::Assert ||
+                    intrinsic->kind == MethodCoreOperationKind::Assume;
+                const bool isPanic = intrinsic->kind == MethodCoreOperationKind::Panic;
+                const std::size_t expectedArguments = hasCondition ? 1U : 0U;
+                const bool invalidArity = isPanic
+                    ? expression->children().size() > 1U
+                    : expression->children().size() != expectedArguments;
+                const std::string_view expectedType = hasCondition ? "builtin:void" : "builtin:never";
+                if (invalidArity ||
+                    intrinsic->resultTypeKey != expectedType)
                 {
-                    error = "T07 panic binding lost its zero-argument never contract";
+                    error = "T07-F06 assertion binding lost its arity/result contract";
                     return nullptr;
                 }
-                return makeNode(ProjectOopHirNodeKind::Panic, expression, "builtin:never");
+
+                const ProjectOopHirNodeKind kind = intrinsic->kind == MethodCoreOperationKind::Assert
+                    ? ProjectOopHirNodeKind::Assert
+                    : intrinsic->kind == MethodCoreOperationKind::Unreachable
+                        ? ProjectOopHirNodeKind::Unreachable
+                        : intrinsic->kind == MethodCoreOperationKind::Assume
+                            ? ProjectOopHirNodeKind::Assume
+                            : ProjectOopHirNodeKind::Panic;
+                auto node = makeNode(kind, expression, std::string(expectedType));
+                if (intrinsic->kind == MethodCoreOperationKind::Panic)
+                {
+                    node->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
+                    for (std::size_t index = activeHirCleanupRegions_.size(); index > 0; --index)
+                        node->cleanupRegionOrdinals.push_back(activeHirCleanupRegions_[index - 1]);
+                }
+                if (hasCondition)
+                {
+                    auto condition = lowerExpression(
+                        expression->children().front(), memberOrdinal, false, error);
+                    if (condition == nullptr) return nullptr;
+                    if (condition->typeKey != "builtin:bool")
+                    {
+                        error = "T07-F06 assertion condition lost its bool type";
+                        return nullptr;
+                    }
+                    node->children.push_back(std::move(condition));
+                }
+                else if (isPanic && !expression->children().empty())
+                {
+                    auto payload = lowerExpression(
+                        expression->children().front(), memberOrdinal, false, error);
+                    if (payload == nullptr) return nullptr;
+                    if (payload->typeKey != "builtin:string" &&
+                        payload->typeKey != "string-literal")
+                    {
+                        error = "T07-F06 panic payload lost its string type";
+                        return nullptr;
+                    }
+                    node->children.push_back(std::move(payload));
+                }
+                return node;
             }
             const NamespaceFunctionCallBinding* namespaceCall =
                 namespaceFunctionCallBinding(expression);

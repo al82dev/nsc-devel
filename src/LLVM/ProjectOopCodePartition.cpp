@@ -218,6 +218,8 @@ bool ProjectOopCodePartition::build(
         addCallee(node->resultErrorExtractorCalleeName);
         addCallee(node->resultErrorFactoryCalleeName);
         addCallee(node->resultErrorConversionCalleeName);
+        if (node->kind == frontend::ProjectOopMirNodeKind::Panic)
+            addCallee(mirModel.panicHandlerMangledName());
         addMember(node->memberOrdinal, dependencies);
         addMember(node->secondaryMemberOrdinal, dependencies);
         addMember(node->resultSuccessTestMemberOrdinal, dependencies);

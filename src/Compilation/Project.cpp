@@ -12,7 +12,9 @@ Project::Project(
     std::vector<std::filesystem::path> projectReferences,
     std::vector<LibraryReference> libraryReferences,
     std::vector<SdkManifest> sdkReferences,
-    language::LanguageEdition languageEdition)
+    language::LanguageEdition languageEdition,
+    language::PanicProfile panicProfile,
+    std::string panicHandler)
     : projectFile_(std::move(projectFile)),
       moduleName_(std::move(moduleName)),
       outputKind_(outputKind),
@@ -20,7 +22,9 @@ Project::Project(
       projectReferences_(std::move(projectReferences)),
       libraryReferences_(std::move(libraryReferences)),
       sdkReferences_(std::move(sdkReferences)),
-      languageEdition_(languageEdition)
+      languageEdition_(languageEdition),
+      panicProfile_(panicProfile),
+      panicHandler_(std::move(panicHandler))
 {
 }
 
@@ -62,5 +66,15 @@ std::span<const SdkManifest> Project::sdkReferences() const noexcept
 language::LanguageEdition Project::languageEdition() const noexcept
 {
     return languageEdition_;
+}
+
+language::PanicProfile Project::panicProfile() const noexcept
+{
+    return panicProfile_;
+}
+
+std::string_view Project::panicHandler() const noexcept
+{
+    return panicHandler_;
 }
 }

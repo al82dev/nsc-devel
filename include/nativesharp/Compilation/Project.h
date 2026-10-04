@@ -3,10 +3,12 @@
 #include "nativesharp/Compilation/ProjectSourceSet.h"
 #include "nativesharp/Compilation/SdkManifest.h"
 #include "nativesharp/Language/LanguageEdition.h"
+#include "nativesharp/Language/ErrorSemantics.h"
 
 #include <filesystem>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace nativesharp::compilation
@@ -39,7 +41,9 @@ public:
         std::vector<std::filesystem::path> projectReferences,
         std::vector<LibraryReference> libraryReferences,
         std::vector<SdkManifest> sdkReferences,
-        language::LanguageEdition languageEdition = language::LanguageEdition::V2);
+        language::LanguageEdition languageEdition = language::LanguageEdition::V2,
+        language::PanicProfile panicProfile = language::PanicProfile::Abort,
+        std::string panicHandler = {});
 
     const std::filesystem::path& projectFile() const noexcept;
     const std::string& moduleName() const noexcept;
@@ -49,6 +53,8 @@ public:
     std::span<const LibraryReference> libraryReferences() const noexcept;
     std::span<const SdkManifest> sdkReferences() const noexcept;
     language::LanguageEdition languageEdition() const noexcept;
+    language::PanicProfile panicProfile() const noexcept;
+    std::string_view panicHandler() const noexcept;
 
 private:
     std::filesystem::path projectFile_;
@@ -59,5 +65,7 @@ private:
     std::vector<LibraryReference> libraryReferences_;
     std::vector<SdkManifest> sdkReferences_;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
+    language::PanicProfile panicProfile_ = language::PanicProfile::Abort;
+    std::string panicHandler_;
 };
 }

@@ -44,15 +44,19 @@ constexpr const char* kAllocationFunctionName = "__nativesharp_alloc";
 constexpr const char* kDeallocationFunctionName = "__nativesharp_free";
 constexpr const char* kMemsetIntrinsicName = "llvm.memset.p0.i64";
 constexpr const char* kMemcpyIntrinsicName = "llvm.memcpy.p0.p0.i64";
+constexpr const char* kAssumeIntrinsicName = "llvm.assume";
 constexpr const char* kTrapFunctionName = "__nativesharp_trap";
 // SHR-022. Una sola funcion para las cuatro salidas de consola: el segundo parametro es una
 // mascara de dos bits -- bit 0 anade el salto de linea, bit 1 escribe por error estandar.
 constexpr const char* kConsoleWriteLineFunctionName = "__nativesharp_console_write";
 constexpr const char* kConsoleReadLineFunctionName = "__nativesharp_console_readline";
 constexpr const char* kNativeThrowFunctionName = "__nativesharp_throw";
+constexpr const char* kRaiseExceptionFunctionName = "RaiseException";
+constexpr std::uint32_t kNativeSharpPanicExceptionCode = 0xE04E5302U;
 constexpr const char* kExceptionCurrentFunctionName = "__nativesharp_exception_current";
 constexpr const char* kExceptionClearFunctionName = "__nativesharp_exception_clear";
 constexpr const char* kEhFilterFunctionName = "__nativesharp_eh_filter";
+constexpr const char* kPanicEhFilterFunctionName = "__nativesharp_panic_eh_filter";
 constexpr const char* kSehPersonalityFunctionName = "__C_specific_handler";
 // Stage 53.1 "Time" -- see src/Runtime/WindowsRuntimeBuilder.cpp for what these three wrap.
 constexpr const char* kClockQueryCounterFunctionName = "__nativesharp_clock_query_counter";
@@ -2528,6 +2532,12 @@ private:
         nativeThrowFunctionType_ = LLVMFunctionType(LLVMVoidTypeInContext(context_), throwParams, 1, 0);
         nativeThrowFunction_ = LLVMAddFunction(module_, kNativeThrowFunctionName, nativeThrowFunctionType_);
 
+        LLVMTypeRef raiseExceptionParams[] = {i32, i32, i32, ptr};
+        raiseExceptionFunctionType_ = LLVMFunctionType(
+            LLVMVoidTypeInContext(context_), raiseExceptionParams, 4, 0);
+        raiseExceptionFunction_ = LLVMAddFunction(
+            module_, kRaiseExceptionFunctionName, raiseExceptionFunctionType_);
+
         exceptionCurrentFunctionType_ = LLVMFunctionType(ptr, nullptr, 0, 0);
         exceptionCurrentFunction_ = LLVMAddFunction(module_, kExceptionCurrentFunctionName, exceptionCurrentFunctionType_);
 
@@ -2537,6 +2547,9 @@ private:
         LLVMTypeRef filterParams[] = {ptr, ptr};
         ehFilterFunctionType_ = LLVMFunctionType(i32, filterParams, 2, 0);
         ehFilterFunction_ = LLVMAddFunction(module_, kEhFilterFunctionName, ehFilterFunctionType_);
+        panicEhFilterFunctionType_ = LLVMFunctionType(i32, filterParams, 2, 0);
+        panicEhFilterFunction_ = LLVMAddFunction(
+            module_, kPanicEhFilterFunctionName, panicEhFilterFunctionType_);
 
         sehPersonalityFunctionType_ = LLVMFunctionType(i32, nullptr, 0, 1);
         sehPersonalityFunction_ = LLVMAddFunction(module_, kSehPersonalityFunctionName, sehPersonalityFunctionType_);
@@ -2549,6 +2562,9 @@ private:
         LLVMTypeRef memcpyParams[] = {ptr, ptr, i64, i1};
         memcpyFunctionType_ = LLVMFunctionType(LLVMVoidTypeInContext(context_), memcpyParams, 4, 0);
         memcpyFunction_ = LLVMAddFunction(module_, kMemcpyIntrinsicName, memcpyFunctionType_);
+        LLVMTypeRef assumeParams[] = {i1};
+        assumeFunctionType_ = LLVMFunctionType(LLVMVoidTypeInContext(context_), assumeParams, 1, 0);
+        assumeFunction_ = LLVMAddFunction(module_, kAssumeIntrinsicName, assumeFunctionType_);
         if (trapFunction_ == nullptr || allocationFunction_ == nullptr ||
             deallocationFunction_ == nullptr || consoleWriteLineFunction_ == nullptr ||
             clockQueryCounterFunction_ == nullptr || clockQueryFrequencyFunction_ == nullptr ||
@@ -2589,10 +2605,12 @@ private:
             semaphoreReleaseFunction_ == nullptr || semaphoreCloseFunction_ == nullptr ||
             eventCreateFunction_ == nullptr || eventSetFunction_ == nullptr ||
             eventResetFunction_ == nullptr || eventCloseFunction_ == nullptr ||
-            nativeThrowFunction_ == nullptr || exceptionCurrentFunction_ == nullptr ||
+            nativeThrowFunction_ == nullptr || raiseExceptionFunction_ == nullptr ||
+            exceptionCurrentFunction_ == nullptr ||
             exceptionClearFunction_ == nullptr ||
-            ehFilterFunction_ == nullptr || sehPersonalityFunction_ == nullptr ||
-            memsetFunction_ == nullptr || memcpyFunction_ == nullptr)
+            ehFilterFunction_ == nullptr || panicEhFilterFunction_ == nullptr ||
+            sehPersonalityFunction_ == nullptr ||
+            memsetFunction_ == nullptr || memcpyFunction_ == nullptr || assumeFunction_ == nullptr)
         {
             error = "Stage 45.10 failed to declare OOP runtime/EH hooks";
             return false;
@@ -4047,37 +4065,45 @@ private:
     // unwind foreign frames; the process stops here instead, with a defined exit code.
     bool emitCallbackBoundaryHandler(std::string& error)
     {
-        if (ehFilterFunction_ == nullptr || trapFunction_ == nullptr)
+        if (ehFilterFunction_ == nullptr || panicEhFilterFunction_ == nullptr ||
+            trapFunction_ == nullptr)
         {
             return fail(error, "C1.3 callback boundary needs the SEH filter and trap");
         }
         LLVMValueRef catchSwitch = LLVMBuildCatchSwitch(
-            builder_, nullptr, nullptr, 1, "boundary.catchswitch");
+            builder_, nullptr, nullptr, 2, "boundary.catchswitch");
         if (catchSwitch == nullptr)
         {
             return fail(error, "C1.3 failed to create the callback boundary catchswitch");
         }
-        LLVMBasicBlockRef padBlock = appendBlock("boundary.catchpad");
-        LLVMAddHandler(catchSwitch, padBlock);
-        LLVMPositionBuilderAtEnd(builder_, padBlock);
-        LLVMValueRef catchArguments[] = {ehFilterFunction_};
-        LLVMValueRef catchPad = LLVMBuildCatchPad(
-            builder_, catchSwitch, catchArguments, 1, "boundary.catch");
-        if (catchPad == nullptr)
+        const auto emitHandler = [&](LLVMValueRef filter, std::string_view stem) -> bool
         {
-            return fail(error, "C1.3 failed to create the callback boundary catchpad");
+            LLVMBasicBlockRef padBlock = appendBlock(std::string(stem) + ".catchpad");
+            LLVMAddHandler(catchSwitch, padBlock);
+            LLVMPositionBuilderAtEnd(builder_, padBlock);
+            LLVMValueRef catchArguments[] = {filter};
+            LLVMValueRef catchPad = LLVMBuildCatchPad(
+                builder_, catchSwitch, catchArguments, 1,
+                (std::string(stem) + ".catch").c_str());
+            if (catchPad == nullptr) return false;
+            LLVMValueRef reason = LLVMConstInt(
+                LLVMInt32TypeInContext(context_),
+                static_cast<std::uint64_t>(LlvmTrapReason::CallbackExceptionEscape), 0);
+            LLVMValueRef trapArguments[] = {reason};
+            LLVMValueRef bundleArguments[] = {catchPad};
+            LLVMOperandBundleRef bundle = LLVMCreateOperandBundle("funclet", 7, bundleArguments, 1);
+            LLVMOperandBundleRef bundles[] = {bundle};
+            LLVMBuildCallWithOperandBundles(
+                builder_, trapFunctionType_, trapFunction_, trapArguments, 1, bundles, 1, "");
+            LLVMDisposeOperandBundle(bundle);
+            LLVMBuildUnreachable(builder_);
+            return true;
+        };
+        if (!emitHandler(ehFilterFunction_, "boundary.exception") ||
+            !emitHandler(panicEhFilterFunction_, "boundary.panic"))
+        {
+            return fail(error, "C1.3 failed to create the callback boundary catchpads");
         }
-        LLVMValueRef reason = LLVMConstInt(
-            LLVMInt32TypeInContext(context_),
-            static_cast<std::uint64_t>(LlvmTrapReason::CallbackExceptionEscape), 0);
-        LLVMValueRef trapArguments[] = {reason};
-        LLVMValueRef bundleArguments[] = {catchPad};
-        LLVMOperandBundleRef bundle = LLVMCreateOperandBundle("funclet", 7, bundleArguments, 1);
-        LLVMOperandBundleRef bundles[] = {bundle};
-        LLVMBuildCallWithOperandBundles(
-            builder_, trapFunctionType_, trapFunction_, trapArguments, 1, bundles, 1, "");
-        LLVMDisposeOperandBundle(bundle);
-        LLVMBuildUnreachable(builder_);
         return true;
     }
 
@@ -6670,6 +6696,62 @@ private:
             static_cast<std::uint64_t>(LlvmTrapReason::ThrowReturned),
             0);
         LLVMValueRef trapArguments[] = {trapReason};
+        buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+        LLVMBuildUnreachable(builder_);
+        return true;
+    }
+
+    bool lowerNativePanicTransfer(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef* arguments,
+        std::string& error)
+    {
+        std::vector<std::size_t> cleanupPath = node->cleanupRegionOrdinals;
+        LLVMBasicBlockRef finalTarget = nullptr;
+        if (!funcletStack_.empty())
+        {
+            const std::size_t boundaryDepth = funcletStack_.back().cleanupDepthAtEntry;
+            cleanupPath.erase(
+                std::remove_if(
+                    cleanupPath.begin(), cleanupPath.end(),
+                    [&](std::size_t ordinal)
+                    {
+                        const std::optional<std::size_t> index =
+                            activeCleanupIndex(ordinal, activeCleanupRegions_);
+                        return !index.has_value() || *index < boundaryDepth;
+                    }),
+                cleanupPath.end());
+            finalTarget = funcletStack_.back().unwindDestination;
+        }
+        if (finalTarget == nullptr && !ownedCaptureCells_.empty())
+        {
+            finalTarget = captureCellExceptionalCleanup(error);
+            if (finalTarget == nullptr) return false;
+        }
+        LLVMBasicBlockRef unwindTarget = cleanupPath.empty()
+            ? finalTarget
+            : emitExceptionalCleanupChain(cleanupPath, finalTarget, error);
+        if (!error.empty()) return false;
+
+        if (unwindTarget != nullptr)
+        {
+            LLVMBasicBlockRef normalBlock = appendBlock("panic.unexpected-return");
+            LLVMValueRef invoke = buildInvokeInCurrentFunclet(
+                raiseExceptionFunctionType_, raiseExceptionFunction_, arguments, 4,
+                normalBlock, unwindTarget, "");
+            if (invoke == nullptr)
+                return fail(error, "T07-F06 failed to create native panic invoke");
+            LLVMPositionBuilderAtEnd(builder_, normalBlock);
+        }
+        else
+        {
+            buildNoUnwindCall(
+                raiseExceptionFunctionType_, raiseExceptionFunction_, arguments, 4, "");
+        }
+        LLVMValueRef reason = LLVMConstInt(
+            LLVMInt32TypeInContext(context_),
+            static_cast<std::uint64_t>(LlvmTrapReason::Panic), 0);
+        LLVMValueRef trapArguments[] = {reason};
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
         LLVMBuildUnreachable(builder_);
         return true;
@@ -10654,19 +10736,111 @@ private:
                 return lowerDeallocation(node, error);
             case frontend::ProjectOopMirNodeKind::ObjectDestroy:
                 return lowerObjectDestruction(node, error);
-            case frontend::ProjectOopMirNodeKind::Panic:
+            case frontend::ProjectOopMirNodeKind::Assert:
+            case frontend::ProjectOopMirNodeKind::Assume:
+            {
+                if (node->children.size() != 1U || node->typeKey != "builtin:void")
+                {
+                    return failValue(error, "T07-F06 assertion MIR lost its bool/void contract");
+                }
+                LLVMValueRef condition = lowerExpression(node->children.front().get(), error);
+                if (condition == nullptr || !error.empty()) return nullptr;
+                if (node->kind == frontend::ProjectOopMirNodeKind::Assert)
+                {
+                    if (!emitGuard(condition, LlvmTrapReason::AssertionFailed, "assert", error))
+                        return nullptr;
+                }
+                else
+                {
+                    if (assumeFunction_ == nullptr || assumeFunctionType_ == nullptr)
+                        return failValue(error, "T07-F06 llvm.assume intrinsic is unavailable");
+                    LLVMValueRef arguments[] = {condition};
+                    buildNoUnwindCall(assumeFunctionType_, assumeFunction_, arguments, 1, "");
+                }
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
+            case frontend::ProjectOopMirNodeKind::Unreachable:
             {
                 if (!node->children.empty() || node->typeKey != "builtin:never" ||
                     trapFunction_ == nullptr || trapFunctionType_ == nullptr)
                 {
-                    return failValue(error, "T07 panic MIR lost its no-operand never/trap contract");
+                    return failValue(error, "T07-F06 unreachable MIR lost its no-operand never contract");
                 }
                 LLVMValueRef reason = LLVMConstInt(
                     LLVMInt32TypeInContext(context_),
-                    static_cast<std::uint64_t>(LlvmTrapReason::Panic),
+                    static_cast<std::uint64_t>(LlvmTrapReason::Unreachable),
                     0);
                 LLVMValueRef arguments[] = {reason};
                 buildNoUnwindCall(trapFunctionType_, trapFunction_, arguments, 1, "");
+                LLVMBuildUnreachable(builder_);
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
+            case frontend::ProjectOopMirNodeKind::Panic:
+            {
+                if (node->children.size() > 1U || node->typeKey != "builtin:never")
+                {
+                    return failValue(error, "T07-F06 panic MIR lost its payload/never contract");
+                }
+                LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef message = LLVMConstNull(ptr);
+                if (!node->children.empty())
+                {
+                    message = lowerExpression(node->children.front().get(), error);
+                    if (message == nullptr || !error.empty()) return nullptr;
+                }
+
+                if (!mirModel_.panicHandlerMangledName().empty())
+                {
+                    const auto handler = functions_.find(
+                        std::string(mirModel_.panicHandlerMangledName()));
+                    if (handler == functions_.end() || handler->second.function == nullptr ||
+                        handler->second.functionType == nullptr || sourceManager_ == nullptr ||
+                        node->syntax == nullptr || !node->syntax->range().begin().isValid())
+                    {
+                        return failValue(error,
+                            "T07-F06 panic handler or source location is unavailable");
+                    }
+                    const SourceLocation location = node->syntax->range().begin();
+                    const source::SourcePosition position = sourceManager_->getPosition(location);
+                    LLVMValueRef file = internStringLiteral(
+                        sourceManager_->getPath(location), error);
+                    if (file == nullptr || !error.empty()) return nullptr;
+                    LLVMValueRef handlerArguments[] = {
+                        message,
+                        file,
+                        LLVMConstInt(i32, position.line, 0),
+                        LLVMConstInt(i32, position.column, 0)};
+                    if (buildNoUnwindCall(
+                            handler->second.functionType, handler->second.function,
+                            handlerArguments, 4, "") == nullptr)
+                    {
+                        return failValue(error, "T07-F06 failed to call the configured panic handler");
+                    }
+                }
+                if (mirModel_.panicProfile() == language::PanicProfile::Abort)
+                {
+                    if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+                        return failValue(error, "T07-F06 abort panic trap is unavailable");
+                    LLVMValueRef reason = LLVMConstInt(
+                        LLVMInt32TypeInContext(context_),
+                        static_cast<std::uint64_t>(LlvmTrapReason::Panic),
+                        0);
+                    LLVMValueRef arguments[] = {reason};
+                    buildNoUnwindCall(trapFunctionType_, trapFunction_, arguments, 1, "");
+                }
+                else
+                {
+                    if (raiseExceptionFunction_ == nullptr || raiseExceptionFunctionType_ == nullptr)
+                        return failValue(error, "T07-F06 native panic unwind hook is unavailable");
+                    LLVMValueRef arguments[] = {
+                        LLVMConstInt(i32, kNativeSharpPanicExceptionCode, 0),
+                        LLVMConstInt(i32, 1, 0),
+                        LLVMConstInt(i32, 0, 0),
+                        LLVMConstNull(ptr)};
+                    if (!lowerNativePanicTransfer(node, arguments, error)) return nullptr;
+                    return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+                }
                 LLVMBuildUnreachable(builder_);
                 // The caller only uses this sentinel to distinguish successful lowering from an
                 // internal error. No instruction may consume it after the terminator.
@@ -16276,12 +16450,16 @@ private:
     LLVMTypeRef moveFileFunctionType_ = nullptr;
     LLVMValueRef nativeThrowFunction_ = nullptr;
     LLVMTypeRef nativeThrowFunctionType_ = nullptr;
+    LLVMValueRef raiseExceptionFunction_ = nullptr;
+    LLVMTypeRef raiseExceptionFunctionType_ = nullptr;
     LLVMValueRef exceptionCurrentFunction_ = nullptr;
     LLVMTypeRef exceptionCurrentFunctionType_ = nullptr;
     LLVMValueRef exceptionClearFunction_ = nullptr;
     LLVMTypeRef exceptionClearFunctionType_ = nullptr;
     LLVMValueRef ehFilterFunction_ = nullptr;
     LLVMTypeRef ehFilterFunctionType_ = nullptr;
+    LLVMValueRef panicEhFilterFunction_ = nullptr;
+    LLVMTypeRef panicEhFilterFunctionType_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> typedCatchFilters_;
     // Multi-catch fix -- exception type ordinal -> the stable RTTI type id its catch clause tests
     // against on the parent-side dispatch path. See lowerTryRegion's catchswitch comment.
@@ -16302,6 +16480,8 @@ private:
     LLVMTypeRef memsetFunctionType_ = nullptr;
     LLVMValueRef memcpyFunction_ = nullptr;
     LLVMTypeRef memcpyFunctionType_ = nullptr;
+    LLVMValueRef assumeFunction_ = nullptr;
+    LLVMTypeRef assumeFunctionType_ = nullptr;
     LLVMTypeRef descriptorType_ = nullptr;
     LLVMTypeRef descriptorAccessorFunctionType_ = nullptr;
     LLVMTypeRef interfaceMapEntryType_ = nullptr;

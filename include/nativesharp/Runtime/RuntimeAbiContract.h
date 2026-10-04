@@ -11,11 +11,11 @@ namespace nativesharp::runtime
 // Runtime ABI and symbol-set versions live with the contract they version.  The
 // metadata codec aliases these values; it does not own a second copy.
 inline constexpr std::uint16_t kRuntimeAbiMajor = 1;
-inline constexpr std::uint16_t kRuntimeAbiMinor = 1;
+inline constexpr std::uint16_t kRuntimeAbiMinor = 2;
 
-// Version 3 adds the sequential, redirectable Console.ReadLine hook while preserving the exact
-// opaque-pointer LLVM type of every NativeSharp-prefixed Windows x64 entry.
-inline constexpr std::uint16_t kRuntimeSymbolSetVersion = 3;
+// Version 4 adds the dedicated NativeSharp panic SEH filter. It keeps panic non-catchable by
+// typed language catches while allowing entry points and C boundaries to stop native unwind.
+inline constexpr std::uint16_t kRuntimeSymbolSetVersion = 4;
 
 enum class RuntimeAbiSymbolKind : std::uint8_t
 {
@@ -111,6 +111,7 @@ inline constexpr std::array kRuntimeAbiSymbols = {
     RuntimeAbiSymbol{"__nativesharp_mutex_create_named", RuntimeAbiSymbolKind::Function, "i64(ptr)"},
     RuntimeAbiSymbol{"__nativesharp_mutex_lock", RuntimeAbiSymbolKind::Function, "void(i64)"},
     RuntimeAbiSymbol{"__nativesharp_mutex_unlock", RuntimeAbiSymbolKind::Function, "void(i64)"},
+    RuntimeAbiSymbol{"__nativesharp_panic_eh_filter", RuntimeAbiSymbolKind::Function, "i32(ptr,ptr)"},
     RuntimeAbiSymbol{"__nativesharp_path_get_full_path", RuntimeAbiSymbolKind::Function, "ptr(ptr)"},
     RuntimeAbiSymbol{"__nativesharp_process_get_current_process_id", RuntimeAbiSymbolKind::Function, "i64()"},
     RuntimeAbiSymbol{"__nativesharp_process_get_kernel_time", RuntimeAbiSymbolKind::Function, "i64()"},

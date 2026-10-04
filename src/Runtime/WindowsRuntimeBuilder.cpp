@@ -22,6 +22,10 @@ namespace
 
 using namespace llvm_api;
 
+constexpr std::uint32_t kNativeSharpExceptionCode = 0xE04E5301U;
+constexpr std::uint32_t kNativeSharpPanicExceptionCode = 0xE04E5302U;
+constexpr std::uint32_t kTlsOutOfIndexes = 0xffffffffU;
+
 // EL TOPE ERA 8 Y DEVOLVIA nullptr EN SILENCIO. Bloque 4, fase C: `CreateProcessA` tiene DIEZ
 // parametros, asi que su tipo salia nulo, `LLVMAddFunction` lo recibia, y el compilador se caia
 // con un SIGSEGV dentro de `llvm::PointerType::get` -- una pila que no menciona ni esta funcion ni
@@ -173,6 +177,47 @@ bool buildTrap(
     return true;
 }
 
+bool buildPanicEhFilter(LLVMContextRef context, LLVMModuleRef module)
+{
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(i32Type, {pointerType, pointerType});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_panic_eh_filter", type);
+    if (function == nullptr) return false;
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBasicBlockRef loadRecord = LLVMAppendBasicBlockInContext(context, function, "load_record");
+    LLVMBasicBlockRef checkCode = LLVMAppendBasicBlockInContext(context, function, "check_code");
+    LLVMBasicBlockRef reject = LLVMAppendBasicBlockInContext(context, function, "reject");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+
+    LLVMValueRef exceptionPointers = LLVMGetParam(function, 0);
+    LLVMValueRef pointersNull = LLVMBuildICmp(
+        builder, LLVMIntEQ, exceptionPointers, LLVMConstNull(pointerType), "panic_pointers_null");
+    LLVMBuildCondBr(builder, pointersNull, reject, loadRecord);
+
+    LLVMPositionBuilderAtEnd(builder, loadRecord);
+    LLVMValueRef exceptionRecord = LLVMBuildLoad2(
+        builder, pointerType, exceptionPointers, "panic_exception_record");
+    LLVMValueRef recordNull = LLVMBuildICmp(
+        builder, LLVMIntEQ, exceptionRecord, LLVMConstNull(pointerType), "panic_record_null");
+    LLVMBuildCondBr(builder, recordNull, reject, checkCode);
+
+    LLVMPositionBuilderAtEnd(builder, checkCode);
+    LLVMValueRef code = LLVMBuildLoad2(builder, i32Type, exceptionRecord, "panic_exception_code");
+    LLVMValueRef matches = LLVMBuildICmp(
+        builder, LLVMIntEQ, code,
+        LLVMConstInt(i32Type, kNativeSharpPanicExceptionCode, 0), "is_nativesharp_panic");
+    LLVMValueRef result = LLVMBuildZExt(builder, matches, i32Type, "panic_filter_result");
+    LLVMBuildRet(builder, result);
+
+    LLVMPositionBuilderAtEnd(builder, reject);
+    LLVMBuildRet(builder, LLVMConstInt(i32Type, 0, 0));
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
 bool buildStart(
     LLVMContextRef context,
     LLVMModuleRef module,
@@ -180,6 +225,7 @@ bool buildStart(
     LLVMTypeRef exitProcessType,
     LLVMValueRef ehInit,
     LLVMTypeRef ehInitType,
+    LLVMValueRef panicEhFilter,
     std::string_view mainSymbol)
 {
     LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
@@ -188,13 +234,17 @@ bool buildStart(
     LLVMValueRef mainFunction = LLVMAddFunction(module, std::string(mainSymbol).c_str(), mainType);
     LLVMTypeRef startType = functionType(voidType, {});
     LLVMValueRef start = LLVMAddFunction(module, "__nativesharp_start", startType);
-    if (mainFunction == nullptr || start == nullptr)
+    LLVMTypeRef personalityType = LLVMFunctionType(i32Type, nullptr, 0, 1);
+    LLVMValueRef personality = LLVMAddFunction(module, "__C_specific_handler", personalityType);
+    if (mainFunction == nullptr || start == nullptr || personality == nullptr || panicEhFilter == nullptr)
     {
         return false;
     }
 
     LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, start, "entry");
     LLVMBasicBlockRef runMain = LLVMAppendBasicBlockInContext(context, start, "run_main");
+    LLVMBasicBlockRef mainReturned = LLVMAppendBasicBlockInContext(context, start, "main_returned");
+    LLVMBasicBlockRef panicUnwind = LLVMAppendBasicBlockInContext(context, start, "panic_unwind");
     LLVMBasicBlockRef initFailed = LLVMAppendBasicBlockInContext(context, start, "eh_init_failed");
     LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
     LLVMPositionBuilderAtEnd(builder, entry);
@@ -209,9 +259,36 @@ bool buildStart(
     LLVMBuildCondBr(builder, initOk, runMain, initFailed);
 
     LLVMPositionBuilderAtEnd(builder, runMain);
-    LLVMValueRef result = LLVMBuildCall2(builder, mainType, mainFunction, nullptr, 0, "result");
+    LLVMSetPersonalityFn(start, personality);
+    LLVMValueRef result = LLVMBuildInvoke2(
+        builder, mainType, mainFunction, nullptr, 0, mainReturned, panicUnwind, "result");
+
+    LLVMPositionBuilderAtEnd(builder, mainReturned);
     LLVMValueRef arguments[1] = {result};
     LLVMBuildCall2(builder, exitProcessType, exitProcess, arguments, 1, "");
+    LLVMBuildUnreachable(builder);
+
+    LLVMPositionBuilderAtEnd(builder, panicUnwind);
+    LLVMValueRef catchSwitch = LLVMBuildCatchSwitch(
+        builder, nullptr, nullptr, 1, "panic.catchswitch");
+    LLVMBasicBlockRef panicPadBlock = LLVMAppendBasicBlockInContext(context, start, "panic.catchpad");
+    LLVMAddHandler(catchSwitch, panicPadBlock);
+    LLVMPositionBuilderAtEnd(builder, panicPadBlock);
+    LLVMValueRef catchArguments[] = {panicEhFilter};
+    LLVMValueRef catchPad = LLVMBuildCatchPad(
+        builder, catchSwitch, catchArguments, 1, "panic.catch");
+    if (catchSwitch == nullptr || catchPad == nullptr)
+    {
+        LLVMDisposeBuilder(builder);
+        return false;
+    }
+    LLVMValueRef panicExitArguments[] = {LLVMConstInt(i32Type, 142, 0)};
+    LLVMValueRef bundleArguments[] = {catchPad};
+    LLVMOperandBundleRef bundle = LLVMCreateOperandBundle("funclet", 7, bundleArguments, 1);
+    LLVMOperandBundleRef bundles[] = {bundle};
+    LLVMBuildCallWithOperandBundles(
+        builder, exitProcessType, exitProcess, panicExitArguments, 1, bundles, 1, "");
+    LLVMDisposeOperandBundle(bundle);
     LLVMBuildUnreachable(builder);
 
     LLVMPositionBuilderAtEnd(builder, initFailed);
@@ -5312,9 +5389,6 @@ bool buildPuts(
     return true;
 }
 
-constexpr std::uint32_t kNativeSharpExceptionCode = 0xE04E5301U;
-constexpr std::uint32_t kTlsOutOfIndexes = 0xffffffffU;
-
 bool buildEhInit(
     LLVMContextRef context,
     LLVMModuleRef module,
@@ -5693,12 +5767,18 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildEntry(
     LLVMSetTarget(module, triple.c_str());
     LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
     LLVMTypeRef exitProcessType = functionType(voidType, {i32Type});
     LLVMValueRef exitProcess = LLVMAddFunction(module, "ExitProcess", exitProcessType);
     LLVMTypeRef ehInitType = functionType(i32Type, {});
     LLVMValueRef ehInit = LLVMAddFunction(module, "__nativesharp_eh_init", ehInitType);
-    if (exitProcess == nullptr || ehInit == nullptr ||
-        !buildStart(context, module, exitProcess, exitProcessType, ehInit, ehInitType, mainSymbol))
+    LLVMTypeRef panicEhFilterType = functionType(i32Type, {pointerType, pointerType});
+    LLVMValueRef panicEhFilter = LLVMAddFunction(
+        module, "__nativesharp_panic_eh_filter", panicEhFilterType);
+    if (exitProcess == nullptr || ehInit == nullptr || panicEhFilter == nullptr ||
+        !buildStart(
+            context, module, exitProcess, exitProcessType, ehInit, ehInitType,
+            panicEhFilter, mainSymbol))
     {
         LLVMDisposeModule(module);
         LLVMContextDispose(context);
@@ -6234,12 +6314,14 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
             exitProcessType) &&
         buildEhFilter(
             context, module, exceptionTlsIndex, ehInit, ehInitType, tlsSetValue, tlsSetValueType) &&
+        buildPanicEhFilter(context, module) &&
         buildAllocate(context, module, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType) &&
         buildFree(context, module, getProcessHeap, getProcessHeapType, heapFree, heapFreeType) &&
         buildTrap(context, module, exitProcess, exitProcessType) &&
         buildHalfCompilerRtSupport(context, module) &&
         (!includeStart || buildStart(
-            context, module, exitProcess, exitProcessType, ehInit, ehInitType, mainSymbol)) &&
+            context, module, exitProcess, exitProcessType, ehInit, ehInitType,
+            LLVMGetNamedFunction(module, "__nativesharp_panic_eh_filter"), mainSymbol)) &&
         buildConsoleWrite(context, module, getStdHandle, getStdHandleType, writeFile, writeFileType) &&
         buildConsoleReadLine(
             context, module,
