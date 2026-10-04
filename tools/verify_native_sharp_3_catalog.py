@@ -288,6 +288,20 @@ def verify_catalogue(master: Path, repo_root: Path) -> list[catalog.CatalogItem]
             elif not _git_commit_exists(repo_root, commit_match.group(0)):
                 errors.append(f"{item.item_id}: evidence commit does not exist")
     by_id = {item.item_id: item for item in items}
+    distribution_contract = by_id["NS3-DST-01"].contract.replace("\\", "/")
+    for required in ("C:/native-sharp", "C:/native-sharp-2.0", "A:"):
+        if required not in distribution_contract:
+            errors.append(
+                f"NS3-DST-01: active/rollback policy is missing {required!r}"
+            )
+    saru_sources = {
+        "NS3-SARU-01": "A:/porting-to-3.0.0/SaruFrameworkGLNativeSharp",
+        "NS3-SARU-02": "A:/porting-to-3.0.0/SaruFrameworkNativeSharp",
+    }
+    for item_id, required in saru_sources.items():
+        evidence = by_id[item_id].evidence.replace("\\", "/")
+        if required not in evidence:
+            errors.append(f"{item_id}: canonical Saru source is missing {required!r}")
     for item_id in LIMITATION_RESOLVED_IDS:
         if by_id[item_id].state not in {"TERMINADA", "CERTIFICADA"}:
             errors.append(f"{item_id}: ledger records a directed closure but catalogue is {by_id[item_id].state}")

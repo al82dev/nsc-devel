@@ -161,6 +161,13 @@ class NativeSharp3CatalogueTests(unittest.TestCase):
             with self.assertRaisesRegex(verifier.VerificationError, "156"):
                 verifier.verify_limitation_ledger(ledger)
 
+    def test_canonical_operational_paths_are_not_historical_placeholders(self) -> None:
+        source = (TOOLS / "native_sharp_3_catalog.py").read_text(encoding="utf-8")
+        self.assertIn("C:/native-sharp es la instalación activa 3.0", source)
+        self.assertIn("C:/native-sharp-2.0 conserva 2.0", source)
+        self.assertIn("A:/porting-to-3.0.0/SaruFrameworkNativeSharp", source)
+        self.assertIn("A:/porting-to-3.0.0/SaruFrameworkGLNativeSharp", source)
+
 
 if __name__ == "__main__":
     unittest.main()

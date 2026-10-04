@@ -426,7 +426,7 @@ def bootstrap_items(master: Path, legacy_tracking: Path, repo_root: Path) -> lis
             ("NS3-PM-07", "GUI 3.0", "crear/abrir/build/test/pack sin duplicar semántica del driver"),
         ],
         "Distribución": [
-            ("NS3-DST-01", "Prefijo paralelo", "instalación 3.0 separada y sólo por orden explícita"),
+            ("NS3-DST-01", "Promoción con rollback 2.0", "C:/native-sharp es la instalación activa 3.0; C:/native-sharp-2.0 conserva 2.0; staging nace en A: y C: sólo recibe por orden explícita"),
             ("NS3-DST-02", "Manifest canónico", "paths relativos, tamaños, SHA-256 y ownership de cada archivo"),
             ("NS3-DST-03", "Transacciones", "install/upgrade/rollback sin borrar archivos no reclamados"),
             ("NS3-DST-04", "Deploy UI", "selección de destino, verificación y cero recompilación implícita"),
@@ -451,7 +451,7 @@ def bootstrap_items(master: Path, legacy_tracking: Path, repo_root: Path) -> lis
         "Bindings": "Documento maestro §10.8; `A:/nsc-bindings-devel`",
         "Project Manager": "Documento maestro §10.7; `A:/nsc-project-manager`",
         "Distribución": "Documento maestro §10.9",
-        "Saru": "Documento maestro §14.7; repositorios Saru en `A:/`",
+        "Saru": "Documento maestro §14.7; `A:/porting-to-3.0.0/SaruFrameworkNativeSharp` y `A:/porting-to-3.0.0/SaruFrameworkGLNativeSharp`",
         "Gobernanza documental": "Documento maestro §0/§24",
     }
     for component, definitions in manual.items():
