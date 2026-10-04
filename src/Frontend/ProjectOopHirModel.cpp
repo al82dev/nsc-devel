@@ -3094,7 +3094,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             }
             const bool isArray = sourceLocal->typeKey.size() > 2 &&
                 sourceLocal->typeKey.compare(sourceLocal->typeKey.size() - 2, 2, "[]") == 0;
-            const ast::AstNode* chosenCandidate = isArray ? statement->second() : statement->third();
+            const bool isSpan =
+                sourceLocal->typeKey.starts_with("type:NativeSharp.Core.Span<") ||
+                sourceLocal->typeKey.starts_with("type:NativeSharp.Core.Span__g") ||
+                sourceLocal->typeKey.find("::NativeSharp.Core.Span__g") != std::string::npos ||
+                sourceLocal->typeKey.starts_with("type:NativeSharp.Core.ReadOnlySpan<") ||
+                sourceLocal->typeKey.starts_with("type:NativeSharp.Core.ReadOnlySpan__g") ||
+                sourceLocal->typeKey.find("::NativeSharp.Core.ReadOnlySpan__g") != std::string::npos;
+            const ast::AstNode* chosenCandidate = isArray
+                ? statement->second()
+                : (isSpan && statement->children().size() > 1U
+                    ? statement->children()[1]
+                    : statement->third());
 
             auto node = makeNode(ProjectOopHirNodeKind::Block, statement, "builtin:void");
             std::unique_ptr<ProjectOopHirNode> sourceDeclHir =

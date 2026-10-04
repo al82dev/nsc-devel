@@ -11088,6 +11088,29 @@ ast::AstNode* Parser::parseForeachStatement()
     consume(); // foreach
     expect(TokenKind::LeftParen, "'('");
 
+    // NativeSharp 3.0 T09-F01. The iteration binding mode is part of the foreach clause rather
+    // than inferred from Current/indexer shape:
+    //
+    //   foreach (T value in source)          // value snapshot
+    //   foreach (ref T value in source)      // readonly alias
+    //   foreach (ref mut T value in source)  // exclusive mutable alias
+    //
+    // `ref`/`mut` stay contextual and edition-gated. The synthesized declaration below then
+    // travels through the ordinary reference-local pipeline, so addressability, exact type,
+    // lifetime, exclusivity and LLVM pointer lowering are shared with source ref locals.
+    const bool elementByReference = atContextualKeyword("ref");
+    bool elementMutableReference = false;
+    if (elementByReference)
+    {
+        requireEdition3(current().range(), "foreach reference iteration");
+        consume();
+        if (atContextualKeyword("mut"))
+        {
+            elementMutableReference = true;
+            consume();
+        }
+    }
+
     // Element declaration: `raii` (optional, same grammar as an ordinary local), then a real
     // type or `var`, then the element name -- mirrors parseVariableDeclaration's own prefix
     // handling exactly, since this element genuinely IS an ordinary local once desugared.
@@ -11105,6 +11128,14 @@ ast::AstNode* Parser::parseForeachStatement()
     // reject it) rather than a silently-ignored no-op -- an honest failure instead of a false
     // promise.
     const bool elementIsRaii = consumeIf(TokenKind::KwRaii);
+    if (elementByReference && elementIsRaii)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "a foreach reference binding aliases source storage and cannot also be raii");
+    }
     ast::TypeSyntax* elementType;
     if (at(TokenKind::KwVar))
     {
@@ -11157,6 +11188,12 @@ ast::AstNode* Parser::parseForeachStatement()
     {
         return arena_.make<ast::TypeSyntax>(range, TokenKind::KwVar, std::string("var"));
     };
+    const auto configureElementBinding = [&](ast::AstNode* declaration)
+    {
+        if (!elementByReference || declaration == nullptr) return;
+        declaration->setAuxiliaryText(
+            elementMutableReference ? "local:foreach-ref-mut" : "local:foreach-ref");
+    };
 
     // A bounded integer RangeExpression is a storage-free foreach source. Lower it immediately
     // to ordinary locals plus a ForStatement so HIR/MIR/LLVM reuse the already verified loop,
@@ -11165,6 +11202,15 @@ ast::AstNode* Parser::parseForeachStatement()
     // the user-visible element is a fresh const local on every iteration.
     if (collection != nullptr && collection->kind() == ast::AstNodeKind::RangeExpression)
     {
+        if (elementByReference)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                collection->range(),
+                "foreach reference iteration requires stable source storage; an integer range "
+                "produces values");
+        }
         ast::AstNode* begin = collection->first();
         ast::AstNode* end = collection->second();
         if (begin == nullptr)
@@ -11210,7 +11256,8 @@ ast::AstNode* Parser::parseForeachStatement()
             elementName,
             makeIdentifierExpression(range, "$__foreach_range_cursor"),
             elementIsRaii,
-            /*isConst=*/true);
+            /*isConst=*/!elementMutableReference);
+        configureElementBinding(elementDecl);
         ast::AstNode* forBody = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
         forBody->addChild(elementDecl);
         forBody->addChild(body);
@@ -11296,7 +11343,8 @@ ast::AstNode* Parser::parseForeachStatement()
                 makeIdentifierExpression(range, "$__foreach_source"),
                 makeIdentifierExpression(range, "$__foreach_index")),
             elementIsRaii,
-            /*isConst=*/true);
+            /*isConst=*/!elementMutableReference);
+        configureElementBinding(elementDecl);
 
         ast::AstNode* forBody = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
         forBody->addChild(elementDecl);
@@ -11310,6 +11358,55 @@ ast::AstNode* Parser::parseForeachStatement()
 
         arrayCandidate = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
         arrayCandidate->addChild(forNode);
+    }
+
+    // NativeSharp.Core Span<T>/ReadOnlySpan<T> are compiler-recognized borrowed views. Their
+    // iteration uses Length() once per loop condition and Data()[index] for the element place.
+    // Data() is a raw pointer, so the loop proof is the only bounds contract: no redundant
+    // managed-array/indexer guard is emitted for every element. ReadOnlySpan mutation is rejected
+    // semantically once the resolved source type is known.
+    ast::AstNode* spanCandidate;
+    {
+        ast::TypeSyntax* intType = arena_.make<ast::TypeSyntax>(
+            range, TokenKind::KwInt, std::string("int"));
+        ast::AstNode* indexDecl = makeVariableDeclaration(
+            intType, "$__foreach_index", makeIntegerLiteralExpression(range, 0), false);
+        ast::AstNode* lengthCall = makeZeroArgCallExpression(
+            makeMemberExpression(makeIdentifierExpression(range, "$__foreach_source"), "Length"));
+        ast::AstNode* condition = makeBinaryExpression(
+            TokenKind::Less,
+            makeIdentifierExpression(range, "$__foreach_index"),
+            lengthCall);
+        ast::AstNode* increment = makeAssignmentExpression(
+            makeIdentifierExpression(range, "$__foreach_index"),
+            makeBinaryExpression(
+                TokenKind::Plus,
+                makeIdentifierExpression(range, "$__foreach_index"),
+                makeIntegerLiteralExpression(range, 1)));
+        ast::AstNode* dataCall = makeZeroArgCallExpression(
+            makeMemberExpression(makeIdentifierExpression(range, "$__foreach_source"), "Data"));
+        ast::AstNode* elementDecl = makeVariableDeclaration(
+            elementType,
+            elementName,
+            makeIndexExpression(
+                dataCall,
+                makeIdentifierExpression(range, "$__foreach_index")),
+            elementIsRaii,
+            /*isConst=*/!elementMutableReference);
+        configureElementBinding(elementDecl);
+        ast::AstNode* forBody = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, range);
+        forBody->addChild(elementDecl);
+        forBody->addChild(body);
+        ast::AstNode* forNode = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::ForStatement, range);
+        forNode->setFirst(indexDecl);
+        forNode->setSecond(condition);
+        forNode->setThird(increment);
+        forNode->addChild(forBody);
+        spanCandidate = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::BlockStatement, range);
+        spanCandidate->addChild(forNode);
     }
 
     // third(): the enumerator-pattern candidate.
@@ -11349,7 +11446,8 @@ ast::AstNode* Parser::parseForeachStatement()
             elementName,
             makeMemberExpression(makeIdentifierExpression(range, "$__foreach_enumerator"), "Current"),
             elementIsRaii,
-            /*isConst=*/true);
+            /*isConst=*/!elementMutableReference);
+        configureElementBinding(elementDecl);
 
         ast::AstNode* whileBody = arena_.make<ast::AstNode>(ast::AstNodeKind::BlockStatement, range);
         whileBody->addChild(elementDecl);
@@ -11374,6 +11472,10 @@ ast::AstNode* Parser::parseForeachStatement()
     // above collectionProbe's construction for why this needs to be a SEPARATE parse rather than
     // a second analysis pass over `collection` itself.
     node->addChild(collectionProbe);
+    node->addChild(spanCandidate);
+    node->setAuxiliaryText(elementByReference
+        ? (elementMutableReference ? "foreach:ref-mut" : "foreach:ref")
+        : "foreach:value");
     return node;
 }
 

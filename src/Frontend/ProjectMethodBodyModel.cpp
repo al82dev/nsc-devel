@@ -5604,8 +5604,13 @@ void ProjectMethodBodyModel::analyzeVariable(
     }
 
     const bool isPinnedReferenceLocal = variable->auxiliaryText() == "local:pinned-ref";
+    const bool isReadonlyForeachReference =
+        variable->auxiliaryText() == "local:foreach-ref";
+    const bool isMutableForeachReference =
+        variable->auxiliaryText() == "local:foreach-ref-mut";
     const bool isReferenceLocal =
-        variable->auxiliaryText() == "local:ref" || isPinnedReferenceLocal;
+        variable->auxiliaryText() == "local:ref" || isPinnedReferenceLocal ||
+        isReadonlyForeachReference || isMutableForeachReference;
     const bool isPinnedLocal =
         variable->auxiliaryText() == "local:pinned" || isPinnedReferenceLocal;
     const bool isDeferValueCapture =
@@ -5905,14 +5910,15 @@ void ProjectMethodBodyModel::analyzeVariable(
             "volatile local cannot also be const, raii, owned, borrowed, or a reference local");
     }
     if (isReferenceLocal &&
-        (variable->flag() || variable->hasModifier(TokenKind::KwRaii) ||
+        ((!isReadonlyForeachReference && variable->flag()) ||
+         variable->hasModifier(TokenKind::KwRaii) ||
          declaredOwnership != sema::OwnershipKind::None))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
             variable->range(),
-            "a reference local cannot be const, raii, owned, or borrowed; it aliases mutable storage without ownership");
+            "a mutable reference local cannot be const, raii, owned, or borrowed; it aliases storage without ownership");
     }
     if (isReferenceLocal && variable->first() == nullptr)
     {
@@ -6006,8 +6012,10 @@ void ProjectMethodBodyModel::analyzeVariable(
         const bool isCompilerGeneratedMatchSnapshot =
             variable->text().starts_with("$__nsc_match_") ||
             variable->text().starts_with("$__nsc_conditional_pattern_");
+        const bool isCompilerGeneratedForeachViewSnapshot =
+            variable->text() == "$__foreach_source" && typeKeyIsViewLike(typeKey);
         if (isMoveOnly && initializer.valid && initializer.addressable &&
-            !isCompilerGeneratedMatchSnapshot &&
+            !isCompilerGeneratedMatchSnapshot && !isCompilerGeneratedForeachViewSnapshot &&
             variable->first()->kind() != ast::AstNodeKind::MoveExpression)
         {
             diagnostics.report(
@@ -6080,13 +6088,16 @@ void ProjectMethodBodyModel::analyzeVariable(
         }
         if (isReferenceLocal && initializer.valid)
         {
-            if (!initializer.addressable || !initializer.assignable)
+            if (!initializer.addressable ||
+                (!isReadonlyForeachReference && !initializer.assignable))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
                     diagnostics::DiagnosticSeverity::Error,
                     variable->first()->range(),
-                    "reference-local initializer must be a mutable addressable storage location");
+                    isReadonlyForeachReference
+                        ? "foreach ref initializer must be an addressable storage location"
+                        : "reference-local initializer must be a mutable addressable storage location");
             }
             if (initializer.typeKey != typeKey)
             {
@@ -6114,38 +6125,43 @@ void ProjectMethodBodyModel::analyzeVariable(
                     variable->range(),
                     "reference local lifetime exceeds the lifetime region of its source storage");
             }
-            if (initializer.addressable && initializer.assignable && initializer.typeKey == typeKey &&
+            if (initializer.addressable &&
+                (isReadonlyForeachReference || initializer.assignable) &&
+                initializer.typeKey == typeKey &&
                 languageEdition_ == language::LanguageEdition::V3)
             {
-                bool placeIsPrecise = true;
-                const std::optional<std::string> place = storagePlaceKey(
-                    variable->first(), scopeOrdinal, &placeIsPrecise);
                 pendingReferenceReborrowSourceLocalOrdinal = referenceRootLocalOrdinal(
                     variable->first(), scopeOrdinal);
-                pendingReferencePlaceKey = place.value_or("U");
-                if (isPinnedReferenceLocal && (!place.has_value() || !placeIsPrecise))
+                if (!isReadonlyForeachReference)
                 {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
-                        diagnostics::DiagnosticSeverity::Error,
-                        variable->first()->range(),
-                        "pin ref requires a statically stable storage place; dynamic or "
-                        "unknown projections may relocate their elements");
-                }
-                if (const std::optional<std::size_t> conflict = conflictingMutableReference(
-                        pendingReferencePlaceKey,
-                        scopeOrdinal,
-                        std::nullopt,
-                        pendingReferenceReborrowSourceLocalOrdinal);
-                    conflict.has_value())
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
-                        diagnostics::DiagnosticSeverity::Error,
-                        variable->first()->range(),
-                        "cannot create mutable reference local '" + variable->text() +
-                            "' because mutable reference local '" + locals_[*conflict].name +
-                            "' already borrows an overlapping place");
+                    bool placeIsPrecise = true;
+                    const std::optional<std::string> place = storagePlaceKey(
+                        variable->first(), scopeOrdinal, &placeIsPrecise);
+                    pendingReferencePlaceKey = place.value_or("U");
+                    if (isPinnedReferenceLocal && (!place.has_value() || !placeIsPrecise))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                            diagnostics::DiagnosticSeverity::Error,
+                            variable->first()->range(),
+                            "pin ref requires a statically stable storage place; dynamic or "
+                            "unknown projections may relocate their elements");
+                    }
+                    if (const std::optional<std::size_t> conflict = conflictingMutableReference(
+                            pendingReferencePlaceKey,
+                            scopeOrdinal,
+                            std::nullopt,
+                            pendingReferenceReborrowSourceLocalOrdinal);
+                        conflict.has_value())
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                            diagnostics::DiagnosticSeverity::Error,
+                            variable->first()->range(),
+                            "cannot create mutable reference local '" + variable->text() +
+                                "' because mutable reference local '" + locals_[*conflict].name +
+                                "' already borrows an overlapping place");
+                    }
                 }
             }
         }
@@ -6885,8 +6901,29 @@ void ProjectMethodBodyModel::analyzeForeach(
     const std::string sourceTypeKey = locals_.back().typeKey;
     const bool isArray = sourceTypeKey.size() > 2 &&
         sourceTypeKey.compare(sourceTypeKey.size() - 2, 2, "[]") == 0;
+    const bool isWritableSpan =
+        sourceTypeKey.starts_with("type:NativeSharp.Core.Span<") ||
+        sourceTypeKey.starts_with("type:NativeSharp.Core.Span__g") ||
+        sourceTypeKey.find("::NativeSharp.Core.Span__g") != std::string::npos;
+    const bool isReadonlySpan =
+        sourceTypeKey.starts_with("type:NativeSharp.Core.ReadOnlySpan<") ||
+        sourceTypeKey.starts_with("type:NativeSharp.Core.ReadOnlySpan__g") ||
+        sourceTypeKey.find("::NativeSharp.Core.ReadOnlySpan__g") != std::string::npos;
+    const bool isSpan = isWritableSpan || isReadonlySpan;
+    if (isReadonlySpan && statement->auxiliaryText() == "foreach:ref-mut")
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->range(),
+            "foreach ref mut cannot iterate ReadOnlySpan<T>; use foreach ref or value iteration");
+    }
 
-    ast::AstNode* chosenCandidate = const_cast<ast::AstNode*>(isArray ? statement->second() : statement->third());
+    ast::AstNode* chosenCandidate = nullptr;
+    if (isArray) chosenCandidate = const_cast<ast::AstNode*>(statement->second());
+    else if (isSpan && statement->children().size() > 1U)
+        chosenCandidate = const_cast<ast::AstNode*>(statement->children()[1]);
+    else chosenCandidate = const_cast<ast::AstNode*>(statement->third());
     if (chosenCandidate != nullptr)
     {
         // Everything past this point is ordinary VariableDeclarationStatement/WhileStatement
