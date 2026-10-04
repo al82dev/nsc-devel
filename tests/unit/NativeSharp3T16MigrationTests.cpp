@@ -1,5 +1,6 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Driver/ExecutableMigrationGuide.h"
 #include "nativesharp/Driver/MigrationAnalyzer.h"
 #include "nativesharp/Driver/MigrationCompatibilityMatrix.h"
 
@@ -129,8 +130,42 @@ byte suppressed = 7;
             matrixText.find("old-metadata-abi-fingerprint=metadata-v2") != std::string::npos &&
             matrixText.find("consumer-rebuild=yes") != std::string::npos,
         "migration matrix ties every classification to source, ABI-surface, and NSMETA fingerprints");
+
+    const driver::ExecutableMigrationGuide guide =
+        driver::buildExecutableMigrationGuide(analysis, source);
+    std::string guideError;
+    const std::string guideText = driver::renderExecutableMigrationGuide(guide);
+    tests.expect(driver::validateExecutableMigrationGuide(guide, guideError) &&
+            guide.chapters.size() == 7 && guideError.empty(),
+        "migration guide contains ordered executable chapters for every detected risk");
+    tests.expect(guideText.find("## Incremental strategy") != std::string::npos &&
+            guideText.find("Before:") != std::string::npos &&
+            guideText.find("After:") != std::string::npos &&
+            guideText.find("Action: automatic-safe") != std::string::npos &&
+            guideText.find("## Manual-decision inventory") != std::string::npos &&
+            guideText.find("MIG3002 at") != std::string::npos,
+        "rendered guide carries before/after, safe actions, commands, and manual inventory");
+
+    const std::filesystem::path guidePath = path.parent_path() /
+        "nativesharp-t16-migration-guide.md";
+    const std::string guidePathText = guidePath.string();
+    output.str({});
+    error.str({});
+    const std::vector<std::string_view> guideArguments = {
+        "--write-source-migration-guide", pathText, "-o", guidePathText};
+    const ExitCode guideResult = compiler.run(guideArguments, output, error);
+    std::ifstream guideStream(guidePath, std::ios::binary);
+    const std::string writtenGuide{std::istreambuf_iterator<char>(guideStream),
+        std::istreambuf_iterator<char>()};
+    tests.expect(guideResult == ExitCode::Success && error.str().empty() &&
+            output.str().find("migration guide chapters: 7") != std::string::npos &&
+            writtenGuide.find("## Incremental strategy") != std::string::npos &&
+            writtenGuide.find("Action: automatic-safe") != std::string::npos &&
+            writtenGuide.find("MIG3002 at") != std::string::npos,
+        "nsc writes the validated source-specific guide through the productive driver path");
     std::error_code removeError;
     std::filesystem::remove(path, removeError);
     std::filesystem::remove(migratedPath, removeError);
+    std::filesystem::remove(guidePath, removeError);
     return tests.result();
 }

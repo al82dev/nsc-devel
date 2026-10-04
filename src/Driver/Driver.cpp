@@ -8,6 +8,7 @@
 #include "nativesharp/Driver/CompilerConsole.h"
 #include "nativesharp/Driver/DiagnosticBundle.h"
 #include "nativesharp/Driver/FinalBaselineContract.h"
+#include "nativesharp/Driver/ExecutableMigrationGuide.h"
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
@@ -5381,6 +5382,21 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         return ExitCode::Success;
     }
 
+    if (args.size() == 4 && args[0] == "--write-source-migration-guide" && args[2] == "-o")
+    {
+        ExecutableMigrationGuide guide;
+        std::string migrationError;
+        if (!writeExecutableMigrationGuide(std::filesystem::path(args[1]),
+                std::filesystem::path(args[3]), guide, migrationError))
+        {
+            error << "nsc: error: " << migrationError << '\n';
+            return ExitCode::CompilationError;
+        }
+        output << "migration guide chapters: " << guide.chapters.size() << '\n'
+               << "migration guide written: " << args[3] << '\n';
+        return ExitCode::Success;
+    }
+
     if (args.size() == 5 && args[0] == "--verify-library-artifacts")
     {
         return verifyLibraryArtifacts(args[1], args[2], args[3], args[4], output, error);
@@ -5608,6 +5624,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --analyze-migration <source.ns>\n"
            << "  nsc --apply-migration-fixes <source.ns> -o <migrated.ns>\n"
            << "  nsc --migration-compatibility-matrix <old.nsmeta> <new.nsmeta>\n"
+           << "  nsc --write-source-migration-guide <source.ns> -o <guide.md>\n"
            << "  nsc --print-migration-guide\n"
            << "  nsc --write-migration-guide <file.guide>\n"
            << "  nsc --verify-migration-guide <file.guide>\n"
