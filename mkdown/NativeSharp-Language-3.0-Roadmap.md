@@ -692,9 +692,17 @@ evidencia del commit: `docs/3.0/items/NS3-T06-F01-move-only-defaults.md`.
 
 **Commit:** `ns3(t07-f02): typed-throws`
 
+**Estado:** `IMPLEMENTADA` en `development`; evidencia dirigida O0/NSLink, sin baseline.
+
 - **Implementación:** `throws E` como efecto tipado con ABI definida; el perfil base puede bajar a resultado/retorno dual, no a excepciones CLR; llamadas deben manejar o propagar.
 - **Pruebas dirigidas:** varios tipos de error, function pointers, overrides, FFI prohibido sin adapter, cleanup y tamaño/calling convention.
 - **Markdown ES/EN:** semántica, ABI y comparación con `Result`.
+- **Entrega:** sintaxis edición 3, chequeo handle-or-propagate, narrowing de overrides y traits,
+  identidad exacta de delegates, prohibición FFI sin adapter, HIR/MIR 1.24, caché y NSMETA 1.37.
+- **Evidencia:** objetivo exacto `nsc_ns3_t07_error_tests`, `PASS: 22 checks`; ejecución O0/NSLink
+  y consumidor cross-library terminan con código 42.
+- **Expediente:** `docs/3.0/items/NS3-T07-F02-typed-throws.md` y
+  `docs/3.0/language/typed-throws.md`.
 
 ## NS3-T07-F03 — `try`, `catch` tipado y `finally` / Typed try-catch-finally
 

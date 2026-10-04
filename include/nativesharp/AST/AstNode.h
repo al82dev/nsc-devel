@@ -122,6 +122,10 @@ public:
 
     TypeSyntax* typeSyntax() const noexcept;
     void setTypeSyntax(TypeSyntax* typeSyntax) noexcept;
+    // NativeSharp 3.0 T07-F02. Present only on a callable declaration that spells
+    // `throws E`; independent from the ordinary return type and generic/base type lists.
+    TypeSyntax* throwsTypeSyntax() const noexcept;
+    void setThrowsTypeSyntax(TypeSyntax* typeSyntax) noexcept;
     void addTypeSyntax(TypeSyntax* typeSyntax);
     const std::vector<TypeSyntax*>& typeSyntaxes() const noexcept;
     void clearTypeSyntaxes() noexcept;
@@ -187,6 +191,7 @@ private:
     lexer::TokenKind tokenKind_ = lexer::TokenKind::Invalid;
     std::vector<lexer::TokenKind> modifiers_;
     TypeSyntax* typeSyntax_ = nullptr;
+    TypeSyntax* throwsTypeSyntax_ = nullptr;
     std::vector<TypeSyntax*> typeSyntaxes_;
     std::vector<std::string> genericParameters_;
     std::vector<GenericParameterSyntax> genericParameterSyntaxes_;

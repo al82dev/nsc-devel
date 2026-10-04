@@ -126,6 +126,10 @@ struct ClassMemberSymbol final
     std::string name;
     const ast::TypeSyntax* declaredTypeSyntax = nullptr;
     std::string declaredTypeKey;
+    // NativeSharp 3.0 T07-F02. Empty means non-throwing. A non-empty key is part of the
+    // callable type/effect contract while the physical Windows x64 return ABI stays unchanged.
+    const ast::TypeSyntax* declaredErrorTypeSyntax = nullptr;
+    std::string declaredErrorTypeKey;
     bool declaredPointerPointeeReadonly = false;
     sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
     std::vector<MethodParameterSymbol> parameters;

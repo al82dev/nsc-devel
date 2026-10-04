@@ -2,10 +2,12 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 
 #include "../support/TestContext.h"
 
 #include <array>
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -81,6 +83,30 @@ bool compileAndRun(
     diagnostic += "process exit code " + std::to_string(observed) +
         ", expected " + std::to_string(expected);
     return false;
+}
+
+struct CompilationEvidence
+{
+    bool succeeded = false;
+    std::string error;
+    std::string diagnostics;
+    std::string mir;
+};
+
+CompilationEvidence compileMir(const std::filesystem::path& project)
+{
+    nativesharp::frontend::ProjectCompilation compilation;
+    CompilationEvidence evidence;
+    evidence.succeeded = compilation.compileProjectOopMir(project, evidence.error);
+    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+    {
+        if (!evidence.diagnostics.empty()) evidence.diagnostics += " | ";
+        evidence.diagnostics += diagnostic.message();
+    }
+    if (evidence.succeeded && compilation.oopMirModel() != nullptr)
+        evidence.mir = nativesharp::frontend::ProjectOopMirModelDumper::dump(
+            *compilation.oopMirModel());
+    return evidence;
 }
 }
 
@@ -202,7 +228,7 @@ public class Program
         : std::string();
     tests.expect(
         mirBuilt && compilationError.empty() &&
-            mir.find("schema=1.23") != std::string::npos &&
+            mir.find("schema=1.24") != std::string::npos &&
             mir.find("result-propagation") != std::string::npos &&
             mir.find("conversion=__nsc_method_") != std::string::npos &&
             mir.find("continuation=return") != std::string::npos,
@@ -214,6 +240,278 @@ public class Program
     tests.expect(executed,
         "O0/NSLink executes Ok continuation and converted Error propagation with defer cleanup (" +
             executionDiagnostic + ")");
+
+    const std::filesystem::path typedRoot = root / "typed";
+    const std::filesystem::path typedProject = writeProject(
+        typedRoot, "TypedThrows", R"NS(
+namespace NativeSharp.Core
+{
+    public class Exception {}
+}
+
+using NativeSharp.Core;
+
+namespace TypedThrows
+{
+    public class Error : Exception {}
+    public class ParseError : Error {}
+
+    public delegate int Work(bool fail) throws Error;
+
+    public class Base
+    {
+        public virtual int Run(bool fail) throws Error
+        {
+            if (fail) { throw new Error(); }
+            return 40;
+        }
+    }
+
+    public class Derived : Base
+    {
+        public override int Run(bool fail) throws ParseError
+        {
+            if (fail) { throw new ParseError(); }
+            return 41;
+        }
+    }
+
+    public class Program
+    {
+        public static int Cleanups = 0;
+
+        private static int Parse(bool fail) throws ParseError
+        {
+            defer [] { Cleanups = Cleanups + 1; }
+            if (fail) { throw new ParseError(); }
+            return 40;
+        }
+
+        private static int Forward(bool fail) throws Error
+        {
+            return Parse(fail) + 2;
+        }
+
+        private static int Invoke(Work work, bool fail) throws Error
+        {
+            return work(fail);
+        }
+
+        public static int Main()
+        {
+            try
+            {
+                Work work = Forward;
+                if (Forward(false) != 42 || Invoke(work, false) != 42) { return 10; }
+            }
+            catch (Error problem)
+            {
+                return 20;
+            }
+            try
+            {
+                Forward(true);
+            }
+            catch (Error problem)
+            {
+                if (Cleanups != 3) { return 30; }
+                return 42;
+            }
+            return 40;
+        }
+    }
+}
+)NS");
+    const CompilationEvidence typed = compileMir(typedProject);
+    tests.expect(
+        typed.succeeded && typed.error.empty() &&
+            typed.mir.find("schema=1.24") != std::string::npos &&
+            typed.mir.find("throws=type:TypedThrows::TypedThrows.Error") != std::string::npos &&
+            typed.mir.find("throws=type:TypedThrows::TypedThrows.ParseError") != std::string::npos,
+        "throws E reaches MIR 1.24 while overrides narrow and delegates preserve the exact error type (" +
+            typed.error + typed.diagnostics + typed.mir + ")");
+    executionDiagnostic.clear();
+    tests.expect(
+        compileAndRun(typedProject, 42, executionDiagnostic),
+        "O0/NSLink executes typed propagation through a delegate and runs defer during native unwind (" +
+            executionDiagnostic + ")");
+
+    const auto expectRejected = [&](std::string_view name, std::string_view source,
+                                    std::string_view expectedText)
+    {
+        const std::filesystem::path projectPath = writeProject(root / std::string(name), name, source);
+        const CompilationEvidence evidence = compileMir(projectPath);
+        tests.expect(
+            !evidence.succeeded &&
+                (evidence.error + evidence.diagnostics).find(expectedText) != std::string::npos,
+            std::string(name) + " is rejected by the typed throws contract (" +
+                evidence.error + evidence.diagnostics + ")");
+    };
+    expectRejected("UnhandledCall", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Program
+{
+    private static int Risk() throws Error { throw new Error(); }
+    public static int Main() { return Risk(); }
+}
+)NS", "NS3071");
+    expectRejected("UnhandledThrow", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Program { public static int Main() { throw new Error(); } }
+)NS", "NS3071");
+    expectRejected("DelegateMismatch", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public delegate int Work() throws Error;
+public class Program
+{
+    private static int Plain() { return 42; }
+    public static int Main() { Work work = Plain; return work(); }
+}
+)NS", "method group");
+    expectRejected("OverrideWidening", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Narrow : Error {}
+public class Base { public virtual int Run() throws Narrow { return 1; } }
+public class Derived : Base { public override int Run() throws Error { return 2; } }
+public class Program { public static int Main() { return 0; } }
+)NS", "outside inherited contract");
+    expectRejected("ExternBoundary", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public extern C delegate int NativeWork() throws Error;
+public class Program { public static int Main() { return 0; } }
+)NS", "cannot declare throws");
+
+    const std::filesystem::path edition2 = root / "edition2";
+    const std::filesystem::path edition2Project = edition2 / "Edition2Identifier.nsproj";
+    writeFile(edition2Project,
+        "<Project><PropertyGroup><Name>Edition2Identifier</Name><Language>2</Language>"
+        "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+        "<Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    writeFile(edition2 / "Main.ns", R"NS(
+public class Program
+{
+    private static int throws() { return 42; }
+    public static int Main() { return throws(); }
+}
+)NS");
+    executionDiagnostic.clear();
+    tests.expect(
+        compileAndRun(edition2Project, 42, executionDiagnostic),
+        "throws remains a contextual keyword and preserves edition-2 identifiers (" +
+            executionDiagnostic + ")");
+
+    const std::filesystem::path producer = root / "producer";
+    const std::filesystem::path producerProject = producer / "ThrowsApi.nsproj";
+    const std::filesystem::path producerLibrary = producer / "ThrowsApi.lib";
+    writeFile(producerProject,
+        "<Project><PropertyGroup><Name>ThrowsApi</Name><Language>3</Language>"
+        "<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>"
+        "<Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    writeFile(producer / "Api.ns", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+namespace ThrowsApi
+{
+    public class Error : NativeSharp.Core.Exception {}
+    public delegate int Operation(bool fail) throws Error;
+    public int ExecuteFree(bool fail) throws Error
+    {
+        if (fail) { throw new Error(); }
+        return 42;
+    }
+    public class Api
+    {
+        public static int Execute(bool fail) throws Error
+        {
+            if (fail) { throw new Error(); }
+            return 42;
+        }
+    }
+}
+)NS");
+    const std::string producerProjectText = producerProject.string();
+    const std::string producerLibraryText = producerLibrary.string();
+    const std::array<std::string_view, 5> producerArguments = {
+        "--emit-project-oop-lib", producerProjectText, "-O0", "-o", producerLibraryText};
+    std::string producerOutput;
+    std::string producerError;
+    const ExitCode producerResult = runDriver(producerArguments, producerOutput, producerError);
+    nativesharp::interop::LibraryMetadata metadata;
+    std::string metadataError;
+    const bool metadataRead = producerResult == ExitCode::Success &&
+        nativesharp::interop::LibraryMetadataCodec{}.read(
+            producer / "ThrowsApi.nsmeta", metadata, metadataError);
+    const auto delegate = std::ranges::find_if(metadata.types, [](const auto& type)
+    {
+        return type.fullyQualifiedName == "ThrowsApi.Operation";
+    });
+    const auto method = std::ranges::find_if(metadata.members, [](const auto& member)
+    {
+        return member.name == "Execute";
+    });
+    const auto freeFunction = std::ranges::find_if(
+        metadata.namespaceFunctions, [](const auto& function)
+        {
+            return function.name == "ExecuteFree";
+        });
+    tests.expect(
+        metadataRead && metadata.formatMinor == 37 && delegate != metadata.types.end() &&
+            method != metadata.members.end() && freeFunction != metadata.namespaceFunctions.end() &&
+            delegate->delegateErrorTypeKey == method->declaredErrorTypeKey &&
+            delegate->delegateErrorTypeKey == freeFunction->declaredErrorTypeKey &&
+            delegate->delegateErrorTypeKey.ends_with("::ThrowsApi.Error"),
+        "NSMETA 1.37 round-trips typed throws for delegates, methods, and free functions (" +
+            metadataError + producerError + producerOutput + ")");
+    if (metadataRead)
+    {
+        nativesharp::interop::LibraryMetadata invalidDowngrade = metadata;
+        invalidDowngrade.formatMinor = 36;
+        std::string downgradeError;
+        const bool downgraded = nativesharp::interop::LibraryMetadataCodec{}.writeModel(
+            invalidDowngrade, producer / "invalid-1.36.nsmeta", downgradeError);
+        tests.expect(
+            !downgraded && downgradeError.find("cannot represent typed throws") != std::string::npos,
+            "NSMETA refuses to erase typed throws while downgrading below 1.37 (" +
+                downgradeError + ")");
+    }
+    else
+    {
+        tests.expect(false, "NSMETA downgrade guard requires readable producer metadata");
+    }
+
+    const std::filesystem::path consumer = root / "consumer";
+    const std::filesystem::path consumerProject = consumer / "ThrowsConsumer.nsproj";
+    writeFile(consumerProject,
+        "<Project><PropertyGroup><Name>ThrowsConsumer</Name><Language>3</Language>"
+        "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+        "<Compile Include=\"**/*.ns\" /><LibraryReference Include=\"" +
+        producerLibrary.generic_string() + "\" /></ItemGroup></Project>");
+    writeFile(consumer / "Main.ns", R"NS(
+using ThrowsApi;
+public class Program
+{
+    public static int Main()
+    {
+        try
+        {
+            if (Api.Execute(false) != 42) { return 2; }
+            ExecuteFree(true);
+        }
+        catch (Error problem) { return 42; }
+        return 1;
+    }
+}
+)NS");
+    executionDiagnostic.clear();
+    tests.expect(
+        producerResult == ExitCode::Success &&
+            compileAndRun(consumerProject, 42, executionDiagnostic),
+        "a metadata consumer reconstructs throws E and catches the producer's native exception (" +
+            producerError + producerOutput + executionDiagnostic + ")");
 
     std::filesystem::remove_all(root, ignored);
     return tests.result();

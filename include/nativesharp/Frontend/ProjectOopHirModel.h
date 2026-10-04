@@ -630,6 +630,9 @@ struct ProjectOopHirFunction final
     std::string mangledName;
     std::string debugDisplayName;
     std::string returnTypeKey;
+    // Empty for non-throwing callables. The current Windows x64 profile uses native EH ABI 1;
+    // this key is the statically declared payload bound checked by callers and metadata users.
+    std::string errorTypeKey;
     sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
     std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;

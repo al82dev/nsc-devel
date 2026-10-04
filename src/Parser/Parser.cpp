@@ -3110,6 +3110,7 @@ ast::AstNode* Parser::parseDelegateDeclaration()
         }
     }
     expect(TokenKind::RightParen, "')'");
+    parseThrowsClause(node);
     // NSC-LIMIT-007: `delegate void D<T>(T x) where T : class;` -- despues de la lista de
     // parametros y antes del punto y coma, que es donde el lenguaje la pone.
     parseGenericConstraintClauses(node);
@@ -6846,6 +6847,7 @@ ast::AstNode* Parser::parseOperatorTail(
         }
     }
     expect(TokenKind::RightParen, "')'");
+    parseThrowsClause(method);
     method->setText(operatorMethodName(operation.kind(), method->children().size()));
 
     const std::size_t arity = method->children().size();
@@ -6949,6 +6951,7 @@ ast::AstNode* Parser::parseConversionOperatorTail(
         }
     }
     expect(TokenKind::RightParen, "')'");
+    parseThrowsClause(method);
     if (method->children().size() != 1)
     {
         diagnostics_.report(
@@ -7229,6 +7232,7 @@ ast::AstNode* Parser::parseMethodTail(
         }
     }
     expect(TokenKind::RightParen, "')'");
+    parseThrowsClause(method);
     // NSC-LIMIT-007: `void M<T>(T x) where T : class { ... }` -- despues de la lista de
     // parametros y antes del cuerpo o del punto y coma.
     parseGenericConstraintClauses(method);
@@ -7554,6 +7558,7 @@ ast::AstNode* Parser::parseFunctionTail(
     }
     function->setVariadic(variadic);
     expect(TokenKind::RightParen, "')'");
+    parseThrowsClause(function);
     if (variadic && !externalOnly)
     {
         diagnostics_.report(
@@ -7629,6 +7634,34 @@ ast::AstNode* Parser::parseFunctionTail(
 
     function->setRange(tokenRangeFrom(beginIndex));
     return function;
+}
+
+void Parser::parseThrowsClause(ast::AstNode* callable)
+{
+    if (callable == nullptr || !atContextualKeyword("throws")) return;
+    const SourceRange keywordRange = consume().range();
+    requireEdition3(keywordRange, "typed throws clauses");
+    if (!canStartTypeAt(index_) && !at(TokenKind::Identifier) &&
+        !lexer::isOwnershipQualifierKeyword(current().kind()))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedType,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "throws requires an explicit error type");
+        return;
+    }
+    ast::TypeSyntax* errorType = parseType();
+    if (errorType != nullptr &&
+        errorType->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::None)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            errorType->range(),
+            "throws error types cannot carry owned or borrowed qualifiers");
+    }
+    callable->setThrowsTypeSyntax(errorType);
 }
 
 ast::AstNode* Parser::parseParameter()

@@ -108,6 +108,11 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
         output << " type=";
         dumpType(node->typeSyntax(), output);
     }
+    if (node->throwsTypeSyntax() != nullptr)
+    {
+        output << " throws=";
+        dumpType(node->throwsTypeSyntax(), output);
+    }
 
     if (node->flag())
     {

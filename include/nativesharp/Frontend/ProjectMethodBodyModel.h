@@ -1214,6 +1214,7 @@ struct MethodLambdaBinding final
     std::string delegateTypeKey;
     std::size_t delegateTypeOrdinal = 0;
     std::string returnTypeKey;
+    std::string errorTypeKey;
     std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;
     std::vector<std::string> parameterValueTypeKeys;
@@ -1819,6 +1820,14 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool validateErrorPropagation(
+        std::string_view errorTypeKey,
+        const ast::AstNode* syntax,
+        std::size_t callerCallableOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::string_view operation);
+    bool errorIsHandled(std::string_view errorTypeKey) const;
+    std::string delegateErrorTypeKey(std::string_view delegateTypeKey) const;
     std::optional<std::size_t> exceptionRootTypeOrdinal() const noexcept;
     bool isExceptionTypeOrdinal(std::size_t typeOrdinal) const noexcept;
     std::size_t addCatchLocal(
@@ -2280,6 +2289,13 @@ private:
     // and emits one precise diagnostic; ordinary reads never enter this context.
     std::size_t partialMoveSourceDepth_ = 0;
     std::vector<OwnershipFlowSnapshot> throwFlowStates_;
+    struct ActiveErrorHandlers final
+    {
+        bool catchAll = false;
+        std::vector<std::string> typeKeys;
+    };
+    std::vector<ActiveErrorHandlers> activeErrorHandlers_;
+    std::vector<std::string> currentCatchErrorTypes_;
     std::vector<MethodSwitchBinding> switchBindings_;
     std::vector<MethodStructuredExitBinding> structuredExits_;
     std::vector<MethodCleanupContinuation> cleanupContinuations_;
@@ -2295,6 +2311,7 @@ private:
     std::vector<MethodDelegateBinding> delegateBindings_;
     std::optional<std::size_t> currentLambdaOrdinal_;
     std::string currentLambdaReturnTypeKey_;
+    std::string currentLambdaErrorTypeKey_;
     std::size_t currentCatchDepth_ = 0;
     std::vector<MethodEventBinding> eventBindings_;
     std::vector<MethodOptionalCarrierBinding> optionalCarrierBindings_;

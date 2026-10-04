@@ -224,12 +224,14 @@ bool compatibleDeclarations(
     const NamespaceFunctionSymbol& symbol,
     const NamespaceFunctionDeclaration& declaration,
     std::string_view returnTypeKey,
-    sema::OwnershipKind returnOwnership) noexcept
+    sema::OwnershipKind returnOwnership,
+    std::string_view errorTypeKey) noexcept
 {
     const ast::AstNode* syntax = declaration.syntax;
     return symbol.accessibility == declaration.accessibility &&
         symbol.declaredTypeKey == returnTypeKey &&
         symbol.declaredOwnership == returnOwnership &&
+        symbol.declaredErrorTypeKey == errorTypeKey &&
         symbol.isReferenceReturn == syntax->isReference() &&
         symbol.isVariadic == syntax->isVariadic() &&
         symbol.isExternC ==
@@ -325,6 +327,12 @@ bool ProjectNamespaceFunctionModel::build(
         candidate.name = declaration.name;
         candidate.declaredTypeSyntax = syntax.typeSyntax();
         candidate.declaredTypeKey = memberModel.canonicalTypeKey(syntax.typeSyntax(), nameLookup);
+        candidate.declaredErrorTypeSyntax = syntax.throwsTypeSyntax();
+        candidate.declaredErrorTypeKey = syntax.throwsTypeSyntax() == nullptr
+            ? std::string{}
+            : memberModel.canonicalTypeKey(syntax.throwsTypeSyntax(), nameLookup);
+        if (!candidate.declaredErrorTypeKey.empty())
+            candidate.effects = candidate.effects.with(sema::Effect::Throws);
         candidate.declaredOwnership = ownershipKindFromSyntax(syntax.typeSyntax());
         candidate.declarationSyntax = declaration.syntax;
         candidate.definitionSyntax = declaration.hasBody ? declaration.syntax : nullptr;
@@ -348,6 +356,15 @@ bool ProjectNamespaceFunctionModel::build(
                     : InliningPolicy::Automatic;
         candidate.isExternC =
             syntax.flag() || syntax.hasModifier(lexer::TokenKind::KwExtern);
+        if (candidate.isExternC && !candidate.declaredErrorTypeKey.empty())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidExternCSignature,
+                diagnostics::DiagnosticSeverity::Error,
+                candidate.range,
+                "extern C namespace function '" + candidate.name +
+                    "' cannot declare throws; catch and translate the error in an explicit non-throwing adapter");
+        }
         candidate.isExportedC = syntax.hasModifier(lexer::TokenKind::KwExport);
         candidate.isPrecompiled = declaration.isPrecompiled;
         candidate.isExtension = isExtensionDeclaration(syntax);
@@ -646,7 +663,8 @@ bool ProjectNamespaceFunctionModel::build(
             symbol,
             declaration,
             candidate.declaredTypeKey,
-            candidate.declaredOwnership);
+            candidate.declaredOwnership,
+            candidate.declaredErrorTypeKey);
         if (!compatible)
         {
             diagnostics.report(

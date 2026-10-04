@@ -4495,6 +4495,8 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     {
         result->setTypeSyntax(cloneType(arena, source->typeSyntax(), substitutions));
     }
+    result->setThrowsTypeSyntax(
+        cloneType(arena, source->throwsTypeSyntax(), substitutions));
     for (const ast::TypeSyntax* syntax : source->typeSyntaxes())
         for (ast::TypeSyntax* expanded :
              cloneExpandedTypeArgument(arena, syntax, substitutions))

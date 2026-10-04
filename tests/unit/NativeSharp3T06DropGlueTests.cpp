@@ -148,7 +148,8 @@ namespace DropApi
         return type.fullyQualifiedName == "DropApi.Box";
     });
     tests.expect(
-        metadataRead && metadata.formatMinor == 36 && box != metadata.types.end() &&
+        metadataRead && metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+            box != metadata.types.end() &&
             !box->dropGlueEntryName.empty(),
         "NSMETA 1.36 publishes the producer-owned value drop-glue identity (" +
             metadataError + error + output + ")");

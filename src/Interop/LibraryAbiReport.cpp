@@ -155,7 +155,10 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
             output << "    delegate calling-convention=" << delegateConvention(*type)
                    << " return="
                    << (type->delegateReturnDynamicTrait ? "dyn:" : "")
-                   << type->delegateReturnTypeKey << '\n';
+                   << type->delegateReturnTypeKey;
+            if (!type->delegateErrorTypeKey.empty())
+                output << " throws=" << type->delegateErrorTypeKey;
+            output << '\n';
             for (std::size_t ordinal = 0; ordinal < type->delegateParameterTypeKeys.size(); ++ordinal)
                 output << "      parameter #" << ordinal
                        << " type="
@@ -240,6 +243,8 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
                << member->declaredTypeKey
                << " return-ownership=" << ownershipName(member->declaredOwnership)
                << " mangled=" << member->mangledName;
+        if (!member->declaredErrorTypeKey.empty())
+            output << " throws=" << member->declaredErrorTypeKey;
         if (!member->cAbiName.empty()) output << " c-name=" << member->cAbiName;
         output << '\n';
         writeParameters(member->parameters, output);

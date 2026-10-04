@@ -500,6 +500,18 @@ bool ProjectMemberModel::build(
             validateDelegateLifetimeContract(type, diagnostics);
             if (type.syntax != nullptr)
             {
+                const std::string declaredErrorTypeKey = type.syntax->throwsTypeSyntax() == nullptr
+                    ? std::string{}
+                    : canonicalTypeKey(type.syntax->throwsTypeSyntax(), nameLookup);
+                if (type.syntax->hasModifier(lexer::TokenKind::KwExtern) &&
+                    !declaredErrorTypeKey.empty())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidExternCSignature,
+                        diagnostics::DiagnosticSeverity::Error,
+                        type.range,
+                        "extern C/vectorcall delegates cannot declare throws; use a non-throwing adapter at the ABI boundary");
+                }
                 std::unordered_map<std::string, const ast::AstNode*> parameterNames;
                 for (const ast::AstNode* parameter : type.syntax->children())
                 {
@@ -1601,6 +1613,10 @@ bool ProjectMemberModel::collectTypeMembers(
                 : symbol.kind == ClassMemberKind::Destructor
                     ? "builtin:void"
                     : canonicalTypeKey(memberNode->typeSyntax(), nameLookup);
+            symbol.declaredErrorTypeSyntax = memberNode->throwsTypeSyntax();
+            symbol.declaredErrorTypeKey = memberNode->throwsTypeSyntax() == nullptr
+                ? std::string{}
+                : canonicalTypeKey(memberNode->throwsTypeSyntax(), nameLookup);
             symbol.declaredPointerPointeeReadonly = memberNode->typeSyntax() != nullptr &&
                 memberNode->typeSyntax()->isPointeeConst();
             symbol.declaredOwnership =
@@ -1709,9 +1725,11 @@ bool ProjectMemberModel::collectTypeMembers(
             symbol.isNoHeap = (symbol.kind == ClassMemberKind::Method ||
                                symbol.kind == ClassMemberKind::Constructor) &&
                 memberNode->hasModifier(lexer::TokenKind::KwNoHeap);
-            symbol.effects = symbol.isNoHeap
-                ? sema::EffectSet(sema::Effect::NoHeap)
-                : sema::EffectSet{};
+            symbol.effects = {};
+            if (symbol.isNoHeap)
+                symbol.effects = symbol.effects.with(sema::Effect::NoHeap);
+            if (!symbol.declaredErrorTypeKey.empty())
+                symbol.effects = symbol.effects.with(sema::Effect::Throws);
             symbol.isStatic = (symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
                 symbol.kind == ClassMemberKind::Method) &&
                 (memberNode->hasModifier(lexer::TokenKind::KwStatic) || symbol.isConst);
@@ -1801,6 +1819,15 @@ bool ProjectMemberModel::collectTypeMembers(
                 memberNode->hasModifier(lexer::TokenKind::KwExport);
             symbol.isExternC = symbol.kind == ClassMemberKind::Method &&
                 memberNode->hasModifier(lexer::TokenKind::KwExtern);
+            if (symbol.isExternC && !symbol.declaredErrorTypeKey.empty())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidExternCSignature,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "extern C callable '" + symbol.name +
+                        "' cannot declare throws; catch and translate the error in an explicit non-throwing adapter");
+            }
             symbol.isVariadic = symbol.kind == ClassMemberKind::Method && memberNode->isVariadic();
             // Interop Foundation: a member born inside `extern C from "<dll>" { ... }` is an
             // IMPORTED C function -- the class-side face of a symbol that lives in an external

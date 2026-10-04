@@ -645,6 +645,9 @@ bool ProjectMethodBodyModel::build(
         adapter.name = function.name;
         adapter.declaredTypeSyntax = function.declaredTypeSyntax;
         adapter.declaredTypeKey = function.declaredTypeKey;
+        adapter.declaredErrorTypeSyntax = function.declaredErrorTypeSyntax;
+        adapter.declaredErrorTypeKey = function.declaredErrorTypeKey;
+        adapter.effects = function.effects;
         adapter.declaredOwnership = function.declaredOwnership;
         adapter.parameters = function.parameters;
         adapter.signatureKey = function.signatureKey;
@@ -661,6 +664,60 @@ bool ProjectMethodBodyModel::build(
     }
     inheritanceModel_ = &inheritanceModel;
     interfaceModel_ = &interfaceModel;
+
+    // T07-F02 validates every declared error in the completed type graph. Name binding has
+    // already canonicalized the syntax; inheritance now proves that the contract is a native
+    // Exception reference rather than an arbitrary payload type.
+    if (languageEdition_ == language::LanguageEdition::V3)
+    {
+        const std::optional<std::size_t> exceptionRoot = exceptionRootTypeOrdinal();
+        const std::size_t callableCount =
+            memberModel.members().size() + namespaceCallableAdapters_.size();
+        for (std::size_t ordinal = 0; ordinal < callableCount; ++ordinal)
+        {
+            const ClassMemberSymbol* callable = methodSymbol(ordinal);
+            if (callable == nullptr || callable->declaredErrorTypeKey.empty()) continue;
+            const std::optional<std::size_t> errorOrdinal =
+                inheritanceModel_->typeOrdinalForTypeKey(callable->declaredErrorTypeKey);
+            if (!exceptionRoot.has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    callable->range,
+                    "NativeSharp.Core.Exception must be declared before throws contracts can be used");
+            }
+            else if (!errorOrdinal.has_value() || !isExceptionTypeOrdinal(*errorOrdinal))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    callable->range,
+                    "throws type '" + callable->declaredErrorTypeKey +
+                        "' must be NativeSharp.Core.Exception or derive from it");
+            }
+        }
+        for (const NamedTypeDeclaration& type : nameLookup.namedTypes())
+        {
+            if (type.kind != NamedTypeDeclarationKind::Delegate || type.syntax == nullptr ||
+                type.syntax->throwsTypeSyntax() == nullptr)
+                continue;
+            const std::string errorTypeKey = memberModel.canonicalTypeKey(
+                type.syntax->throwsTypeSyntax(), nameLookup);
+            const std::optional<std::size_t> errorOrdinal =
+                inheritanceModel_->typeOrdinalForTypeKey(errorTypeKey);
+            if (!exceptionRoot.has_value() || !errorOrdinal.has_value() ||
+                !isExceptionTypeOrdinal(*errorOrdinal))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    type.range,
+                    "delegate throws type '" + errorTypeKey +
+                        "' must be NativeSharp.Core.Exception or derive from it");
+            }
+        }
+    }
 
     parameterEscapeSummaries_.clear();
     parameterEscapeSummaries_.resize(
@@ -2476,6 +2533,9 @@ std::optional<MethodDeconstructionBinding> ProjectMethodBodyModel::bindDeconstru
     }
 
     const ClassMemberSymbol& selected = memberModel_->members()[validCandidates.front()];
+    validateErrorPropagation(
+        selected.declaredErrorTypeKey, sourceSyntax, methodMemberOrdinal,
+        diagnostics, "Deconstruct call");
     if (!elementTypeHasTrivialLifetime(selected.declaredTypeKey))
     {
         diagnostics.report(
@@ -4807,7 +4867,23 @@ void ProjectMethodBodyModel::analyzeTry(
 
     const OwnershipFlowSnapshot tryEntryState = captureOwnershipFlow();
     const std::size_t throwStateBegin = throwFlowStates_.size();
+    ActiveErrorHandlers handlers;
+    for (const ast::AstNode* catchClause : statement->children())
+    {
+        if (catchClause == nullptr || catchClause->kind() != ast::AstNodeKind::CatchClause)
+            continue;
+        if (catchClause->flag())
+        {
+            handlers.catchAll = true;
+            continue;
+        }
+        if (catchClause->typeSyntax() != nullptr)
+            handlers.typeKeys.push_back(
+                memberModel_->canonicalTypeKey(catchClause->typeSyntax(), *nameLookup_));
+    }
+    activeErrorHandlers_.push_back(std::move(handlers));
     analyzeBlock(statement->first(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
+    activeErrorHandlers_.pop_back();
     const OwnershipFlowSnapshot tryExitState = captureOwnershipFlow();
 
     // A catch can observe ownership state from any explicit throw point and, conservatively,
@@ -4898,7 +4974,13 @@ void ProjectMethodBodyModel::analyzeTry(
         exceptionBindings_.push_back(std::move(binding));
         restoreOwnershipFlow(catchEntryState);
         ++currentCatchDepth_;
+        currentCatchErrorTypes_.push_back(catchClause->flag()
+            ? (exceptionRoot.has_value()
+                ? inheritanceModel_->typeKeyForOrdinal(*exceptionRoot)
+                : std::string{"<any-exception>"})
+            : memberModel_->canonicalTypeKey(catchClause->typeSyntax(), *nameLookup_));
         analyzeBlock(catchClause->first(), methodMemberOrdinal, catchScope, false, diagnostics);
+        currentCatchErrorTypes_.pop_back();
         --currentCatchDepth_;
         joinedExitState = joinOwnershipFlow(joinedExitState, captureOwnershipFlow());
     }
@@ -4963,6 +5045,12 @@ void ProjectMethodBodyModel::analyzeThrow(
                 statement->range(),
                 "throw; is only valid within a catch block");
         }
+        else if (!currentCatchErrorTypes_.empty())
+        {
+            validateErrorPropagation(
+                currentCatchErrorTypes_.back(), statement, methodMemberOrdinal,
+                diagnostics, "rethrow");
+        }
         exceptionBindings_.push_back(std::move(binding));
         throwFlowStates_.push_back(captureOwnershipFlow());
         return;
@@ -4995,9 +5083,69 @@ void ProjectMethodBodyModel::analyzeThrow(
                     "throw operand type '" + value.typeKey + "' must be NativeSharp.Core.Exception or derive from it");
             }
         }
+        validateErrorPropagation(
+            value.typeKey, statement, methodMemberOrdinal, diagnostics, "throw");
     }
     exceptionBindings_.push_back(std::move(binding));
     throwFlowStates_.push_back(captureOwnershipFlow());
+}
+
+bool ProjectMethodBodyModel::errorIsHandled(std::string_view errorTypeKey) const
+{
+    if (errorTypeKey.empty()) return true;
+    for (auto iterator = activeErrorHandlers_.rbegin();
+         iterator != activeErrorHandlers_.rend(); ++iterator)
+    {
+        if (iterator->catchAll) return true;
+        for (const std::string& handled : iterator->typeKeys)
+        {
+            if (classifyImplicit(errorTypeKey, handled).exists()) return true;
+        }
+    }
+    return false;
+}
+
+bool ProjectMethodBodyModel::validateErrorPropagation(
+    std::string_view errorTypeKey,
+    const ast::AstNode* syntax,
+    std::size_t callerCallableOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::string_view operation)
+{
+    if (languageEdition_ != language::LanguageEdition::V3 || errorTypeKey.empty() ||
+        errorIsHandled(errorTypeKey))
+        return true;
+
+    std::string_view declaredErrorTypeKey = currentLambdaErrorTypeKey_;
+    const ClassMemberSymbol* caller = methodSymbol(callerCallableOrdinal);
+    if (!currentLambdaOrdinal_.has_value() && caller != nullptr)
+        declaredErrorTypeKey = caller->declaredErrorTypeKey;
+    if (!declaredErrorTypeKey.empty() &&
+        classifyImplicit(errorTypeKey, declaredErrorTypeKey).exists())
+        return true;
+
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidCall,
+        diagnostics::DiagnosticSeverity::Error,
+        syntax != nullptr ? syntax->range() : SourceRange{},
+        "NS3071: " + std::string(operation) + " may produce error '" +
+            std::string(errorTypeKey) +
+            "'; catch it or declare a compatible throws error on the enclosing callable");
+    return false;
+}
+
+std::string ProjectMethodBodyModel::delegateErrorTypeKey(
+    std::string_view delegateTypeKey) const
+{
+    const std::optional<std::size_t> ordinal =
+        delegateTypeOrdinalForTypeKey(delegateTypeKey);
+    if (!ordinal.has_value() || nameLookup_ == nullptr || memberModel_ == nullptr ||
+        *ordinal >= nameLookup_->namedTypes().size())
+        return {};
+    const ast::AstNode* syntax = nameLookup_->namedTypes()[*ordinal].syntax;
+    return syntax == nullptr || syntax->throwsTypeSyntax() == nullptr
+        ? std::string{}
+        : memberModel_->canonicalTypeKey(syntax->throwsTypeSyntax(), *nameLookup_);
 }
 
 void ProjectMethodBodyModel::analyzeVariable(
@@ -12527,6 +12675,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             diagnostics,
             parameterOrdinals);
     }
+    validateErrorPropagation(
+        callable.declaredErrorTypeKey, expression, callerCallableOrdinal,
+        diagnostics, "call to '" + callable.name + "'");
     call.resolution = MethodCallResolutionKind::Resolved;
     call.selectedFunctionOrdinal = functionOrdinal;
     call.selectedConversions = selected.conversions;
@@ -13107,6 +13258,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             }
             binding.argumentConversions.push_back(std::move(conversion));
         }
+        validateErrorPropagation(
+            delegateErrorTypeKey(event.declaredTypeKey), expression, methodMemberOrdinal,
+            diagnostics, "event delegate invocation");
         eventBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
@@ -13129,6 +13283,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 "delegate invocation argument count does not match its signature");
             return result;
         }
+        validateErrorPropagation(
+            delegateErrorTypeKey(callee.typeKey), expression, methodMemberOrdinal,
+            diagnostics, "delegate invocation");
         MethodDelegateBinding binding;
         binding.kind = MethodDelegateOperationKind::Invoke;
         binding.syntax = expression;
@@ -13755,6 +13912,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         expression, call.methodName, selected.memberOrdinal, arguments, diagnostics,
         std::span<const std::size_t>(selected.argumentParameterOrdinals).subspan(
             coreStringForwarding ? 1U : 0U));
+    if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
+    {
+        const ClassMemberSymbol& throwingMember =
+            memberModel_->members()[selected.memberOrdinal];
+        validateErrorPropagation(
+            throwingMember.declaredErrorTypeKey, expression, methodMemberOrdinal,
+            diagnostics, "call to '" + throwingMember.name + "'");
+    }
     call.resolution = MethodCallResolutionKind::Resolved;
     call.selectedMemberOrdinal = selected.memberOrdinal;
     call.selectedConversions = selected.conversions;
@@ -15775,6 +15940,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
         !memberModel_->members()[selected.memberOrdinal].isUserOperator)
     {
         checkArgumentPassKinds(syntax, call.methodName, selected.memberOrdinal, arguments, diagnostics);
+    }
+    if (diagnoseFailure && memberModel_ != nullptr &&
+        selected.memberOrdinal < memberModel_->members().size())
+    {
+        const ClassMemberSymbol& throwingMember =
+            memberModel_->members()[selected.memberOrdinal];
+        validateErrorPropagation(
+            throwingMember.declaredErrorTypeKey, syntax, methodMemberOrdinal,
+            diagnostics, "call to '" + throwingMember.name + "'");
     }
     call.resolution = MethodCallResolutionKind::Resolved;
     call.selectedMemberOrdinal = selected.memberOrdinal;
@@ -19150,13 +19324,15 @@ bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
     std::size_t delegateOrdinal = 0;
     if (!delegateSignature(delegateTypeKey, returnType, parameterTypes, delegateOrdinal))
         return false;
+    const std::string expectedErrorType = delegateErrorTypeKey(delegateTypeKey);
     std::size_t matches = 0;
     for (const std::size_t candidateOrdinal : methodGroup.methodCandidates)
     {
         const ClassMemberSymbol* candidate = methodSymbol(candidateOrdinal);
         if (candidate == nullptr || candidate->kind != ClassMemberKind::Method ||
             candidate->parameters.size() != parameterTypes.size() ||
-            candidate->declaredTypeKey != returnType)
+            candidate->declaredTypeKey != returnType ||
+            candidate->declaredErrorTypeKey != expectedErrorType)
             continue;
         bool exact = true;
         for (std::size_t index = 0; index < parameterTypes.size(); ++index)
@@ -19466,6 +19642,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     binding.delegateTypeKey = std::string(delegateTypeKey);
     binding.delegateTypeOrdinal = delegateOrdinal;
     binding.returnTypeKey = returnType;
+    binding.errorTypeKey = delegateErrorTypeKey(delegateTypeKey);
     binding.parameterTypeKeys = parameterTypes;
     binding.blockBody = syntax->flag();
     binding.generatedName = "__nsc_lambda_" + std::to_string(methodMemberOrdinal) + "_" +
@@ -19572,8 +19749,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     const OwnershipFlowSnapshot previousOwnershipFlow = captureOwnershipFlow();
     const std::optional<std::size_t> previousLambda = currentLambdaOrdinal_;
     const std::string previousReturn = currentLambdaReturnTypeKey_;
+    const std::string previousError = currentLambdaErrorTypeKey_;
     currentLambdaOrdinal_ = binding.lambdaOrdinal;
     currentLambdaReturnTypeKey_ = returnType;
+    currentLambdaErrorTypeKey_ = binding.errorTypeKey;
     activeLambdaBindings_.push_back(&binding);
     const std::size_t previousCatchDepth = currentCatchDepth_;
     currentCatchDepth_ = 0;
@@ -19619,6 +19798,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
 
     currentLambdaOrdinal_ = previousLambda;
     currentLambdaReturnTypeKey_ = previousReturn;
+    currentLambdaErrorTypeKey_ = previousError;
     currentCatchDepth_ = previousCatchDepth;
     activeLambdaBindings_.pop_back();
     restoreOwnershipFlow(previousOwnershipFlow);
@@ -19679,6 +19859,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
             "method group target is not a Stage 42 delegate type");
         return result;
     }
+    const std::string expectedErrorType = delegateErrorTypeKey(delegateTypeKey);
 
     std::vector<std::size_t> compatible;
     for (const std::size_t candidateOrdinal : methodGroup.methodCandidates)
@@ -19687,7 +19868,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
         if (candidatePointer == nullptr) continue;
         const ClassMemberSymbol& candidate = *candidatePointer;
         if (candidate.kind != ClassMemberKind::Method || candidate.parameters.size() != parameterTypes.size()) continue;
-        if (candidate.declaredTypeKey != returnType) continue;
+        if (candidate.declaredTypeKey != returnType ||
+            candidate.declaredErrorTypeKey != expectedErrorType) continue;
         bool exact = true;
         for (std::size_t index = 0; index < parameterTypes.size(); ++index)
         {

@@ -196,6 +196,7 @@ void writeFunction(
     output.text(function.mangledName);
     output.text(function.debugDisplayName);
     output.text(function.returnTypeKey);
+    output.text(function.errorTypeKey);
     output.scalar(function.returnOwnership);
     output.texts(function.parameterNames);
     output.texts(function.parameterTypeKeys);

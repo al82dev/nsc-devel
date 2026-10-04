@@ -44,6 +44,8 @@ struct NamespaceFunctionSymbol final
     std::string name;
     const ast::TypeSyntax* declaredTypeSyntax = nullptr;
     std::string declaredTypeKey;
+    const ast::TypeSyntax* declaredErrorTypeSyntax = nullptr;
+    std::string declaredErrorTypeKey;
     sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
     std::vector<MethodParameterSymbol> parameters;
     std::string signatureKey;
@@ -57,6 +59,7 @@ struct NamespaceFunctionSymbol final
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
     std::vector<language::EscapeClass> parameterEscapeSummary;
+    sema::EffectSet effects;
     bool isVariadic = false;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExternC = false;

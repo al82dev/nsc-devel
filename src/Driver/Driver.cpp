@@ -902,6 +902,8 @@ bool canMaterializeContractType(
         // exports looking unexpected.
         if (!visiting.insert(type->identityKey).second) return true;
         bool valid = canMaterializeContractType(metadata, type->delegateReturnTypeKey, visiting);
+        if (!type->delegateErrorTypeKey.empty())
+            valid = canMaterializeContractType(metadata, type->delegateErrorTypeKey, visiting) && valid;
         for (const std::string &parameterTypeKey : type->delegateParameterTypeKeys)
             valid = canMaterializeContractType(metadata, parameterTypeKey, visiting) && valid;
         visiting.erase(type->identityKey);
@@ -968,6 +970,8 @@ bool canMaterializeNativeMethod(const interop::LibraryMetadata &metadata, const 
     // a method only when every nominal type in its signature can be reconstructed
     // under those exact rules.
     if (!canMaterializeContractType(metadata, member.declaredTypeKey)) return false;
+    if (!member.declaredErrorTypeKey.empty() &&
+        !canMaterializeContractType(metadata, member.declaredErrorTypeKey)) return false;
     if (std::ranges::any_of(member.parameters,
             [&](const auto &parameter) { return !canMaterializeContractType(metadata, parameter.typeKey); }))
     {
@@ -1078,6 +1082,8 @@ bool canMaterializePrecompiledDeclaration(
     }
     if ((member.flags & kAbstract) == 0U && member.mangledName.empty()) return false;
     if (!canMaterializeContractType(metadata, member.declaredTypeKey)) return false;
+    if (!member.declaredErrorTypeKey.empty() &&
+        !canMaterializeContractType(metadata, member.declaredErrorTypeKey)) return false;
     return std::ranges::all_of(member.parameters,
         [&](const auto &parameter) { return canMaterializeContractType(metadata, parameter.typeKey); });
 }
@@ -1106,6 +1112,7 @@ void collectMaterializedContractTypes(
     else if (type->kind == interop::LibraryMetadataTypeKind::Delegate)
     {
         collectMaterializedContractTypes(metadata, type->delegateReturnTypeKey, identities);
+        collectMaterializedContractTypes(metadata, type->delegateErrorTypeKey, identities);
         for (const std::string &parameterTypeKey : type->delegateParameterTypeKeys)
             collectMaterializedContractTypes(metadata, parameterTypeKey, identities);
     }
@@ -1519,7 +1526,17 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         group.type = &*type;
         group.methods.push_back(&member);
         collectMaterializedContractTypes(metadata, member.declaredTypeKey, contractTypeIdentities);
+        collectMaterializedContractTypes(metadata, member.declaredErrorTypeKey, contractTypeIdentities);
         for (const interop::LibraryMetadataParameter &parameter : member.parameters)
+            collectMaterializedContractTypes(metadata, parameter.typeKey, contractTypeIdentities);
+    }
+    for (const interop::LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+    {
+        constexpr std::uint8_t kPublicNamespaceAccessibility = 1U;
+        if (function.accessibility != kPublicNamespaceAccessibility) continue;
+        collectMaterializedContractTypes(metadata, function.declaredTypeKey, contractTypeIdentities);
+        collectMaterializedContractTypes(metadata, function.declaredErrorTypeKey, contractTypeIdentities);
+        for (const interop::LibraryMetadataParameter& parameter : function.parameters)
             collectMaterializedContractTypes(metadata, parameter.typeKey, contractTypeIdentities);
     }
     for (const std::string &identity : contractTypeIdentities)
@@ -1626,6 +1643,14 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
     {
         for (const auto& [longer, shorter] : constraints)
             generated << " where " << longer << " : " << shorter;
+    };
+    const auto emitThrowsContract = [&](const std::string& errorTypeKey) -> bool
+    {
+        if (errorTypeKey.empty()) return true;
+        std::string errorType;
+        if (!sourceTypeForMetadataKey(metadata, errorTypeKey, errorType, error)) return false;
+        generated << " throws " << errorType;
+        return true;
     };
     const auto emitParameter = [&](const interop::LibraryMetadataParameter &parameter,
                                    const std::string &memberName,
@@ -2021,6 +2046,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 generated << parameterType << " arg" << parameterIndex;
             }
             generated << ')';
+            if (!emitThrowsContract(type.delegateErrorTypeKey)) return false;
             emitLifetimeConstraints(type.lifetimeOutlivesConstraints);
             generated << ";\n";
             if (topLevel && !namespaceName.empty()) generated << "}\n";
@@ -2099,7 +2125,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                               << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
                               << returnType << " operator " << token << '(';
                     if (!emitParameters(*member)) return false;
-                    generated << ");\n";
+                    generated << ')';
+                    if (!emitThrowsContract(member->declaredErrorTypeKey)) return false;
+                    generated << ";\n";
                     continue;
                 }
                 if (isTrait && (member->flags & kStatic) != 0U) generated << "static ";
@@ -2113,6 +2141,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 generated << '(';
                 if (!emitParameters(*member)) return false;
                 generated << ')';
+                if (!emitThrowsContract(member->declaredErrorTypeKey)) return false;
                 emitLifetimeConstraints(member->lifetimeOutlivesConstraints);
                 generated << (isTrait && (member->flags & kAbstract) == 0U ? " { }\n" : ";\n");
             }
@@ -2484,7 +2513,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                           << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
                           << returnType << " operator " << token << '(';
                 if (!emitParameters(*member)) return false;
-                generated << ") { }\n";
+                generated << ')';
+                if (!emitThrowsContract(member->declaredErrorTypeKey)) return false;
+                generated << " { }\n";
                 continue;
             }
             if ((member->flags & kUserConversion) != 0U)
@@ -2495,7 +2526,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                           << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
                           << returnType << '(';
                 if (!emitParameters(*member)) return false;
-                generated << ") { }\n";
+                generated << ')';
+                if (!emitThrowsContract(member->declaredErrorTypeKey)) return false;
+                generated << " { }\n";
                 continue;
             }
             generated << "    " << sourceAccessibility(member->accessibility) << ' ';
@@ -2523,6 +2556,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             // Precompiled units are skipped by body analysis and lowered as external
             // NativeSharp declarations.
             generated << ')';
+            if (!emitThrowsContract(member->declaredErrorTypeKey)) return false;
             emitLifetimeConstraints(member->lifetimeOutlivesConstraints);
             generated << (((member->flags & kAbstract) != 0U) ? ";\n" : " { }\n");
         }
@@ -2618,6 +2652,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             generated << "...";
         }
         generated << ')';
+        if (!emitThrowsContract(function.declaredErrorTypeKey)) return false;
         emitLifetimeConstraints(function.lifetimeOutlivesConstraints);
         generated << ';' << std::endl;
         if ((function.flags & 8U) != 0U) generated << '}' << std::endl;
@@ -2708,18 +2743,21 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
         for (const interop::LibraryMetadataField &field : type.fields) appendKnownType(field.typeKey);
         appendKnownType(type.enumUnderlyingTypeKey);
         appendKnownType(type.delegateReturnTypeKey);
+        appendKnownType(type.delegateErrorTypeKey);
         for (const std::string &parameterTypeKey : type.delegateParameterTypeKeys) appendKnownType(parameterTypeKey);
     }
     for (const interop::LibraryMetadataMember &member : metadata.members)
     {
         appendKnownType(member.declaringTypeKey);
         appendKnownType(member.declaredTypeKey);
+        appendKnownType(member.declaredErrorTypeKey);
         for (const interop::LibraryMetadataParameter &parameter : member.parameters) appendKnownType(parameter.typeKey);
     }
     for (const interop::LibraryMetadataNamespaceFunction &function :
          metadata.namespaceFunctions)
     {
         appendKnownType(function.declaredTypeKey);
+        appendKnownType(function.declaredErrorTypeKey);
         for (const interop::LibraryMetadataParameter &parameter :
              function.parameters)
         {

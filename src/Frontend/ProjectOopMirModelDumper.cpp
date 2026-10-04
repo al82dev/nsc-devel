@@ -223,6 +223,8 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
         if (function.abi.hiddenReturnParameterOrdinal.has_value())
             output << "@" << *function.abi.hiddenReturnParameterOrdinal;
         output << "]"
+               << " throws=" << (function.errorTypeKey.empty()
+                    ? "<none>" : function.errorTypeKey)
                << " ref-return=" << (function.referenceReturn ? "true" : "false")
                << " return-ownership=" << sema::ownershipKindName(function.returnOwnership)
                << (function.constructor ? " constructor" : function.destructor ? " destructor" : function.isLambda ? " lambda-body" : " method");

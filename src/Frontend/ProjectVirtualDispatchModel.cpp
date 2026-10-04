@@ -203,6 +203,31 @@ bool ProjectVirtualDispatchModel::buildClass(
                 continue;
             }
             const ClassMemberSymbol& baseMethod = memberModel_->members()[*inherited];
+            const auto throwsContractCompatible = [&]()
+            {
+                if (method.declaredErrorTypeKey.empty()) return true;
+                if (baseMethod.declaredErrorTypeKey.empty()) return false;
+                const std::optional<std::size_t> derivedError =
+                    inheritanceModel_->typeOrdinalForTypeKey(method.declaredErrorTypeKey);
+                const std::optional<std::size_t> baseError =
+                    inheritanceModel_->typeOrdinalForTypeKey(baseMethod.declaredErrorTypeKey);
+                return derivedError.has_value() && baseError.has_value() &&
+                    inheritanceModel_->isDerivedFrom(*derivedError, *baseError, true);
+            };
+            if (!throwsContractCompatible())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOverride,
+                    diagnostics::DiagnosticSeverity::Error,
+                    method.range,
+                    "override method '" + method.signatureKey + "' declares throws '" +
+                        method.declaredErrorTypeKey + "' outside inherited contract '" +
+                        (baseMethod.declaredErrorTypeKey.empty()
+                            ? std::string{"<non-throwing>"}
+                            : baseMethod.declaredErrorTypeKey) + "'");
+                ok = false;
+                continue;
+            }
             if (baseMethod.isNoHeap && !method.isNoHeap)
             {
                 diagnostics.report(

@@ -1321,6 +1321,7 @@ bool ProjectOopMirModel::build(
         function.mangledName = source.mangledName;
         function.debugDisplayName = source.debugDisplayName;
         function.returnTypeKey = source.returnTypeKey;
+        function.errorTypeKey = source.errorTypeKey;
         function.returnOwnership = source.returnOwnership;
         function.parameterNames = source.parameterNames;
         function.parameterTypeKeys = source.parameterTypeKeys;

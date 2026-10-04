@@ -7,9 +7,9 @@
 ## Resultado / Outcome
 
 ES: Se definieron `Result`/`?`, `throws E`, catches tipados, `never`, loops con valor y perfiles de
-panic sin depender de CLR, RTTI administrado ni allocation implícita. EN: `Result`/`?`, typed
-`throws`, typed catches, `never`, value loops, and panic profiles now have contracts independent of
-CLR, managed RTTI, and implicit allocation.
+panic sin depender de CLR, RTTI administrado ni allocation implícita. `Result/?` y `throws E` ya
+tienen verticales productivas. EN: these features have contracts independent of CLR, managed RTTI,
+and implicit allocation; `Result/?` and `throws E` now have productive verticals.
 
 ## Archivos / Files
 
@@ -29,17 +29,18 @@ errors are handled or propagated, unwind cannot silently cross FFI, and panic cl
 La tanda operativa 15 conectó una primera vertical física: `panic()` contextual de edición 3,
 tipo interno `builtin:never`, nodo HIR/MIR explícito y perfil abort Win64 estable. El catch tipado
 existente convive con esa vertical en c65. `Result/?` ya tiene una vertical productiva completa en
-NS3-T07-F01. Typed `throws`, coerción general de `never`, loop expressions y panic unwind/handler
-permanecen abiertos; el helper por sí solo no los cierra.
+NS3-T07-F01. `throws E` ya es productivo mediante NS3-T07-F02: chequeo handle-or-propagate,
+subtipado, delegates, HIR/MIR 1.24 y NSMETA 1.37. Coerción general de `never`, loop expressions,
+constructores throwing, error sets y panic unwind/handler permanecen abiertos.
 
 Operational batch 15 connected the first physical vertical: edition-3 contextual `panic()`, the
 internal `builtin:never` type, explicit HIR/MIR nodes, and a stable Win64 abort profile. Existing
-typed catch coexists with that vertical in c65. `Result/?` is now productive through NS3-T07-F01.
-Typed `throws`, general never coercion, loop expressions, and unwind/handler panic profiles remain
-open; the helper does not close them.
+typed catch coexists with that vertical in c65. `Result/?` is productive through NS3-T07-F01 and
+typed `throws` through NS3-T07-F02. General never coercion, loop expressions, throwing
+constructors, error sets, and unwind/handler panic profiles remain open.
 
 ## Validación / Validation
 
-La evidencia acumulada incluye el cierre histórico de panic/never y la prueba dirigida de
-NS3-T07-F01: `nsc` compilado, target T07 compilado y `PASS: 11 checks` con O0/NSLink. No se ejecutó
-baseline ni CTest general para F01.
+La evidencia acumulada incluye el cierre histórico de panic/never y las pruebas dirigidas de F01 y
+F02. El target T07 terminó en `PASS: 22 checks` con O0/NSLink, incluido consumo NSMETA 1.37 entre
+librerías y ejecución con salida 42. No se ejecutó baseline ni CTest general.

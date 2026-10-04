@@ -30,6 +30,8 @@ bool AstNode::hasModifier(lexer::TokenKind kind) const noexcept
 }
 TypeSyntax* AstNode::typeSyntax() const noexcept { return typeSyntax_; }
 void AstNode::setTypeSyntax(TypeSyntax* typeSyntax) noexcept { typeSyntax_ = typeSyntax; }
+TypeSyntax* AstNode::throwsTypeSyntax() const noexcept { return throwsTypeSyntax_; }
+void AstNode::setThrowsTypeSyntax(TypeSyntax* typeSyntax) noexcept { throwsTypeSyntax_ = typeSyntax; }
 void AstNode::addTypeSyntax(TypeSyntax* typeSyntax)
 {
     if (typeSyntax != nullptr)

@@ -1516,6 +1516,7 @@ bool ProjectOopHirModel::buildImpl(
             }
             imported.mangledName = member.precompiledMangledName;
             imported.returnTypeKey = imported.constructor ? "builtin:void" : member.declaredTypeKey;
+            imported.errorTypeKey = member.declaredErrorTypeKey;
             imported.returnOwnership = imported.constructor
                 ? sema::OwnershipKind::None
                 : member.declaredOwnership;
@@ -1615,6 +1616,7 @@ bool ProjectOopHirModel::buildImpl(
         function.returnTypeKey = (function.constructor || function.destructor)
             ? "builtin:void"
             : member.declaredTypeKey;
+        function.errorTypeKey = member.declaredErrorTypeKey;
         function.returnOwnership = (function.constructor || function.destructor)
             ? sema::OwnershipKind::None
             : member.declaredOwnership;
@@ -2000,6 +2002,8 @@ bool ProjectOopHirModel::buildImpl(
                 ? symbol.name
                 : symbol.namespaceName + "." + symbol.name;
             function.returnTypeKey = symbol.declaredTypeKey;
+            function.errorTypeKey = symbol.declaredErrorTypeKey;
+            function.effects = symbol.effects;
             function.returnOwnership = symbol.declaredOwnership;
             for (const MethodParameterSymbol& parameter : symbol.parameters)
             {
@@ -2124,6 +2128,9 @@ bool ProjectOopHirModel::buildImpl(
         function.isStatic = !function.hasClosureEnvironment;
         function.mangledName = lambda.generatedName;
         function.returnTypeKey = lambda.returnTypeKey;
+        function.errorTypeKey = lambda.errorTypeKey;
+        if (!lambda.errorTypeKey.empty())
+            function.effects = function.effects.with(sema::Effect::Throws);
         function.parameterNames = lambda.parameterNames;
         function.parameterTypeKeys = lambda.parameterTypeKeys;
         function.parameterPassKinds.assign(

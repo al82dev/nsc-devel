@@ -119,6 +119,7 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         field(contract, type.enumUnderlyingTypeKey);
         number(contract, type.delegateFlags);
         field(contract, type.delegateReturnTypeKey);
+        field(contract, type.delegateErrorTypeKey);
         strings(contract, type.delegateParameterTypeKeys, false);
         number(contract, type.delegateReturnDynamicTrait);
         number(contract, type.delegateParameterDynamicTraits.size());
@@ -178,6 +179,7 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         number(contract, member.flags);
         field(contract, member.name);
         field(contract, member.declaredTypeKey);
+        field(contract, member.declaredErrorTypeKey);
         number(contract, member.declaredOwnership);
         number(contract, member.constantKind);
         number(contract, member.constantBits);
@@ -199,6 +201,7 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         number(contract, function.flags);
         field(contract, function.name);
         field(contract, function.declaredTypeKey);
+        field(contract, function.declaredErrorTypeKey);
         number(contract, function.declaredOwnership);
         number(contract, function.parameters.size());
         for (const LibraryMetadataParameter& parameter : function.parameters)
@@ -287,6 +290,7 @@ Surface abiSurface(const LibraryMetadata& metadata)
         field(contract, type.enumUnderlyingTypeKey);
         number(contract, type.delegateFlags);
         field(contract, type.delegateReturnTypeKey);
+        field(contract, type.delegateErrorTypeKey);
         strings(contract, type.delegateParameterTypeKeys, false);
         number(contract, type.variantCases.size());
         for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
@@ -328,6 +332,7 @@ Surface abiSurface(const LibraryMetadata& metadata)
         number(contract, member.kind);
         number(contract, member.flags & ~kSemanticOnlyMemberFlags);
         field(contract, member.declaredTypeKey);
+        field(contract, member.declaredErrorTypeKey);
         field(contract, member.cAbiName);
         field(contract, member.mangledName);
         number(contract, member.parameters.size());
@@ -345,6 +350,7 @@ Surface abiSurface(const LibraryMetadata& metadata)
         number(contract, function.flags & static_cast<std::uint8_t>(
             ~(16U | kMetadataNamespaceFunctionExtension)));
         field(contract, function.declaredTypeKey);
+        field(contract, function.declaredErrorTypeKey);
         field(contract, function.mangledName);
         number(contract, function.parameters.size());
         for (const LibraryMetadataParameter& parameter : function.parameters)

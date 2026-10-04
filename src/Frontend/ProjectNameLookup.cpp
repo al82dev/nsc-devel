@@ -1230,6 +1230,11 @@ void ProjectNameLookup::bindNode(
             }
         }
     }
+    if (node->throwsTypeSyntax() != nullptr)
+    {
+        bindTypeSyntax(
+            unit, node->throwsTypeSyntax(), namespaceSegments, scope, diagnostics, index);
+    }
     for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
     {
         bindTypeSyntax(unit, syntax, namespaceSegments, scope, diagnostics, index);

@@ -124,7 +124,8 @@ artefactos y ejecutables usados estuvieron en A: y los temporales se eliminaron 
 
 - ~~`Result<T,E>` productivo y operador postfix `?` con early return, conversión y cleanup.~~
   Cerrado por `NS3-T07-F01`; véase `items/NS3-T07-F01-result-propagation.md`.
-- `throws E` en firmas, effect checking de callers, sets tipados y metadata cross-module.
+- ~~`throws E` en firmas, effect checking de callers y metadata cross-module.~~ Cerrado por
+  `NS3-T07-F02`; los conjuntos de varios errores y exhaustividad avanzada siguen en F03.
 - `never` escribible y coerción bottom en expresiones/overloads/generics/match.
 - `loop { break value; }`, labels y unificación de tipos/lifetimes.
 - panic `unwind-native`, handler custom, payload acotado, source location y debugger break.

@@ -87,7 +87,9 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // MINOR 34 (2026-10-03): named lifetime binders and outlives edges cross module boundaries.
 // MINOR 35 (2026-10-03): per-parameter interprocedural escape summaries are public contracts.
 // MINOR 36 (2026-10-03): value types that own storage publish producer-owned drop-glue thunks.
-inline constexpr std::uint16_t kMetadataFormatMinor = 36;
+// MINOR 37 (2026-10-03): delegates, members and namespace functions publish their typed-throws
+// error key. Empty remains the canonical non-throwing contract.
+inline constexpr std::uint16_t kMetadataFormatMinor = 37;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -274,6 +276,7 @@ struct LibraryMetadataType final
     // bit 1 selects Microsoft x64 vectorcall rather than the ordinary C convention.
     std::uint8_t delegateFlags = 0;
     std::string delegateReturnTypeKey;
+    std::string delegateErrorTypeKey;
     std::vector<std::string> delegateParameterTypeKeys;
     // NSMETA 1.31. `dyn` is a source-level trait-object contract. It uses the same
     // physical reference ABI as the nominal interface key, but must survive source
@@ -344,6 +347,7 @@ struct LibraryMetadataMember final
     std::string name;
     std::string signatureKey;
     std::string declaredTypeKey;
+    std::string declaredErrorTypeKey;
     LibraryMetadataOwnershipKind declaredOwnership = LibraryMetadataOwnershipKind::None;
     std::string cAbiName;
     std::string mangledName;
@@ -375,6 +379,7 @@ struct LibraryMetadataNamespaceFunction final
     std::string name;
     std::string signatureKey;
     std::string declaredTypeKey;
+    std::string declaredErrorTypeKey;
     LibraryMetadataOwnershipKind declaredOwnership = LibraryMetadataOwnershipKind::None;
     std::string mangledName;
     std::vector<LibraryMetadataParameter> parameters;

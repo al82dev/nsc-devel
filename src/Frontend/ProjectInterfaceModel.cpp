@@ -486,6 +486,7 @@ bool ProjectInterfaceModel::visitInterface(
             {
                 const ClassMemberSymbol& previous = memberModel_->members()[found->second];
                 if (previous.declaredTypeKey != method.declaredTypeKey ||
+                    previous.declaredErrorTypeKey != method.declaredErrorTypeKey ||
                     previous.isReferenceReturn != method.isReferenceReturn ||
                     lifetimeContractKey(previous) != lifetimeContractKey(method))
                 {
@@ -530,7 +531,8 @@ bool ProjectInterfaceModel::visitInterface(
             else
             {
                 const ClassMemberSymbol& previous = memberModel_->members()[found->second];
-                if (previous.declaredTypeKey != requirement.declaredTypeKey)
+                if (previous.declaredTypeKey != requirement.declaredTypeKey ||
+                    previous.declaredErrorTypeKey != requirement.declaredErrorTypeKey)
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOverride,
@@ -624,6 +626,7 @@ bool ProjectInterfaceModel::visitInterface(
         {
             const ClassMemberSymbol& previous = memberModel_->members()[found->second];
             if (previous.declaredTypeKey != method.declaredTypeKey ||
+                previous.declaredErrorTypeKey != method.declaredErrorTypeKey ||
                 previous.isReferenceReturn != method.isReferenceReturn ||
                 lifetimeContractKey(previous) != lifetimeContractKey(method))
             {
@@ -890,6 +893,39 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
                             interfaceMethod.signatureKey + "' without noheap");
                     ok = false;
                 }
+                if (implementation.has_value())
+                {
+                    const ClassMemberSymbol& concrete =
+                        memberModel_->members()[*implementation];
+                    bool compatibleThrows = concrete.declaredErrorTypeKey.empty();
+                    if (!compatibleThrows && !interfaceMethod.declaredErrorTypeKey.empty())
+                    {
+                        const std::optional<std::size_t> concreteError =
+                            inheritanceModel_->typeOrdinalForTypeKey(
+                                concrete.declaredErrorTypeKey);
+                        const std::optional<std::size_t> contractError =
+                            inheritanceModel_->typeOrdinalForTypeKey(
+                                interfaceMethod.declaredErrorTypeKey);
+                        compatibleThrows = concreteError.has_value() &&
+                            contractError.has_value() &&
+                            inheritanceModel_->isDerivedFrom(
+                                *concreteError, *contractError, true);
+                    }
+                    if (!compatibleThrows)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOverride,
+                            diagnostics::DiagnosticSeverity::Error,
+                            concrete.range,
+                            "method '" + concrete.signatureKey + "' declares throws '" +
+                                concrete.declaredErrorTypeKey +
+                                "' outside interface contract '" +
+                                (interfaceMethod.declaredErrorTypeKey.empty()
+                                    ? std::string{"<non-throwing>"}
+                                    : interfaceMethod.declaredErrorTypeKey) + "'");
+                        ok = false;
+                    }
+                }
                 if (!implementation.has_value() && !type.isAbstract)
                 {
                     diagnostics.report(
@@ -920,6 +956,39 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
                             requirement.signatureKey + "' from '" +
                             nameLookup_->namedTypes()[interfaceOrdinal].identity.key() + "'");
                     ok = false;
+                }
+                if (implementation.has_value())
+                {
+                    const ClassMemberSymbol& concrete =
+                        memberModel_->members()[*implementation];
+                    bool compatibleThrows = concrete.declaredErrorTypeKey.empty();
+                    if (!compatibleThrows && !requirement.declaredErrorTypeKey.empty())
+                    {
+                        const std::optional<std::size_t> concreteError =
+                            inheritanceModel_->typeOrdinalForTypeKey(
+                                concrete.declaredErrorTypeKey);
+                        const std::optional<std::size_t> contractError =
+                            inheritanceModel_->typeOrdinalForTypeKey(
+                                requirement.declaredErrorTypeKey);
+                        compatibleThrows = concreteError.has_value() &&
+                            contractError.has_value() &&
+                            inheritanceModel_->isDerivedFrom(
+                                *concreteError, *contractError, true);
+                    }
+                    if (!compatibleThrows)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOverride,
+                            diagnostics::DiagnosticSeverity::Error,
+                            concrete.range,
+                            "static method '" + concrete.signatureKey +
+                                "' declares throws '" + concrete.declaredErrorTypeKey +
+                                "' outside trait contract '" +
+                                (requirement.declaredErrorTypeKey.empty()
+                                    ? std::string{"<non-throwing>"}
+                                    : requirement.declaredErrorTypeKey) + "'");
+                        ok = false;
+                    }
                 }
                 if (implementation.has_value() && requirement.isUserOperator &&
                     !requirement.operatorTraitKey.empty())

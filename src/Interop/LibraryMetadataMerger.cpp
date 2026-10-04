@@ -43,7 +43,7 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
                left.fullyQualifiedName, left.baseTypeKey, left.interfaceTypeKeys,
                left.size, left.alignment, left.headerSize, left.referenceSize,
                left.referenceAlignment, left.stableTypeId, left.enumUnderlyingTypeKey,
-               left.delegateFlags, left.delegateReturnTypeKey,
+               left.delegateFlags, left.delegateReturnTypeKey, left.delegateErrorTypeKey,
                left.delegateParameterTypeKeys, left.delegateReturnDynamicTrait,
                left.delegateParameterDynamicTraits, left.traitMethodSignatures,
                left.traitObjectFlags, left.traitObjectWordCount,
@@ -55,7 +55,7 @@ bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right
                 right.fullyQualifiedName, right.baseTypeKey, right.interfaceTypeKeys,
                 right.size, right.alignment, right.headerSize, right.referenceSize,
                 right.referenceAlignment, right.stableTypeId, right.enumUnderlyingTypeKey,
-                right.delegateFlags, right.delegateReturnTypeKey,
+                right.delegateFlags, right.delegateReturnTypeKey, right.delegateErrorTypeKey,
                 right.delegateParameterTypeKeys, right.delegateReturnDynamicTrait,
                 right.delegateParameterDynamicTraits, right.traitMethodSignatures,
                 right.traitObjectFlags, right.traitObjectWordCount,
@@ -83,14 +83,14 @@ bool equalParameter(const LibraryMetadataParameter& left, const LibraryMetadataP
 bool equalMember(const LibraryMetadataMember& left, const LibraryMetadataMember& right)
 {
     return std::tie(left.kind, left.accessibility, left.flags, left.declaringTypeKey,
-               left.name, left.signatureKey, left.declaredTypeKey,
+               left.name, left.signatureKey, left.declaredTypeKey, left.declaredErrorTypeKey,
                left.declaredOwnership, left.cAbiName, left.mangledName,
                left.constantKind, left.constantBits, left.constantText,
                left.importDllName, left.inlineSourceText, left.returnLifetimeName,
                left.lifetimeParameters, left.lifetimeOutlivesConstraints,
                left.parameterEscapeSummary) ==
             std::tie(right.kind, right.accessibility, right.flags, right.declaringTypeKey,
-                right.name, right.signatureKey, right.declaredTypeKey,
+                right.name, right.signatureKey, right.declaredTypeKey, right.declaredErrorTypeKey,
                 right.declaredOwnership, right.cAbiName, right.mangledName,
                 right.constantKind, right.constantBits, right.constantText,
                 right.importDllName, right.inlineSourceText, right.returnLifetimeName,
@@ -104,11 +104,13 @@ bool equalNamespaceFunction(
     const LibraryMetadataNamespaceFunction& right)
 {
     return std::tie(left.accessibility, left.flags, left.namespaceName, left.name,
-               left.signatureKey, left.declaredTypeKey, left.declaredOwnership,
+               left.signatureKey, left.declaredTypeKey, left.declaredErrorTypeKey,
+               left.declaredOwnership,
                left.mangledName, left.returnLifetimeName, left.lifetimeParameters,
                left.lifetimeOutlivesConstraints, left.parameterEscapeSummary) ==
             std::tie(right.accessibility, right.flags, right.namespaceName, right.name,
-                right.signatureKey, right.declaredTypeKey, right.declaredOwnership,
+                right.signatureKey, right.declaredTypeKey, right.declaredErrorTypeKey,
+                right.declaredOwnership,
                 right.mangledName, right.returnLifetimeName, right.lifetimeParameters,
                 right.lifetimeOutlivesConstraints, right.parameterEscapeSummary) &&
         vectorEqual(left.parameters, right.parameters, equalParameter);

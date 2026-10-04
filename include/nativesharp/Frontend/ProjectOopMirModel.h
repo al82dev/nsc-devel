@@ -34,7 +34,8 @@ inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
 // MINOR 21: rectangular native arrays preserve rank and use explicit allocate/index operations.
 // MINOR 22: value layouts publish producer-owned, versioned drop-glue identities.
 // MINOR 23: Result propagation publishes both carrier protocols, error conversion, and cleanup.
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 23;
+// 1.24 publishes each callable's typed-throws contract independently from native EH regions.
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 24;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -748,6 +749,7 @@ struct ProjectOopMirFunction final
     std::string mangledName;
     std::string debugDisplayName;
     std::string returnTypeKey;
+    std::string errorTypeKey;
     sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
     std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;

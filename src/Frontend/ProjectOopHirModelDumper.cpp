@@ -129,6 +129,8 @@ std::string ProjectOopHirModelDumper::dump(const ProjectOopHirModel& model)
                << (function.isVariadic ? " variadic" : "")
                << (function.isImportedNative ? " import-native" : "")
                << " return=" << function.returnTypeKey
+               << " throws=" << (function.errorTypeKey.empty()
+                    ? "<none>" : function.errorTypeKey)
                << " ref-return=" << (function.referenceReturn ? "true" : "false")
                << " return-ownership=" << sema::ownershipKindName(function.returnOwnership)
                << " params=" << function.parameterTypeKeys.size()

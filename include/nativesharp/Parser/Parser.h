@@ -230,6 +230,7 @@ private:
     ast::AstNode* parseExternCDeclaration();
     ast::AstNode* parseFunctionOrGlobalVariable();
     ast::AstNode* parseFunctionTail(ast::TypeSyntax* returnType, const lexer::Token& name, bool externalOnly);
+    void parseThrowsClause(ast::AstNode* callable);
     ast::AstNode* parseParameter();
 
     ast::AstNode* parseBlock();

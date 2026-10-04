@@ -874,6 +874,11 @@ bool buildMetadataModel(
                 const ast::AstNode* delegateSyntax = types[typeOrdinal].syntax;
                 addedPublishedType = includeTypeKey(compilation.memberModel()->canonicalTypeKey(
                     delegateSyntax->typeSyntax(), *compilation.nameLookup())) || addedPublishedType;
+                if (delegateSyntax->throwsTypeSyntax() != nullptr)
+                    addedPublishedType = includeTypeKey(
+                        compilation.memberModel()->canonicalTypeKey(
+                            delegateSyntax->throwsTypeSyntax(), *compilation.nameLookup())) ||
+                        addedPublishedType;
                 for (const ast::AstNode* parameter : delegateSyntax->children())
                 {
                     if (parameter != nullptr &&
@@ -903,6 +908,7 @@ bool buildMetadataModel(
                      member.accessibility != frontend::ClassMemberAccessibility::Protected))
                     continue;
                 addedPublishedType = includeTypeKey(member.declaredTypeKey) || addedPublishedType;
+                addedPublishedType = includeTypeKey(member.declaredErrorTypeKey) || addedPublishedType;
                 for (const frontend::MethodParameterSymbol& parameter : member.parameters)
                     addedPublishedType = includeTypeKey(parameter.typeKey) || addedPublishedType;
             }
@@ -1172,6 +1178,10 @@ bool buildMetadataModel(
             record.referenceAlignment = kPointerAlignment;
             record.delegateReturnTypeKey =
                 compilation.memberModel()->canonicalTypeKey(type.syntax->typeSyntax(), *compilation.nameLookup());
+            record.delegateErrorTypeKey = type.syntax->throwsTypeSyntax() == nullptr
+                ? std::string{}
+                : compilation.memberModel()->canonicalTypeKey(
+                    type.syntax->throwsTypeSyntax(), *compilation.nameLookup());
             record.delegateReturnDynamicTrait =
                 type.syntax->typeSyntax() != nullptr &&
                 type.syntax->typeSyntax()->isDynamicTrait();
@@ -1296,6 +1306,7 @@ bool buildMetadataModel(
         record.name = member.name;
         record.signatureKey = member.signatureKey;
         record.declaredTypeKey = member.declaredTypeKey;
+        record.declaredErrorTypeKey = member.declaredErrorTypeKey;
         record.declaredOwnership = metadataOwnership(member.declaredOwnership);
         if (publishLifetimeContracts)
         {
@@ -1434,6 +1445,7 @@ bool buildMetadataModel(
             record.name = function.name;
             record.signatureKey = function.signatureKey;
             record.declaredTypeKey = function.declaredTypeKey;
+            record.declaredErrorTypeKey = function.declaredErrorTypeKey;
             record.declaredOwnership = metadataOwnership(function.declaredOwnership);
             record.mangledName = function.mangledName;
             if (publishLifetimeContracts)
@@ -1653,6 +1665,7 @@ bool buildMetadataModel(
         for (const std::string& interfaceTypeKey : type.interfaceTypeKeys) rememberType(interfaceTypeKey);
         for (const LibraryMetadataField& field : type.fields) rememberType(field.typeKey);
         rememberType(type.delegateReturnTypeKey);
+        rememberType(type.delegateErrorTypeKey);
         for (const std::string& parameterTypeKey : type.delegateParameterTypeKeys) rememberType(parameterTypeKey);
         for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
             rememberType(variantCase.payloadTypeKey);
@@ -1662,6 +1675,7 @@ bool buildMetadataModel(
     for (const LibraryMetadataMember& member : metadata.members)
     {
         rememberType(member.declaredTypeKey);
+        rememberType(member.declaredErrorTypeKey);
         for (const LibraryMetadataParameter& parameter : member.parameters) rememberType(parameter.typeKey);
     }
 
@@ -1669,6 +1683,7 @@ bool buildMetadataModel(
          metadata.namespaceFunctions)
     {
         rememberType(function.declaredTypeKey);
+        rememberType(function.declaredErrorTypeKey);
         for (const LibraryMetadataParameter& parameter : function.parameters)
             rememberType(parameter.typeKey);
     }
@@ -2288,6 +2303,18 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
             writeEscapeSummary(function);
     }
+    if (metadata.formatMinor >= 37)
+    {
+        writer.u32(static_cast<std::uint32_t>(metadata.types.size()));
+        for (const LibraryMetadataType& type : metadata.types)
+            writer.text(type.delegateErrorTypeKey);
+        writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
+        for (const LibraryMetadataMember& member : metadata.members)
+            writer.text(member.declaredErrorTypeKey);
+        writer.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
+        for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+            writer.text(function.declaredErrorTypeKey);
+    }
     return writer.bytes();
 }
 
@@ -2412,6 +2439,32 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
         catalogue.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
         for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
             writeEscapeSummary(function);
+        const std::vector<std::uint8_t>& bytes = catalogue.bytes();
+        projection.insert(projection.end(), bytes.begin(), bytes.end());
+    }
+    if (metadata.formatMinor >= 37)
+    {
+        ByteWriter catalogue;
+        catalogue.u32(static_cast<std::uint32_t>(metadata.types.size()));
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            catalogue.text(type.identityKey);
+            catalogue.text(type.delegateErrorTypeKey);
+        }
+        catalogue.u32(static_cast<std::uint32_t>(metadata.members.size()));
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            catalogue.text(member.declaringTypeKey);
+            catalogue.text(member.signatureKey);
+            catalogue.text(member.declaredErrorTypeKey);
+        }
+        catalogue.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
+        for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+        {
+            catalogue.text(function.namespaceName);
+            catalogue.text(function.signatureKey);
+            catalogue.text(function.declaredErrorTypeKey);
+        }
         const std::vector<std::uint8_t>& bytes = catalogue.bytes();
         projection.insert(projection.end(), bytes.begin(), bytes.end());
     }
@@ -3118,6 +3171,44 @@ bool decodePayload(
         for (LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
             if (!readEscapeSummary(function, "namespace-function")) return false;
     }
+    if (metadata.formatMinor >= 37)
+    {
+        std::uint32_t catalogueCount = 0;
+        if (!readCount(reader, catalogueCount) || catalogueCount != metadata.types.size())
+        {
+            error = "invalid metadata delegate throws catalogue count";
+            return false;
+        }
+        for (LibraryMetadataType& type : metadata.types)
+            if (!reader.text(type.delegateErrorTypeKey))
+            {
+                error = "truncated metadata delegate throws contract";
+                return false;
+            }
+        if (!readCount(reader, catalogueCount) || catalogueCount != metadata.members.size())
+        {
+            error = "invalid metadata member throws catalogue count";
+            return false;
+        }
+        for (LibraryMetadataMember& member : metadata.members)
+            if (!reader.text(member.declaredErrorTypeKey))
+            {
+                error = "truncated metadata member throws contract";
+                return false;
+            }
+        if (!readCount(reader, catalogueCount) ||
+            catalogueCount != metadata.namespaceFunctions.size())
+        {
+            error = "invalid metadata namespace-function throws catalogue count";
+            return false;
+        }
+        for (LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+            if (!reader.text(function.declaredErrorTypeKey))
+            {
+                error = "truncated metadata namespace-function throws contract";
+                return false;
+            }
+    }
     if (!reader.atEnd())
     {
         error = "metadata payload has trailing bytes";
@@ -3623,6 +3714,29 @@ bool LibraryMetadataCodec::writeModelImpl(
     {
         error = "NativeSharp metadata before 1.36 cannot represent value drop glue";
         return false;
+    }
+    if (metadata.formatMinor < 37)
+    {
+        const bool hasTypedThrows =
+            std::ranges::any_of(metadata.types, [](const LibraryMetadataType& type)
+            {
+                return !type.delegateErrorTypeKey.empty();
+            }) ||
+            std::ranges::any_of(metadata.members, [](const LibraryMetadataMember& member)
+            {
+                return !member.declaredErrorTypeKey.empty();
+            }) ||
+            std::ranges::any_of(
+                metadata.namespaceFunctions,
+                [](const LibraryMetadataNamespaceFunction& function)
+                {
+                    return !function.declaredErrorTypeKey.empty();
+                });
+        if (hasTypedThrows)
+        {
+            error = "NativeSharp metadata before 1.37 cannot represent typed throws contracts";
+            return false;
+        }
     }
     if (metadata.formatMinor < 25 &&
         (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))
@@ -4453,6 +4567,7 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             for (const LibraryMetadataField& field : type.fields)
                 if (!verifyTypeReference(field.typeKey, owner + " field '" + field.name + "'")) return false;
             if (!verifyTypeReference(type.delegateReturnTypeKey, owner)) return false;
+            if (!verifyTypeReference(type.delegateErrorTypeKey, owner + " throws contract")) return false;
             for (const std::string& parameterTypeKey : type.delegateParameterTypeKeys)
                 if (!verifyTypeReference(parameterTypeKey, owner)) return false;
             for (const LibraryMetadataVariantCase& variantCase : type.variantCases)
@@ -4465,6 +4580,7 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         {
             const std::string owner = "member '" + member.declaringTypeKey + "." + member.signatureKey + "'";
             if (!verifyTypeReference(member.declaredTypeKey, owner)) return false;
+            if (!verifyTypeReference(member.declaredErrorTypeKey, owner + " throws contract")) return false;
             for (const LibraryMetadataParameter& parameter : member.parameters)
                 if (!verifyTypeReference(parameter.typeKey, owner + " parameter '" + parameter.name + "'"))
                     return false;
@@ -4475,6 +4591,7 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             const std::string owner = "namespace function '" +
                 function.namespaceName + "." + function.signatureKey + "'";
             if (!verifyTypeReference(function.declaredTypeKey, owner)) return false;
+            if (!verifyTypeReference(function.declaredErrorTypeKey, owner + " throws contract")) return false;
             for (const LibraryMetadataParameter& parameter : function.parameters)
             {
                 if (!verifyTypeReference(
