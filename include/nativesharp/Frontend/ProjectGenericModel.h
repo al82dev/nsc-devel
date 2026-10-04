@@ -504,6 +504,7 @@ private:
 
     std::vector<TemplateState> templateStates_;
     std::unordered_set<const ast::AstNode*> materializedGenericLambdas_;
+    std::unordered_map<const ast::AstNode*, std::size_t> genericLambdaTemplateOrdinals_;
     std::vector<DeclaredTypeIdentity> declaredTypeIdentities_;
     std::vector<GenericTemplateRecord> templateRecords_;
     std::vector<GenericSpecializationRecord> specializations_;

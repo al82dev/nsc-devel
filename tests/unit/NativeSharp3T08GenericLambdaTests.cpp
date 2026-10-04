@@ -105,16 +105,19 @@ namespace GenericLambdas
             var identity = <T>(T value) => value;
             var automatic = (auto value) => value + 1;
             var addConstant = <const int N>(int value) => value + N;
+            var constrained = <T>(T value) where T : struct, copy => value;
+            var packed = <pack const int Ns>() => packsum(Ns);
             int first = identity(10);
             long second = identity<long>(20);
             int third = automatic(5);
-            return first + (int)second + third + addConstant<4>(1);
+            return first + (int)second + third + addConstant<4>(1) + constrained(3) +
+                packed<1, 2, 3>();
         }
     }
 }
 )NS");
     std::string executionDiagnostic;
-    const bool executionPassed = compileAndRun(execution, 41, executionDiagnostic);
+    const bool executionPassed = compileAndRun(execution, 50, executionDiagnostic);
     tests.expect(executionPassed,
         "O0/NSLink executes inferred type, explicit type/const, and auto generic lambdas (" +
             executionDiagnostic + ")");
@@ -144,6 +147,32 @@ namespace GenericLambdaInferenceDiagnostic
                 std::string::npos,
         "failed generic-lambda inference names the unresolved parameter (" +
             invalidError + diagnostics + ")");
+
+    const std::filesystem::path constraintInvalid = writeProject(
+        root / "constraint-invalid", "GenericLambdaConstraintDiagnostic", R"NS(
+namespace GenericLambdaConstraintDiagnostic
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            var referenceOnly = <T>(T value) where T : class => value;
+            return referenceOnly(1);
+        }
+    }
+}
+)NS");
+    nativesharp::frontend::ProjectCompilation constraintCompilation;
+    std::string constraintError;
+    const bool constraintBuilt =
+        constraintCompilation.compileProjectOopMir(constraintInvalid, constraintError);
+    std::string constraintDiagnostics;
+    for (const auto& diagnostic : constraintCompilation.diagnostics().diagnostics())
+        constraintDiagnostics += diagnostic.message() + " | ";
+    tests.expect(!constraintBuilt &&
+            constraintDiagnostics.find("requires a reference type") != std::string::npos,
+        "generic-lambda constraints reject an invalid concrete instance (" +
+            constraintError + constraintDiagnostics + ")");
 
     tests.expect(!nativesharp::language::genericLambdaUsesErasedDispatch(),
         "generic lambda instances remain monomorphized native callables");

@@ -21444,6 +21444,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     ExpressionResult result;
     if (syntax == nullptr || syntax->kind() != ast::AstNodeKind::LambdaExpression)
         return result;
+    if (genericConstraintModel_ != nullptr &&
+        !genericConstraintModel_->specializationSatisfiesConstraints(syntax))
+    {
+        genericConstraintModel_->reportSpecializationConstraintViolations(
+            syntax, syntax->range(), diagnostics);
+        return result;
+    }
     const bool inferAnonymous = delegateTypeKey.empty();
     std::string returnType;
     std::vector<std::string> parameterTypes;

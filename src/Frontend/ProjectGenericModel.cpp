@@ -1821,22 +1821,37 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
     const std::unordered_set<std::string> names(
         inferenceRecord.parameters.begin(), inferenceRecord.parameters.end());
     std::unordered_map<std::string, ast::TypeSyntax*> inferred;
+    std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>> packSubstitutions;
 
     if (!call->typeSyntaxes().empty() || call->flag())
     {
-        if (call->typeSyntaxes().size() != parameters.size())
+        const bool trailingPack = !parameters.empty() &&
+            (parameters.back().kind == ast::GenericParameterSyntaxKind::TypePack ||
+             parameters.back().kind == ast::GenericParameterSyntaxKind::ConstantPack);
+        const std::size_t fixedCount = parameters.size() - (trailingPack ? 1U : 0U);
+        if ((!trailingPack && call->typeSyntaxes().size() != fixedCount) ||
+            (trailingPack && call->typeSyntaxes().size() < fixedCount))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidArgumentCount,
                 diagnostics::DiagnosticSeverity::Error,
                 call->range(),
-                "generic lambda expects " + std::to_string(parameters.size()) +
+                "generic lambda expects " + std::to_string(fixedCount) +
+                    (trailingPack ? " or more" : std::string{}) +
                     " generic arguments but received " +
                     std::to_string(call->typeSyntaxes().size()));
             return false;
         }
-        for (std::size_t index = 0; index < parameters.size(); ++index)
+        for (std::size_t index = 0; index < fixedCount; ++index)
             inferred.emplace(parameters[index].name, call->typeSyntaxes()[index]);
+        if (trailingPack)
+        {
+            std::vector<const ast::TypeSyntax*>& values =
+                packSubstitutions[parameters.back().name];
+            values.insert(
+                values.end(), call->typeSyntaxes().begin() +
+                    static_cast<std::ptrdiff_t>(fixedCount), call->typeSyntaxes().end());
+        }
     }
     else
     {
@@ -1874,6 +1889,21 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
     for (const ast::GenericParameterSyntax& parameter : parameters)
     {
+        if (parameter.kind == ast::GenericParameterSyntaxKind::TypePack ||
+            parameter.kind == ast::GenericParameterSyntaxKind::ConstantPack)
+        {
+            if (!packSubstitutions.contains(parameter.name))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidCall,
+                    diagnostics::DiagnosticSeverity::Error,
+                    call->range(),
+                    "generic-lambda pack '" + parameter.name +
+                        "' requires explicit generic arguments");
+                return false;
+            }
+            continue;
+        }
         const auto found = inferred.find(parameter.name);
         if (found == inferred.end())
         {
@@ -1887,11 +1917,69 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
         substitutions.emplace(parameter.name, found->second);
     }
 
+    const auto savedPackSubstitutions = activePackSubstitutions_;
+    activePackSubstitutions_ = packSubstitutions;
     ast::AstNode* specialized = cloneNode(unit.arena(), source, substitutions, {}, {});
+    activePackSubstitutions_ = savedPackSubstitutions;
     specialized->clearGenericParameters();
-    specialized->clearGenericConstraints();
     const std::string localName = call->first() != nullptr ? call->first()->text() : std::string{};
     specialized->setText("generic-lambda-instance:" + localName);
+
+    std::size_t templateOrdinal = 0;
+    const auto priorTemplate = genericLambdaTemplateOrdinals_.find(source);
+    if (priorTemplate == genericLambdaTemplateOrdinals_.end())
+    {
+        GenericTemplateRecord record;
+        record.kind = GenericTemplateKind::Method;
+        record.syntax = source;
+        record.projectOrdinal = unit.projectOrdinal();
+        record.moduleName = unit.projectOrdinal() < projectModuleNames_.size()
+            ? projectModuleNames_[unit.projectOrdinal()] : std::string{};
+        record.name = "lambda@" + std::to_string(source->range().begin().offset());
+        record.parameters = source->genericParameters();
+        record.parameterSyntaxes = source->genericParameterSyntaxes();
+        record.constraints = source->genericConstraints();
+        record.canonicalKey = record.moduleName + "::<local>::" + record.name;
+        templateOrdinal = templateRecords_.size();
+        templateRecords_.push_back(std::move(record));
+        genericLambdaTemplateOrdinals_.emplace(source, templateOrdinal);
+    }
+    else
+    {
+        templateOrdinal = priorTemplate->second;
+    }
+    GenericSpecializationRecord specialization;
+    specialization.kind = GenericTemplateKind::Method;
+    specialization.templateSyntax = source;
+    specialization.specializedSyntax = specialized;
+    specialization.templateOrdinal = templateOrdinal;
+    specialization.instantiationSyntax = call;
+    specialization.instantiationRange = call->range();
+    specialization.cacheOrdinal = specializations_.size();
+    specialization.templateKey = templateRecords_[templateOrdinal].canonicalKey;
+    specialization.specializedName = "lambda-instance-" +
+        std::to_string(specialization.cacheOrdinal);
+    for (const ast::GenericParameterSyntax& parameter : parameters)
+    {
+        if (const auto pack = packSubstitutions.find(parameter.name);
+            pack != packSubstitutions.end())
+        {
+            for (const ast::TypeSyntax* argument : pack->second)
+            {
+                const std::string identity = typeSpelling(argument);
+                specialization.typeArguments.push_back(identity);
+                specialization.specializationKey += "|" + identity;
+            }
+        }
+        else
+        {
+            const ast::TypeSyntax* argument = substitutions.at(parameter.name);
+            const std::string identity = typeSpelling(argument);
+            specialization.typeArguments.push_back(identity);
+            specialization.specializationKey += "|" + identity;
+        }
+    }
+    specializations_.push_back(std::move(specialization));
     call->setFirst(specialized);
     call->clearTypeSyntaxes();
     call->setFlag(false);
@@ -1901,9 +1989,10 @@ bool ProjectGenericModel::specializeGenericLambdaCall(
     // gives `var` an ABI-valid native type and preserves ordinary declaration/capture analysis.
     if (materializedGenericLambdas_.insert(source).second)
     {
+        activePackSubstitutions_ = packSubstitutions;
         ast::AstNode* carrier = cloneNode(unit.arena(), source, substitutions, {}, {});
+        activePackSubstitutions_ = savedPackSubstitutions;
         carrier->clearGenericParameters();
-        carrier->clearGenericConstraints();
         carrier->setText("generic-lambda-carrier");
         local.declaration->setFirst(carrier);
     }
