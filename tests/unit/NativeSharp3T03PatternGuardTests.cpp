@@ -152,6 +152,117 @@ namespace PatternGuards
             "guards run after structural matching, preserve order, and fall through on false");
     }
 
+    const std::array<std::string_view, 3> variantHirArguments = {
+        "--dump-project-oop-hir", project, "-O0"};
+    output.clear();
+    error.clear();
+    const bool variantHir = runDriver(variantHirArguments, output, error) == ExitCode::Success;
+    tests.expect(variantHir, "guarded variant lowering exposes O0 HIR (" + error + ")");
+    if (variantHir)
+    {
+        tests.expect(output.find("variant-case=proven") != std::string::npos,
+            "variant extraction consumes the active-case flow fact");
+    }
+
+    const std::filesystem::path flow = root / "flow";
+    writeProject(flow, "GuardFlow", R"NS(
+namespace GuardFlow
+{
+    public class Node
+    {
+        public Node Next;
+        public Node(Node next) { Next = next; }
+    }
+
+    public class Program
+    {
+        private static void Clear(ref Node value) { value = null; }
+
+        private static int Divide(int divisor)
+        {
+            if (divisor > 0) return 84 / divisor;
+            return 0;
+        }
+
+        private static Node Proven(Node node)
+        {
+            if (node != null) return node?.Next;
+            return null;
+        }
+
+        private static Node InvalidatedByAssignment(Node node)
+        {
+            if (node != null)
+            {
+                node = null;
+                return node?.Next;
+            }
+            return null;
+        }
+
+        private static Node InvalidatedByCall(Node node)
+        {
+            if (node != null)
+            {
+                Clear(ref node);
+                return node?.Next;
+            }
+            return null;
+        }
+
+        public static int Main()
+        {
+            Node leaf = new Node(null);
+            Node root = new Node(leaf);
+            if (Proven(root) != leaf) return 1;
+            if (InvalidatedByAssignment(root) != null) return 2;
+            if (InvalidatedByCall(root) != null) return 3;
+            return Divide(2) == 42 ? 0 : 4;
+        }
+    }
+}
+)NS");
+    const std::string flowProject = (flow / "GuardFlow.nsproj").string();
+    const std::array<std::string_view, 3> hirArguments = {
+        "--dump-project-oop-hir", flowProject, "-O0"};
+    output.clear();
+    error.clear();
+    const bool hir = runDriver(hirArguments, output, error) == ExitCode::Success;
+    tests.expect(hir, "guard flow facts lower to O0 HIR (" + error + ")");
+    if (hir)
+    {
+        tests.expect(output.find("null-check=elided-flow") != std::string::npos &&
+                output.find("null-conditional-field-value") != std::string::npos &&
+                output.find("check=elided-flow") != std::string::npos,
+            "HIR consumes non-null/no-zero facts and preserves checks after assignment/ref invalidation");
+    }
+
+    const std::array<std::string_view, 3> mirArguments = {
+        "--dump-project-oop-mir", flowProject, "-O0"};
+    output.clear();
+    error.clear();
+    const bool mir = runDriver(mirArguments, output, error) == ExitCode::Success;
+    tests.expect(mir, "guard flow facts lower to O0 MIR (" + error + ")");
+    if (mir)
+    {
+        tests.expect(output.find("null-check=elided-flow") != std::string::npos &&
+                output.find("null-conditional-field-load") != std::string::npos &&
+                output.find("check=elided-flow") != std::string::npos,
+            "MIR publishes productive narrowing and conservative invalidation");
+    }
+
+    const std::array<std::string_view, 3> llvmArguments = {
+        "--dump-project-oop-llvm", flowProject, "-O0"};
+    output.clear();
+    error.clear();
+    const bool llvm = runDriver(llvmArguments, output, error) == ExitCode::Success;
+    tests.expect(llvm, "guard flow facts lower to O0 LLVM (" + error + ")");
+    if (llvm)
+    {
+        tests.expect(output.find("div.zero") == std::string::npos,
+            "a divisor proven positive does not emit a redundant runtime zero guard");
+    }
+
     std::string diagnostic;
     tests.expect(
         rejected(root / "coverage", R"NS(

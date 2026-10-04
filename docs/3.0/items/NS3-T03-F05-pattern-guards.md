@@ -2,8 +2,8 @@
 
 ## Estado
 
-`EN CURSO`. Los guards son productivos y su contrato de ejecución/cobertura está cerrado. Queda
-pendiente el refinamiento flow-sensitive de nullability e intervalos sobre nombres existentes.
+`TERMINADA`. Los guards, su cobertura y el refinamiento flow-sensitive comparten ahora el mismo
+estado de flujo productivo consumido por sema, HIR, MIR y LLVM.
 
 ## Qué se hizo
 
@@ -17,12 +17,23 @@ pendiente el refinamiento flow-sensitive de nullability e intervalos sobre nombr
 - `when false` recibe diagnóstico de inalcanzabilidad y los guards no booleanos reutilizan la
   validación semántica de condiciones.
 - La gramática termina antes del `=>`, evitando confundir un identificador guard con una lambda.
+- Las comparaciones sobre locales/parámetros publican hechos de no-null e intervalos enteros en
+  sus aristas true/false; `&&`, `||`, `!` y los joins conservan sólo hechos demostrados.
+- Los tests de caso variant publican el tag activo y el extractor generado consume ese hecho.
+- Una asignación o un argumento `ref`/`out` invalida los hechos del almacenamiento afectado.
+- HIR/MIR publican `null-check=elided-flow`, `check=elided-flow` y
+  `variant-case=proven`; LLVM omite la guarda de cero únicamente si el divisor está probado.
 
 ## Archivos modificados
 
 - `src/Parser/Parser.cpp`: parse, orden de evaluación, lowering y cobertura conservadora.
 - `src/Frontend/ProjectMethodBodyModel.cpp`: decodificación de wildcard guardado y cierre correcto
-  de dominios abiertos.
+  de dominios abiertos, tabla compartida de hechos, joins e invalidación.
+- `include/nativesharp/Frontend/ProjectMethodBodyModel.h`: contrato semántico de hechos por
+  ocurrencia y por almacenamiento.
+- `src/Frontend/ProjectOopHirModel.cpp`: consumo productivo de hechos de no-null/no-cero/caso.
+- `src/Frontend/ProjectOopHirModelDumper.cpp` y `ProjectOopMirModelDumper.cpp`: decisiones visibles.
+- `src/LLVM/ProjectOopLlvmLowerer.cpp`: eliminación demostrada de la guarda de división por cero.
 - `CMakeLists.txt`: target dirigido exclusivo del ítem.
 
 ## Archivos nuevos y por qué
@@ -38,18 +49,9 @@ Los casos estructuralmente iguales pueden separarse por condiciones sin anidar `
 brazo ni duplicar extracción de payload. La exhaustividad permanece segura: ningún guard dinámico
 promete cubrir valores para los que podría devolver falso.
 
-## Pendiente exacto
-
-- Una tabla compartida de hechos de flujo para `x != null`, caso variant activo e intervalos.
-- Consumo de esos hechos por resolución de miembros, eliminación de checks y dumps HIR/MIR.
-- Pruebas de join/invalidation después de asignaciones y llamadas; no se declarará `TERMINADA`
-  hasta que esos hechos afecten semántica productiva y no sólo documentación.
-
 ## Validación dirigida
 
-- `nsc_ns3_t03_pattern_guard_tests`: 6/6 con O0 y NSLink local.
-- `nsc_ns3_t03_exhaustive_match_tests`: 9/9.
-- `nsc_ns3_t03_fundamental_pattern_tests`: 6/6.
-- `nsc_ns3_t03_conditional_pattern_tests`: 6/6.
+- `nsc_ns3_t03_pattern_guard_tests`: 14/14 con O0 y NSLink local; ejecución de guards,
+  narrowing, dumps HIR/MIR, eliminación LLVM e invalidación por asignación/ref.
 
-No se ejecutó baseline, CTest general, O1/O2/O3, instalación ni deploy.
+No se ejecutó baseline, CTest general, matriz, O1/O2/O3, instalación ni deploy.

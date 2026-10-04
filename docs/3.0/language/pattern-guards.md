@@ -28,10 +28,17 @@ Un guard dinámico no aporta exhaustividad, aunque el pattern sin guard cubra un
 sea wildcard. Debe existir otro brazo que cubra el camino donde el guard sea falso. `when true` es
 la única prueba estática reconocida en esta etapa y conserva la cobertura normal del pattern.
 
-Los bindings de payload ya exponen el tipo concreto dentro del guard y del cuerpo. El
-refinamiento flow-sensitive adicional del mismo nombre por comparaciones de null y por intervalos
-enteros requiere el modelo de hechos de flujo posterior; F05 no inventa una segunda tabla de tipos
-que el HIR/MIR todavía no pueda conservar.
+### Refinamiento de flujo
+
+Las comparaciones sobre un local o parámetro refinan ese mismo almacenamiento dentro de la rama:
+`x != null` demuestra un receptor no nulo, las relaciones con constantes acotan intervalos y el
+test de un caso variant demuestra el payload activo. Los hechos atraviesan `&&`, `||` y `!`, pero
+un join conserva solamente lo que todas las rutas alcanzables demuestran.
+
+Una asignación al nombre o su paso como argumento `ref`/`out` invalida el refinamiento. Una llamada
+ordinaria por valor no puede reasignar ese almacenamiento y no lo invalida. Cuando el hecho basta,
+HIR/MIR publican la decisión y LLVM omite únicamente el check redundante; el comportamiento sin
+prueba permanece idéntico.
 
 ## English
 
@@ -44,6 +51,13 @@ Dynamic guards do not contribute to exhaustiveness, including guarded wildcard o
 `when false` is diagnosed as unreachable. Guards must be boolean conditional expressions; the
 arm's `=>` is a delimiter rather than a lambda introducer.
 
-Variant payload bindings are already concretely typed in the guard and arm body. Additional
-flow-sensitive facts for null comparisons and integer intervals remain pending until the shared
-flow-fact model can carry them through HIR and MIR.
+### Flow narrowing
+
+Comparisons on a local or parameter refine that same storage inside the branch: `x != null`
+proves a non-null receiver, relations against constants bound integer intervals, and a variant
+case test proves the active payload. Facts propagate through `&&`, `||`, and `!`; a join retains
+only facts proven by every reachable path.
+
+Assignment to the name or passing it through `ref`/`out` invalidates its facts. An ordinary
+by-value call cannot reassign the storage and keeps them. HIR/MIR expose each consumed proof and
+LLVM removes only the corresponding redundant check; unproven paths keep their original checks.

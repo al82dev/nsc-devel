@@ -307,6 +307,14 @@ struct MethodExpressionTypeBinding final
     // Item 320. Logical object lifetime and backing-storage lifetime are distinct contracts.
     sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
     sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
+    // NativeSharp 3.0 T03-F05. Flow facts belong to the semantic binding of this exact
+    // expression occurrence. HIR consumes them without repeating control-flow analysis.
+    bool flowProvenNonNull = false;
+    bool flowIntegerExcludesZero = false;
+    std::optional<std::int64_t> flowIntegerMinimum;
+    std::optional<std::int64_t> flowIntegerMaximum;
+    std::optional<std::size_t> flowActiveVariantCase;
+    bool flowRuntimeCheckElided = false;
 };
 
 struct MethodAggregateInitializerEntryBinding final
@@ -1521,6 +1529,13 @@ private:
 
     struct OwnershipFlowSnapshot final
     {
+        struct IntegerRange final
+        {
+            std::optional<std::int64_t> minimum;
+            std::optional<std::int64_t> maximum;
+            bool excludesZero = false;
+        };
+
         bool reachable = true;
         std::unordered_set<std::size_t> movedRaiiLocals;
         std::unordered_set<std::size_t> maybeMovedRaiiLocals;
@@ -1539,6 +1554,11 @@ private:
         // T03-F06. A raw union storage key maps to the one field proven active on this path.
         // Joins keep an entry only when both reachable paths name the same field.
         std::unordered_map<std::size_t, std::size_t> activeUnionMembers;
+        // T03-F05. Named local/parameter storage uses the same stable key convention as raw
+        // unions: local N is 2*N and parameter N is 2*N+1.
+        std::unordered_set<std::size_t> nonNullStorages;
+        std::unordered_map<std::size_t, IntegerRange> integerRanges;
+        std::unordered_map<std::size_t, std::size_t> activeVariantCases;
         // How many locals existed when this snapshot was taken. Local ordinals only ever grow, so
         // this separates "not assigned" from "did not exist yet" -- see restoreOwnershipFlow.
         std::size_t localCount = 0;
@@ -1609,6 +1629,12 @@ private:
         // must agree -- which is the point of requiring the keyword at all: a reader of the call
         // can see that the argument may change without going to read the signature.
         ParameterPassKind argumentPassKind = ParameterPassKind::Value;
+        bool flowProvenNonNull = false;
+        bool flowIntegerExcludesZero = false;
+        std::optional<std::int64_t> flowIntegerMinimum;
+        std::optional<std::int64_t> flowIntegerMaximum;
+        std::optional<std::size_t> flowActiveVariantCase;
+        bool flowRuntimeCheckElided = false;
     };
 
     struct LoopContext final
@@ -2269,6 +2295,9 @@ private:
     // a local assigned on only one arm of an `if` is not assigned after it.
     std::unordered_set<std::size_t> assignedLocals_;
     std::unordered_map<std::size_t, std::size_t> activeUnionMembers_;
+    std::unordered_set<std::size_t> nonNullStorages_;
+    std::unordered_map<std::size_t, OwnershipFlowSnapshot::IntegerRange> integerRanges_;
+    std::unordered_map<std::size_t, std::size_t> activeVariantCases_;
     // State on each truth edge of a boolean expression. A collapsed post-expression snapshot is
     // insufficient for `if (a || Fill(out x)) return; use(x);`: the continuing false edge proves
     // the RHS ran even though the join of true+false does not. Entries are private analysis

@@ -901,6 +901,9 @@ bool ProjectMethodBodyModel::build(
         maybeInvalidLocalBorrows_.clear();
         assignedLocals_.clear();
         activeUnionMembers_.clear();
+        nonNullStorages_.clear();
+        integerRanges_.clear();
+        activeVariantCases_.clear();
         conditionFlowBySyntax_.clear();
         inUnevaluatedOperand_ = false;
         definiteAssignmentWriteTarget_ = nullptr;
@@ -2779,6 +2782,9 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwn
     state.maybeInvalidLocalBorrows = maybeInvalidLocalBorrows_;
     state.assignedLocals = assignedLocals_;
     state.activeUnionMembers = activeUnionMembers_;
+    state.nonNullStorages = nonNullStorages_;
+    state.integerRanges = integerRanges_;
+    state.activeVariantCases = activeVariantCases_;
     state.localCount = locals_.size();
     return state;
 }
@@ -2821,6 +2827,9 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
     }
     activeUnionMembers_ = state.activeUnionMembers;
     activeUnionMembers_.insert(activeAfterSnapshot.begin(), activeAfterSnapshot.end());
+    nonNullStorages_ = state.nonNullStorages;
+    integerRanges_ = state.integerRanges;
+    activeVariantCases_ = state.activeVariantCases;
 }
 
 // CC1-200. El patron de rama, en un solo sitio. Ver la declaracion en el header para el porque.
@@ -2968,6 +2977,27 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwners
         const bool localCreatedAfterLeft =
             (storage & 1U) == 0U && storage / 2U >= left.localCount;
         if (localCreatedAfterLeft) result.activeUnionMembers.emplace(storage, member);
+    }
+    for (const std::size_t storage : left.nonNullStorages)
+        if (right.nonNullStorages.contains(storage)) result.nonNullStorages.insert(storage);
+    for (const auto& [storage, leftRange] : left.integerRanges)
+    {
+        const auto rightRange = right.integerRanges.find(storage);
+        if (rightRange == right.integerRanges.end()) continue;
+        OwnershipFlowSnapshot::IntegerRange joined;
+        if (leftRange.minimum.has_value() && rightRange->second.minimum.has_value())
+            joined.minimum = std::min(*leftRange.minimum, *rightRange->second.minimum);
+        if (leftRange.maximum.has_value() && rightRange->second.maximum.has_value())
+            joined.maximum = std::max(*leftRange.maximum, *rightRange->second.maximum);
+        joined.excludesZero = leftRange.excludesZero && rightRange->second.excludesZero;
+        if (joined.minimum.has_value() || joined.maximum.has_value() || joined.excludesZero)
+            result.integerRanges.emplace(storage, joined);
+    }
+    for (const auto& [storage, activeCase] : left.activeVariantCases)
+    {
+        const auto rightCase = right.activeVariantCases.find(storage);
+        if (rightCase != right.activeVariantCases.end() && rightCase->second == activeCase)
+            result.activeVariantCases.emplace(storage, activeCase);
     }
     return result;
 }
@@ -10845,6 +10875,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
     bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
+    const auto applyFlowFacts = [&](std::size_t storageKey)
+    {
+        result.flowProvenNonNull = nonNullStorages_.contains(storageKey);
+        if (const auto range = integerRanges_.find(storageKey); range != integerRanges_.end())
+        {
+            result.flowIntegerMinimum = range->second.minimum;
+            result.flowIntegerMaximum = range->second.maximum;
+            result.flowIntegerExcludesZero = range->second.excludesZero ||
+                (range->second.minimum.has_value() && *range->second.minimum > 0) ||
+                (range->second.maximum.has_value() && *range->second.maximum < 0);
+        }
+        if (const auto activeCase = activeVariantCases_.find(storageKey);
+            activeCase != activeVariantCases_.end())
+            result.flowActiveVariantCase = activeCase->second;
+    };
     const std::optional<ScopeName> scopeName = lookupScopeName(scopeOrdinal, expression->text());
     if (scopeName.has_value())
     {
@@ -10908,6 +10953,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 }
                 result.typeKey = local.typeKey;
                 result.valid = true;
+                applyFlowFacts(scopeName->semanticOrdinal * 2U);
                 result.objectLifetimeOwnership = local.objectLifetimeOwnership;
                 result.storageOwnership = local.storageOwnership;
                 if (local.isRaii &&
@@ -11077,6 +11123,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             const bool byReferenceParameter = parameter.passKind != ParameterPassKind::Value;
             result.typeKey = byReferenceParameter ? parameter.pointeeTypeKey : parameter.typeKey;
             result.valid = true;
+            applyFlowFacts(scopeName->semanticOrdinal * 2U + 1U);
             result.ownership = parameter.ownership;
             result.objectLifetimeOwnership = parameter.ownership;
             result.storageOwnership = parameter.ownership;
@@ -12897,6 +12944,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     ExpressionResult result;
+    std::optional<std::size_t> provenVariantCase;
+    const auto namedStorageKey = [&](const ast::AstNode* syntax) -> std::optional<std::size_t>
+    {
+        if (syntax == nullptr || syntax->kind() != ast::AstNodeKind::IdentifierExpression)
+            return std::nullopt;
+        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, syntax->text());
+        if (!name.has_value() ||
+            (name->kind != ScopeNameKind::Local && name->kind != ScopeNameKind::Parameter))
+            return std::nullopt;
+        return name->semanticOrdinal * 2U +
+            (name->kind == ScopeNameKind::Parameter ? 1U : 0U);
+    };
     // T07-F04/F06: compiler-owned, allocation-free abort. Abort deliberately skips lexical
     // cleanup; the enclosing statement turns builtin:never into an unreachable flow state.
     if (expression->auxiliaryText() == "builtin-panic")
@@ -14041,6 +14100,43 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+        const std::string_view variantMarker = selectedMember.syntax != nullptr
+            ? std::string_view(selectedMember.syntax->auxiliaryText()) : std::string_view{};
+        const auto markerCase = [](std::string_view marker) -> std::optional<std::size_t>
+        {
+            const std::size_t separator = marker.rfind(':');
+            if (separator == std::string_view::npos || separator + 1U >= marker.size())
+                return std::nullopt;
+            std::size_t value = 0;
+            const auto [end, error] = std::from_chars(
+                marker.data() + separator + 1U, marker.data() + marker.size(), value);
+            return error == std::errc{} && end == marker.data() + marker.size()
+                ? std::optional<std::size_t>(value) : std::nullopt;
+        };
+        if (variantMarker.starts_with("variant-case-test:"))
+        {
+            const auto storage = namedStorageKey(callee.receiverSyntax);
+            const auto activeCase = markerCase(variantMarker);
+            if (storage.has_value() && activeCase.has_value())
+            {
+                ConditionFlowStates flow{captureOwnershipFlow(), captureOwnershipFlow()};
+                flow.whenTrue.activeVariantCases[*storage] = *activeCase;
+                flow.whenFalse.activeVariantCases.erase(*storage);
+                conditionFlowBySyntax_.insert_or_assign(expression, std::move(flow));
+            }
+        }
+        else if (variantMarker.starts_with("variant-case-extract:") &&
+                 expression->auxiliaryText() == "variant-pattern-extract")
+        {
+            const auto storage = namedStorageKey(callee.receiverSyntax);
+            const auto extractedCase = markerCase(variantMarker);
+            if (storage.has_value() && extractedCase.has_value())
+            {
+                const auto active = activeVariantCases_.find(*storage);
+                if (active != activeVariantCases_.end() && active->second == *extractedCase)
+                    provenVariantCase = *extractedCase;
+            }
+        }
         // NativeSharp 3.0 T03. Variant payload extractors have to be public so a match in a
         // LibraryReference consumer can call code transported through NSMETA, but they are not a
         // user-callable API: reading an inactive union alternative would be undefined. The parser
@@ -14058,7 +14154,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             return result;
         }
         if (callee.readonlyReceiver && selectedMember.declaringTypeIsStruct &&
-            !selectedMember.isStatic && !selectedMember.isReadonly)
+            !selectedMember.isStatic && !selectedMember.isReadonly &&
+            !(selectedMember.name.starts_with("__nsc_variant_extract_") &&
+              expression->auxiliaryText() == "variant-pattern-extract"))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidCall,
@@ -14075,6 +14173,32 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         expression, call.methodName, selected.memberOrdinal, arguments, diagnostics,
         std::span<const std::size_t>(selected.argumentParameterOrdinals).subspan(
             coreStringForwarding ? 1U : 0U));
+
+        // A ref/out call is a write through the argument. Any narrowing fact for that named
+        // storage becomes stale at the call boundary; by-value calls cannot reassign it.
+        if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& selectedMemberForFlow =
+                memberModel_->members()[selected.memberOrdinal];
+            for (std::size_t argumentOrdinal = 0;
+                 argumentOrdinal < resolvedArguments.size() &&
+                 argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
+            {
+                const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+                if (parameterOrdinal >= selectedMemberForFlow.parameters.size() ||
+                    (selectedMemberForFlow.parameters[parameterOrdinal].passKind != ParameterPassKind::Ref &&
+                     selectedMemberForFlow.parameters[parameterOrdinal].passKind != ParameterPassKind::Out))
+                    continue;
+                const ast::AstNode* argumentSyntax = resolvedArgumentSyntax(argumentOrdinal);
+                const ast::AstNode* targetSyntax = argumentSyntax != nullptr && argumentSyntax->first() != nullptr
+                    ? definiteAssignmentTargetRoot(argumentSyntax->first()) : nullptr;
+                const auto storage = namedStorageKey(targetSyntax);
+                if (!storage.has_value()) continue;
+                nonNullStorages_.erase(*storage);
+                integerRanges_.erase(*storage);
+                activeVariantCases_.erase(*storage);
+            }
+        }
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& throwingMember =
@@ -15866,6 +15990,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
 
     result.typeKey = call.resultTypeKey;
     result.valid = !isErrorType(result.typeKey);
+    result.flowActiveVariantCase = provenVariantCase;
     if (result.valid && nullConditionalCall)
     {
         const bool nullableResult = ProjectTypeConversion::isPointer(result.typeKey) ||
@@ -16910,6 +17035,124 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
         {
             result.typeKey = "builtin:bool";
             result.valid = true;
+            // T03-F05. Publish facts on both truth edges. These are deliberately limited to
+            // named locals/parameters: fields and properties can be changed through aliases or
+            // calls, while a named value has a stable storage key that joins can reason about.
+            const auto storageKey = [&](const ast::AstNode* syntax) -> std::optional<std::size_t>
+            {
+                if (syntax == nullptr || syntax->kind() != ast::AstNodeKind::IdentifierExpression)
+                    return std::nullopt;
+                const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, syntax->text());
+                if (!name.has_value() ||
+                    (name->kind != ScopeNameKind::Local && name->kind != ScopeNameKind::Parameter))
+                    return std::nullopt;
+                return name->semanticOrdinal * 2U +
+                    (name->kind == ScopeNameKind::Parameter ? 1U : 0U);
+            };
+            ConditionFlowStates flow{captureOwnershipFlow(), captureOwnershipFlow()};
+            bool published = false;
+
+            const bool leftNull = expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::NullLiteralExpression;
+            const bool rightNull = expression->second() != nullptr &&
+                expression->second()->kind() == ast::AstNodeKind::NullLiteralExpression;
+            if ((operation == TokenKind::EqualEqual || operation == TokenKind::BangEqual) &&
+                leftNull != rightNull)
+            {
+                const auto key = storageKey(leftNull ? expression->second() : expression->first());
+                if (key.has_value())
+                {
+                    OwnershipFlowSnapshot& nonNull = operation == TokenKind::BangEqual
+                        ? flow.whenTrue : flow.whenFalse;
+                    OwnershipFlowSnapshot& nullEdge = operation == TokenKind::BangEqual
+                        ? flow.whenFalse : flow.whenTrue;
+                    nonNull.nonNullStorages.insert(*key);
+                    nullEdge.nonNullStorages.erase(*key);
+                    published = true;
+                }
+            }
+
+            const auto signedConstant = [](const std::optional<ProjectIntegerConstant>& constant)
+                -> std::optional<std::int64_t>
+            {
+                if (!constant.has_value() ||
+                    constant->value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+                    return std::nullopt;
+                const std::int64_t magnitude = static_cast<std::int64_t>(constant->value);
+                return constant->isNegative ? -magnitude : magnitude;
+            };
+            std::optional<std::size_t> integerKey = storageKey(expression->first());
+            std::optional<std::int64_t> constant = signedConstant(right.integerConstant);
+            TokenKind relation = operation;
+            if (!integerKey.has_value())
+            {
+                integerKey = storageKey(expression->second());
+                constant = signedConstant(left.integerConstant);
+                if (relation == TokenKind::Less) relation = TokenKind::Greater;
+                else if (relation == TokenKind::LessEqual) relation = TokenKind::GreaterEqual;
+                else if (relation == TokenKind::Greater) relation = TokenKind::Less;
+                else if (relation == TokenKind::GreaterEqual) relation = TokenKind::LessEqual;
+            }
+            if (integerKey.has_value() && constant.has_value())
+            {
+                const auto refine = [](OwnershipFlowSnapshot& edge, std::size_t key,
+                                       std::optional<std::int64_t> minimum,
+                                       std::optional<std::int64_t> maximum,
+                                       bool excludesZero)
+                {
+                    auto& range = edge.integerRanges[key];
+                    if (minimum.has_value())
+                        range.minimum = range.minimum.has_value()
+                            ? std::max(*range.minimum, *minimum) : minimum;
+                    if (maximum.has_value())
+                        range.maximum = range.maximum.has_value()
+                            ? std::min(*range.maximum, *maximum) : maximum;
+                    range.excludesZero = range.excludesZero || excludesZero ||
+                        (range.minimum.has_value() && *range.minimum > 0) ||
+                        (range.maximum.has_value() && *range.maximum < 0);
+                };
+                const std::int64_t value = *constant;
+                switch (relation)
+                {
+                    case TokenKind::EqualEqual:
+                        refine(flow.whenTrue, *integerKey, value, value, value != 0);
+                        if (value == 0) refine(flow.whenFalse, *integerKey, {}, {}, true);
+                        published = true;
+                        break;
+                    case TokenKind::BangEqual:
+                        if (value == 0) refine(flow.whenTrue, *integerKey, {}, {}, true);
+                        refine(flow.whenFalse, *integerKey, value, value, value != 0);
+                        published = true;
+                        break;
+                    case TokenKind::Less:
+                        if (value != std::numeric_limits<std::int64_t>::min())
+                            refine(flow.whenTrue, *integerKey, {}, value - 1, value <= 0);
+                        refine(flow.whenFalse, *integerKey, value, {}, value > 0);
+                        published = true;
+                        break;
+                    case TokenKind::LessEqual:
+                        refine(flow.whenTrue, *integerKey, {}, value, value < 0);
+                        if (value != std::numeric_limits<std::int64_t>::max())
+                            refine(flow.whenFalse, *integerKey, value + 1, {}, value >= 0);
+                        published = true;
+                        break;
+                    case TokenKind::Greater:
+                        if (value != std::numeric_limits<std::int64_t>::max())
+                            refine(flow.whenTrue, *integerKey, value + 1, {}, value >= 0);
+                        refine(flow.whenFalse, *integerKey, {}, value, value < 0);
+                        published = true;
+                        break;
+                    case TokenKind::GreaterEqual:
+                        refine(flow.whenTrue, *integerKey, value, {}, value > 0);
+                        if (value != std::numeric_limits<std::int64_t>::min())
+                            refine(flow.whenFalse, *integerKey, {}, value - 1, value <= 0);
+                        published = true;
+                        break;
+                    default:
+                        break;
+                }
+            }
+            if (published) conditionFlowBySyntax_.insert_or_assign(expression, std::move(flow));
             return result;
         }
         diagnostics.report(
@@ -17096,6 +17339,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
             result.valid = false;
             return result;
         }
+        if ((operation == TokenKind::Slash || operation == TokenKind::Percent) &&
+            ProjectIntegerEvaluator::isIntegerType(result.typeKey) &&
+            right.flowIntegerExcludesZero)
+            result.flowRuntimeCheckElided = true;
         return result;
     }
 
@@ -17187,6 +17434,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    const auto invalidateAssignedStorage = [&]
+    {
+        const ast::AstNode* root = definiteAssignmentTargetRoot(expression->first());
+        if (root == nullptr || root->kind() != ast::AstNodeKind::IdentifierExpression) return;
+        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, root->text());
+        if (!name.has_value() ||
+            (name->kind != ScopeNameKind::Local && name->kind != ScopeNameKind::Parameter)) return;
+        const std::size_t storage = name->semanticOrdinal * 2U +
+            (name->kind == ScopeNameKind::Parameter ? 1U : 0U);
+        nonNullStorages_.erase(storage);
+        integerRanges_.erase(storage);
+        activeVariantCases_.erase(storage);
+    };
     // T01-F03 `place ??= fallback` is not a numeric compound assignment. Analyze it here before
     // the generic read/modify/write machinery asks compoundAssignmentBaseOperator for a numeric
     // operator. This deliberately accepts only real addressable storage: a property/indexer would
@@ -17259,6 +17519,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         }
         target.valid = valid;
         target.assignable = false;
+        if (valid) invalidateAssignedStorage();
         return target;
     }
 
@@ -18625,6 +18886,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         ExpressionResult assignmentResult = left;
         assignmentResult.assignable = false;
         assignmentResult.valid = true;
+        invalidateAssignedStorage();
         return assignmentResult;
     }
 
@@ -18647,6 +18909,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         left.ownership = sema::OwnershipKind::Owned;
         left.ownershipTransfer = true;
         left.ownershipFreshOwner = true;
+        invalidateAssignedStorage();
         return left;
     }
 
@@ -18728,6 +18991,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         }
         left.ownsStorageDestination = ownsStorageDestination;
         left.assignable = false;
+        invalidateAssignedStorage();
         return left;
     }
 
@@ -18749,6 +19013,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             return {};
         }
         left.assignable = false;
+        invalidateAssignedStorage();
         return left;
     }
 
@@ -18794,6 +19059,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         return {};
     }
     left.assignable = false;
+    invalidateAssignedStorage();
     return left;
 }
 
@@ -21090,6 +21356,12 @@ void ProjectMethodBodyModel::recordExpressionType(
     binding.ownsStorageDestination = result.ownsStorageDestination;
     binding.objectLifetimeOwnership = result.objectLifetimeOwnership;
     binding.storageOwnership = result.storageOwnership;
+    binding.flowProvenNonNull = result.flowProvenNonNull;
+    binding.flowIntegerExcludesZero = result.flowIntegerExcludesZero;
+    binding.flowIntegerMinimum = result.flowIntegerMinimum;
+    binding.flowIntegerMaximum = result.flowIntegerMaximum;
+    binding.flowActiveVariantCase = result.flowActiveVariantCase;
+    binding.flowRuntimeCheckElided = result.flowRuntimeCheckElided;
     expressionTypes_.push_back(std::move(binding));
 }
 

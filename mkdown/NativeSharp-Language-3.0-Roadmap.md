@@ -404,9 +404,14 @@ primera vez la depurabilidad de las features T00–T14.
 
 **Commit:** `ns3(t03-f05): pattern-guards`
 
+**Estado:** `TERMINADA` — cierre flow-sensitive en commit de seguimiento
+`ns3(t03-f05): close-flow-narrowing`.
+
 - **Implementación:** guards booleanos evaluados tras match estructural; refinamiento de nullability, variante y rangos enteros dentro del brazo; guard no cuenta para exhaustividad salvo prueba estática.
 - **Pruebas dirigidas:** efectos en guard, borrows, cobertura, guards constantes, narrowing y optimización de checks redundantes.
 - **Markdown ES/EN:** orden, alcance y límites del refinamiento.
+- **Cierre:** tabla única de hechos para no-null, intervalos/no-cero y caso variant; joins e
+  invalidación por escritura/ref/out; consumo visible en HIR/MIR y eliminación de checks en LLVM.
 
 ## NS3-T03-F06 — Variants compatibles con C / C-compatible unions
 

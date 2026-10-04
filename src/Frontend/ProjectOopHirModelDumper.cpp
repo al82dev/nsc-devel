@@ -80,6 +80,19 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
     if (node->pinnedStorage) output << " pinned=true";
     if (node->referenceResult) output << " reference-result=true";
     if (node->nullConditionalCall) output << " null-conditional=true";
+    if (node->kind == ProjectOopHirNodeKind::Binary && node->booleanValue &&
+        (node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent))
+        output << " check=elided-flow";
+    if (node->kind == ProjectOopHirNodeKind::FieldValue && node->booleanValue)
+        output << " null-check=elided-flow";
+    if ((node->kind == ProjectOopHirNodeKind::InstanceCall ||
+         node->kind == ProjectOopHirNodeKind::StaticCall) &&
+        node->booleanValue)
+        output << " variant-case=proven";
+    if ((node->kind == ProjectOopHirNodeKind::InstanceCall ||
+         node->kind == ProjectOopHirNodeKind::StaticCall) &&
+        node->stringValue == "flow-nonnull")
+        output << " null-check=elided-flow";
     if (node->stackPromotedObject) output << " stack-promoted=true";
     if (node->volatileAccess) output << " volatile=true";
     if (!node->elementTypeKey.empty()) output << " element=" << node->elementTypeKey;

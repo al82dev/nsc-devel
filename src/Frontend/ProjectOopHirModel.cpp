@@ -3638,6 +3638,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         node->baseReceiver = binding->baseReceiver;
         node->interfaceDispatch = interfaceDispatch;
         node->nullConditionalCall = nullConditional;
+        node->booleanValue = typeBinding != nullptr &&
+            typeBinding->flowActiveVariantCase.has_value();
         if (interfaceDispatch) node->targetTypeOrdinal = binding->receiverTypeOrdinal;
         if (!binding->staticCall)
         {
@@ -3788,11 +3790,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 error = "a null-conditional access produces a value, not addressable storage";
                 return nullptr;
             }
+            const MethodExpressionTypeBinding* receiverFlow = expressionType(expression->first());
+            const bool provenNonNull = receiverFlow != nullptr && receiverFlow->flowProvenNonNull;
             if (const MethodCallBinding* accessorCall = accessorGetterBinding(expression);
                 accessorCall != nullptr)
             {
-                auto call = lowerResolvedCall(accessorCall, {}, nullptr, true);
+                auto call = lowerResolvedCall(accessorCall, {}, nullptr, !provenNonNull);
                 if (call == nullptr) return nullptr;
+                if (provenNonNull) call->stringValue = "flow-nonnull";
                 return call;
             }
             const MethodNameBinding* binding = nameBinding(expression);
@@ -3805,8 +3810,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             auto receiver = lowerExpression(expression->first(), memberOrdinal, false, error);
             if (receiver == nullptr) return nullptr;
             auto node = makeNode(
-                ProjectOopHirNodeKind::NullConditionalFieldValue, expression, resultType);
+                provenNonNull ? ProjectOopHirNodeKind::FieldValue
+                              : ProjectOopHirNodeKind::NullConditionalFieldValue,
+                expression, resultType);
             node->memberOrdinal = binding->candidateMemberOrdinals.front();
+            node->booleanValue = provenNonNull;
             node->volatileAccess = memberModel_ != nullptr &&
                 *node->memberOrdinal < memberModel_->members().size() &&
                 memberModel_->members()[*node->memberOrdinal].isVolatile;
@@ -4487,6 +4495,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             }
             auto node = makeNode(ProjectOopHirNodeKind::Binary, expression, resultType);
             node->operation = expression->tokenKind();
+            node->booleanValue = typeBinding != nullptr && typeBinding->flowRuntimeCheckElided;
             auto left = lowerExpression(expression->first(), memberOrdinal, false, error);
             auto right = lowerExpression(expression->second(), memberOrdinal, false, error);
             if (left == nullptr || right == nullptr)
@@ -6482,8 +6491,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 binding->staticCall ? ProjectOopHirNodeKind::StaticCall : ProjectOopHirNodeKind::InstanceCall,
                 expression,
                 binding->resultTypeKey);
-            node->nullConditionalCall = expression->first() != nullptr &&
+            const bool writtenNullConditional = expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression;
+            const MethodExpressionTypeBinding* receiverFlow = expressionType(receiverSyntax);
+            const bool provenNonNull = receiverFlow != nullptr && receiverFlow->flowProvenNonNull;
+            node->nullConditionalCall = writtenNullConditional && !provenNonNull;
+            if (writtenNullConditional && provenNonNull) node->stringValue = "flow-nonnull";
+            const MethodExpressionTypeBinding* callType = expressionType(expression);
+            node->booleanValue = callType != nullptr && callType->flowActiveVariantCase.has_value();
             node->memberOrdinal = selectedMemberOrdinal;
             node->baseReceiver = binding->baseReceiver;
             node->interfaceDispatch = interfaceDispatch;

@@ -142,6 +142,23 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
     if (node->pinnedStorage) output << " pinned=true";
     if (node->referenceResult) output << " reference-result=true";
     if (node->nullConditionalCall) output << " null-conditional=true";
+    if (node->kind == ProjectOopMirNodeKind::Binary && node->booleanValue &&
+        (node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent))
+        output << " check=elided-flow";
+    if (node->kind == ProjectOopMirNodeKind::FieldLoad && node->booleanValue)
+        output << " null-check=elided-flow";
+    if ((node->kind == ProjectOopMirNodeKind::DirectInstanceCall ||
+         node->kind == ProjectOopMirNodeKind::DirectStaticCall ||
+         node->kind == ProjectOopMirNodeKind::VirtualInstanceCall ||
+         node->kind == ProjectOopMirNodeKind::InterfaceInstanceCall) &&
+        node->booleanValue)
+        output << " variant-case=proven";
+    if ((node->kind == ProjectOopMirNodeKind::DirectInstanceCall ||
+         node->kind == ProjectOopMirNodeKind::DirectStaticCall ||
+         node->kind == ProjectOopMirNodeKind::VirtualInstanceCall ||
+         node->kind == ProjectOopMirNodeKind::InterfaceInstanceCall) &&
+        node->stringValue == "flow-nonnull")
+        output << " null-check=elided-flow";
     if (node->ownership != sema::OwnershipKind::None)
         output << " ownership=" << sema::ownershipKindName(node->ownership);
     if (node->automaticDestruction) output << " destruction=scope-bound";

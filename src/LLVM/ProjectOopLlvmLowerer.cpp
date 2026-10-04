@@ -8157,7 +8157,7 @@ private:
                         if (operand == nullptr) return nullptr;
                     }
                     updated = applyBinaryOperation(
-                        node->operation, previous, operand, node->typeKey, error);
+                        node->operation, previous, operand, node->typeKey, error, false);
                 }
                 if (updated == nullptr) return nullptr;
                 LLVMValueRef storedValue = updated;
@@ -12776,7 +12776,9 @@ private:
                 right, node->children[1]->typeKey, node->children[0]->typeKey, error);
             if (right == nullptr) return nullptr;
         }
-        return applyBinaryOperation(node->operation, left, right, node->children[0]->typeKey, error);
+        return applyBinaryOperation(
+            node->operation, left, right, node->children[0]->typeKey, error,
+            node->booleanValue);
     }
 
     LLVMValueRef normalizeShiftCount(
@@ -12827,7 +12829,8 @@ private:
         LLVMValueRef left,
         LLVMValueRef right,
         const std::string& operandType,
-        std::string& error)
+        std::string& error,
+        bool divisorProvenNonZero)
     {
         // NSC-LIMIT-004. DEFENSA, no arreglo. Un agregado no puede llegar aqui: `icmp eq [24 x i8]`
         // no es una instruccion legal y el verificador rechaza el modulo entero, con un mensaje
@@ -12909,7 +12912,8 @@ private:
             case lexer::TokenKind::Star: return LLVMBuildMul(builder_, left, right, "mul");
             case lexer::TokenKind::Slash:
             case lexer::TokenKind::Percent:
-                return applyIntegerDivision(operation, left, right, operandType, error);
+                return applyIntegerDivision(
+                    operation, left, right, operandType, error, divisorProvenNonZero);
             case lexer::TokenKind::Amp: return LLVMBuildAnd(builder_, left, right, "and");
             case lexer::TokenKind::Pipe: return LLVMBuildOr(builder_, left, right, "or");
             case lexer::TokenKind::Caret: return LLVMBuildXor(builder_, left, right, "xor");
@@ -12941,17 +12945,19 @@ private:
         LLVMValueRef left,
         LLVMValueRef right,
         const std::string& operandType,
-        std::string& error)
+        std::string& error,
+        bool divisorProvenNonZero)
     {
         LLVMTypeRef integerType = llvmType(operandType, error);
         if (integerType == nullptr) return nullptr;
 
         const bool remainder = operation == lexer::TokenKind::Percent;
         LLVMValueRef zero = LLVMConstInt(integerType, 0, 0);
-        LLVMValueRef nonZero = LLVMBuildICmp(builder_, LLVMIntNE, right, zero, "div.nonzero");
-        if (!emitGuard(nonZero, LlvmTrapReason::DivisionByZero, "div.zero", error))
+        if (!divisorProvenNonZero)
         {
-            return nullptr;
+            LLVMValueRef nonZero = LLVMBuildICmp(builder_, LLVMIntNE, right, zero, "div.nonzero");
+            if (!emitGuard(nonZero, LlvmTrapReason::DivisionByZero, "div.zero", error))
+                return nullptr;
         }
 
         if (!isSignedInteger(operandType))
