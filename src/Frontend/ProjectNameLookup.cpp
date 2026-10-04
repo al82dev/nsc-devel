@@ -321,6 +321,7 @@ bool ProjectNameLookup::build(
     modules_.reserve(projects.size());
     typesByModule_.resize(projects.size());
     nestedSourceNamesByModule_.resize(projects.size());
+    reexportedTypesByModule_.resize(projects.size());
     packageByProject_.resize(projects.size());
     friendsByProject_.resize(projects.size());
     for (std::size_t projectOrdinal = 0; projectOrdinal < projects.size(); ++projectOrdinal)
@@ -369,6 +370,7 @@ bool ProjectNameLookup::build(
             std::make_move_iterator(unitIndex.namespaceStates.end()));
     }
     finalizePredeclarations(diagnostics);
+    finalizeReexports(units, diagnostics);
     std::sort(
         namespaceFunctions_.begin(),
         namespaceFunctions_.end(),
@@ -1025,6 +1027,137 @@ void ProjectNameLookup::finalizePredeclarations(
         if (iterator != typesByModule_[type.projectOrdinal].end())
         {
             type.containingTypeOrdinal = iterator->second;
+        }
+    }
+}
+
+void ProjectNameLookup::finalizeReexports(
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    struct PendingReexport final
+    {
+        std::size_t ownerProjectOrdinal = 0;
+        std::string publicName;
+        std::string targetName;
+        SourceRange range;
+    };
+    std::vector<PendingReexport> pending;
+    const auto collect = [&](const auto& self,
+                             const ProjectSyntaxUnit& unit,
+                             const ast::AstNode* node,
+                             const std::string& namespaceName) -> void
+    {
+        if (node == nullptr) return;
+        std::string childNamespace = namespaceName;
+        if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+        {
+            if (!childNamespace.empty()) childNamespace.push_back('.');
+            childNamespace += node->text();
+        }
+        if (node->flag() && node->kind() == ast::AstNodeKind::UsingAliasDirective)
+        {
+            std::string publicName = namespaceName;
+            if (!publicName.empty()) publicName.push_back('.');
+            publicName += node->text();
+            pending.push_back(PendingReexport{
+                unit.projectOrdinal(), std::move(publicName), node->auxiliaryText(), node->range()});
+        }
+        else if (node->flag() && node->kind() == ast::AstNodeKind::UsingNamespaceDirective)
+        {
+            const std::string prefix = node->text() + ".";
+            if (unit.projectOrdinal() < modules_.size())
+            {
+                for (const std::size_t visible :
+                     modules_[unit.projectOrdinal()]->visibleProjectOrdinals())
+                {
+                    if (visible >= typesByModule_.size()) continue;
+                    for (const auto& [name, ordinal] : typesByModule_[visible])
+                    {
+                        static_cast<void>(ordinal);
+                        if (name.starts_with(prefix))
+                            pending.push_back(PendingReexport{
+                                unit.projectOrdinal(), name, name, node->range()});
+                    }
+                }
+            }
+        }
+        for (const ast::AstNode* child : node->children())
+            self(self, unit, child, childNamespace);
+    };
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
+        if (unit != nullptr) collect(collect, *unit, unit->syntaxTree(), std::string{});
+
+    std::ranges::sort(pending, [](const PendingReexport& left, const PendingReexport& right)
+    {
+        return std::tie(left.ownerProjectOrdinal, left.publicName, left.targetName) <
+            std::tie(right.ownerProjectOrdinal, right.publicName, right.targetName);
+    });
+    for (const PendingReexport& item : pending)
+    {
+        if (item.ownerProjectOrdinal >= modules_.size()) continue;
+        std::vector<std::size_t> candidates;
+        const auto append = [&](std::size_t moduleOrdinal)
+        {
+            const std::optional<std::size_t> found = findTypeInModule(moduleOrdinal, item.targetName);
+            if (found.has_value() && std::find(candidates.begin(), candidates.end(), *found) ==
+                    candidates.end())
+                candidates.push_back(*found);
+        };
+        append(item.ownerProjectOrdinal);
+        for (const std::size_t visible : modules_[item.ownerProjectOrdinal]->visibleProjectOrdinals())
+            append(visible);
+        if (candidates.size() != 1U)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::UnknownTypeName,
+                diagnostics::DiagnosticSeverity::Error,
+                item.range,
+                candidates.empty()
+                    ? "re-export target '" + item.targetName + "' does not name a visible type"
+                    : "re-export target '" + item.targetName + "' is ambiguous");
+            continue;
+        }
+        const std::size_t target = candidates.front();
+        bool publiclyExportable = true;
+        std::optional<std::size_t> current = target;
+        while (current.has_value() && *current < namedTypes_.size())
+        {
+            if (namedTypes_[*current].accessibility != NamedTypeAccessibility::Public)
+            {
+                publiclyExportable = false;
+                break;
+            }
+            current = namedTypes_[*current].containingTypeOrdinal;
+        }
+        if (!publiclyExportable)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::UnknownTypeName,
+                diagnostics::DiagnosticSeverity::Error,
+                item.range,
+                "re-export target '" + item.targetName + "' is not public");
+            continue;
+        }
+        if (typesByModule_[item.ownerProjectOrdinal].contains(item.publicName) ||
+            nestedSourceNamesByModule_[item.ownerProjectOrdinal].contains(item.publicName))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::DuplicateSymbol,
+                diagnostics::DiagnosticSeverity::Error,
+                item.range,
+                "re-export name '" + item.publicName + "' conflicts with a declaration");
+            continue;
+        }
+        auto& table = reexportedTypesByModule_[item.ownerProjectOrdinal];
+        const auto [entry, inserted] = table.emplace(item.publicName, target);
+        if (!inserted && entry->second != target)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::DuplicateSymbol,
+                diagnostics::DiagnosticSeverity::Error,
+                item.range,
+                "re-export name '" + item.publicName + "' resolves to multiple identities");
         }
     }
 }
@@ -1760,10 +1893,11 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
                     // arbol para arreglar un defecto que no esta aqui.
                     if (simpleName)
                     {
-                        const auto current = typesByModule_[projectOrdinal].find(candidate);
-                        if (current != typesByModule_[projectOrdinal].end())
+                        const std::optional<std::size_t> current =
+                            findTypeInModule(projectOrdinal, candidate);
+                        if (current.has_value())
                         {
-                            const std::array<std::size_t, 1> single{current->second};
+                            const std::array<std::size_t, 1> single{*current};
                             appendUnique(found, single);
                         }
                         break;
@@ -1807,10 +1941,11 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
                 }
                 case QualifiedNameTier::Global:
                 {
-                    const auto global = typesByModule_[projectOrdinal].find(candidate);
-                    if (global != typesByModule_[projectOrdinal].end())
+                    const std::optional<std::size_t> global =
+                        findTypeInModule(projectOrdinal, candidate);
+                    if (global.has_value())
                     {
-                        const std::array<std::size_t, 1> single{global->second};
+                        const std::array<std::size_t, 1> single{*global};
                         appendUnique(found, single);
                     }
                     break;
@@ -1822,11 +1957,12 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
                     {
                         if (simpleName)
                         {
-                            const auto iterator = typesByModule_[visibleOrdinal].find(candidate);
-                            if (iterator != typesByModule_[visibleOrdinal].end() &&
-                                typeIsVisibleTo(projectOrdinal, iterator->second))
+                            const std::optional<std::size_t> candidateType =
+                                findTypeInModule(visibleOrdinal, candidate);
+                            if (candidateType.has_value() &&
+                                typeIsVisibleTo(projectOrdinal, *candidateType))
                             {
-                                const std::array<std::size_t, 1> single{iterator->second};
+                                const std::array<std::size_t, 1> single{*candidateType};
                                 appendUnique(found, single);
                             }
                             continue;
@@ -1971,6 +2107,11 @@ std::optional<std::size_t> ProjectNameLookup::findTypeInModule(
     if (nested != nestedSourceNamesByModule_[moduleOrdinal].end())
     {
         return nested->second;
+    }
+    if (moduleOrdinal < reexportedTypesByModule_.size())
+    {
+        const auto facade = reexportedTypesByModule_[moduleOrdinal].find(dottedName);
+        if (facade != reexportedTypesByModule_[moduleOrdinal].end()) return facade->second;
     }
     return std::nullopt;
 }

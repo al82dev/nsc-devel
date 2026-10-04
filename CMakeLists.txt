@@ -2092,6 +2092,20 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.t12.visibility COMMAND nsc_ns3_t12_visibility_tests)
 
     add_executable(
+        nsc_ns3_t12_reexport_tests
+        tests/unit/NativeSharp3T12ReexportTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t12_reexport_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_ns3_t12_reexport_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_ns3_t12_reexport_tests
+        PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    add_dependencies(nsc_ns3_t12_reexport_tests nsc)
+    nsc_enable_warnings(nsc_ns3_t12_reexport_tests)
+    add_test(NAME nsc.ns3.t12.reexports COMMAND nsc_ns3_t12_reexport_tests)
+
+    add_executable(
         nsc_ns3_t13_abi_tests
         tests/unit/NativeSharp3T13AbiTests.cpp)
     target_link_libraries(nsc_ns3_t13_abi_tests PRIVATE nsc_driver)

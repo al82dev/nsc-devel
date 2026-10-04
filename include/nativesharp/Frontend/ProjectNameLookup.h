@@ -254,6 +254,9 @@ private:
         const std::string& sourcePath,
         UnitDeclarationIndex& index) const;
     void finalizePredeclarations(diagnostics::DiagnosticEngine& diagnostics);
+    void finalizeReexports(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics);
     void bindUnit(
         const ProjectSyntaxUnit& unit,
         diagnostics::DiagnosticEngine& diagnostics,
@@ -340,6 +343,7 @@ private:
     // NSC-LIMIT-009. `ns.Outer.Item` -> ordinal. Solo tipos anidados; nunca sustituye a
     // typesByModule_, que sigue siendo la clave canonica con `+`.
     std::vector<std::unordered_map<std::string, std::size_t>> nestedSourceNamesByModule_;
+    std::vector<std::unordered_map<std::string, std::size_t>> reexportedTypesByModule_;
     // NSC-LIMIT-009. El nodo de sintaxis de cada parte -> su ordinal de tipo. Es lo que permite a
     // `bindNode` saber en que tipo esta entrando sin reconstruir la identidad a mano.
     std::unordered_map<const ast::AstNode*, std::size_t> typeOrdinalBySyntax_;

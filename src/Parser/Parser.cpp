@@ -2474,6 +2474,12 @@ ast::AstNode* Parser::parseNamespaceMember()
     {
         return parseImportDirective();
     }
+    if (languageEdition_ == language::LanguageEdition::V3 && at(TokenKind::KwExport) &&
+        peek().kind() == TokenKind::Identifier && peek().lexeme() == "import")
+    {
+        consume();
+        return parseImportDirective(true);
+    }
     if (at(TokenKind::KwUsing))
     {
         return parseUsingDirective();
@@ -2485,7 +2491,7 @@ ast::AstNode* Parser::parseNamespaceMember()
     return parseGlobalDeclaration();
 }
 
-ast::AstNode* Parser::parseImportDirective()
+ast::AstNode* Parser::parseImportDirective(bool reexport)
 {
     const std::size_t beginIndex = index_;
     consume(); // contextual `import`
@@ -2581,6 +2587,7 @@ ast::AstNode* Parser::parseImportDirective()
             ast::AstNodeKind::UsingNamespaceDirective, range);
         node->setText(std::move(target));
         node->setIntegerValue(static_cast<std::uint64_t>(kind));
+        node->setFlag(reexport);
         return node;
     }
 
@@ -2596,6 +2603,7 @@ ast::AstNode* Parser::parseImportDirective()
     node->setTypeSyntax(arena_.make<ast::TypeSyntax>(
         join(first.range(), last.range()), TokenKind::Identifier, std::move(target)));
     node->setIntegerValue(static_cast<std::uint64_t>(kind));
+    node->setFlag(reexport);
     return node;
 }
 
