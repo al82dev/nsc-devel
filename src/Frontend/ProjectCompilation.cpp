@@ -815,8 +815,11 @@ bool ProjectCompilation::compileProjectObjectLayouts(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "layout");
     objectLayoutModel_ = std::make_unique<ProjectObjectLayoutModel>();
-    return objectLayoutModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, *constructionModel_, diagnostics_);
+    if (!objectLayoutModel_->build(
+            *nameLookup_, *memberModel_, *inheritanceModel_, *constructionModel_, diagnostics_))
+        return false;
+    metaprogrammingModel_ = std::make_unique<ProjectMetaprogrammingModel>();
+    return metaprogrammingModel_->build(*nameLookup_, *memberModel_, *objectLayoutModel_);
 }
 
 bool ProjectCompilation::compileProjectOopHir(
@@ -898,7 +901,7 @@ bool ProjectCompilation::compileSyntaxCore(
     if (!units_.empty() || genericModel_ != nullptr || nameLookup_ != nullptr || memberModel_ != nullptr || inheritanceModel_ != nullptr || interfaceModel_ != nullptr ||
         methodBodyModel_ != nullptr || virtualDispatchModel_ != nullptr || destructionModel_ != nullptr ||
         constructionModel_ != nullptr ||
-        objectLayoutModel_ != nullptr ||
+        objectLayoutModel_ != nullptr || metaprogrammingModel_ != nullptr ||
         oopHirModel_ != nullptr || oopMirModel_ != nullptr)
     {
         loadError = "ProjectCompilation instances are single-use";
@@ -1301,6 +1304,11 @@ const ProjectConstructionModel* ProjectCompilation::constructionModel() const no
 const ProjectObjectLayoutModel* ProjectCompilation::objectLayoutModel() const noexcept
 {
     return objectLayoutModel_.get();
+}
+
+const ProjectMetaprogrammingModel* ProjectCompilation::metaprogrammingModel() const noexcept
+{
+    return metaprogrammingModel_.get();
 }
 
 const ProjectOopHirModel* ProjectCompilation::oopHirModel() const noexcept

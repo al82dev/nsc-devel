@@ -12,6 +12,7 @@
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
 #include "nativesharp/Frontend/ProjectVirtualDispatchModel.h"
 #include "nativesharp/Frontend/ProjectDestructionModel.h"
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
@@ -130,6 +131,7 @@ public:
     const ProjectDestructionModel* destructionModel() const noexcept;
     const ProjectConstructionModel* constructionModel() const noexcept;
     const ProjectObjectLayoutModel* objectLayoutModel() const noexcept;
+    const ProjectMetaprogrammingModel* metaprogrammingModel() const noexcept;
     const ProjectOopHirModel* oopHirModel() const noexcept;
     const ProjectOopMirModel* oopMirModel() const noexcept;
 
@@ -159,6 +161,7 @@ private:
     std::unique_ptr<ProjectDestructionModel> destructionModel_;
     std::unique_ptr<ProjectConstructionModel> constructionModel_;
     std::unique_ptr<ProjectObjectLayoutModel> objectLayoutModel_;
+    std::unique_ptr<ProjectMetaprogrammingModel> metaprogrammingModel_;
     std::unique_ptr<ProjectOopHirModel> oopHirModel_;
     std::unique_ptr<ProjectOopMirModel> oopMirModel_;
     std::function<bool()> cancellationCheck_;
