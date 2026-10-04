@@ -24,11 +24,16 @@ de un tipo que ya posee, pero un campo escrito explícita o posicionalmente debe
 contexto actual. La fuente debe tener identidad nominal exacta; dos structs con el mismo layout no
 son intercambiables.
 
-Los agregados con destructor o campos `owned` permanecen rechazados por ahora. Habilitar
-`..move(source)` correctamente exige estados campo por campo, drop flags para values, cleanup en
-todos los exits y drop glue genérico/importado. Esos contratos pertenecen a T06-F01, F02 y F08. El
-rechazo actual ocurre antes de HIR, por lo que no puede producir aliasing, doble destrucción ni
-leaks silenciosos. Al cerrar T06 se activará la mitad move-only y se marcará F06 como terminada.
+Un agregado move-only usa la forma explícita `..move(source)`. Sólo se admite en el initializer de
+un local y el source debe ser un local move-only nombrado o un parámetro por valor. Los campos no
+escritos se transfieren y se vacían en el source; los fields reemplazados permanecen vivos allí. El
+compilador rechaza leer una ruta transferida y también impide introducir un alias en un field
+`owned` explícito.
+
+El destino se zero-inicializa y registra cleanup antes de evaluar entradas que puedan lanzar. Si
+hay unwind, se destruyen los fields ya instalados y el source conserva la responsabilidad de sus
+siblings no movidos. Un tipo con destructor personalizado no admite move-spread porque su
+destructor podría observar el valor completo después de un movimiento parcial.
 
 ## English
 
@@ -53,8 +58,13 @@ already owns, but a field written explicitly or positionally must be accessible 
 context. The source requires exact nominal identity; layout-equivalent structs are not
 interchangeable.
 
-Aggregates with a destructor or `owned` fields remain rejected for now. Correct `..move(source)`
-support requires field states, value drop flags, cleanup on every exit, and generic/imported drop
-glue. Those contracts belong to T06-F01, F02, and F08. Rejection currently happens before HIR, so
-it cannot create aliasing, double destruction, or silent leaks. F06 will become complete when T06
-activates its move-only half.
+A move-only aggregate uses the explicit `..move(source)` form. It is accepted only in a local
+initializer, and the source must be a named move-only local or by-value parameter. Unwritten fields
+are transferred and cleared in the source; explicitly replaced fields remain live there. The
+compiler rejects later reads of transferred paths and prevents an explicit `owned` field from
+receiving an alias.
+
+The destination is zero-initialized and registers cleanup before any potentially throwing entry is
+evaluated. On unwind, installed fields are destroyed while the source retains responsibility for
+untouched siblings. A type with a custom destructor cannot use move-spread because that destructor
+could observe the complete value after a partial move.

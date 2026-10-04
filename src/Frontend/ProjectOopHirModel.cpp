@@ -8264,9 +8264,19 @@ bool ProjectOopHirModel::appendAggregateElements(
                 error = "T01-F05 aggregate spread has no source expression";
                 return false;
             }
-            auto source = lowerExpression(element->first(), memberOrdinal, false, error);
+            const ast::AstNode* sourceSyntax = element->first();
+            if (entry.moveSpread && sourceSyntax != nullptr &&
+                sourceSyntax->kind() == ast::AstNodeKind::MoveExpression)
+            {
+                sourceSyntax = sourceSyntax->first();
+            }
+            auto source = lowerExpression(
+                sourceSyntax, memberOrdinal, entry.moveSpread, error);
             if (source == nullptr) return false;
             auto spread = makeNode(ProjectOopHirNodeKind::AggregateSpread, element, targetTypeKey);
+            spread->booleanValue = entry.moveSpread;
+            spread->localOrdinal = entry.moveSourceLocalOrdinal;
+            spread->parameterOrdinal = entry.moveSourceParameterOrdinal;
             spread->children.push_back(std::move(source));
             for (const std::size_t targetOrdinal : entry.targetElementOrdinals)
             {

@@ -28,10 +28,10 @@ Los campos `readonly` pueden escribirse durante la construcción del valor. Desp
 el initializer conservan su inmutabilidad ordinaria. Los nombres desconocidos, duplicados, spreads
 múltiples y spreads de otro tipo exacto se rechazan antes de HIR.
 
-Los structs no pueden declarar destructor. Un struct con campos `owned` tampoco puede usar una
-forma generalizada o spread: hasta que T06 aporte drop flags por campo, el compilador lo rechaza en
-vez de filtrar un campo ya construido si falla una expresión posterior. Debe usarse un constructor,
-que es la ruta con cleanup definido.
+Los valores move-only con fields `owned` usan `..move(source)` en initializers de local. La
+transferencia es field por field, activa cleanup antes de cualquier entrada que pueda lanzar y deja
+vivos en el source los siblings reemplazados explícitamente. Un spread por copia sigue rechazado y
+los tipos con destructor personalizado deben usar constructor o movimiento completo.
 
 Un initializer de local escribe directamente en el slot final. HIR conserva `aggregate-spread` y
 MIR `aggregate-spread-store`; no se crea un temporal `aggregate.init` para luego copiarlo. Los
@@ -57,10 +57,10 @@ method.
 completion. Unknown or duplicate names, multiple spreads, and a spread whose exact type differs
 are rejected before HIR.
 
-Structs cannot declare destructors. A struct containing `owned` fields also cannot use a
-generalized form or spread. Until T06 provides per-field drop flags, the compiler rejects that
-operation instead of leaking an earlier field when a later expression fails. A cleanup-aware
-constructor is the supported alternative.
+Move-only values with `owned` fields use `..move(source)` in local initializers. Transfer is
+field-by-field, activates cleanup before any potentially throwing entry, and leaves explicitly
+replaced siblings live in the source. Copy-spread remains rejected, and types with a custom
+destructor must use a constructor or a whole-value move.
 
 A local initializer writes directly into its final slot. HIR retains `aggregate-spread` and MIR
 retains `aggregate-spread-store`; LLVM does not create and copy an `aggregate.init` temporary for

@@ -105,7 +105,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
         output << " elements=" << node->children.size() << " storage=stack";
     if (node->kind == ProjectOopHirNodeKind::AggregateSpread)
         output << " targets=" << (node->children.empty() ? 0U : node->children.size() - 1U)
-               << " source-evaluations=1";
+               << " source-evaluations=1 mode=" << (node->booleanValue ? "move" : "copy");
     if (node->kind == ProjectOopHirNodeKind::AggregateElement)
         output << " offset=" << node->integerValue;
     if (node->kind == ProjectOopHirNodeKind::StringLiteral) output << " bytes=" << node->stringValue.size();

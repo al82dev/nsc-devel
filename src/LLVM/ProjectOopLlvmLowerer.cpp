@@ -7035,8 +7035,32 @@ private:
                         // loading it, and storing the carrier a second time. The helper keeps the
                         // same textual evaluation order and zero-initialization contract used by
                         // aggregate expressions in non-place contexts.
+                        const bool cleanupDuringInitialization =
+                            node->cleanupRegionOrdinal.has_value() && memberModel_ != nullptr &&
+                            memberModel_->typeRequiresValueDrop(node->typeKey) &&
+                            !memberModel_->typeTransitivelyHasCustomDestructor(node->typeKey);
+                        if (cleanupDuringInitialization)
+                        {
+                            // T02-F06: the slot is zero-initialized before its first user
+                            // expression. Activate its existing cleanup while fields are filled so
+                            // an exception after one transferred owner destroys precisely the
+                            // fields already installed. Custom destructors remain excluded because
+                            // they are allowed to observe the complete value.
+                            const auto dropFlag = node->localOrdinal.has_value()
+                                ? localValueDropFlags_.find(*node->localOrdinal)
+                                : localValueDropFlags_.end();
+                            if (dropFlag != localValueDropFlags_.end())
+                            {
+                                LLVMBuildStore(
+                                    builder_,
+                                    LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
+                                    dropFlag->second);
+                            }
+                            activeCleanupRegions_.push_back(*node->cleanupRegionOrdinal);
+                        }
                         initialized = initializeAggregateIntoSlot(
                             node->children.front().get(), address, error);
+                        if (cleanupDuringInitialization) activeCleanupRegions_.pop_back();
                     }
                     else
                     {
@@ -14559,13 +14583,22 @@ private:
             {
                 if (child->children.empty())
                     return fail(error, "T01-F05 aggregate spread has no source value");
-                LLVMValueRef sourceValue = lowerExpression(child->children.front().get(), error);
-                if (sourceValue == nullptr) return false;
-                LLVMTypeRef sourceType = llvmType(child->typeKey, error);
-                if (sourceType == nullptr) return false;
-                LLVMValueRef sourceSlot = entryBlockAlloca(
-                    sourceType, structAlignmentFor(child->typeKey), "aggregate.spread.source");
-                LLVMBuildStore(builder_, sourceValue, sourceSlot);
+                LLVMValueRef sourceSlot = nullptr;
+                if (child->booleanValue)
+                {
+                    sourceSlot = lowerExpression(child->children.front().get(), error);
+                    if (sourceSlot == nullptr) return false;
+                }
+                else
+                {
+                    LLVMValueRef sourceValue = lowerExpression(child->children.front().get(), error);
+                    if (sourceValue == nullptr) return false;
+                    LLVMTypeRef sourceType = llvmType(child->typeKey, error);
+                    if (sourceType == nullptr) return false;
+                    sourceSlot = entryBlockAlloca(
+                        sourceType, structAlignmentFor(child->typeKey), "aggregate.spread.source");
+                    LLVMBuildStore(builder_, sourceValue, sourceSlot);
+                }
                 for (std::size_t index = 1; index < child->children.size(); ++index)
                 {
                     const frontend::ProjectOopMirNode* descriptor = child->children[index].get();
@@ -14586,6 +14619,21 @@ private:
                             LLVMInt64TypeInContext(context_), descriptor->bitStorageSize, 0),
                         LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
                     buildNoUnwindCall(memcpyFunctionType_, memcpyFunction_, copyArgs, 4, "");
+                    if (child->booleanValue)
+                    {
+                        // T02-F06 move-spread transfers this field's bits into the destination.
+                        // Empty the original slot immediately so the source aggregate's ordinary
+                        // drop glue skips the moved field while continuing to destroy untouched
+                        // siblings. Zero is the canonical empty state for every drop-bearing
+                        // carrier in the 3.0 value model.
+                        LLVMValueRef clearArgs[] = {
+                            source,
+                            LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+                            LLVMConstInt(
+                                LLVMInt64TypeInContext(context_), descriptor->bitStorageSize, 0),
+                            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+                        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, clearArgs, 4, "");
+                    }
                 }
                 continue;
             }

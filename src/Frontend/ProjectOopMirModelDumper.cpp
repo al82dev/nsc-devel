@@ -89,7 +89,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
         output << " offset=" << node->immediate << " bytes=" << node->bitStorageSize;
     if (node->kind == ProjectOopMirNodeKind::AggregateSpreadStore)
         output << " targets=" << (node->children.empty() ? 0U : node->children.size() - 1U)
-               << " source-evaluations=1";
+               << " source-evaluations=1 mode=" << (node->booleanValue ? "move" : "copy");
     if (node->kind == ProjectOopMirNodeKind::ParameterPack)
         output << " element=" << node->elementTypeKey
                << " elements=" << node->children.size()

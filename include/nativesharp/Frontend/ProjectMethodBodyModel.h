@@ -321,6 +321,12 @@ struct MethodAggregateInitializerEntryBinding final
 {
     const ast::AstNode* syntax = nullptr;
     bool spread = false;
+    // T02-F06: a nontrivial aggregate may fill its unwritten fields from
+    // `..move(source)`. The source stays alive in a partially moved state; these ordinals name
+    // the root whose transferred fields must be emptied and rejected on subsequent reads.
+    bool moveSpread = false;
+    std::optional<std::size_t> moveSourceLocalOrdinal;
+    std::optional<std::size_t> moveSourceParameterOrdinal;
     // A value entry has exactly one target. A spread owns every still-unwritten target and is
     // evaluated exactly once at its textual position.
     std::vector<std::size_t> targetElementOrdinals;
@@ -2213,7 +2219,8 @@ private:
         const std::string& targetTypeKey,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMoveSpread = false);
     std::optional<MethodDeconstructionBinding> bindDeconstructionSource(
         const ast::AstNode* syntax,
         const ast::AstNode* sourceSyntax,

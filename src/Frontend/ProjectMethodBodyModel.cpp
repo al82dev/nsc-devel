@@ -2161,7 +2161,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
     const std::string& targetTypeKey,
     std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    bool allowMoveSpread)
 {
     ExpressionResult result;
     const std::optional<std::vector<std::string>> elements = aggregateElementTypeKeys(targetTypeKey);
@@ -2222,21 +2223,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
     });
 
     bool valid = true;
-    if (binding.generalized && !elementTypeHasTrivialLifetime(targetTypeKey))
-    {
-        // T01-F05 must never silently leak a field that was initialized before a later element
-        // throws. NativeSharp's current value-type lifetime model cannot yet register per-field
-        // drop flags, so accept generalized initialization only where failure has nothing to
-        // destroy. Constructors remain the explicit, cleanup-aware path for owning aggregates.
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidOperand,
-            diagnostics::DiagnosticSeverity::Error,
-            syntax->range(),
-            "generalized initializer for '" + targetTypeKey +
-                "' requires a trivially destructible target; use a constructor when fields own "
-                "resources or the type declares a destructor");
-        valid = false;
-    }
+    const bool nontrivialTarget = !elementTypeHasTrivialLifetime(targetTypeKey);
+    bool hasMoveSpread = false;
     std::vector<bool> reservedByName(elements->size(), false);
     std::vector<std::optional<std::size_t>> namedTargets(syntax->children().size());
     for (std::size_t index = 0; index < syntax->children().size(); ++index)
@@ -2295,19 +2283,37 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
                     "an aggregate initializer may contain only one spread entry");
                 valid = false;
             }
-            if (!elementTypeHasTrivialLifetime(targetTypeKey))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    element->range(),
-                    "spread initialization of '" + targetTypeKey +
-                        "' requires a trivially copyable value; move-only fields require explicit construction");
-                valid = false;
-            }
             const ast::AstNode* source = element->first();
+            const ast::AstNode* sourceValue = source;
+            if (nontrivialTarget)
+            {
+                if (!allowMoveSpread || source == nullptr ||
+                    source->kind() != ast::AstNodeKind::MoveExpression ||
+                    source->first() == nullptr)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        element->range(),
+                        "move-only aggregate spread for '" + targetTypeKey +
+                            "' requires '..move(source)' in a local initializer");
+                    valid = false;
+                }
+                else
+                {
+                    sourceValue = source->first();
+                    entry.moveSpread = true;
+                    hasMoveSpread = true;
+                }
+            }
+
+            // A move-spread is a set of field projections, not a whole-value read. Reuse the
+            // partial-projection guard so a second spread may still move untouched siblings while
+            // the ordinary use of an already partial value remains rejected.
+            if (entry.moveSpread) ++partialProjectionReceiverDepth_;
             const ExpressionResult sourceResult = analyzeExpression(
-                source, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                sourceValue, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (entry.moveSpread) --partialProjectionReceiverDepth_;
             if (!sourceResult.valid || sourceResult.typeKey != targetTypeKey)
             {
                 if (sourceResult.valid)
@@ -2320,6 +2326,85 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
                             sourceResult.typeKey + "'");
                 }
                 valid = false;
+            }
+            if (entry.moveSpread)
+            {
+                const bool namedSource = sourceValue != nullptr &&
+                    sourceValue->kind() == ast::AstNodeKind::IdentifierExpression;
+                const std::optional<ScopeName> sourceName = namedSource
+                    ? lookupScopeName(scopeOrdinal, sourceValue->text())
+                    : std::optional<ScopeName>{};
+                bool movableRoot = false;
+                if (sourceName.has_value() && sourceName->kind == ScopeNameKind::Local &&
+                    sourceName->semanticOrdinal < locals_.size())
+                {
+                    const MethodLocalSymbol& local = locals_[sourceName->semanticOrdinal];
+                    movableRoot = local.isMoveOnly && !local.isPinned;
+                    if (local.isPinned)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            sourceValue->range(),
+                            "cannot move-spread pinned local '" + local.name + "'");
+                    }
+                    else if (movableRoot && hasActiveBorrowOfOwnerLocal(
+                                 sourceName->semanticOrdinal, scopeOrdinal, std::nullopt))
+                    {
+                        movableRoot = false;
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            sourceValue->range(),
+                            "cannot move-spread local '" + local.name +
+                                "' while a borrowed local is alive");
+                    }
+                    if (movableRoot) entry.moveSourceLocalOrdinal = sourceName->semanticOrdinal;
+                }
+                else if (sourceName.has_value())
+                {
+                    const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+                    if (method != nullptr && sourceName->semanticOrdinal < method->parameters.size())
+                    {
+                        const MethodParameterSymbol& parameter =
+                            method->parameters[sourceName->semanticOrdinal];
+                        movableRoot = parameter.passKind == ParameterPassKind::Value &&
+                            memberModel_ != nullptr && memberModel_->typeIsMoveOnly(parameter.typeKey);
+                        if (movableRoot && hasActiveBorrowOfOwnedParameter(
+                                             sourceName->semanticOrdinal, scopeOrdinal, std::nullopt))
+                        {
+                            movableRoot = false;
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                sourceValue->range(),
+                                "cannot move-spread parameter '" + parameter.name +
+                                    "' while a borrowed local is alive");
+                        }
+                        if (movableRoot)
+                            entry.moveSourceParameterOrdinal = sourceName->semanticOrdinal;
+                    }
+                }
+                if (!movableRoot)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error,
+                        sourceValue != nullptr ? sourceValue->range() : element->range(),
+                        "move-spread source must be a named move-only local or by-value parameter");
+                    valid = false;
+                }
+                if (memberModel_ != nullptr &&
+                    memberModel_->typeTransitivelyHasCustomDestructor(targetTypeKey))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        element->range(),
+                        "cannot move-spread value of type '" + targetTypeKey +
+                            "' because its custom destructor requires the complete value");
+                    valid = false;
+                }
             }
             if (!spreadEntry.has_value()) spreadEntry = binding.entries.size();
             binding.entries.push_back(std::move(entry));
@@ -2393,13 +2478,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
         if (element->kind() == ast::AstNodeKind::AggregateInitializerExpression)
         {
             const ExpressionResult nested = bindAggregateInitializer(
-                element, elementTypeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                element, elementTypeKey, methodMemberOrdinal, scopeOrdinal, diagnostics, false);
             valid = valid && nested.valid;
             binding.entries.push_back(std::move(entry));
             continue;
         }
+        const bool ownedTarget = *target < elementMemberOrdinals.size() &&
+            elementMemberOrdinals[*target].has_value() && memberModel_ != nullptr &&
+            *elementMemberOrdinals[*target] < memberModel_->members().size() &&
+            memberModel_->members()[*elementMemberOrdinals[*target]].declaredOwnership ==
+                sema::OwnershipKind::Owned;
         const ExpressionResult value = analyzeExpression(
-            element, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            element, methodMemberOrdinal, scopeOrdinal, diagnostics, false, false, ownedTarget);
         if (!value.valid)
         {
             valid = false;
@@ -2417,6 +2507,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
                     "' of type '" + elementTypeKey + "' from '" + value.typeKey + "'");
             valid = false;
         }
+        if (ownedTarget && value.valid)
+        {
+            const bool freshObject = element->kind() == ast::AstNodeKind::ObjectCreationExpression;
+            const bool nullValue = element->kind() == ast::AstNodeKind::NullLiteralExpression;
+            const bool transferred = value.ownership == sema::OwnershipKind::Owned &&
+                value.ownershipTransfer;
+            if (!freshObject && !nullValue && !transferred)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    element->range(),
+                    "initializer for owned aggregate field '" + (*names)[*target] +
+                        "' requires move(owner), new T(...), null, or an owned-returning call");
+                valid = false;
+            }
+        }
         binding.entries.push_back(std::move(entry));
     }
 
@@ -2426,8 +2533,91 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateIn
     if (spreadEntry.has_value() && *spreadEntry < binding.entries.size())
     {
         binding.entries[*spreadEntry].targetElementOrdinals = missing;
+        MethodAggregateInitializerEntryBinding& spread = binding.entries[*spreadEntry];
+        if (spread.moveSpread)
+        {
+            if (missing.empty())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    spread.syntax != nullptr ? spread.syntax->range() : syntax->range(),
+                    "move-spread must transfer at least one aggregate field");
+                valid = false;
+            }
+            const std::string root = spread.moveSourceLocalOrdinal.has_value()
+                ? "L" + std::to_string(*spread.moveSourceLocalOrdinal)
+                : spread.moveSourceParameterOrdinal.has_value()
+                    ? "P" + std::to_string(*spread.moveSourceParameterOrdinal)
+                    : std::string{};
+            if (!root.empty())
+            {
+                const bool namedFields = std::ranges::all_of(missing, [&](std::size_t index)
+                {
+                    return index < names->size() && !(*names)[index].empty();
+                });
+                if (!namedFields)
+                {
+                    if (placeOrAncestorIsPartiallyMoved(root) || placeHasMovedDescendant(root) ||
+                        placeOrAncestorIsMaybePartiallyMoved(root) ||
+                        placeHasMaybeMovedDescendant(root))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                            diagnostics::DiagnosticSeverity::Error,
+                            spread.syntax != nullptr ? spread.syntax->range() : syntax->range(),
+                            "cannot move-spread an aggregate source that is already partially moved");
+                        valid = false;
+                    }
+                    if (valid)
+                    {
+                        partiallyMovedPlaces_.insert(root);
+                        maybePartiallyMovedPlaces_.erase(root);
+                    }
+                }
+                else
+                {
+                    std::vector<std::string> movedFields;
+                    movedFields.reserve(missing.size());
+                    for (const std::size_t index : missing)
+                    {
+                        const std::string place = root + "/" + (*names)[index];
+                        movedFields.push_back(place);
+                        if (placeOrAncestorIsPartiallyMoved(place) || placeHasMovedDescendant(place) ||
+                            placeOrAncestorIsMaybePartiallyMoved(place) ||
+                            placeHasMaybeMovedDescendant(place))
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                                diagnostics::DiagnosticSeverity::Error,
+                                spread.syntax != nullptr ? spread.syntax->range() : syntax->range(),
+                                "cannot move-spread already moved field path '" + place + "'");
+                            valid = false;
+                        }
+                    }
+                    if (valid)
+                    {
+                        for (const std::string& place : movedFields)
+                        {
+                            partiallyMovedPlaces_.insert(place);
+                            maybePartiallyMovedPlaces_.erase(place);
+                        }
+                    }
+                }
+            }
+        }
         for (const std::size_t index : missing) assigned[index] = true;
         missing.clear();
+    }
+    if (binding.generalized && nontrivialTarget && !hasMoveSpread)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "generalized initializer for move-only aggregate '" + targetTypeKey +
+                "' requires exactly one '..move(source)' spread");
+        valid = false;
     }
     if (binding.generalized && !missing.empty())
     {
@@ -5739,7 +5929,7 @@ void ProjectMethodBodyModel::analyzeVariable(
             // C7: a braced initializer has no type of its own -- it is filled AGAINST the
             // declared type, exactly like a lambda is bound against a delegate type just below.
             initializer = bindAggregateInitializer(
-                variable->first(), typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                variable->first(), typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics, true);
         }
         else if (variable->first()->kind() == ast::AstNodeKind::LambdaExpression && isDelegateTypeKey(typeKey))
         {

@@ -81,11 +81,11 @@ int main()
     writeProject(root / "positive", "AggregateSpreads", R"NS(
 namespace AggregateSpreads
 {
-    public struct Pair { public int X; public int Y; }
-    public struct Inner { public int Left; public int Right; }
-    public struct Outer { public Inner InnerValue; public int Tail; }
+    public copy struct Pair { public int X; public int Y; }
+    public copy struct Inner { public int Left; public int Right; }
+    public copy struct Outer { public Inner InnerValue; public int Tail; }
 
-    public struct Secret
+    public copy struct Secret
     {
         private int Hidden;
         public int Visible;
@@ -191,10 +191,131 @@ namespace AggregateSpreads
             output.find("source-evaluations=1") != std::string::npos,
         "MIR carries exact source/destination spread descriptors (" + error + output + ")");
 
+    writeProject(root / "move_positive", "MoveAggregateSpread", R"NS(
+public class Resource
+{
+    public static int Drops = 0;
+    public int Value;
+    public Resource(int value) { Value = value; }
+    ~Resource() { Drops = Drops + 1; }
+}
+
+public struct Owner
+{
+    public owned Resource Left;
+    public owned Resource Right;
+}
+
+public class Program
+{
+    public static int Main()
+    {
+        {
+            Owner source = { new Resource(20), new Resource(20) };
+            Owner changed = { Left = new Resource(22), ..move(source) };
+            if (changed.Left.Value + changed.Right.Value != 42) { return 1; }
+            if (source.Left.Value != 20) { return 2; }
+        }
+        if (Resource.Drops != 3) { return 3; }
+        return 42;
+    }
+}
+)NS");
+    const std::string moveProject =
+        (root / "move_positive" / "MoveAggregateSpread.nsproj").string();
+    const std::string moveExecutable =
+        (root / "move_positive" / "MoveAggregateSpread.exe").string();
+    const std::array<std::string_view, 5> moveArguments = {
+        "--emit-project-oop-exe", moveProject, "-O0", "-o", moveExecutable};
+    output.clear();
+    error.clear();
+    const ExitCode moveEmitted = runDriver(moveArguments, output, error);
+    tests.expect(
+        moveEmitted == ExitCode::Success,
+        "a move-spread transfers only unwritten owning fields at O0 through NSLink (" +
+            error + output + ")");
+    if (moveEmitted == ExitCode::Success)
+    {
+        tests.expect(
+            std::system(("\"" + moveExecutable + "\"").c_str()) == 42,
+            "move-spread keeps untouched siblings live and drops all three owners exactly once");
+    }
+    const std::array<std::string_view, 3> moveHirArguments = {
+        "--dump-project-oop-hir", moveProject, "-O0"};
+    output.clear();
+    error.clear();
+    tests.expect(
+        runDriver(moveHirArguments, output, error) == ExitCode::Success &&
+            output.find("aggregate-spread") != std::string::npos &&
+            output.find("source-evaluations=1 mode=move") != std::string::npos,
+        "HIR distinguishes a one-evaluation move-spread from a copy-spread (" +
+            error + output + ")");
+    const std::array<std::string_view, 3> moveMirArguments = {
+        "--dump-project-oop-mir", moveProject, "-O0"};
+    output.clear();
+    error.clear();
+    tests.expect(
+        runDriver(moveMirArguments, output, error) == ExitCode::Success &&
+            output.find("aggregate-spread-store") != std::string::npos &&
+            output.find("source-evaluations=1 mode=move") != std::string::npos,
+        "MIR preserves the move-spread transfer contract (" + error + output + ")");
+
+    writeProject(root / "move_unwind", "MoveAggregateSpreadUnwind", R"NS(
+namespace NativeSharp.Core { public class Exception { } }
+using NativeSharp.Core;
+public class Problem : Exception { }
+public class Resource
+{
+    public static int Drops = 0;
+    public Resource(int value) { }
+    ~Resource() { Drops = Drops + 1; }
+}
+public struct Owner
+{
+    public owned Resource Left;
+    public owned Resource Right;
+}
+public class Program
+{
+    private static owned Resource Fail() throws Problem { throw new Problem(); }
+    public static int Main()
+    {
+        try
+        {
+            Owner source = { new Resource(20), new Resource(22) };
+            Owner changed = { ..move(source), Left = Fail() };
+            return 1;
+        }
+        catch (Problem problem) { }
+        if (Resource.Drops != 2) { return 2; }
+        return 42;
+    }
+}
+)NS");
+    const std::string unwindProject =
+        (root / "move_unwind" / "MoveAggregateSpreadUnwind.nsproj").string();
+    const std::string unwindExecutable =
+        (root / "move_unwind" / "MoveAggregateSpreadUnwind.exe").string();
+    const std::array<std::string_view, 5> unwindArguments = {
+        "--emit-project-oop-exe", unwindProject, "-O0", "-o", unwindExecutable};
+    output.clear();
+    error.clear();
+    const ExitCode unwindEmitted = runDriver(unwindArguments, output, error);
+    tests.expect(
+        unwindEmitted == ExitCode::Success,
+        "move-spread initializer emits cleanup-aware unwind at O0 through NSLink (" +
+            error + output + ")");
+    if (unwindEmitted == ExitCode::Success)
+    {
+        tests.expect(
+            std::system(("\"" + unwindExecutable + "\"").c_str()) == 42,
+            "unwind drops the transferred destination field and untouched source field once");
+    }
+
     std::string diagnostic;
     tests.expect(
         rejected(root / "two_sources", R"NS(
-struct Pair { public int X; public int Y; }
+copy struct Pair { public int X; public int Y; }
 class Program
 {
     public static int Main()
@@ -211,7 +332,7 @@ class Program
     diagnostic.clear();
     tests.expect(
         rejected(root / "duplicate", R"NS(
-struct Pair { public int X; public int Y; }
+copy struct Pair { public int X; public int Y; }
 class Program
 {
     public static int Main()
@@ -227,7 +348,7 @@ class Program
     diagnostic.clear();
     tests.expect(
         rejected(root / "private", R"NS(
-struct Secret { private int Hidden; public int Visible; }
+copy struct Secret { private int Hidden; public int Visible; }
 class Program
 {
     public static int Main()
@@ -242,7 +363,7 @@ class Program
     diagnostic.clear();
     tests.expect(
         rejected(root / "private_positional", R"NS(
-struct Secret { private int Hidden; public int Visible; }
+copy struct Secret { private int Hidden; public int Visible; }
 class Program { public static int Main() { Secret invalid = { 20, 22 }; return 0; } }
 )NS", "aggregate member 'Hidden' is not accessible", diagnostic),
         "positional aggregate entries cannot bypass private visibility (" + diagnostic + ")");
@@ -250,8 +371,8 @@ class Program { public static int Main() { Secret invalid = { 20, 22 }; return 0
     diagnostic.clear();
     tests.expect(
         rejected(root / "wrong_type", R"NS(
-struct Left { public int X; public int Y; }
-struct Right { public int X; public int Y; }
+copy struct Left { public int X; public int Y; }
+copy struct Right { public int X; public int Y; }
 class Program
 {
     public static int Main()
@@ -278,8 +399,66 @@ class Program
         return 0;
     }
 }
-)NS", "requires a trivially destructible target", diagnostic),
-        "owner-bearing partial spreads fail closed until T06 provides value drop flags (" +
+)NS", "requires '..move(source)'", diagnostic),
+        "move-only spread rejects an implicit ownership copy (" +
+            diagnostic + ")");
+
+    diagnostic.clear();
+    tests.expect(
+        rejected(root / "use_after_partial_move", R"NS(
+class Resource { public int Value; public Resource(int value) { Value = value; } }
+struct Owner { public owned Resource Left; public owned Resource Right; }
+class Program
+{
+    public static int Main()
+    {
+        Owner source = { new Resource(20), new Resource(22) };
+        Owner changed = { Left = null, ..move(source) };
+        return source.Right.Value;
+    }
+}
+)NS", "moved or possibly moved field path", diagnostic),
+        "a field transferred by move-spread cannot be read from the partial source (" +
+            diagnostic + ")");
+
+    diagnostic.clear();
+    tests.expect(
+        rejected(root / "owned_alias", R"NS(
+class Resource { }
+struct Owner { public owned Resource Left; public owned Resource Right; }
+class Program
+{
+    public static int Main()
+    {
+        Owner source = { new Resource(), new Resource() };
+        Owner invalid = { Left = source.Left, ..move(source) };
+        return 0;
+    }
+}
+)NS", "initializer for owned aggregate field 'Left' requires", diagnostic),
+        "an explicit replacement cannot alias an owned field while the spread moves its sibling (" +
+            diagnostic + ")");
+
+    diagnostic.clear();
+    tests.expect(
+        rejected(root / "custom_destructor", R"NS(
+class Resource { }
+struct Guard
+{
+    public owned Resource Value;
+    ~Guard() { }
+}
+class Program
+{
+    public static int Main()
+    {
+        Guard source = { new Resource() };
+        Guard invalid = { ..move(source) };
+        return 0;
+    }
+}
+)NS", "custom destructor requires the complete value", diagnostic),
+        "move-spread rejects a source whose custom destructor may observe moved fields (" +
             diagnostic + ")");
 
     std::filesystem::remove_all(root, cleanupError);
