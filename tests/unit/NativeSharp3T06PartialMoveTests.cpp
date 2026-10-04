@@ -182,7 +182,7 @@ public class Program
         Guard local = new Guard(22);
         return local.Value;
     }
-    private static void Throwing()
+    private static void Throwing() throws Problem
     {
         Guard local = new Guard(7);
         throw new Problem();

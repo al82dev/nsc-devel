@@ -197,7 +197,7 @@ class Program
     {
         Value<N> result;
         result.Number = N;
-        return result;
+        return move(result);
     }
     public static int Main()
     {

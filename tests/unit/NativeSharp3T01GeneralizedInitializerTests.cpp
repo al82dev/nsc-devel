@@ -191,9 +191,9 @@ class Program { public static int Main() { Pair value = { X = 42 }; return value
         rejected(root / "destructor", R"NS(
 struct Guard { public int Value; ~Guard() { } }
 class Program { public static int Main() { Guard value = { Value = 42 }; return value.Value; } }
-)NS", "requires a trivially destructible target", diagnostic),
-        "a destructor-bearing value cannot bypass its constructor/drop contract through an "
-        "aggregate initializer (" +
+)NS", "requires exactly one '..move(source)' spread", diagnostic),
+        "a destructor-bearing move-only value cannot use a generalized initializer without an "
+        "explicit move spread (" +
             diagnostic + ")");
 
     diagnostic.clear();
@@ -210,8 +210,9 @@ class Program
         return 0;
     }
 }
-)NS", "requires a trivially destructible target", diagnostic),
-        "noncopyable owner-bearing spreads fail before lowering (" + diagnostic + ")");
+)NS", "requires '..move(source)'", diagnostic),
+        "noncopyable owner-bearing spreads require explicit ownership transfer before lowering (" +
+            diagnostic + ")");
 
     diagnostic.clear();
     tests.expect(

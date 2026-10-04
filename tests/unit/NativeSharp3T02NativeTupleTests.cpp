@@ -84,7 +84,7 @@ std::string positiveSource()
 {
     std::ostringstream source;
     source << "namespace NativeTupleTests\n{\n";
-    source << "    public struct Box<T> { public T Value; }\n";
+    source << "    public copy struct Box<T> where T : copy { public T Value; }\n";
     source << "    public class Program\n    {\n";
     for (std::size_t arity = 0; arity <= 16; ++arity)
     {

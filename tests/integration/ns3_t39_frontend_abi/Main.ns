@@ -2,7 +2,7 @@ namespace T39FrontendAbi
 {
     public const int Population = 39;
 
-    public struct Pair
+    public copy struct Pair
     {
         public int Left;
         public int Right;

@@ -1,6 +1,6 @@
 namespace T40Flow
 {
-    public struct Pair
+    public copy struct Pair
     {
         public int Left;
         public int Right;

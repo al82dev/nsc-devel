@@ -91,7 +91,7 @@ int main()
     writeProject(positive, "TypedPacks", R"NS(
 namespace TypedPacks
 {
-    public borrowed struct ReadOnlySpan<T>
+    public copy borrowed struct ReadOnlySpan<T>
     {
         public T* start;
         public int count;

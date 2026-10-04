@@ -228,7 +228,7 @@ class Program
     private static int Use<T>(Second callback, T value) { return callback(value); }
     public static int Main() { return Use(value => value, 42); }
 }
-)NS", "requires a target delegate type", diagnostic),
+)NS", "requires an explicit type for every parameter", diagnostic),
         "an untyped lambda with two exact delegate targets remains ambiguous (" + diagnostic + ")");
 
     std::filesystem::remove_all(root, cleanupError);
