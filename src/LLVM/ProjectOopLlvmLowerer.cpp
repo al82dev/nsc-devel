@@ -19,6 +19,7 @@
 #include "nativesharp/LLVM/LlvmTrapReason.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/CallableSemantics.h"
+#include "nativesharp/Language/MemoryModel.h"
 #include "nativesharp/Source/SourceManager.h"
 
 #include <algorithm>
@@ -119,11 +120,17 @@ constexpr const char* kAtomicStoreInt64FunctionName = "__nativesharp_atomic_stor
 std::optional<LLVMAtomicOrdering> orderedAtomicLoadOrdering(std::uint64_t encoded)
 {
     if (encoded == 0U) return std::nullopt;
-    switch (encoded - 1U)
+    const std::optional<language::MemoryOrder> order =
+        language::decodeMemoryOrder(encoded - 1U);
+    if (!order.has_value() ||
+        !language::validMemoryOrder(language::AtomicOperation::Load, *order))
+        return std::nullopt;
+    switch (*order)
     {
-        case 0U: return LLVMAtomicOrderingMonotonic;
-        case 1U: return LLVMAtomicOrderingAcquire;
-        case 4U: return LLVMAtomicOrderingSequentiallyConsistent;
+        case language::MemoryOrder::Relaxed: return LLVMAtomicOrderingMonotonic;
+        case language::MemoryOrder::Acquire: return LLVMAtomicOrderingAcquire;
+        case language::MemoryOrder::SequentiallyConsistent:
+            return LLVMAtomicOrderingSequentiallyConsistent;
         default: return std::nullopt;
     }
 }
@@ -131,11 +138,17 @@ std::optional<LLVMAtomicOrdering> orderedAtomicLoadOrdering(std::uint64_t encode
 std::optional<LLVMAtomicOrdering> orderedAtomicStoreOrdering(std::uint64_t encoded)
 {
     if (encoded == 0U) return std::nullopt;
-    switch (encoded - 1U)
+    const std::optional<language::MemoryOrder> order =
+        language::decodeMemoryOrder(encoded - 1U);
+    if (!order.has_value() ||
+        !language::validMemoryOrder(language::AtomicOperation::Store, *order))
+        return std::nullopt;
+    switch (*order)
     {
-        case 0U: return LLVMAtomicOrderingMonotonic;
-        case 2U: return LLVMAtomicOrderingRelease;
-        case 4U: return LLVMAtomicOrderingSequentiallyConsistent;
+        case language::MemoryOrder::Relaxed: return LLVMAtomicOrderingMonotonic;
+        case language::MemoryOrder::Release: return LLVMAtomicOrderingRelease;
+        case language::MemoryOrder::SequentiallyConsistent:
+            return LLVMAtomicOrderingSequentiallyConsistent;
         default: return std::nullopt;
     }
 }
@@ -143,13 +156,19 @@ std::optional<LLVMAtomicOrdering> orderedAtomicStoreOrdering(std::uint64_t encod
 std::optional<LLVMAtomicOrdering> orderedAtomicRmwOrdering(std::uint64_t encoded)
 {
     if (encoded == 0U) return std::nullopt;
-    switch (encoded - 1U)
+    const std::optional<language::MemoryOrder> order =
+        language::decodeMemoryOrder(encoded - 1U);
+    if (!order.has_value() ||
+        !language::validMemoryOrder(language::AtomicOperation::ReadModifyWrite, *order))
+        return std::nullopt;
+    switch (*order)
     {
-        case 0U: return LLVMAtomicOrderingMonotonic;
-        case 1U: return LLVMAtomicOrderingAcquire;
-        case 2U: return LLVMAtomicOrderingRelease;
-        case 3U: return LLVMAtomicOrderingAcquireRelease;
-        case 4U: return LLVMAtomicOrderingSequentiallyConsistent;
+        case language::MemoryOrder::Relaxed: return LLVMAtomicOrderingMonotonic;
+        case language::MemoryOrder::Acquire: return LLVMAtomicOrderingAcquire;
+        case language::MemoryOrder::Release: return LLVMAtomicOrderingRelease;
+        case language::MemoryOrder::AcquireRelease: return LLVMAtomicOrderingAcquireRelease;
+        case language::MemoryOrder::SequentiallyConsistent:
+            return LLVMAtomicOrderingSequentiallyConsistent;
         default: return std::nullopt;
     }
 }

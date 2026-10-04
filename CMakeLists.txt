@@ -178,6 +178,7 @@ add_library(nsc_compilation STATIC
     src/Language/GenericSemantics.cpp
     src/Language/IterationSemantics.cpp
     src/Language/IntegrationQuality.cpp
+    src/Language/MemoryModel.cpp
     src/Language/Language3Surface.cpp
     src/Language/OwnershipSemantics.cpp
     src/Language/ReleaseSemantics.cpp
@@ -1815,6 +1816,20 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_ns3_t10_coroutine_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_ns3_t10_coroutine_tests)
     add_test(NAME nsc.ns3.t10.coroutines COMMAND nsc_ns3_t10_coroutine_tests)
+
+    add_executable(
+        nsc_ns3_t10_memory_model_tests
+        tests/unit/NativeSharp3T10MemoryModelTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t10_memory_model_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_ns3_t10_memory_model_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_ns3_t10_memory_model_tests
+        PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    add_dependencies(nsc_ns3_t10_memory_model_tests nsc)
+    nsc_enable_warnings(nsc_ns3_t10_memory_model_tests)
+    add_test(NAME nsc.ns3.t10.memory-model COMMAND nsc_ns3_t10_memory_model_tests)
 
     add_executable(
         nsc_ns3_e032_e035_capability_tests

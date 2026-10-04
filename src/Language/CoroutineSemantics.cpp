@@ -75,23 +75,6 @@ bool taskBorrowMayEscapeScope(bool childJoined, bool borrowOutlivesScope) noexce
     return childJoined && borrowOutlivesScope;
 }
 
-bool validMemoryOrder(AtomicOperation operation, MemoryOrder order) noexcept
-{
-    switch (operation)
-    {
-        case AtomicOperation::Load:
-            return order != MemoryOrder::Release && order != MemoryOrder::AcquireRelease;
-        case AtomicOperation::Store:
-            return order != MemoryOrder::Acquire && order != MemoryOrder::AcquireRelease;
-        case AtomicOperation::ReadModifyWrite:
-        case AtomicOperation::Fence:
-            return true;
-    }
-    return false;
-}
-
-bool volatileProvidesSynchronization() noexcept { return false; }
-
 std::string concurrencyContractManifest()
 {
     std::string result = "NSCONCURRENCY " + std::to_string(kConcurrencyContractMajor) + "." +

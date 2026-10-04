@@ -15,6 +15,7 @@
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
+#include "nativesharp/Language/MemoryModel.h"
 #include "nativesharp/Language/SumTypeSemantics.h"
 #include "nativesharp/Language/TraitSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
@@ -16984,15 +16985,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     {
                         const std::uint64_t success = foldedSuccess->bits;
                         const std::uint64_t failure = foldedFailure->bits;
-                        const bool successLegal = success <= 4U;
-                        const bool failureLegal = failure == 0U || failure == 1U || failure == 4U;
-                        const bool failureNotStronger =
-                            (success == 0U && failure == 0U) ||
-                            (success == 1U && (failure == 0U || failure == 1U)) ||
-                            (success == 2U && failure == 0U) ||
-                            (success == 3U && (failure == 0U || failure == 1U)) ||
-                            (success == 4U && failureLegal);
-                        if (!successLegal)
+                        const std::optional<language::MemoryOrder> successOrder =
+                            language::decodeMemoryOrder(success);
+                        const std::optional<language::MemoryOrder> failureOrder =
+                            language::decodeMemoryOrder(failure);
+                        if (!successOrder.has_value())
                         {
                             diagnostics.report(
                                 diagnostics::DiagnosticId::InvalidOperand,
@@ -17001,7 +16998,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                                 "atomic compare-exchange success order is outside MemoryOrder");
                             atomicKind.reset();
                         }
-                        else if (!failureLegal)
+                        else if (!failureOrder.has_value() ||
+                            !language::validMemoryOrder(
+                                language::AtomicOperation::Load, *failureOrder))
                         {
                             diagnostics.report(
                                 diagnostics::DiagnosticId::InvalidOperand,
@@ -17010,7 +17009,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                                 "atomic compare-exchange failure order must be Relaxed, Acquire, or SequentiallyConsistent");
                             atomicKind.reset();
                         }
-                        else if (!failureNotStronger)
+                        else if (!language::validCompareExchangeOrders(
+                            *successOrder, *failureOrder))
                         {
                             diagnostics.report(
                                 diagnostics::DiagnosticId::InvalidOperand,
@@ -17045,11 +17045,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     else
                     {
                         const std::uint64_t order = foldedOrder->bits;
-                        const bool legal = orderedLoad
-                            ? (order == 0U || order == 1U || order == 4U)
-                            : orderedStore
-                                ? (order == 0U || order == 2U || order == 4U)
-                                : order <= 4U;
+                        const std::optional<language::MemoryOrder> decodedOrder =
+                            language::decodeMemoryOrder(order);
+                        const language::AtomicOperation operation = orderedLoad
+                            ? language::AtomicOperation::Load
+                            : orderedStore ? language::AtomicOperation::Store
+                                           : language::AtomicOperation::ReadModifyWrite;
+                        const bool legal = decodedOrder.has_value() &&
+                            language::validMemoryOrder(operation, *decodedOrder);
                         if (!legal)
                         {
                             diagnostics.report(
@@ -17138,7 +17141,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                             orderSyntax != nullptr ? orderSyntax->range() : expression->range(),
                             "atomic fence order must be a compile-time MemoryOrder constant");
                     }
-                    else if (foldedOrder->bits < 1U || foldedOrder->bits > 4U)
+                    else if (const std::optional<language::MemoryOrder> order =
+                                 language::decodeMemoryOrder(foldedOrder->bits);
+                        !order.has_value() ||
+                        !language::validMemoryOrder(language::AtomicOperation::Fence, *order))
                     {
                         diagnostics.report(
                             diagnostics::DiagnosticId::InvalidOperand,

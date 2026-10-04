@@ -7,6 +7,8 @@
 #include <string_view>
 #include <vector>
 
+#include "nativesharp/Language/MemoryModel.h"
+
 namespace nativesharp::language
 {
 inline constexpr std::uint16_t kConcurrencyContractMajor = 1;
@@ -51,11 +53,6 @@ bool structurallySend(const ThreadSafetyFacts& facts) noexcept;
 bool structurallySync(const ThreadSafetyFacts& facts) noexcept;
 
 bool taskBorrowMayEscapeScope(bool childJoined, bool borrowOutlivesScope) noexcept;
-
-enum class AtomicOperation { Load, Store, ReadModifyWrite, Fence };
-enum class MemoryOrder { Relaxed, Acquire, Release, AcquireRelease, SequentiallyConsistent };
-bool validMemoryOrder(AtomicOperation operation, MemoryOrder order) noexcept;
-bool volatileProvidesSynchronization() noexcept;
 
 std::string concurrencyContractManifest();
 std::string concurrencyContractFingerprintHex();
