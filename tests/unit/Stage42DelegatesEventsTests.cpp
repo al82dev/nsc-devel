@@ -271,11 +271,6 @@ delegate void D(int x);
 class H { public event D E; public void F() { E += null; } }
 )NS", "requires a non-null delegate value");
 
-    expectReject("VirtualTargetDeferred", R"NS(
-delegate int D(int x);
-class B { public virtual int F(int x) { return x; } public D G() { return F; } }
-)NS", "non-virtual concrete target");
-
     expectReject("StructTargetDeferred", R"NS(
 delegate int D(int x);
 struct S { public int F(int x) { return x; } }

@@ -1708,6 +1708,20 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.t08.generic-lambdas COMMAND nsc_ns3_t08_generic_lambda_tests)
 
     add_executable(
+        nsc_ns3_t08_method_value_tests
+        tests/unit/NativeSharp3T08MethodValueTests.cpp)
+    target_link_libraries(
+        nsc_ns3_t08_method_value_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_ns3_t08_method_value_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_ns3_t08_method_value_tests
+        PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    add_dependencies(nsc_ns3_t08_method_value_tests nsc)
+    nsc_enable_warnings(nsc_ns3_t08_method_value_tests)
+    add_test(NAME nsc.ns3.t08.method-values COMMAND nsc_ns3_t08_method_value_tests)
+
+    add_executable(
         nsc_ns3_t08_closure_capture_tests
         tests/unit/NativeSharp3T08ClosureCaptureTests.cpp)
     target_link_libraries(

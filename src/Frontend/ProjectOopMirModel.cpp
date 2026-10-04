@@ -2700,14 +2700,55 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                 error = "Stage 42 delegate creation has no target callable";
                 return nullptr;
             }
-            const ProjectOopHirFunction* target = hirModel_->functionForMember(*node->memberOrdinal);
-            if (target == nullptr)
+            result->kind = ProjectOopMirNodeKind::DelegateCreate;
+            if (node->interfaceDispatch)
             {
-                error = "Stage 42 delegate cannot bind an abstract or body-less target";
+                if (!node->targetTypeOrdinal.has_value() || interfaceModel_ == nullptr)
+                {
+                    error = "T08-F05 interface method value is missing its static interface type";
+                    return nullptr;
+                }
+                const InterfaceTypeInfo* info = interfaceModel_->interfaceInfo(*node->targetTypeOrdinal);
+                if (info == nullptr)
+                {
+                    error = "T08-F05 method-value receiver is not an interface";
+                    return nullptr;
+                }
+                const auto found = std::find(
+                    info->effectiveMethodMemberOrdinals.begin(),
+                    info->effectiveMethodMemberOrdinals.end(),
+                    *node->memberOrdinal);
+                if (found == info->effectiveMethodMemberOrdinals.end())
+                {
+                    error = "T08-F05 cannot find the selected interface method-value slot";
+                    return nullptr;
+                }
+                result->targetTypeOrdinal = node->targetTypeOrdinal;
+                result->interfaceSlot = static_cast<std::size_t>(
+                    found - info->effectiveMethodMemberOrdinals.begin());
+                result->immediate = stableTypeId(
+                    interfaceModel_->typeKeyForOrdinal(*node->targetTypeOrdinal));
+                break;
+            }
+            const std::optional<std::size_t> slot = node->booleanValue && virtualDispatchModel_ != nullptr
+                ? virtualDispatchModel_->slotForMember(*node->memberOrdinal)
+                : std::nullopt;
+            if (node->booleanValue && !slot.has_value())
+            {
+                error = "T08-F05 virtual method value has no vtable slot";
                 return nullptr;
             }
-            result->kind = ProjectOopMirNodeKind::DelegateCreate;
-            result->calleeName = target->mangledName;
+            result->virtualSlot = slot;
+            if (!slot.has_value())
+            {
+                const ProjectOopHirFunction* target = hirModel_->functionForMember(*node->memberOrdinal);
+                if (target == nullptr)
+                {
+                    error = "Stage 42 delegate cannot bind an abstract or body-less direct target";
+                    return nullptr;
+                }
+                result->calleeName = target->mangledName;
+            }
             break;
         }
         case ProjectOopHirNodeKind::DelegateInvoke:

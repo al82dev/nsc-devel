@@ -11565,11 +11565,13 @@ private:
 
     LLVMValueRef lowerDelegateCreate(const frontend::ProjectOopMirNode* node, std::string& error)
     {
-        const auto found = functions_.find(node->calleeName);
-        if (found == functions_.end() || found->second.function == nullptr)
-            return failValue(error, "Stage 42 delegate target function is unavailable: " + node->calleeName);
         if (node->children.size() > 1)
             return failValue(error, "Stage 42 delegate-create accepts at most one receiver");
+
+        const bool dynamicTarget = node->virtualSlot.has_value() || node->interfaceSlot.has_value();
+        const auto found = functions_.find(node->calleeName);
+        if (!dynamicTarget && (found == functions_.end() || found->second.function == nullptr))
+            return failValue(error, "Stage 42 delegate target function is unavailable: " + node->calleeName);
 
         // Interop Foundation (callbacks C -> NativeSharp): an extern C delegate is a raw C
         // function pointer END TO END, so binding a static method to one yields the function's
@@ -11607,9 +11609,27 @@ private:
             if (receiver == nullptr) return nullptr;
         }
 
-        return allocateDelegateCell(
-            found->second.function, receiver,
-            LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "delegate", error);
+        LLVMValueRef code = dynamicTarget
+            ? (node->interfaceSlot.has_value()
+                ? loadInterfaceTarget(node, receiver, error)
+                : loadVirtualTarget(node, receiver, error))
+            : found->second.function;
+        if (code == nullptr) return nullptr;
+
+        LLVMValueRef contextDestroy = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
+        if (node->ownership == sema::OwnershipKind::Owned)
+        {
+            if (descriptorType_ == nullptr)
+                return failValue(error, "T08-F05 owning method value has no class descriptor ABI");
+            LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+            LLVMValueRef descriptor = LLVMBuildLoad2(
+                builder_, ptr, receiver, "delegate.receiver.descriptor");
+            LLVMValueRef entryAddress = LLVMBuildStructGEP2(
+                builder_, descriptorType_, descriptor, 5, "delegate.receiver.destroy.addr");
+            contextDestroy = LLVMBuildLoad2(
+                builder_, ptr, entryAddress, "delegate.receiver.destroy");
+        }
+        return allocateDelegateCell(code, receiver, contextDestroy, "delegate", error);
     }
 
     LLVMValueRef emitDelegateCall(
@@ -14543,6 +14563,28 @@ private:
         return call;
     }
 
+    LLVMValueRef loadVirtualTarget(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef receiver,
+        std::string& error)
+    {
+        if (!node->virtualSlot.has_value())
+            return failValue(error, "T08-F05 virtual target is missing its vtable slot");
+        if (descriptorType_ == nullptr)
+            return failValue(error, "T08-F05 virtual target has no class-descriptor LLVM type");
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, receiver, "class.descriptor");
+        LLVMValueRef vtableAddress = LLVMBuildStructGEP2(
+            builder_, descriptorType_, descriptor, 1, "vtable.addr");
+        LLVMValueRef vtable = LLVMBuildLoad2(builder_, ptr, vtableAddress, "vtable");
+        LLVMValueRef slotIndex = LLVMConstInt(
+            LLVMInt64TypeInContext(context_), *node->virtualSlot, 0);
+        LLVMValueRef indices[] = {slotIndex};
+        LLVMValueRef slotAddress = LLVMBuildGEP2(
+            builder_, ptr, vtable, indices, 1, "vslot.addr");
+        return LLVMBuildLoad2(builder_, ptr, slotAddress, "vtarget");
+    }
+
     LLVMValueRef lowerVirtualCall(
         const frontend::ProjectOopMirNode* node,
         std::string& error,
@@ -14575,16 +14617,8 @@ private:
         }
 
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
-        LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, receiver, "class.descriptor");
-        LLVMValueRef vtableAddress = LLVMBuildStructGEP2(
-            builder_, descriptorType_, descriptor, 1, "vtable.addr");
-        LLVMValueRef vtable = LLVMBuildLoad2(builder_, ptr, vtableAddress, "vtable");
-        LLVMValueRef slotIndex = LLVMConstInt(
-            LLVMInt64TypeInContext(context_), *node->virtualSlot, 0);
-        LLVMValueRef indices[] = {slotIndex};
-        LLVMValueRef slotAddress = LLVMBuildGEP2(
-            builder_, ptr, vtable, indices, 1, "vslot.addr");
-        LLVMValueRef target = LLVMBuildLoad2(builder_, ptr, slotAddress, "vtarget");
+        LLVMValueRef target = loadVirtualTarget(node, receiver, error);
+        if (target == nullptr) return nullptr;
 
         std::vector<LLVMValueRef> arguments;
         std::vector<LLVMTypeRef> parameterTypes;
@@ -14659,36 +14693,15 @@ private:
         return call;
     }
 
-    LLVMValueRef lowerInterfaceCall(
+    LLVMValueRef loadInterfaceTarget(
         const frontend::ProjectOopMirNode* node,
-        std::string& error,
-        LLVMValueRef receiverOverride = nullptr)
+        LLVMValueRef receiver,
+        std::string& error)
     {
         if (!node->interfaceSlot.has_value() || !node->targetTypeOrdinal.has_value())
-        {
-            return failValue(error, "Stage 36 interface call is missing interface identity or method slot");
-        }
-        if (node->children.empty())
-        {
-            return failValue(error, "Stage 36 interface call is missing its receiver operand");
-        }
+            return failValue(error, "T08-F05 interface target is missing identity or method slot");
         if (descriptorType_ == nullptr || interfaceMapType_ == nullptr || interfaceMapEntryType_ == nullptr)
-        {
-            return failValue(error, "Stage 36 interface call has no interface-map LLVM ABI types");
-        }
-
-        LLVMValueRef receiver = receiverOverride != nullptr
-            ? receiverOverride
-            : lowerExpression(node->children.front().get(), error);
-        if (receiver == nullptr)
-        {
-            return nullptr;
-        }
-        receiver = checkedReceiver(receiver, error);
-        if (receiver == nullptr)
-        {
-            return nullptr;
-        }
+            return failValue(error, "T08-F05 interface target has no interface-map LLVM ABI types");
 
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
@@ -14703,7 +14716,6 @@ private:
         LLVMBasicBlockRef nextBlock = appendBlock("interface.next");
         LLVMBasicBlockRef foundBlock = appendBlock("interface.found");
         LLVMBasicBlockRef missingBlock = appendBlock("interface.missing");
-
         LLVMValueRef hasMap = LLVMBuildICmp(
             builder_, LLVMIntNE, map, LLVMConstNull(ptr), "interface.map.nonnull");
         LLVMBuildCondBr(builder_, hasMap, mapBlock, missingBlock);
@@ -14748,8 +14760,7 @@ private:
         LLVMPositionBuilderAtEnd(builder_, missingBlock);
         LLVMValueRef reason = LLVMConstInt(
             LLVMInt32TypeInContext(context_),
-            static_cast<std::uint64_t>(LlvmTrapReason::InterfaceDispatchFailure),
-            0);
+            static_cast<std::uint64_t>(LlvmTrapReason::InterfaceDispatchFailure), 0);
         LLVMValueRef trapArguments[] = {reason};
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
         LLVMBuildUnreachable(builder_);
@@ -14762,7 +14773,43 @@ private:
         LLVMValueRef slotIndices[] = {slotIndex};
         LLVMValueRef slotAddress = LLVMBuildGEP2(
             builder_, ptr, methodTable, slotIndices, 1, "interface.slot.addr");
-        LLVMValueRef target = LLVMBuildLoad2(builder_, ptr, slotAddress, "interface.target");
+        return LLVMBuildLoad2(builder_, ptr, slotAddress, "interface.target");
+    }
+
+    LLVMValueRef lowerInterfaceCall(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error,
+        LLVMValueRef receiverOverride = nullptr)
+    {
+        if (!node->interfaceSlot.has_value() || !node->targetTypeOrdinal.has_value())
+        {
+            return failValue(error, "Stage 36 interface call is missing interface identity or method slot");
+        }
+        if (node->children.empty())
+        {
+            return failValue(error, "Stage 36 interface call is missing its receiver operand");
+        }
+        if (descriptorType_ == nullptr || interfaceMapType_ == nullptr || interfaceMapEntryType_ == nullptr)
+        {
+            return failValue(error, "Stage 36 interface call has no interface-map LLVM ABI types");
+        }
+
+        LLVMValueRef receiver = receiverOverride != nullptr
+            ? receiverOverride
+            : lowerExpression(node->children.front().get(), error);
+        if (receiver == nullptr)
+        {
+            return nullptr;
+        }
+        receiver = checkedReceiver(receiver, error);
+        if (receiver == nullptr)
+        {
+            return nullptr;
+        }
+
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef target = loadInterfaceTarget(node, receiver, error);
+        if (target == nullptr) return nullptr;
 
         std::vector<LLVMValueRef> arguments;
         std::vector<LLVMTypeRef> parameterTypes;

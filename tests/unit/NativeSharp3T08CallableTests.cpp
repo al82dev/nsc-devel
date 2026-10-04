@@ -195,8 +195,8 @@ int main()
     tests.expect(!genericLambdaUsesErasedDispatch(),
         "generic lambdas monomorphize and never acquire automatic erased dispatch");
     const auto bound = windowsX64BoundMethodLayout();
-    tests.expect(bound.size == 16 && bound.alignment == 8,
-        "a bound method exposes receiver plus entry pointer on Windows x64");
+    tests.expect(bound.size == 32 && bound.alignment == 8,
+        "a bound method exposes the ABI 1.1 code/receiver/lifetime callback cell on Windows x64");
     tests.expect(validateMustTail(native, native, false, error) &&
             !validateMustTail(native, c, false, error) &&
             !validateMustTail(native, native, true, error),

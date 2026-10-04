@@ -293,7 +293,8 @@ bool nonCapturingLambdaConvertsToPointer(std::span<const Capture> captures) noex
 
 bool genericLambdaUsesErasedDispatch() noexcept { return false; }
 
-BoundMethodLayout windowsX64BoundMethodLayout() noexcept { return {16, 8}; }
+// Native ABI 1.1: code + receiver + receiver/environment destroy callback + producer free hook.
+BoundMethodLayout windowsX64BoundMethodLayout() noexcept { return {32, 8}; }
 
 bool validateMustTail(
     const FunctionType& caller,

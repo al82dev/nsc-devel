@@ -7260,6 +7260,19 @@ void ProjectMethodBodyModel::analyzeReturn(
         return;
     }
 
+    if (value.boundMethodBorrowsReceiver &&
+        (value.ownershipSourceLocalOrdinal.has_value() ||
+         value.ownershipSourceParameterOrdinal.has_value()))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidReturn,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->first()->range(),
+            "bound method borrows its receiver and cannot escape through return; use "
+            "move(receiver.Method) to transfer receiver ownership explicitly");
+        return;
+    }
+
     const ProjectImplicitConversion conversion = classifyImplicit(
         value.typeKey,
         method->declaredTypeKey,
@@ -9016,6 +9029,153 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 expression->auxiliaryText() == "variant-result-transfer";
             const bool moveAllowed = allowMove || compilerVariantPayloadTransfer ||
                 compilerVariantPayloadExtract || compilerVariantResultTransfer;
+            // T08-F05. `move(receiver.Method)` is the explicit owning method-value form.  It is
+            // recognized before ordinary field/element moves because the MemberExpression is a
+            // method group, not storage.  The delegate cell will receive the receiver's dynamic
+            // destruction entry; a named source is consumed with the same path-sensitive rules as
+            // move(receiver), while a fresh receiver is adopted directly.
+            if (allowMethodGroup && moveAllowed && expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::MemberExpression)
+            {
+                ExpressionResult movedMethod = analyzeExpression(
+                    expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics, true);
+                if (movedMethod.methodGroup && movedMethod.valid &&
+                    movedMethod.receiverSyntax != nullptr)
+                {
+                    bool accepted = false;
+                    if (movedMethod.ownershipFreshOwner)
+                    {
+                        accepted = true;
+                    }
+                    else if (movedMethod.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression)
+                    {
+                        const std::optional<ScopeName> source = lookupScopeName(
+                            scopeOrdinal, movedMethod.receiverSyntax->text());
+                        if (source.has_value() && source->kind == ScopeNameKind::Local &&
+                            source->semanticOrdinal < locals_.size())
+                        {
+                            const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
+                            if (!local.isRaii || !isReferenceTypeKey(local.typeKey))
+                            {
+                                diagnostics.report(
+                                    diagnostics::DiagnosticId::InvalidOperand,
+                                    diagnostics::DiagnosticSeverity::Error,
+                                    expression->range(),
+                                    "move(receiver.Method) requires a RAII class receiver or an "
+                                    "owned class parameter");
+                            }
+                            else if (local.isPinned)
+                            {
+                                diagnostics.report(
+                                    diagnostics::DiagnosticId::InvalidOperand,
+                                    diagnostics::DiagnosticSeverity::Error,
+                                    expression->range(),
+                                    "cannot move pinned receiver '" + local.name + "' into a method value");
+                            }
+                            else if (movedRaiiLocals_.contains(source->semanticOrdinal) ||
+                                     maybeMovedRaiiLocals_.contains(source->semanticOrdinal))
+                            {
+                                diagnostics.report(
+                                    diagnostics::DiagnosticId::InvalidOperand,
+                                    diagnostics::DiagnosticSeverity::Error,
+                                    expression->range(),
+                                    "cannot bind method value from moved or possibly moved receiver '" +
+                                        local.name + "'");
+                            }
+                            else if (hasActiveBorrowOfOwnerLocal(source->semanticOrdinal, scopeOrdinal))
+                            {
+                                diagnostics.report(
+                                    diagnostics::DiagnosticId::InvalidOperand,
+                                    diagnostics::DiagnosticSeverity::Error,
+                                    expression->range(),
+                                    "cannot move receiver '" + local.name +
+                                        "' into a method value while a borrowed local is alive");
+                            }
+                            else if (placeHasMovedDescendant("L" + std::to_string(source->semanticOrdinal)) ||
+                                     placeHasMaybeMovedDescendant("L" + std::to_string(source->semanticOrdinal)))
+                            {
+                                diagnostics.report(
+                                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                                    diagnostics::DiagnosticSeverity::Error,
+                                    expression->range(),
+                                    "cannot move receiver '" + local.name +
+                                        "' into a method value after one of its fields was moved");
+                            }
+                            else
+                            {
+                                movedMethod.ownershipSourceLocalOrdinal = source->semanticOrdinal;
+                                movedRaiiLocals_.insert(source->semanticOrdinal);
+                                maybeMovedRaiiLocals_.erase(source->semanticOrdinal);
+                                invalidateHistoricalBorrowsOfOwnerLocal(source->semanticOrdinal);
+                                accepted = true;
+                            }
+                        }
+                        else if (source.has_value() && source->kind == ScopeNameKind::Parameter)
+                        {
+                            const ClassMemberSymbol* owner = methodSymbol(methodMemberOrdinal);
+                            if (owner != nullptr && source->semanticOrdinal < owner->parameters.size())
+                            {
+                                const MethodParameterSymbol& parameter = owner->parameters[source->semanticOrdinal];
+                                if (parameter.ownership != sema::OwnershipKind::Owned ||
+                                    !isReferenceTypeKey(parameter.typeKey))
+                                {
+                                    diagnostics.report(
+                                        diagnostics::DiagnosticId::InvalidOperand,
+                                        diagnostics::DiagnosticSeverity::Error,
+                                        expression->range(),
+                                        "move(receiver.Method) requires a RAII class receiver or an "
+                                        "owned class parameter");
+                                }
+                                else if (movedOwnedParameters_.contains(source->semanticOrdinal) ||
+                                         maybeMovedOwnedParameters_.contains(source->semanticOrdinal))
+                                {
+                                    diagnostics.report(
+                                        diagnostics::DiagnosticId::InvalidOperand,
+                                        diagnostics::DiagnosticSeverity::Error,
+                                        expression->range(),
+                                        "cannot bind method value from moved or possibly moved parameter '" +
+                                            parameter.name + "'");
+                                }
+                                else if (hasActiveBorrowOfOwnedParameter(
+                                             source->semanticOrdinal, scopeOrdinal))
+                                {
+                                    diagnostics.report(
+                                        diagnostics::DiagnosticId::InvalidOperand,
+                                        diagnostics::DiagnosticSeverity::Error,
+                                        expression->range(),
+                                        "cannot move receiver parameter '" + parameter.name +
+                                            "' into a method value while a borrowed local is alive");
+                                }
+                                else
+                                {
+                                    movedMethod.ownershipSourceParameterOrdinal = source->semanticOrdinal;
+                                    movedOwnedParameters_.insert(source->semanticOrdinal);
+                                    maybeMovedOwnedParameters_.erase(source->semanticOrdinal);
+                                    invalidateHistoricalBorrowsOfOwnedParameter(source->semanticOrdinal);
+                                    accepted = true;
+                                }
+                            }
+                        }
+                    }
+                    if (!accepted && !diagnostics.hasErrors())
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "move(receiver.Method) requires a fresh receiver, a direct RAII class "
+                            "local, or a direct owned class parameter");
+                    }
+                    if (accepted)
+                    {
+                        movedMethod.methodGroupMovesReceiver = true;
+                        movedMethod.ownership = sema::OwnershipKind::Owned;
+                        movedMethod.ownershipTransfer = true;
+                        result = std::move(movedMethod);
+                    }
+                    break;
+                }
+            }
             // A field/element move mutates one slot without consuming its containing owner. Find
             // the named owner at the root of that storage expression so an outstanding borrowed
             // view cannot observe the mutation behind the borrow checker's back.
@@ -13452,6 +13612,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.receiverTypeOrdinal = typeReceiver ? std::nullopt : receiverType;
         result.baseReceiver = receiver.baseReceiver;
         result.readonlyReceiver = receiver.readonlyReceiver;
+        result.ownership = receiver.ownership;
+        result.ownershipFreshOwner = receiver.ownershipFreshOwner;
+        result.ownershipSourceLocalOrdinal = receiver.ownershipSourceLocalOrdinal;
+        result.ownershipSourceParameterOrdinal = receiver.ownershipSourceParameterOrdinal;
+        result.borrowedLocalOrdinal = receiver.borrowedLocalOrdinal;
         nameBindings_.push_back(MethodNameBinding{
             methodBindingKind,
             expression,
@@ -21523,6 +21688,30 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
         {
             const std::optional<language::CaptureMode> mode = requestedMode("this", name.syntax->range());
             if (!mode.has_value()) continue;
+            if (binding.explicitCaptureList &&
+                (*mode == language::CaptureMode::Copy || *mode == language::CaptureMode::Move))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    name.syntax->range(),
+                    "'this' is a borrowed receiver and must be captured explicitly as 'ref this' "
+                    "or 'ref mut this'; copy/move would invent receiver ownership");
+                safe = false;
+                continue;
+            }
+            const ClassMemberSymbol* owner = methodSymbol(methodMemberOrdinal);
+            if (*mode == language::CaptureMode::MutableReference &&
+                owner != nullptr && owner->isReadonly)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    name.syntax->range(),
+                    "readonly method cannot capture 'this' as 'ref mut this'");
+                safe = false;
+                continue;
+            }
             const std::string typeKey = implicitThisTypeKey(methodMemberOrdinal);
             MethodLambdaCapture captureDescription{
                 MethodLambdaCaptureKind::ThisReference, "this", typeKey,
@@ -22005,13 +22194,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
             return result;
         }
     }
-    if (target.isAbstract || target.isVirtual || target.isOverride)
+    const bool interfaceDispatch = !target.isStatic && methodGroup.receiverTypeOrdinal.has_value() &&
+        interfaceModel_ != nullptr && interfaceModel_->isInterface(*methodGroup.receiverTypeOrdinal);
+    const bool virtualDispatch = !target.isStatic && !interfaceDispatch && !methodGroup.baseReceiver &&
+        (target.isAbstract || target.isVirtual || target.isOverride);
+    if (target.isAbstract && !virtualDispatch && !interfaceDispatch)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error,
             syntax != nullptr ? syntax->range() : SourceRange{},
-            "Stage 42 delegate method-group conversion currently requires a non-virtual concrete target; virtual delegate thunks are deferred");
+            "an abstract method value requires virtual or interface dispatch through a receiver");
         return result;
     }
     if (!target.isStatic && target.declaringTypeIsStruct)
@@ -22023,6 +22216,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
             "Stage 42 delegate instance targets must be class references; struct receiver lifetime capture is deferred");
         return result;
     }
+    const bool receiverIsFreshObject = methodGroup.receiverSyntax != nullptr &&
+        methodGroup.receiverSyntax->kind() == ast::AstNodeKind::ObjectCreationExpression;
+    if (!target.isStatic && !methodGroup.methodGroupMovesReceiver &&
+        (methodGroup.ownershipFreshOwner || receiverIsFreshObject))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax != nullptr ? syntax->range() : SourceRange{},
+            "temporary receiver cannot be borrowed by a method value; use "
+            "move(receiver.Method) to transfer receiver ownership explicitly");
+        return result;
+    }
     MethodDelegateBinding binding;
     binding.kind = MethodDelegateOperationKind::Create;
     binding.syntax = syntax;
@@ -22032,6 +22238,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
     binding.delegateTypeOrdinal = delegateOrdinal;
     binding.selectedMemberOrdinal = selected;
     binding.staticTarget = target.isStatic;
+    binding.virtualDispatch = virtualDispatch;
+    binding.interfaceDispatch = interfaceDispatch;
+    binding.ownsReceiver = methodGroup.methodGroupMovesReceiver;
+    binding.receiverSourceLocalOrdinal = methodGroup.ownershipSourceLocalOrdinal;
+    binding.receiverSourceParameterOrdinal = methodGroup.ownershipSourceParameterOrdinal;
     if (!target.isStatic)
     {
         binding.receiverSyntax = methodGroup.receiverSyntax;
@@ -22044,6 +22255,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
         }
     }
     binding.resultTypeKey = std::string(delegateTypeKey);
+    const bool ownsReceiver = binding.ownsReceiver;
     delegateBindings_.push_back(std::move(binding));
 
     result.typeKey = std::string(delegateTypeKey);
@@ -22052,6 +22264,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
     if (!isExternCDelegateTypeKey(delegateTypeKey))
     {
         result.ownershipFreshOwner = true;
+    }
+    if (!target.isStatic && !ownsReceiver)
+    {
+        result.boundMethodBorrowsReceiver = true;
+        result.ownershipSourceLocalOrdinal = methodGroup.ownershipSourceLocalOrdinal;
+        result.ownershipSourceParameterOrdinal = methodGroup.ownershipSourceParameterOrdinal;
+        result.borrowedLocalOrdinal = methodGroup.borrowedLocalOrdinal;
     }
     return result;
 }

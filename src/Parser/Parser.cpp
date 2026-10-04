@@ -11956,9 +11956,21 @@ ast::AstNode* Parser::parseLambdaExpression()
                 {
                     name = std::string(consume().lexeme());
                 }
+                else if (at(TokenKind::KwThis))
+                {
+                    name = "this";
+                    consume();
+                }
                 else
                 {
-                    expect(TokenKind::Identifier, "capture name");
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedToken,
+                        diagnostics::DiagnosticSeverity::Error,
+                        current().range(),
+                        "expected capture name or 'this'");
+                    if (!at(TokenKind::Comma) && !at(TokenKind::RightBracket) &&
+                        !at(TokenKind::EndOfFile))
+                        consume();
                 }
                 if (!name.empty() && !captureNames.insert(name).second)
                 {

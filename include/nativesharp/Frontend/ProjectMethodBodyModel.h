@@ -1316,6 +1316,14 @@ struct MethodDelegateBinding final
     std::string receiverTypeKey;
     std::optional<std::size_t> receiverTypeOrdinal;
     bool staticTarget = false;
+    // T08-F05. A method value keeps its category through HIR: a virtual/interface target is
+    // resolved from the bound receiver when the native delegate cell is created.  A base-qualified
+    // method value remains a direct target, matching ordinary base-call semantics.
+    bool virtualDispatch = false;
+    bool interfaceDispatch = false;
+    bool ownsReceiver = false;
+    std::optional<std::size_t> receiverSourceLocalOrdinal;
+    std::optional<std::size_t> receiverSourceParameterOrdinal;
     // T08-F02. Non-empty only when invoking a zero-size anonymous non-capturing lambda. In that
     // case there is no delegate cell/function-pointer child to evaluate: HIR/MIR call this
     // generated static callable directly.
@@ -1649,6 +1657,10 @@ private:
         std::string typeKey = "<error>";
         bool valid = false;
         bool methodGroup = false;
+        // T08-F05. Set only by move(receiver.Method). The method group remains target-typed, but
+        // its delegate cell becomes the unique owner of the receiver and must clear a named source.
+        bool methodGroupMovesReceiver = false;
+        bool boundMethodBorrowsReceiver = false;
         bool assignable = false;
         // True only for storage-backed expressions (locals, parameters, fields, raw elements,
         // and dereferences). Properties may be assignable through a setter but are not memory

@@ -3592,10 +3592,33 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         auto node = makeNode(ProjectOopHirNodeKind::DelegateCreate, expression, stage42Delegate->delegateTypeKey);
         node->elementTypeKey = stage42Delegate->delegateTypeKey;
         node->memberOrdinal = stage42Delegate->selectedMemberOrdinal;
+        node->booleanValue = stage42Delegate->virtualDispatch;
+        node->interfaceDispatch = stage42Delegate->interfaceDispatch;
+        node->ownership = stage42Delegate->ownsReceiver
+            ? sema::OwnershipKind::Owned : sema::OwnershipKind::Borrowed;
+        if (stage42Delegate->interfaceDispatch)
+            node->targetTypeOrdinal = stage42Delegate->receiverTypeOrdinal;
         if (!stage42Delegate->staticTarget)
         {
-            auto receiver = lowerReceiver(
-                stage42Delegate->receiverSyntax, stage42Delegate->receiverTypeKey, memberOrdinal, error);
+            std::unique_ptr<ProjectOopHirNode> receiver;
+            if (stage42Delegate->ownsReceiver &&
+                (stage42Delegate->receiverSourceLocalOrdinal.has_value() ||
+                 stage42Delegate->receiverSourceParameterOrdinal.has_value()))
+            {
+                receiver = makeNode(
+                    ProjectOopHirNodeKind::MoveValue,
+                    stage42Delegate->receiverSyntax,
+                    stage42Delegate->receiverTypeKey);
+                receiver->localOrdinal = stage42Delegate->receiverSourceLocalOrdinal;
+                receiver->parameterOrdinal = stage42Delegate->receiverSourceParameterOrdinal;
+                receiver->booleanValue = true;
+            }
+            else
+            {
+                receiver = lowerReceiver(
+                    stage42Delegate->receiverSyntax, stage42Delegate->receiverTypeKey,
+                    memberOrdinal, error);
+            }
             if (receiver == nullptr) return nullptr;
             node->children.push_back(std::move(receiver));
         }
