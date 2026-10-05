@@ -69,6 +69,20 @@ enum class ConformanceTier { Mandatory, Recommended, ImplementationSpecific };
 struct ConformanceCase final { std::string identity; ConformanceTier tier; };
 bool validateConformanceManifest(std::span<const ConformanceCase> cases, std::string& error);
 
+struct CandidateConformanceManifest final
+{
+    std::string suiteVersion;
+    std::string resultSchemaVersion;
+    std::vector<ConformanceCase> cases;
+    bool selfValidationPassed = false;
+    bool brokenCompilerRejected = false;
+    bool shardRetryEquivalent = false;
+    bool hermeticRunPassed = false;
+};
+bool validateCandidateConformance(
+    const CandidateConformanceManifest& manifest,
+    std::string& error);
+
 struct BilingualClause final
 {
     std::string identity;

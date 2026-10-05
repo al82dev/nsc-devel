@@ -80,6 +80,32 @@ bool validateConformanceManifest(
     return true;
 }
 
+bool validateCandidateConformance(
+    const CandidateConformanceManifest& manifest,
+    std::string& error)
+{
+    error.clear();
+    if (manifest.suiteVersion.empty() || manifest.resultSchemaVersion.empty() ||
+        !validateConformanceManifest(manifest.cases, error))
+    {
+        if (error.empty()) error = "candidate conformance suite requires versioned suite and result schemas";
+        return false;
+    }
+    bool recommended = false;
+    bool implementationSpecific = false;
+    for (const ConformanceCase& item : manifest.cases)
+    {
+        recommended = recommended || item.tier == ConformanceTier::Recommended;
+        implementationSpecific = implementationSpecific || item.tier == ConformanceTier::ImplementationSpecific;
+    }
+    if (!recommended || !implementationSpecific)
+    { error = "candidate conformance suite must separate all three tiers"; return false; }
+    if (!manifest.selfValidationPassed || !manifest.brokenCompilerRejected ||
+        !manifest.shardRetryEquivalent || !manifest.hermeticRunPassed)
+    { error = "candidate conformance execution evidence is incomplete"; return false; }
+    return true;
+}
+
 bool bilingualSpecificationInParity(
     std::span<const BilingualClause> clauses,
     std::string& error)
