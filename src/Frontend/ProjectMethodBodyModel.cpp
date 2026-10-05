@@ -18801,6 +18801,50 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
             return {};
         }
     }
+
+    // NativeSharp 3 portable vectors are structural value types. Operations never mix lane
+    // shapes implicitly: that keeps AVX2 lowering and scalar fallback observably identical.
+    const auto leftSimd = language::parsePortableSimdType(left.typeKey);
+    const auto rightSimd = language::parsePortableSimdType(right.typeKey);
+    if (leftSimd.has_value() || rightSimd.has_value())
+    {
+        if (!leftSimd.has_value() || !rightSimd.has_value() || left.typeKey != right.typeKey)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "portable SIMD operands must have exactly the same lane type and lane count");
+            return result;
+        }
+        const bool bitwiseOperation = operation == TokenKind::Amp || operation == TokenKind::Pipe ||
+            operation == TokenKind::Caret;
+        const bool arithmeticOperation = operation == TokenKind::Plus || operation == TokenKind::Minus ||
+            operation == TokenKind::Star || operation == TokenKind::Slash || operation == TokenKind::Percent;
+        if (isComparison(operation))
+        {
+            language::PortableSimdType mask = *leftSimd;
+            mask.mask = true;
+            mask.laneKind = language::SimdLaneKind::Mask;
+            result.typeKey = language::portableSimdTypeIdentity(mask);
+            result.valid = true;
+            return result;
+        }
+        if ((leftSimd->mask && bitwiseOperation) ||
+            (!leftSimd->mask && (arithmeticOperation ||
+                (bitwiseOperation && leftSimd->laneKind != language::SimdLaneKind::FloatingPoint))))
+        {
+            result.typeKey = left.typeKey;
+            result.valid = true;
+            return result;
+        }
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "operator is not defined for this portable SIMD lane kind");
+        return result;
+    }
     if (isLogical(operation))
     {
         if (left.typeKey != "builtin:bool" || right.typeKey != "builtin:bool")

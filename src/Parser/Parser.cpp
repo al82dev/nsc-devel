@@ -504,6 +504,12 @@ bool Parser::canStartType(const lexer::Token& token) const noexcept
         return true;
     }
 
+    if (token.kind() == TokenKind::Identifier &&
+        (token.lexeme() == "simd" || token.lexeme() == "mask"))
+    {
+        return true;
+    }
+
     return token.kind() == TokenKind::Identifier && knownTypeNames_.contains(std::string(token.lexeme()));
 }
 
@@ -729,6 +735,8 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
     }
     const lexer::Token& token = tokens_[tokenIndex];
     const bool builtin = lexer::isBuiltinTypeKeyword(token.kind());
+    const bool portableSimd = token.kind() == TokenKind::Identifier &&
+        (token.lexeme() == "simd" || token.lexeme() == "mask");
     if (token.kind() != TokenKind::Identifier)
     {
         if (!builtin) return false;
@@ -763,7 +771,7 @@ bool Parser::scanTypeAt(std::size_t tokenIndex, std::size_t& afterType) const no
     {
         if (!moduleQualified && !knownTypeNames_.contains(candidate)) return false;
     }
-    else if (!builtin && !knownTypeNames_.contains(candidate)) return false;
+    else if (!builtin && !portableSimd && !knownTypeNames_.contains(candidate)) return false;
 
     if (!builtin && cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Less)
     {

@@ -10,11 +10,13 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Language/GenericSemantics.h"
+#include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <charconv>
 #include <filesystem>
 #include <functional>
 #include <iterator>
@@ -1493,6 +1495,11 @@ void ProjectNameLookup::bindTypeSyntax(
         return;
     }
 
+    std::string constType;
+    std::string constValue;
+    if (language::parseConstGenericArgumentMarker(syntax->baseName(), constType, constValue))
+        return;
+
     // `var`'s marker TypeSyntax (see Parser::parseVariableDeclaration) has no real named type to
     // resolve -- its real type is inferred entirely from the initializer expression, inside
     // ProjectMethodBodyModel::analyzeVariable, which never looks this binding up. Binding it here
@@ -1605,10 +1612,49 @@ void ProjectNameLookup::bindTypeSyntax(
     binding.writtenName = writtenName;
     binding.enclosingTypeOrdinals = environment.enclosingTypeOrdinals;
 
-    if (syntax->isFunction() || syntax->isTuple() ||
+    const bool portableSimd = syntax->baseName() == "simd" || syntax->baseName() == "mask";
+    if (syntax->isFunction() || syntax->isTuple() || portableSimd ||
         lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
         binding.kind = TypeNameBindingKind::Builtin;
+        if (portableSimd)
+        {
+            const std::size_t expected = syntax->baseName() == "simd" ? 2U : 2U;
+            if (syntax->typeArguments().size() != expected)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    syntax->range(),
+                    "'" + syntax->baseName() + "' requires a lane type and a constant lane count");
+            }
+            else
+            {
+                const ast::TypeSyntax* lane = syntax->typeArguments()[0];
+                const ast::TypeSyntax* count = syntax->typeArguments()[1];
+                std::string markerType;
+                std::string markerValue;
+                std::size_t laneCount = 0;
+                const bool marker = language::parseConstGenericArgumentMarker(
+                    count->baseName(), markerType, markerValue);
+                const auto parsed = std::from_chars(
+                    markerValue.data(), markerValue.data() + markerValue.size(), laneCount);
+                std::string simdError;
+                const std::string laneKey = lexer::isBuiltinTypeKeyword(lane->baseTokenKind())
+                    ? "builtin:" + lane->baseName() : "unresolved:" + lane->baseName();
+                if (!marker || parsed.ec != std::errc{} ||
+                    parsed.ptr != markerValue.data() + markerValue.size() ||
+                    !language::portableSimdType(
+                        laneKey, laneCount, syntax->baseName() == "mask", simdError).has_value())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        syntax->range(),
+                        simdError.empty() ? "portable SIMD lane count must be a constant integer" : simdError);
+                }
+            }
+        }
         if (syntax->isDynamicTrait())
         {
             diagnostics.report(

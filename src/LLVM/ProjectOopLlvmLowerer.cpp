@@ -19,6 +19,7 @@
 #include "nativesharp/LLVM/LlvmTrapReason.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/CallableSemantics.h"
+#include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/MemoryModel.h"
 #include "nativesharp/Source/SourceManager.h"
 
@@ -13372,13 +13373,22 @@ private:
                 "aggregate comparison reached scalar binary lowering for '" + operandType +
                     "': struct equality must lower through AggregateEquals");
         }
-        const bool floating = isFloating(operandType);
+        const auto portableSimd = language::parsePortableSimdType(operandType);
+        const bool floating = portableSimd.has_value()
+            ? portableSimd->laneKind == language::SimdLaneKind::FloatingPoint
+            : isFloating(operandType);
         if (isComparison(operation))
         {
             return floating
                 ? applyFloatingPointMode(LLVMBuildFCmp(
                     builder_, floatingPredicate(operation), left, right, "fcmp"))
-                : LLVMBuildICmp(builder_, integerPredicate(operation, isSignedInteger(operandType)), left, right, "icmp");
+                : LLVMBuildICmp(
+                    builder_, integerPredicate(
+                        operation,
+                        portableSimd.has_value()
+                            ? portableSimd->laneKind == language::SimdLaneKind::SignedInteger
+                            : isSignedInteger(operandType)),
+                    left, right, "icmp");
         }
         if (floating)
         {
@@ -16042,6 +16052,13 @@ private:
             return LLVMIntTypeInContext(context_, 128);
         if (typeKey == "builtin:float") return LLVMFloatTypeInContext(context_);
         if (typeKey == "builtin:double") return LLVMDoubleTypeInContext(context_);
+        if (const auto simd = language::parsePortableSimdType(typeKey); simd.has_value())
+        {
+            LLVMTypeRef lane = simd->mask
+                ? LLVMInt1TypeInContext(context_)
+                : llvmType(simd->laneTypeKey, error);
+            return lane == nullptr ? nullptr : LLVMVectorType(lane, static_cast<unsigned>(simd->laneCount));
+        }
         if (language::isAnonymousLambdaTypeIdentity(typeKey))
             return LLVMStructTypeInContext(context_, nullptr, 0, 0);
         if (typeKey == "builtin:null" || typeKey == "string-literal" || typeKey == "builtin:string" ||

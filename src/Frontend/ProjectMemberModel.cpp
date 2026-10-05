@@ -4,6 +4,7 @@
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/TraitSemantics.h"
+#include "nativesharp/Language/GenericSemantics.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
@@ -1275,6 +1276,29 @@ std::string ProjectMemberModel::canonicalTypeKey(
                     ? syntax->tupleElementNames()[index] : std::string{}});
         }
         result = language::tupleIdentity(elements);
+    }
+    else if ((syntax->baseName() == "simd" || syntax->baseName() == "mask") &&
+             syntax->typeArguments().size() == 2)
+    {
+        std::string markerType;
+        std::string markerValue;
+        std::size_t laneCount = 0;
+        const bool marker = language::parseConstGenericArgumentMarker(
+            syntax->typeArguments()[1]->baseName(), markerType, markerValue);
+        if (marker)
+        {
+            const auto parsed = std::from_chars(
+                markerValue.data(), markerValue.data() + markerValue.size(), laneCount);
+            if (parsed.ec == std::errc{} && parsed.ptr == markerValue.data() + markerValue.size())
+            {
+                std::string error;
+                const auto type = language::portableSimdType(
+                    canonicalTypeKey(syntax->typeArguments()[0], nameLookup), laneCount,
+                    syntax->baseName() == "mask", error);
+                if (type.has_value()) result = language::portableSimdTypeIdentity(*type);
+            }
+        }
+        if (result.empty()) result = "invalid-simd:" + syntax->baseName();
     }
     else if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {

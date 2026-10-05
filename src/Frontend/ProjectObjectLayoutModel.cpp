@@ -9,6 +9,7 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Language/CallableSemantics.h"
+#include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -414,6 +415,17 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutBaseType(
         // Both structural carriers are one Windows x64 pointer in storage. A function reference
         // points at the existing delegate cell; a function pointer points directly at code.
         return targetLayout_.layoutOf(BuiltinLayoutKind::Pointer);
+    }
+    if ((syntax->baseName() == "simd" || syntax->baseName() == "mask") &&
+        nameLookup_ != nullptr && memberModel_ != nullptr)
+    {
+        const auto type = language::parsePortableSimdType(
+            memberModel_->canonicalTypeKey(syntax, *nameLookup_));
+        if (!type.has_value()) return std::nullopt;
+        const std::uint64_t bytes = type->mask
+            ? static_cast<std::uint64_t>((type->laneCount + 7U) / 8U)
+            : static_cast<std::uint64_t>(type->laneBits * type->laneCount / 8U);
+        return TypeLayout{bytes, std::min<std::uint64_t>(bytes, 16U)};
     }
     if (const std::optional<BuiltinLayoutKind> builtin = builtinLayoutKind(syntax->baseTokenKind()); builtin.has_value())
     {

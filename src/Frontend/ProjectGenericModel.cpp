@@ -2400,6 +2400,9 @@ bool ProjectGenericModel::processTypeSyntax(
     // A tuple is structural, not an invocation of a generic type named "$tuple". Its element
     // types were still processed above so closed generic elements are materialized normally.
     if (syntax->isTuple()) return true;
+    // NativeSharp 3 portable vectors are structural too. Their lane/count arguments have already
+    // been processed, but there is deliberately no nominal template to specialize.
+    if (syntax->baseName() == "simd" || syntax->baseName() == "mask") return true;
 
     TemplateState* state = resolveTypeTemplate(
         unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());

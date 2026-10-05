@@ -65,5 +65,26 @@ bool ffiMayUnwindAcrossBoundary() noexcept;
 
 struct SimdContract final { std::size_t laneBits; std::size_t laneCount; bool mask; };
 bool validateSimd(const SimdContract& contract, std::string& error);
+enum class SimdLaneKind { SignedInteger, UnsignedInteger, FloatingPoint, Mask };
+struct PortableSimdType final
+{
+    SimdLaneKind laneKind = SimdLaneKind::SignedInteger;
+    std::string laneTypeKey;
+    std::size_t laneBits = 0;
+    std::size_t laneCount = 0;
+    bool mask = false;
+};
+std::optional<PortableSimdType> portableSimdType(
+    std::string_view laneTypeKey,
+    std::size_t laneCount,
+    bool mask,
+    std::string& error);
+std::string portableSimdTypeIdentity(const PortableSimdType& type);
+std::optional<PortableSimdType> parsePortableSimdType(std::string_view identity) noexcept;
+bool validateSimdShuffle(
+    std::size_t laneCount,
+    std::string_view commaSeparatedIndices,
+    std::string& error);
+std::uint64_t simdMaskLane(bool selected, std::size_t laneBits) noexcept;
 bool simdScalarFallbackPreservesSemantics() noexcept;
 }
