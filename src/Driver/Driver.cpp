@@ -5238,6 +5238,10 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             return dumpLibraryAbi(args[1], output, error);
         }
+        if (action == "--dump-api-surface")
+        {
+            return dumpLibraryApiSurface(args[1], output, error);
+        }
         if (action == "--check-project" || action == "--dump-project" || action == "--check-project-graph" ||
             action == "--dump-project-graph" || action == "--check-project-syntax" ||
             action == "--dump-project-compilation" || action == "--dump-project-comptime" ||
@@ -5631,6 +5635,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --verify-library-metadata <file.nsmeta>\n"
            << "  nsc --audit-library-capabilities <metadata-directory>\n"
            << "  nsc --dump-library-abi <file.nsmeta>\n"
+           << "  nsc --dump-api-surface <file.nsmeta>\n"
            << "  nsc --api-diff <old.nsmeta> <new.nsmeta>\n"
            << "  nsc --abi-diff <old.nsmeta> <new.nsmeta>\n"
            << "  nsc --verify-library-artifacts <file.nsmeta> <file.lib> "
@@ -7726,6 +7731,33 @@ ExitCode Driver::diffLibraryApi(
     }
     return report.sourceCompatible && report.abiCompatible
         ? ExitCode::Success : ExitCode::CompilationError;
+}
+
+ExitCode Driver::dumpLibraryApiSurface(
+    std::string_view metadataPath,
+    std::ostream& output,
+    std::ostream& error)
+{
+    interop::LibraryMetadataCodec codec;
+    interop::LibraryMetadata metadata;
+    std::string metadataError;
+    if (!codec.read(std::filesystem::path(metadataPath), metadata, metadataError) ||
+        !codec.verifyCurrentCompiler(metadata, metadataError))
+    {
+        error << "nsc: error: invalid NativeSharp library metadata: " << metadataError << '\n';
+        return ExitCode::CompilationError;
+    }
+    const std::string source = interop::LibraryApiDiffer::sourceSurfaceManifest(metadata);
+    const std::string abi = interop::LibraryApiDiffer::abiSurfaceManifest(metadata);
+    output << "NativeSharp canonical API surface v2\n"
+           << "module: " << metadata.moduleName << '\n'
+           << "source-fingerprint: " << interop::LibraryApiDiffer::sourceFingerprint(metadata) << '\n'
+           << "abi-fingerprint: " << interop::LibraryApiDiffer::abiSurfaceFingerprint(metadata) << '\n'
+           << "source-bytes: " << source.size() << '\n'
+           << source << '\n'
+           << "abi-bytes: " << abi.size() << '\n'
+           << abi << '\n';
+    return ExitCode::Success;
 }
 
 ExitCode Driver::dumpLibraryAbi(

@@ -42,6 +42,10 @@ public:
 
     static std::string sourceFingerprint(const LibraryMetadata& metadata);
     static std::string abiSurfaceFingerprint(const LibraryMetadata& metadata);
+    // Stable, length-delimited semantic projections consumed by API tooling. They intentionally
+    // omit source trivia and private declarations; hashes above are SHA-256 of these exact bytes.
+    static std::string sourceSurfaceManifest(const LibraryMetadata& metadata);
+    static std::string abiSurfaceManifest(const LibraryMetadata& metadata);
     static const char* impactName(LibraryApiChangeImpact impact) noexcept;
     static std::string classification(const LibraryApiDiffReport& report);
 };

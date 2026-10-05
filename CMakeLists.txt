@@ -2120,6 +2120,14 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.t12.availability COMMAND nsc_ns3_t12_availability_tests)
 
     add_executable(
+        nsc_ns3_t12_api_fingerprint_tests
+        tests/unit/NativeSharp3T12ApiFingerprintTests.cpp)
+    target_link_libraries(nsc_ns3_t12_api_fingerprint_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_ns3_t12_api_fingerprint_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_t12_api_fingerprint_tests)
+    add_test(NAME nsc.ns3.t12.api-fingerprint COMMAND nsc_ns3_t12_api_fingerprint_tests)
+
+    add_executable(
         nsc_ns3_t13_abi_tests
         tests/unit/NativeSharp3T13AbiTests.cpp)
     target_link_libraries(nsc_ns3_t13_abi_tests PRIVATE nsc_driver)

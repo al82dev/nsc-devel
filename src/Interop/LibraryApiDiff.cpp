@@ -4,6 +4,7 @@
 #include "nativesharp/Language/ModuleSemantics.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <map>
 #include <span>
@@ -95,6 +96,64 @@ std::string canonicalModule(std::string_view module)
     return language::canonicalWindowsModuleIdentity({}, module);
 }
 
+std::string canonicalGenericSource(std::string_view source)
+{
+    // Generic bodies are consumer compilation inputs, but comments and formatting are not API.
+    // Token-length framing also prevents token concatenation from creating accidental aliases.
+    std::string result;
+    std::size_t cursor = 0;
+    while (cursor < source.size())
+    {
+        const unsigned char value = static_cast<unsigned char>(source[cursor]);
+        if (std::isspace(value)) { ++cursor; continue; }
+        if (source[cursor] == '/' && cursor + 1 < source.size() && source[cursor + 1] == '/')
+        {
+            cursor += 2;
+            while (cursor < source.size() && source[cursor] != '\n' && source[cursor] != '\r') ++cursor;
+            continue;
+        }
+        if (source[cursor] == '/' && cursor + 1 < source.size() && source[cursor + 1] == '*')
+        {
+            cursor += 2;
+            while (cursor + 1 < source.size() &&
+                   !(source[cursor] == '*' && source[cursor + 1] == '/')) ++cursor;
+            cursor = std::min(source.size(), cursor + 2);
+            continue;
+        }
+        const std::size_t begin = cursor;
+        if (source[cursor] == '"' || source[cursor] == '\'')
+        {
+            const char quote = source[cursor++];
+            bool escaped = false;
+            while (cursor < source.size())
+            {
+                const char current = source[cursor++];
+                if (escaped) { escaped = false; continue; }
+                if (current == '\\') { escaped = true; continue; }
+                if (current == quote) break;
+            }
+        }
+        else if (std::isalnum(value) || source[cursor] == '_')
+        {
+            ++cursor;
+            while (cursor < source.size())
+            {
+                const unsigned char next = static_cast<unsigned char>(source[cursor]);
+                if (!std::isalnum(next) && source[cursor] != '_') break;
+                ++cursor;
+            }
+        }
+        else
+        {
+            ++cursor;
+            while (cursor < source.size() && std::string_view("=<>!&|+-*/%?:.").find(source[cursor]) !=
+                    std::string_view::npos) ++cursor;
+        }
+        field(result, source.substr(begin, cursor - begin));
+    }
+    return result;
+}
+
 Surface sourceSurface(const LibraryMetadata& metadata)
 {
     Surface result;
@@ -112,8 +171,8 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         }
         std::string contract;
         number(contract, type.kind);
+        number(contract, type.accessibility);
         number(contract, type.flags & ~kPartialTypeFlag);
-        field(contract, type.fullyQualifiedName);
         field(contract, type.baseTypeKey);
         strings(contract, type.interfaceTypeKeys, true);
         field(contract, type.enumUnderlyingTypeKey);
@@ -239,7 +298,7 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         strings(contract, generic.dependencies, true);
         // A reusable generic is compiled in the consumer. Its declaration/body is therefore a
         // public compilation input, not a private producer implementation detail.
-        field(contract, generic.sourceText);
+        field(contract, canonicalGenericSource(generic.sourceText));
         result.emplace("generic:" + generic.canonicalKey, std::move(contract));
     }
 
@@ -276,6 +335,8 @@ Surface abiSurface(const LibraryMetadata& metadata)
 
     for (const LibraryMetadataType& type : metadata.types)
     {
+        if (type.accessibility != kPublicAccessibility &&
+            type.accessibility != kProtectedAccessibility) continue;
         std::string contract;
         number(contract, type.kind);
         number(contract, type.flags & ~kPartialTypeFlag);
@@ -328,6 +389,8 @@ Surface abiSurface(const LibraryMetadata& metadata)
 
     for (const LibraryMetadataMember& member : metadata.members)
     {
+        if (member.accessibility != kPublicAccessibility &&
+            member.accessibility != kProtectedAccessibility) continue;
         std::string contract;
         number(contract, member.kind);
         number(contract, member.flags & ~kSemanticOnlyMemberFlags);
@@ -433,6 +496,19 @@ std::string fingerprint(std::string_view schema, const Surface& surface)
     return basic::sha256Hex(basic::sha256(bytes));
 }
 
+std::string manifest(std::string_view schema, const Surface& surface)
+{
+    std::string projection;
+    field(projection, schema);
+    number(projection, surface.size());
+    for (const auto& [identity, contract] : surface)
+    {
+        field(projection, identity);
+        field(projection, contract);
+    }
+    return projection;
+}
+
 void compareSurface(
     std::string_view domain,
     const Surface& oldSurface,
@@ -470,10 +546,10 @@ LibraryApiDiffReport LibraryApiDiffer::compare(
     const Surface newSource = sourceSurface(newMetadata);
     const Surface oldAbi = abiSurface(oldMetadata);
     const Surface newAbi = abiSurface(newMetadata);
-    report.oldSourceFingerprint = fingerprint("NativeSharp.source-api.v1", oldSource);
-    report.newSourceFingerprint = fingerprint("NativeSharp.source-api.v1", newSource);
-    report.oldAbiSurfaceFingerprint = fingerprint("NativeSharp.abi-surface.v1", oldAbi);
-    report.newAbiSurfaceFingerprint = fingerprint("NativeSharp.abi-surface.v1", newAbi);
+    report.oldSourceFingerprint = fingerprint("NativeSharp.source-api.v2", oldSource);
+    report.newSourceFingerprint = fingerprint("NativeSharp.source-api.v2", newSource);
+    report.oldAbiSurfaceFingerprint = fingerprint("NativeSharp.abi-surface.v2", oldAbi);
+    report.newAbiSurfaceFingerprint = fingerprint("NativeSharp.abi-surface.v2", newAbi);
 
     compareSurface(
         "source", oldSource, newSource,
@@ -500,12 +576,22 @@ LibraryApiDiffReport LibraryApiDiffer::compare(
 
 std::string LibraryApiDiffer::sourceFingerprint(const LibraryMetadata& metadata)
 {
-    return fingerprint("NativeSharp.source-api.v1", sourceSurface(metadata));
+    return fingerprint("NativeSharp.source-api.v2", sourceSurface(metadata));
 }
 
 std::string LibraryApiDiffer::abiSurfaceFingerprint(const LibraryMetadata& metadata)
 {
-    return fingerprint("NativeSharp.abi-surface.v1", abiSurface(metadata));
+    return fingerprint("NativeSharp.abi-surface.v2", abiSurface(metadata));
+}
+
+std::string LibraryApiDiffer::sourceSurfaceManifest(const LibraryMetadata& metadata)
+{
+    return manifest("NativeSharp.source-api.v2", sourceSurface(metadata));
+}
+
+std::string LibraryApiDiffer::abiSurfaceManifest(const LibraryMetadata& metadata)
+{
+    return manifest("NativeSharp.abi-surface.v2", abiSurface(metadata));
 }
 
 const char* LibraryApiDiffer::impactName(LibraryApiChangeImpact impact) noexcept

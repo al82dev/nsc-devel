@@ -97,6 +97,10 @@ private:
         std::string_view newMetadataPath,
         std::ostream& output,
         std::ostream& error);
+    static ExitCode dumpLibraryApiSurface(
+        std::string_view metadataPath,
+        std::ostream& output,
+        std::ostream& error);
     static ExitCode dumpLibraryAbi(
         std::string_view metadataPath,
         std::ostream& output,
