@@ -47,6 +47,24 @@ struct SemanticFreezeManifest final
 };
 bool validateSemanticFreeze(const SemanticFreezeManifest& manifest, std::string& error);
 
+struct Win64AbiFreezeManifest final
+{
+    std::string target;
+    std::string manglingRevision;
+    std::string layoutRevision;
+    std::string callingConventionRevision;
+    std::string variantRevision;
+    std::string traitObjectRevision;
+    std::string errorRevision;
+    std::string publicCoroutineRevision;
+    std::string moduleMetadataRevision;
+    bool preservedDllFixturesPassed = false;
+    bool crossVersionConsumerPassed = false;
+    bool symbolSnapshotsPassed = false;
+    bool pdbContractPassed = false;
+};
+bool validateWin64AbiFreeze(const Win64AbiFreezeManifest& manifest, std::string& error);
+
 enum class ConformanceTier { Mandatory, Recommended, ImplementationSpecific };
 struct ConformanceCase final { std::string identity; ConformanceTier tier; };
 bool validateConformanceManifest(std::span<const ConformanceCase> cases, std::string& error);

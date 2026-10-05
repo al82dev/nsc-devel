@@ -47,6 +47,22 @@ bool validateSemanticFreeze(const SemanticFreezeManifest& manifest, std::string&
     return true;
 }
 
+bool validateWin64AbiFreeze(const Win64AbiFreezeManifest& manifest, std::string& error)
+{
+    error.clear();
+    if (manifest.target != "windows-x64")
+    { error = "NativeSharp 3.0 ABI freeze is restricted to windows-x64"; return false; }
+    if (manifest.manglingRevision.empty() || manifest.layoutRevision.empty() ||
+        manifest.callingConventionRevision.empty() || manifest.variantRevision.empty() ||
+        manifest.traitObjectRevision.empty() || manifest.errorRevision.empty() ||
+        manifest.publicCoroutineRevision.empty() || manifest.moduleMetadataRevision.empty())
+    { error = "Win64 ABI freeze requires a revision for every public ABI surface"; return false; }
+    if (!manifest.preservedDllFixturesPassed || !manifest.crossVersionConsumerPassed ||
+        !manifest.symbolSnapshotsPassed || !manifest.pdbContractPassed)
+    { error = "Win64 ABI freeze evidence is incomplete"; return false; }
+    return true;
+}
+
 bool validateConformanceManifest(
     std::span<const ConformanceCase> cases,
     std::string& error)
