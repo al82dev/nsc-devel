@@ -702,6 +702,10 @@ void testMinorCompatibilityGate(TestContext& tests)
                  "current NSMETA rejects a public generic template with no "
                  "materializable declaration");
     metadata.genericTemplates[0].sourceText = "public struct Box<T> { public T Value; }";
+    nativesharp::interop::LibraryMetadataGenericTemplate::ParameterContract typeParameter;
+    typeParameter.name = "T";
+    typeParameter.kind = 0U;
+    metadata.genericTemplates[0].parameterContracts.push_back(std::move(typeParameter));
     error.clear();
     tests.expect(codec.verifyCurrentCompiler(metadata, error),
                  "current NSMETA accepts the same public template once its "
