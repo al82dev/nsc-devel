@@ -12,7 +12,7 @@
     "lib/NativeSharp.Core.Diagnostics",
     "lib/NativeSharp.Core.Threading"
   ],
-  "source_files": 81,
+  "source_files": 82,
   "profiles": ["O0", "O1", "O2", "O3"],
   "linkers": ["nslink"],
   "expected_executions": 4,
