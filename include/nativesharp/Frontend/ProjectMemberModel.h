@@ -101,6 +101,13 @@ struct MethodParameterSymbol final
     // Canonical T from ReadOnlySpan<T>. The closed span identity itself is mangled and therefore
     // intentionally does not need to encode or be reparsed to recover its element type.
     std::string parameterPackElementTypeKey;
+    // NativeSharp 3.0 T13-F06. These are semantic C-boundary contracts. The linked length
+    // ordinal is resolved after collecting the complete parameter list and is serialized in
+    // NSMETA so a consumer validates the same declaration reconstructed from LibraryReference.
+    std::string ffiLengthParameterName;
+    std::optional<std::size_t> ffiLengthParameterOrdinal;
+    bool ffiCallback = false;
+    bool ffiCallbackMayEscape = false;
     // NSC-LIMIT-020. Defaults remain attached to the declaration AST so ProjectReference calls
     // materialize the value fixed by the callee's contract, not a caller-side reparse.
     const ast::AstNode* defaultValueSyntax = nullptr;
@@ -141,6 +148,7 @@ struct ClassMemberSymbol final
     unsigned declaredPointerAddressSpace = 0;
     sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
     std::vector<MethodParameterSymbol> parameters;
+    ast::FfiUnwindSyntaxKind ffiUnwindPolicy = ast::FfiUnwindSyntaxKind::Default;
     std::string signatureKey;
     // NativeSharp 3.0 T04-F06. Closed generic methods retain the template that produced them so
     // overload resolution can compare the declaration constraints after ordinary conversions.

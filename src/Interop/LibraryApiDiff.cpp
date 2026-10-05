@@ -61,6 +61,9 @@ void parameterSourceContract(std::string& output, const LibraryMetadataParameter
     number(output, parameter.defaultValueFlags);
     number(output, parameter.defaultValueBits);
     field(output, parameter.defaultValueText);
+    number(output, parameter.ffiLengthParameter);
+    field(output, parameter.ffiLengthParameterName);
+    number(output, parameter.ffiCallbackLifetime);
 }
 
 template <typename Callable>
@@ -248,6 +251,7 @@ Surface sourceSurface(const LibraryMetadata& metadata)
             parameterSourceContract(contract, parameter);
         lifetimeSourceContract(contract, member);
         escapeSourceContract(contract, member);
+        number(contract, member.ffiUnwindPolicy);
         result.emplace(
             "member:" + member.declaringTypeKey + ":" +
                 std::to_string(member.kind) + ":" + member.signatureKey,

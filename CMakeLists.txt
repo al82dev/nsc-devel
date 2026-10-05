@@ -2224,6 +2224,16 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.t13.unsafe-auditing COMMAND nsc_ns3_t13_unsafe_auditing_tests)
 
     add_executable(
+        nsc_ns3_t13_ffi_contract_tests
+        tests/unit/NativeSharp3T13FfiContractTests.cpp)
+    target_link_libraries(nsc_ns3_t13_ffi_contract_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_ns3_t13_ffi_contract_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_ns3_t13_ffi_contract_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t13_ffi_contract_tests)
+    add_test(NAME nsc.ns3.t13.ffi-contracts COMMAND nsc_ns3_t13_ffi_contract_tests)
+
+    add_executable(
         nsc_ns3_t13_pointer_qualifier_tests
         tests/unit/NativeSharp3T13PointerQualifierTests.cpp)
     target_link_libraries(nsc_ns3_t13_pointer_qualifier_tests PRIVATE nsc_driver)

@@ -108,6 +108,11 @@ void AstNode::setFloatingPointMode(FloatingPointModeSyntaxKind mode) noexcept
 {
     floatingPointMode_ = mode;
 }
+FfiUnwindSyntaxKind AstNode::ffiUnwindPolicy() const noexcept { return ffiUnwindPolicy_; }
+void AstNode::setFfiUnwindPolicy(FfiUnwindSyntaxKind policy) noexcept
+{
+    ffiUnwindPolicy_ = policy;
+}
 std::uint64_t AstNode::integerValue() const noexcept { return integerValue_; }
 void AstNode::setIntegerValue(std::uint64_t value) noexcept { integerValue_ = value; }
 double AstNode::floatingValue() const noexcept { return floatingValue_; }

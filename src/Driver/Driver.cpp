@@ -1679,6 +1679,19 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                       << (parameter.isDynamicTrait ? "dyn " : "")
                       << parameterType << ' '
                       << (parameter.name.empty() ? "arg" + std::to_string(index) : parameter.name);
+            if (parameter.ffiLengthParameter != UINT32_MAX)
+            {
+                if (parameter.ffiLengthParameterName.empty())
+                {
+                    error = "metadata FFI length parameter has no source name";
+                    return false;
+                }
+                generated << " length(" << parameter.ffiLengthParameterName << ')';
+            }
+            if (parameter.ffiCallbackLifetime != 0U)
+                generated << " callback("
+                          << (parameter.ffiCallbackLifetime == 2U ? "escaping" : "scoped")
+                          << ')';
             std::string defaultValue;
             if (!sourceDefaultValue(parameter, defaultValue, error)) return false;
             if (!defaultValue.empty()) generated << " = " << defaultValue;
@@ -2501,7 +2514,12 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                           << ((member->flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "")
                           << returnType << ' ' << member->name << '(';
                 if (!emitParameters(*member)) return false;
-                generated << ");\n    }\n";
+                generated << ')';
+                if (member->ffiUnwindPolicy != 0U)
+                    generated << " unwind("
+                              << (member->ffiUnwindPolicy == 2U ? "abort" : "forbidden")
+                              << ')';
+                generated << ";\n    }\n";
                 continue;
             }
             if ((member->flags & kUserOperator) != 0U)

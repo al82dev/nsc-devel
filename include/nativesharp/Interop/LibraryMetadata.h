@@ -92,6 +92,8 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // MINOR 38 (2026-10-05): reusable generic templates publish parameter kinds, constant types,
 // move/copy/drop capability constraints, nominal/equality constraints, and erased lifetime
 // binders/outlives edges as an explicit semantic catalogue in addition to materializable source.
+// MINOR 38 (2026-10-04): extern-C parameters publish buffer-length and callback-lifetime
+// contracts; members publish the explicit unwind-boundary policy.
 inline constexpr std::uint16_t kMetadataFormatMinor = 38;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
@@ -330,6 +332,11 @@ struct LibraryMetadataParameter final
     std::uint8_t defaultValueFlags = 0;
     std::uint64_t defaultValueBits = 0;
     std::string defaultValueText;
+    // NSMETA 1.38. UINT32_MAX means no length link. Callback lifetime: 0 none, 1 scoped,
+    // 2 escaping. These contracts are semantic and do not alter the physical parameter ABI.
+    std::uint32_t ffiLengthParameter = UINT32_MAX;
+    std::string ffiLengthParameterName;
+    std::uint8_t ffiCallbackLifetime = 0;
 };
 
 enum class LibraryMetadataEscapeClass : std::uint8_t
@@ -372,6 +379,8 @@ struct LibraryMetadataMember final
     // `forceinline`. Vacio para contratos, imports, miembros no inline y especializaciones cuya
     // plantilla reutilizable ya viaja en `genericTemplates`.
     std::string inlineSourceText;
+    // NSMETA 1.38: 0 implicit/default, 1 forbidden, 2 abort-on-violation.
+    std::uint8_t ffiUnwindPolicy = 0;
 };
 
 struct LibraryMetadataNamespaceFunction final

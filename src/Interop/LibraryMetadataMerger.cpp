@@ -73,11 +73,13 @@ bool equalParameter(const LibraryMetadataParameter& left, const LibraryMetadataP
     return std::tie(left.name, left.typeKey, left.ownership, left.passKind,
                left.isParameterPack, left.isDynamicTrait, left.lifetimeName,
                left.defaultValueKind, left.defaultValueFlags, left.defaultValueBits,
-               left.defaultValueText) ==
+               left.defaultValueText, left.ffiLengthParameter,
+               left.ffiLengthParameterName, left.ffiCallbackLifetime) ==
         std::tie(right.name, right.typeKey, right.ownership, right.passKind,
             right.isParameterPack, right.isDynamicTrait, right.lifetimeName,
             right.defaultValueKind, right.defaultValueFlags, right.defaultValueBits,
-            right.defaultValueText);
+            right.defaultValueText, right.ffiLengthParameter,
+            right.ffiLengthParameterName, right.ffiCallbackLifetime);
 }
 
 bool equalMember(const LibraryMetadataMember& left, const LibraryMetadataMember& right)
@@ -88,14 +90,14 @@ bool equalMember(const LibraryMetadataMember& left, const LibraryMetadataMember&
                left.constantKind, left.constantBits, left.constantText,
                left.importDllName, left.inlineSourceText, left.returnLifetimeName,
                left.lifetimeParameters, left.lifetimeOutlivesConstraints,
-               left.parameterEscapeSummary) ==
+               left.parameterEscapeSummary, left.ffiUnwindPolicy) ==
             std::tie(right.kind, right.accessibility, right.flags, right.declaringTypeKey,
                 right.name, right.signatureKey, right.declaredTypeKey, right.declaredErrorTypeKey,
                 right.declaredOwnership, right.cAbiName, right.mangledName,
                 right.constantKind, right.constantBits, right.constantText,
                 right.importDllName, right.inlineSourceText, right.returnLifetimeName,
                 right.lifetimeParameters, right.lifetimeOutlivesConstraints,
-                right.parameterEscapeSummary) &&
+                right.parameterEscapeSummary, right.ffiUnwindPolicy) &&
         vectorEqual(left.parameters, right.parameters, equalParameter);
 }
 

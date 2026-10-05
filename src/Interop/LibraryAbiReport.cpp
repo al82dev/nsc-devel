@@ -98,7 +98,14 @@ void writeParameters(
                << " pass=" << passName(parameter.passKind)
                << " ownership=" << ownershipName(parameter.ownership)
                << " pack=" << (parameter.isParameterPack ? "yes" : "no")
-               << " dyn=" << (parameter.isDynamicTrait ? "yes" : "no") << '\n';
+               << " dyn=" << (parameter.isDynamicTrait ? "yes" : "no");
+        if (parameter.ffiLengthParameter != UINT32_MAX)
+            output << " length=#" << parameter.ffiLengthParameter
+                   << '(' << parameter.ffiLengthParameterName << ')';
+        if (parameter.ffiCallbackLifetime != 0U)
+            output << " callback="
+                   << (parameter.ffiCallbackLifetime == 2U ? "escaping" : "scoped");
+        output << '\n';
     }
 }
 }
@@ -243,6 +250,8 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
                << member->declaredTypeKey
                << " return-ownership=" << ownershipName(member->declaredOwnership)
                << " mangled=" << member->mangledName;
+        if (member->ffiUnwindPolicy != 0U)
+            output << " unwind=" << (member->ffiUnwindPolicy == 2U ? "abort" : "forbidden");
         if (!member->declaredErrorTypeKey.empty())
             output << " throws=" << member->declaredErrorTypeKey;
         if (!member->cAbiName.empty()) output << " c-name=" << member->cAbiName;

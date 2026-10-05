@@ -110,10 +110,28 @@ bool declaresLifetime(const ast::AstNode* declaration, std::string_view name) no
 
 ParameterPassKind lifetimeParameterPassKind(const ast::AstNode& parameter) noexcept
 {
-    if (parameter.auxiliaryText() == "pass:ref") return ParameterPassKind::Ref;
-    if (parameter.auxiliaryText() == "pass:out") return ParameterPassKind::Out;
-    if (parameter.auxiliaryText() == "pass:in") return ParameterPassKind::In;
+    if (parameter.auxiliaryText().starts_with("pass:ref")) return ParameterPassKind::Ref;
+    if (parameter.auxiliaryText().starts_with("pass:out")) return ParameterPassKind::Out;
+    if (parameter.auxiliaryText().starts_with("pass:in")) return ParameterPassKind::In;
     return ParameterPassKind::Value;
+}
+
+std::optional<std::string> parameterContract(
+    const ast::AstNode& parameter,
+    std::string_view prefix)
+{
+    std::string_view markers = parameter.auxiliaryText();
+    std::size_t begin = 0;
+    while (begin <= markers.size())
+    {
+        const std::size_t end = markers.find('|', begin);
+        const std::string_view marker = markers.substr(
+            begin, end == std::string_view::npos ? markers.size() - begin : end - begin);
+        if (marker.starts_with(prefix)) return std::string(marker.substr(prefix.size()));
+        if (end == std::string_view::npos) break;
+        begin = end + 1U;
+    }
+    return std::nullopt;
 }
 
 bool lifetimeOutlives(
@@ -1696,6 +1714,7 @@ bool ProjectMemberModel::collectTypeMembers(
             symbol.declaredErrorTypeKey = memberNode->throwsTypeSyntax() == nullptr
                 ? std::string{}
                 : canonicalTypeKey(memberNode->throwsTypeSyntax(), nameLookup);
+            symbol.ffiUnwindPolicy = memberNode->ffiUnwindPolicy();
             symbol.declaredPointerPointeeReadonly = memberNode->typeSyntax() != nullptr &&
                 memberNode->typeSyntax()->isPointeeConst();
             const language::PointerContract declaredPointer =
@@ -2114,7 +2133,16 @@ bool ProjectMemberModel::collectTypeMembers(
                     parameter.range = parameterNode->range();
                     parameter.syntax = parameterNode;
                     parameter.defaultValueSyntax = parameterNode->first();
-                    parameter.isParameterPack = parameterNode->auxiliaryText() == "params";
+                    parameter.isParameterPack = parameterNode->auxiliaryText().starts_with("params");
+                    if (const auto length = parameterContract(*parameterNode, "ffi:length:");
+                        length.has_value())
+                        parameter.ffiLengthParameterName = *length;
+                    if (const auto callback = parameterContract(*parameterNode, "ffi:callback:");
+                        callback.has_value())
+                    {
+                        parameter.ffiCallback = true;
+                        parameter.ffiCallbackMayEscape = *callback == "escaping";
+                    }
                     if (sawParameterPack)
                     {
                         diagnostics.report(
@@ -2174,8 +2202,13 @@ bool ProjectMemberModel::collectTypeMembers(
                     // x` and `int* x`.
                     if (parameterNode->auxiliaryText().starts_with("pass:"))
                     {
-                        const std::string spelling =
-                            parameterNode->auxiliaryText().substr(std::string("pass:").size());
+                        const std::string_view marker = parameterNode->auxiliaryText();
+                        const std::size_t markerEnd = marker.find('|');
+                        const std::string spelling = std::string(marker.substr(
+                            std::string("pass:").size(),
+                            markerEnd == std::string_view::npos
+                                ? marker.size() - std::string("pass:").size()
+                                : markerEnd - std::string("pass:").size()));
                         parameter.passKind = spelling == "ref"
                             ? ParameterPassKind::Ref
                             : (spelling == "out" ? ParameterPassKind::Out : ParameterPassKind::In);
@@ -2349,6 +2382,99 @@ bool ProjectMemberModel::collectTypeMembers(
                         parameterNames.emplace(parameter.name, parameterNode);
                     }
                     symbol.parameters.push_back(std::move(parameter));
+                }
+
+                const bool hasFfiContract = symbol.ffiUnwindPolicy !=
+                        ast::FfiUnwindSyntaxKind::Default ||
+                    std::ranges::any_of(
+                        symbol.parameters,
+                        [](const MethodParameterSymbol& parameter)
+                        {
+                            return !parameter.ffiLengthParameterName.empty() ||
+                                parameter.ffiCallback;
+                        });
+                if (hasFfiContract && !symbol.isExternC)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidExternCSignature,
+                        diagnostics::DiagnosticSeverity::Error,
+                        symbol.range,
+                        "FFI length, callback, and unwind contracts are valid only on extern C boundaries");
+                }
+                for (std::size_t parameterOrdinal = 0;
+                     parameterOrdinal < symbol.parameters.size(); ++parameterOrdinal)
+                {
+                    MethodParameterSymbol& parameter = symbol.parameters[parameterOrdinal];
+                    if (!parameter.ffiLengthParameterName.empty())
+                    {
+                        const auto target = std::ranges::find_if(
+                            symbol.parameters,
+                            [&](const MethodParameterSymbol& candidate)
+                            {
+                                return candidate.name == parameter.ffiLengthParameterName;
+                            });
+                        if (target == symbol.parameters.end())
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidExternCSignature,
+                                diagnostics::DiagnosticSeverity::Error,
+                                parameter.range,
+                                "FFI buffer parameter '" + parameter.name +
+                                    "' links unknown length parameter '" +
+                                    parameter.ffiLengthParameterName + "'");
+                        }
+                        else
+                        {
+                            parameter.ffiLengthParameterOrdinal = static_cast<std::size_t>(
+                                std::distance(symbol.parameters.begin(), target));
+                            if (*parameter.ffiLengthParameterOrdinal == parameterOrdinal ||
+                                !ProjectTypeConversion::isIntegral(target->typeKey))
+                            {
+                                diagnostics.report(
+                                    diagnostics::DiagnosticId::InvalidExternCSignature,
+                                    diagnostics::DiagnosticSeverity::Error,
+                                    parameter.range,
+                                    "FFI buffer length link for '" + parameter.name +
+                                        "' must name a distinct integral parameter");
+                            }
+                        }
+                        if (!ProjectTypeConversion::isPointer(parameter.typeKey) ||
+                            ProjectTypeConversion::isFunctionPointer(parameter.typeKey))
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidExternCSignature,
+                                diagnostics::DiagnosticSeverity::Error,
+                                parameter.range,
+                                "length(...) requires a data-pointer parameter");
+                        }
+                    }
+                    if (parameter.ffiCallback)
+                    {
+                        const NamedTypeDeclaration* callbackType =
+                            namedTypeForKey(parameter.typeKey, nameLookup);
+                        const bool externDelegate = callbackType != nullptr &&
+                            callbackType->kind == NamedTypeDeclarationKind::Delegate &&
+                            callbackType->syntax != nullptr &&
+                            callbackType->syntax->hasModifier(lexer::TokenKind::KwExtern);
+                        if (!ProjectTypeConversion::isFunctionPointer(parameter.typeKey) &&
+                            !externDelegate)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidExternCSignature,
+                                diagnostics::DiagnosticSeverity::Error,
+                                parameter.range,
+                                "callback(...) requires a function pointer or extern C delegate parameter");
+                        }
+                        if (parameter.ffiCallbackMayEscape &&
+                            parameter.ownership != sema::OwnershipKind::Owned)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidExternCSignature,
+                                diagnostics::DiagnosticSeverity::Error,
+                                parameter.range,
+                                "callback(escaping) requires an owned callback lifetime transfer");
+                        }
+                    }
                 }
 
                 if (symbol.isReferenceReturn)

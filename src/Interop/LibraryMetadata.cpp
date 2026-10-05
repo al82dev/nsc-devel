@@ -1379,6 +1379,13 @@ bool buildMetadataModel(
             parameterRecord.isParameterPack = parameter.isParameterPack;
             parameterRecord.isDynamicTrait =
                 parameter.typeSyntax != nullptr && parameter.typeSyntax->isDynamicTrait();
+            if (parameter.ffiLengthParameterOrdinal.has_value())
+                parameterRecord.ffiLengthParameter = static_cast<std::uint32_t>(
+                    *parameter.ffiLengthParameterOrdinal);
+            parameterRecord.ffiLengthParameterName = parameter.ffiLengthParameterName;
+            parameterRecord.ffiCallbackLifetime = parameter.ffiCallback
+                ? static_cast<std::uint8_t>(parameter.ffiCallbackMayEscape ? 2U : 1U)
+                : 0U;
             if (publishLifetimeContracts)
                 parameterRecord.lifetimeName = parameter.lifetimeName;
             if (!metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
@@ -1389,6 +1396,7 @@ bool buildMetadataModel(
             }
             record.parameters.push_back(std::move(parameterRecord));
         }
+        record.ffiUnwindPolicy = static_cast<std::uint8_t>(member.ffiUnwindPolicy);
         if (staticField != staticFields.end() && staticField->second->isConst && staticField->second->hasConstantInitializer)
         {
             const frontend::ProjectOopMirStaticField& field = *staticField->second;
@@ -2406,6 +2414,18 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
                 writer.text(shorter);
             }
         }
+        writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            writer.u8(member.ffiUnwindPolicy);
+            writer.u32(static_cast<std::uint32_t>(member.parameters.size()));
+            for (const LibraryMetadataParameter& parameter : member.parameters)
+            {
+                writer.u32(parameter.ffiLengthParameter);
+                writer.text(parameter.ffiLengthParameterName);
+                writer.u8(parameter.ffiCallbackLifetime);
+            }
+        }
     }
     return writer.bytes();
 }
@@ -3355,6 +3375,35 @@ bool decodePayload(
                 }
                 generic.lifetimeOutlivesConstraints.emplace_back(
                     std::move(longer), std::move(shorter));
+            }
+        }
+        if (!readCount(reader, catalogueCount) || catalogueCount != metadata.members.size())
+        {
+            error = "invalid metadata FFI-contract catalogue count";
+            return false;
+        }
+        for (LibraryMetadataMember& member : metadata.members)
+        {
+            std::uint32_t parameterCount = 0;
+            if (!reader.u8(member.ffiUnwindPolicy) || member.ffiUnwindPolicy > 2U ||
+                !readCount(reader, parameterCount) ||
+                parameterCount != member.parameters.size())
+            {
+                error = "truncated or invalid metadata FFI member contract";
+                return false;
+            }
+            for (LibraryMetadataParameter& parameter : member.parameters)
+            {
+                if (!reader.u32(parameter.ffiLengthParameter) ||
+                    !reader.text(parameter.ffiLengthParameterName) ||
+                    !reader.u8(parameter.ffiCallbackLifetime) ||
+                    parameter.ffiCallbackLifetime > 2U ||
+                    (parameter.ffiLengthParameter != UINT32_MAX &&
+                     parameter.ffiLengthParameter >= member.parameters.size()))
+                {
+                    error = "truncated or invalid metadata FFI parameter contract";
+                    return false;
+                }
             }
         }
     }

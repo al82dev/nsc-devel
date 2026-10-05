@@ -147,6 +147,7 @@ ast::AstNode* cloneParsedNode(ast::AstArena& arena, const ast::AstNode* source)
     result->setVariadic(source->isVariadic());
     result->setUnsafe(source->isUnsafe());
     result->setFloatingPointMode(source->floatingPointMode());
+    result->setFfiUnwindPolicy(source->ffiUnwindPolicy());
     result->setIntegerValue(source->integerValue());
     result->setFloatingValue(source->floatingValue());
     for (const TokenKind modifier : source->modifiers()) result->addModifier(modifier);
@@ -3822,6 +3823,7 @@ ast::AstNode* Parser::parseDelegateDeclaration()
     }
     expect(TokenKind::RightParen, "')'");
     parseThrowsClause(node);
+    parseFfiUnwindClause(node);
     // NSC-LIMIT-007: `delegate void D<T>(T x) where T : class;` -- despues de la lista de
     // parametros y antes del punto y coma, que es donde el lenguaje la pone.
     parseGenericConstraintClauses(node);
@@ -6141,6 +6143,7 @@ ast::AstNode* Parser::parseClassMember(
                     }
                     imported->setVariadic(variadic);
                     expect(TokenKind::RightParen, "')'");
+                    parseFfiUnwindClause(imported);
                     expect(TokenKind::Semicolon, "';' (imported C functions have no body)");
                     imported->setRange(tokenRangeFrom(entryBegin));
                     block->addChild(imported);
@@ -7596,6 +7599,7 @@ ast::AstNode* Parser::parseOperatorTail(
     expect(TokenKind::RightParen, "')'");
     parseThrowsClause(method);
     parseFloatingPointModeClause(method);
+    parseFfiUnwindClause(method);
     method->setText(operatorMethodName(operation.kind(), method->children().size()));
 
     const std::size_t arity = method->children().size();
@@ -7703,6 +7707,7 @@ ast::AstNode* Parser::parseConversionOperatorTail(
     }
     expect(TokenKind::RightParen, "')'");
     parseThrowsClause(method);
+    parseFfiUnwindClause(method);
     if (method->children().size() != 1)
     {
         diagnostics_.report(
@@ -7989,6 +7994,7 @@ ast::AstNode* Parser::parseMethodTail(
     // NSC-LIMIT-007: `void M<T>(T x) where T : class { ... }` -- despues de la lista de
     // parametros y antes del cuerpo o del punto y coma.
     parseFloatingPointModeClause(method);
+    parseFfiUnwindClause(method);
     parseGenericConstraintClauses(method);
 
     if (isAbstract)
@@ -8317,6 +8323,7 @@ ast::AstNode* Parser::parseFunctionTail(
     expect(TokenKind::RightParen, "')'");
     parseThrowsClause(function);
     parseFloatingPointModeClause(function);
+    parseFfiUnwindClause(function);
     if (variadic && !externalOnly)
     {
         diagnostics_.report(
@@ -8450,6 +8457,34 @@ void Parser::parseThrowsClause(ast::AstNode* callable)
     callable->setThrowsTypeSyntax(errorType);
 }
 
+void Parser::parseFfiUnwindClause(ast::AstNode* callable)
+{
+    if (callable == nullptr || !atContextualKeyword("unwind") ||
+        peek().kind() != TokenKind::LeftParen) return;
+    const SourceRange clauseRange = consume().range();
+    requireEdition3(clauseRange, "FFI unwind contracts");
+    consume();
+    if (atContextualKeyword("forbidden"))
+    {
+        consume();
+        callable->setFfiUnwindPolicy(ast::FfiUnwindSyntaxKind::Forbidden);
+    }
+    else if (atContextualKeyword("abort"))
+    {
+        consume();
+        callable->setFfiUnwindPolicy(ast::FfiUnwindSyntaxKind::Abort);
+    }
+    else
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "FFI unwind policy must be forbidden or abort");
+    }
+    expect(TokenKind::RightParen, "')' after FFI unwind policy");
+}
+
 ast::AstNode* Parser::parseParameter()
 {
     const std::size_t beginIndex = index_;
@@ -8502,6 +8537,41 @@ ast::AstNode* Parser::parseParameter()
     }
     if (parameterPack) parameter->setAuxiliaryText("params");
     else if (!passKind.empty()) parameter->setAuxiliaryText("pass:" + passKind);
+    const auto appendContract = [&](std::string contract)
+    {
+        std::string marker = parameter->auxiliaryText();
+        if (!marker.empty()) marker += '|';
+        marker += std::move(contract);
+        parameter->setAuxiliaryText(std::move(marker));
+    };
+    while ((atContextualKeyword("length") || atContextualKeyword("callback")) &&
+           peek().kind() == TokenKind::LeftParen)
+    {
+        const bool length = atContextualKeyword("length");
+        const SourceRange contractRange = consume().range();
+        requireEdition3(contractRange, "FFI parameter contracts");
+        consume();
+        if (length)
+        {
+            if (!at(TokenKind::Identifier))
+                expect(TokenKind::Identifier, "length parameter name");
+            else
+                appendContract("ffi:length:" + std::string(consume().lexeme()));
+        }
+        else if (atContextualKeyword("scoped") || atContextualKeyword("escaping"))
+        {
+            appendContract("ffi:callback:" + std::string(consume().lexeme()));
+        }
+        else
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "callback lifetime must be scoped or escaping");
+        }
+        expect(TokenKind::RightParen, "')' after FFI parameter contract");
+    }
     if (consumeIf(TokenKind::Equal))
     {
         parameter->setFirst(parseAssignmentExpression());

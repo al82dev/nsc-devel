@@ -53,6 +53,13 @@ enum class FloatingPointModeSyntaxKind
     Fast
 };
 
+enum class FfiUnwindSyntaxKind
+{
+    Default,
+    Forbidden,
+    Abort
+};
+
 // NSC-LIMIT-007. Una clausula `where T : class, Base, IFoo` tal como se escribio.
 //
 // SE GUARDA SIN RESOLVER, y esa es la decision: los tipos quedan como `TypeSyntax*`, no como
@@ -194,6 +201,8 @@ public:
 
     FloatingPointModeSyntaxKind floatingPointMode() const noexcept;
     void setFloatingPointMode(FloatingPointModeSyntaxKind mode) noexcept;
+    FfiUnwindSyntaxKind ffiUnwindPolicy() const noexcept;
+    void setFfiUnwindPolicy(FfiUnwindSyntaxKind policy) noexcept;
 
     std::uint64_t integerValue() const noexcept;
     void setIntegerValue(std::uint64_t value) noexcept;
@@ -227,6 +236,7 @@ private:
     bool variadic_ = false;
     bool unsafe_ = false;
     FloatingPointModeSyntaxKind floatingPointMode_ = FloatingPointModeSyntaxKind::Inherit;
+    FfiUnwindSyntaxKind ffiUnwindPolicy_ = FfiUnwindSyntaxKind::Default;
     std::uint64_t integerValue_ = 0;
     double floatingValue_ = 0.0;
 };
