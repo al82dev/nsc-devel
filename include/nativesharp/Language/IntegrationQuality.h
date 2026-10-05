@@ -54,8 +54,21 @@ struct WholeProgramWitness final
     bool deterministic = true;
     bool supportsIncremental = true;
     bool requiresSdk = false;
+    enum class Kind { Parser, ArenaAllocator, JobGraph, BinarySerializer, DllHostPlugin, AsyncServer };
+    Kind kind = Kind::Parser;
+    bool debugAndRelease = true;
+    bool cleanAndIncremental = true;
+    bool ltoAndNoLto = true;
+    bool sanitizerReady = true;
+    bool partialNoHeap = false;
+    std::size_t minimumSourceUnits = 1;
+    int expectedExitCode = 42;
 };
 bool validateWholeProgramCorpus(std::span<const WholeProgramWitness> programs, std::string& error);
+std::vector<WholeProgramWitness> buildNativeSharp3WholeProgramCorpus();
+bool validateNativeSharp3WholeProgramCorpus(
+    std::span<const WholeProgramWitness> programs,
+    std::string& error);
 
 struct PerformanceBudget final
 {

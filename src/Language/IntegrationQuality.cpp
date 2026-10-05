@@ -123,6 +123,54 @@ bool validateWholeProgramCorpus(
     return !programs.empty();
 }
 
+std::vector<WholeProgramWitness> buildNativeSharp3WholeProgramCorpus()
+{
+    using Kind = WholeProgramWitness::Kind;
+    return {
+        {"parser", true, true, false, Kind::Parser, true, true, true, true, true, 4, 42},
+        {"arena", true, true, false, Kind::ArenaAllocator, true, true, true, true, true, 3, 42},
+        {"job-graph", true, true, false, Kind::JobGraph, true, true, true, true, true, 5, 42},
+        {"serializer", true, true, false, Kind::BinarySerializer, true, true, true, true, true, 4, 42},
+        {"dll-host-plugin", true, true, false, Kind::DllHostPlugin, true, true, true, true, false, 6, 42},
+        {"async-server", true, true, false, Kind::AsyncServer, true, true, true, true, false, 5, 42}};
+}
+
+bool validateNativeSharp3WholeProgramCorpus(
+    std::span<const WholeProgramWitness> programs,
+    std::string& error)
+{
+    if (!validateWholeProgramCorpus(programs, error)) return false;
+    std::set<WholeProgramWitness::Kind> kinds;
+    for (const WholeProgramWitness& program : programs)
+    {
+        if (!program.debugAndRelease || !program.cleanAndIncremental ||
+            !program.ltoAndNoLto || !program.sanitizerReady ||
+            program.minimumSourceUnits == 0 || program.expectedExitCode != 42)
+        {
+            error = "whole-program witness lacks a required build profile or observable result";
+            return false;
+        }
+        if (!kinds.insert(program.kind).second)
+        {
+            error = "whole-program corpus contains a duplicate witness kind";
+            return false;
+        }
+    }
+    if (kinds.size() != 6)
+    {
+        error = "whole-program corpus must contain parser, arena, job graph, serializer, DLL, and async witnesses";
+        return false;
+    }
+    const std::size_t noHeapPrograms = static_cast<std::size_t>(std::ranges::count_if(
+        programs, [](const WholeProgramWitness& program) { return program.partialNoHeap; }));
+    if (noHeapPrograms < 4)
+    {
+        error = "whole-program corpus requires at least four partial noheap profiles";
+        return false;
+    }
+    return true;
+}
+
 bool withinPerformanceBudget(
     const PerformanceBudget& measured,
     const PerformanceBudget& maximum) noexcept
