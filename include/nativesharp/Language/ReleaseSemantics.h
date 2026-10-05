@@ -32,6 +32,21 @@ struct SyntaxFreezeManifest final
 };
 bool validateSyntaxFreeze(const SyntaxFreezeManifest& manifest, std::string& error);
 
+struct SemanticFreezeManifest final
+{
+    std::string overloadRevision;
+    std::string conversionRevision;
+    std::string inferenceRevision;
+    std::string ownershipAndDropRevision;
+    std::string errorRevision;
+    std::string asyncRevision;
+    std::string memoryModelRevision;
+    std::vector<std::string> deferredIssueMilestones;
+    bool normativeSuitePassed = false;
+    bool differentialConfigurationsDeterministic = false;
+};
+bool validateSemanticFreeze(const SemanticFreezeManifest& manifest, std::string& error);
+
 enum class ConformanceTier { Mandatory, Recommended, ImplementationSpecific };
 struct ConformanceCase final { std::string identity; ConformanceTier tier; };
 bool validateConformanceManifest(std::span<const ConformanceCase> cases, std::string& error);

@@ -28,6 +28,25 @@ bool validateSyntaxFreeze(const SyntaxFreezeManifest& manifest, std::string& err
     return true;
 }
 
+bool validateSemanticFreeze(const SemanticFreezeManifest& manifest, std::string& error)
+{
+    error.clear();
+    if (manifest.overloadRevision.empty() || manifest.conversionRevision.empty() ||
+        manifest.inferenceRevision.empty() || manifest.ownershipAndDropRevision.empty() ||
+        manifest.errorRevision.empty() || manifest.asyncRevision.empty() ||
+        manifest.memoryModelRevision.empty())
+    { error = "semantic freeze requires a revision for every normative subsystem"; return false; }
+    for (const std::string& milestone : manifest.deferredIssueMilestones)
+    {
+        if (!milestone.starts_with("3.1") && !milestone.starts_with("3.2") &&
+            !milestone.starts_with("4."))
+        { error = "semantic freeze exceptions must target a post-3.0 milestone"; return false; }
+    }
+    if (!manifest.normativeSuitePassed || !manifest.differentialConfigurationsDeterministic)
+    { error = "semantic freeze evidence is incomplete"; return false; }
+    return true;
+}
+
 bool validateConformanceManifest(
     std::span<const ConformanceCase> cases,
     std::string& error)
