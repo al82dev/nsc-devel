@@ -97,6 +97,39 @@ std::vector<std::string> cancellationCleanup(
     std::span<const std::string> activeLocals,
     std::span<const std::string> activeDefers);
 
+enum class CancellationReason { Requested, FutureDropped, ParentScopeExited };
+enum class AsyncCleanupKind { Defer, LocalDrop };
+
+struct ActiveAsyncDefer final
+{
+    std::string name;
+    std::size_t depth = 0;
+};
+
+struct AsyncCleanupAction final
+{
+    AsyncCleanupKind kind = AsyncCleanupKind::LocalDrop;
+    std::string name;
+    std::optional<std::size_t> frameSlot;
+};
+
+struct AsyncCancellationPlan final
+{
+    CancellationReason reason = CancellationReason::Requested;
+    std::size_t suspendedState = 0;
+    std::vector<AsyncCleanupAction> actions;
+    bool cooperative = true;
+    bool usesThreadAbort = false;
+};
+
+std::optional<AsyncCancellationPlan> buildAsyncCancellationPlan(
+    const AsyncFunctionPlan& function,
+    std::size_t suspendedState,
+    std::span<const std::string> frameSlotNames,
+    std::span<const ActiveAsyncDefer> activeDefers,
+    CancellationReason reason,
+    std::string& error) noexcept;
+
 enum class AsyncGeneratorState { Pending, ItemReady, Completed, Cancelled };
 bool asyncGeneratorMayProduce(
     AsyncGeneratorState state,

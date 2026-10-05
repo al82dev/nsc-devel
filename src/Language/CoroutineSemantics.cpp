@@ -234,6 +234,64 @@ std::vector<std::string> cancellationCleanup(
     return result;
 }
 
+std::optional<AsyncCancellationPlan> buildAsyncCancellationPlan(
+    const AsyncFunctionPlan& function,
+    std::size_t suspendedState,
+    std::span<const std::string> frameSlotNames,
+    std::span<const ActiveAsyncDefer> activeDefers,
+    CancellationReason reason,
+    std::string& error) noexcept
+{
+    error.clear();
+    const auto state = std::ranges::find_if(
+        function.stateMachine.states, [&](const GeneratorState& candidate)
+    {
+        return candidate.state == suspendedState;
+    });
+    if (state == function.stateMachine.states.end())
+    {
+        error = "cancellation requires a currently suspended async state";
+        return std::nullopt;
+    }
+    if (frameSlotNames.size() != function.stateMachine.slots.size())
+    {
+        error = "async cancellation requires one diagnostic name per frame slot";
+        return std::nullopt;
+    }
+
+    AsyncCancellationPlan result;
+    result.reason = reason;
+    result.suspendedState = suspendedState;
+
+    std::vector<ActiveAsyncDefer> defers;
+    defers.reserve(activeDefers.size());
+    for (const ActiveAsyncDefer& defer : activeDefers)
+    {
+        if (defer.name.empty() || defer.depth == 0 || defer.depth > state->cleanupDepth)
+        {
+            error = "active async defer must have a name and fit the suspended cleanup depth";
+            return std::nullopt;
+        }
+        defers.push_back(defer);
+    }
+    std::ranges::stable_sort(defers, std::greater{}, &ActiveAsyncDefer::depth);
+    for (const ActiveAsyncDefer& defer : defers)
+        result.actions.push_back(AsyncCleanupAction{AsyncCleanupKind::Defer, defer.name, std::nullopt});
+
+    for (const std::size_t slot :
+         generatorCancellationDropOrder(function.stateMachine, suspendedState))
+    {
+        if (slot >= frameSlotNames.size())
+        {
+            error = "async cancellation references an invalid frame slot";
+            return std::nullopt;
+        }
+        result.actions.push_back(AsyncCleanupAction{
+            AsyncCleanupKind::LocalDrop, frameSlotNames[slot], slot});
+    }
+    return result;
+}
+
 bool asyncGeneratorMayProduce(
     AsyncGeneratorState state,
     bool consumerRequestedNext) noexcept
