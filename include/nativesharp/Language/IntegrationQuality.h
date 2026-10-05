@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -25,14 +26,27 @@ enum class FeatureArea
     Ffi,
     Numerics
 };
+enum class InteractionRisk { Medium, High, Critical };
 
 struct InteractionCase final
 {
     std::string identity;
     std::vector<FeatureArea> areas;
     std::uint64_t deterministicSeed = 0;
+    InteractionRisk risk = InteractionRisk::High;
+    bool changesMir = true;
+    bool changesOwnership = true;
+    bool minimizesOnFailure = true;
 };
 bool validateInteractionMatrix(std::span<const InteractionCase> cases, std::string& error);
+bool validatePrioritizedInteractionMatrix(
+    std::span<const InteractionCase> cases,
+    std::string& error);
+std::vector<InteractionCase> buildNativeSharp3InteractionMatrix(std::uint64_t seedBase);
+std::optional<InteractionCase> minimizeInteractionCase(
+    const InteractionCase& failing,
+    std::span<const FeatureArea> essentialAreas,
+    std::string& error);
 
 struct WholeProgramWitness final
 {

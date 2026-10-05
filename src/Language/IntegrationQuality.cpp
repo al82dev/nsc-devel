@@ -39,6 +39,75 @@ bool validateInteractionMatrix(std::span<const InteractionCase> cases, std::stri
     return true;
 }
 
+bool validatePrioritizedInteractionMatrix(
+    std::span<const InteractionCase> cases,
+    std::string& error)
+{
+    if (!validateInteractionMatrix(cases, error)) return false;
+    bool hasTriple = false;
+    for (const InteractionCase& item : cases)
+    {
+        if (item.risk == InteractionRisk::Medium || !item.minimizesOnFailure ||
+            (!item.changesMir && !item.changesOwnership))
+        {
+            error = "prioritized interaction cases require high risk, compiler impact, and minimization";
+            return false;
+        }
+        hasTriple = hasTriple || item.areas.size() >= 3;
+    }
+    if (!hasTriple)
+    {
+        error = "prioritized interaction matrix requires at least one high-risk feature triple";
+        return false;
+    }
+    return true;
+}
+
+std::vector<InteractionCase> buildNativeSharp3InteractionMatrix(std::uint64_t seedBase)
+{
+    if (seedBase == 0) seedBase = 0x4e533300ULL;
+    return {
+        {"variant-move-drop", {FeatureArea::Variants, FeatureArea::Ownership}, seedBase + 1,
+            InteractionRisk::Critical, true, true, true},
+        {"generic-trait-associated", {FeatureArea::Generics, FeatureArea::Traits}, seedBase + 2,
+            InteractionRisk::High, true, false, true},
+        {"borrow-async-error", {FeatureArea::Ownership, FeatureArea::Coroutines, FeatureArea::Errors},
+            seedBase + 3, InteractionRisk::Critical, true, true, true},
+        {"module-ffi-contract", {FeatureArea::Modules, FeatureArea::Ffi}, seedBase + 4,
+            InteractionRisk::Critical, true, true, true},
+        {"derive-module-fingerprint", {FeatureArea::Metaprogramming, FeatureArea::Modules}, seedBase + 5,
+            InteractionRisk::High, true, false, true},
+        {"closure-generic-borrow", {FeatureArea::Closures, FeatureArea::Generics, FeatureArea::Ownership},
+            seedBase + 6, InteractionRisk::Critical, true, true, true},
+        {"iterator-async-numeric", {FeatureArea::Iteration, FeatureArea::Coroutines, FeatureArea::Numerics},
+            seedBase + 7, InteractionRisk::High, true, true, true}};
+}
+
+std::optional<InteractionCase> minimizeInteractionCase(
+    const InteractionCase& failing,
+    std::span<const FeatureArea> essentialAreas,
+    std::string& error)
+{
+    error.clear();
+    if (!failing.minimizesOnFailure || essentialAreas.size() < 2)
+    {
+        error = "interaction failure requires at least two essential areas and minimization support";
+        return std::nullopt;
+    }
+    for (const FeatureArea essential : essentialAreas)
+    {
+        if (std::ranges::find(failing.areas, essential) == failing.areas.end())
+        {
+            error = "minimized interaction contains an area absent from the failing case";
+            return std::nullopt;
+        }
+    }
+    InteractionCase result = failing;
+    result.identity += "-min";
+    result.areas.assign(essentialAreas.begin(), essentialAreas.end());
+    return result;
+}
+
 bool validateWholeProgramCorpus(
     std::span<const WholeProgramWitness> programs,
     std::string& error)
