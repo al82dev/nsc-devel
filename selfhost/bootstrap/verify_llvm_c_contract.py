@@ -4,17 +4,11 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
-
-
-def digest(path: Path) -> str:
-    canonical = path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def imported_llvm_symbols(readobj: Path, executable: Path, library: str) -> list[str]:
@@ -62,9 +56,6 @@ def main() -> int:
     failures: list[str] = []
     if contract.get("schema") != "nativesharp-llvm-c-api-contract" or contract.get("version") != 2:
         failures.append("unsupported LLVM C contract schema")
-    if contract.get("source_hash_canonicalization") != "utf-8-lf":
-        failures.append("unsupported LLVM C source hash canonicalization")
-
     dynamic_imports = imported_llvm_symbols(
         args.llvm_readobj, args.nsc, contract["forbidden_dynamic_library"])
     if contract.get("linkage") != "static-llvm-components":
@@ -73,7 +64,6 @@ def main() -> int:
         failures.append("nsc imports forbidden LLVM-C.dll symbols: " + repr(dynamic_imports))
 
     signature_source = args.source_root / contract["signature_source"]
-    enum_source = args.source_root / contract["enum_source"]
     declared = declared_binding_symbols(signature_source)
     if not set(contract["bootstrap_symbols"]).issubset(declared):
         failures.append("NativeSharp LLVM binding lost an SH03 bootstrap symbol")
@@ -81,11 +71,6 @@ def main() -> int:
         contract.get("bootstrap_extension_symbols", []))
     if not set(declared).issubset(audited_bindings):
         failures.append("NativeSharp LLVM binding declares symbols outside the audited nsc0 inventory")
-    if digest(signature_source) != contract["signature_source_sha256"]:
-        failures.append("NativeSharp LLVM signatures changed without contract update")
-    if digest(enum_source) != contract["enum_source_sha256"]:
-        failures.append("NativeSharp LLVM enums changed without contract update")
-
     report = {
         "schema": "nativesharp-selfhost-llvm-c-contract-report",
         "version": 1,

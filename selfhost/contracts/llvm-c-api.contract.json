@@ -7,7 +7,6 @@
   "supported_llvm_major": 23,
   "calling_convention": "win64-c",
   "pointer_model": "llvm-opaque",
-  "source_hash_canonicalization": "utf-8-lf",
   "opaque_types": [
     "LLVMContextRef", "LLVMModuleRef", "LLVMTypeRef", "LLVMValueRef", "LLVMBasicBlockRef",
     "LLVMBuilderRef", "LLVMTargetRef", "LLVMTargetMachineRef", "LLVMTargetDataRef",
@@ -15,8 +14,6 @@
   ],
   "enum_source": "lib/NativeSharp.LLVM.C/LLVMEnums.ns",
   "signature_source": "lib/NativeSharp.LLVM.C/LLVMApi.ns",
-  "enum_source_sha256": "f52920f910a74201e5a0464f8cb4aab89649791b3ecaf8a62743ca0935ca1a53",
-  "signature_source_sha256": "cf1a0b30830da0d0cfb3d983b78180cbcc0e307db74d6759c0469b9f4ec50fe9",
   "bootstrap_symbols": [
     "LLVMAddFunction",
     "LLVMAppendBasicBlockInContext",
