@@ -142,8 +142,13 @@ class Program
         int value = Boundary.ReadMeters(box.Value);
         int number = 42;
         Handle<int> handle = Handle<int>.FromRepresentation(&number);
+        bool representationMatches;
+        unsafe("inspect opaque pointer representation")
+        {
+            representationMatches = *handle.ToRepresentation() == 42;
+        }
         if (sizeof(Meters) != sizeof(int) || sizeof(handle) != sizeof(int*) ||
-            *handle.ToRepresentation() != 42)
+            !representationMatches)
         {
             return 1;
         }

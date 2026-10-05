@@ -61,7 +61,7 @@ expect_t42_failure(BadConstCast "const_cast cannot convert")
 expect_t42_failure(BadReinterpretConst "reinterpret_cast cannot convert")
 expect_t42_failure(CStyleDiscard "C-style cast cannot discard")
 expect_t42_failure(CallDiscard "no viable overload")
-expect_t42_failure(ReturnDiscard "return would discard")
+expect_t42_failure(ReturnDiscard "return value does not satisfy the declared pointer")
 expect_t42_failure(NamespaceStatic "file-local linkage are not supported")
 expect_t42_failure(ExternState "extern namespace variables are not supported")
 

@@ -98,7 +98,10 @@ namespace T39FrontendAbi
 
             int target = 42;
             int* pointer = true ? &target : null;
-            if (pointer == null || *pointer != 42) return 9;
+            unsafe("validate raw-pointer conditional result")
+            {
+                if (pointer == null || *pointer != 42) return 9;
+            }
             pointer = false ? &target : null;
             if (pointer != null) return 10;
 

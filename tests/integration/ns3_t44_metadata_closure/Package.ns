@@ -19,7 +19,10 @@ namespace T44.Package
     {
         public static int Answer()
         {
-            if (Kernel.GetCurrentProcessId() == 0u) { return 1; }
+            unsafe("invoke non-unwinding Win32 process-id import")
+            {
+                if (Kernel.GetCurrentProcessId() == 0u) { return 1; }
+            }
             return Session.Finish(ValueProvider.Forty());
         }
     }

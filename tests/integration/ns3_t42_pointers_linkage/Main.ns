@@ -2,7 +2,10 @@ namespace T42Pointers
 {
     class Program
     {
-        private static int ReadOnly(int const* value) { return *value; }
+        private static int ReadOnly(int const* value)
+        {
+            unsafe("read caller-validated pointer") { return *value; }
+        }
 
         public static int Main()
         {
@@ -14,16 +17,28 @@ namespace T42Pointers
             const int* fixedBinding = &mutableValue;
             const int const* fixedReadonlyBinding = &immutableValue;
 
-            *mutablePointer = 8;
-            *fixedBinding = 10;
+            unsafe("exercise mutable and readonly pointer bindings")
+            {
+                *mutablePointer = 8;
+                *fixedBinding = 10;
+            }
             readonlyPointer = &mutableValue;
             if (ReadOnly(readonlyPointer) != 10) return 1;
-            if (*fixedReadonlyBinding != 9) return 2;
+            unsafe("read fixed readonly binding")
+            {
+                if (*fixedReadonlyBinding != 9) return 2;
+            }
 
-            int* recovered = const_cast<int*>(&immutableValue);
+            int* recovered;
+            nint raw;
+            int* roundTrip;
+            unsafe("exercise explicit qualifier and provenance casts")
+            {
+                recovered = const_cast<int*>(&immutableValue);
+                raw = reinterpret_cast<nint>(mutablePointer);
+                roundTrip = reinterpret_cast<int*>(raw);
+            }
             if (recovered != &immutableValue) return 3;
-            nint raw = reinterpret_cast<nint>(mutablePointer);
-            int* roundTrip = reinterpret_cast<int*>(raw);
             if (roundTrip != mutablePointer) return 4;
             long widened = static_cast<long>(mutableValue);
             if (widened != 10) return 5;

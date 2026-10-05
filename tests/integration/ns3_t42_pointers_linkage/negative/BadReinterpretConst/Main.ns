@@ -1,1 +1,1 @@
-namespace T42Negative { class Program { static int Main() { int value = 1; int const* source = &value; byte* target = reinterpret_cast<byte*>(source); return 0; } } }
+namespace T42Negative { class Program { static int Main() { int value = 1; int const* source = &value; byte* target; unsafe("test reinterpret constness rejection") { target = reinterpret_cast<byte*>(source); } return 0; } } }
