@@ -5,6 +5,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -24,6 +25,10 @@ struct ClassDestructionPlan final
     std::vector<std::size_t> destructorMemberOrdinals;
     std::string destructionEntryName;
     std::string objectDestructionEntryName;
+    std::string crossModuleCreateEntryName;
+    std::string crossModuleDestroyEntryName;
+    std::string crossModuleDeallocateEntryName;
+    std::uint16_t crossModuleLifetimeAbiMajor = 0;
 };
 
 class ProjectDestructionModel final

@@ -24,6 +24,10 @@ void ProjectDestructionModelDumper::dump(
         }
         output << " entry=" << plan.destructionEntryName
                << " object-entry=" << plan.objectDestructionEntryName
+               << " xmod-abi=" << plan.crossModuleLifetimeAbiMajor
+               << " xmod-create=" << plan.crossModuleCreateEntryName
+               << " xmod-destroy=" << plan.crossModuleDestroyEntryName
+               << " xmod-deallocate=" << plan.crossModuleDeallocateEntryName
                << " explicit=";
         if (plan.explicitDestructorMemberOrdinal.has_value())
         {

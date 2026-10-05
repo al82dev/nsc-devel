@@ -168,6 +168,7 @@ add_library(nsc_compilation STATIC
     src/Language/AggregateSemantics.cpp
     src/Language/CallableSemantics.cpp
     src/Language/CompatibilitySemantics.cpp
+    src/Language/CrossModuleLifetime.cpp
     src/Language/CoroutineSemantics.cpp
     src/Language/ErrorSemantics.cpp
     src/Language/LanguageEdition.cpp
@@ -2242,6 +2243,16 @@ if(NSC_BUILD_TESTS)
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_ns3_t13_portable_simd_tests)
     add_test(NAME nsc.ns3.t13.portable-simd COMMAND nsc_ns3_t13_portable_simd_tests)
+
+    add_executable(
+        nsc_ns3_t13_cross_module_lifetime_tests
+        tests/unit/NativeSharp3T13CrossModuleLifetimeTests.cpp)
+    target_link_libraries(nsc_ns3_t13_cross_module_lifetime_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_ns3_t13_cross_module_lifetime_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_ns3_t13_cross_module_lifetime_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_ns3_t13_cross_module_lifetime_tests)
+    add_test(NAME nsc.ns3.t13.cross-module-lifetime COMMAND nsc_ns3_t13_cross_module_lifetime_tests)
 
     add_executable(
         nsc_ns3_t13_pointer_qualifier_tests

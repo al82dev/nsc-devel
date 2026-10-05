@@ -4,6 +4,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Language/CrossModuleLifetime.h"
 
 #include <cctype>
 #include <string>
@@ -99,6 +100,15 @@ bool ProjectDestructionModel::buildClass(
         sanitizeSymbol(nameLookup_->namedTypes()[typeOrdinal].identity.key());
     plan.objectDestructionEntryName = "__nsc_destroy_object_" +
         sanitizeSymbol(nameLookup_->namedTypes()[typeOrdinal].identity.key());
+    const compilation::TypeIdentity& identity = nameLookup_->namedTypes()[typeOrdinal].identity;
+    const language::CrossModuleLifetimeContract crossModule =
+        language::makeCrossModuleLifetimeContract(
+            identity.moduleName(), identity.key(), "nativesharp.default",
+            language::ModuleUnloadPolicy::RejectWhileObjectsLive);
+    plan.crossModuleCreateEntryName = crossModule.createThunk;
+    plan.crossModuleDestroyEntryName = crossModule.destroyThunk;
+    plan.crossModuleDeallocateEntryName = crossModule.deallocateThunk;
+    plan.crossModuleLifetimeAbiMajor = crossModule.abiMajor;
 
     std::size_t destructorCount = 0;
     for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
