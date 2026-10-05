@@ -130,10 +130,62 @@ std::optional<AsyncCancellationPlan> buildAsyncCancellationPlan(
     CancellationReason reason,
     std::string& error) noexcept;
 
-enum class AsyncGeneratorState { Pending, ItemReady, Completed, Cancelled };
+enum class AsyncGeneratorState { Pending, ItemReady, Completed, Error, Cancelled };
 bool asyncGeneratorMayProduce(
     AsyncGeneratorState state,
     bool consumerRequestedNext) noexcept;
+
+enum class AsyncGeneratorSuspensionKind { Await, Yield };
+
+struct AsyncGeneratorSuspension final
+{
+    std::size_t state = 0;
+    AsyncGeneratorSuspensionKind kind = AsyncGeneratorSuspensionKind::Await;
+    std::size_t cleanupDepth = 0;
+    bool carriesBorrow = false;
+    bool borrowSourceOutlivesFrame = false;
+    bool borrowAddressStable = false;
+};
+
+struct AsyncGeneratorPlan final
+{
+    std::string itemType;
+    std::string errorType;
+    std::string cancellationType;
+    FrameStorage storage = FrameStorage::CallerStack;
+    SynchronousGeneratorPlan stateMachine;
+    bool explicitBackpressure = true;
+    bool moveOnlyItems = false;
+};
+
+std::optional<AsyncGeneratorPlan> buildAsyncGeneratorPlan(
+    std::string_view itemType,
+    std::string_view errorType,
+    std::string_view cancellationType,
+    std::span<const GeneratorLocal> locals,
+    std::span<const AsyncGeneratorSuspension> suspensions,
+    FrameStorage storage,
+    bool hasSelfReference,
+    bool moveOnlyItems,
+    std::string& error) noexcept;
+
+enum class AsyncGeneratorPollOutcome { Pending, ItemReady, ReadyError, Completed };
+
+class AsyncGeneratorProtocolState final
+{
+public:
+    AsyncGeneratorState state() const noexcept { return state_; }
+    bool demandOutstanding() const noexcept { return demandOutstanding_; }
+    bool itemOutstanding() const noexcept { return itemOutstanding_; }
+    bool requestNext(std::string& error);
+    bool resume(AsyncGeneratorPollOutcome outcome, std::string& error);
+    bool takeItem(std::string& error);
+    bool stopEarly(std::string& error);
+private:
+    AsyncGeneratorState state_ = AsyncGeneratorState::Pending;
+    bool demandOutstanding_ = false;
+    bool itemOutstanding_ = false;
+};
 
 struct ThreadSafetyFacts final
 {

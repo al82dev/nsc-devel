@@ -300,6 +300,168 @@ bool asyncGeneratorMayProduce(
         state == AsyncGeneratorState::ItemReady);
 }
 
+std::optional<AsyncGeneratorPlan> buildAsyncGeneratorPlan(
+    std::string_view itemType,
+    std::string_view errorType,
+    std::string_view cancellationType,
+    std::span<const GeneratorLocal> locals,
+    std::span<const AsyncGeneratorSuspension> suspensions,
+    FrameStorage storage,
+    bool hasSelfReference,
+    bool moveOnlyItems,
+    std::string& error) noexcept
+{
+    error.clear();
+    if (itemType.empty() || errorType.empty() || cancellationType.empty())
+    {
+        error = "async generator item, error, and cancellation types must be explicit";
+        return std::nullopt;
+    }
+    if (suspensions.empty())
+    {
+        error = "async generator requires at least one await or yield suspension";
+        return std::nullopt;
+    }
+
+    bool hasYield = false;
+    std::vector<GeneratorSuspension> unified;
+    unified.reserve(suspensions.size());
+    for (std::size_t index = 0; index < suspensions.size(); ++index)
+    {
+        const AsyncGeneratorSuspension& suspension = suspensions[index];
+        if (suspension.state != index + 1U)
+        {
+            error = "async generator states must be contiguous and start at one";
+            return std::nullopt;
+        }
+        if (suspension.carriesBorrow &&
+            !borrowMayCrossAwait(
+                suspension.borrowSourceOutlivesFrame,
+                suspension.borrowAddressStable))
+        {
+            error = "borrowed async generator state requires source lifetime and stable address proofs";
+            return std::nullopt;
+        }
+        const bool yields = suspension.kind == AsyncGeneratorSuspensionKind::Yield;
+        hasYield = hasYield || yields;
+        unified.push_back(GeneratorSuspension{
+            suspension.state,
+            std::string(itemType),
+            yields && suspension.carriesBorrow
+                ? GeneratorYieldKind::SharedReference
+                : GeneratorYieldKind::Value,
+            suspension.cleanupDepth,
+            suspension.carriesBorrow});
+    }
+    if (!hasYield)
+    {
+        error = "async generator requires at least one yield state";
+        return std::nullopt;
+    }
+
+    const auto machine = buildSynchronousGeneratorPlan(
+        locals, unified, generatorStorage(storage), hasSelfReference, error);
+    if (!machine.has_value()) return std::nullopt;
+
+    AsyncGeneratorPlan result;
+    result.itemType = std::string(itemType);
+    result.errorType = std::string(errorType);
+    result.cancellationType = std::string(cancellationType);
+    result.storage = storage;
+    result.stateMachine = *machine;
+    result.moveOnlyItems = moveOnlyItems;
+    return result;
+}
+
+bool AsyncGeneratorProtocolState::requestNext(std::string& error)
+{
+    error.clear();
+    if (state_ == AsyncGeneratorState::Completed ||
+        state_ == AsyncGeneratorState::Error ||
+        state_ == AsyncGeneratorState::Cancelled)
+    {
+        error = "async generator cannot accept demand after a terminal state";
+        return false;
+    }
+    if (demandOutstanding_ || itemOutstanding_)
+    {
+        error = "async generator allows one outstanding demand and one borrowed item";
+        return false;
+    }
+    demandOutstanding_ = true;
+    state_ = AsyncGeneratorState::Pending;
+    return true;
+}
+
+bool AsyncGeneratorProtocolState::resume(
+    AsyncGeneratorPollOutcome outcome,
+    std::string& error)
+{
+    error.clear();
+    if (state_ == AsyncGeneratorState::Completed ||
+        state_ == AsyncGeneratorState::Error ||
+        state_ == AsyncGeneratorState::Cancelled)
+    {
+        error = "async generator cannot resume after a terminal state";
+        return false;
+    }
+    if (!demandOutstanding_)
+    {
+        error = "async generator resume requires explicit consumer demand";
+        return false;
+    }
+
+    switch (outcome)
+    {
+        case AsyncGeneratorPollOutcome::Pending:
+            state_ = AsyncGeneratorState::Pending;
+            return true;
+        case AsyncGeneratorPollOutcome::ItemReady:
+            state_ = AsyncGeneratorState::ItemReady;
+            demandOutstanding_ = false;
+            itemOutstanding_ = true;
+            return true;
+        case AsyncGeneratorPollOutcome::ReadyError:
+            state_ = AsyncGeneratorState::Error;
+            break;
+        case AsyncGeneratorPollOutcome::Completed:
+            state_ = AsyncGeneratorState::Completed;
+            break;
+    }
+    demandOutstanding_ = false;
+    itemOutstanding_ = false;
+    return true;
+}
+
+bool AsyncGeneratorProtocolState::takeItem(std::string& error)
+{
+    error.clear();
+    if (!itemOutstanding_ || state_ != AsyncGeneratorState::ItemReady)
+    {
+        error = "async generator has no yielded item to consume";
+        return false;
+    }
+    itemOutstanding_ = false;
+    state_ = AsyncGeneratorState::Pending;
+    return true;
+}
+
+bool AsyncGeneratorProtocolState::stopEarly(std::string& error)
+{
+    error.clear();
+    if (state_ == AsyncGeneratorState::Completed ||
+        state_ == AsyncGeneratorState::Error ||
+        state_ == AsyncGeneratorState::Cancelled)
+    {
+        error = "terminal async generator cannot be cancelled again";
+        return false;
+    }
+    state_ = AsyncGeneratorState::Cancelled;
+    demandOutstanding_ = false;
+    itemOutstanding_ = false;
+    return true;
+}
+
 bool structurallySend(const ThreadSafetyFacts& facts) noexcept
 {
     return facts.fieldsSend && !facts.containsRawPointer && !facts.negativeSendImpl;
