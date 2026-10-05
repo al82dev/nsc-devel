@@ -1,6 +1,7 @@
 #include "nativesharp/Language/CompatibilitySemantics.h"
 
 #include <algorithm>
+#include <map>
 #include <unordered_set>
 
 namespace nativesharp::language
@@ -16,6 +17,80 @@ ModuleCompatibility classifyModuleCompatibility(
     if (producer.abiFingerprint == consumer.abiFingerprint)
         return ModuleCompatibility::Direct;
     return ModuleCompatibility::ExplicitAdapterRequired;
+}
+
+bool validateEditionCompatibilityPlan(
+    std::span<const EditionCompilationUnit> units,
+    std::string& error)
+{
+    error.clear();
+    std::map<std::string, int> moduleEditions;
+    std::unordered_set<std::string> identities;
+    for (const EditionCompilationUnit& unit : units)
+    {
+        if (unit.canonicalModule.empty() || unit.sourceIdentity.empty() ||
+            unit.sourceFingerprint.empty() || !identities.insert(unit.sourceIdentity).second)
+        {
+            error = "edition compatibility plan requires unique source identities and fingerprints";
+            return false;
+        }
+        if ((unit.languageEdition != 2 && unit.languageEdition != 3) ||
+            (unit.languageEdition == 2 && unit.semantics != EditionSemantics::NativeSharp2) ||
+            (unit.languageEdition == 3 && unit.semantics != EditionSemantics::NativeSharp3))
+        {
+            error = "frontend semantics must match the selected language edition";
+            return false;
+        }
+        const auto [found, inserted] = moduleEditions.emplace(unit.canonicalModule, unit.languageEdition);
+        if (!inserted && found->second != unit.languageEdition)
+        {
+            error = "a semantic module cannot silently mix language editions";
+            return false;
+        }
+    }
+    for (const EditionCompilationUnit& unit : units)
+    {
+        for (const std::string& imported : unit.imports)
+        {
+            if (!moduleEditions.contains(imported))
+            {
+                error = "edition compatibility plan contains an unresolved module import";
+                return false;
+            }
+        }
+    }
+    return !units.empty();
+}
+
+std::set<std::string> editionIncrementalRebuildSet(
+    std::span<const EditionCompilationUnit> previous,
+    std::span<const EditionCompilationUnit> current)
+{
+    std::map<std::string, EditionCompilationUnit> oldByModule;
+    for (const EditionCompilationUnit& unit : previous) oldByModule[unit.canonicalModule] = unit;
+    std::set<std::string> rebuild;
+    for (const EditionCompilationUnit& unit : current)
+    {
+        const auto old = oldByModule.find(unit.canonicalModule);
+        if (old == oldByModule.end() || old->second.languageEdition != unit.languageEdition ||
+            old->second.sourceFingerprint != unit.sourceFingerprint)
+            rebuild.insert(unit.canonicalModule);
+    }
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        for (const EditionCompilationUnit& unit : current)
+        {
+            if (!rebuild.contains(unit.canonicalModule) &&
+                std::ranges::any_of(unit.imports, [&](const std::string& imported) { return rebuild.contains(imported); }))
+            {
+                rebuild.insert(unit.canonicalModule);
+                changed = true;
+            }
+        }
+    }
+    return rebuild;
 }
 
 std::string_view migrationDiagnosticCode(MigrationIssue issue) noexcept

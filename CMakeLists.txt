@@ -2393,6 +2393,14 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.t16.compatibility COMMAND nsc_ns3_t16_compatibility_tests)
 
     add_executable(
+        nsc_ns3_t16_edition2_compat_tests
+        tests/unit/NativeSharp3T16Edition2CompatTests.cpp)
+    target_link_libraries(nsc_ns3_t16_edition2_compat_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_ns3_t16_edition2_compat_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_t16_edition2_compat_tests)
+    add_test(NAME nsc.ns3.t16.edition2-compat COMMAND nsc_ns3_t16_edition2_compat_tests)
+
+    add_executable(
         nsc_ns3_t16_migration_tests
         tests/unit/NativeSharp3T16MigrationTests.cpp)
     target_link_libraries(nsc_ns3_t16_migration_tests PRIVATE nsc_driver)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <span>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -19,6 +20,23 @@ enum class ModuleCompatibility { Direct, ExplicitAdapterRequired, Rejected };
 ModuleCompatibility classifyModuleCompatibility(
     const BinaryModuleContract& producer,
     const BinaryModuleContract& consumer) noexcept;
+
+enum class EditionSemantics { NativeSharp2, NativeSharp3 };
+struct EditionCompilationUnit final
+{
+    std::string canonicalModule;
+    std::string sourceIdentity;
+    int languageEdition = 3;
+    EditionSemantics semantics = EditionSemantics::NativeSharp3;
+    std::vector<std::string> imports;
+    std::string sourceFingerprint;
+};
+bool validateEditionCompatibilityPlan(
+    std::span<const EditionCompilationUnit> units,
+    std::string& error);
+std::set<std::string> editionIncrementalRebuildSet(
+    std::span<const EditionCompilationUnit> previous,
+    std::span<const EditionCompilationUnit> current);
 
 enum class MigrationIssue
 {
