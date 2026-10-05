@@ -122,6 +122,23 @@ bool bilingualSpecificationInParity(
     return !clauses.empty();
 }
 
+bool validateBilingualSpecificationAudit(
+    std::span<const BilingualClause> clauses,
+    std::string& error)
+{
+    if (!bilingualSpecificationInParity(clauses, error)) return false;
+    for (const BilingualClause& clause : clauses)
+    {
+        if (clause.spanishCompatibilityNotes != clause.englishCompatibilityNotes)
+        { error = "bilingual clause compatibility notes are not in parity"; return false; }
+        if (!clause.glossaryConsistent)
+        { error = "bilingual clause violates the shared glossary"; return false; }
+        if (!clause.linksValid || !clause.codeSamplesCompile || !clause.presentInFinalIndexes)
+        { error = "bilingual clause has broken links, samples, or index ownership"; return false; }
+    }
+    return true;
+}
+
 bool changeAllowed(ReleaseCandidateStage stage, ChangeSeverity severity) noexcept
 {
     if (stage == ReleaseCandidateStage::RC1) return severity != ChangeSeverity::Feature;

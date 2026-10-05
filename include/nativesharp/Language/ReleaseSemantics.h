@@ -90,8 +90,17 @@ struct BilingualClause final
     std::string englishRequirement;
     std::size_t spanishExamples = 0;
     std::size_t englishExamples = 0;
+    std::size_t spanishCompatibilityNotes = 0;
+    std::size_t englishCompatibilityNotes = 0;
+    bool glossaryConsistent = true;
+    bool linksValid = true;
+    bool codeSamplesCompile = true;
+    bool presentInFinalIndexes = true;
 };
 bool bilingualSpecificationInParity(std::span<const BilingualClause> clauses, std::string& error);
+bool validateBilingualSpecificationAudit(
+    std::span<const BilingualClause> clauses,
+    std::string& error);
 
 enum class ReleaseCandidateStage { RC1, RC2, RC3 };
 enum class ChangeSeverity { Feature, Fix, PromotionBlocker };
