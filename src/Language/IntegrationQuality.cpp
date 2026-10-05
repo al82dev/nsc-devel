@@ -338,6 +338,75 @@ std::string semanticDebugName(
     return result;
 }
 
+bool validateSemanticDebugEvidence(
+    std::span<const SemanticDebugEntry> evidence,
+    std::string& error)
+{
+    error.clear();
+    std::set<DebugEntityKind> coveredKinds;
+    std::unordered_set<std::string> identities;
+    bool hasO0 = false;
+    bool hasO2 = false;
+    for (const SemanticDebugEntry& entry : evidence)
+    {
+        if (entry.stableName.empty() || entry.typeName.empty() ||
+            !identities.insert(entry.stableName + "#" + std::to_string(static_cast<int>(entry.optimization))).second)
+        {
+            error = "semantic debug evidence requires stable unique names and concrete types";
+            return false;
+        }
+        if (entry.scopeBeginLine == 0 || entry.scopeEndLine < entry.scopeBeginLine)
+        {
+            error = "semantic debug evidence contains an invalid source lifetime";
+            return false;
+        }
+        if (entry.valueInvented)
+        {
+            error = "optimized debug evidence must never invent a value";
+            return false;
+        }
+        if (entry.optimization == DebugOptimization::O0)
+        {
+            hasO0 = true;
+            if (entry.availability == DebugAvailability::OptimizedOut ||
+                entry.sequencePointLines.empty())
+            {
+                error = "O0 debug evidence requires source fidelity and sequence points";
+                return false;
+            }
+        }
+        else
+        {
+            hasO2 = true;
+        }
+        for (const std::size_t line : entry.sequencePointLines)
+        {
+            if (line < entry.scopeBeginLine || line > entry.scopeEndLine)
+            {
+                error = "semantic debug sequence point lies outside its source lifetime";
+                return false;
+            }
+        }
+        if (entry.kind == DebugEntityKind::InlineSite && !entry.hasInlineSite)
+        {
+            error = "inline debug evidence requires an inline-site record";
+            return false;
+        }
+        if (entry.sourceGenerated && entry.kind == DebugEntityKind::Local)
+        {
+            error = "generated compiler state must not be presented as a source local";
+            return false;
+        }
+        coveredKinds.insert(entry.kind);
+    }
+    if (!hasO0 || !hasO2 || coveredKinds.size() != 8)
+    {
+        error = "semantic debug audit requires O0/O2 and every observable entity category";
+        return false;
+    }
+    return true;
+}
+
 bool hiddenCostAuditPasses(std::span<const CostEvent> costs, std::string& error)
 {
     error.clear();

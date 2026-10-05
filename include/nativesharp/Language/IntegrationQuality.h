@@ -161,6 +161,39 @@ std::string semanticDebugName(
     std::string_view role,
     std::size_t stableOrdinal);
 
+enum class DebugOptimization { O0, O2 };
+enum class DebugAvailability { NotYetDeclared, Live, Ended, OptimizedOut };
+enum class DebugEntityKind
+{
+    Local,
+    InlineSite,
+    ClosureCapture,
+    VariantPayload,
+    OwnershipState,
+    ExceptionValue,
+    CoroutineState,
+    Temporary
+};
+
+struct SemanticDebugEntry final
+{
+    std::string stableName;
+    std::string typeName;
+    DebugEntityKind kind = DebugEntityKind::Local;
+    DebugOptimization optimization = DebugOptimization::O0;
+    DebugAvailability availability = DebugAvailability::Live;
+    std::size_t scopeBeginLine = 0;
+    std::size_t scopeEndLine = 0;
+    std::vector<std::size_t> sequencePointLines;
+    bool sourceGenerated = false;
+    bool hasInlineSite = false;
+    bool valueInvented = false;
+};
+
+bool validateSemanticDebugEvidence(
+    std::span<const SemanticDebugEntry> evidence,
+    std::string& error);
+
 enum class GeneratedCost { Allocation, Copy, Drop, DynamicDispatch, UnwindEdge, AtomicFence };
 struct CostEvent final
 {
