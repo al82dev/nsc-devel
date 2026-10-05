@@ -71,23 +71,23 @@ namespace NativeSharp.SelfHost.Llvm
             LLVM.LLVMSetTarget(module, triple.Pointer());
 
             void* voidType = LLVM.LLVMVoidTypeInContext(context);
-            void* i32 = LLVM.LLVMInt32TypeInContext(context);
+            void* int32Type = LLVM.LLVMInt32TypeInContext(context);
             void* functionType = LLVM.LLVMFunctionType(voidType, null, 0u, 0);
             void* function = LLVM.LLVMAddFunction(module, functionName.Pointer(), functionType);
-            void* exitParameter = i32;
+            void* exitParameter = int32Type;
             void* exitType = LLVM.LLVMFunctionType(voidType, &exitParameter, 1u, 0);
             void* exitFunction = LLVM.LLVMAddFunction(module, exitName.Pointer(), exitType);
             void* block = LLVM.LLVMAppendBasicBlockInContext(
                 context, function, blockName.Pointer());
             builder = LLVM.LLVMCreateBuilderInContext(context);
-            if (voidType == null || i32 == null || functionType == null || function == null ||
+            if (voidType == null || int32Type == null || functionType == null || function == null ||
                 exitType == null || exitFunction == null || block == null || builder == null)
             {
                 Dispose(context, module, builder, targetMachine, targetData);
                 return 6;
             }
             LLVM.LLVMPositionBuilderAtEnd(builder, block);
-            void* answer = LLVM.LLVMConstInt(i32, 42UL, 0);
+            void* answer = LLVM.LLVMConstInt(int32Type, 42UL, 0);
             void* exitArgument = answer;
             if (answer == null ||
                 LLVM.LLVMBuildCall2(
