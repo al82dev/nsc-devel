@@ -1401,7 +1401,9 @@ namespace NativeSharp.Compiler.CodeGen
                     { locationTypeId = semantic.Types().Get(locationTypeId).ElementType(); }
                     if (locationTypeId >= 0) { valueType = ScalarType(LLVM.LLVMGetModuleContext(module), semantic.Types().Get(locationTypeId).Display()); }
                 }
-                if (interlocked && valueIndex < count)
+                bool interlockedHasValue = method == "Store" || method == "Add" ||
+                    method == "Exchange" || method == "CompareExchange";
+                if (interlocked && interlockedHasValue && valueIndex < count)
                 {
                     int valueTypeId = semantic.Fact(call.ChildAt(valueIndex)).TypeId();
                     if (valueTypeId >= 0) { valueType = ScalarType(LLVM.LLVMGetModuleContext(module), semantic.Types().Get(valueTypeId).Display()); }
