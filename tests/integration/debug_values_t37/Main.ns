@@ -1,6 +1,10 @@
 namespace NativeSharp.Core
 {
     public class Exception { }
+    public static class Environment
+    {
+        public static void Exit(int exitCode) { }
+    }
 }
 
 namespace DebugValuesT37
@@ -43,6 +47,14 @@ namespace DebugValuesT37
             int outValue;
             int captured = Capture(26, callerValue, out outValue);
             return captured + DebugValuesT37.GlobalCount + Widget.Created + Widget.Destroyed + CatchValue();
+        }
+    }
+
+    public static class ProcessEntry
+    {
+        public static export extern C void DebugValuesT37Start()
+        {
+            Environment.Exit(Program.Main());
         }
     }
 }

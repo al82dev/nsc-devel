@@ -70,7 +70,7 @@ endif()
 execute_process(
     COMMAND "${NSLINK_EXECUTABLE}"
         /nodefaultlib /subsystem:console
-        "/entry:__nsc_method_DebugValuesT37$3A$3ADebugValuesT37$2EProgram__Main"
+        "/entry:DebugValuesT37Start"
         /debug:full "/pdbaltpath:%_PDB%"
         "/out:${executable}" "/pdb:${pdb}"
         "/nsimports:${NSIMPORTS_FILE}" "${object}" "${RUNTIME_LIBRARY}"
