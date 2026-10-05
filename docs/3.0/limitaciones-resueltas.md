@@ -128,5 +128,6 @@ Esta entrada documenta una regresión descubierta después de consolidar las 24 
 | Identificador | Síntoma | Corrección | Evidencia |
 |---|---|---|---|
 | `NS3-BASELINE-UNSAFE-EDITION-COMPAT` | Fixtures Language 2 recibían NS3030 porque la política `unsafe` de NativeSharp 3 se aplicaba sin distinguir edición; además, una prueba T15 tenía inicialización incompleta bajo `-Werror`. | La auditoría `unsafe` se limita a Language 3, Language 2 conserva su contrato legado de punteros/FFI, c56 declara el bloque `unsafe` correspondiente y el agregado T15 se inicializa por completo. | Commit `576e61343`; T13 9/9; T15 11/11; c56 O0 correcto; `docs/3.0/items/NS3-BASELINE-UNSAFE-EDITION-COMPAT.md`. |
+| `NS3-BASELINE-SELFHOST-RESERVED-ALIASES` | El self-host usaba `i8`, `i32` e `i64` como identificadores después de que esos alias se reservaron como tipos; una ruptura sintáctica causaba 70 cierres derivados. | Se migraron sólo los identificadores internos a `int8Type`, `int32Type` e `int64Type`, preservando los alias del lenguaje y la semántica LLVM. | Commit `80e4e959a`; auditoría sin identificadores incompatibles; sintaxis 98/98; emisión O0/NSLink correcta en 2.73 s; `docs/3.0/items/NS3-BASELINE-SELFHOST-RESERVED-ALIASES.md`. |
 
 No se ejecutó ningún baseline como parte de esta corrección.

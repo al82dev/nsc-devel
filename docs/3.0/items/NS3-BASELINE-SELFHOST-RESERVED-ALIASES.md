@@ -25,6 +25,8 @@ Los alias numéricos `i8`, `i32` e `i64` pasaron a ser palabras reservadas del l
 
 El compilador autocontenido vuelve a ser fuente válida bajo las reglas de NativeSharp 3. Esto elimina la causa común que cerraba anticipadamente 70 pruebas de NS3, self-host, bibliotecas y compatibilidad.
 
+Commit funcional: `80e4e959a`.
+
 ## Validación puntual
 
 - Auditoría de alias reservados usados como identificadores en `selfhost/nsc`: cero restantes.
