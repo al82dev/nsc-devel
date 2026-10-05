@@ -5,6 +5,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace nativesharp::language
 {
@@ -141,6 +142,44 @@ FloatingPointContract floatingPointContract(FloatingPointMode mode) noexcept;
 struct StrongNumericType final { std::string identity; NumericType representation; };
 bool strongNumericHasRuntimeWrapper() noexcept;
 bool strongNumericImplicitlyConverts(const StrongNumericType& source, const StrongNumericType& target) noexcept;
+
+enum class StrongNumericOperator { Add, Subtract, Multiply, Divide, Compare };
+
+struct StrongNumericDefinition final
+{
+    std::string identity;
+    NumericType representation{NumericKind::Integer, 32, true};
+    std::size_t fieldCount = 1;
+    bool reprTransparent = false;
+    bool ffiExported = false;
+    bool derivesCopy = false;
+    bool derivesMove = true;
+    std::size_t constGenericArity = 0;
+    std::vector<StrongNumericOperator> operators;
+};
+
+struct StrongNumericPlan final
+{
+    StrongNumericType type;
+    std::size_t size = 0;
+    std::size_t alignment = 1;
+    std::size_t constGenericArity = 0;
+    bool abiTransparent = false;
+    bool zeroRuntimeOverhead = true;
+    bool constructionIsExplicit = true;
+    bool extractionIsExplicit = true;
+    bool derivesCopy = false;
+    bool derivesMove = true;
+    std::vector<StrongNumericOperator> operators;
+};
+
+std::optional<StrongNumericPlan> buildStrongNumericPlan(
+    const StrongNumericDefinition& definition,
+    std::string& error) noexcept;
+bool strongNumericOperatorAllowed(
+    const StrongNumericPlan& left,
+    const StrongNumericPlan& right,
+    StrongNumericOperator operation) noexcept;
 
 bool integerSemanticsSelfCheck() noexcept;
 }

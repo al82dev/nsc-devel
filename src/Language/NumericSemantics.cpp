@@ -1,5 +1,6 @@
 #include "nativesharp/Language/NumericSemantics.h"
 
+#include <algorithm>
 #include <charconv>
 #include <limits>
 #include <array>
@@ -413,6 +414,61 @@ bool strongNumericImplicitlyConverts(
     const StrongNumericType& target) noexcept
 {
     return source.identity == target.identity;
+}
+
+std::optional<StrongNumericPlan> buildStrongNumericPlan(
+    const StrongNumericDefinition& definition,
+    std::string& error) noexcept
+{
+    error.clear();
+    if (definition.identity.empty())
+    {
+        error = "strong numeric newtype requires a nominal identity";
+        return std::nullopt;
+    }
+    if (definition.fieldCount != 1)
+    {
+        error = "strong numeric newtype must contain exactly one representation field";
+        return std::nullopt;
+    }
+    if (definition.representation.bits == 0 || definition.representation.bits > 64 ||
+        definition.representation.bits % 8 != 0)
+    {
+        error = "strong numeric representation requires a fundamental byte-sized numeric type";
+        return std::nullopt;
+    }
+    if (definition.ffiExported && !definition.reprTransparent)
+    {
+        error = "FFI-exported strong numeric newtype requires repr(transparent)";
+        return std::nullopt;
+    }
+    if (definition.derivesCopy && !definition.derivesMove)
+    {
+        error = "a Copy strong numeric newtype must also satisfy Move";
+        return std::nullopt;
+    }
+
+    StrongNumericPlan result;
+    result.type = StrongNumericType{definition.identity, definition.representation};
+    result.size = definition.representation.bits / 8;
+    result.alignment = result.size > 8 ? 8 : result.size;
+    result.constGenericArity = definition.constGenericArity;
+    result.abiTransparent = definition.reprTransparent;
+    result.derivesCopy = definition.derivesCopy;
+    result.derivesMove = definition.derivesMove;
+    result.operators = definition.operators;
+    return result;
+}
+
+bool strongNumericOperatorAllowed(
+    const StrongNumericPlan& left,
+    const StrongNumericPlan& right,
+    StrongNumericOperator operation) noexcept
+{
+    if (left.type.identity != right.type.identity ||
+        left.constGenericArity != right.constGenericArity)
+        return false;
+    return std::ranges::find(left.operators, operation) != left.operators.end();
 }
 
 bool integerSemanticsSelfCheck() noexcept
