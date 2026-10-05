@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -10,6 +11,38 @@ namespace nativesharp::language
 struct IntegerType final { unsigned bits = 32; bool isSigned = true; };
 bool literalFits(std::uint64_t magnitude, bool negative, IntegerType type) noexcept;
 std::optional<std::uint64_t> parseIntegerLiteralMagnitude(std::string_view spelling, std::string& error);
+
+enum class IntegerLiteralBase : unsigned { Binary = 2, Octal = 8, Decimal = 10, Hexadecimal = 16 };
+enum class IntegerLiteralSuffix
+{
+    None,
+    I8, I16, I32, I64, ISize,
+    U8, U16, U32, U64, USize
+};
+
+struct UntypedIntegerLiteral final
+{
+    std::uint64_t magnitude = 0;
+    IntegerLiteralBase base = IntegerLiteralBase::Decimal;
+    IntegerLiteralSuffix suffix = IntegerLiteralSuffix::None;
+};
+
+struct ResolvedIntegerLiteral final
+{
+    std::uint64_t magnitude = 0;
+    bool negative = false;
+    IntegerType type;
+    bool usedContext = false;
+};
+
+std::optional<UntypedIntegerLiteral> parseUntypedIntegerLiteral(
+    std::string_view spelling,
+    std::string& error);
+std::optional<ResolvedIntegerLiteral> resolveIntegerLiteral(
+    const UntypedIntegerLiteral& literal,
+    bool negative,
+    std::optional<IntegerType> contextualType,
+    std::string& error) noexcept;
 
 enum class OverflowPolicy { Checked, Wrapping, Saturating, Unchecked };
 std::optional<std::int64_t> addInteger(

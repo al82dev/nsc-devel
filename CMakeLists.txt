@@ -1904,6 +1904,14 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.t10.task-scopes COMMAND nsc_ns3_t10_task_scope_tests)
 
     add_executable(
+        nsc_ns3_t14_numeric_literal_tests
+        tests/unit/NativeSharp3T14NumericLiteralTests.cpp)
+    target_link_libraries(nsc_ns3_t14_numeric_literal_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_ns3_t14_numeric_literal_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_t14_numeric_literal_tests)
+    add_test(NAME nsc.ns3.t14.numeric-literals COMMAND nsc_ns3_t14_numeric_literal_tests)
+
+    add_executable(
         nsc_ns3_t10_memory_model_tests
         tests/unit/NativeSharp3T10MemoryModelTests.cpp)
     target_link_libraries(

@@ -2,6 +2,7 @@
 
 #include <charconv>
 #include <limits>
+#include <array>
 
 namespace nativesharp::language
 {
@@ -51,6 +52,135 @@ std::optional<std::uint64_t> parseIntegerLiteralMagnitude(
     if (parsed.ec != std::errc{} || parsed.ptr != clean.data() + clean.size())
     { error = "invalid or overflowing integer literal"; return std::nullopt; }
     return result;
+}
+
+std::optional<UntypedIntegerLiteral> parseUntypedIntegerLiteral(
+    std::string_view spelling,
+    std::string& error)
+{
+    error.clear();
+    if (spelling.empty() || spelling.front() == '+' || spelling.front() == '-')
+    {
+        error = "integer literal spelling is unsigned; unary sign is a separate expression";
+        return std::nullopt;
+    }
+
+    struct SuffixEntry final { std::string_view text; IntegerLiteralSuffix suffix; };
+    static constexpr std::array suffixes = {
+        SuffixEntry{"isize", IntegerLiteralSuffix::ISize},
+        SuffixEntry{"usize", IntegerLiteralSuffix::USize},
+        SuffixEntry{"i16", IntegerLiteralSuffix::I16},
+        SuffixEntry{"i32", IntegerLiteralSuffix::I32},
+        SuffixEntry{"i64", IntegerLiteralSuffix::I64},
+        SuffixEntry{"u16", IntegerLiteralSuffix::U16},
+        SuffixEntry{"u32", IntegerLiteralSuffix::U32},
+        SuffixEntry{"u64", IntegerLiteralSuffix::U64},
+        SuffixEntry{"i8", IntegerLiteralSuffix::I8},
+        SuffixEntry{"u8", IntegerLiteralSuffix::U8}};
+
+    IntegerLiteralSuffix suffix = IntegerLiteralSuffix::None;
+    for (const SuffixEntry& candidate : suffixes)
+    {
+        if (spelling.ends_with(candidate.text))
+        {
+            suffix = candidate.suffix;
+            spelling.remove_suffix(candidate.text.size());
+            break;
+        }
+    }
+
+    IntegerLiteralBase base = IntegerLiteralBase::Decimal;
+    std::size_t prefix = 0;
+    if (spelling.starts_with("0x") || spelling.starts_with("0X"))
+    { base = IntegerLiteralBase::Hexadecimal; prefix = 2; }
+    else if (spelling.starts_with("0b") || spelling.starts_with("0B"))
+    { base = IntegerLiteralBase::Binary; prefix = 2; }
+    else if (spelling.starts_with("0o") || spelling.starts_with("0O"))
+    { base = IntegerLiteralBase::Octal; prefix = 2; }
+    if (spelling.size() == prefix || spelling[prefix] == '_' || spelling.back() == '_')
+    {
+        error = "integer literal separators must appear between digits";
+        return std::nullopt;
+    }
+
+    std::string digits;
+    digits.reserve(spelling.size() - prefix);
+    bool previousSeparator = false;
+    for (std::size_t index = prefix; index < spelling.size(); ++index)
+    {
+        const char value = spelling[index];
+        if (value == '_')
+        {
+            if (previousSeparator)
+            {
+                error = "integer literal separators must appear between digits";
+                return std::nullopt;
+            }
+            previousSeparator = true;
+            continue;
+        }
+        previousSeparator = false;
+        digits.push_back(value);
+    }
+
+    std::uint64_t magnitude = 0;
+    const auto parsed = std::from_chars(
+        digits.data(), digits.data() + digits.size(), magnitude,
+        static_cast<int>(base));
+    if (parsed.ec != std::errc{} || parsed.ptr != digits.data() + digits.size())
+    {
+        error = "invalid digit or magnitude overflow in integer literal";
+        return std::nullopt;
+    }
+    return UntypedIntegerLiteral{magnitude, base, suffix};
+}
+
+std::optional<ResolvedIntegerLiteral> resolveIntegerLiteral(
+    const UntypedIntegerLiteral& literal,
+    bool negative,
+    std::optional<IntegerType> contextualType,
+    std::string& error) noexcept
+{
+    error.clear();
+    const auto suffixType = [&]() -> std::optional<IntegerType>
+    {
+        switch (literal.suffix)
+        {
+            case IntegerLiteralSuffix::None: return std::nullopt;
+            case IntegerLiteralSuffix::I8: return IntegerType{8, true};
+            case IntegerLiteralSuffix::I16: return IntegerType{16, true};
+            case IntegerLiteralSuffix::I32: return IntegerType{32, true};
+            case IntegerLiteralSuffix::I64:
+            case IntegerLiteralSuffix::ISize: return IntegerType{64, true};
+            case IntegerLiteralSuffix::U8: return IntegerType{8, false};
+            case IntegerLiteralSuffix::U16: return IntegerType{16, false};
+            case IntegerLiteralSuffix::U32: return IntegerType{32, false};
+            case IntegerLiteralSuffix::U64:
+            case IntegerLiteralSuffix::USize: return IntegerType{64, false};
+        }
+        return std::nullopt;
+    }();
+    if (suffixType.has_value() && contextualType.has_value() &&
+        (suffixType->bits != contextualType->bits || suffixType->isSigned != contextualType->isSigned))
+    {
+        error = "integer literal suffix conflicts with the contextual type";
+        return std::nullopt;
+    }
+
+    IntegerType selected;
+    bool usedContext = false;
+    if (suffixType.has_value()) selected = *suffixType;
+    else if (contextualType.has_value()) { selected = *contextualType; usedContext = true; }
+    else if (literalFits(literal.magnitude, negative, {32, true})) selected = {32, true};
+    else if (literalFits(literal.magnitude, negative, {64, true})) selected = {64, true};
+    else selected = {64, false};
+
+    if (!literalFits(literal.magnitude, negative, selected))
+    {
+        error = "integer literal overflows its resolved type before conversion";
+        return std::nullopt;
+    }
+    return ResolvedIntegerLiteral{literal.magnitude, negative, selected, usedContext};
 }
 
 std::optional<std::int64_t> addInteger(
