@@ -1,7 +1,10 @@
 #include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
+#include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Language/MetaprogrammingSemantics.h"
 
 #include <algorithm>
+#include <charconv>
 #include <unordered_map>
 
 namespace nativesharp::frontend
@@ -20,17 +23,36 @@ StaticMemberKind staticKind(ClassMemberKind kind) noexcept
     }
     return StaticMemberKind::Field;
 }
+
+std::string unquote(std::string_view value)
+{
+    if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+        return std::string(value.substr(1, value.size() - 2));
+    return std::string(value);
+}
+
+std::optional<int> integerArgument(std::string_view value) noexcept
+{
+    int result = 0;
+    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), result);
+    if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size()) return std::nullopt;
+    return result;
+}
 }
 
 bool ProjectMetaprogrammingModel::build(
+    const compilation::ProjectGraph& graph,
     const ProjectNameLookup& names,
     const ProjectMemberModel& members,
+    const ProjectMethodBodyModel& methodBodies,
     const ProjectObjectLayoutModel& layouts,
-    std::span<const ProjectComptimeRecord> comptimeRecords)
+    std::span<const ProjectComptimeRecord> comptimeRecords,
+    diagnostics::DiagnosticEngine& diagnostics)
 {
     types_.clear();
     attributes_.clear();
     runtimeAttributes_.clear();
+    availability_.clear();
     derives_.clear();
     visibleScratch_.clear();
     error_.clear();
@@ -83,6 +105,23 @@ bool ProjectMetaprogrammingModel::build(
         ComptimeAttributeRetention retention = ComptimeAttributeRetention::CompileTime;
     };
     std::unordered_map<std::string, Definition> definitions;
+    const std::vector<ComptimeAttributeTarget> everyDeclaration = {
+        ComptimeAttributeTarget::Type, ComptimeAttributeTarget::Field,
+        ComptimeAttributeTarget::Method};
+    // These names are owned by the language. Source code can use them without declaring a
+    // user attribute and cannot silently replace their semantics.
+    definitions.emplace("deprecated", Definition{everyDeclaration, false,
+        ComptimeAttributeRetention::CompileTime});
+    definitions.emplace("since", Definition{everyDeclaration, false,
+        ComptimeAttributeRetention::CompileTime});
+    definitions.emplace("removed", Definition{everyDeclaration, false,
+        ComptimeAttributeRetention::CompileTime});
+    definitions.emplace("target", Definition{everyDeclaration, false,
+        ComptimeAttributeRetention::CompileTime});
+    definitions.emplace("architecture", Definition{everyDeclaration, false,
+        ComptimeAttributeRetention::CompileTime});
+    definitions.emplace("allow", Definition{everyDeclaration, true,
+        ComptimeAttributeRetention::CompileTime});
     for (const ProjectComptimeRecord& record : comptimeRecords)
     {
         for (const ComptimeAttributeDirective& directive : record.attributes)
@@ -177,6 +216,154 @@ bool ProjectMetaprogrammingModel::build(
         }
     }
 
+    const auto invalidArguments = [&](const StaticAttributeInfo& attribute, std::string expected)
+    {
+        error_ = "attribute '" + attribute.identity + "' expects " + std::move(expected);
+        return false;
+    };
+    std::unordered_map<std::size_t, std::size_t> availabilityByType;
+    std::unordered_map<std::size_t, std::size_t> availabilityByMember;
+    for (const StaticAttributeInfo& attribute : attributes_)
+    {
+        if (attribute.identity != "deprecated" && attribute.identity != "since" &&
+            attribute.identity != "removed" && attribute.identity != "target" &&
+            attribute.identity != "architecture") continue;
+        const std::size_t* existing = nullptr;
+        if (attribute.memberOrdinal.has_value())
+        {
+            const auto found = availabilityByMember.find(*attribute.memberOrdinal);
+            if (found != availabilityByMember.end()) existing = &found->second;
+        }
+        else if (attribute.typeOrdinal.has_value())
+        {
+            const auto found = availabilityByType.find(*attribute.typeOrdinal);
+            if (found != availabilityByType.end()) existing = &found->second;
+        }
+        std::size_t index = existing != nullptr ? *existing : availability_.size();
+        if (existing == nullptr)
+        {
+            StaticAvailabilityInfo created;
+            created.typeOrdinal = attribute.typeOrdinal;
+            created.memberOrdinal = attribute.memberOrdinal;
+            availability_.push_back(std::move(created));
+            if (attribute.memberOrdinal.has_value()) availabilityByMember.emplace(*attribute.memberOrdinal, index);
+            else availabilityByType.emplace(*attribute.typeOrdinal, index);
+        }
+        StaticAvailabilityInfo& contract = availability_[index];
+        if (attribute.identity == "deprecated")
+        {
+            if (attribute.constantArguments.size() > 2)
+                return invalidArguments(attribute, "zero to two string arguments: message, replacement");
+            for (const std::string& argument : attribute.constantArguments)
+                if (argument.size() < 2 || argument.front() != '"' || argument.back() != '"')
+                    return invalidArguments(attribute, "string arguments");
+            contract.deprecated = true;
+            if (!attribute.constantArguments.empty()) contract.message = unquote(attribute.constantArguments[0]);
+            if (attribute.constantArguments.size() == 2) contract.replacement = unquote(attribute.constantArguments[1]);
+        }
+        else if (attribute.identity == "since" || attribute.identity == "removed")
+        {
+            if (attribute.constantArguments.empty() || attribute.constantArguments.size() > 2)
+                return invalidArguments(attribute, "an edition integer and optional string message");
+            const std::optional<int> edition = integerArgument(attribute.constantArguments[0]);
+            if (!edition.has_value() || *edition < 1)
+                return invalidArguments(attribute, "a positive edition integer");
+            if (attribute.constantArguments.size() == 2)
+            {
+                const std::string& message = attribute.constantArguments[1];
+                if (message.size() < 2 || message.front() != '"' || message.back() != '"')
+                    return invalidArguments(attribute, "an edition integer and optional string message");
+                contract.message = unquote(message);
+            }
+            if (attribute.identity == "since") contract.sinceEdition = *edition;
+            else contract.removedEdition = *edition;
+        }
+        else
+        {
+            if (attribute.constantArguments.size() != 1 ||
+                attribute.constantArguments[0].size() < 2 ||
+                attribute.constantArguments[0].front() != '"' ||
+                attribute.constantArguments[0].back() != '"')
+                return invalidArguments(attribute, "one string argument");
+            if (attribute.identity == "target") contract.target = unquote(attribute.constantArguments[0]);
+            else contract.architecture = unquote(attribute.constantArguments[0]);
+        }
+    }
+
+    const auto suppressed = [&](std::size_t typeOrdinal, std::string_view category)
+    {
+        return std::ranges::any_of(attributes_, [&](const StaticAttributeInfo& attribute)
+        {
+            return attribute.identity == "allow" && attribute.typeOrdinal == typeOrdinal &&
+                !attribute.memberOrdinal.has_value() && attribute.constantArguments.size() == 1 &&
+                unquote(attribute.constantArguments[0]) == category;
+        });
+    };
+    bool availabilityValid = true;
+    const auto validateUse = [&](const StaticAvailabilityInfo& contract,
+                                 std::size_t requestingProjectOrdinal,
+                                 std::optional<std::size_t> enclosingType,
+                                 SourceRange range,
+                                 diagnostics::DiagnosticId errorId)
+    {
+        if (requestingProjectOrdinal >= graph.projects().size()) return;
+        const int edition = static_cast<int>(graph.projects()[requestingProjectOrdinal].languageEdition());
+        const std::string declaration = contract.memberOrdinal.has_value()
+            ? members.members()[*contract.memberOrdinal].name
+            : names.namedTypes()[*contract.typeOrdinal].identity.key();
+        const auto reject = [&](std::string reason)
+        {
+            availabilityValid = false;
+            const std::string message =
+                "declaration '" + declaration + "' " + std::move(reason) +
+                (contract.message.empty() ? std::string{} : ": " + contract.message) +
+                (contract.replacement.empty() ? std::string{} : "; use '" + contract.replacement + "'");
+            if (error_.empty()) error_ = message;
+            diagnostics.report(errorId, diagnostics::DiagnosticSeverity::Error, range, message);
+        };
+        if (contract.sinceEdition.has_value() && edition < *contract.sinceEdition)
+            reject("is available since language edition " + std::to_string(*contract.sinceEdition));
+        if (contract.removedEdition.has_value() && edition >= *contract.removedEdition)
+            reject("was removed in language edition " + std::to_string(*contract.removedEdition));
+        if (!contract.target.empty() && contract.target != "windows")
+            reject("is unavailable for target windows");
+        if (!contract.architecture.empty() && contract.architecture != "x64")
+            reject("is unavailable for architecture x64");
+        if (contract.deprecated &&
+            (!enclosingType.has_value() || !suppressed(*enclosingType, "deprecated")))
+            diagnostics.report(errorId, diagnostics::DiagnosticSeverity::Warning, range,
+                "declaration '" + declaration + "' is deprecated" +
+                (contract.message.empty() ? std::string{} : ": " + contract.message) +
+                (contract.replacement.empty() ? std::string{} : "; use '" + contract.replacement + "'"));
+    };
+    for (const TypeNameBinding& binding : names.bindings())
+    {
+        if (!binding.targetTypeOrdinal.has_value()) continue;
+        const auto found = availabilityByType.find(*binding.targetTypeOrdinal);
+        if (found == availabilityByType.end() || binding.syntax == nullptr) continue;
+        validateUse(availability_[found->second], binding.projectOrdinal,
+            binding.enclosingTypeOrdinals.empty()
+                ? std::optional<std::size_t>{} : binding.enclosingTypeOrdinals.back(),
+            binding.syntax->range(), diagnostics::DiagnosticId::InvalidType);
+    }
+    for (const MethodCallBinding& call : methodBodies.calls())
+    {
+        if (!call.selectedMemberOrdinal.has_value() || call.syntax == nullptr ||
+            call.callerMethodMemberOrdinal >= members.members().size()) continue;
+        const auto found = availabilityByMember.find(*call.selectedMemberOrdinal);
+        if (found == availabilityByMember.end()) continue;
+        const ClassMemberSymbol& caller = members.members()[call.callerMethodMemberOrdinal];
+        const std::size_t projectOrdinal = caller.declaringTypeOrdinal < names.namedTypes().size()
+            ? names.namedTypes()[caller.declaringTypeOrdinal].projectOrdinal : 0;
+        validateUse(availability_[found->second], projectOrdinal, caller.declaringTypeOrdinal,
+            call.syntax->range(), diagnostics::DiagnosticId::InvalidCall);
+    }
+    if (!availabilityValid)
+    {
+        if (error_.empty()) error_ = "availability validation failed";
+        return false;
+    }
+
     const auto ignoredField = [&](std::size_t memberOrdinal)
     {
         return std::ranges::any_of(attributes_, [&](const StaticAttributeInfo& attribute)
@@ -253,6 +440,10 @@ std::span<const StaticAttributeInfo> ProjectMetaprogrammingModel::attributes() c
 std::span<const StaticAttributeInfo> ProjectMetaprogrammingModel::runtimeAttributes() const noexcept
 {
     return runtimeAttributes_;
+}
+std::span<const StaticAvailabilityInfo> ProjectMetaprogrammingModel::availability() const noexcept
+{
+    return availability_;
 }
 std::span<const StaticDeriveInfo> ProjectMetaprogrammingModel::derives() const noexcept
 {

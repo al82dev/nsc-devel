@@ -820,7 +820,8 @@ bool ProjectCompilation::compileProjectObjectLayouts(
         return false;
     metaprogrammingModel_ = std::make_unique<ProjectMetaprogrammingModel>();
     if (!metaprogrammingModel_->build(
-            *nameLookup_, *memberModel_, *objectLayoutModel_, comptimeRecords_))
+            *projectGraph_, *nameLookup_, *memberModel_, *methodBodyModel_,
+            *objectLayoutModel_, comptimeRecords_, diagnostics_))
     {
         loadError = metaprogrammingModel_->error();
         return false;

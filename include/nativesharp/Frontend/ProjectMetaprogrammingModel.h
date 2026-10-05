@@ -15,6 +15,8 @@
 
 namespace nativesharp::frontend
 {
+class ProjectMethodBodyModel;
+
 enum class StaticMemberKind { Field, Method, Constructor, Destructor, Event };
 
 struct StaticMemberInfo final
@@ -52,6 +54,22 @@ struct StaticAttributeInfo final
     std::optional<std::size_t> memberOrdinal;
 };
 
+// NativeSharp 3.0 T12-F05. Availability is a compile-time semantic contract attached to the
+// canonical declaration ordinal.  Messages and replacements are retained as structured values;
+// consumers never have to scrape display text to decide whether a use is legal.
+struct StaticAvailabilityInfo final
+{
+    std::optional<std::size_t> typeOrdinal;
+    std::optional<std::size_t> memberOrdinal;
+    std::optional<int> sinceEdition;
+    std::optional<int> removedEdition;
+    bool deprecated = false;
+    std::string message;
+    std::string replacement;
+    std::string target;
+    std::string architecture;
+};
+
 struct StaticDeriveInfo final
 {
     std::size_t typeOrdinal = 0;
@@ -67,10 +85,13 @@ class ProjectMetaprogrammingModel final
 {
 public:
     bool build(
+        const compilation::ProjectGraph& graph,
         const ProjectNameLookup& names,
         const ProjectMemberModel& members,
+        const ProjectMethodBodyModel& methodBodies,
         const ProjectObjectLayoutModel& layouts,
-        std::span<const ProjectComptimeRecord> comptimeRecords);
+        std::span<const ProjectComptimeRecord> comptimeRecords,
+        diagnostics::DiagnosticEngine& diagnostics);
 
     const StaticTypeInfo* findType(
         std::string_view identity,
@@ -81,6 +102,7 @@ public:
     std::span<const StaticTypeInfo> types() const noexcept;
     std::span<const StaticAttributeInfo> attributes() const noexcept;
     std::span<const StaticAttributeInfo> runtimeAttributes() const noexcept;
+    std::span<const StaticAvailabilityInfo> availability() const noexcept;
     std::span<const StaticDeriveInfo> derives() const noexcept;
     const std::string& error() const noexcept;
     bool emitsRuntimeMetadata() const noexcept;
@@ -90,6 +112,7 @@ private:
     std::vector<StaticTypeInfo> types_;
     std::vector<StaticAttributeInfo> attributes_;
     std::vector<StaticAttributeInfo> runtimeAttributes_;
+    std::vector<StaticAvailabilityInfo> availability_;
     std::vector<StaticDeriveInfo> derives_;
     mutable std::vector<StaticMemberInfo> visibleScratch_;
     bool built_ = false;
