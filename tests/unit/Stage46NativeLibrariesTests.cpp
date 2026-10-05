@@ -4110,6 +4110,12 @@ namespace Consumer
         member.parameterEscapeSummary.clear();
     for (auto& function : legacyStaticMetadata.namespaceFunctions)
         function.parameterEscapeSummary.clear();
+    for (auto& generic : legacyStaticMetadata.genericTemplates)
+    {
+        generic.parameterContracts.clear();
+        generic.lifetimeParameters.clear();
+        generic.lifetimeOutlivesConstraints.clear();
+    }
     const auto legacyUtilityType = std::ranges::find_if(
         legacyStaticMetadata.types,
         [](const auto& type) { return type.fullyQualifiedName == "Precompiled.Utility"; });
