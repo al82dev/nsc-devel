@@ -531,6 +531,23 @@ std::optional<std::uint64_t> parseAssertedSize(const NamedTypeDeclaration& type)
     return std::nullopt;
 }
 
+std::string_view parseRepresentation(const NamedTypeDeclaration& type)
+{
+    if (type.syntax == nullptr) return "native";
+    const std::string& text = type.syntax->auxiliaryText();
+    std::size_t position = 0;
+    while (position < text.size())
+    {
+        const std::size_t comma = text.find(',', position);
+        const std::string_view token(
+            text.data() + position,
+            (comma == std::string::npos ? text.size() : comma) - position);
+        position = comma == std::string::npos ? text.size() : comma + 1;
+        if (token.starts_with("repr=")) return token.substr(5);
+    }
+    return "native";
+}
+
 target::StructLayoutOptions parseStructLayoutOptions(const NamedTypeDeclaration& type)
 {
     target::StructLayoutOptions options;
@@ -728,6 +745,26 @@ bool ProjectObjectLayoutModel::buildStructLayout(
     // because in every respect except where the fields sit, they ARE identical. The markers were
     // written onto the declaration by the parser (`union`, `pack=N`, `align=N`).
     const target::StructLayoutOptions layoutOptions = parseStructLayoutOptions(type);
+    const std::string_view representation = parseRepresentation(type);
+    if (representation == "transparent")
+    {
+        const std::size_t representedFields = std::ranges::count_if(
+            physicalFields,
+            [](const target::StructFieldRequest& field)
+            {
+                return !field.isFlexibleArray && field.layout.size != 0;
+            });
+        if (representedFields != 1 || layoutOptions.isUnion)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                useRange,
+                "repr(transparent) requires exactly one non-zero-sized instance field");
+            namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+            return false;
+        }
+    }
     for (std::size_t index = 0; index < physicalFields.size(); ++index)
     {
         if (!physicalFields[index].isFlexibleArray) continue;

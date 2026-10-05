@@ -2884,9 +2884,42 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     // `size(N)`: el tamano que el autor AFIRMA que mide la struct. Ver el comentario del bloque
     // que lo parsea.
     std::optional<std::uint64_t> layoutSize;
+    std::optional<std::string> representation;
 
     while (true)
     {
+        if (atContextualKeyword("repr") && peek().kind() == TokenKind::LeftParen)
+        {
+            const SourceRange feature = consume().range();
+            requireEdition3(feature, "representation attributes");
+            consume();
+            std::string value;
+            if (atContextualKeyword("native") || atContextualKeyword("C") ||
+                atContextualKeyword("transparent"))
+            {
+                value = std::string(consume().lexeme());
+            }
+            else
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    "repr requires exactly one of native, C, or transparent");
+                if (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile)) consume();
+            }
+            expect(TokenKind::RightParen, "')' after representation attribute");
+            if (representation.has_value())
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    feature,
+                    "an aggregate may declare exactly one representation attribute");
+            }
+            else if (!value.empty()) representation = std::move(value);
+            continue;
+        }
         if (atContextualKeyword("unsafe") && peek().kind() == TokenKind::Identifier &&
             (peek().lexeme() == "trait" || peek().lexeme() == "impl"))
         {
@@ -3082,7 +3115,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
              peek().kind() == TokenKind::KwBorrowed ||
              (peek().kind() == TokenKind::Identifier &&
               (peek().lexeme() == "pack" || peek().lexeme() == "align" ||
-               peek().lexeme() == "size" || peek().lexeme() == "record" ||
+               peek().lexeme() == "size" || peek().lexeme() == "repr" || peek().lexeme() == "record" ||
                peek().lexeme() == "variant" || peek().lexeme() == "opaque" ||
                peek().lexeme() == "union")));
         if (copyTypeModifier)
@@ -3107,7 +3140,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
              peek().kind() == TokenKind::KwDelegate || peek().kind() == TokenKind::KwPublic ||
              peek().kind() == TokenKind::KwInternal || peek().kind() == TokenKind::KwBorrowed ||
              (peek().kind() == TokenKind::Identifier &&
-              (peek().lexeme() == "pack" || peek().lexeme() == "align" ||
+              (peek().lexeme() == "pack" || peek().lexeme() == "align" || peek().lexeme() == "repr" ||
                peek().lexeme() == "size" || peek().lexeme() == "union" ||
                 peek().lexeme() == "record" || peek().lexeme() == "variant" ||
                 peek().lexeme() == "copy")));
@@ -3136,7 +3169,8 @@ ast::AstNode* Parser::parseGlobalDeclaration()
              peek().kind() == TokenKind::KwAbstract ||
              peek().kind() == TokenKind::KwSealed ||
              peek().kind() == TokenKind::KwStatic ||
-             (peek().kind() == TokenKind::Identifier && peek().lexeme() == "partial"));
+             (peek().kind() == TokenKind::Identifier &&
+              (peek().lexeme() == "partial" || peek().lexeme() == "repr")));
         if (partialModifier)
         {
             const lexer::Token& modifier = consume();
@@ -3294,7 +3328,8 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         requireEdition3(feature, "trait implementation blocks");
         if (accessibility != TokenKind::Invalid || isPartial || isAbstract || isSealed ||
             isStatic || isReadonlyType || isRecordStruct || isBorrowedView ||
-            isCopyType || layoutPack.has_value() || layoutAlign.has_value() || layoutSize.has_value())
+            isCopyType || representation.has_value() || layoutPack.has_value() ||
+            layoutAlign.has_value() || layoutSize.has_value())
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -3678,6 +3713,35 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                     layout += "size=" + std::to_string(*layoutSize);
                 }
                 declaration->setAuxiliaryText(std::move(layout));
+            }
+        }
+        if (representation.has_value())
+        {
+            if (declaration->kind() != ast::AstNodeKind::StructDeclaration)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    declaration->range(),
+                    "repr applies only to struct and union declarations");
+            }
+            else
+            {
+                const bool isUnion = declaration->auxiliaryText().find("union") != std::string::npos;
+                if (*representation == "transparent" &&
+                    (isUnion || layoutPack.has_value() || layoutAlign.has_value() ||
+                     layoutSize.has_value()))
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        declaration->range(),
+                        "repr(transparent) cannot be a union or override pack, align, or size");
+                }
+                std::string markers = declaration->auxiliaryText();
+                markers += (markers.empty() ? "" : ",");
+                markers += "repr=" + *representation;
+                declaration->setAuxiliaryText(std::move(markers));
             }
         }
         if (accessibility != TokenKind::Invalid &&
