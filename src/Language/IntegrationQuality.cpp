@@ -416,5 +416,51 @@ bool hiddenCostAuditPasses(std::span<const CostEvent> costs, std::string& error)
     return true;
 }
 
+bool validateZeroCostAudit(
+    std::span<const CostAuditRecord> records,
+    std::string& error)
+{
+    error.clear();
+    std::set<GeneratedCost> coveredCosts;
+    std::set<CostOptimization> coveredOptimizations;
+    std::set<std::pair<std::string, CostOptimization>> identities;
+    for (const CostAuditRecord& record : records)
+    {
+        if (record.event.sourceConstruct.empty() || !record.libraryFree)
+        {
+            error = "zero-cost audit requires named library-free source fixtures";
+            return false;
+        }
+        if (!identities.emplace(record.event.sourceConstruct, record.optimization).second)
+        {
+            error = "zero-cost audit contains duplicate construct/optimization evidence";
+            return false;
+        }
+        if (record.mirOccurrences == 0 || record.assemblyOccurrences == 0)
+        {
+            error = "zero-cost audit requires MIR and assembly evidence";
+            return false;
+        }
+        if (!record.event.explicitlyRequested && record.approvedException.empty())
+        {
+            error = "generated cost is hidden and has no approved exception";
+            return false;
+        }
+        if (record.event.explicitlyRequested && !record.approvedException.empty())
+        {
+            error = "explicit costs must not be mislabeled as exceptions";
+            return false;
+        }
+        coveredCosts.insert(record.event.kind);
+        coveredOptimizations.insert(record.optimization);
+    }
+    if (coveredCosts.size() != 6 || coveredOptimizations.size() != 2)
+    {
+        error = "zero-cost audit requires all six cost kinds with optimization off and on";
+        return false;
+    }
+    return true;
+}
+
 std::string_view semanticToolingSchemaVersion() noexcept { return "nsc-semantic-tooling-v1"; }
 }

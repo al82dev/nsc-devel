@@ -203,5 +203,19 @@ struct CostEvent final
 };
 bool hiddenCostAuditPasses(std::span<const CostEvent> costs, std::string& error);
 
+enum class CostOptimization { Off, On };
+struct CostAuditRecord final
+{
+    CostEvent event;
+    CostOptimization optimization = CostOptimization::Off;
+    bool libraryFree = true;
+    std::size_t mirOccurrences = 0;
+    std::size_t assemblyOccurrences = 0;
+    std::string approvedException;
+};
+bool validateZeroCostAudit(
+    std::span<const CostAuditRecord> records,
+    std::string& error);
+
 std::string_view semanticToolingSchemaVersion() noexcept;
 }
