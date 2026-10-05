@@ -245,7 +245,84 @@ bool diagnosticPassesQualityGate(const DiagnosticQuality& diagnostic, std::strin
         diagnostic.spanish.empty() || !diagnostic.precisePrimarySpan ||
         !diagnostic.fixItPreservesSemantics || diagnostic.cascadeCount > 2)
     { error = "diagnostic quality gate requires stable code, localization, precise span, safe fix-it, and bounded cascades"; return false; }
+    if (!diagnostic.primarySpan.file.empty() &&
+        (diagnostic.primarySpan.line == 0 || diagnostic.primarySpan.column == 0 ||
+         diagnostic.primarySpan.endLine < diagnostic.primarySpan.line ||
+         (diagnostic.primarySpan.endLine == diagnostic.primarySpan.line &&
+          diagnostic.primarySpan.endColumn < diagnostic.primarySpan.column)))
+    {
+        error = "diagnostic primary span is invalid";
+        return false;
+    }
+    if (diagnostic.fixIt.has_value() &&
+        (diagnostic.fixIt->replacement.empty() || !diagnostic.fixIt->preservesSemantics ||
+         !diagnostic.fixIt->compiles))
+    {
+        error = "diagnostic fix-it must be nonempty, semantics-preserving, and compilable";
+        return false;
+    }
+    if (diagnostic.macroBacktrace.size() > 4)
+    {
+        error = "diagnostic macro backtrace is not compact";
+        return false;
+    }
     return true;
+}
+
+bool validateDiagnosticQualityCatalog(
+    std::span<const DiagnosticQuality> diagnostics,
+    std::size_t terminalWidth,
+    std::string& error)
+{
+    error.clear();
+    if (terminalWidth < 40)
+    {
+        error = "diagnostic terminal width must be at least 40 columns";
+        return false;
+    }
+    std::unordered_set<std::string> codes;
+    std::set<DiagnosticArea> areas;
+    for (const DiagnosticQuality& diagnostic : diagnostics)
+    {
+        if (!diagnosticPassesQualityGate(diagnostic, error)) return false;
+        if (diagnostic.primarySpan.file.empty())
+        {
+            error = "diagnostic catalog entries require a physical primary span";
+            return false;
+        }
+        if (!codes.insert(diagnostic.code).second)
+        {
+            error = "diagnostic catalog contains a duplicate stable code";
+            return false;
+        }
+        areas.insert(diagnostic.area);
+        if (renderDiagnosticForTerminal(diagnostic, false, terminalWidth).size() > terminalWidth ||
+            renderDiagnosticForTerminal(diagnostic, true, terminalWidth).size() > terminalWidth)
+        {
+            error = "diagnostic renderer exceeded terminal width";
+            return false;
+        }
+    }
+    if (areas.size() != 5)
+    {
+        error = "diagnostic catalog must cover borrow, trait, match, async, and module errors";
+        return false;
+    }
+    return true;
+}
+
+std::string renderDiagnosticForTerminal(
+    const DiagnosticQuality& diagnostic,
+    bool spanish,
+    std::size_t terminalWidth)
+{
+    if (terminalWidth == 0) return {};
+    std::string result = diagnostic.code + ": " + (spanish ? diagnostic.spanish : diagnostic.english);
+    if (result.size() <= terminalWidth) return result;
+    if (terminalWidth <= 3) return result.substr(0, terminalWidth);
+    result.resize(terminalWidth - 3);
+    result += "...";
+    return result;
 }
 
 std::string semanticDebugName(

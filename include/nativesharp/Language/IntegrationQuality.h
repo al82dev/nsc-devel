@@ -115,6 +115,24 @@ PerformanceAssessment assessLanguagePerformance(
     const PerformanceBudgetProfile& profile,
     std::size_t sampleCount) noexcept;
 
+enum class DiagnosticArea { Borrow, Trait, Match, Async, Module };
+
+struct DiagnosticSpan final
+{
+    std::string file;
+    std::size_t line = 0;
+    std::size_t column = 0;
+    std::size_t endLine = 0;
+    std::size_t endColumn = 0;
+};
+
+struct DiagnosticFixIt final
+{
+    std::string replacement;
+    bool preservesSemantics = false;
+    bool compiles = false;
+};
+
 struct DiagnosticQuality final
 {
     std::string code;
@@ -123,8 +141,20 @@ struct DiagnosticQuality final
     bool precisePrimarySpan = false;
     bool fixItPreservesSemantics = false;
     std::size_t cascadeCount = 0;
+    DiagnosticArea area = DiagnosticArea::Borrow;
+    DiagnosticSpan primarySpan;
+    std::optional<DiagnosticFixIt> fixIt;
+    std::vector<std::string> macroBacktrace;
 };
 bool diagnosticPassesQualityGate(const DiagnosticQuality& diagnostic, std::string& error);
+bool validateDiagnosticQualityCatalog(
+    std::span<const DiagnosticQuality> diagnostics,
+    std::size_t terminalWidth,
+    std::string& error);
+std::string renderDiagnosticForTerminal(
+    const DiagnosticQuality& diagnostic,
+    bool spanish,
+    std::size_t terminalWidth);
 
 std::string semanticDebugName(
     std::string_view owner,

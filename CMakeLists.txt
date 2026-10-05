@@ -2361,6 +2361,14 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.t15.performance-budgets COMMAND nsc_ns3_t15_performance_budget_tests)
 
     add_executable(
+        nsc_ns3_t15_diagnostic_quality_tests
+        tests/unit/NativeSharp3T15DiagnosticQualityTests.cpp)
+    target_link_libraries(nsc_ns3_t15_diagnostic_quality_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_ns3_t15_diagnostic_quality_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_t15_diagnostic_quality_tests)
+    add_test(NAME nsc.ns3.t15.diagnostic-quality COMMAND nsc_ns3_t15_diagnostic_quality_tests)
+
+    add_executable(
         nsc_ns3_t16_compatibility_tests
         tests/unit/NativeSharp3T16CompatibilityTests.cpp)
     target_link_libraries(nsc_ns3_t16_compatibility_tests PRIVATE nsc_compilation)
