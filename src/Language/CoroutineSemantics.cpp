@@ -580,6 +580,89 @@ bool taskBorrowMayEscapeScope(bool childJoined, bool borrowOutlivesScope) noexce
     return childJoined && borrowOutlivesScope;
 }
 
+std::optional<TaskScopePlan> buildTaskScopePlan(
+    const TaskExecutorProtocol& executor,
+    std::span<const ScopedTask> children,
+    std::size_t nestingDepth,
+    bool noHeap,
+    std::string& error) noexcept
+{
+    error.clear();
+    if (executor.typeName.empty() || !executor.hasSpawn || !executor.hasPollJoin ||
+        !executor.hasCancel || !executor.staticDispatch)
+    {
+        error = "task scope requires a named static executor with spawn, poll/join, and cancel";
+        return std::nullopt;
+    }
+    if (noHeap && !executor.supportsNoHeap)
+    {
+        error = "noheap task scope requires an executor with explicit noheap support";
+        return std::nullopt;
+    }
+
+    TaskScopePlan result;
+    result.executorType = executor.typeName;
+    result.nestingDepth = nestingDepth;
+    result.noHeap = noHeap;
+    result.children.assign(children.begin(), children.end());
+    for (const ScopedTask& child : result.children)
+    {
+        if (child.name.empty())
+        {
+            error = "every scoped task requires a stable identity";
+            return std::nullopt;
+        }
+        if (child.borrowsFromScope &&
+            !taskBorrowMayEscapeScope(child.joinedBeforeScopeExit, child.borrowOutlivesScope))
+        {
+            error = "borrowed child task must be joined before scope exit and fit the scope lifetime";
+            return std::nullopt;
+        }
+    }
+    return result;
+}
+
+std::vector<TaskScopeAction> planTaskScopeExit(
+    const TaskScopePlan& scope,
+    std::span<const std::string> completedChildren,
+    TaskScopeExitReason reason) noexcept
+{
+    const auto completed = [&](std::string_view child)
+    {
+        return std::ranges::find(completedChildren, child) != completedChildren.end();
+    };
+
+    std::vector<TaskScopeAction> result;
+    const bool abnormal = reason != TaskScopeExitReason::Normal;
+    if (abnormal)
+    {
+        for (auto child = scope.children.rbegin(); child != scope.children.rend(); ++child)
+        {
+            if (!completed(child->name))
+                result.push_back(TaskScopeAction{TaskScopeActionKind::Cancel, child->name});
+        }
+    }
+    for (auto child = scope.children.rbegin(); child != scope.children.rend(); ++child)
+    {
+        if (!completed(child->name))
+            result.push_back(TaskScopeAction{TaskScopeActionKind::Join, child->name});
+    }
+    switch (reason)
+    {
+        case TaskScopeExitReason::Normal: break;
+        case TaskScopeExitReason::EarlyError:
+            result.push_back(TaskScopeAction{TaskScopeActionKind::PropagateError, {}});
+            break;
+        case TaskScopeExitReason::Cancellation:
+            result.push_back(TaskScopeAction{TaskScopeActionKind::PropagateCancellation, {}});
+            break;
+        case TaskScopeExitReason::Panic:
+            result.push_back(TaskScopeAction{TaskScopeActionKind::PropagatePanic, {}});
+            break;
+    }
+    return result;
+}
+
 std::string concurrencyContractManifest()
 {
     std::string result = "NSCONCURRENCY " + std::to_string(kConcurrencyContractMajor) + "." +

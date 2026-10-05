@@ -262,6 +262,54 @@ std::optional<ThreadSafetyDecision> importThreadSafetyMetadata(
 
 bool taskBorrowMayEscapeScope(bool childJoined, bool borrowOutlivesScope) noexcept;
 
+struct TaskExecutorProtocol final
+{
+    std::string typeName;
+    bool hasSpawn = true;
+    bool hasPollJoin = true;
+    bool hasCancel = true;
+    bool staticDispatch = true;
+    bool supportsNoHeap = false;
+};
+
+struct ScopedTask final
+{
+    std::string name;
+    bool borrowsFromScope = false;
+    bool borrowOutlivesScope = false;
+    bool joinedBeforeScopeExit = true;
+};
+
+struct TaskScopePlan final
+{
+    std::string executorType;
+    std::vector<ScopedTask> children;
+    std::size_t nestingDepth = 0;
+    bool noHeap = false;
+    bool fixesThreadPool = false;
+};
+
+std::optional<TaskScopePlan> buildTaskScopePlan(
+    const TaskExecutorProtocol& executor,
+    std::span<const ScopedTask> children,
+    std::size_t nestingDepth,
+    bool noHeap,
+    std::string& error) noexcept;
+
+enum class TaskScopeExitReason { Normal, EarlyError, Cancellation, Panic };
+enum class TaskScopeActionKind { Cancel, Join, PropagateError, PropagateCancellation, PropagatePanic };
+
+struct TaskScopeAction final
+{
+    TaskScopeActionKind kind = TaskScopeActionKind::Join;
+    std::string child;
+};
+
+std::vector<TaskScopeAction> planTaskScopeExit(
+    const TaskScopePlan& scope,
+    std::span<const std::string> completedChildren,
+    TaskScopeExitReason reason) noexcept;
+
 std::string concurrencyContractManifest();
 std::string concurrencyContractFingerprintHex();
 bool writeConcurrencyContract(const std::filesystem::path& destination, std::string& error);
