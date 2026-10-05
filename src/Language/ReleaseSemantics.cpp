@@ -147,6 +147,27 @@ bool changeAllowed(ReleaseCandidateStage stage, ChangeSeverity severity) noexcep
     return severity == ChangeSeverity::PromotionBlocker;
 }
 
+bool validateReleaseCandidate(
+    const ReleaseCandidateEvidence& evidence,
+    std::string& error)
+{
+    error.clear();
+    if (evidence.identity.empty() || evidence.featureSetHash.empty() || evidence.knownIssuesHash.empty())
+    { error = "release candidate requires identity, feature-set hash, and known-issues hash"; return false; }
+    for (const ChangeSeverity severity : evidence.acceptedChanges)
+    {
+        if (!changeAllowed(evidence.stage, severity))
+        { error = "release candidate contains a change forbidden at its stage"; return false; }
+    }
+    if (!evidence.acceptedChanges.empty() && !evidence.affectedGatesRestarted)
+    { error = "release candidate changes require affected gates to restart"; return false; }
+    if (!evidence.cleanMatrixPassed || !evidence.metadataUpgradeDowngradePassed ||
+        !evidence.reproducible || !evidence.longRunningStressPassed ||
+        !evidence.packageFreeSamplesPassed)
+    { error = "release candidate evidence is incomplete"; return false; }
+    return true;
+}
+
 PromotionStatus promotionStatus(const PromotionEvidence& evidence) noexcept
 {
     return evidence.externalBaselinePassed && evidence.priorityZeroIssues == 0 &&

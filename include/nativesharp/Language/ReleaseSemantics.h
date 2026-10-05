@@ -106,6 +106,24 @@ enum class ReleaseCandidateStage { RC1, RC2, RC3 };
 enum class ChangeSeverity { Feature, Fix, PromotionBlocker };
 bool changeAllowed(ReleaseCandidateStage stage, ChangeSeverity severity) noexcept;
 
+struct ReleaseCandidateEvidence final
+{
+    ReleaseCandidateStage stage = ReleaseCandidateStage::RC1;
+    std::string identity;
+    std::string featureSetHash;
+    std::string knownIssuesHash;
+    std::vector<ChangeSeverity> acceptedChanges;
+    bool affectedGatesRestarted = false;
+    bool cleanMatrixPassed = false;
+    bool metadataUpgradeDowngradePassed = false;
+    bool reproducible = false;
+    bool longRunningStressPassed = false;
+    bool packageFreeSamplesPassed = false;
+};
+bool validateReleaseCandidate(
+    const ReleaseCandidateEvidence& evidence,
+    std::string& error);
+
 struct PromotionEvidence final
 {
     bool externalBaselinePassed = false;
