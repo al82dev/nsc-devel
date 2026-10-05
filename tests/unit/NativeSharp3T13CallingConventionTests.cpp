@@ -83,7 +83,6 @@ int main()
     nativesharp::tests::TestContext tests;
     using namespace nativesharp::language;
 
-    _putenv_s("NSC_LINKER", "A:\\nslink-devel\\build-debug\\bin\\nslink.exe");
     const std::string runtime =
         (std::filesystem::path(NSC_BINARY_DIR) /
             "generated/NativeSharp.Runtime.Win32.lib").string();
