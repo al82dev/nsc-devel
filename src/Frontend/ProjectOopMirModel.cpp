@@ -236,7 +236,8 @@ bool isSignedIntegralType(std::string_view typeKey) noexcept
     // ID 89. Dice lo mismo que la tabla del modelo semantico y que la del backend, a proposito:
     // cada capa contesta sin depender de las otras. Las tres se fijan entre si en la fixture c19.
     return typeKey == "builtin:sbyte" || typeKey == "builtin:short" ||
-        typeKey == "builtin:int" || typeKey == "builtin:long" || typeKey == "builtin:nint";
+        typeKey == "builtin:int" || typeKey == "builtin:long" || typeKey == "builtin:nint" ||
+        typeKey == "builtin:i128";
 }
 
 unsigned integerBitWidth(std::string_view typeKey) noexcept
@@ -245,6 +246,7 @@ unsigned integerBitWidth(std::string_view typeKey) noexcept
         typeKey == "builtin:char") return 8;
     if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return 16;
     if (typeKey == "builtin:int" || typeKey == "builtin:uint") return 32;
+    if (typeKey == "builtin:i128" || typeKey == "builtin:u128") return 128;
     if (typeKey == "builtin:long" || typeKey == "builtin:ulong" ||
         typeKey == "builtin:nint" || typeKey == "builtin:nuint") return 64;
     return 64;

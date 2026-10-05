@@ -29,6 +29,8 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(KwULong);
         NS_TOKEN_CASE(KwNInt);
         NS_TOKEN_CASE(KwNUInt);
+        NS_TOKEN_CASE(KwInt128);
+        NS_TOKEN_CASE(KwUInt128);
         NS_TOKEN_CASE(KwFloat);
         NS_TOKEN_CASE(KwDouble);
         NS_TOKEN_CASE(KwString);

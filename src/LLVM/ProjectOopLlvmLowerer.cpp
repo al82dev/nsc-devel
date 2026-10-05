@@ -1589,6 +1589,10 @@ private:
         else if (typeKey == "builtin:ulong" || typeKey == "builtin:nuint")
             type = basic(typeKey == "builtin:ulong" ? "ulong" : "nuint", 64,
                          LLVMDWARFTypeEncodingUnsigned);
+        else if (typeKey == "builtin:i128")
+            type = basic("i128", 128, LLVMDWARFTypeEncodingSigned);
+        else if (typeKey == "builtin:u128")
+            type = basic("u128", 128, LLVMDWARFTypeEncodingUnsigned);
         else if (typeKey == "builtin:float")
             type = basic("float", 32, LLVMDWARFTypeEncodingFloat);
         else if (typeKey == "builtin:double")
@@ -16034,6 +16038,8 @@ private:
         if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return LLVMInt16TypeInContext(context_);
         if (typeKey == "builtin:int" || typeKey == "builtin:uint") return LLVMInt32TypeInContext(context_);
         if (typeKey == "builtin:long" || typeKey == "builtin:ulong" || typeKey == "builtin:nint" || typeKey == "builtin:nuint") return LLVMInt64TypeInContext(context_);
+        if (typeKey == "builtin:i128" || typeKey == "builtin:u128")
+            return LLVMIntTypeInContext(context_, 128);
         if (typeKey == "builtin:float") return LLVMFloatTypeInContext(context_);
         if (typeKey == "builtin:double") return LLVMDoubleTypeInContext(context_);
         if (language::isAnonymousLambdaTypeIdentity(typeKey))

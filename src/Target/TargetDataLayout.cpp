@@ -45,6 +45,10 @@ TypeLayout TargetDataLayout::layoutOf(BuiltinLayoutKind kind) const noexcept
         case BuiltinLayoutKind::Double:
         case BuiltinLayoutKind::Pointer:
             return {8, 8};
+
+        case BuiltinLayoutKind::Int128:
+        case BuiltinLayoutKind::UInt128:
+            return {16, 16};
     }
 
     return {0, 1};

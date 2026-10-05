@@ -51,7 +51,7 @@ struct IntegerTypeInfo final
     bool isSigned;
 };
 
-inline constexpr std::array<IntegerTypeInfo, 11> kIntegerTypes = {{
+inline constexpr std::array<IntegerTypeInfo, 13> kIntegerTypes = {{
     {"builtin:sbyte", 8, true},
     {"builtin:byte", 8, false},
     {"builtin:char", 8, false},
@@ -62,7 +62,9 @@ inline constexpr std::array<IntegerTypeInfo, 11> kIntegerTypes = {{
     {"builtin:long", 64, true},
     {"builtin:ulong", 64, false},
     {"builtin:nint", 64, true},
-    {"builtin:nuint", 64, false}}};
+    {"builtin:nuint", 64, false},
+    {"builtin:i128", 128, true},
+    {"builtin:u128", 128, false}}};
 
 // Devuelve la fila de `typeKey`, o nullptr si no es un entero incorporado. `constexpr` para que
 // una comprobacion en tiempo de compilacion pueda usarla.

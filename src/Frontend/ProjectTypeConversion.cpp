@@ -17,17 +17,18 @@ namespace
 {
 using Pair = std::pair<std::string_view, std::string_view>;
 
-constexpr std::array<std::string_view, 13> kNumericTypes = {
+constexpr std::array<std::string_view, 15> kNumericTypes = {
     "builtin:sbyte",
     "builtin:byte", "builtin:char", "builtin:short", "builtin:ushort",
     "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong",
-    "builtin:nint", "builtin:nuint", "builtin:float", "builtin:double"};
+    "builtin:nint", "builtin:nuint", "builtin:i128", "builtin:u128",
+    "builtin:float", "builtin:double"};
 
-constexpr std::array<std::string_view, 11> kIntegralTypes = {
+constexpr std::array<std::string_view, 13> kIntegralTypes = {
     "builtin:sbyte",
     "builtin:byte", "builtin:char", "builtin:short", "builtin:ushort",
     "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong",
-    "builtin:nint", "builtin:nuint"};
+    "builtin:nint", "builtin:nuint", "builtin:i128", "builtin:u128"};
 
 // ID 121. Ancho y signo de los tipos integrales, para la regla de promocion entera de mas abajo.
 //
@@ -105,6 +106,15 @@ bool isIntegralPromotion(std::string_view source, std::string_view target) noexc
 
 bool isNumericWidening(std::string_view source, std::string_view target) noexcept
 {
+    const IntegralInfo* sourceInteger = findIntegral(source);
+    const IntegralInfo* targetInteger = findIntegral(target);
+    if (sourceInteger != nullptr && targetInteger != nullptr)
+    {
+        if (sourceInteger->isSigned == targetInteger->isSigned)
+            return sourceInteger->width < targetInteger->width;
+        if (!sourceInteger->isSigned && targetInteger->isSigned)
+            return sourceInteger->width < targetInteger->width;
+    }
     for (const Pair& pair : kNumericWidenings)
     {
         if (pair.first == source && pair.second == target)
@@ -127,6 +137,7 @@ bool constantFits(
     // que hace que `byte b = -1;` siga rechazandose.
     if (sourceNegative)
     {
+        if (target == "builtin:i128") return true;
         // ID 89. `sbyte` llega hasta -128, uno mas que su maximo 127, igual que `short` llega a
         // -32768 con maximo 32767. La regla es la misma para los cuatro anchos con signo.
         if (target == "builtin:sbyte")
@@ -203,6 +214,7 @@ bool constantFits(
     {
         return true;
     }
+    if (target == "builtin:i128" || target == "builtin:u128") return true;
     return false;
 }
 
@@ -244,6 +256,11 @@ std::optional<std::string> integerPromotion(std::string_view left, std::string_v
     if (left == right && !isIntegralPromotion(left, "builtin:int"))
     {
         return std::string(left);
+    }
+    if (a->width == 128 || b->width == 128)
+    {
+        return std::string((!a->isSigned || !b->isSigned)
+            ? "builtin:u128" : "builtin:i128");
     }
 
     // `nint` y `nuint` CONSERVAN SU NOMBRE, y no es cosmetica.

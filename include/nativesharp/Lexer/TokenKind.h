@@ -37,6 +37,8 @@ enum class TokenKind
     KwULong,
     KwNInt,
     KwNUInt,
+    KwInt128,
+    KwUInt128,
     KwFloat,
     KwDouble,
     KwString,

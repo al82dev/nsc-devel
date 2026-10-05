@@ -649,13 +649,15 @@ std::optional<unsigned> staticAssertIntegerWidth(std::string_view typeKey) noexc
     if (typeKey == "builtin:int" || typeKey == "builtin:uint") return 32U;
     if (typeKey == "builtin:long" || typeKey == "builtin:ulong" ||
         typeKey == "builtin:nint" || typeKey == "builtin:nuint") return 64U;
+    if (typeKey == "builtin:i128" || typeKey == "builtin:u128") return 128U;
     return std::nullopt;
 }
 
 bool staticAssertSignedInteger(std::string_view typeKey) noexcept
 {
     return typeKey == "builtin:sbyte" || typeKey == "builtin:short" ||
-        typeKey == "builtin:int" || typeKey == "builtin:long" || typeKey == "builtin:nint";
+        typeKey == "builtin:int" || typeKey == "builtin:long" || typeKey == "builtin:nint" ||
+        typeKey == "builtin:i128";
 }
 
 std::uint64_t staticAssertMask(unsigned width) noexcept

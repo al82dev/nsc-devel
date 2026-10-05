@@ -1306,6 +1306,16 @@ ast::TypeSyntax* Parser::parseType()
     {
         const lexer::Token& base = consume();
         baseName = std::string(base.lexeme());
+        if (baseName == "i8") baseName = "sbyte";
+        else if (baseName == "u8") baseName = "byte";
+        else if (baseName == "i16") baseName = "short";
+        else if (baseName == "u16") baseName = "ushort";
+        else if (baseName == "i32") baseName = "int";
+        else if (baseName == "u32") baseName = "uint";
+        else if (baseName == "i64") baseName = "long";
+        else if (baseName == "u64") baseName = "ulong";
+        else if (baseName == "isize") baseName = "nint";
+        else if (baseName == "usize") baseName = "nuint";
         completeRange = base.range();
     }
     if (recoverLongDoubleAsDouble) completeRange = join(longDoubleRange, completeRange);

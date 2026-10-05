@@ -657,6 +657,7 @@ LLVMTypeRef LLVMInt8TypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMInt16TypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMInt32TypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMInt64TypeInContext(LLVMContextRef context);
+LLVMTypeRef LLVMIntTypeInContext(LLVMContextRef context, unsigned numBits);
 LLVMTypeRef LLVMHalfTypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMFloatTypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMDoubleTypeInContext(LLVMContextRef context);

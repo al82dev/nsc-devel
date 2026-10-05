@@ -24,6 +24,8 @@ enum class BuiltinLayoutKind
     ULong,
     NInt,
     NUInt,
+    Int128,
+    UInt128,
     Float,
     Double,
     Enum,

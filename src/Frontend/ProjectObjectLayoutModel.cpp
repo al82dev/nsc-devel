@@ -41,6 +41,8 @@ std::optional<BuiltinLayoutKind> builtinLayoutKind(TokenKind kind) noexcept
         case TokenKind::KwULong: return BuiltinLayoutKind::ULong;
         case TokenKind::KwNInt: return BuiltinLayoutKind::NInt;
         case TokenKind::KwNUInt: return BuiltinLayoutKind::NUInt;
+        case TokenKind::KwInt128: return BuiltinLayoutKind::Int128;
+        case TokenKind::KwUInt128: return BuiltinLayoutKind::UInt128;
         case TokenKind::KwFloat: return BuiltinLayoutKind::Float;
         case TokenKind::KwDouble: return BuiltinLayoutKind::Double;
         case TokenKind::KwString: return BuiltinLayoutKind::Pointer;
@@ -196,6 +198,7 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
     if (typeKey == "builtin:long" || typeKey == "builtin:ulong" || typeKey == "builtin:nint" ||
         typeKey == "builtin:nuint" || typeKey == "builtin:double" || typeKey == "builtin:string" ||
         ProjectTypeConversion::isNativeArray(typeKey) || typeKey.ends_with("*")) return {{8, 8}};
+    if (typeKey == "builtin:i128" || typeKey == "builtin:u128") return {{16, 16}};
     if (const std::optional<language::AggregateLayout> tuple =
             tupleLayoutForTypeKey(nameLookup, typeKey);
         tuple.has_value())
@@ -671,6 +674,20 @@ bool ProjectObjectLayoutModel::buildStructLayout(
         std::optional<std::uint64_t> bitWidth;
         if (member.isBitField)
         {
+            const bool edition3 = type.syntax != nullptr &&
+                type.syntax->auxiliaryText().find("ns3-value") != std::string::npos;
+            const bool declaredLayout = type.syntax != nullptr &&
+                type.syntax->auxiliaryText().find("repr=") != std::string::npos;
+            if (edition3 && !declaredLayout)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    member.range,
+                    "NativeSharp 3 bit-fields require an explicit repr(native) or repr(C) layout");
+                namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+                return false;
+            }
             bool validBase = ProjectIntegerEvaluator::isIntegerType(member.declaredTypeKey) ||
                 member.declaredTypeKey == "builtin:bool";
             if (!validBase && member.declaredTypeKey.starts_with("type:"))
@@ -691,7 +708,7 @@ bool ProjectObjectLayoutModel::buildStructLayout(
             const bool negative = folded.has_value() &&
                 ProjectIntegerEvaluator::isSignedInteger(folded->typeKey) &&
                 folded->asSigned() < 0;
-            if (!validBase || !folded.has_value() || negative ||
+            if (!validBase || fieldLayout->size > 8U || !folded.has_value() || negative ||
                 folded->bits > fieldLayout->size * 8U ||
                 (folded->bits == 0 && !member.isUnnamedBitField))
             {
@@ -701,6 +718,8 @@ bool ProjectObjectLayoutModel::buildStructLayout(
                     member.range,
                     !validBase
                         ? "a bit-field base type must be an integer, bool, or enum"
+                        : fieldLayout->size > 8U
+                            ? "bit-field allocation units are limited to 8, 16, 32, or 64 bits"
                         : !folded.has_value() || negative
                             ? "bit-field width must be a nonnegative integral constant expression"
                             : folded->bits == 0
@@ -748,13 +767,20 @@ bool ProjectObjectLayoutModel::buildStructLayout(
     const std::string_view representation = parseRepresentation(type);
     if (representation == "transparent")
     {
+        const bool containsBitField = std::ranges::any_of(
+            fieldMembers,
+            [&](std::size_t memberOrdinal)
+            {
+                return memberOrdinal < memberModel_->members().size() &&
+                    memberModel_->members()[memberOrdinal].isBitField;
+            });
         const std::size_t representedFields = std::ranges::count_if(
             physicalFields,
             [](const target::StructFieldRequest& field)
             {
                 return !field.isFlexibleArray && field.layout.size != 0;
             });
-        if (representedFields != 1 || layoutOptions.isUnion)
+        if (representedFields != 1 || layoutOptions.isUnion || containsBitField)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidType,

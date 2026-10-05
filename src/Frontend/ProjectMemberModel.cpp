@@ -1332,6 +1332,7 @@ std::string ProjectMemberModel::canonicalGenericArgumentKey(
         {"uint", "builtin:uint"}, {"long", "builtin:long"},
         {"ulong", "builtin:ulong"}, {"nint", "builtin:nint"},
         {"nuint", "builtin:nuint"}, {"half", "builtin:half"},
+        {"i128", "builtin:i128"}, {"u128", "builtin:u128"},
         {"float", "builtin:float"}, {"double", "builtin:double"},
         {"string", "builtin:string"}};
     for (const auto& [name, key] : builtins)

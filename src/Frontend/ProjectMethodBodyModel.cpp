@@ -587,7 +587,7 @@ bool isSignedIntegralType(std::string_view typeKey) noexcept
 {
     // ID 89: `sbyte` entra aqui y `byte` no. Es toda la diferencia entre los dos tipos.
     return typeKey == "builtin:sbyte" || typeKey == "builtin:short" || typeKey == "builtin:int" ||
-        typeKey == "builtin:long" || typeKey == "builtin:nint";
+        typeKey == "builtin:long" || typeKey == "builtin:nint" || typeKey == "builtin:i128";
 }
 
 unsigned integralBitWidth(std::string_view typeKey) noexcept
@@ -596,6 +596,7 @@ unsigned integralBitWidth(std::string_view typeKey) noexcept
         typeKey == "builtin:char") return 8;
     if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return 16;
     if (typeKey == "builtin:int" || typeKey == "builtin:uint") return 32;
+    if (typeKey == "builtin:i128" || typeKey == "builtin:u128") return 128;
     return 64;
 }
 
