@@ -17,6 +17,21 @@ struct FreezeManifest final
 };
 bool validateFreezeManifest(const FreezeManifest& manifest, std::string& error);
 
+struct SyntaxFreezeManifest final
+{
+    std::string grammarRevision;
+    std::string canonicalGrammarHash;
+    std::string precedenceHash;
+    std::string reservedWordsHash;
+    std::string recoveryRulesHash;
+    bool generatedFromCanonicalSource = false;
+    bool parserCorpusPassed = false;
+    bool ambiguityCheckPassed = false;
+    bool formatterRoundTripPassed = false;
+    bool specificationSnippetsPassed = false;
+};
+bool validateSyntaxFreeze(const SyntaxFreezeManifest& manifest, std::string& error);
+
 enum class ConformanceTier { Mandatory, Recommended, ImplementationSpecific };
 struct ConformanceCase final { std::string identity; ConformanceTier tier; };
 bool validateConformanceManifest(std::span<const ConformanceCase> cases, std::string& error);

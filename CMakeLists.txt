@@ -2416,6 +2416,14 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_ns3_t17_release_tests)
     add_test(NAME nsc.ns3.t17.release-contract COMMAND nsc_ns3_t17_release_tests)
 
+    add_executable(
+        nsc_ns3_t17_syntax_freeze_tests
+        tests/unit/NativeSharp3T17SyntaxFreezeTests.cpp)
+    target_link_libraries(nsc_ns3_t17_syntax_freeze_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_ns3_t17_syntax_freeze_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_ns3_t17_syntax_freeze_tests)
+    add_test(NAME nsc.ns3.t17.syntax-freeze COMMAND nsc_ns3_t17_syntax_freeze_tests)
+
     add_test(
         NAME nsc.ns3.t00.conformance-harness
         COMMAND "${Python3_EXECUTABLE}" -B

@@ -13,6 +13,21 @@ bool validateFreezeManifest(const FreezeManifest& manifest, std::string& error)
     return true;
 }
 
+bool validateSyntaxFreeze(const SyntaxFreezeManifest& manifest, std::string& error)
+{
+    error.clear();
+    if (manifest.grammarRevision.empty() || manifest.canonicalGrammarHash.empty() ||
+        manifest.precedenceHash.empty() || manifest.reservedWordsHash.empty() ||
+        manifest.recoveryRulesHash.empty())
+    { error = "syntax freeze requires versioned hashes for every grammar surface"; return false; }
+    if (!manifest.generatedFromCanonicalSource)
+    { error = "reference grammar must be generated from its canonical source"; return false; }
+    if (!manifest.parserCorpusPassed || !manifest.ambiguityCheckPassed ||
+        !manifest.formatterRoundTripPassed || !manifest.specificationSnippetsPassed)
+    { error = "syntax freeze evidence is incomplete"; return false; }
+    return true;
+}
+
 bool validateConformanceManifest(
     std::span<const ConformanceCase> cases,
     std::string& error)
