@@ -471,6 +471,160 @@ bool strongNumericOperatorAllowed(
     return std::ranges::find(left.operators, operation) != left.operators.end();
 }
 
+std::optional<ConstantPointer> ConstantMemory::allocate(
+    std::size_t size,
+    std::size_t alignment,
+    std::string& error)
+{
+    error.clear();
+    if (size == 0 || alignment == 0 || (alignment & (alignment - 1U)) != 0)
+    {
+        error = "constant allocation requires nonzero size and power-of-two alignment";
+        return std::nullopt;
+    }
+    const std::uint64_t identity = nextIdentity_++;
+    allocations_.push_back(ConstantAllocation{identity, size, alignment, true});
+    return ConstantPointer{identity, 0};
+}
+
+std::optional<ConstantPointer> ConstantMemory::offset(
+    ConstantPointer pointer,
+    std::ptrdiff_t delta,
+    std::string& error) const
+{
+    error.clear();
+    const auto allocation = std::ranges::find(
+        allocations_, pointer.allocation, &ConstantAllocation::identity);
+    if (allocation == allocations_.end() || !allocation->live)
+    {
+        error = "constant pointer has no live provenance";
+        return std::nullopt;
+    }
+    if (pointer.offset > allocation->size)
+    {
+        error = "constant pointer offset is outside its provenance allocation";
+        return std::nullopt;
+    }
+    const auto current = static_cast<std::ptrdiff_t>(pointer.offset);
+    if ((delta < 0 && current < -delta) ||
+        (delta > 0 && static_cast<std::size_t>(delta) > allocation->size - pointer.offset))
+    {
+        error = "constant pointer arithmetic escaped its allocation";
+        return std::nullopt;
+    }
+    return ConstantPointer{
+        pointer.allocation,
+        static_cast<std::size_t>(current + delta)};
+}
+
+bool ConstantMemory::validateDereference(
+    ConstantPointer pointer,
+    std::size_t width,
+    std::string& error) const
+{
+    error.clear();
+    const auto allocation = std::ranges::find(
+        allocations_, pointer.allocation, &ConstantAllocation::identity);
+    if (allocation == allocations_.end() || !allocation->live)
+    {
+        error = "constant dereference has no live provenance";
+        return false;
+    }
+    if (width == 0 || pointer.offset > allocation->size ||
+        width > allocation->size - pointer.offset)
+    {
+        error = "constant dereference is outside its allocation";
+        return false;
+    }
+    return true;
+}
+
+bool ConstantMemory::deallocate(std::uint64_t identity, std::string& error)
+{
+    error.clear();
+    const auto allocation = std::ranges::find(
+        allocations_, identity, &ConstantAllocation::identity);
+    if (allocation == allocations_.end() || !allocation->live)
+    {
+        error = "constant allocation is unknown or already dead";
+        return false;
+    }
+    allocation->live = false;
+    return true;
+}
+
+bool activateConstantUnionMember(
+    ConstantUnionState& state,
+    std::string_view member,
+    std::size_t memberSize,
+    std::string& error)
+{
+    error.clear();
+    if (member.empty() || memberSize == 0 || memberSize > state.storageSize)
+    {
+        error = "constant union member does not fit its storage";
+        return false;
+    }
+    state.activeMember = std::string(member);
+    return true;
+}
+
+bool readConstantUnionMember(
+    const ConstantUnionState& state,
+    std::string_view member,
+    std::string& error) noexcept
+{
+    error.clear();
+    if (state.activeMember != member)
+    {
+        error = "constant union read targets an inactive member";
+        return false;
+    }
+    return true;
+}
+
+std::optional<IntegerArithmeticResult> evaluateConstantIntegerArithmetic(
+    IntegerArithmeticRequest request,
+    std::string& error) noexcept
+{
+    request.domain = NumericEvaluationDomain::Constant;
+    auto result = evaluateIntegerArithmetic(request, error);
+    if (result.has_value() && result->undefinedBehavior)
+    {
+        error = "constant evaluation encountered undefined integer overflow";
+        return std::nullopt;
+    }
+    return result;
+}
+
+std::optional<IntegerArithmeticResult> executeConstantIntegerLoop(
+    std::uint64_t seedBits,
+    std::uint64_t operandBits,
+    std::size_t iterations,
+    std::size_t iterationBudget,
+    IntegerArithmeticOperation operation,
+    IntegerType type,
+    OverflowPolicy policy,
+    std::string& error) noexcept
+{
+    error.clear();
+    if (iterations > iterationBudget)
+    {
+        error = "constant loop exceeded its deterministic iteration budget";
+        return std::nullopt;
+    }
+    IntegerArithmeticResult current{seedBits, false, false};
+    for (std::size_t iteration = 0; iteration < iterations; ++iteration)
+    {
+        const auto next = evaluateConstantIntegerArithmetic(
+            IntegerArithmeticRequest{operation, current.bits, operandBits, type,
+                policy, NumericEvaluationDomain::Constant}, error);
+        if (!next.has_value()) return std::nullopt;
+        current = *next;
+    }
+    return current;
+}
+
 bool integerSemanticsSelfCheck() noexcept
 {
     constexpr IntegerType type{8, true};
