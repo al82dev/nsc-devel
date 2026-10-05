@@ -39,7 +39,8 @@ int main()
             !withinPerformanceBudget({30, 1024, 100, 8, 2048}, {25, 2048, 120, 10, 4096}),
         "frontend, memory, MIR, monomorphization, and code-size budgets are independently enforced");
     tests.expect(diagnosticPassesQualityGate(
-            {"NS3015", "borrow crosses await", "prestamo cruza await", true, true, 1}, error),
+            {"NS3015", "borrow crosses await", "prestamo cruza await", true, true, 1,
+                DiagnosticArea::Borrow, {}, std::nullopt, {}}, error),
         "diagnostic gate requires bilingual stable diagnostics and semantics-preserving fix-its");
     tests.expect(semanticDebugName("Demo.Work", "async state", 3) == "Demo.Work$async_state$3" &&
             semanticToolingSchemaVersion() == "nsc-semantic-tooling-v1",

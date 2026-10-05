@@ -51,8 +51,10 @@ namespace c56ns3nullwith
 
         public static int Main()
         {
-            int primary = 42;
-            int* present = &primary;
+            unsafe("raw pointers exercise null-aware operators")
+            {
+                int primary = 42;
+                int* present = &primary;
 
             trace = 0;
             int* selected = present ?? Fallback();
@@ -110,9 +112,10 @@ namespace c56ns3nullwith
             destroy head;
             destroy tail;
 
-            string formatted = $"answer={42:D4}-{255:X}-{true}";
-            if (formatted != "answer=0042-FF-true") { return 9; }
-            return 42;
+                string formatted = $"answer={42:D4}-{255:X}-{true}";
+                if (formatted != "answer=0042-FF-true") { return 9; }
+                return 42;
+            }
         }
     }
 }

@@ -27,12 +27,14 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
 std::filesystem::path writeProject(
     const std::filesystem::path& directory,
     std::string_view name,
-    std::string_view source)
+    std::string_view source,
+    int languageEdition = 3)
 {
     const std::filesystem::path project = directory / (std::string(name) + ".nsproj");
     writeFile(project,
         "<Project><PropertyGroup><Name>" + std::string(name) +
-        "</Name><Language>3</Language><OutputType>Exe</OutputType>"
+        "</Name><Language>" + std::to_string(languageEdition) +
+        "</Language><OutputType>Exe</OutputType>"
         "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
         "</ItemGroup></Project>");
     writeFile(directory / "Main.ns", source);
@@ -261,6 +263,29 @@ namespace BroadUnsafe
     tests.expect(broadDiagnostics.find("unsafe block covers more than eight statements") !=
             std::string::npos,
         "broad unexplained unsafe blocks produce the audit lint (" + broadDiagnostics + ")");
+
+    const std::filesystem::path edition2 = writeProject(root / "edition2", "UnsafeEdition2", R"NS(
+namespace UnsafeEdition2
+{
+    public class Program
+    {
+        extern C from "kernel32.dll" { public uint GetCurrentProcessId(); }
+        public static int Main()
+        {
+            int value = 42;
+            int* pointer = &value;
+            if (GetCurrentProcessId() == 0u) { return 0; }
+            return *pointer;
+        }
+    }
+}
+)NS", 2);
+    nativesharp::frontend::ProjectCompilation edition2Compilation;
+    std::string edition2Error;
+    const bool edition2Built = edition2Compilation.compileProjectOopMir(edition2, edition2Error);
+    tests.expect(edition2Built,
+        "edition 2 preserves legacy raw-pointer and FFI call semantics (" + edition2Error +
+            diagnosticsFor(edition2Compilation) + ")");
 
     return tests.result();
 }

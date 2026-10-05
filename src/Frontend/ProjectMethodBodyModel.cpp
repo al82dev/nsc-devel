@@ -4743,7 +4743,7 @@ void ProjectMethodBodyModel::analyzeStatement(
             break;
         }
         case ast::AstNodeKind::InlineAssemblyStatement:
-            if (unsafeBlockDepth_ == 0)
+            if (languageEdition_ == language::LanguageEdition::V3 && unsafeBlockDepth_ == 0)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::NS3030MissingEffectContext,
@@ -10767,7 +10767,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     operand.typeKey != "builtin:bool";
                 const bool targetInteger = ProjectTypeConversion::isIntegral(result.typeKey) &&
                     result.typeKey != "builtin:bool";
-                if (result.valid && unsafeBlockDepth_ == 0 &&
+                if (result.valid && languageEdition_ == language::LanguageEdition::V3 &&
+                    unsafeBlockDepth_ == 0 &&
                     ((sourceRawPointer && targetInteger) ||
                      (sourceInteger && targetRawPointer)))
                 {
@@ -10787,7 +10788,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         operand.pointerHasProvenance,
                         operand.pointerKnownAlignment,
                         operand.pointerAddressSpace};
-                    if (language::pointerCastRequiresUnsafe(
+                    if (languageEdition_ == language::LanguageEdition::V3 &&
+                        language::pointerCastRequiresUnsafe(
                             sourcePointerContract, targetPointerContract) &&
                         unsafeBlockDepth_ == 0)
                     {
@@ -13802,7 +13804,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
                 activeUnionMembers_.contains(*storageKey) &&
                 activeUnionMembers_.at(*storageKey) == fields.front();
             if (!writing && !language::canReadCUnionMember(
-                    activeMemberProven, unsafeBlockDepth_ != 0))
+                    activeMemberProven,
+                    languageEdition_ == language::LanguageEdition::V2 || unsafeBlockDepth_ != 0))
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidMemberAccess,
@@ -14600,7 +14603,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             return {};
         }
 
-        if (assertionIntrinsic == "builtin-assume" && unsafeBlockDepth_ == 0)
+        if (assertionIntrinsic == "builtin-assume" &&
+            languageEdition_ == language::LanguageEdition::V3 && unsafeBlockDepth_ == 0)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
@@ -15247,7 +15251,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         if (!allArgumentsValid) return result;
         if (const std::optional<language::FunctionType> functionType =
                 language::parseFunctionTypeIdentity(callee.typeKey);
-            functionType.has_value() && functionType->isUnsafe && unsafeBlockDepth_ == 0)
+            functionType.has_value() && functionType->isUnsafe &&
+            languageEdition_ == language::LanguageEdition::V3 && unsafeBlockDepth_ == 0)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidCall,
@@ -15978,7 +15983,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 }
             }
         }
-        if (selectedMember.isUnsafe && unsafeBlockDepth_ == 0)
+        if (selectedMember.isUnsafe && languageEdition_ == language::LanguageEdition::V3 &&
+            unsafeBlockDepth_ == 0)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::NS3030MissingEffectContext,
@@ -18105,7 +18111,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
-        if (diagnoseFailure && selectedMember.isUnsafe && unsafeBlockDepth_ == 0)
+        if (diagnoseFailure && selectedMember.isUnsafe &&
+            languageEdition_ == language::LanguageEdition::V3 && unsafeBlockDepth_ == 0)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::NS3030MissingEffectContext,
@@ -18488,7 +18495,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
                 "a one-past-end pointer is a comparison/iteration sentinel and cannot be dereferenced");
             return result;
         }
-        if (unsafeBlockDepth_ == 0)
+        if (languageEdition_ == language::LanguageEdition::V3 && unsafeBlockDepth_ == 0)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::NS3030MissingEffectContext,
