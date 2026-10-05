@@ -32,7 +32,7 @@ Commit funcional: `80e4e959a`.
 - Auditoría de alias reservados usados como identificadores en `selfhost/nsc`: cero restantes.
 - `--check-project-syntax` sobre `NativeSharp.Compiler.nsproj`: **PASS**, 98 unidades sintácticas.
 - Emisión directa del compilador autocontenido con O0, 12 trabajos, `NS_LIB_ROOT=A:\native-sharp-3.0-baseline\lib` y NSLink de `A:\native-sharp-3.0-baseline\bin\nslink.exe`: **PASS** en 2.73 s.
-- Artefacto de comprobación: `build-test-nslink/selfhost-sh27/nsc-next-o0-reserved-alias-fix.exe`.
+- Artefacto temporal de comprobación: `build-test-nslink/selfhost-sh27/nsc-next-o0-reserved-alias-fix.exe`; eliminado después de validar para no dejar residuos.
 - La invocación aislada inicial de SH27 quedó bloqueada antes de llegar al self-host porque el staging local no tenía `lib/NativeSharp.Core.IO/NativeSharpCore.lib`; no se trató como fallo funcional y se sustituyó por la emisión directa con `NS_LIB_ROOT`.
 
 No se ejecutó baseline, minibaseline ni CTest general.
