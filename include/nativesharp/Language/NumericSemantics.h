@@ -86,9 +86,44 @@ std::int64_t integerResultAsSigned(
     const IntegerArithmeticResult& result,
     IntegerType type) noexcept;
 
-enum class NumericKind { Integer, Floating };
+enum class NumericKind { Integer, Floating, Enum };
 struct NumericType final { NumericKind kind; unsigned bits; bool isSigned; };
 bool implicitNumericConversionIsLossless(NumericType source, NumericType target) noexcept;
+
+enum class NumericConversionKind
+{
+    Identity,
+    ImplicitLossless,
+    ImplicitConstant,
+    ExplicitNarrowing,
+    ExplicitSignChange,
+    ExplicitFloatInteger,
+    ExplicitEnumUnderlying,
+    Invalid
+};
+enum class NumericConversionUse { Assignment, Overload, ConstGeneric, EnumUnderlying, SimdSplat };
+
+struct NumericConstant final
+{
+    std::uint64_t magnitude = 0;
+    bool negative = false;
+    bool floating = false;
+};
+
+struct NumericConversionDecision final
+{
+    NumericConversionKind kind = NumericConversionKind::Invalid;
+    unsigned overloadRank = 255;
+    bool implicit = false;
+    bool lossless = false;
+    bool requiresOverflowPolicy = false;
+};
+
+NumericConversionDecision classifyNumericConversion(
+    NumericType source,
+    NumericType target,
+    std::optional<NumericConstant> constant,
+    NumericConversionUse use) noexcept;
 
 enum class FloatingPointMode { Strict, Precise, Fast };
 struct FloatingPointContract final

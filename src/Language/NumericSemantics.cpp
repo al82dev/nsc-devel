@@ -324,6 +324,74 @@ bool implicitNumericConversionIsLossless(NumericType source, NumericType target)
     return false;
 }
 
+NumericConversionDecision classifyNumericConversion(
+    NumericType source,
+    NumericType target,
+    std::optional<NumericConstant> constant,
+    NumericConversionUse use) noexcept
+{
+    if (source.bits == 0 || target.bits == 0 ||
+        source.bits > 64 || target.bits > 64)
+        return {};
+
+    if (source.kind == target.kind && source.bits == target.bits &&
+        source.isSigned == target.isSigned && use != NumericConversionUse::EnumUnderlying)
+        return {NumericConversionKind::Identity, 0, true, true, false};
+
+    const bool sourceInteger = source.kind == NumericKind::Integer || source.kind == NumericKind::Enum;
+    const bool targetInteger = target.kind == NumericKind::Integer || target.kind == NumericKind::Enum;
+    if (use == NumericConversionUse::EnumUnderlying ||
+        source.kind == NumericKind::Enum || target.kind == NumericKind::Enum)
+    {
+        if (!sourceInteger || !targetInteger) return {};
+        return {NumericConversionKind::ExplicitEnumUnderlying, 4, false, false, true};
+    }
+
+    if (constant.has_value() && !constant->floating)
+    {
+        if (target.kind == NumericKind::Integer && literalFits(
+                constant->magnitude, constant->negative,
+                IntegerType{target.bits, target.isSigned}))
+            return {NumericConversionKind::ImplicitConstant, 1, true, true, false};
+        if (target.kind == NumericKind::Floating)
+        {
+            const unsigned precision = target.bits <= 32 ? 24U : 53U;
+            const std::uint64_t exactLimit = std::uint64_t{1} << precision;
+            if (constant->magnitude <= exactLimit)
+                return {NumericConversionKind::ImplicitConstant, 1, true, true, false};
+        }
+    }
+
+    if (sourceInteger && targetInteger)
+    {
+        if (implicitNumericConversionIsLossless(source, target))
+            return {NumericConversionKind::ImplicitLossless, 1, true, true, false};
+        const bool signChange = source.isSigned != target.isSigned;
+        return {signChange ? NumericConversionKind::ExplicitSignChange
+                           : NumericConversionKind::ExplicitNarrowing,
+            3, false, false, true};
+    }
+
+    if (source.kind == NumericKind::Floating && target.kind == NumericKind::Floating)
+    {
+        if (target.bits >= source.bits)
+            return {NumericConversionKind::ImplicitLossless, 1, true, true, false};
+        return {NumericConversionKind::ExplicitNarrowing, 3, false, false, false};
+    }
+
+    if (sourceInteger && target.kind == NumericKind::Floating)
+    {
+        const unsigned precision = target.bits <= 32 ? 24U : 53U;
+        const unsigned required = source.isSigned ? source.bits - 1U : source.bits;
+        if (required <= precision)
+            return {NumericConversionKind::ImplicitLossless, 1, true, true, false};
+        return {NumericConversionKind::ExplicitFloatInteger, 3, false, false, false};
+    }
+    if (source.kind == NumericKind::Floating && targetInteger)
+        return {NumericConversionKind::ExplicitFloatInteger, 3, false, false, true};
+    return {};
+}
+
 FloatingPointContract floatingPointContract(FloatingPointMode mode) noexcept
 {
     // Windows x64 strict mode fixes nearest-even, preserves denormals, forbids contraction and
