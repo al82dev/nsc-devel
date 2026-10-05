@@ -192,6 +192,24 @@ std::vector<std::string> missingPromotionEvidence(const PromotionEvidence& evide
     return result;
 }
 
+PromotionStatus officialPromotionStatus(
+    const OfficialPromotionManifest& manifest,
+    std::vector<std::string>& missing)
+{
+    missing = missingPromotionEvidence(manifest.evidence);
+    if (manifest.languageEdition != 3) missing.emplace_back("stable-edition-3");
+    if (manifest.stableFeatureSetHash.empty()) missing.emplace_back("feature-set-hash");
+    if (manifest.specificationHash.empty()) missing.emplace_back("specification-hash");
+    if (manifest.conformanceSuiteHash.empty()) missing.emplace_back("conformance-suite-hash");
+    if (manifest.maintenanceBranch != "v.3.0") missing.emplace_back("maintenance-branch");
+    if (!manifest.experimentalFeaturesNamedAndFlagged) missing.emplace_back("experimental-feature-boundary");
+    if (!manifest.referenceWin64InstallPassed) missing.emplace_back("reference-win64-install");
+    if (!manifest.smokeInteropPassed) missing.emplace_back("smoke-interop");
+    if (!manifest.samplesPassed) missing.emplace_back("samples");
+    if (!manifest.artifactsVerified) missing.emplace_back("artifact-verification");
+    return missing.empty() ? PromotionStatus::Ready : PromotionStatus::NotReady;
+}
+
 std::string_view stableLanguageVersion() noexcept { return "3.0.0"; }
 std::string_view normativeTarget() noexcept { return "windows-x64"; }
 }

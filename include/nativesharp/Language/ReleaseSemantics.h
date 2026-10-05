@@ -139,6 +139,24 @@ struct PromotionEvidence final
 enum class PromotionStatus { NotReady, Ready };
 PromotionStatus promotionStatus(const PromotionEvidence& evidence) noexcept;
 std::vector<std::string> missingPromotionEvidence(const PromotionEvidence& evidence);
+
+struct OfficialPromotionManifest final
+{
+    PromotionEvidence evidence;
+    int languageEdition = 3;
+    std::string stableFeatureSetHash;
+    std::string specificationHash;
+    std::string conformanceSuiteHash;
+    std::string maintenanceBranch;
+    bool experimentalFeaturesNamedAndFlagged = false;
+    bool referenceWin64InstallPassed = false;
+    bool smokeInteropPassed = false;
+    bool samplesPassed = false;
+    bool artifactsVerified = false;
+};
+PromotionStatus officialPromotionStatus(
+    const OfficialPromotionManifest& manifest,
+    std::vector<std::string>& missing);
 std::string_view stableLanguageVersion() noexcept;
 std::string_view normativeTarget() noexcept;
 }
