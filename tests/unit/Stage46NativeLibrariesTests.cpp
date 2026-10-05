@@ -3428,9 +3428,9 @@ namespace Precompiled
 
         public static owned ManagedTransform MakeStatic() { return ManagedCallbacks.PlusTwo; }
         public static owned ManagedTransform MakeClosure(int bias) { return value => value + bias; }
-        public static owned ManagedTransform MakeInstance(borrowed ManagedCallbacks target)
+        public static owned ManagedTransform MakeInstance(owned ManagedCallbacks target)
         {
-            return target.Add;
+            return move(target.Add);
         }
         public static int Invoke(borrowed ManagedTransform callback, int value)
         {
@@ -3589,7 +3589,7 @@ namespace Consumer
         emitLibrary(
             "--emit-project-oop-lib", staticProducer / "StaticProducer.nsproj", staticLibrary, output, error, true) ==
             ExitCode::Success,
-        "1.0.1 precompiled static-library producer emits .lib and metadata");
+        "1.0.1 precompiled static-library producer emits .lib and metadata (" + error + output + ")");
     CoffArchiveVerifier precompiledArchiveVerifier;
     tests.expect(precompiledArchiveVerifier.verify(staticLibrary) &&
                      contains(precompiledArchiveVerifier.info().symbolNames, "Add"),
@@ -3902,7 +3902,7 @@ public class Program
         raii Precompiled.ManagedTransform closure = Precompiled.ManagedCallbacks.MakeClosure(2);
         raii Precompiled.ManagedCallbacks target = new Precompiled.ManagedCallbacks(2);
         raii Precompiled.ManagedTransform instance =
-            Precompiled.ManagedCallbacks.MakeInstance(target);
+            Precompiled.ManagedCallbacks.MakeInstance(move(target));
         return Precompiled.ManagedCallbacks.Invoke(direct, 10) +
             Precompiled.ManagedCallbacks.Invoke(closure, 10) +
             Precompiled.ManagedCallbacks.Invoke(instance, 8) + 8;
@@ -4752,7 +4752,7 @@ public class Program
         raii Precompiled.ManagedTransform closure = Precompiled.ManagedCallbacks.MakeClosure(2);
         raii Precompiled.ManagedCallbacks target = new Precompiled.ManagedCallbacks(2);
         raii Precompiled.ManagedTransform instance =
-            Precompiled.ManagedCallbacks.MakeInstance(target);
+            Precompiled.ManagedCallbacks.MakeInstance(move(target));
         return Precompiled.ManagedCallbacks.Invoke(direct, 10) +
             Precompiled.ManagedCallbacks.Invoke(closure, 10) +
             Precompiled.ManagedCallbacks.Invoke(instance, 8) + 8;
