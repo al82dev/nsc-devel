@@ -89,7 +89,10 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // MINOR 36 (2026-10-03): value types that own storage publish producer-owned drop-glue thunks.
 // MINOR 37 (2026-10-03): delegates, members and namespace functions publish their typed-throws
 // error key. Empty remains the canonical non-throwing contract.
-inline constexpr std::uint16_t kMetadataFormatMinor = 37;
+// MINOR 38 (2026-10-05): reusable generic templates publish parameter kinds, constant types,
+// move/copy/drop capability constraints, nominal/equality constraints, and erased lifetime
+// binders/outlives edges as an explicit semantic catalogue in addition to materializable source.
+inline constexpr std::uint16_t kMetadataFormatMinor = 38;
 
 // NSMETA 1.26. These bits belong to LibraryMetadataType::flags. A record is still physically a
 // struct; the flags publish only its compile-time member-generation policy. They therefore do not
@@ -432,7 +435,34 @@ struct LibraryMetadataGenericTemplate final
     // Same-module edges must be present in the file; external-module edges are resolved from the
     // consumer's other LibraryReferences.
     std::vector<std::string> dependencies;
+    struct ParameterContract final
+    {
+        std::string name;
+        std::uint8_t kind = 0;
+        std::uint16_t flags = 0;
+        std::string constantTypeKey;
+        std::string equalityTypeKey;
+        std::string associatedProjectionKey;
+        std::vector<std::string> typeConstraintKeys;
+    };
+    std::vector<ParameterContract> parameterContracts;
+    std::vector<std::string> lifetimeParameters;
+    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
 };
+
+inline constexpr std::uint16_t kMetadataGenericRequiresClass = 1U << 0U;
+inline constexpr std::uint16_t kMetadataGenericRequiresValueType = 1U << 1U;
+inline constexpr std::uint16_t kMetadataGenericRequiresDefaultConstructor = 1U << 2U;
+inline constexpr std::uint16_t kMetadataGenericRequiresCopy = 1U << 3U;
+inline constexpr std::uint16_t kMetadataGenericRequiresMove = 1U << 4U;
+inline constexpr std::uint16_t kMetadataGenericRequiresDrop = 1U << 5U;
+inline constexpr std::uint16_t kMetadataGenericRequiresUnmanaged = 1U << 6U;
+inline constexpr std::uint16_t kMetadataGenericRequiresNotNull = 1U << 7U;
+inline constexpr std::uint16_t kMetadataGenericConstraintMask =
+    kMetadataGenericRequiresClass | kMetadataGenericRequiresValueType |
+    kMetadataGenericRequiresDefaultConstructor | kMetadataGenericRequiresCopy |
+    kMetadataGenericRequiresMove | kMetadataGenericRequiresDrop |
+    kMetadataGenericRequiresUnmanaged | kMetadataGenericRequiresNotNull;
 
 struct LibraryMetadataGenericSpecialization final
 {

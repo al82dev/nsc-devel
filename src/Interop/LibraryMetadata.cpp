@@ -336,6 +336,21 @@ LibraryMetadataTypeKind metadataKind(frontend::NamedTypeDeclarationKind kind)
     return LibraryMetadataTypeKind::Struct;
 }
 
+std::uint8_t metadataAccessibility(frontend::NamedTypeAccessibility accessibility) noexcept
+{
+    // NSMETA accessibility values predate package/module visibility and are shared with member
+    // accessibility. Keep that stable wire contract instead of casting the expanded frontend enum.
+    switch (accessibility)
+    {
+        case frontend::NamedTypeAccessibility::Private: return 0U;
+        case frontend::NamedTypeAccessibility::Protected: return 1U;
+        case frontend::NamedTypeAccessibility::Internal:
+        case frontend::NamedTypeAccessibility::Package: return 2U;
+        case frontend::NamedTypeAccessibility::Public: return 3U;
+    }
+    return 0U;
+}
+
 LibraryMetadataOwnershipKind metadataOwnership(sema::OwnershipKind ownership) noexcept
 {
     switch (ownership)
@@ -926,7 +941,7 @@ bool buildMetadataModel(
         const frontend::NamedTypeDeclaration& type = types[typeOrdinal];
         LibraryMetadataType record;
         record.kind = metadataKind(type.kind);
-        record.accessibility = static_cast<std::uint8_t>(type.accessibility);
+        record.accessibility = metadataAccessibility(type.accessibility);
         record.flags = typeFlags(type);
         record.identityKey = type.identity.key();
         record.fullyQualifiedName = type.identity.fullyQualifiedName();
@@ -1637,6 +1652,47 @@ bool buildMetadataModel(
         record.ownerName = generic.ownerName;
         record.name = generic.name;
         record.parameters = generic.parameters;
+        const auto canonicalType = [&](const ast::TypeSyntax* syntax)
+        {
+            return syntax == nullptr ? std::string{} :
+                compilation.memberModel()->canonicalTypeKey(syntax, *compilation.nameLookup());
+        };
+        record.parameterContracts.reserve(generic.parameterSyntaxes.size());
+        for (const ast::GenericParameterSyntax& parameter : generic.parameterSyntaxes)
+        {
+            LibraryMetadataGenericTemplate::ParameterContract contract;
+            contract.name = parameter.name;
+            contract.kind = static_cast<std::uint8_t>(parameter.kind);
+            contract.constantTypeKey = canonicalType(parameter.constantType);
+            const auto clause = std::ranges::find(
+                generic.constraints, parameter.name, &ast::GenericConstraintClause::parameterName);
+            if (clause != generic.constraints.end())
+            {
+                if (clause->requiresClass) contract.flags |= kMetadataGenericRequiresClass;
+                if (clause->requiresValueType) contract.flags |= kMetadataGenericRequiresValueType;
+                if (clause->requiresDefaultConstructor)
+                    contract.flags |= kMetadataGenericRequiresDefaultConstructor;
+                if (clause->requiresCopy) contract.flags |= kMetadataGenericRequiresCopy;
+                if (clause->requiresMove) contract.flags |= kMetadataGenericRequiresMove;
+                if (clause->requiresTrackedLifetime) contract.flags |= kMetadataGenericRequiresDrop;
+                if (clause->requiresUnmanaged) contract.flags |= kMetadataGenericRequiresUnmanaged;
+                if (clause->requiresNotNull) contract.flags |= kMetadataGenericRequiresNotNull;
+                contract.equalityTypeKey = canonicalType(clause->equalityConstraint);
+                contract.associatedProjectionKey = canonicalType(clause->associatedProjection);
+                for (const ast::TypeSyntax* constraint : clause->typeConstraints)
+                    contract.typeConstraintKeys.push_back(canonicalType(constraint));
+                std::ranges::sort(contract.typeConstraintKeys);
+            }
+            record.parameterContracts.push_back(std::move(contract));
+        }
+        if (generic.syntax != nullptr)
+        {
+            for (const ast::LifetimeParameterSyntax& lifetime : generic.syntax->lifetimeParameters())
+                record.lifetimeParameters.push_back(lifetime.name);
+            for (const ast::LifetimeOutlivesConstraint& edge :
+                 generic.syntax->lifetimeOutlivesConstraints())
+                record.lifetimeOutlivesConstraints.emplace_back(edge.longer, edge.shorter);
+        }
         if (!materializeGenericTemplateSource(
                 compilation, generic, record.sourceText, templateExternalTypeKeys, error))
         {
@@ -2324,6 +2380,32 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         writer.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
         for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
             writer.text(function.declaredErrorTypeKey);
+    }
+    if (metadata.formatMinor >= 38)
+    {
+        writer.u32(static_cast<std::uint32_t>(metadata.genericTemplates.size()));
+        for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
+        {
+            writer.u32(static_cast<std::uint32_t>(generic.parameterContracts.size()));
+            for (const LibraryMetadataGenericTemplate::ParameterContract& parameter :
+                 generic.parameterContracts)
+            {
+                writer.text(parameter.name);
+                writer.u8(parameter.kind);
+                writer.u16(parameter.flags);
+                writer.text(parameter.constantTypeKey);
+                writer.text(parameter.equalityTypeKey);
+                writer.text(parameter.associatedProjectionKey);
+                writeStringVector(writer, parameter.typeConstraintKeys);
+            }
+            writeStringVector(writer, generic.lifetimeParameters);
+            writer.u32(static_cast<std::uint32_t>(generic.lifetimeOutlivesConstraints.size()));
+            for (const auto& [longer, shorter] : generic.lifetimeOutlivesConstraints)
+            {
+                writer.text(longer);
+                writer.text(shorter);
+            }
+        }
     }
     return writer.bytes();
 }
@@ -3219,6 +3301,63 @@ bool decodePayload(
                 return false;
             }
     }
+    if (metadata.formatMinor >= 38)
+    {
+        std::uint32_t catalogueCount = 0;
+        if (!readCount(reader, catalogueCount) || catalogueCount != metadata.genericTemplates.size())
+        {
+            error = "invalid metadata generic ownership catalogue count";
+            return false;
+        }
+        for (LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
+        {
+            std::uint32_t parameterCount = 0;
+            if (!readCount(reader, parameterCount))
+            {
+                error = "invalid metadata generic parameter-contract count";
+                return false;
+            }
+            generic.parameterContracts.reserve(parameterCount);
+            for (std::uint32_t index = 0; index < parameterCount; ++index)
+            {
+                LibraryMetadataGenericTemplate::ParameterContract parameter;
+                if (!reader.text(parameter.name) || !reader.u8(parameter.kind) ||
+                    !reader.u16(parameter.flags) || !reader.text(parameter.constantTypeKey) ||
+                    !reader.text(parameter.equalityTypeKey) ||
+                    !reader.text(parameter.associatedProjectionKey) ||
+                    !readStringVector(reader, parameter.typeConstraintKeys))
+                {
+                    error = "truncated metadata generic parameter contract";
+                    return false;
+                }
+                generic.parameterContracts.push_back(std::move(parameter));
+            }
+            if (!readStringVector(reader, generic.lifetimeParameters))
+            {
+                error = "truncated metadata generic lifetime binders";
+                return false;
+            }
+            std::uint32_t edgeCount = 0;
+            if (!readCount(reader, edgeCount))
+            {
+                error = "invalid metadata generic lifetime edge count";
+                return false;
+            }
+            generic.lifetimeOutlivesConstraints.reserve(edgeCount);
+            for (std::uint32_t index = 0; index < edgeCount; ++index)
+            {
+                std::string longer;
+                std::string shorter;
+                if (!reader.text(longer) || !reader.text(shorter))
+                {
+                    error = "truncated metadata generic lifetime edge";
+                    return false;
+                }
+                generic.lifetimeOutlivesConstraints.emplace_back(
+                    std::move(longer), std::move(shorter));
+            }
+        }
+    }
     if (!reader.atEnd())
     {
         error = "metadata payload has trailing bytes";
@@ -3744,6 +3883,19 @@ bool LibraryMetadataCodec::writeModelImpl(
             error = "NativeSharp metadata before 1.37 cannot represent typed throws contracts";
             return false;
         }
+    }
+    if (metadata.formatMinor < 38 &&
+        std::ranges::any_of(metadata.genericTemplates,
+            [](const LibraryMetadataGenericTemplate& generic)
+            {
+                return !generic.parameterContracts.empty() ||
+                    !generic.lifetimeParameters.empty() ||
+                    !generic.lifetimeOutlivesConstraints.empty();
+            }))
+    {
+        error = "NativeSharp metadata before 1.38 cannot represent exported generic "
+            "ownership, constraints, or lifetime contracts";
+        return false;
     }
     if (metadata.formatMinor < 25 &&
         (!metadata.binaryDependencies.empty() || !metadata.platformImports.empty()))
@@ -4421,6 +4573,63 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                 error = "metadata generic template '" + generic.canonicalKey +
                     "' does not provide a valid materializable declaration";
                 return false;
+            }
+            if (metadata.formatMinor >= 38)
+            {
+                if (generic.parameterContracts.size() != generic.parameters.size())
+                {
+                    error = "metadata generic template '" + generic.canonicalKey +
+                        "' has a parameter-contract count that differs from its generic arity";
+                    return false;
+                }
+                std::unordered_set<std::string> parameterNames;
+                for (std::size_t ordinal = 0; ordinal < generic.parameterContracts.size(); ++ordinal)
+                {
+                    const LibraryMetadataGenericTemplate::ParameterContract& parameter =
+                        generic.parameterContracts[ordinal];
+                    const bool constantParameter = parameter.kind == 1U || parameter.kind == 3U;
+                    if (parameter.name != generic.parameters[ordinal] ||
+                        !parameterNames.insert(parameter.name).second || parameter.kind > 3U ||
+                        (parameter.flags & ~kMetadataGenericConstraintMask) != 0U ||
+                        (constantParameter && parameter.constantTypeKey.empty()) ||
+                        (!constantParameter && !parameter.constantTypeKey.empty()))
+                    {
+                        error = "metadata generic template '" + generic.canonicalKey +
+                            "' contains an invalid parameter ownership/constraint contract";
+                        return false;
+                    }
+                    std::unordered_set<std::string> typeConstraints;
+                    for (const std::string& constraint : parameter.typeConstraintKeys)
+                    {
+                        if (constraint.empty() || !typeConstraints.insert(constraint).second)
+                        {
+                            error = "metadata generic template '" + generic.canonicalKey +
+                                "' contains an invalid or duplicate nominal constraint";
+                            return false;
+                        }
+                    }
+                }
+                std::unordered_set<std::string> lifetimeNames;
+                for (const std::string& lifetime : generic.lifetimeParameters)
+                {
+                    if (lifetime.empty() || !lifetimeNames.insert(lifetime).second)
+                    {
+                        error = "metadata generic template '" + generic.canonicalKey +
+                            "' contains an invalid lifetime binder";
+                        return false;
+                    }
+                }
+                std::set<std::pair<std::string, std::string>> lifetimeEdges;
+                for (const auto& edge : generic.lifetimeOutlivesConstraints)
+                {
+                    if (!lifetimeNames.contains(edge.first) || !lifetimeNames.contains(edge.second) ||
+                        edge.first == edge.second || !lifetimeEdges.insert(edge).second)
+                    {
+                        error = "metadata generic template '" + generic.canonicalKey +
+                            "' contains an invalid lifetime outlives edge";
+                        return false;
+                    }
+                }
             }
             templateByKey.emplace(generic.canonicalKey, &generic);
             if (metadata.formatMinor >= 11)

@@ -133,12 +133,23 @@ bool equalTemplate(
     const LibraryMetadataGenericTemplate& left,
     const LibraryMetadataGenericTemplate& right)
 {
+    const auto equalParameter = [](const LibraryMetadataGenericTemplate::ParameterContract& left,
+                                   const LibraryMetadataGenericTemplate::ParameterContract& right)
+    {
+        return std::tie(left.name, left.kind, left.flags, left.constantTypeKey,
+                   left.equalityTypeKey, left.associatedProjectionKey, left.typeConstraintKeys) ==
+            std::tie(right.name, right.kind, right.flags, right.constantTypeKey,
+                right.equalityTypeKey, right.associatedProjectionKey, right.typeConstraintKeys);
+    };
     return std::tie(left.kind, left.accessibility, left.canonicalKey, left.moduleName,
                left.namespaceName, left.ownerName, left.name, left.parameters,
-               left.sourceText, left.dependencies) ==
+               left.sourceText, left.dependencies, left.lifetimeParameters,
+               left.lifetimeOutlivesConstraints) ==
         std::tie(right.kind, right.accessibility, right.canonicalKey, right.moduleName,
             right.namespaceName, right.ownerName, right.name, right.parameters,
-            right.sourceText, right.dependencies);
+            right.sourceText, right.dependencies, right.lifetimeParameters,
+            right.lifetimeOutlivesConstraints) &&
+        vectorEqual(left.parameterContracts, right.parameterContracts, equalParameter);
 }
 
 bool equalSpecialization(

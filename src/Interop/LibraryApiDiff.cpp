@@ -295,6 +295,25 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         field(contract, generic.ownerName);
         field(contract, generic.name);
         strings(contract, generic.parameters, false);
+        number(contract, generic.parameterContracts.size());
+        for (const LibraryMetadataGenericTemplate::ParameterContract& parameter :
+             generic.parameterContracts)
+        {
+            field(contract, parameter.name);
+            number(contract, parameter.kind);
+            number(contract, parameter.flags);
+            field(contract, parameter.constantTypeKey);
+            field(contract, parameter.equalityTypeKey);
+            field(contract, parameter.associatedProjectionKey);
+            strings(contract, parameter.typeConstraintKeys, true);
+        }
+        strings(contract, generic.lifetimeParameters, false);
+        number(contract, generic.lifetimeOutlivesConstraints.size());
+        for (const auto& [longer, shorter] : generic.lifetimeOutlivesConstraints)
+        {
+            field(contract, longer);
+            field(contract, shorter);
+        }
         strings(contract, generic.dependencies, true);
         // A reusable generic is compiled in the consumer. Its declaration/body is therefore a
         // public compilation input, not a private producer implementation detail.
