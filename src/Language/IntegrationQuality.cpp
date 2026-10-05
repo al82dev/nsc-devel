@@ -182,6 +182,62 @@ bool withinPerformanceBudget(
         measured.codeBytes <= maximum.codeBytes;
 }
 
+std::vector<PerformanceBudgetProfile> nativeSharp3PerformanceBudgets()
+{
+    constexpr std::string_view hardware =
+        "Windows-x64|12-logical-cores|32GiB|NVMe|clang-cl-23|NSLink-3";
+    return {
+        {"giant-file", PerformanceCorpus::GiantFile,
+            {2500, 768ULL * 1024 * 1024, 600000, 2500, 32ULL * 1024 * 1024}, 5,
+            std::string(hardware), 7},
+        {"generic-heavy", PerformanceCorpus::GenericHeavy,
+            {3000, 1024ULL * 1024 * 1024, 750000, 12000, 48ULL * 1024 * 1024}, 5,
+            std::string(hardware), 7},
+        {"macro-heavy", PerformanceCorpus::MacroHeavy,
+            {2800, 768ULL * 1024 * 1024, 650000, 3500, 36ULL * 1024 * 1024}, 5,
+            std::string(hardware), 7},
+        {"module-fanout", PerformanceCorpus::ModuleFanout,
+            {3500, 1024ULL * 1024 * 1024, 800000, 6000, 56ULL * 1024 * 1024}, 5,
+            std::string(hardware), 7},
+        {"async-frames", PerformanceCorpus::AsyncFrames,
+            {2600, 768ULL * 1024 * 1024, 700000, 4500, 40ULL * 1024 * 1024}, 5,
+            std::string(hardware), 7},
+        {"pathological-diagnostics", PerformanceCorpus::PathologicalDiagnostics,
+            {1800, 512ULL * 1024 * 1024, 250000, 1000, 8ULL * 1024 * 1024}, 5,
+            std::string(hardware), 7}};
+}
+
+PerformanceAssessment assessLanguagePerformance(
+    const PerformanceBudget& measured,
+    const PerformanceBudgetProfile& profile,
+    std::size_t sampleCount) noexcept
+{
+    PerformanceAssessment result;
+    if (profile.identity.empty() || profile.referenceHardware.empty())
+        result.violations.push_back("performance profile requires identity and reference hardware");
+    if (profile.tolerancePercent > 25)
+        result.violations.push_back("performance tolerance exceeds the permitted 25 percent ceiling");
+    if (sampleCount < profile.minimumSamples)
+        result.violations.push_back("performance sample count is below the profile minimum");
+
+    const auto limit = [&](std::size_t maximum)
+    {
+        return maximum + (maximum * profile.tolerancePercent) / 100U;
+    };
+    if (measured.frontendMilliseconds > limit(profile.maximum.frontendMilliseconds))
+        result.violations.push_back("frontend time exceeded its language budget");
+    if (measured.peakMemoryBytes > limit(profile.maximum.peakMemoryBytes))
+        result.violations.push_back("frontend peak memory exceeded its language budget");
+    if (measured.mirInstructions > limit(profile.maximum.mirInstructions))
+        result.violations.push_back("MIR size exceeded its language budget");
+    if (measured.monomorphizations > limit(profile.maximum.monomorphizations))
+        result.violations.push_back("monomorphization count exceeded its language budget");
+    if (measured.codeBytes > limit(profile.maximum.codeBytes))
+        result.violations.push_back("generated code size exceeded its language budget");
+    result.passed = result.violations.empty();
+    return result;
+}
+
 bool diagnosticPassesQualityGate(const DiagnosticQuality& diagnostic, std::string& error)
 {
     error.clear();

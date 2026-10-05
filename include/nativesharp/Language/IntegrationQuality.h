@@ -77,8 +77,43 @@ struct PerformanceBudget final
     std::size_t mirInstructions = 0;
     std::size_t monomorphizations = 0;
     std::size_t codeBytes = 0;
+    std::size_t backendMilliseconds = 0;
+    std::size_t toolchainMilliseconds = 0;
 };
 bool withinPerformanceBudget(const PerformanceBudget& measured, const PerformanceBudget& maximum) noexcept;
+
+enum class PerformanceCorpus
+{
+    GiantFile,
+    GenericHeavy,
+    MacroHeavy,
+    ModuleFanout,
+    AsyncFrames,
+    PathologicalDiagnostics
+};
+
+struct PerformanceBudgetProfile final
+{
+    std::string identity;
+    PerformanceCorpus corpus = PerformanceCorpus::GiantFile;
+    PerformanceBudget maximum;
+    unsigned tolerancePercent = 5;
+    std::string referenceHardware;
+    std::size_t minimumSamples = 5;
+};
+
+struct PerformanceAssessment final
+{
+    bool passed = false;
+    bool backendAndToolchainExcluded = true;
+    std::vector<std::string> violations;
+};
+
+std::vector<PerformanceBudgetProfile> nativeSharp3PerformanceBudgets();
+PerformanceAssessment assessLanguagePerformance(
+    const PerformanceBudget& measured,
+    const PerformanceBudgetProfile& profile,
+    std::size_t sampleCount) noexcept;
 
 struct DiagnosticQuality final
 {
