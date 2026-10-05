@@ -48,6 +48,16 @@
       "source": "tests/interop_contract/c2_12_union/Main.ns",
       "action": "--dump-semantic-metadata",
       "contains": ["type 18 name=\"WireRecord\" kind=18 size=5 align=1 ownership=0", "type 19 name=\"Vector4Aligned\" kind=18 size=16 align=16 ownership=0"]
+    },
+    {
+      "source": "selfhost/tests/frontend/overload-width-comparisons.ns",
+      "action": "--dump-sema",
+      "contains": ["CallExpression : long value", "CallExpression : nint value", "CallExpression : nuint value", "MemberExpression \"Load\" : (long*) -> long", "MemberExpression \"Load\" : (nint*) -> nint", "MemberExpression \"Load\" : (nuint*) -> nuint", "operation=long result=bool", "operation=nint result=bool", "operation=nuint result=bool", "conversion implicit-numeric int -> long operand=1", "conversion implicit-numeric int -> nint operand=1", "conversion implicit-numeric int -> nuint operand=1"]
+    },
+    {
+      "source": "selfhost/tests/frontend/nonfallthrough-loops.ns",
+      "action": "--dump-sema",
+      "contains": ["MemberExpression \"Final\" : LoopResult value", "operation=LoopResult result=bool"]
     }
   ]
 }

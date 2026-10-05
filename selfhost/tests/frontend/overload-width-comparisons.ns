@@ -1,0 +1,40 @@
+public static class WidthOverloads
+{
+    public static int Load(ref int value)
+    {
+        return value;
+    }
+
+    public static long Load(ref long value)
+    {
+        return value;
+    }
+
+    public static nint Load(ref nint value)
+    {
+        return value;
+    }
+
+    public static nuint Load(ref nuint value)
+    {
+        return value;
+    }
+}
+
+public static class OverloadWidthComparisons
+{
+    public static bool LongPositive(ref long value)
+    {
+        return WidthOverloads.Load(ref value) > 0;
+    }
+
+    public static bool NativePositive(ref nint value)
+    {
+        return WidthOverloads.Load(ref value) > 0;
+    }
+
+    public static bool NativeUnsignedNonZero(ref nuint value)
+    {
+        return WidthOverloads.Load(ref value) != 0;
+    }
+}

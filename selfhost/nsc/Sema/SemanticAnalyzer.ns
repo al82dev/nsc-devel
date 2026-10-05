@@ -151,6 +151,56 @@ namespace NativeSharp.Compiler.Sema
             return -1;
         }
 
+        private int SelectCallOverload(int initialSymbol, SyntaxNode call)
+        {
+            if (initialSymbol < 0) { return -1; }
+            Symbol initial = model.GetSymbol(initialSymbol);
+            if (initial.Kind() != SymbolKind.Function && initial.Kind() != SymbolKind.Method &&
+                initial.Kind() != SymbolKind.Constructor) { return initialSymbol; }
+            int parent = initial.Parent(); string name = initial.Name(); int best = -1; int bestScore = -100000;
+            int symbol = 0;
+            while (symbol < model.SymbolCount())
+            {
+                Symbol candidate = model.GetSymbol(symbol);
+                if ((candidate.Kind() == SymbolKind.Function || candidate.Kind() == SymbolKind.Method ||
+                    candidate.Kind() == SymbolKind.Constructor) && candidate.Name() == name &&
+                    candidate.Parent() == parent && candidate.Declaration() >= 0)
+                {
+                    SemanticType signature = model.Types().Get(candidate.TypeId());
+                    if (signature.Kind() == SemanticTypeKind.Function &&
+                        signature.ParameterCount() == call.ChildCount())
+                    {
+                        int score = 0; int argument = 0;
+                        while (argument < call.ChildCount())
+                        {
+                            int sourceType = model.Fact(call.ChildAt(argument)).TypeId();
+                            int destinationType = signature.ParameterType(argument);
+                            if (sourceType < 0 || destinationType < 0) { score = score - 20; }
+                            else
+                            {
+                                string sourceName = model.Types().Get(sourceType).Display();
+                                string destinationName = model.Types().Get(destinationType).Display();
+                                SemanticTypeKind sourceKind = model.Types().Get(sourceType).Kind();
+                                SemanticTypeKind destinationKind = model.Types().Get(destinationType).Kind();
+                                if (sourceName == destinationName) { score = score + 8; }
+                                else if (sourceKind == SemanticTypeKind.StringLiteral && destinationName == "string")
+                                { score = score + 6; }
+                                else if (model.Types().IsNumeric(sourceType) && model.Types().IsNumeric(destinationType))
+                                { score = score + 3; }
+                                else if (sourceKind == SemanticTypeKind.Error || destinationKind == SemanticTypeKind.Named)
+                                { score = score + 1; }
+                                else { score = score - 20; }
+                            }
+                            argument = argument + 1;
+                        }
+                        if (score > bestScore) { bestScore = score; best = symbol; }
+                    }
+                }
+                symbol = symbol + 1;
+            }
+            return best >= 0 ? best : initialSymbol;
+        }
+
         private void DeclareAggregate(int nodeId, int parent)
         {
             SyntaxNode node = tree.Node(nodeId); SymbolKind kind = SymbolKind.Type;
@@ -516,12 +566,24 @@ namespace NativeSharp.Compiler.Sema
             }
             if (node.Kind() == "CallExpression")
             {
-                SemanticFact callee = AnalyzeExpression(node.First()); int result = model.Types().Find("error"); SemanticType callable = model.Types().Get(callee.TypeId());
-                if (callable.Kind() == SemanticTypeKind.Function) { result = callable.ReturnType(); }
-                fact.SetType(result, ValueCategory.RValue); int index = 0;
+                SemanticFact callee = AnalyzeExpression(node.First()); int index = 0;
                 while (index < node.ChildCount())
                 {
-                    SemanticFact argument = AnalyzeExpression(node.ChildAt(index));
+                    AnalyzeExpression(node.ChildAt(index));
+                    index = index + 1;
+                }
+                int selected = SelectCallOverload(callee.SymbolId(), node);
+                if (selected >= 0)
+                {
+                    callee.SetType(model.GetSymbol(selected).TypeId(), ValueCategory.RValue);
+                    callee.SetStorage(false, false); callee.SetSymbol(selected);
+                }
+                int result = model.Types().Find("error"); SemanticType callable = model.Types().Get(callee.TypeId());
+                if (callable.Kind() == SemanticTypeKind.Function) { result = callable.ReturnType(); }
+                fact.SetType(result, ValueCategory.RValue); index = 0;
+                while (index < node.ChildCount())
+                {
+                    SemanticFact argument = model.Fact(node.ChildAt(index));
                     if (callable.Kind() == SemanticTypeKind.Function && index < callable.ParameterCount())
                     {
                         int destination = callable.ParameterType(index); if (argument.TypeId() != destination) { AddConversion(fact, NumericConversion(argument.TypeId(), destination), argument.TypeId(), destination, "operand", index); }

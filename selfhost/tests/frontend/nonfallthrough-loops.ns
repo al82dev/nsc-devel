@@ -1,0 +1,92 @@
+public enum LoopResult
+{
+    Invalid = -1,
+    Retained = 0,
+    Final = 1
+}
+
+public static class NonFallthroughLoops
+{
+    public static int RetryWhile(int value)
+    {
+        while (true)
+        {
+            if (value > 0)
+            {
+                return value;
+            }
+            value = value + 1;
+        }
+    }
+
+    public static int RetryDoWhile(int value)
+    {
+        do
+        {
+            if (value > 0)
+            {
+                return value;
+            }
+            value = value + 1;
+        }
+        while (true);
+    }
+
+    public static int RetryFor(int value)
+    {
+        for (;;)
+        {
+            if (value > 0)
+            {
+                return value;
+            }
+            value = value + 1;
+        }
+    }
+
+    public static int BreakWhile(bool stop)
+    {
+        while (true)
+        {
+            if (stop)
+            {
+                break;
+            }
+            stop = true;
+        }
+        return 42;
+    }
+
+    public static int NestedBreak(bool stop)
+    {
+        while (true)
+        {
+            while (true)
+            {
+                if (stop)
+                {
+                    break;
+                }
+                stop = true;
+            }
+            return 42;
+        }
+    }
+
+    public static LoopResult EnumResult(bool finalValue)
+    {
+        while (true)
+        {
+            if (finalValue)
+            {
+                return LoopResult.Final;
+            }
+            return LoopResult.Invalid;
+        }
+    }
+
+    public static bool EnumComparison(LoopResult value)
+    {
+        return value == LoopResult.Final;
+    }
+}

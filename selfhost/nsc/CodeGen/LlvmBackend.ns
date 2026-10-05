@@ -45,10 +45,13 @@ namespace NativeSharp.Compiler.CodeGen
     {
         private void* breakTarget;
         private void* continueTarget;
+        private bool hasBreak;
         public LoopBinding(void* breakBlock, void* continueBlock)
-        { breakTarget = breakBlock; continueTarget = continueBlock; }
+        { breakTarget = breakBlock; continueTarget = continueBlock; hasBreak = false; }
         public void* BreakTarget() { return breakTarget; }
         public void* ContinueTarget() { return continueTarget; }
+        public void MarkBreak() { hasBreak = true; }
+        public bool HasBreak() { return hasBreak; }
     }
 
     public class FunctionLoweringState
@@ -121,6 +124,15 @@ namespace NativeSharp.Compiler.CodeGen
         {
             if (loops.Count() == 0) { return null; }
             return loops[loops.Count() - 1].ContinueTarget();
+        }
+        public void MarkBreak()
+        {
+            if (loops.Count() > 0) { loops[loops.Count() - 1].MarkBreak(); }
+        }
+        public bool CurrentLoopHasBreak()
+        {
+            if (loops.Count() == 0) { return false; }
+            return loops[loops.Count() - 1].HasBreak();
         }
     }
 
@@ -225,7 +237,8 @@ namespace NativeSharp.Compiler.CodeGen
             {
                 Symbol candidate = semantic.GetSymbol(symbol);
                 if ((candidate.Kind() == SymbolKind.Struct || candidate.Kind() == SymbolKind.Class ||
-                    candidate.Kind() == SymbolKind.Interface || candidate.Kind() == SymbolKind.Union) &&
+                    candidate.Kind() == SymbolKind.Interface || candidate.Kind() == SymbolKind.Union ||
+                    candidate.Kind() == SymbolKind.Enum) &&
                     (candidate.Name() == baseName || candidate.QualifiedName() == baseName)) { return symbol; }
                 symbol = symbol + 1;
             }
@@ -259,6 +272,14 @@ namespace NativeSharp.Compiler.CodeGen
             return aggregate.Size();
         }
 
+        private static int EnumSize(SemanticModel semantic, string type)
+        {
+            int symbol = FindTypeSymbolByDisplay(semantic, type);
+            if (symbol < 0 || semantic.GetSymbol(symbol).Kind() != SymbolKind.Enum) { return 0; }
+            int size = semantic.GetSymbol(symbol).Size();
+            return size == 1 || size == 2 || size == 4 || size == 8 ? size : 4;
+        }
+
         private static bool DirectAggregateSize(int size)
         { return size == 1 || size == 2 || size == 4 || size == 8; }
 
@@ -275,6 +296,15 @@ namespace NativeSharp.Compiler.CodeGen
         {
             int aggregateSize = AggregateSize(semantic, type);
             if (DirectAggregateSize(aggregateSize)) { return DirectAggregateType(context, aggregateSize); }
+            int enumSize = EnumSize(semantic, type);
+            if (DirectAggregateSize(enumSize)) { return DirectAggregateType(context, enumSize); }
+            return ScalarType(context, type);
+        }
+
+        private static void* SemanticValueType(void* context, SemanticModel semantic, string type)
+        {
+            int enumSize = EnumSize(semantic, type);
+            if (DirectAggregateSize(enumSize)) { return DirectAggregateType(context, enumSize); }
             return ScalarType(context, type);
         }
 
@@ -319,7 +349,7 @@ namespace NativeSharp.Compiler.CodeGen
             bool nativeAbi = UsesNativeAbi(semantic, declarationId);
             void* returnType = nativeAbi ? AbiValueType(context, semantic,
                 lifetimeEntry ? "void" : declaration.TypeText()) :
-                ScalarType(context, lifetimeEntry ? "void" : declaration.TypeText());
+                SemanticValueType(context, semantic, lifetimeEntry ? "void" : declaration.TypeText());
             if (returnType == null) { return null; }
             bool receiver = HasReceiver(semantic, declarationId);
             int parameterCount = ParameterCount(tree, declarationId) + (receiver ? 1 : 0);
@@ -335,7 +365,7 @@ namespace NativeSharp.Compiler.CodeGen
                 if (child.Kind() == "ParameterDeclaration")
                 {
                     void* parameterType = nativeAbi ? AbiValueType(context, semantic, child.TypeText()) :
-                        ScalarType(context, child.TypeText());
+                        SemanticValueType(context, semantic, child.TypeText());
                     if (parameterType == null || child.TypeText() == "void") { return null; }
                     parameterTypes[parameter] = parameterType; parameter = parameter + 1;
                 }
@@ -346,10 +376,10 @@ namespace NativeSharp.Compiler.CodeGen
         }
 
         private static void* DelegateFunctionType(void* context, SyntaxTree tree,
-            int declarationId, bool receiver)
+            SemanticModel semantic, int declarationId, bool receiver)
         {
             SyntaxNode declaration = tree.Node(declarationId);
-            void* returnType = ScalarType(context, declaration.TypeText());
+            void* returnType = SemanticValueType(context, semantic, declaration.TypeText());
             if (returnType == null) { return null; }
             int parameterCount = ParameterCount(tree, declarationId) + (receiver ? 1 : 0);
             void** parameterTypes = null;
@@ -362,7 +392,7 @@ namespace NativeSharp.Compiler.CodeGen
                 SyntaxNode child = tree.Node(declaration.ChildAt(index));
                 if (child.Kind() == "ParameterDeclaration")
                 {
-                    void* parameterType = ScalarType(context, child.TypeText());
+                    void* parameterType = SemanticValueType(context, semantic, child.TypeText());
                     if (parameterType == null || child.TypeText() == "void") { return null; }
                     parameterTypes[parameter] = parameterType; parameter = parameter + 1;
                 }
@@ -415,7 +445,7 @@ namespace NativeSharp.Compiler.CodeGen
         private static void* ConstantInitializer(void* context, SyntaxTree tree,
             SemanticModel semantic, Symbol symbol)
         {
-            void* type = ScalarType(context, semantic.Types().Get(symbol.TypeId()).Display());
+            void* type = SemanticValueType(context, semantic, semantic.Types().Get(symbol.TypeId()).Display());
             if (type == null) { return null; }
             int declaration = symbol.Declaration();
             if (declaration < 0 || tree.Node(declaration).First() < 0) { return LLVM.LLVMConstNull(type); }
@@ -450,7 +480,8 @@ namespace NativeSharp.Compiler.CodeGen
                     raii string globalNameText = LlvmGlobalName(semantic, symbolId);
                     raii CString globalName = new CString(globalNameText);
                     void* global = LLVM.LLVMAddGlobal(module,
-                        ScalarType(context, semantic.Types().Get(symbol.TypeId()).Display()), globalName.Pointer());
+                        SemanticValueType(context, semantic,
+                            semantic.Types().Get(symbol.TypeId()).Display()), globalName.Pointer());
                     if (global == null) { return false; }
                     LLVM.LLVMSetInitializer(global, initializer);
                     LLVM.LLVMSetGlobalConstant(global, symbol.IsConst() ? 1 : 0);
@@ -658,7 +689,8 @@ namespace NativeSharp.Compiler.CodeGen
                 SyntaxNode callee = tree.Node(node.First()); int calleeSymbol = semantic.Fact(node.First()).SymbolId();
                 int declaration = calleeSymbol >= 0 ? semantic.GetSymbol(calleeSymbol).Declaration() : -1;
                 int parent = calleeSymbol >= 0 ? semantic.GetSymbol(calleeSymbol).Parent() : -1;
-                int best = FindBestOverload(tree, semantic, callee.Text(), syntaxId, parent);
+                int best = declaration >= 0 ? declaration :
+                    FindBestOverload(tree, semantic, callee.Text(), syntaxId, parent);
                 if (best >= 0) { declaration = best; }
                 if (declaration < 0 ||
                     ((!tree.Node(declaration).IsVariadic() && ParameterCount(tree, declaration) != node.ChildCount()) ||
@@ -802,6 +834,14 @@ namespace NativeSharp.Compiler.CodeGen
             return 0;
         }
 
+        private static int SemanticIntegerBits(SemanticModel semantic, string type)
+        {
+            int bits = IntegerBits(type);
+            if (bits != 0) { return bits; }
+            int enumSize = EnumSize(semantic, type);
+            return enumSize > 0 ? enumSize * 8 : 0;
+        }
+
         private static bool UnsignedInteger(string type)
         {
             return type == "bool" || type == "byte" || type == "char" || type == "ushort" ||
@@ -838,9 +878,9 @@ namespace NativeSharp.Compiler.CodeGen
                 type == "borrowed TElement" || type == "borrowed TPriority";
         }
 
-        private static bool PhysicalValueScalar(string type)
+        private static bool PhysicalValueScalar(SemanticModel semantic, string type)
         {
-            return IntegerBits(type) != 0 || FloatingScalar(type) || IntegerEnum(type);
+            return SemanticIntegerBits(semantic, type) != 0 || FloatingScalar(type);
         }
 
         private static void* BoxGenericScalar(void* module, void* builder, void* value)
@@ -882,18 +922,20 @@ namespace NativeSharp.Compiler.CodeGen
             // are nominal in the semantic table but physically i32, so treating every Named
             // source as a reference would silently pass an integer where the erased ABI needs a
             // pointer (and would return a pointer from a closed enum/int indexer).
-            if (GenericPlaceholder(destination) && PhysicalValueScalar(source))
+            if (GenericPlaceholder(destination) && PhysicalValueScalar(semantic, source))
             { return BoxGenericScalar(module, builder, value); }
-            if (GenericPlaceholder(source) && PhysicalValueScalar(destination))
+            if (GenericPlaceholder(source) && PhysicalValueScalar(semantic, destination))
             {
-                void* closedType = ScalarType(LLVM.LLVMGetModuleContext(module), destination);
+                void* closedType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic, destination);
                 raii CString loadName = new CString("generic.unbox");
                 return LLVM.LLVMBuildLoad2(builder, closedType, value, loadName.Pointer());
             }
-            bool sourceReference = sourcePointer || sourceKind == SemanticTypeKind.Named ||
+            bool sourceEnum = EnumSize(semantic, source) != 0;
+            bool destinationEnum = EnumSize(semantic, destination) != 0;
+            bool sourceReference = sourcePointer || (sourceKind == SemanticTypeKind.Named && !sourceEnum) ||
                 sourceKind == SemanticTypeKind.Array || sourceKind == SemanticTypeKind.StringLiteral ||
                 sourceKind == SemanticTypeKind.TypeParameter || sourceKind == SemanticTypeKind.Function;
-            bool destinationReference = destinationPointer || destinationKind == SemanticTypeKind.Named ||
+            bool destinationReference = destinationPointer || (destinationKind == SemanticTypeKind.Named && !destinationEnum) ||
                 destinationKind == SemanticTypeKind.Array || destinationKind == SemanticTypeKind.StringLiteral ||
                 destinationKind == SemanticTypeKind.TypeParameter || destinationKind == SemanticTypeKind.Function;
             // Generic erasure can leave the source fact unresolved even though the selected
@@ -909,14 +951,15 @@ namespace NativeSharp.Compiler.CodeGen
             }
             if (sourceReference && destinationReference) { return value; }
             if (destinationPointer && (sourcePointer || source == "null")) { return value; }
-            int sourceBits = IntegerBits(source); int destinationBits = IntegerBits(destination);
+            int sourceBits = SemanticIntegerBits(semantic, source);
+            int destinationBits = SemanticIntegerBits(semantic, destination);
             void* context = LLVM.LLVMGetModuleContext(module);
-            void* destinationLlvm = ScalarType(context, destination);
+            void* destinationLlvm = SemanticValueType(context, semantic, destination);
             raii CString conversionName = new CString("scalar.convert");
             if (destination == "bool")
             {
                 raii CString comparisonName = new CString("scalar.to.bool");
-                void* sourceLlvm = ScalarType(context, source);
+                void* sourceLlvm = SemanticValueType(context, semantic, source);
                 if (FloatingScalar(source))
                 {
                     return LLVM.LLVMBuildFCmp(builder, LLVMRealPredicate.UnorderedNotEqual, value,
@@ -1020,6 +1063,18 @@ namespace NativeSharp.Compiler.CodeGen
             if (operation == TokenKind.Percent || operation == TokenKind.PercentEqual)
             { return LLVM.LLVMBuildFRem(builder, left, right, name); }
             return null;
+        }
+
+        private static bool SamePhysicalType(void* left, void* right)
+        {
+            return left != null && right != null && LLVM.LLVMTypeOf(left) == LLVM.LLVMTypeOf(right);
+        }
+
+        private static bool IsAlwaysTrue(SyntaxTree tree, int syntaxId)
+        {
+            if (syntaxId < 0) { return true; }
+            SyntaxNode node = tree.Node(syntaxId);
+            return node.Kind() == "BooleanLiteralExpression" && node.Text() == "true";
         }
 
         private static void* EmitGlobalString(void* module, void* builder, string text)
@@ -1399,14 +1454,14 @@ namespace NativeSharp.Compiler.CodeGen
                     int locationTypeId = semantic.Fact(call.ChildAt(0)).TypeId();
                     if (locationTypeId >= 0 && semantic.Types().Get(locationTypeId).Kind() == SemanticTypeKind.Pointer)
                     { locationTypeId = semantic.Types().Get(locationTypeId).ElementType(); }
-                    if (locationTypeId >= 0) { valueType = ScalarType(LLVM.LLVMGetModuleContext(module), semantic.Types().Get(locationTypeId).Display()); }
+                    if (locationTypeId >= 0) { valueType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic, semantic.Types().Get(locationTypeId).Display()); }
                 }
                 bool interlockedHasValue = method == "Store" || method == "Add" ||
                     method == "Exchange" || method == "CompareExchange";
                 if (interlocked && interlockedHasValue && valueIndex < count)
                 {
                     int valueTypeId = semantic.Fact(call.ChildAt(valueIndex)).TypeId();
-                    if (valueTypeId >= 0) { valueType = ScalarType(LLVM.LLVMGetModuleContext(module), semantic.Types().Get(valueTypeId).Display()); }
+                    if (valueTypeId >= 0) { valueType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic, semantic.Types().Get(valueTypeId).Display()); }
                 }
                 if (valueType == null) { return null; }
                 uint atomicAlignment = owner == "AtomicInt32" ? 4u : 8u;
@@ -1640,7 +1695,7 @@ namespace NativeSharp.Compiler.CodeGen
         }
 
         private static void* EmitManagedDelegateCall(void* module, void* builder, void* int32Type,
-            SyntaxTree tree, int delegateDeclaration, void* function, void* cell,
+            SyntaxTree tree, SemanticModel semantic, int delegateDeclaration, void* function, void* cell,
             void** arguments, int argumentCount, out bool valid)
         {
             valid = false; if (cell == null) { return null; }
@@ -1658,8 +1713,8 @@ namespace NativeSharp.Compiler.CodeGen
             raii CString conditionName = new CString("delegate.has.receiver");
             void* condition = LLVM.LLVMBuildICmp(builder, LLVMIntPredicate.NotEqual, receiver,
                 LLVM.LLVMConstNull(pointerType), conditionName.Pointer());
-            void* staticType = DelegateFunctionType(context, tree, delegateDeclaration, false);
-            void* instanceType = DelegateFunctionType(context, tree, delegateDeclaration, true);
+            void* staticType = DelegateFunctionType(context, tree, semantic, delegateDeclaration, false);
+            void* instanceType = DelegateFunctionType(context, tree, semantic, delegateDeclaration, true);
             if (code == null || receiver == null || condition == null || staticType == null || instanceType == null)
             { return null; }
             raii CString staticName = new CString("delegate.static");
@@ -1687,7 +1742,8 @@ namespace NativeSharp.Compiler.CodeGen
             void* instanceIncoming = LLVM.LLVMGetInsertBlock(builder);
             LLVM.LLVMPositionBuilderAtEnd(builder, mergeBlock); valid = true;
             if (returnsVoid) { return LLVM.LLVMConstInt(LLVM.LLVMInt1TypeInContext(context), 0UL, 0); }
-            void* returnType = ScalarType(context, tree.Node(delegateDeclaration).TypeText());
+            void* returnType = SemanticValueType(context, semantic,
+                tree.Node(delegateDeclaration).TypeText());
             void* phi = LLVM.LLVMBuildPhi(builder, returnType, resultName.Pointer());
             void*[2] values; values[0] = staticResult; values[1] = instanceResult;
             void*[2] blocks; blocks[0] = staticIncoming; blocks[1] = instanceIncoming;
@@ -1716,7 +1772,7 @@ namespace NativeSharp.Compiler.CodeGen
                 if (storage == null && symbol >= 0 &&
                     semantic.GetSymbol(symbol).Kind() == SymbolKind.Field && state.ThisValue() != null)
                 {
-                    valueType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                    valueType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                         semantic.Types().Get(semantic.GetSymbol(symbol).TypeId()).Display());
                     void* byteType = LLVM.LLVMInt8TypeInContext(LLVM.LLVMGetModuleContext(module));
                     void* offset = LLVM.LLVMConstInt(int32Type, (ulong)semantic.GetSymbol(symbol).Offset(), 0);
@@ -1728,7 +1784,7 @@ namespace NativeSharp.Compiler.CodeGen
                 {
                     raii string globalNameText = LlvmGlobalName(semantic, symbol);
                     raii CString globalName = new CString(globalNameText); storage = LLVM.LLVMGetNamedGlobal(module, globalName.Pointer());
-                    valueType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                    valueType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                         semantic.Types().Get(semantic.GetSymbol(symbol).TypeId()).Display());
                 }
                 if (storage == null && symbol >= 0 &&
@@ -1737,7 +1793,7 @@ namespace NativeSharp.Compiler.CodeGen
                     raii string globalNameText = LlvmGlobalName(semantic, symbol);
                     raii CString globalName = new CString(globalNameText);
                     storage = LLVM.LLVMGetNamedGlobal(module, globalName.Pointer());
-                    valueType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                    valueType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                         semantic.Types().Get(semantic.GetSymbol(symbol).TypeId()).Display());
                 }
                 valid = storage != null && valueType != null; return storage;
@@ -1770,7 +1826,7 @@ namespace NativeSharp.Compiler.CodeGen
                     declarationId, function, state, node.First(), out pointerValid);
                 int typeId = semantic.Fact(syntaxId).TypeId();
                 if (typeId >= 0)
-                { valueType = ScalarType(LLVM.LLVMGetModuleContext(module), semantic.Types().Get(typeId).Display()); }
+                { valueType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic, semantic.Types().Get(typeId).Display()); }
                 valid = pointerValid && pointer != null && valueType != null; return pointer;
             }
             if (node.Kind() == "IndexExpression")
@@ -1786,7 +1842,8 @@ namespace NativeSharp.Compiler.CodeGen
                     Console.ErrorWriteLine("nsc-next: backend index expression has no element type");
                     return null;
                 }
-                valueType = ScalarType(LLVM.LLVMGetModuleContext(module), semantic.Types().Get(typeId).Display());
+                valueType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
+                    semantic.Types().Get(typeId).Display());
                 int receiverType = semantic.Fact(node.First()).TypeId();
                 if (receiverType < 0)
                 {
@@ -1831,7 +1888,7 @@ namespace NativeSharp.Compiler.CodeGen
                 void* receiver = EmitScalarExpression(module, builder, int32Type, i1, tree, semantic,
                     declarationId, function, state, receiverId, out receiverValid);
                 if (!receiverValid || receiver == null) { return null; }
-                valueType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                valueType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                     semantic.Types().Get(semantic.GetSymbol(member).TypeId()).Display());
                 if (valueType == null) { return null; }
                 void* byteType = LLVM.LLVMInt8TypeInContext(LLVM.LLVMGetModuleContext(module));
@@ -1856,7 +1913,7 @@ namespace NativeSharp.Compiler.CodeGen
                 if (!Number.TryParseUInt64(semantic.Fact(syntaxId).ConstantText(), out value)) { return null; }
                 int semanticType = semantic.Fact(syntaxId).TypeId();
                 if (semanticType < 0) { return null; }
-                void* literalType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                void* literalType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                     semantic.Types().Get(semanticType).Display());
                 if (literalType == null) { return null; }
                 valid = true;
@@ -1918,7 +1975,7 @@ namespace NativeSharp.Compiler.CodeGen
                 if (!Number.TryParseDouble(numericText, out value)) { return null; }
                 int semanticType = semantic.Fact(syntaxId).TypeId();
                 if (semanticType < 0) { return null; }
-                void* literalType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                void* literalType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                     semantic.Types().Get(semanticType).Display());
                 if (literalType == null) { return null; }
                 valid = true; return LLVM.LLVMConstReal(literalType, value);
@@ -1938,7 +1995,7 @@ namespace NativeSharp.Compiler.CodeGen
                 int memberSymbol = semantic.Fact(syntaxId).SymbolId();
                 if (memberSymbol >= 0 && semantic.GetSymbol(memberSymbol).HasConstantValue())
                 {
-                    void* constantType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                    void* constantType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                         semantic.Types().Get(semantic.GetSymbol(memberSymbol).TypeId()).Display());
                     if (constantType == null) { return null; }
                     valid = true; return LLVM.LLVMConstInt(constantType,
@@ -1973,7 +2030,7 @@ namespace NativeSharp.Compiler.CodeGen
             {
                 SemanticFact fact = semantic.Fact(syntaxId);
                 if (fact.TypeId() < 0) { return null; }
-                void* type = ScalarType(LLVM.LLVMGetModuleContext(module),
+                void* type = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                     semantic.Types().Get(fact.TypeId()).Display());
                 if (type == null) { return null; }
                 valid = true; return LLVM.LLVMConstNull(type);
@@ -1983,7 +2040,7 @@ namespace NativeSharp.Compiler.CodeGen
             {
                 SemanticFact fact = semantic.Fact(syntaxId); ulong value = 0UL;
                 if (!fact.IsConstant() || !Number.TryParseUInt64(fact.ConstantText(), out value)) { return null; }
-                void* type = ScalarType(LLVM.LLVMGetModuleContext(module),
+                void* type = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                     semantic.Types().Get(fact.TypeId()).Display());
                 if (type == null) { return null; } valid = true; return LLVM.LLVMConstInt(type, value, 0);
             }
@@ -2130,7 +2187,8 @@ namespace NativeSharp.Compiler.CodeGen
                 bool countValid = false;
                 void* count = EmitScalarExpression(module, builder, int32Type, i1, tree, semantic,
                     declarationId, function, state, node.First(), out countValid);
-                void* elementType = ScalarType(LLVM.LLVMGetModuleContext(module), node.SemanticTypeText());
+                void* elementType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
+                    node.SemanticTypeText());
                 if (!countValid || count == null || elementType == null) { return null; }
                 raii CString allocationName = new CString("stack.buffer");
                 void* allocation = null; long constantCount = 0;
@@ -2316,7 +2374,7 @@ namespace NativeSharp.Compiler.CodeGen
                 raii CString unaryName = new CString("unary.minus");
                 int resultType = semantic.Fact(syntaxId).TypeId();
                 if (resultType < 0) { valid = false; return null; }
-                void* llvmType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                void* llvmType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                     semantic.Types().Get(resultType).Display());
                 if (llvmType == null) { valid = false; return null; }
                 if (FloatingScalar(semantic.Types().Get(resultType).Display()))
@@ -2360,7 +2418,7 @@ namespace NativeSharp.Compiler.CodeGen
                 {
                     int typeId = semantic.Fact(syntaxId).TypeId();
                     void* enumType = null;
-                    if (typeId >= 0) { enumType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                    if (typeId >= 0) { enumType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                         semantic.Types().Get(typeId).Display()); }
                     if (enumType == null) { enumType = int32Type; }
                     valid = true; return LLVM.LLVMConstInt(enumType,
@@ -2368,7 +2426,7 @@ namespace NativeSharp.Compiler.CodeGen
                 }
                 if (symbol >= 0 && semantic.GetSymbol(symbol).HasConstantValue())
                 {
-                    void* constantType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                    void* constantType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                         semantic.Types().Get(semantic.GetSymbol(symbol).TypeId()).Display());
                     if (constantType == null) { return null; }
                     valid = true; return LLVM.LLVMConstInt(constantType,
@@ -2418,7 +2476,7 @@ namespace NativeSharp.Compiler.CodeGen
                     raii string globalNameText = LlvmGlobalName(semantic, symbol);
                     raii CString globalName = new CString(globalNameText);
                     void* global = LLVM.LLVMGetNamedGlobal(module, globalName.Pointer());
-                    void* globalType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                    void* globalType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                         semantic.Types().Get(semantic.GetSymbol(symbol).TypeId()).Display());
                     if (global == null || globalType == null) { return null; }
                     valid = true; return LoadMemory(module, builder, globalType, global, semantic, symbol, "global.load");
@@ -2496,6 +2554,11 @@ namespace NativeSharp.Compiler.CodeGen
                         UnsignedInteger(semantic.Types().Get(operationType).Display());
                     void* convertedPrevious = ApplyConversion(module, builder, semantic,
                         semantic.Fact(syntaxId), previous, "operand", 0);
+                    if (!SamePhysicalType(convertedPrevious, assigned))
+                    {
+                        LoweringFailure(tree, syntaxId, "compound operand type normalization");
+                        return null;
+                    }
                     result = floatingOperation ? EmitFloatingOperation(builder, node.OperatorKind(),
                         convertedPrevious, assigned, resultName.Pointer()) :
                         EmitIntegerOperation(builder, node.OperatorKind(), unsignedOperation,
@@ -2520,7 +2583,8 @@ namespace NativeSharp.Compiler.CodeGen
                     semantic.GetSymbol(calleeSymbol).Kind() != SymbolKind.Variable)
                 { calleeDeclaration = semantic.GetSymbol(calleeSymbol).Declaration(); }
                 int preferredParent = calleeSymbol >= 0 ? semantic.GetSymbol(calleeSymbol).Parent() : -1;
-                int bestOverload = FindBestOverload(tree, semantic, callee.Text(), syntaxId, preferredParent);
+                int bestOverload = calleeDeclaration >= 0 ? calleeDeclaration :
+                    FindBestOverload(tree, semantic, callee.Text(), syntaxId, preferredParent);
                 if (bestOverload >= 0) { calleeDeclaration = bestOverload; }
                 if (calleeDeclaration >= 0 &&
                     ((!tree.Node(calleeDeclaration).IsVariadic() && ParameterCount(tree, calleeDeclaration) != node.ChildCount()) ||
@@ -2564,7 +2628,7 @@ namespace NativeSharp.Compiler.CodeGen
                                 tree.Node(delegateDeclaration).ModifiersText(), "extern");
                             if (managedDelegate)
                             {
-                                return EmitManagedDelegateCall(module, builder, int32Type, tree,
+                                return EmitManagedDelegateCall(module, builder, int32Type, tree, semantic,
                                     delegateDeclaration, function, target, delegateArguments,
                                     node.ChildCount(), out valid);
                             }
@@ -2684,7 +2748,8 @@ namespace NativeSharp.Compiler.CodeGen
                                     arguments[argument + physicalOffset], LLVM.LLVMDoubleTypeInContext(context),
                                     promotionName.Pointer());
                             }
-                            else if (IntegerBits(source) > 0 && IntegerBits(source) < 32)
+                            else if (SemanticIntegerBits(semantic, source) > 0 &&
+                                SemanticIntegerBits(semantic, source) < 32)
                             {
                                 arguments[argument + physicalOffset] = UnsignedInteger(source) ?
                                     LLVM.LLVMBuildZExt(builder, arguments[argument + physicalOffset], int32Type,
@@ -2786,7 +2851,7 @@ namespace NativeSharp.Compiler.CodeGen
                 elseValue = ConvertScalar(module, builder, semantic, elseValue,
                     semantic.Fact(node.Third()).TypeId(), resultType);
                 if (thenValue == null || elseValue == null) { return null; }
-                void* llvmType = ScalarType(LLVM.LLVMGetModuleContext(module),
+                void* llvmType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                     semantic.Types().Get(resultType).Display());
                 if (llvmType == null) { return null; }
                 LLVM.LLVMPositionBuilderAtEnd(builder, endBlock); raii CString phiName = new CString("select.value");
@@ -2848,11 +2913,17 @@ namespace NativeSharp.Compiler.CodeGen
                         offset, negativeName.Pointer());
                 }
                 int elementId = semantic.Types().Get(operationType).ElementType();
-                void* elementType = elementId >= 0 ? ScalarType(LLVM.LLVMGetModuleContext(module),
-                    semantic.Types().Get(elementId).Display()) : LLVM.LLVMInt8TypeInContext(LLVM.LLVMGetModuleContext(module));
+                void* elementType = elementId >= 0 ? SemanticValueType(LLVM.LLVMGetModuleContext(module),
+                    semantic, semantic.Types().Get(elementId).Display()) :
+                    LLVM.LLVMInt8TypeInContext(LLVM.LLVMGetModuleContext(module));
                 raii CString addressName = new CString("pointer.offset");
                 result = LLVM.LLVMBuildGEP2(builder, elementType, pointer, &offset, 1u, addressName.Pointer());
                 valid = result != null; return result;
+            }
+            if (!SamePhysicalType(left, right))
+            {
+                LoweringFailure(tree, syntaxId, "binary operand type normalization");
+                return null;
             }
             if (Comparison(node.OperatorKind()))
             {
@@ -2949,6 +3020,11 @@ namespace NativeSharp.Compiler.CodeGen
                 bool unsignedOperation = operationType >= 0 &&
                     UnsignedInteger(semantic.Types().Get(operationType).Display());
                 if (left == null || right == null) { return null; }
+                if (!SamePhysicalType(left, right))
+                {
+                    LoweringFailure(tree, syntaxId, "comparison operand type normalization");
+                    return null;
+                }
                 void* comparison = floatingOperation ? LLVM.LLVMBuildFCmp(builder,
                     FloatingComparisonPredicate(node.OperatorKind()), left, right, conditionName.Pointer()) :
                     LLVM.LLVMBuildICmp(builder, ComparisonPredicate(node.OperatorKind(), unsignedOperation),
@@ -2968,7 +3044,7 @@ namespace NativeSharp.Compiler.CodeGen
             // Preserve the physical i1 instead of manufacturing an invalid i0 zero constant.
             if (valueType >= 0 && semantic.Types().Get(valueType).Kind() == SemanticTypeKind.Error)
             { valid = true; return value; }
-            void* valueLlvmType = ScalarType(LLVM.LLVMGetModuleContext(module),
+            void* valueLlvmType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
                 semantic.Types().Get(valueType).Display());
             if (valueLlvmType == null) { return null; }
             if (FloatingScalar(semantic.Types().Get(valueType).Display()))
@@ -3107,7 +3183,7 @@ namespace NativeSharp.Compiler.CodeGen
                         declarationId, function, state, part.First(), out argumentValid);
                     int typeId = semantic.Fact(part.First()).TypeId();
                     parameterTypes[input] = null;
-                    if (typeId >= 0) { parameterTypes[input] = ScalarType(context,
+                    if (typeId >= 0) { parameterTypes[input] = SemanticValueType(context, semantic,
                         semantic.Types().Get(typeId).Display()); }
                     SyntaxNode inputNode = tree.Node(part.First());
                     if (inputNode.Kind() == "IdentifierExpression")
@@ -3176,7 +3252,7 @@ namespace NativeSharp.Compiler.CodeGen
                 raii string localTypeName = String.Copy(node.TypeText());
                 if (localSymbol >= 0)
                 { raii string inferred = String.Copy(semantic.Types().Get(semantic.GetSymbol(localSymbol).TypeId()).Display()); localTypeName = move(inferred); }
-                void* localType = ScalarType(context, localTypeName);
+                void* localType = SemanticValueType(context, semantic, localTypeName);
                 if (localType == null) { return false; }
                 raii CString localName = new CString(node.Text());
                 void* storage = EmitEntryAlloca(builder, function, localType, localName.Pointer());
@@ -3310,6 +3386,7 @@ namespace NativeSharp.Compiler.CodeGen
             }
             if (node.Kind() == "BreakStatement" || node.Kind() == "ContinueStatement")
             {
+                if (node.Kind() == "BreakStatement") { state.MarkBreak(); }
                 void* target = node.Kind() == "BreakStatement" ? state.BreakTarget() : state.ContinueTarget();
                 if (target == null || LLVM.LLVMBuildBr(builder, target) == null) { return false; }
                 terminated = true; return true;
@@ -3365,8 +3442,12 @@ namespace NativeSharp.Compiler.CodeGen
                 if (!EmitStatement(context, module, builder, int32Type, i1, tree, semantic, declarationId,
                     function, state, node.Second(), out bodyTerminated)) { state.PopLoop(); return false; }
                 if (!bodyTerminated && LLVM.LLVMBuildBr(builder, conditionBlock) == null) { return false; }
+                bool loopHasBreak = state.CurrentLoopHasBreak();
                 state.PopLoop();
-                LLVM.LLVMPositionBuilderAtEnd(builder, endBlock); return true;
+                LLVM.LLVMPositionBuilderAtEnd(builder, endBlock);
+                terminated = IsAlwaysTrue(tree, node.First()) && !loopHasBreak;
+                if (terminated && LLVM.LLVMBuildUnreachable(builder) == null) { return false; }
+                return true;
             }
             if (node.Kind() == "DoWhileStatement")
             {
@@ -3383,12 +3464,16 @@ namespace NativeSharp.Compiler.CodeGen
                     function, state, node.Second(), out bodyTerminated)) { state.PopLoop(); return false; }
                 if (!bodyTerminated && LLVM.LLVMBuildBr(builder, conditionBlock) == null)
                 { state.PopLoop(); return false; }
+                bool loopHasBreak = state.CurrentLoopHasBreak();
                 state.PopLoop(); LLVM.LLVMPositionBuilderAtEnd(builder, conditionBlock); bool conditionValid = false;
                 void* condition = EmitCondition(module, builder, int32Type, i1, tree, semantic, declarationId,
                     function, state, node.First(), out conditionValid);
                 if (!conditionValid || condition == null ||
                     LLVM.LLVMBuildCondBr(builder, condition, bodyBlock, endBlock) == null) { return false; }
-                LLVM.LLVMPositionBuilderAtEnd(builder, endBlock); return true;
+                LLVM.LLVMPositionBuilderAtEnd(builder, endBlock);
+                terminated = !loopHasBreak && (bodyTerminated || IsAlwaysTrue(tree, node.First()));
+                if (terminated && LLVM.LLVMBuildUnreachable(builder) == null) { return false; }
+                return true;
             }
             if (node.Kind() == "ForStatement")
             {
@@ -3432,6 +3517,7 @@ namespace NativeSharp.Compiler.CodeGen
                     function, state, node.ChildAt(0), out bodyTerminated)) { state.PopLoop(); return false; }
                 if (!bodyTerminated && LLVM.LLVMBuildBr(builder, incrementBlock) == null)
                 { state.PopLoop(); return false; }
+                bool loopHasBreak = state.CurrentLoopHasBreak();
                 state.PopLoop(); LLVM.LLVMPositionBuilderAtEnd(builder, incrementBlock);
                 if (node.Third() >= 0)
                 {
@@ -3441,7 +3527,10 @@ namespace NativeSharp.Compiler.CodeGen
                     if (!incrementValid || increment == null) { return false; }
                 }
                 if (LLVM.LLVMBuildBr(builder, conditionBlock) == null) { return false; }
-                LLVM.LLVMPositionBuilderAtEnd(builder, endBlock); return true;
+                LLVM.LLVMPositionBuilderAtEnd(builder, endBlock);
+                terminated = IsAlwaysTrue(tree, node.Second()) && !loopHasBreak;
+                if (terminated && LLVM.LLVMBuildUnreachable(builder) == null) { return false; }
+                return true;
             }
             return LoweringFailure(tree, syntaxId, "statement");
         }
@@ -3487,7 +3576,7 @@ namespace NativeSharp.Compiler.CodeGen
                     int childId = node.ChildAt(child); SyntaxNode parameterNode = tree.Node(childId);
                     if (parameterNode.Kind() == "ParameterDeclaration")
                     {
-                        void* parameterType = ScalarType(context, parameterNode.TypeText());
+                        void* parameterType = SemanticValueType(context, semantic, parameterNode.TypeText());
                         void* incoming = LLVM.LLVMGetParam(function, (uint)parameter);
                         if (String.StartsWith(parameterNode.Auxiliary(), "pass:"))
                         {
@@ -3496,7 +3585,8 @@ namespace NativeSharp.Compiler.CodeGen
                             int elementTypeId = semantic.Types().Get(declaredPointerType).ElementType();
                             void* elementType = null;
                             if (elementTypeId >= 0)
-                            { elementType = ScalarType(context, semantic.Types().Get(elementTypeId).Display()); }
+                            { elementType = SemanticValueType(context, semantic,
+                                semantic.Types().Get(elementTypeId).Display()); }
                             if (incoming == null || elementType == null)
                             {
                                 raii string message = String.Concat("nsc-next: backend indirect parameter lowering failed in ", node.Text());

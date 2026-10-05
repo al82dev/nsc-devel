@@ -6,9 +6,10 @@
 **Propósito:** evitar que agentes, convertidores, ejemplos y bibliotecas conserven workarounds que
 ya no son necesarios al trabajar con el compilador NativeSharp 3.0.
 
-**Validación acumulada en curso:** corrida externa informada por Alberto en **635/671**, sin fallos
-ni errores hasta ese punto. Esta cifra no se presenta como baseline aprobado mientras no termine la
-corrida completa.
+**Última corrida externa informada:** **669/671** pruebas aprobadas. Las dos fallas, SH48 y SH50,
+tenían una sola causa en el backend self-hosted (`icmp i64, i32`). La corrección posterior pasó la
+reproducción exacta de `RuntimeLibraries.nsproj` en O0–O3, pero todavía no existe una corrida
+integral posterior; por ello no se presenta como baseline aprobado.
 
 ## Cómo usar este documento
 
@@ -147,7 +148,8 @@ importadas. No constituyen limitaciones canónicas adicionales ni alteran los co
 | `NS3-BASELINE-RUNTIME-SOURCE-INVENTORY` | SH48 esperaba 81 fuentes aunque `ReferenceCounting.ns` elevó el inventario runtime real a 82. | El contrato registra 82 fuentes: 41 Core, 23 Collections.Generic, 4 Core.IO, 4 Diagnostics y 10 Threading. | Commit `2c2c5910f`; `docs/3.0/items/NS3-BASELINE-RUNTIME-SOURCE-INVENTORY.md`. |
 | `NS3-BASELINE-T07-NSMETA-138` | T07 seguía exigiendo NSMETA 1.37 al productor actual aunque typed throws se emitía válidamente en 1.38. | La expectativa actual usa 1.38 y conserva 1.37 como versión mínima histórica de typed throws. | Commit `1dab2d685`; T07 54/54; `docs/3.0/items/NS3-BASELINE-T07-NSMETA-138.md`. |
 | `NS3-BASELINE-T37-STABLE-PE-ENTRY` | T37 enlazaba directamente un `Main` que retorna `int` como entry point freestanding y dependía de que ese retorno se transformara incidentalmente en código de salida. | Un shim C `void` entrega el resultado de `Program.Main()` a `Environment.Exit`/`ExitProcess`, preservando el cuerpo y los símbolos que inspecciona la prueba PDB. | Commit `ca9599122`; T37 dirigido con salida 42; `docs/3.0/items/NS3-BASELINE-T37-STABLE-PE-ENTRY.md`. |
+| `NS3-BASELINE-SELFHOST-OVERLOAD-WIDTH-NORMALIZATION` | SH48 y SH50 fallaban en todos los perfiles porque semántica elegía el primer overload `Interlocked.Load(int)` mientras codegen elegía `Load(long)`, generando `icmp i64, i32`; la reproducción reveló además flujo no retornable y enums físicos incompletos. | Semántica y backend comparten la firma seleccionada; las operaciones comprueban igualdad física; los bucles constantes sin `break` se reconocen como no retornables; cualquier enum declarado usa su ancho semántico en firmas, valores y retornos. | Commit asociado a este documento; sintaxis 98; invariantes 12/12 y 2/2; fixtures O0–O3; `RuntimeLibraries.nsproj` O0–O3; `docs/3.0/items/NS3-BASELINE-SELFHOST-OVERLOAD-WIDTH-NORMALIZATION.md`. |
 
-Las correcciones se desarrollaron con pruebas dirigidas. La corrida acumulada externa indicada al
-inicio de este documento sigue en curso; no se declara baseline aprobado hasta conocer su resultado
-final.
+Las correcciones se desarrollaron con pruebas dirigidas. La corrida externa anterior terminó en
+669/671; no se declara baseline aprobado hasta completar una nueva corrida integral que contenga la
+corrección posterior de las dos fallas restantes.

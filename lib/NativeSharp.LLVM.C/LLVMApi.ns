@@ -15,6 +15,7 @@ namespace NativeSharp.LLVM.C
             public void LLVMDisposeModule(void* module);
             public void LLVMSetTarget(void* module, byte* triple);
             public void* LLVMGetModuleContext(void* module);
+            public void* LLVMTypeOf(void* value);
 
             public void* LLVMVoidTypeInContext(void* context);
             public void* LLVMInt1TypeInContext(void* context);
