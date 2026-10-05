@@ -198,6 +198,68 @@ struct ThreadSafetyFacts final
 bool structurallySend(const ThreadSafetyFacts& facts) noexcept;
 bool structurallySync(const ThreadSafetyFacts& facts) noexcept;
 
+enum class ThreadSafetyMemberKind
+{
+    Value,
+    Atomic,
+    SharedReference,
+    MutableReference,
+    RawPointer,
+    DynamicTrait
+};
+
+struct ThreadSafetyMemberFacts final
+{
+    std::string name;
+    ThreadSafetyMemberKind kind = ThreadSafetyMemberKind::Value;
+    bool send = true;
+    bool sync = true;
+    bool dynamicTraitSend = false;
+    bool dynamicTraitSync = false;
+};
+
+struct ThreadSafetyTypeFacts final
+{
+    std::string typeName;
+    std::vector<ThreadSafetyMemberFacts> members;
+    bool negativeSendImpl = false;
+    bool negativeSyncImpl = false;
+    bool unsafeSendImpl = false;
+    bool unsafeSyncImpl = false;
+    bool unsafeProofReviewed = false;
+    bool asyncClosure = false;
+};
+
+struct ThreadSafetyDecision final
+{
+    bool send = false;
+    bool sync = false;
+    bool usedUnsafeSend = false;
+    bool usedUnsafeSync = false;
+    std::string reason;
+};
+
+ThreadSafetyDecision evaluateThreadSafety(
+    const ThreadSafetyTypeFacts& facts) noexcept;
+
+struct ThreadSafetyMetadata final
+{
+    std::uint16_t contractMajor = kConcurrencyContractMajor;
+    std::uint16_t contractMinor = kConcurrencyContractMinor;
+    std::string typeName;
+    bool send = false;
+    bool sync = false;
+    bool unsafeSend = false;
+    bool unsafeSync = false;
+};
+
+ThreadSafetyMetadata exportThreadSafetyMetadata(
+    std::string_view typeName,
+    const ThreadSafetyDecision& decision);
+std::optional<ThreadSafetyDecision> importThreadSafetyMetadata(
+    const ThreadSafetyMetadata& metadata,
+    std::string& error) noexcept;
+
 bool taskBorrowMayEscapeScope(bool childJoined, bool borrowOutlivesScope) noexcept;
 
 std::string concurrencyContractManifest();

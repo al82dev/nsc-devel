@@ -472,6 +472,109 @@ bool structurallySync(const ThreadSafetyFacts& facts) noexcept
     return facts.fieldsSync && !facts.containsRawPointer && !facts.negativeSyncImpl;
 }
 
+ThreadSafetyDecision evaluateThreadSafety(
+    const ThreadSafetyTypeFacts& facts) noexcept
+{
+    ThreadSafetyDecision result;
+    if (facts.typeName.empty())
+    {
+        result.reason = "thread-safety derivation requires a resolved type identity";
+        return result;
+    }
+
+    bool derivedSend = true;
+    bool derivedSync = true;
+    for (const ThreadSafetyMemberFacts& member : facts.members)
+    {
+        switch (member.kind)
+        {
+            case ThreadSafetyMemberKind::Atomic:
+                break;
+            case ThreadSafetyMemberKind::SharedReference:
+                derivedSend = derivedSend && member.sync;
+                derivedSync = derivedSync && member.sync;
+                break;
+            case ThreadSafetyMemberKind::MutableReference:
+                derivedSend = derivedSend && member.send;
+                derivedSync = derivedSync && member.sync;
+                break;
+            case ThreadSafetyMemberKind::RawPointer:
+                derivedSend = false;
+                derivedSync = false;
+                break;
+            case ThreadSafetyMemberKind::DynamicTrait:
+                derivedSend = derivedSend && member.dynamicTraitSend;
+                derivedSync = derivedSync && member.dynamicTraitSync;
+                break;
+            case ThreadSafetyMemberKind::Value:
+                derivedSend = derivedSend && member.send;
+                derivedSync = derivedSync && member.sync;
+                break;
+        }
+    }
+
+    if (facts.negativeSendImpl) derivedSend = false;
+    if (facts.negativeSyncImpl) derivedSync = false;
+    if (facts.unsafeProofReviewed && !facts.negativeSendImpl && facts.unsafeSendImpl)
+    {
+        derivedSend = true;
+        result.usedUnsafeSend = true;
+    }
+    if (facts.unsafeProofReviewed && !facts.negativeSyncImpl && facts.unsafeSyncImpl)
+    {
+        derivedSync = true;
+        result.usedUnsafeSync = true;
+    }
+
+    result.send = derivedSend;
+    result.sync = derivedSync;
+    if ((facts.unsafeSendImpl || facts.unsafeSyncImpl) && !facts.unsafeProofReviewed)
+        result.reason = "unsafe Send/Sync implementation requires an audited safety proof";
+    else if (facts.negativeSendImpl || facts.negativeSyncImpl)
+        result.reason = "negative Send/Sync implementation opts the type out structurally";
+    else if (!result.send || !result.sync)
+        result.reason = facts.asyncClosure
+            ? "async closure captures do not satisfy structural Send/Sync"
+            : "one or more members do not satisfy structural Send/Sync";
+    return result;
+}
+
+ThreadSafetyMetadata exportThreadSafetyMetadata(
+    std::string_view typeName,
+    const ThreadSafetyDecision& decision)
+{
+    ThreadSafetyMetadata metadata;
+    metadata.typeName = std::string(typeName);
+    metadata.send = decision.send;
+    metadata.sync = decision.sync;
+    metadata.unsafeSend = decision.usedUnsafeSend;
+    metadata.unsafeSync = decision.usedUnsafeSync;
+    return metadata;
+}
+
+std::optional<ThreadSafetyDecision> importThreadSafetyMetadata(
+    const ThreadSafetyMetadata& metadata,
+    std::string& error) noexcept
+{
+    error.clear();
+    if (metadata.contractMajor != kConcurrencyContractMajor)
+    {
+        error = "incompatible Send/Sync metadata contract major version";
+        return std::nullopt;
+    }
+    if (metadata.typeName.empty())
+    {
+        error = "Send/Sync metadata has no type identity";
+        return std::nullopt;
+    }
+    ThreadSafetyDecision result;
+    result.send = metadata.send;
+    result.sync = metadata.sync;
+    result.usedUnsafeSend = metadata.unsafeSend;
+    result.usedUnsafeSync = metadata.unsafeSync;
+    return result;
+}
+
 bool taskBorrowMayEscapeScope(bool childJoined, bool borrowOutlivesScope) noexcept
 {
     return childJoined && borrowOutlivesScope;
