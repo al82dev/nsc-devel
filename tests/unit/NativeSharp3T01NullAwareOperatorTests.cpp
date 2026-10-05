@@ -160,7 +160,10 @@ namespace NullAware
         private static int* FallbackPointer()
         {
             fallbackCalls = fallbackCalls + 1;
-            return &fallbackValue;
+            unsafe("the static fallback outlives the returned pointer")
+            {
+                return &fallbackValue;
+            }
         }
 
         private static int FallbackValue()
@@ -209,12 +212,15 @@ namespace NullAware
             if (interfaceValue != null || argumentTrace != 234 || Link.calls != 4) { return 12; }
             destroy linkObject;
 
-            int presentValue = 7;
-            int* present = &presentValue;
-            int* missing = null;
-            if (*(present ?? FallbackPointer()) != 7 || fallbackCalls != 0) { return 6; }
-            missing ??= FallbackPointer();
-            if (*missing != 42 || fallbackCalls != 1) { return 7; }
+            unsafe("the local pointer remains live throughout the coalescing checks")
+            {
+                int presentValue = 7;
+                int* present = &presentValue;
+                int* missing = null;
+                if (*(present ?? FallbackPointer()) != 7 || fallbackCalls != 0) { return 6; }
+                missing ??= FallbackPointer();
+                if (*missing != 42 || fallbackCalls != 1) { return 7; }
+            }
 
             Optional<int> some = new Optional<int>(42);
             Optional<int> none = new Optional<int>();

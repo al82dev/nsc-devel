@@ -99,7 +99,10 @@ public class PinnedCell
     public PinnedCell(int value, PinnedCell* self)
     {
         Value = value;
-        SelfAddress = (nint)self;
+        unsafe("the integer is used only to verify the stable pinned address")
+        {
+            SelfAddress = (nint)self;
+        }
     }
 
     ~PinnedCell()
@@ -112,18 +115,21 @@ public class Program
 {
     public static int Main()
     {
-        long* raw = stackalloc long[16];
-        PinnedCell* storage = (PinnedCell*)raw;
-        int observed = 0;
+        unsafe("stack storage remains live for the complete placement lifetime")
         {
-            pin raii PinnedCell stable = new (storage) PinnedCell(40, storage);
-            pin ref int projected = ref stable.Value;
-            projected += 2;
-            if (stable.SelfAddress != (nint)storage) return 1;
-            observed = projected;
+            long* raw = stackalloc long[16];
+            PinnedCell* storage = (PinnedCell*)raw;
+            int observed = 0;
+            {
+                pin raii PinnedCell stable = new (storage) PinnedCell(40, storage);
+                pin ref int projected = ref stable.Value;
+                projected += 2;
+                if (stable.SelfAddress != (nint)storage) return 1;
+                observed = projected;
+            }
+            if (PinnedCell.Drops != 1) return 2;
+            return observed;
         }
-        if (PinnedCell.Drops != 1) return 2;
-        return observed;
     }
 }
 )NS");

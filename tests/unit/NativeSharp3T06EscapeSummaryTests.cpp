@@ -107,11 +107,14 @@ namespace EscapeContracts
     public class EscapeApi
     {
         public static int* Stored;
-        public static int Read(int* value) { return *value; }
+        public static int Read(int* value) { unsafe { return *value; } }
         public static int* Identity(int* value) { return value; }
         public static void Retain(int* value) { Stored = value; }
         public static void Forward(int* value) { Retain(value); }
-        public static Reader Capture(int* value) { return () => *value; }
+        public static Reader Capture(int* value)
+        {
+            return () => { unsafe { return *value; } };
+        }
     }
 }
 )NS";
@@ -212,7 +215,14 @@ namespace EscapeContracts
 using EscapeContracts;
 public class Program
 {
-    public static int Main() { int local = 42; return EscapeApi.Read(&local); }
+    public static int Main()
+    {
+        int local = 42;
+        unsafe("the noescape contract keeps the address within this call")
+        {
+            return EscapeApi.Read(&local);
+        }
+    }
 }
 )NS", "3", "Exe", producerReference);
     const std::string safeProjectText = safeProject.string();
@@ -230,7 +240,15 @@ public class Program
 using EscapeContracts;
 public class Program
 {
-    public static int Main() { int local = 42; EscapeApi.Retain(&local); return local; }
+    public static int Main()
+    {
+        int local = 42;
+        unsafe("the explicit address operation must still satisfy escape analysis")
+        {
+            EscapeApi.Retain(&local);
+        }
+        return local;
+    }
 }
 )NS", "3", "Exe", producerReference);
     const std::string unsafeProjectText = unsafeProject.string();
