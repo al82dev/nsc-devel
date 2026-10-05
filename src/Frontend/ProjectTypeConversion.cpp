@@ -106,21 +106,28 @@ bool isIntegralPromotion(std::string_view source, std::string_view target) noexc
 
 bool isNumericWidening(std::string_view source, std::string_view target) noexcept
 {
-    const IntegralInfo* sourceInteger = findIntegral(source);
-    const IntegralInfo* targetInteger = findIntegral(target);
-    if (sourceInteger != nullptr && targetInteger != nullptr)
-    {
-        if (sourceInteger->isSigned == targetInteger->isSigned)
-            return sourceInteger->width < targetInteger->width;
-        if (!sourceInteger->isSigned && targetInteger->isSigned)
-            return sourceInteger->width < targetInteger->width;
-    }
+    // Native-width integers need the named table, not a width-only shortcut. `nint`/`nuint`
+    // happen to be 64-bit on Windows x64, but their implicit conversions intentionally preserve
+    // the language contract: uint does not widen to nint, while nint does widen to long (and the
+    // unsigned pair mirrors that rule). Consult those explicit edges before comparing widths.
     for (const Pair& pair : kNumericWidenings)
     {
         if (pair.first == source && pair.second == target)
         {
             return true;
         }
+    }
+
+    const IntegralInfo* sourceInteger = findIntegral(source);
+    const IntegralInfo* targetInteger = findIntegral(target);
+    if (sourceInteger != nullptr && targetInteger != nullptr)
+    {
+        if (target == "builtin:nint" || target == "builtin:nuint")
+            return false;
+        if (sourceInteger->isSigned == targetInteger->isSigned)
+            return sourceInteger->width < targetInteger->width;
+        if (!sourceInteger->isSigned && targetInteger->isSigned)
+            return sourceInteger->width < targetInteger->width;
     }
     return false;
 }
