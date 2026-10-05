@@ -7232,6 +7232,8 @@ ast::AstNode* Parser::parsePropertyTail(
             accessor->addChild(value);
         }
 
+        parseThrowsClause(accessor);
+
         if (consumeIf(TokenKind::Semicolon))
         {
             if (interfaceContext || isAbstract)
@@ -7489,6 +7491,8 @@ ast::AstNode* Parser::parseIndexerTail(
             value->setTypeSyntax(elementType);
             accessor->addChild(value);
         }
+
+        parseThrowsClause(accessor);
 
         if (consumeIf(TokenKind::Semicolon))
         {

@@ -410,6 +410,74 @@ namespace TypedThrows
         compileAndRun(typedProject, 42, executionDiagnostic),
         "O0/NSLink executes typed propagation through a delegate and runs defer during native unwind (" +
             executionDiagnostic + ")");
+
+    const std::filesystem::path accessorProject = writeProject(
+        root / "accessors", "AccessorThrows", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Accessors
+{
+    private int stored;
+
+    public int Value
+    {
+        get throws Error
+        {
+            if (stored < 0) { throw new Error(); }
+            return stored;
+        }
+        set throws Error
+        {
+            if (value < 0) { throw new Error(); }
+            stored = value;
+        }
+    }
+
+    public int this[int index]
+    {
+        get throws Error
+        {
+            if (index < 0) { throw new Error(); }
+            return stored + index;
+        }
+        set throws Error
+        {
+            if (index < 0) { throw new Error(); }
+            stored = value + index;
+        }
+    }
+}
+public class Program
+{
+    public static int Main()
+    {
+        owned Accessors values = new Accessors();
+        try
+        {
+            try { values.Value = -1; }
+            catch (Error problem) {}
+            values.Value = 40;
+            try { values[-1] = 1; }
+            catch (Error problem) {}
+            if (values.Value != 40 || values[2] != 42) { return 1; }
+            return 42;
+        }
+        catch (Error problem) { return 2; }
+    }
+}
+)NS");
+    const CompilationEvidence accessorEvidence = compileMir(accessorProject);
+    tests.expect(
+        accessorEvidence.succeeded && accessorEvidence.error.empty() &&
+            accessorEvidence.mir.find("throws=type:AccessorThrows::Error") != std::string::npos,
+        "property and indexer accessors retain typed throws in MIR (" +
+            accessorEvidence.error + accessorEvidence.diagnostics + accessorEvidence.mir + ")");
+    executionDiagnostic.clear();
+    tests.expect(
+        compileAndRun(accessorProject, 42, executionDiagnostic),
+        "O0/NSLink executes checked property and indexer get/set accessors (" +
+            executionDiagnostic + ")");
+
     const std::string typedProjectText = typedProject.string();
     const std::array<std::string_view, 2> llvmArguments = {
         "--dump-project-oop-llvm", typedProjectText};
@@ -642,6 +710,34 @@ namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Program { public static int Main() { throw new Error(); } }
 )NS", "NS3071");
+    expectRejected("UnhandledPropertyGet", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Source
+{
+    public int Value { get throws Error { throw new Error(); } }
+}
+public class Program
+{
+    public static int Main() { owned Source source = new Source(); return source.Value; }
+}
+)NS", "NS3071");
+    expectRejected("UnhandledIndexerSet", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Source
+{
+    public int this[int index]
+    {
+        get { return 0; }
+        set throws Error { throw new Error(); }
+    }
+}
+public class Program
+{
+    public static int Main() { owned Source source = new Source(); source[0] = 1; return 42; }
+}
+)NS", "NS3071");
     expectRejected("DelegateMismatch", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
@@ -848,6 +944,19 @@ namespace ThrowsApi
             return 42;
         }
     }
+    public class AccessorApi
+    {
+        public int Value
+        {
+            get throws Error { return 42; }
+            set throws Error { }
+        }
+        public int this[int index]
+        {
+            get throws Error { return index; }
+            set throws Error { }
+        }
+    }
 }
 )NS");
     const std::string producerProjectText = producerProject.string();
@@ -870,6 +979,10 @@ namespace ThrowsApi
     {
         return member.name == "Execute";
     });
+    const auto accessor = std::ranges::find_if(metadata.members, [](const auto& member)
+    {
+        return member.name == "get_Item";
+    });
     const auto freeFunction = std::ranges::find_if(
         metadata.namespaceFunctions, [](const auto& function)
         {
@@ -877,11 +990,13 @@ namespace ThrowsApi
         });
     tests.expect(
         metadataRead && metadata.formatMinor == 38 && delegate != metadata.types.end() &&
-            method != metadata.members.end() && freeFunction != metadata.namespaceFunctions.end() &&
+            method != metadata.members.end() && accessor != metadata.members.end() &&
+            freeFunction != metadata.namespaceFunctions.end() &&
             delegate->delegateErrorTypeKey == method->declaredErrorTypeKey &&
+            delegate->delegateErrorTypeKey == accessor->declaredErrorTypeKey &&
             delegate->delegateErrorTypeKey == freeFunction->declaredErrorTypeKey &&
             delegate->delegateErrorTypeKey.ends_with("::ThrowsApi.Error"),
-        "NSMETA 1.38 round-trips typed throws for delegates, methods, and free functions (" +
+        "NSMETA 1.38 round-trips typed throws for delegates, methods, accessors, and free functions (" +
             metadataError + producerError + producerOutput + ")");
     if (metadataRead)
     {
@@ -916,6 +1031,9 @@ public class Program
         try
         {
             if (Api.Execute(false) != 42) { return 2; }
+            owned AccessorApi accessors = new AccessorApi();
+            accessors.Value = 42;
+            if (accessors.Value != 42 || accessors[42] != 42) { return 3; }
             ExecuteFree(true);
         }
         catch (Error problem) { return 42; }

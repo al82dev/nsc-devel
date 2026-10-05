@@ -20,6 +20,17 @@ al tipo declarado por la función envolvente.
 `throws` es contextual después de la lista de parámetros. En edición 2 puede seguir usándose como
 identificador; la cláusula sólo se habilita con `<Language>3</Language>`.
 
+Los accesores declaran el contrato después de `get` o `set`. Cada accesor tiene su propio tipo de
+error porque son funciones distintas en la API y en metadata:
+
+```nativesharp
+public int this[int index]
+{
+    get throws ArgumentOutOfRangeException { return Read(index); }
+    set throws ArgumentOutOfRangeException { Write(index, value); }
+}
+```
+
 ```nativesharp
 int Load() throws Error
 {
@@ -63,6 +74,17 @@ callable's declared error type.
 
 `throws` is contextual after a parameter list. Edition 2 can still use it as an identifier; the
 clause itself requires `<Language>3</Language>`.
+
+Accessors place the contract after `get` or `set`. Each accessor has its own error type because
+the getter and setter are distinct API and metadata functions:
+
+```nativesharp
+public int Value
+{
+    get throws ReadError { return Read(); }
+    set throws WriteError { Write(value); }
+}
+```
 
 An override may remove the effect or narrow it to a derived error. It cannot introduce an error on
 a non-throwing contract or widen an inherited error. Managed delegates carry the error in their

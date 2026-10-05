@@ -1928,15 +1928,18 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             }
             generated << "\n    {\n";
             const auto emitAccessor = [&](const interop::LibraryMetadataMember &accessor,
-                                          const std::string_view keyword) {
+                                          const std::string_view keyword) -> bool {
                 generated << "        ";
                 if (!interfaceContext && accessor.accessibility != accessibility)
                     generated << sourceAccessibility(accessor.accessibility) << ' ';
-                generated << keyword << (((accessor.flags & kAbstract) != 0U || interfaceContext) ? ";\n" : " { }\n");
+                generated << keyword;
+                if (!emitThrowsContract(accessor.declaredErrorTypeKey)) return false;
+                generated << (((accessor.flags & kAbstract) != 0U || interfaceContext) ? ";\n" : " { }\n");
+                return true;
             };
             for (const interop::LibraryMetadataMember *accessor : contract.declarationOrder)
             {
-                emitAccessor(*accessor, accessor == contract.getter ? "get" : "set");
+                if (!emitAccessor(*accessor, accessor == contract.getter ? "get" : "set")) return false;
                 materialized.insert(accessor);
             }
             generated << "    }\n";
