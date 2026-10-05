@@ -51,6 +51,41 @@ std::optional<std::int64_t> addInteger(
     IntegerType type,
     OverflowPolicy policy) noexcept;
 
+enum class IntegerArithmeticOperation
+{
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    ShiftLeft,
+    ShiftRight
+};
+enum class NumericEvaluationDomain { Runtime, Constant, SimdLane, Intrinsic };
+
+struct IntegerArithmeticRequest final
+{
+    IntegerArithmeticOperation operation = IntegerArithmeticOperation::Add;
+    std::uint64_t leftBits = 0;
+    std::uint64_t rightBits = 0;
+    IntegerType type;
+    OverflowPolicy policy = OverflowPolicy::Checked;
+    NumericEvaluationDomain domain = NumericEvaluationDomain::Runtime;
+};
+
+struct IntegerArithmeticResult final
+{
+    std::uint64_t bits = 0;
+    bool overflowed = false;
+    bool undefinedBehavior = false;
+};
+
+std::optional<IntegerArithmeticResult> evaluateIntegerArithmetic(
+    const IntegerArithmeticRequest& request,
+    std::string& error) noexcept;
+std::int64_t integerResultAsSigned(
+    const IntegerArithmeticResult& result,
+    IntegerType type) noexcept;
+
 enum class NumericKind { Integer, Floating };
 struct NumericType final { NumericKind kind; unsigned bits; bool isSigned; };
 bool implicitNumericConversionIsLossless(NumericType source, NumericType target) noexcept;
