@@ -5,6 +5,7 @@
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/ProjectConstructionStatistics.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
@@ -193,6 +194,7 @@ public:
     std::span<const ImplicitDefaultConstructorBinding> implicitDefaultConstructorBindings() const noexcept;
     const ImplicitDefaultConstructorBinding* implicitDefaultConstructorBindingForType(
         std::size_t typeOrdinal) const noexcept;
+    const ProjectConstructionStatistics& statistics() const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -266,6 +268,7 @@ private:
     std::vector<std::optional<std::size_t>> initializerBindingByMember_;
     std::vector<ImplicitDefaultConstructorBinding> implicitDefaultConstructorBindings_;
     std::vector<std::optional<std::size_t>> implicitDefaultBindingByType_;
+    ProjectConstructionStatistics statistics_;
     bool built_ = false;
 };
 

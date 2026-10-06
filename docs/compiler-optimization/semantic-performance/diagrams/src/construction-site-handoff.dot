@@ -1,0 +1,36 @@
+digraph ConstructionSiteHandoff {
+    graph [
+        bgcolor="transparent",
+        fontname="Segoe UI",
+        rankdir=LR,
+        splines=ortho
+    ];
+    node [
+        color="#46668c",
+        fillcolor="#eef5fc",
+        fontname="Segoe UI",
+        shape=box,
+        style="rounded,filled"
+    ];
+    edge [color="#46668c", fontname="Segoe UI"];
+
+    ast [label="Callable AST\nvisited once"];
+    method [label="ProjectMethodBodyModel\ntype + ownership + flow"];
+    site [label="ProjectConstructionSite\n(callable, sequence, typed args)"];
+    order [label="Stable sort\ncallable + sequence"];
+    construction [label="ProjectConstructionModel\noverload resolution"];
+    consumers [label="Dumps, layout and HIR"];
+
+    ast -> method;
+    method -> site [label="publish postorder"];
+    site -> order;
+    order -> construction [label="consume directly"];
+    construction -> consumers;
+    ast -> construction [
+        color="#9b3b3b",
+        fontcolor="#9b3b3b",
+        label="body rescan = 0",
+        style=dashed,
+        arrowhead=none
+    ];
+}

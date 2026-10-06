@@ -80,6 +80,10 @@ void testPrimary(TestContext& tests, const std::filesystem::path& root)
     }
 
     const auto& model = *compilation.constructionModel();
+    tests.expect(model.statistics().typedSitesConsumed == 3 &&
+            model.statistics().typedArgumentsConsumed == 2 &&
+            model.statistics().bodyAstNodesRescanned == 0,
+        "construction consumes typed sites without rescanning body AST nodes");
     const auto sites = compilation.methodBodyModel()->constructionSites();
     tests.expect(sites.size() == 3,
         "method-body analysis publishes one typed site per construction expression");

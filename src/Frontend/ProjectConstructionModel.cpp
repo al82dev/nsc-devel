@@ -160,6 +160,7 @@ bool ProjectConstructionModel::build(
     interfaceModel_ = &interfaceModel;
     methodBodyModel_ = &methodBodyModel;
     namespaceFunctionModel_ = &namespaceFunctionModel;
+    statistics_ = {};
     initializerBindingByMember_.resize(memberModel.members().size());
     implicitDefaultBindingByType_.resize(nameLookup.namedTypes().size());
 
@@ -209,6 +210,8 @@ bool ProjectConstructionModel::build(
         });
     for (const ProjectConstructionSite* site : orderedSites)
     {
+        ++statistics_.typedSitesConsumed;
+        statistics_.typedArgumentsConsumed += site->argumentTypes.size();
         bindConstruction(*site, diagnostics);
     }
 
@@ -258,6 +261,11 @@ ProjectConstructionModel::implicitDefaultConstructorBindingForType(
         : nullptr;
 }
 
+const ProjectConstructionStatistics& ProjectConstructionModel::statistics() const noexcept
+{
+    return statistics_;
+}
+
 bool ProjectConstructionModel::isBuilt() const noexcept
 {
     return built_;
@@ -280,6 +288,7 @@ void ProjectConstructionModel::scanUnsupportedContexts(
         {
             continue;
         }
+        ++statistics_.unsupportedContextNodesVisited;
         if (current->kind() == ast::AstNodeKind::MethodDeclaration ||
             current->kind() == ast::AstNodeKind::ConstructorDeclaration ||
             current->kind() == ast::AstNodeKind::FieldDeclaration ||
