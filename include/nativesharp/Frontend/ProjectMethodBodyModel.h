@@ -10,6 +10,8 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectCallableBindingIndex.h"
+#include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
+#include "nativesharp/Frontend/ProjectConstructionSite.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Language/CallableSemantics.h"
@@ -285,46 +287,6 @@ std::string ownershipArgumentFitMessage(
     OwnershipArgumentFit fit,
     std::string_view parameterName,
     std::string_view parameterTypeKey);
-
-struct MethodExpressionTypeBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string typeKey;
-    // NativeSharp 3.0 T00-F03. This is the canonical value-category view consumed by
-    // lowering/tooling. Ownership remains orthogonal: it explains who destroys a value, while
-    // this field explains whether the expression denotes storage, a value, or a temporary.
-    sema::ValueCategory valueCategory = sema::ValueCategory::Value;
-    std::optional<ProjectIntegerConstant> integerConstant;
-    bool pointerPointeeReadonly = false;
-    // NSC-LIMIT-010. El resultado semantico de una expresion llevaba ownership, transferencia y
-    // origen, y `recordExpressionType` los TIRABA al copiarlo aqui. ProjectConstructionModel solo
-    // ve estos bindings, asi que sin estos cuatro campos no tiene con que decidir: para el, un
-    // `move(duenio)` y un `duenio` a secas eran la misma expresion del mismo tipo.
-    sema::OwnershipKind ownership = sema::OwnershipKind::None;
-    bool ownershipTransfer = false;
-    // NSC-LIMIT-010: ver ExpressionResult::ownershipFreshOwner.
-    bool ownershipFreshOwner = false;
-    std::optional<std::size_t> ownershipSourceLocalOrdinal;
-    std::optional<std::size_t> ownershipSourceParameterOrdinal;
-    // The assignment expression targets storage that owns and must replace its current value.
-    // Semantic analysis is the single authority for this decision; HIR must not reconstruct it
-    // from the final syntax shape because an owned field and an element of an owned backing array
-    // reach the same address-based store through different AST nodes.
-    bool ownsStorageDestination = false;
-    // Item 320. Logical object lifetime and backing-storage lifetime are distinct contracts.
-    sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
-    sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
-    // NativeSharp 3.0 T03-F05. Flow facts belong to the semantic binding of this exact
-    // expression occurrence. HIR consumes them without repeating control-flow analysis.
-    bool flowProvenNonNull = false;
-    bool flowIntegerExcludesZero = false;
-    std::optional<std::int64_t> flowIntegerMinimum;
-    std::optional<std::int64_t> flowIntegerMaximum;
-    std::optional<std::size_t> flowActiveVariantCase;
-    bool flowRuntimeCheckElided = false;
-};
 
 struct MethodAggregateInitializerEntryBinding final
 {
