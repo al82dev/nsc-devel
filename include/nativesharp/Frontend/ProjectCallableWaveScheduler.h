@@ -4,9 +4,15 @@
 
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
+
+namespace nativesharp::driver
+{
+class CompilationWorkerPool;
+}
 
 namespace nativesharp::frontend
 {
@@ -19,6 +25,10 @@ public:
     using CancellationCheck = std::function<bool()>;
 
     explicit ProjectCallableWaveScheduler(std::size_t workerCount) noexcept;
+    ~ProjectCallableWaveScheduler();
+
+    ProjectCallableWaveScheduler(const ProjectCallableWaveScheduler&) = delete;
+    ProjectCallableWaveScheduler& operator=(const ProjectCallableWaveScheduler&) = delete;
 
     [[nodiscard]] bool run(
         std::span<const std::size_t> callables,
@@ -32,5 +42,7 @@ public:
 
 private:
     std::size_t workerCount_ = 1;
+    std::unique_ptr<driver::CompilationWorkerPool> pool_;
+    bool poolInitializationFailed_ = false;
 };
 }

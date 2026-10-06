@@ -11,11 +11,13 @@ reutilizar `CompilationWorkerPool`, conservar slots estables y no publicar resul
 callback de análisis y comprobación cooperativa de cancelación.
 
 - `-j1` usa un fast path síncrono con el mismo callback y el mismo tipo de resultado;
-- `-jN` escribe cada resultado en un slot exclusivo preasignado;
+- `-jN` reutiliza un pool por compilación y escribe cada resultado en un slot exclusivo;
 - el orden del vector publicado es el orden de entrada, no el de finalización;
 - una excepción cancela las tareas pendientes mediante el pool compartido;
-- cancelación o fallo dejan el vector público vacío;
-- el scheduler no fusiona estado semántico y no crea pools anidados.
+- cancelación o fallo esperan el cierre de tareas y dejan el vector público vacío;
+- la cancelación se consulta antes de analizar y antes de publicar, nunca concurrentemente;
+- una invocación desde otro worker toma el fast path y evita pools anidados;
+- el scheduler no fusiona estado semántico.
 
 ## Aseguramiento dirigido
 

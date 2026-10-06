@@ -3,7 +3,6 @@
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 
 #include <algorithm>
-#include <atomic>
 #include <exception>
 #include <optional>
 #include <utility>
@@ -26,17 +25,17 @@ bool publishCompletedSlots(
     std::string& error)
 {
     results.clear();
-    results.reserve(slots.size());
-    for (ResultSlot& slot : slots)
+    for (const ResultSlot& slot : slots)
     {
         if (!slot.has_value())
         {
             error = "callable analysis wave did not complete every scheduled slot";
-            results.clear();
             return false;
         }
-        results.push_back(std::move(*slot));
     }
+    results.reserve(slots.size());
+    for (ResultSlot& slot : slots)
+        results.push_back(std::move(*slot));
     return true;
 }
 
@@ -61,6 +60,12 @@ bool runSynchronousWave(
             }
             slots[index].emplace(analyze(callables[index], waveOrdinal));
         }
+        if (cancellationRequested(cancellationCheck))
+        {
+            error = "callable analysis cancelled before publishing the wave";
+            results.clear();
+            return false;
+        }
     }
     catch (const std::exception& exception)
     {
@@ -79,7 +84,7 @@ bool runSynchronousWave(
 
 bool waitForWave(
     driver::CompilationWorkerPool& pool,
-    std::atomic_bool& externallyCancelled,
+    const ProjectCallableWaveScheduler::CancellationCheck& cancellationCheck,
     std::vector<ResultSlot>& slots,
     std::vector<ProjectCallableAnalysisResult>& results,
     std::string& error)
@@ -87,6 +92,12 @@ bool waitForWave(
     try
     {
         pool.wait();
+        if (cancellationRequested(cancellationCheck))
+        {
+            error = "callable analysis cancelled before publishing the wave";
+            results.clear();
+            return false;
+        }
     }
     catch (const std::exception& exception)
     {
@@ -100,19 +111,25 @@ bool waitForWave(
         results.clear();
         return false;
     }
-    if (externallyCancelled.load(std::memory_order_relaxed))
-    {
-        error = "callable analysis cancelled before completing the wave";
-        results.clear();
-        return false;
-    }
     return publishCompletedSlots(slots, results, error);
+}
+
+void cancelSubmittedTasks(driver::CompilationWorkerPool& pool) noexcept
+{
+    pool.requestCancellation();
+    try
+    {
+        pool.wait();
+    }
+    catch (...)
+    {
+    }
 }
 
 bool runParallelWave(
     std::span<const std::size_t> callables,
     std::size_t waveOrdinal,
-    std::size_t workerCount,
+    driver::CompilationWorkerPool& pool,
     const ProjectCallableWaveScheduler::Analyze& analyze,
     const ProjectCallableWaveScheduler::CancellationCheck& cancellationCheck,
     std::vector<ProjectCallableAnalysisResult>& results,
@@ -120,22 +137,23 @@ bool runParallelWave(
 {
     try
     {
-        driver::CompilationWorkerPool pool(workerCount);
         std::vector<ResultSlot> slots(callables.size());
-        std::atomic_bool externallyCancelled = false;
-        for (std::size_t index = 0; index < callables.size(); ++index)
+        try
         {
-            pool.submit([&, index](std::size_t) {
-                if (cancellationRequested(cancellationCheck))
-                {
-                    externallyCancelled.store(true, std::memory_order_relaxed);
-                    pool.requestCancellation();
-                    return;
-                }
-                slots[index].emplace(analyze(callables[index], waveOrdinal));
-            });
+            for (std::size_t index = 0; index < callables.size(); ++index)
+            {
+                pool.submit([&, index](std::size_t) {
+                    slots[index].emplace(analyze(callables[index], waveOrdinal));
+                });
+            }
         }
-        return waitForWave(pool, externallyCancelled, slots, results, error);
+        catch (...)
+        {
+            cancelSubmittedTasks(pool);
+            throw;
+        }
+        return waitForWave(
+            pool, cancellationCheck, slots, results, error);
     }
     catch (const std::exception& exception)
     {
@@ -154,7 +172,21 @@ ProjectCallableWaveScheduler::ProjectCallableWaveScheduler(
     std::size_t workerCount) noexcept
     : workerCount_(std::max<std::size_t>(1, workerCount))
 {
+    if (workerCount_ > 1 &&
+        driver::currentCompilationWorkerIndex() == driver::kNoCompilationWorker)
+    {
+        try
+        {
+            pool_ = std::make_unique<driver::CompilationWorkerPool>(workerCount_);
+        }
+        catch (...)
+        {
+            poolInitializationFailed_ = true;
+        }
+    }
 }
+
+ProjectCallableWaveScheduler::~ProjectCallableWaveScheduler() = default;
 
 bool ProjectCallableWaveScheduler::run(
     std::span<const std::size_t> callables,
@@ -171,12 +203,17 @@ bool ProjectCallableWaveScheduler::run(
         error = "callable analysis callback is empty";
         return false;
     }
-    if (workerCount_ == 1 || callables.size() < 2)
+    if (poolInitializationFailed_)
+    {
+        error = "callable analysis worker pool initialization failed";
+        return false;
+    }
+    if (pool_ == nullptr || callables.size() < 2)
         return runSynchronousWave(
             callables, waveOrdinal, analyze, cancellationCheck, results, error);
 
     return runParallelWave(
-        callables, waveOrdinal, workerCount_, analyze,
+        callables, waveOrdinal, *pool_, analyze,
         cancellationCheck, results, error);
 }
 

@@ -80,6 +80,20 @@ int main()
         {}, failedResults, error);
     tests.expect(!serialFailed && failedResults.empty() && !error.empty(),
         "j1 failure uses the same non-publishing contract as parallel execution");
+    std::atomic_bool cancelAfterAnalysis = false;
+    const bool lateCancelled = serial.run(
+        callables, 0,
+        [&](std::size_t callable, std::size_t wave) {
+            if (callable == callables.back()) cancelAfterAnalysis = true;
+            return makeResult(callable, wave);
+        },
+        [&] { return cancelAfterAnalysis.load(); }, failedResults, error);
+    tests.expect(!lateCancelled && failedResults.empty(),
+        "cancellation observed after analysis prevents wave publication");
+    const bool missingCallback = serial.run(
+        callables, 0, {}, {}, failedResults, error);
+    tests.expect(!missingCallback && failedResults.empty() && !error.empty(),
+        "empty analysis callback is rejected without publishing state");
     tests.expect(serial.requestedWorkerCount() == 1 &&
             parallel.requestedWorkerCount() == 2,
         "scheduler retains the selected bounded worker count");
