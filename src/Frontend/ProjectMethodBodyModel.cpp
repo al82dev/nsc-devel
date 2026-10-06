@@ -1827,66 +1827,68 @@ std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
     const ast::AstNode* expression,
     std::size_t scopeOrdinal) const
 {
-    if (expression == nullptr) return std::nullopt;
-
-    if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
+    // Alias chains are data, not control flow. Keep them on the heap-backed worklist so a
+    // generated or adversarial source cannot turn the semantic query into native-stack growth.
+    // Reverse insertion preserves the former recursive preorder exactly.
+    std::vector<const ast::AstNode*> work;
+    std::unordered_set<const ast::AstNode*> visited;
+    if (expression != nullptr) work.push_back(expression);
+    while (!work.empty())
     {
-        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
-        if (name.has_value() && name->kind == ScopeNameKind::Local &&
-            name->semanticOrdinal < locals_.size())
+        const ast::AstNode* current = work.back();
+        work.pop_back();
+        if (current == nullptr || !visited.insert(current).second) continue;
+
+        if (current->kind() == ast::AstNodeKind::IdentifierExpression)
         {
-            const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
-            if (typeKeyIsViewLike(local.typeKey))
+            const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, current->text());
+            if (name.has_value() && name->kind == ScopeNameKind::Local &&
+                name->semanticOrdinal < locals_.size())
             {
-                if (!local.viewRootLocalName.empty()) return local.viewRootLocalName;
-            }
-            else if (local.typeKey.ends_with("*"))
-            {
-                // A raw pointer local is a VALUE slot, not the storage it points at. Follow its
-                // initializer instead of declaring every pointer local frame-bound. This keeps
-                // `byte* p = arena.Allocate(n); return Spans.OfRaw(p, n);` valid while preserving
-                // the unsafe cases: VLA aliases, stackalloc and `&local` remain rooted in the
-                // current frame, and pointer/view arguments passed through calls propagate their
-                // existing root recursively.
-                if (local.variableLengthArrayRootLocalOrdinal.has_value() &&
-                    *local.variableLengthArrayRootLocalOrdinal < locals_.size())
-                    return locals_[*local.variableLengthArrayRootLocalOrdinal].name;
-                const ast::AstNode* initializer = local.syntax != nullptr
-                    ? local.syntax->first() : nullptr;
-                if (initializer == nullptr) return std::nullopt;
-                if (initializer->kind() == ast::AstNodeKind::StackallocExpression)
-                    return local.name;
-                if (initializer->kind() == ast::AstNodeKind::UnaryExpression &&
-                    initializer->tokenKind() == lexer::TokenKind::Amp &&
-                    initializer->first() != nullptr &&
-                    initializer->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+                const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
+                if (typeKeyIsViewLike(local.typeKey))
                 {
-                    const std::optional<ScopeName> pointee = lookupScopeName(
-                        scopeOrdinal, initializer->first()->text());
-                    if (pointee.has_value() && pointee->kind == ScopeNameKind::Local &&
-                        pointee->semanticOrdinal < locals_.size())
-                        return locals_[pointee->semanticOrdinal].name;
+                    if (!local.viewRootLocalName.empty()) return local.viewRootLocalName;
                 }
-                return viewRootLocalOfExpression(initializer, scopeOrdinal);
+                else if (local.typeKey.ends_with("*"))
+                {
+                    // A raw pointer local is a VALUE slot, not the storage it points at. Follow
+                    // its initializer instead of declaring every pointer local frame-bound.
+                    if (local.variableLengthArrayRootLocalOrdinal.has_value() &&
+                        *local.variableLengthArrayRootLocalOrdinal < locals_.size())
+                        return locals_[*local.variableLengthArrayRootLocalOrdinal].name;
+                    const ast::AstNode* initializer = local.syntax != nullptr
+                        ? local.syntax->first() : nullptr;
+                    if (initializer == nullptr) continue;
+                    if (initializer->kind() == ast::AstNodeKind::StackallocExpression)
+                        return local.name;
+                    if (initializer->kind() == ast::AstNodeKind::UnaryExpression &&
+                        initializer->tokenKind() == lexer::TokenKind::Amp &&
+                        initializer->first() != nullptr &&
+                        initializer->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+                    {
+                        const std::optional<ScopeName> pointee = lookupScopeName(
+                            scopeOrdinal, initializer->first()->text());
+                        if (pointee.has_value() && pointee->kind == ScopeNameKind::Local &&
+                            pointee->semanticOrdinal < locals_.size())
+                            return locals_[pointee->semanticOrdinal].name;
+                    }
+                    work.push_back(initializer);
+                }
+                else if (typeKeyCarriesLifetime(local.typeKey))
+                {
+                    return local.name;
+                }
             }
-            else if (typeKeyCarriesLifetime(local.typeKey))
-            {
-                return local.name;
-            }
+            continue;
         }
-        return std::nullopt;
-    }
 
-    const auto probe = [&](const ast::AstNode* child) -> std::optional<std::string>
-    {
-        return viewRootLocalOfExpression(child, scopeOrdinal);
-    };
-    if (auto found = probe(expression->first()); found.has_value()) return found;
-    if (auto found = probe(expression->second()); found.has_value()) return found;
-    if (auto found = probe(expression->third()); found.has_value()) return found;
-    for (const ast::AstNode* child : expression->children())
-    {
-        if (auto found = probe(child); found.has_value()) return found;
+        const std::span<ast::AstNode* const> children = current->children();
+        for (auto child = children.rbegin(); child != children.rend(); ++child)
+            work.push_back(*child);
+        work.push_back(current->third());
+        work.push_back(current->second());
+        work.push_back(current->first());
     }
     return std::nullopt;
 }
