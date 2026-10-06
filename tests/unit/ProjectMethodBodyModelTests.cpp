@@ -485,6 +485,31 @@ void testLongLogicalChains(TestContext& tests, const std::filesystem::path& root
         "long logical chains bind without exhausting the host stack");
 }
 
+void testDeepNestedValueExpression(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "DeepNestedValueExpression";
+    writeProject(directory, "DeepNestedValueExpression");
+
+    std::string expression = "value";
+    for (std::size_t index = 0; index < 40; ++index)
+    {
+        expression = "Permute(" + expression + " + 1.0f)";
+    }
+    writeFile(
+        directory / "Main.ns",
+        "class NestedValue {\n"
+        "  static float Permute(float value) { return value; }\n"
+        "  static float Evaluate(float value) { return " + expression + "; }\n"
+        "}\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DeepNestedValueExpression.nsproj", error);
+    tests.expect(ok && error.empty() && !compilation.diagnostics().hasErrors(),
+        "deep nested call and binary expressions bind through the heap-backed worklist");
+}
+
 void testQualifiedStaticTypeRoots(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path alpha = root / "QualifiedAlpha";
@@ -590,6 +615,7 @@ int main()
     testOverloadResolution(tests, root);
     testDiagnosticsAndContexts(tests, root);
     testLongLogicalChains(tests, root);
+    testDeepNestedValueExpression(tests, root);
     testQualifiedStaticTypeRoots(tests, root);
 
     std::filesystem::remove_all(root, error);

@@ -1732,6 +1732,32 @@ private:
         bool flowRuntimeCheckElided = false;
     };
 
+    struct ExpressionAnalysisRequest final
+    {
+        const ast::AstNode* syntax = nullptr;
+        bool allowMethodGroup = false;
+        bool allowEvent = false;
+        bool allowMove = false;
+        bool allowConstructorPropertyWrite = false;
+    };
+
+    struct ExpressionAnalysisCacheEntry final
+    {
+        ExpressionAnalysisRequest request;
+        ExpressionResult result;
+    };
+
+    struct ExpressionAnalysisFrame final
+    {
+        ExpressionAnalysisRequest request;
+        bool expanded = false;
+    };
+
+    struct IterativeExpressionAnalysis final
+    {
+        std::vector<ExpressionAnalysisCacheEntry> results;
+    };
+
     struct LoopContext final
     {
         std::size_t targetScopeOrdinal = 0;
@@ -2003,6 +2029,26 @@ private:
         bool allowEvent = false,
         bool allowMove = false,
         bool allowConstructorPropertyWrite = false);
+    ExpressionResult analyzeExpressionCore(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionIteratively(
+        const ExpressionAnalysisRequest& request,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool shouldAnalyzeExpressionIteratively(const ExpressionAnalysisRequest& request) const;
+    void appendIterativeExpressionChildren(
+        const ExpressionAnalysisRequest& request,
+        std::vector<ExpressionAnalysisRequest>& children) const;
+    const ExpressionResult* cachedExpressionResult(
+        const ExpressionAnalysisRequest& request) const noexcept;
     ExpressionResult analyzeIdentifier(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
@@ -2460,6 +2506,7 @@ private:
     // diagnosed. The move rule then distinguishes an already-moved path from a maybe-moved path
     // and emits one precise diagnostic; ordinary reads never enter this context.
     std::size_t partialMoveSourceDepth_ = 0;
+    IterativeExpressionAnalysis* iterativeExpressionAnalysis_ = nullptr;
     std::vector<OwnershipFlowSnapshot> throwFlowStates_;
     struct ActiveErrorHandlers final
     {
