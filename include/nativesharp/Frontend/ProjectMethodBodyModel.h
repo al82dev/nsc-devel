@@ -13,6 +13,7 @@
 #include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
 #include "nativesharp/Frontend/OwnershipFlowSnapshot.h"
 #include "nativesharp/Frontend/ProjectConstructionSite.h"
+#include "nativesharp/Frontend/ProjectOwnershipFlowStatistics.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Language/CallableSemantics.h"
@@ -1568,6 +1569,7 @@ public:
     bool namespaceFunctionBodyAnalyzed(std::size_t functionOrdinal) const noexcept;
     std::span<const language::EscapeClass> parameterEscapeSummary(
         std::size_t callableOrdinal) const noexcept;
+    const ProjectOwnershipFlowStatistics& ownershipFlowStatistics() const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -2502,6 +2504,7 @@ private:
     std::vector<std::vector<language::EscapeClass>> parameterEscapeSummaries_;
     std::size_t currentCallableLocalBase_ = 0;
     std::size_t currentCallableParameterCount_ = 0;
+    mutable ProjectOwnershipFlowStatistics ownershipFlowStatistics_;
     bool built_ = false;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };

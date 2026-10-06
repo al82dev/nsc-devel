@@ -729,6 +729,7 @@ bool ProjectMethodBodyModel::build(
     {
         return !diagnostics.hasErrors();
     }
+    ownershipFlowStatistics_ = {};
     if (!nameLookup.isBuilt() || !memberModel.isBuilt() || !inheritanceModel.isBuilt() ||
         !interfaceModel.isBuilt())
     {
@@ -3193,6 +3194,12 @@ std::span<const language::EscapeClass> ProjectMethodBodyModel::parameterEscapeSu
         : std::span<const language::EscapeClass>(empty);
 }
 
+const ProjectOwnershipFlowStatistics&
+ProjectMethodBodyModel::ownershipFlowStatistics() const noexcept
+{
+    return ownershipFlowStatistics_;
+}
+
 bool ProjectMethodBodyModel::isBuilt() const noexcept
 {
     return built_;
@@ -3241,6 +3248,7 @@ bool ProjectMethodBodyModel::scopeContains(
 
 OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
 {
+    ++ownershipFlowStatistics_.snapshotsCaptured;
     OwnershipFlowSnapshot state;
     state.reachable = ownershipFlowReachable_;
     state.localBaseOrdinal = currentCallableLocalBase_;
@@ -3249,6 +3257,7 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
         ? state.localCount - state.localBaseOrdinal
         : 0;
     state.localFlags.resize(localSlotCount);
+    ownershipFlowStatistics_.denseLocalSlotsCaptured += localSlotCount;
     for (std::size_t localIndex = 0; localIndex < localSlotCount; ++localIndex)
     {
         const std::size_t ordinal = state.localBaseOrdinal + localIndex;
@@ -3278,6 +3287,9 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
     state.maybePartiallyMovedPlaces = maybePartiallyMovedPlaces_;
 
     state.storageFacts.resize(state.parameterFlags.size() + state.localFlags.size());
+    ownershipFlowStatistics_.denseStorageSlotsCaptured += state.storageFacts.size();
+    ownershipFlowStatistics_.partialPlaceEntriesCopied +=
+        state.partiallyMovedPlaces.size() + state.maybePartiallyMovedPlaces.size();
     const auto captureStorage = [&](std::size_t storageKey)
     {
         const std::optional<std::size_t> storageIndex = snapshotStorageIndex(state, storageKey);
@@ -3304,6 +3316,7 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwnershipFlow() const
 
 void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& state)
 {
+    ++ownershipFlowStatistics_.snapshotsRestored;
     ownershipFlowReachable_ = state.reachable;
     movedRaiiLocals_.clear();
     maybeMovedRaiiLocals_.clear();
@@ -3416,6 +3429,7 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
     const OwnershipFlowSnapshot& left,
     const OwnershipFlowSnapshot& right) const
 {
+    ++ownershipFlowStatistics_.joinsComputed;
     if (!left.reachable)
     {
         return right;

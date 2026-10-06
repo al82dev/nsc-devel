@@ -614,6 +614,41 @@ void testQualifiedStaticTypeRoots(TestContext& tests, const std::filesystem::pat
             diagnosticCount(ambiguousCompilation, DiagnosticId::UnknownIdentifier) == 0,
         "an unqualified static receiver from two imported namespaces reports deterministic ambiguity");
 }
+
+void testDenseOwnershipSnapshots(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "DenseOwnershipSnapshots";
+    writeProject(directory, "DenseOwnershipSnapshots");
+    writeFile(
+        directory / "Main.ns",
+        "class Flow { int Run(bool condition) { int value = 0; "
+        "if (condition) { value = 1; } else { value = 2; } return value; } }\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "DenseOwnershipSnapshots.nsproj",
+        error);
+    tests.expect(ok && error.empty() && compilation.methodBodyModel() != nullptr,
+        "branch flow compiles with dense ownership snapshots");
+    if (compilation.methodBodyModel() == nullptr)
+    {
+        return;
+    }
+
+    const auto& statistics = compilation.methodBodyModel()->ownershipFlowStatistics();
+    tests.expect(statistics.snapshotsCaptured > 0 &&
+            statistics.snapshotsRestored > 0 &&
+            statistics.joinsComputed > 0 &&
+            statistics.denseLocalSlotsCaptured > 0,
+        "directed branch analysis exercises dense capture, restore and join paths "
+        "(capture=" + std::to_string(statistics.snapshotsCaptured) +
+        ", restore=" + std::to_string(statistics.snapshotsRestored) +
+        ", join=" + std::to_string(statistics.joinsComputed) +
+        ", local-slots=" + std::to_string(statistics.denseLocalSlotsCaptured) + ")");
+    tests.expect(statistics.legacyOrdinalHashEntriesCopied == 0,
+        "ownership snapshots copy no ordinal hash entries");
+}
 }
 
 int main()
@@ -632,6 +667,7 @@ int main()
     testLongLogicalChains(tests, root);
     testDeepNestedValueExpression(tests, root);
     testQualifiedStaticTypeRoots(tests, root);
+    testDenseOwnershipSnapshots(tests, root);
 
     std::filesystem::remove_all(root, error);
     return tests.result();
