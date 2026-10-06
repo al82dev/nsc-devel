@@ -11,6 +11,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectCallableBindingIndex.h"
 #include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
+#include "nativesharp/Frontend/OwnershipFlowSnapshot.h"
 #include "nativesharp/Frontend/ProjectConstructionSite.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/LanguageEdition.h"
@@ -1584,45 +1585,6 @@ private:
         SourceRange range;
     };
 
-    struct OwnershipFlowSnapshot final
-    {
-        struct IntegerRange final
-        {
-            std::optional<std::int64_t> minimum;
-            std::optional<std::int64_t> maximum;
-            bool excludesZero = false;
-        };
-
-        bool reachable = true;
-        std::unordered_set<std::size_t> movedRaiiLocals;
-        std::unordered_set<std::size_t> maybeMovedRaiiLocals;
-        std::unordered_set<std::size_t> movedOwnedParameters;
-        std::unordered_set<std::size_t> maybeMovedOwnedParameters;
-        std::unordered_set<std::size_t> invokedFnOnceLocals;
-        std::unordered_set<std::size_t> maybeInvokedFnOnceLocals;
-        // T06-F02 uses canonical strings (`L4/Header/Token`, `P1/Payload`) so snapshots and joins
-        // remain independent of AST pointer identity. Definite and maybe sets use the same
-        // three-state join as whole-value moves.
-        std::unordered_set<std::string> partiallyMovedPlaces;
-        std::unordered_set<std::string> maybePartiallyMovedPlaces;
-        std::unordered_set<std::size_t> invalidLocalBorrows;
-        std::unordered_set<std::size_t> maybeInvalidLocalBorrows;
-        // C7 "definite assignment". Unlike every other set here it is a MUST set, not a MAY set:
-        // joining two paths keeps only what both agree on. joinOwnershipFlow intersects it.
-        std::unordered_set<std::size_t> assignedLocals;
-        // T03-F06. A raw union storage key maps to the one field proven active on this path.
-        // Joins keep an entry only when both reachable paths name the same field.
-        std::unordered_map<std::size_t, std::size_t> activeUnionMembers;
-        // T03-F05. Named local/parameter storage uses the same stable key convention as raw
-        // unions: local N is 2*N and parameter N is 2*N+1.
-        std::unordered_set<std::size_t> nonNullStorages;
-        std::unordered_map<std::size_t, IntegerRange> integerRanges;
-        std::unordered_map<std::size_t, std::size_t> activeVariantCases;
-        // How many locals existed when this snapshot was taken. Local ordinals only ever grow, so
-        // this separates "not assigned" from "did not exist yet" -- see restoreOwnershipFlow.
-        std::size_t localCount = 0;
-    };
-
     struct ConditionFlowStates final
     {
         OwnershipFlowSnapshot whenTrue;
@@ -2470,7 +2432,7 @@ private:
     std::unordered_set<std::size_t> assignedLocals_;
     std::unordered_map<std::size_t, std::size_t> activeUnionMembers_;
     std::unordered_set<std::size_t> nonNullStorages_;
-    std::unordered_map<std::size_t, OwnershipFlowSnapshot::IntegerRange> integerRanges_;
+    std::unordered_map<std::size_t, OwnershipFlowIntegerRange> integerRanges_;
     std::unordered_map<std::size_t, std::size_t> activeVariantCases_;
     // State on each truth edge of a boolean expression. A collapsed post-expression snapshot is
     // insufficient for `if (a || Fill(out x)) return; use(x);`: the continuing false edge proves
@@ -2538,6 +2500,8 @@ private:
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
     std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;
     std::vector<std::vector<language::EscapeClass>> parameterEscapeSummaries_;
+    std::size_t currentCallableLocalBase_ = 0;
+    std::size_t currentCallableParameterCount_ = 0;
     bool built_ = false;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };
