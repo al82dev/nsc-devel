@@ -11,6 +11,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectCallableBindingIndex.h"
 #include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
+#include "nativesharp/Frontend/MethodEscapeOrigin.h"
 #include "nativesharp/Frontend/OwnershipFlowSnapshot.h"
 #include "nativesharp/Frontend/ProjectConstructionSite.h"
 #include "nativesharp/Frontend/ProjectOwnershipFlowStatistics.h"
@@ -62,26 +63,6 @@ struct MethodScope final
     std::optional<std::size_t> parentScopeOrdinal;
     std::size_t depth = 0;
     std::vector<std::size_t> localOrdinals;
-};
-
-enum class MethodEscapeOriginKind
-{
-    ExternalStorage,
-    CurrentReceiver,
-    CurrentFrameLocal,
-    CurrentFrameParameter,
-    VariableLengthArray
-};
-
-struct MethodEscapeOrigin final
-{
-    MethodEscapeOriginKind kind = MethodEscapeOriginKind::ExternalStorage;
-    std::optional<std::size_t> ordinal;
-    // Item 316. The broadest lexical scope in which the referenced storage is guaranteed live.
-    // Every alias declaration must be nested in this scope.
-    std::optional<std::size_t> maximumValidScopeOrdinal;
-    // T06-F04. `this`, `static`, a declared name, or a synthetic `$pN` produced by elision.
-    std::string lifetimeName;
 };
 
 struct MethodLocalSymbol final
