@@ -1193,14 +1193,11 @@ bool ProjectMethodBodyModel::build(
     }
 
     std::size_t workCursor = 0;
-    std::size_t callDemandCursor = 0;
-    std::size_t delegateDemandCursor = 0;
-    std::size_t optionalDemandCursor = 0;
-    std::size_t resultPropagationDemandCursor = 0;
     std::size_t waveOrdinal = 0;
     while (workCursor < callableWorklist.size())
     {
         const std::size_t waveEnd = callableWorklist.size();
+        std::vector<std::size_t> newlyDemanded;
         for (; workCursor < waveEnd; ++workCursor)
         {
             const ProjectCallableAnalysisContext context(
@@ -1209,70 +1206,17 @@ bool ProjectMethodBodyModel::build(
                 inheritanceModel, interfaceModel, genericModel,
                 genericConstraintModel, languageEdition);
             if (!callableCanBeAnalyzed(context)) continue;
+            ProjectCallableAnalysisResult result = analyzeCallableIsolated(context);
+            for (const std::size_t target : result.discoveredCallables())
+            {
+                if (isDeferredGenericMethod(target) &&
+                    demandedGenericMethods.insert(target).second)
+                    newlyDemanded.push_back(target);
+            }
             ProjectCallableResultMerger::merge(
-                *this, analyzeCallableIsolated(context), diagnostics);
+                *this, std::move(result), diagnostics);
         }
 
-        std::vector<std::size_t> newlyDemanded;
-        for (; callDemandCursor < calls_.size(); ++callDemandCursor)
-        {
-            const MethodCallBinding& call = calls_[callDemandCursor];
-            if (call.resolution != MethodCallResolutionKind::Resolved ||
-                !call.selectedMemberOrdinal.has_value() ||
-                !isDeferredGenericMethod(*call.selectedMemberOrdinal))
-            {
-                continue;
-            }
-            if (demandedGenericMethods.insert(*call.selectedMemberOrdinal).second)
-                newlyDemanded.push_back(*call.selectedMemberOrdinal);
-        }
-        for (; delegateDemandCursor < delegateBindings_.size(); ++delegateDemandCursor)
-        {
-            const MethodDelegateBinding& binding = delegateBindings_[delegateDemandCursor];
-            if (binding.kind != MethodDelegateOperationKind::Create ||
-                !binding.selectedMemberOrdinal.has_value() ||
-                !isDeferredGenericMethod(*binding.selectedMemberOrdinal))
-            {
-                continue;
-            }
-            if (demandedGenericMethods.insert(*binding.selectedMemberOrdinal).second)
-                newlyDemanded.push_back(*binding.selectedMemberOrdinal);
-        }
-        for (; optionalDemandCursor < optionalCarrierBindings_.size(); ++optionalDemandCursor)
-        {
-            const MethodOptionalCarrierBinding& binding =
-                optionalCarrierBindings_[optionalDemandCursor];
-            for (const std::size_t target :
-                 {binding.hasValueMemberOrdinal, binding.uncheckedValueMemberOrdinal})
-            {
-                if (isDeferredGenericMethod(target) &&
-                    demandedGenericMethods.insert(target).second)
-                {
-                    newlyDemanded.push_back(target);
-                }
-            }
-        }
-        for (; resultPropagationDemandCursor < resultPropagationBindings_.size();
-             ++resultPropagationDemandCursor)
-        {
-            const MethodResultPropagationBinding& binding =
-                resultPropagationBindings_[resultPropagationDemandCursor];
-            std::vector<std::size_t> targets{
-                binding.sourceSuccessTestMemberOrdinal,
-                binding.sourceSuccessExtractorMemberOrdinal,
-                binding.sourceErrorExtractorMemberOrdinal,
-                binding.returnErrorFactoryMemberOrdinal};
-            if (binding.errorConversionMemberOrdinal.has_value())
-                targets.push_back(*binding.errorConversionMemberOrdinal);
-            for (const std::size_t target : targets)
-            {
-                if (isDeferredGenericMethod(target) &&
-                    demandedGenericMethods.insert(target).second)
-                {
-                    newlyDemanded.push_back(target);
-                }
-            }
-        }
         std::ranges::sort(newlyDemanded);
         newlyDemanded.erase(std::unique(newlyDemanded.begin(), newlyDemanded.end()), newlyDemanded.end());
         callableWorklist.insert(
