@@ -152,6 +152,9 @@ void testPrimaryModel(TestContext& tests, const std::filesystem::path& root)
         tests.expect(model.expressionTypeBinding(latest.syntax, latest.methodMemberOrdinal) == &latest,
             "expression type lookup returns the newest exact callable binding"); // 16
     }
+    const auto& latestCall = model.calls().back();
+    tests.expect(model.callBinding(latestCall.syntax, latestCall.callerMethodMemberOrdinal) == &latestCall,
+        "call lookup returns the newest exact callable binding"); // 17
 }
 
 void testScopeRules(TestContext& tests, const std::filesystem::path& root)

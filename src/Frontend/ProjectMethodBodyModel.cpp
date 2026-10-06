@@ -664,6 +664,7 @@ bool ProjectMethodBodyModel::build(
     memberModel_ = &memberModel;
     namespaceFunctionModel_ = &namespaceFunctionModel;
     expressionTypeBindingIndex_.clear();
+    callBindingIndex_.clear();
     namespaceCallableBase_ = memberModel.members().size();
     namespaceCallableAdapters_.clear();
     namespaceCallableAdapters_.reserve(namespaceFunctionModel.functions().size());
@@ -1649,36 +1650,50 @@ bool ProjectMethodBodyModel::typeKeyCarriesLifetime(std::string_view typeKey) co
 }
 
 bool ProjectMethodBodyModel::expressionUsesExpandedParameterPack(
-    const ast::AstNode* expression) const noexcept
+    const ast::AstNode* expression,
+    std::size_t callableOrdinal) const
 {
     if (expression == nullptr) return false;
-
-    for (auto iterator = calls_.rbegin(); iterator != calls_.rend(); ++iterator)
+    std::vector<const ast::AstNode*> pending{expression};
+    for (std::size_t cursor = 0; cursor < pending.size(); ++cursor)
     {
-        if (iterator->syntax == expression &&
-            iterator->resolution == MethodCallResolutionKind::Resolved &&
-            iterator->selectedUsesExpandedParameterPack)
+        const ast::AstNode* current = pending[cursor];
+        const MethodCallBinding* methodCall = callBinding(current, callableOrdinal);
+        if (methodCall != nullptr &&
+            methodCall->resolution == MethodCallResolutionKind::Resolved &&
+            methodCall->selectedUsesExpandedParameterPack)
         {
             return true;
         }
-    }
-    if (const NamespaceFunctionCallBinding* call = namespaceFunctionCall(expression);
-        call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
-        call->selectedUsesExpandedParameterPack)
-    {
-        return true;
-    }
+        const NamespaceFunctionCallBinding* functionCall = namespaceFunctionCall(current);
+        if (functionCall != nullptr &&
+            functionCall->resolution == MethodCallResolutionKind::Resolved &&
+            functionCall->selectedUsesExpandedParameterPack)
+        {
+            return true;
+        }
 
-    const auto containsPack = [&](const ast::AstNode* child)
-    {
-        return expressionUsesExpandedParameterPack(child);
-    };
-    if (containsPack(expression->first()) || containsPack(expression->second()) ||
-        containsPack(expression->third()))
-    {
-        return true;
+        if (current->first() != nullptr)
+        {
+            pending.push_back(current->first());
+        }
+        if (current->second() != nullptr)
+        {
+            pending.push_back(current->second());
+        }
+        if (current->third() != nullptr)
+        {
+            pending.push_back(current->third());
+        }
+        for (const ast::AstNode* child : current->children())
+        {
+            if (child != nullptr)
+            {
+                pending.push_back(child);
+            }
+        }
     }
-    return std::ranges::any_of(expression->children(), containsPack);
+    return false;
 }
 
 // SHR-013 "vistas y tiempo de vida" -- EL ANALISIS DE ENRAIZAMIENTO.
@@ -1816,11 +1831,11 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
     };
     const auto resolvedCall = [&](const ast::AstNode* syntax) -> const MethodCallBinding*
     {
-        for (auto iterator = calls_.rbegin(); iterator != calls_.rend(); ++iterator)
-            if (iterator->syntax == syntax &&
-                iterator->resolution == MethodCallResolutionKind::Resolved &&
-                iterator->selectedMemberOrdinal.has_value()) return &*iterator;
-        return nullptr;
+        const MethodCallBinding* binding = callBinding(syntax, callableOrdinal);
+        return binding != nullptr &&
+            binding->resolution == MethodCallResolutionKind::Resolved &&
+            binding->selectedMemberOrdinal.has_value()
+            ? binding : nullptr;
     };
     if (expression->kind() == ast::AstNodeKind::ThisExpression ||
         expression->kind() == ast::AstNodeKind::BaseExpression)
@@ -3022,6 +3037,19 @@ std::span<const MethodCallBinding> ProjectMethodBodyModel::calls() const noexcep
     return calls_;
 }
 
+const MethodCallBinding* ProjectMethodBodyModel::callBinding(
+    const ast::AstNode* syntax,
+    std::size_t callableOrdinal) const noexcept
+{
+    const std::optional<std::size_t> bindingOrdinal =
+        callBindingIndex_.latest(syntax, callableOrdinal);
+    if (!bindingOrdinal.has_value() || *bindingOrdinal >= calls_.size())
+    {
+        return nullptr;
+    }
+    return &calls_[*bindingOrdinal];
+}
+
 std::span<const NamespaceFunctionCallBinding>
 ProjectMethodBodyModel::namespaceFunctionCalls() const noexcept
 {
@@ -3462,16 +3490,12 @@ std::optional<std::string> ProjectMethodBodyModel::storagePlaceKey(
     if (expression->kind() == ast::AstNodeKind::CallExpression ||
         expression->kind() == ast::AstNodeKind::IndexExpression)
     {
-        const MethodCallBinding* binding = nullptr;
-        for (auto iterator = calls_.rbegin(); iterator != calls_.rend(); ++iterator)
+        const MethodCallBinding* binding = callBinding(expression, callableOrdinal);
+        if (binding != nullptr &&
+            (binding->resolution != MethodCallResolutionKind::Resolved ||
+             !binding->selectedMemberOrdinal.has_value()))
         {
-            if (iterator->syntax == expression &&
-                iterator->resolution == MethodCallResolutionKind::Resolved &&
-                iterator->selectedMemberOrdinal.has_value())
-            {
-                binding = &*iterator;
-                break;
-            }
+            binding = nullptr;
         }
         if (binding != nullptr && memberModel_ != nullptr &&
             *binding->selectedMemberOrdinal < memberModel_->members().size())
@@ -6543,7 +6567,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         const std::optional<std::string> root =
             viewRootLocalOfExpression(variable->first(), scopeOrdinal);
         if (root.has_value()) local.viewRootLocalName = *root;
-        else if (expressionUsesExpandedParameterPack(variable->first()))
+        else if (expressionUsesExpandedParameterPack(variable->first(), methodMemberOrdinal))
         {
             // The backing array is an alloca in this method. Naming the view local as its own
             // root reuses the ordinary SHR-013 return check and gives the user a useful name.
@@ -7479,16 +7503,12 @@ void ProjectMethodBodyModel::analyzeReturn(
         }
         if (callee == nullptr)
         {
-            for (auto iterator = calls_.rbegin(); iterator != calls_.rend(); ++iterator)
+            const MethodCallBinding* call = callBinding(statement->first(), methodMemberOrdinal);
+            if (call != nullptr &&
+                call->resolution == MethodCallResolutionKind::Resolved &&
+                call->selectedMemberOrdinal.has_value())
             {
-                if (iterator->syntax != statement->first() ||
-                    iterator->resolution != MethodCallResolutionKind::Resolved ||
-                    !iterator->selectedMemberOrdinal.has_value())
-                {
-                    continue;
-                }
-                callee = methodSymbol(*iterator->selectedMemberOrdinal);
-                break;
+                callee = methodSymbol(*call->selectedMemberOrdinal);
             }
         }
         if (callee == nullptr)
@@ -7607,7 +7627,7 @@ void ProjectMethodBodyModel::analyzeReturn(
                     "view from a parameter, a field, or return a copy that owns its storage");
             return;
         }
-        if (expressionUsesExpandedParameterPack(statement->first()))
+        if (expressionUsesExpandedParameterPack(statement->first(), methodMemberOrdinal))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidReturn,
@@ -15625,7 +15645,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (!callee.methodGroup)
     {
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
-        calls_.push_back(std::move(call));
+        recordCallBinding(std::move(call));
         if (callee.valid)
         {
             diagnostics.report(
@@ -15640,7 +15660,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (!allArgumentsValid)
     {
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
-        calls_.push_back(std::move(call));
+        recordCallBinding(std::move(call));
         return result;
     }
 
@@ -15933,7 +15953,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             "no overload of '" + call.methodName + "' accepts " +
                 std::to_string(arguments.size()) + " argument(s)");
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
-        calls_.push_back(std::move(call));
+        recordCallBinding(std::move(call));
         return result;
     }
 
@@ -15960,7 +15980,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     rejected, expression->range(), diagnostics);
             }
             call.resolution = MethodCallResolutionKind::NoViableCandidate;
-            calls_.push_back(std::move(call));
+            recordCallBinding(std::move(call));
             return result;
         }
         for (const MethodCallCandidate& candidate : call.evaluatedCandidates)
@@ -15975,7 +15995,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     argument != nullptr ? argument->range() : expression->range(),
                     "move-only argument cannot be copied into a by-value parameter; use move(argument)");
                 call.resolution = MethodCallResolutionKind::NoViableCandidate;
-                calls_.push_back(std::move(call));
+                recordCallBinding(std::move(call));
                 return result;
             }
             if (!candidate.invalidVariadicArgumentOrdinal.has_value()) continue;
@@ -15988,7 +16008,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 "C variadic arguments must be by-value ABI scalars, raw pointers, enums, "
                 "or extern C delegates");
             call.resolution = MethodCallResolutionKind::NoViableCandidate;
-            calls_.push_back(std::move(call));
+            recordCallBinding(std::move(call));
             return result;
         }
         bool reportedOwnershipDiagnostic = false;
@@ -16147,7 +16167,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 "no viable overload of '" + call.methodName + "' accepts the argument types");
         }
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
-        calls_.push_back(std::move(call));
+        recordCallBinding(std::move(call));
         return result;
     }
 
@@ -16181,7 +16201,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             expression->range(),
             "ambiguous instance method call to '" + call.methodName + "'");
         call.resolution = MethodCallResolutionKind::Ambiguous;
-        calls_.push_back(std::move(call));
+        recordCallBinding(std::move(call));
         return result;
     }
 
@@ -16219,7 +16239,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                             "' on a foreach source while a lending iteration is active; "
                             "the operation could invalidate yielded references");
                     call.resolution = MethodCallResolutionKind::NoViableCandidate;
-                    calls_.push_back(std::move(call));
+                    recordCallBinding(std::move(call));
                     return result;
                 }
             }
@@ -16234,7 +16254,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 "call to unsafe function '" + selectedMember.name +
                     "' requires an explicit unsafe { ... } block");
             call.resolution = MethodCallResolutionKind::NoViableCandidate;
-            calls_.push_back(std::move(call));
+            recordCallBinding(std::move(call));
             return result;
         }
         const std::string_view variantMarker = selectedMember.syntax != nullptr
@@ -16287,7 +16307,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 expression->range(),
                 "variant payload extraction is available only inside a matching case arm");
             call.resolution = MethodCallResolutionKind::NoViableCandidate;
-            calls_.push_back(std::move(call));
+            recordCallBinding(std::move(call));
             return result;
         }
         if (callee.readonlyReceiver && selectedMember.declaringTypeIsStruct &&
@@ -16302,7 +16322,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 "readonly receiver cannot invoke mutating struct member '" +
                     selectedMember.name + "'");
             call.resolution = MethodCallResolutionKind::NoViableCandidate;
-            calls_.push_back(std::move(call));
+            recordCallBinding(std::move(call));
             return result;
         }
     }
@@ -18161,7 +18181,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             result.valid = false;
         }
     }
-    calls_.push_back(std::move(call));
+    recordCallBinding(std::move(call));
     return result;
 }
 
@@ -18258,7 +18278,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
                     std::to_string(arguments.size()) + " argument(s)");
         }
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
-        calls_.push_back(std::move(call));
+        recordCallBinding(std::move(call));
         return result;
     }
 
@@ -18314,7 +18334,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
             }
         }
         call.resolution = MethodCallResolutionKind::NoViableCandidate;
-        calls_.push_back(std::move(call));
+        recordCallBinding(std::move(call));
         return result;
     }
 
@@ -18344,7 +18364,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
                 "ambiguous Stage 38 call to '" + call.methodName + "'");
         }
         call.resolution = MethodCallResolutionKind::Ambiguous;
-        calls_.push_back(std::move(call));
+        recordCallBinding(std::move(call));
         return result;
     }
 
@@ -18362,7 +18382,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
                 "call to unsafe function '" + selectedMember.name +
                     "' requires an explicit unsafe { ... } block");
             call.resolution = MethodCallResolutionKind::NoViableCandidate;
-            calls_.push_back(std::move(call));
+            recordCallBinding(std::move(call));
             return result;
         }
         if (readonlyReceiver && selectedMember.declaringTypeIsStruct &&
@@ -18378,7 +18398,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
                         selectedMember.name + "'");
             }
             call.resolution = MethodCallResolutionKind::NoViableCandidate;
-            calls_.push_back(std::move(call));
+            recordCallBinding(std::move(call));
             return result;
         }
     }
@@ -18420,7 +18440,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
     }
     result.typeKey = call.resultTypeKey;
     result.valid = !isErrorType(result.typeKey);
-    calls_.push_back(std::move(call));
+    recordCallBinding(std::move(call));
     return result;
 }
 
@@ -20227,28 +20247,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // had already been rejected -- `move(...)` is only accepted when the caller passes
     // allowMove, and no property/indexer target ever set it.
     //
-    // The binding is recorded by the `left` analysis above, so it is already in calls_ here. It
-    // is remembered as an INDEX rather than a pointer on purpose: analyzing the RHS can append
-    // to calls_ (any call in the RHS expression does), and a vector reallocation would dangle a
-    // pointer taken now. Entries are only ever appended, so the index stays valid.
+    // The binding is recorded by the `left` analysis above, so the callable-aware index can find
+    // it directly. It is remembered as an INDEX rather than a pointer: analyzing the RHS can
+    // append to calls_ and invalidate a pointer, while an existing ordinal remains stable.
     std::optional<std::size_t> getterBindingIndex;
-    for (std::size_t callIndex = calls_.size(); callIndex-- > 0;)
+    const MethodCallBinding* getterCandidate = callBinding(expression->first(), methodMemberOrdinal);
+    if (getterCandidate != nullptr &&
+        getterCandidate->resolution == MethodCallResolutionKind::Resolved &&
+        getterCandidate->selectedMemberOrdinal.has_value())
     {
-        const MethodCallBinding& candidate = calls_[callIndex];
-        if (candidate.syntax != expression->first() ||
-            candidate.resolution != MethodCallResolutionKind::Resolved ||
-            !candidate.selectedMemberOrdinal.has_value())
-        {
-            continue;
-        }
-        const std::size_t selected = *candidate.selectedMemberOrdinal;
+        const std::size_t selected = *getterCandidate->selectedMemberOrdinal;
         if (memberModel_ != nullptr && selected < memberModel_->members().size())
         {
             const ClassMemberSymbol& member = memberModel_->members()[selected];
             if ((member.isPropertyAccessor || member.isIndexerAccessor) && member.isGetter)
             {
-                getterBindingIndex = callIndex;
-                break;
+                getterBindingIndex = static_cast<std::size_t>(getterCandidate - calls_.data());
             }
         }
     }
@@ -24058,6 +24072,15 @@ void ProjectMethodBodyModel::recordExpressionType(
     const std::size_t bindingOrdinal = expressionTypes_.size();
     expressionTypes_.push_back(std::move(binding));
     expressionTypeBindingIndex_.record(methodMemberOrdinal, expression, bindingOrdinal);
+}
+
+void ProjectMethodBodyModel::recordCallBinding(MethodCallBinding binding)
+{
+    const std::size_t bindingOrdinal = calls_.size();
+    const ast::AstNode* syntax = binding.syntax;
+    const std::size_t callableOrdinal = binding.callerMethodMemberOrdinal;
+    calls_.push_back(std::move(binding));
+    callBindingIndex_.record(callableOrdinal, syntax, bindingOrdinal);
 }
 
 void ProjectMethodBodyModel::reportPrevious(

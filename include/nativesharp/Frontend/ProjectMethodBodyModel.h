@@ -1588,6 +1588,9 @@ public:
     std::span<const MethodResultPropagationBinding> resultPropagationBindings() const noexcept;
     std::span<const MethodRangeSliceBinding> rangeSliceBindings() const noexcept;
     std::span<const MethodCallBinding> calls() const noexcept;
+    const MethodCallBinding* callBinding(
+        const ast::AstNode* syntax,
+        std::size_t callableOrdinal) const noexcept;
     std::span<const NamespaceFunctionCallBinding> namespaceFunctionCalls() const noexcept;
     const NamespaceFunctionCallBinding* namespaceFunctionCall(
         const ast::AstNode* syntax) const noexcept;
@@ -2329,7 +2332,9 @@ private:
     // T01-F02. An expanded params ReadOnlySpan<T> owns no heap storage: its elements live in an
     // entry-block stack slot in the caller. A view returned by the callee must therefore retain
     // that frame-bound origin instead of looking like an unrooted borrowed-returning call.
-    bool expressionUsesExpandedParameterPack(const ast::AstNode* expression) const noexcept;
+    bool expressionUsesExpandedParameterPack(
+        const ast::AstNode* expression,
+        std::size_t callableOrdinal) const;
     std::optional<std::size_t> variableArrayRootLocalOfExpression(
         const ast::AstNode* expression,
         std::size_t scopeOrdinal) const;
@@ -2407,6 +2412,7 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         const ExpressionResult& result);
+    void recordCallBinding(MethodCallBinding binding);
     bool deferCaptureAllowsLocal(
         std::string_view name, std::size_t localScopeOrdinal) const noexcept;
     bool deferCaptureAllowsParameter(std::string_view name) const noexcept;
@@ -2547,6 +2553,7 @@ private:
     std::vector<MethodResultPropagationBinding> resultPropagationBindings_;
     std::vector<MethodRangeSliceBinding> rangeSliceBindings_;
     std::vector<MethodCallBinding> calls_;
+    ProjectCallableBindingIndex callBindingIndex_;
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
     std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;
     std::vector<std::vector<language::EscapeClass>> parameterEscapeSummaries_;
