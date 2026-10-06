@@ -649,6 +649,96 @@ void testDenseOwnershipSnapshots(TestContext& tests, const std::filesystem::path
     tests.expect(statistics.legacyOrdinalHashEntriesCopied == 0,
         "ownership snapshots copy no ordinal hash entries");
 }
+
+std::string dumpMethodBodies(const ProjectCompilation& compilation)
+{
+    if (compilation.methodBodyModel() == nullptr ||
+        compilation.memberModel() == nullptr ||
+        compilation.nameLookup() == nullptr)
+    {
+        return {};
+    }
+    std::ostringstream output;
+    nativesharp::frontend::ProjectMethodBodyModelDumper{}.dump(
+        *compilation.methodBodyModel(),
+        *compilation.memberModel(),
+        *compilation.nameLookup(),
+        output);
+    return output.str();
+}
+
+bool diagnosticsEqual(
+    const ProjectCompilation& left,
+    const ProjectCompilation& right)
+{
+    const auto& leftItems = left.diagnostics().diagnostics();
+    const auto& rightItems = right.diagnostics().diagnostics();
+    if (leftItems.size() != rightItems.size()) return false;
+    for (std::size_t index = 0; index < leftItems.size(); ++index)
+    {
+        if (leftItems[index].id() != rightItems[index].id() ||
+            leftItems[index].severity() != rightItems[index].severity() ||
+            leftItems[index].location() != rightItems[index].location() ||
+            leftItems[index].message() != rightItems[index].message())
+            return false;
+    }
+    return true;
+}
+
+void testDeterministicCallableWaves(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "DeterministicCallableWaves";
+    writeProject(directory, "DeterministicCallableWaves");
+    std::string source = "class Wave { public static int Identity<T>(T value) { return 1; } ";
+    for (std::size_t index = 0; index < 24; ++index)
+    {
+        source += "public static int M" + std::to_string(index) +
+            "() { return Identity<int>(" + std::to_string(index) + "); } ";
+    }
+    source += "public static int Run() { int total = 0; ";
+    for (std::size_t index = 0; index < 24; ++index)
+        source += "total = total + M" + std::to_string(index) + "(); ";
+    source += "return total; } }\n";
+    writeFile(directory / "Main.ns", source);
+
+    ProjectCompilation serial;
+    ProjectCompilation dual;
+    ProjectCompilation wide;
+    serial.setCompilationJobs(1);
+    dual.setCompilationJobs(2);
+    wide.setCompilationJobs(12);
+    std::string serialError;
+    std::string dualError;
+    std::string wideError;
+    const std::filesystem::path project = directory / "DeterministicCallableWaves.nsproj";
+    const bool serialOk = serial.compileProjectMethodBodies(project, serialError);
+    const bool dualOk = dual.compileProjectMethodBodies(project, dualError);
+    const bool wideOk = wide.compileProjectMethodBodies(project, wideError);
+
+    tests.expect(serialOk && dualOk && wideOk,
+        "j1, j2 and j12 complete the same callable-wave fixture");
+    tests.expect(serialError == dualError && dualError == wideError,
+        "j1, j2 and j12 preserve the execution error contract");
+    tests.expect(diagnosticsEqual(serial, dual) && diagnosticsEqual(dual, wide),
+        "j1, j2 and j12 preserve exact diagnostics");
+    tests.expect(dumpMethodBodies(serial) == dumpMethodBodies(dual) &&
+            dumpMethodBodies(dual) == dumpMethodBodies(wide),
+        "j1, j2 and j12 preserve the exact method-body dump");
+    if (serial.methodBodyModel() == nullptr || dual.methodBodyModel() == nullptr ||
+        wide.methodBodyModel() == nullptr)
+        return;
+    const auto& serialStats = serial.methodBodyModel()->callableAnalysisStatistics();
+    const auto& dualStats = dual.methodBodyModel()->callableAnalysisStatistics();
+    const auto& wideStats = wide.methodBodyModel()->callableAnalysisStatistics();
+    tests.expect(serialStats.wavesReduced >= 2 &&
+            serialStats.resultsMerged == serialStats.shardsCreated,
+        "generic discovery creates complete deterministic waves");
+    tests.expect(serialStats.callablesAnalyzed == dualStats.callablesAnalyzed &&
+            dualStats.callablesAnalyzed == wideStats.callablesAnalyzed &&
+            serialStats.resultsMerged == dualStats.resultsMerged &&
+            dualStats.resultsMerged == wideStats.resultsMerged,
+        "parallel job counts preserve analyzed and merged callable cardinality");
+}
 }
 
 int main()
@@ -668,6 +758,7 @@ int main()
     testDeepNestedValueExpression(tests, root);
     testQualifiedStaticTypeRoots(tests, root);
     testDenseOwnershipSnapshots(tests, root);
+    testDeterministicCallableWaves(tests, root);
 
     std::filesystem::remove_all(root, error);
     return tests.result();
