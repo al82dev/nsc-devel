@@ -337,6 +337,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectConversionClassifier.cpp
     src/Frontend/ProjectCallableBindingIndex.cpp
     src/Frontend/ProjectCallableAnalysisContext.cpp
+    src/Frontend/ProjectCallableAnalysisResult.cpp
     src/Frontend/ProjectMethodBodyModel.cpp
     src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
@@ -3864,6 +3865,17 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_project_method_body_model_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_project_method_body_model_tests)
     add_test(NAME nsc.project-method-body-model COMMAND nsc_project_method_body_model_tests)
+
+    add_executable(
+        nsc_project_callable_analysis_result_tests
+        tests/unit/ProjectCallableAnalysisResultTests.cpp)
+    target_link_libraries(nsc_project_callable_analysis_result_tests PRIVATE
+        nsc_frontend nsc_compilation)
+    target_compile_features(nsc_project_callable_analysis_result_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_project_callable_analysis_result_tests)
+    add_test(
+        NAME nsc.project-callable-analysis-result
+        COMMAND nsc_project_callable_analysis_result_tests)
 
     add_executable(
         nsc_project_callable_binding_index_tests
