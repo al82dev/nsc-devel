@@ -941,6 +941,7 @@ bool ProjectMethodBodyModel::build(
         adapter.inliningPolicy = function.inliningPolicy;
         namespaceCallableAdapters_.push_back(std::move(adapter));
     }
+    namespaceCallableAdaptersView_ = namespaceCallableAdapters_;
     inheritanceModel_ = &inheritanceModel;
     interfaceModel_ = &interfaceModel;
 
@@ -951,7 +952,7 @@ bool ProjectMethodBodyModel::build(
     {
         const std::optional<std::size_t> exceptionRoot = exceptionRootTypeOrdinal();
         const std::size_t callableCount =
-            memberModel.members().size() + namespaceCallableAdapters_.size();
+        memberModel.members().size() + namespaceCallableAdapters().size();
         for (std::size_t ordinal = 0; ordinal < callableCount; ++ordinal)
         {
             const ClassMemberSymbol* callable = methodSymbol(ordinal);
@@ -1000,7 +1001,7 @@ bool ProjectMethodBodyModel::build(
 
     parameterEscapeSummaries_.clear();
     parameterEscapeSummaries_.resize(
-        memberModel.members().size() + namespaceCallableAdapters_.size());
+        memberModel.members().size() + namespaceCallableAdapters().size());
     for (std::size_t callableOrdinal = 0;
          callableOrdinal < parameterEscapeSummaries_.size(); ++callableOrdinal)
     {
@@ -1118,9 +1119,9 @@ bool ProjectMethodBodyModel::build(
     }
 
     for (std::size_t functionOrdinal = 0;
-         functionOrdinal < namespaceCallableAdapters_.size(); ++functionOrdinal)
+         functionOrdinal < namespaceCallableAdapters().size(); ++functionOrdinal)
     {
-        const ClassMemberSymbol& callable = namespaceCallableAdapters_[functionOrdinal];
+        const ClassMemberSymbol& callable = namespaceCallableAdapters()[functionOrdinal];
         if (callable.syntax != nullptr && callable.syntax->first() != nullptr)
             callableWorklist.push_back(namespaceCallableBase_ + functionOrdinal);
     }
@@ -13117,7 +13118,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
 
     const bool namespaceCallable =
         methodMemberOrdinal >= namespaceCallableBase_ &&
-        methodMemberOrdinal - namespaceCallableBase_ < namespaceCallableAdapters_.size();
+        methodMemberOrdinal - namespaceCallableBase_ < namespaceCallableAdapters().size();
     if (namespaceCallable && namespaceFunctionModel_ != nullptr)
     {
         if (const NamespaceStateReferenceBinding* stateReference =
@@ -13865,8 +13866,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         std::vector<std::size_t> methods;
         for (const std::size_t functionOrdinal : extension->candidateFunctionOrdinals)
         {
-            if (functionOrdinal >= namespaceCallableAdapters_.size()) continue;
-            const ClassMemberSymbol& candidate = namespaceCallableAdapters_[functionOrdinal];
+            if (functionOrdinal >= namespaceCallableAdapters().size()) continue;
+            const ClassMemberSymbol& candidate = namespaceCallableAdapters()[functionOrdinal];
             if (candidate.parameters.empty()) continue;
             const MethodParameterSymbol& receiverParameter = candidate.parameters.front();
             const std::string& receiverTarget =
@@ -14436,7 +14437,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.methodCandidates.reserve(reference.candidateFunctionOrdinals.size());
     for (const std::size_t functionOrdinal : reference.candidateFunctionOrdinals)
     {
-        if (functionOrdinal < namespaceCallableAdapters_.size())
+        if (functionOrdinal < namespaceCallableAdapters().size())
             result.methodCandidates.push_back(namespaceCallableBase_ + functionOrdinal);
     }
     recordNameBinding(MethodNameBinding{
@@ -14519,8 +14520,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             std::vector<std::string> targets;
             for (const std::size_t functionOrdinal : reference.candidateFunctionOrdinals)
             {
-                if (functionOrdinal >= namespaceCallableAdapters_.size()) continue;
-                const ClassMemberSymbol& candidate = namespaceCallableAdapters_[functionOrdinal];
+            if (functionOrdinal >= namespaceCallableAdapters().size()) continue;
+            const ClassMemberSymbol& candidate = namespaceCallableAdapters()[functionOrdinal];
                 const NamedArgumentMap mapping =
                     mapArgumentsToParameters(argumentSyntaxes, candidate);
                 const std::size_t mappedArgumentOrdinal =
@@ -14568,8 +14569,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     bool matchingArity = false;
     for (const std::size_t functionOrdinal : reference.candidateFunctionOrdinals)
     {
-        if (functionOrdinal >= namespaceCallableAdapters_.size()) continue;
-        const ClassMemberSymbol& candidate = namespaceCallableAdapters_[functionOrdinal];
+            if (functionOrdinal >= namespaceCallableAdapters().size()) continue;
+            const ClassMemberSymbol& candidate = namespaceCallableAdapters()[functionOrdinal];
         MethodCallCandidate evaluated;
         evaluated.memberOrdinal = functionOrdinal;
         evaluated.isVariadicCandidate = candidate.isVariadic;
@@ -14792,7 +14793,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
 
     const MethodCallCandidate& selected = call.evaluatedCandidates[nonDominated.front()];
     const std::size_t functionOrdinal = selected.memberOrdinal;
-    const ClassMemberSymbol& callable = namespaceCallableAdapters_[functionOrdinal];
+            const ClassMemberSymbol& callable = namespaceCallableAdapters()[functionOrdinal];
     if (namespaceFunctionModel_ != nullptr &&
         functionOrdinal < namespaceFunctionModel_->functions().size())
     {
@@ -24051,8 +24052,14 @@ const ClassMemberSymbol* ProjectMethodBodyModel::methodSymbol(
         return &memberModel_->members()[methodMemberOrdinal];
     if (methodMemberOrdinal < namespaceCallableBase_) return nullptr;
     const std::size_t functionOrdinal = methodMemberOrdinal - namespaceCallableBase_;
-    return functionOrdinal < namespaceCallableAdapters_.size()
-        ? &namespaceCallableAdapters_[functionOrdinal] : nullptr;
+    return functionOrdinal < namespaceCallableAdapters().size()
+        ? &namespaceCallableAdapters()[functionOrdinal] : nullptr;
+}
+
+std::span<const ClassMemberSymbol>
+ProjectMethodBodyModel::namespaceCallableAdapters() const noexcept
+{
+    return namespaceCallableAdaptersView_;
 }
 
 bool ProjectMethodBodyModel::callableBelongsToGenericTypeSpecialization(

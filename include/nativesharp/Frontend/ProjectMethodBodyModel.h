@@ -2323,6 +2323,7 @@ private:
         std::string_view sourceTypeKey,
         std::string_view targetTypeKey) const noexcept;
     const ClassMemberSymbol* methodSymbol(std::size_t methodMemberOrdinal) const noexcept;
+    std::span<const ClassMemberSymbol> namespaceCallableAdapters() const noexcept;
     bool callableBelongsToGenericTypeSpecialization(
         std::size_t methodMemberOrdinal) const noexcept;
     bool betterCandidate(
@@ -2374,6 +2375,7 @@ private:
     const ProjectNamespaceFunctionModel* namespaceFunctionModel_ = nullptr;
     std::size_t namespaceCallableBase_ = 0;
     std::vector<ClassMemberSymbol> namespaceCallableAdapters_;
+    std::span<const ClassMemberSymbol> namespaceCallableAdaptersView_;
     const ProjectInheritanceModel* inheritanceModel_ = nullptr;
     const ProjectInterfaceModel* interfaceModel_ = nullptr;
     const ProjectGenericModel* genericModel_ = nullptr;
