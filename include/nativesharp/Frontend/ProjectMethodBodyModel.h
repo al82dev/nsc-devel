@@ -1924,15 +1924,18 @@ private:
     // `declaringTypeOrdinal` se pasa solo mientras se expande el inicializador de un campo `const`.
     std::optional<ProjectIntegerValue> foldIntegerConstant(
         const ast::AstNode* expression,
-        std::optional<std::size_t> declaringTypeOrdinal) const;
+        std::optional<std::size_t> declaringTypeOrdinal,
+        std::size_t callableOrdinal) const;
 
     // Adaptador que le da al evaluador compartido la resolucion de miembros y de tipos de ESTE
     // modelo, sin que el evaluador tenga que conocer el modelo entero.
     class ConstantMemberResolver final : public ProjectConstantMemberResolver
     {
     public:
-        explicit ConstantMemberResolver(const ProjectMethodBodyModel& model) noexcept
-            : model_(model)
+        ConstantMemberResolver(
+            const ProjectMethodBodyModel& model,
+            std::size_t callableOrdinal) noexcept
+            : model_(model), callableOrdinal_(callableOrdinal)
         {
         }
 
@@ -1951,11 +1954,12 @@ private:
 
     private:
         const ProjectMethodBodyModel& model_;
+        std::size_t callableOrdinal_ = 0;
     };
 
-    // Reverse linear scan of nameBindings_. Only ever called while folding a case label, whose
-    // bindings were recorded moments earlier, so the scan stops almost immediately.
-    const MethodNameBinding* recordedNameBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodNameBinding* recordedNameBinding(
+        const ast::AstNode* syntax,
+        std::size_t callableOrdinal) const noexcept;
     // The const or enum-constant field of `typeOrdinal` named `name`, if there is one.
     std::optional<std::size_t> constantMemberOfType(
         std::size_t typeOrdinal, std::string_view name) const noexcept;

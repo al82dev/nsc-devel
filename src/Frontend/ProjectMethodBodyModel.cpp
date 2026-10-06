@@ -1849,16 +1849,16 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
         const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
         if (!name.has_value())
         {
-            for (auto iterator = nameBindings_.rbegin(); iterator != nameBindings_.rend(); ++iterator)
+            const MethodNameBinding* binding = nameBinding(expression, callableOrdinal);
+            if (binding != nullptr && binding->kind == MethodNameBindingKind::ImplicitField)
             {
-                if (iterator->syntax != expression) continue;
-                if (iterator->kind == MethodNameBindingKind::ImplicitField)
-                    return {MethodEscapeOriginKind::CurrentReceiver,
-                        std::nullopt, std::nullopt, "this"};
-                if (iterator->kind == MethodNameBindingKind::StaticField)
-                    return {MethodEscapeOriginKind::ExternalStorage,
-                        std::nullopt, std::nullopt, "static"};
-                break;
+                return {MethodEscapeOriginKind::CurrentReceiver,
+                    std::nullopt, std::nullopt, "this"};
+            }
+            if (binding != nullptr && binding->kind == MethodNameBindingKind::StaticField)
+            {
+                return {MethodEscapeOriginKind::ExternalStorage,
+                    std::nullopt, std::nullopt, "static"};
             }
             return {};
         }
@@ -6553,7 +6553,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         ProjectIntegerEvaluator::isIntegerType(typeKey))
     {
         const std::optional<ProjectIntegerValue> folded =
-            foldIntegerConstant(variable->first(), std::nullopt);
+            foldIntegerConstant(variable->first(), std::nullopt, methodMemberOrdinal);
         if (folded.has_value())
         {
             local.constantIntegerValue =
@@ -7861,14 +7861,10 @@ void ProjectMethodBodyModel::analyzeReturn(
 }
 
 const MethodNameBinding* ProjectMethodBodyModel::recordedNameBinding(
-    const ast::AstNode* syntax) const noexcept
+    const ast::AstNode* syntax,
+    std::size_t callableOrdinal) const noexcept
 {
-    if (syntax == nullptr) return nullptr;
-    for (std::size_t index = nameBindings_.size(); index > 0; --index)
-    {
-        if (nameBindings_[index - 1].syntax == syntax) return &nameBindings_[index - 1];
-    }
-    return nullptr;
+    return nameBinding(syntax, callableOrdinal);
 }
 
 // The constant folder for `case` labels.
@@ -7912,9 +7908,10 @@ std::optional<std::size_t> ProjectMethodBodyModel::constantMemberOfType(
 // normalizar al tipo gobernante antes de comparar.
 std::optional<ProjectIntegerValue> ProjectMethodBodyModel::foldIntegerConstant(
     const ast::AstNode* expression,
-    std::optional<std::size_t> declaringTypeOrdinal) const
+    std::optional<std::size_t> declaringTypeOrdinal,
+    std::size_t callableOrdinal) const
 {
-    const ConstantMemberResolver resolver(*this);
+    const ConstantMemberResolver resolver(*this, callableOrdinal);
     return ProjectIntegerEvaluator(&resolver).evaluate(expression, declaringTypeOrdinal);
 }
 
@@ -7927,7 +7924,7 @@ std::optional<std::size_t> ProjectMethodBodyModel::ConstantMemberResolver::resol
     // resolvio analyzeExpression, asi que esto lee el binding que dejo en vez de hacer lookup una
     // segunda vez y arriesgar una respuesta distinta.
     if (syntax == nullptr) return std::nullopt;
-    const MethodNameBinding* binding = model_.recordedNameBinding(syntax);
+    const MethodNameBinding* binding = model_.recordedNameBinding(syntax, callableOrdinal_);
     if (binding != nullptr && binding->candidateMemberOrdinals.size() == 1)
     {
         return binding->candidateMemberOrdinals.front();
@@ -8095,7 +8092,7 @@ void ProjectMethodBodyModel::analyzeSwitch(
             }
 
             const std::optional<ProjectIntegerValue> folded =
-                foldIntegerConstant(label->first(), std::nullopt);
+                foldIntegerConstant(label->first(), std::nullopt, methodMemberOrdinal);
             if (!folded.has_value())
             {
                 diagnostics.report(
@@ -12444,7 +12441,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         // contador de un `stackalloc` esta en el cuerpo de un metodo. Es lo
                         // mismo que pasa el plegado de las etiquetas de `switch`.
                         const std::optional<ProjectIntegerValue> foldedCount =
-                            foldIntegerConstant(expression->first(), std::nullopt);
+                            foldIntegerConstant(expression->first(), std::nullopt, methodMemberOrdinal);
                         if (foldedCount.has_value() &&
                             ProjectIntegerEvaluator::isSignedInteger(foldedCount->typeKey) &&
                             foldedCount->asSigned() < 0)
@@ -17540,9 +17537,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         ? expression->children()[parameterOffset + 3U]
                         : nullptr;
                     const std::optional<ProjectIntegerValue> foldedSuccess =
-                        foldIntegerConstant(successSyntax, selectedMember.declaringTypeOrdinal);
+                        foldIntegerConstant(
+                            successSyntax, selectedMember.declaringTypeOrdinal, methodMemberOrdinal);
                     const std::optional<ProjectIntegerValue> foldedFailure =
-                        foldIntegerConstant(failureSyntax, selectedMember.declaringTypeOrdinal);
+                        foldIntegerConstant(
+                            failureSyntax, selectedMember.declaringTypeOrdinal, methodMemberOrdinal);
                     if (!foldedSuccess.has_value() || !foldedFailure.has_value())
                     {
                         diagnostics.report(
@@ -17605,7 +17604,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         ? nullptr
                         : expression->children().back();
                     const std::optional<ProjectIntegerValue> foldedOrder =
-                        foldIntegerConstant(orderSyntax, selectedMember.declaringTypeOrdinal);
+                        foldIntegerConstant(
+                            orderSyntax, selectedMember.declaringTypeOrdinal, methodMemberOrdinal);
                     if (!foldedOrder.has_value())
                     {
                         diagnostics.report(
@@ -17705,7 +17705,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         ? nullptr
                         : expression->children()[0];
                     const std::optional<ProjectIntegerValue> foldedOrder =
-                        foldIntegerConstant(orderSyntax, selectedMember.declaringTypeOrdinal);
+                        foldIntegerConstant(
+                            orderSyntax, selectedMember.declaringTypeOrdinal, methodMemberOrdinal);
                     if (!foldedOrder.has_value())
                     {
                         diagnostics.report(
@@ -21748,14 +21749,10 @@ bool ProjectMethodBodyModel::isCompileTimeConstantExpression(
             case ast::AstNodeKind::IdentifierExpression:
             case ast::AstNodeKind::MemberExpression:
             {
-                for (const MethodNameBinding& binding : nameBindings_)
+                const MethodNameBinding* binding = nameBinding(node, context);
+                if (binding != nullptr && !binding->candidateMemberOrdinals.empty())
                 {
-                    if (binding.syntax != node || binding.methodMemberOrdinal != context ||
-                        binding.candidateMemberOrdinals.empty())
-                    {
-                        continue;
-                    }
-                    const std::size_t ordinal = binding.candidateMemberOrdinals.front();
+                    const std::size_t ordinal = binding->candidateMemberOrdinals.front();
                     if (ordinal >= memberModel_->members().size())
                     {
                         return std::nullopt;
