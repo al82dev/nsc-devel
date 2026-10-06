@@ -12,6 +12,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
+#include "nativesharp/Frontend/ProjectCallableResultMerger.h"
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/AbiSemantics.h"
@@ -1207,7 +1208,9 @@ bool ProjectMethodBodyModel::build(
                 nameLookup, memberModel, namespaceFunctionModel,
                 inheritanceModel, interfaceModel, genericModel,
                 genericConstraintModel, languageEdition);
-            analyzeCallable(context, diagnostics);
+            if (!callableCanBeAnalyzed(context)) continue;
+            ProjectCallableResultMerger::merge(
+                *this, analyzeCallableIsolated(context), diagnostics);
         }
 
         std::vector<std::size_t> newlyDemanded;

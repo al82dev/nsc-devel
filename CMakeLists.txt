@@ -338,6 +338,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectCallableBindingIndex.cpp
     src/Frontend/ProjectCallableAnalysisContext.cpp
     src/Frontend/ProjectCallableAnalysisResult.cpp
+    src/Frontend/ProjectCallableResultMerger.cpp
     src/Frontend/ProjectMethodBodyModel.cpp
     src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp

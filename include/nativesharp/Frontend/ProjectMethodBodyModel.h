@@ -45,6 +45,7 @@ namespace nativesharp::frontend
 class ProjectGenericConstraintModel;
 class ProjectGenericModel;
 class ProjectReferenceEscapeEvaluator;
+class ProjectCallableResultMerger;
 
 enum class MethodScopeKind
 {
@@ -1474,6 +1475,7 @@ struct NamespaceFunctionCallBinding final
 class ProjectMethodBodyModel final
 {
     friend class ProjectReferenceEscapeEvaluator;
+    friend class ProjectCallableResultMerger;
 
 public:
     // NSC-LIMIT-007, tercera vuelta. El modelo de constraints entra aqui porque la unica fase que
