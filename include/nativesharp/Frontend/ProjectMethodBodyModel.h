@@ -1515,6 +1515,7 @@ public:
     const MethodExpressionTypeBinding* expressionTypeBinding(
         const ast::AstNode* syntax,
         std::size_t callableOrdinal) const noexcept;
+    std::span<const ProjectConstructionSite> constructionSites() const noexcept;
     const MethodAggregateInitializerBinding* aggregateInitializerBinding(
         const ast::AstNode* syntax) const noexcept;
     const MethodDeconstructionBinding* deconstructionBinding(
@@ -2381,6 +2382,12 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         const ExpressionResult& result);
+    MethodExpressionTypeBinding makeExpressionTypeBinding(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        const ExpressionResult& result) const;
+    void recordConstructionSite(ProjectConstructionSite site);
     void recordCallBinding(MethodCallBinding binding);
     void recordNameBinding(MethodNameBinding binding);
     bool deferCaptureAllowsLocal(
@@ -2409,6 +2416,9 @@ private:
     std::vector<MethodShadowingEvent> shadowingEvents_;
     std::vector<MethodExpressionTypeBinding> expressionTypes_;
     ProjectCallableBindingIndex expressionTypeBindingIndex_;
+    std::vector<ProjectConstructionSite> constructionSites_;
+    ProjectCallableBindingIndex constructionSiteIndex_;
+    std::unordered_map<std::size_t, std::size_t> nextConstructionSequenceByCallable_;
     std::vector<MethodAggregateInitializerBinding> aggregateInitializerBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> aggregateInitializerBindingBySyntax_;
     std::vector<MethodDeconstructionBinding> deconstructionBindings_;

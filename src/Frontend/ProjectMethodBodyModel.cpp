@@ -666,6 +666,9 @@ bool ProjectMethodBodyModel::build(
     expressionTypeBindingIndex_.clear();
     callBindingIndex_.clear();
     nameBindingIndex_.clear();
+    constructionSites_.clear();
+    constructionSiteIndex_.clear();
+    nextConstructionSequenceByCallable_.clear();
     namespaceCallableBase_ = memberModel.members().size();
     namespaceCallableAdapters_.clear();
     namespaceCallableAdapters_.reserve(namespaceFunctionModel.functions().size());
@@ -2754,6 +2757,11 @@ std::span<const MethodShadowingEvent> ProjectMethodBodyModel::shadowingEvents() 
 std::span<const MethodExpressionTypeBinding> ProjectMethodBodyModel::expressionTypes() const noexcept
 {
     return expressionTypes_;
+}
+
+std::span<const ProjectConstructionSite> ProjectMethodBodyModel::constructionSites() const noexcept
+{
+    return constructionSites_;
 }
 
 const MethodExpressionTypeBinding* ProjectMethodBodyModel::expressionTypeBinding(
@@ -12079,6 +12087,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 const std::string objectType = memberModel_->canonicalTypeKey(
                     expression->typeSyntax(), *nameLookup_);
+                ProjectConstructionSite site;
+                site.syntax = expression;
+                site.callableOrdinal = methodMemberOrdinal;
+                site.kind = ProjectConstructionSiteKind::Object;
+                site.targetTypeKey = objectType;
+                site.targetTypeOrdinal = nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
+                site.argumentsTyped = true;
                 bool argumentsValid = true;
                 for (const ast::AstNode* argument : expression->children())
                 {
@@ -12099,8 +12114,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     const ExpressionResult argumentResult = analyzeExpression(
                         argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
                         /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
-                    argumentsValid = argumentsValid && argumentResult.valid && !argumentResult.methodGroup;
+                    const bool argumentValid = argumentResult.valid &&
+                        !argumentResult.methodGroup && !isErrorType(argumentResult.typeKey);
+                    argumentsValid = argumentsValid && argumentValid;
+                    site.argumentsTyped = site.argumentsTyped && argumentValid;
+                    if (argumentValid)
+                    {
+                        site.argumentTypes.push_back(makeExpressionTypeBinding(
+                            argument,
+                            methodMemberOrdinal,
+                            scopeOrdinal,
+                            argumentResult));
+                    }
                 }
+                recordConstructionSite(std::move(site));
                 result.typeKey = objectType;
                 result.valid = argumentsValid && !isErrorType(objectType);
                 // NSC-LIMIT-010: `new T(...)` sobre un tipo con almacenamiento propio produce un
@@ -12120,6 +12147,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 const std::string targetType = memberModel_->canonicalTypeKey(
                     expression->typeSyntax(), *nameLookup_);
+                ProjectConstructionSite site;
+                site.syntax = expression;
+                site.callableOrdinal = methodMemberOrdinal;
+                site.kind = ProjectConstructionSiteKind::Placement;
+                site.targetTypeKey = targetType;
+                site.targetTypeOrdinal = nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
+                site.argumentsTyped = true;
                 const NamedTypeDeclaration* target =
                     nameLookup_->resolvedDeclaration(expression->typeSyntax());
                 const bool constructible = target != nullptr &&
@@ -12158,9 +12192,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     const ExpressionResult argumentResult = analyzeExpression(
                         argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
                         /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
-                    argumentsValid = argumentsValid && argumentResult.valid &&
-                        !argumentResult.methodGroup;
+                    const bool argumentValid = argumentResult.valid &&
+                        !argumentResult.methodGroup && !isErrorType(argumentResult.typeKey);
+                    argumentsValid = argumentsValid && argumentValid;
+                    site.argumentsTyped = site.argumentsTyped && argumentValid;
+                    if (argumentValid)
+                    {
+                        site.argumentTypes.push_back(makeExpressionTypeBinding(
+                            argument,
+                            methodMemberOrdinal,
+                            scopeOrdinal,
+                            argumentResult));
+                    }
                 }
+                recordConstructionSite(std::move(site));
                 // A placed struct is exposed through the raw T* that names its supplied storage.
                 // A class expression keeps NativeSharp's ordinary class-reference type even
                 // though its placement operand is T*: physically both are the object address,
@@ -24039,6 +24084,22 @@ void ProjectMethodBodyModel::recordExpressionType(
     // distinguir `move(duenio)` de `duenio`. Los campos se nombran en vez de ir por posicion: la
     // lista crecio a nueve, y un inicializador agregado posicional de nueve campos es un error de
     // una linea esperando a que alguien inserte un miembro en medio.
+    MethodExpressionTypeBinding binding = makeExpressionTypeBinding(
+        expression,
+        methodMemberOrdinal,
+        scopeOrdinal,
+        result);
+    const std::size_t bindingOrdinal = expressionTypes_.size();
+    expressionTypes_.push_back(std::move(binding));
+    expressionTypeBindingIndex_.record(methodMemberOrdinal, expression, bindingOrdinal);
+}
+
+MethodExpressionTypeBinding ProjectMethodBodyModel::makeExpressionTypeBinding(
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    const ExpressionResult& result) const
+{
     MethodExpressionTypeBinding binding;
     binding.syntax = expression;
     binding.methodMemberOrdinal = methodMemberOrdinal;
@@ -24080,9 +24141,27 @@ void ProjectMethodBodyModel::recordExpressionType(
     binding.flowIntegerMaximum = result.flowIntegerMaximum;
     binding.flowActiveVariantCase = result.flowActiveVariantCase;
     binding.flowRuntimeCheckElided = result.flowRuntimeCheckElided;
-    const std::size_t bindingOrdinal = expressionTypes_.size();
-    expressionTypes_.push_back(std::move(binding));
-    expressionTypeBindingIndex_.record(methodMemberOrdinal, expression, bindingOrdinal);
+    return binding;
+}
+
+void ProjectMethodBodyModel::recordConstructionSite(ProjectConstructionSite site)
+{
+    const std::optional<std::size_t> previous = constructionSiteIndex_.latest(
+        site.syntax,
+        site.callableOrdinal);
+    if (previous.has_value() && *previous < constructionSites_.size())
+    {
+        site.sequenceWithinCallable = constructionSites_[*previous].sequenceWithinCallable;
+        constructionSites_[*previous] = std::move(site);
+        return;
+    }
+
+    site.sequenceWithinCallable = nextConstructionSequenceByCallable_[site.callableOrdinal]++;
+    const std::size_t siteOrdinal = constructionSites_.size();
+    const ast::AstNode* syntax = site.syntax;
+    const std::size_t callableOrdinal = site.callableOrdinal;
+    constructionSites_.push_back(std::move(site));
+    constructionSiteIndex_.record(callableOrdinal, syntax, siteOrdinal);
 }
 
 void ProjectMethodBodyModel::recordCallBinding(MethodCallBinding binding)

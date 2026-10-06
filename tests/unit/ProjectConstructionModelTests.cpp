@@ -80,6 +80,18 @@ void testPrimary(TestContext& tests, const std::filesystem::path& root)
     }
 
     const auto& model = *compilation.constructionModel();
+    const auto sites = compilation.methodBodyModel()->constructionSites();
+    tests.expect(sites.size() == 3,
+        "method-body analysis publishes one typed site per construction expression");
+    if (sites.size() == 3)
+    {
+        tests.expect(sites[0].argumentsTyped && sites[0].argumentTypes.size() == 1 &&
+                sites[0].argumentTypes[0].typeKey == "builtin:int" &&
+                sites[1].argumentsTyped && sites[1].argumentTypes.size() == 1 &&
+                sites[1].argumentTypes[0].typeKey == "builtin:float" &&
+                sites[2].argumentsTyped && sites[2].argumentTypes.empty(),
+            "typed sites preserve constructor argument types without downstream AST analysis");
+    }
     tests.expect(model.constructions().size() == 3, "three new C(args) sites are recorded deterministically");
     if (model.constructions().size() == 3)
     {
