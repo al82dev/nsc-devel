@@ -708,6 +708,19 @@ bool snapshotParameterHasAnyFlag(
     return parameterOrdinal < snapshot.parameterFlags.size() &&
         (snapshot.parameterFlags[parameterOrdinal] & flags) != 0U;
 }
+
+int escapeClassRank(language::EscapeClass item) noexcept
+{
+    switch (item)
+    {
+        case language::EscapeClass::NoEscape: return 0;
+        case language::EscapeClass::Return: return 1;
+        case language::EscapeClass::CallerOwned: return 2;
+        case language::EscapeClass::Global: return 3;
+        case language::EscapeClass::Unknown: return 4;
+    }
+    return 4;
+}
 }
 
 bool ProjectMethodBodyModel::build(
@@ -23571,19 +23584,7 @@ void ProjectMethodBodyModel::noteParameterEscape(
     {
         return;
     }
-    const auto rank = [](language::EscapeClass item) noexcept
-    {
-        switch (item)
-        {
-            case language::EscapeClass::NoEscape: return 0;
-            case language::EscapeClass::Return: return 1;
-            case language::EscapeClass::CallerOwned: return 2;
-            case language::EscapeClass::Global: return 3;
-            case language::EscapeClass::Unknown: return 4;
-        }
-        return 4;
-    };
-    if (rank(escapeClass) > rank(summary[parameterOrdinal]))
+    if (escapeClassRank(escapeClass) > escapeClassRank(summary[parameterOrdinal]))
         summary[parameterOrdinal] = escapeClass;
 }
 
@@ -23605,24 +23606,54 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
         }
     }
 
-    const auto propagate = [&](std::size_t callerOrdinal,
-                               std::size_t scopeOrdinal,
-                               std::size_t calleeOrdinal,
-                               std::span<const std::size_t> parameterOrdinals,
-                               std::span<const ast::AstNode* const> argumentSyntaxes) -> bool
+    // Build one cell per (callable, parameter), then reverse edges from a callee cell to the
+    // caller cells that depend on it. Argument origins are classified exactly once here. The old
+    // fixed-point loop reclassified every argument and rescanned every call after every change.
+    std::vector<std::size_t> callableCellOffsets(parameterEscapeSummaries_.size() + 1U, 0U);
+    for (std::size_t callableOrdinal = 0;
+         callableOrdinal < parameterEscapeSummaries_.size();
+         ++callableOrdinal)
     {
-        if (calleeOrdinal >= parameterEscapeSummaries_.size()) return false;
+        callableCellOffsets[callableOrdinal + 1U] =
+            callableCellOffsets[callableOrdinal] +
+            parameterEscapeSummaries_[callableOrdinal].size();
+    }
+    const std::size_t cellCount = callableCellOffsets.back();
+    std::vector<std::size_t> cellCallableOrdinals(cellCount, 0U);
+    std::vector<std::size_t> cellParameterOrdinals(cellCount, 0U);
+    for (std::size_t callableOrdinal = 0;
+         callableOrdinal < parameterEscapeSummaries_.size();
+         ++callableOrdinal)
+    {
+        for (std::size_t parameterOrdinal = 0;
+             parameterOrdinal < parameterEscapeSummaries_[callableOrdinal].size();
+             ++parameterOrdinal)
+        {
+            const std::size_t cell = callableCellOffsets[callableOrdinal] + parameterOrdinal;
+            cellCallableOrdinals[cell] = callableOrdinal;
+            cellParameterOrdinals[cell] = parameterOrdinal;
+        }
+    }
+
+    std::vector<std::vector<std::size_t>> dependents(cellCount);
+    const auto addDependencies = [&](std::size_t callerOrdinal,
+                                     std::size_t scopeOrdinal,
+                                     std::size_t calleeOrdinal,
+                                     std::span<const std::size_t> parameterOrdinals,
+                                     std::span<const ast::AstNode* const> argumentSyntaxes)
+    {
+        if (callerOrdinal >= parameterEscapeSummaries_.size() ||
+            calleeOrdinal >= parameterEscapeSummaries_.size())
+            return;
         const ClassMemberSymbol* caller = methodSymbol(callerOrdinal);
-        if (caller == nullptr) return false;
-        const std::vector<language::EscapeClass>& callee =
-            parameterEscapeSummaries_[calleeOrdinal];
-        bool changed = false;
+        if (caller == nullptr) return;
         for (std::size_t argumentOrdinal = 0;
              argumentOrdinal < parameterOrdinals.size() &&
              argumentOrdinal < argumentSyntaxes.size(); ++argumentOrdinal)
         {
-            const std::size_t targetParameter = parameterOrdinals[argumentOrdinal];
-            if (targetParameter >= callee.size() || argumentSyntaxes[argumentOrdinal] == nullptr)
+            const std::size_t calleeParameter = parameterOrdinals[argumentOrdinal];
+            if (calleeParameter >= parameterEscapeSummaries_[calleeOrdinal].size() ||
+                argumentSyntaxes[argumentOrdinal] == nullptr)
                 continue;
             const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
                 argumentSyntaxes[argumentOrdinal], scopeOrdinal);
@@ -23631,38 +23662,74 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
                  origin.kind != MethodEscapeOriginKind::CurrentFrameParameter) ||
                 *origin.ordinal >= caller->parameters.size() ||
                 !parameterMayCarryEscape(caller->parameters[*origin.ordinal]))
-            {
                 continue;
-            }
-            const language::EscapeClass before =
-                parameterEscapeSummaries_[callerOrdinal][*origin.ordinal];
-            noteParameterEscape(callerOrdinal, *origin.ordinal, callee[targetParameter]);
-            changed = changed ||
-                before != parameterEscapeSummaries_[callerOrdinal][*origin.ordinal];
-        }
-        return changed;
-    };
 
-    bool changed = true;
-    while (changed)
-    {
-        changed = false;
-        for (const MethodCallBinding& call : calls_)
-        {
-            if (call.resolution != MethodCallResolutionKind::Resolved ||
-                !call.selectedMemberOrdinal.has_value()) continue;
-            changed = propagate(call.callerMethodMemberOrdinal, call.scopeOrdinal,
-                *call.selectedMemberOrdinal, call.selectedArgumentParameterOrdinals,
-                call.selectedArgumentSyntaxes) || changed;
+            const std::size_t sourceCell =
+                callableCellOffsets[calleeOrdinal] + calleeParameter;
+            const std::size_t dependentCell =
+                callableCellOffsets[callerOrdinal] + *origin.ordinal;
+            dependents[sourceCell].push_back(dependentCell);
         }
-        for (const NamespaceFunctionCallBinding& call : namespaceFunctionCalls_)
+    };
+    for (const MethodCallBinding& call : calls_)
+    {
+        if (call.resolution == MethodCallResolutionKind::Resolved &&
+            call.selectedMemberOrdinal.has_value())
         {
-            if (call.resolution != MethodCallResolutionKind::Resolved ||
-                !call.selectedFunctionOrdinal.has_value()) continue;
-            changed = propagate(call.callerCallableOrdinal, call.scopeOrdinal,
+            addDependencies(
+                call.callerMethodMemberOrdinal,
+                call.scopeOrdinal,
+                *call.selectedMemberOrdinal,
+                call.selectedArgumentParameterOrdinals,
+                call.selectedArgumentSyntaxes);
+        }
+    }
+    for (const NamespaceFunctionCallBinding& call : namespaceFunctionCalls_)
+    {
+        if (call.resolution == MethodCallResolutionKind::Resolved &&
+            call.selectedFunctionOrdinal.has_value())
+        {
+            addDependencies(
+                call.callerCallableOrdinal,
+                call.scopeOrdinal,
                 namespaceCallableBase_ + *call.selectedFunctionOrdinal,
                 call.selectedArgumentParameterOrdinals,
-                call.selectedArgumentSyntaxes) || changed;
+                call.selectedArgumentSyntaxes);
+        }
+    }
+    for (std::vector<std::size_t>& targets : dependents)
+    {
+        std::ranges::sort(targets);
+        targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
+    }
+
+    std::vector<std::size_t> worklist;
+    worklist.reserve(cellCount);
+    std::vector<bool> queued(cellCount, true);
+    for (std::size_t cell = 0; cell < cellCount; ++cell)
+        worklist.push_back(cell);
+    std::size_t cursor = 0;
+    while (cursor < worklist.size())
+    {
+        const std::size_t sourceCell = worklist[cursor++];
+        queued[sourceCell] = false;
+        const std::size_t sourceCallable = cellCallableOrdinals[sourceCell];
+        const std::size_t sourceParameter = cellParameterOrdinals[sourceCell];
+        const language::EscapeClass sourceClass =
+            parameterEscapeSummaries_[sourceCallable][sourceParameter];
+        for (const std::size_t dependentCell : dependents[sourceCell])
+        {
+            const std::size_t targetCallable = cellCallableOrdinals[dependentCell];
+            const std::size_t targetParameter = cellParameterOrdinals[dependentCell];
+            language::EscapeClass& targetClass =
+                parameterEscapeSummaries_[targetCallable][targetParameter];
+            if (escapeClassRank(sourceClass) <= escapeClassRank(targetClass)) continue;
+            targetClass = sourceClass;
+            if (!queued[dependentCell])
+            {
+                queued[dependentCell] = true;
+                worklist.push_back(dependentCell);
+            }
         }
     }
 
