@@ -724,19 +724,23 @@ int escapeClassRank(language::EscapeClass item) noexcept
 }
 }
 
-bool ProjectMethodBodyModel::callableCanBeAnalyzed(std::size_t callableOrdinal) const
+bool ProjectMethodBodyModel::callableCanBeAnalyzed(
+    const ProjectCallableAnalysisContext& context) const
 {
+    const std::size_t callableOrdinal = context.callableOrdinal();
     if (analyzedCallableMembers_.contains(callableOrdinal)) return false;
     const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
     if (callable == nullptr) return false;
-    if (callableOrdinal >= namespaceCallableBase_ || genericConstraintModel_ == nullptr)
+    const ProjectGenericConstraintModel* constraints = context.genericConstraintModel();
+    if (callableOrdinal >= namespaceCallableBase_ || constraints == nullptr)
         return true;
 
-    if (!genericConstraintModel_->specializationSatisfiesConstraints(callable->syntax))
+    if (!constraints->specializationSatisfiesConstraints(callable->syntax))
         return false;
-    return nameLookup_ == nullptr || callable->declaringTypeOrdinal >= nameLookup_->namedTypes().size() ||
-        genericConstraintModel_->specializationSatisfiesConstraints(
-            nameLookup_->namedTypes()[callable->declaringTypeOrdinal].syntax);
+    const ProjectNameLookup& names = context.nameLookup();
+    return callable->declaringTypeOrdinal >= names.namedTypes().size() ||
+        constraints->specializationSatisfiesConstraints(
+            names.namedTypes()[callable->declaringTypeOrdinal].syntax);
 }
 
 void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& callable)
@@ -826,10 +830,11 @@ void ProjectMethodBodyModel::closeOwnedParameterCleanups(
 }
 
 void ProjectMethodBodyModel::analyzeCallable(
-    std::size_t callableOrdinal,
+    const ProjectCallableAnalysisContext& context,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (!callableCanBeAnalyzed(callableOrdinal)) return;
+    if (!callableCanBeAnalyzed(context)) return;
+    const std::size_t callableOrdinal = context.callableOrdinal();
     const ClassMemberSymbol& callable = *methodSymbol(callableOrdinal);
     analyzedCallableMembers_.insert(callableOrdinal);
     resetCallableScratch(callable);
@@ -1125,12 +1130,18 @@ bool ProjectMethodBodyModel::build(
     std::size_t delegateDemandCursor = 0;
     std::size_t optionalDemandCursor = 0;
     std::size_t resultPropagationDemandCursor = 0;
+    std::size_t waveOrdinal = 0;
     while (workCursor < callableWorklist.size())
     {
         const std::size_t waveEnd = callableWorklist.size();
         for (; workCursor < waveEnd; ++workCursor)
         {
-            analyzeCallable(callableWorklist[workCursor], diagnostics);
+            const ProjectCallableAnalysisContext context(
+                callableWorklist[workCursor], waveOrdinal,
+                nameLookup, memberModel, namespaceFunctionModel,
+                inheritanceModel, interfaceModel, genericModel,
+                genericConstraintModel, languageEdition);
+            analyzeCallable(context, diagnostics);
         }
 
         std::vector<std::size_t> newlyDemanded;
@@ -1197,6 +1208,7 @@ bool ProjectMethodBodyModel::build(
         newlyDemanded.erase(std::unique(newlyDemanded.begin(), newlyDemanded.end()), newlyDemanded.end());
         callableWorklist.insert(
             callableWorklist.end(), newlyDemanded.begin(), newlyDemanded.end());
+        ++waveOrdinal;
     }
 
     // Stage 37: field initializers are semantic executable contexts too.  They deliberately have

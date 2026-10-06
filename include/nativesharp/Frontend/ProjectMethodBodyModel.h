@@ -10,6 +10,7 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectCallableBindingIndex.h"
+#include "nativesharp/Frontend/ProjectCallableAnalysisContext.h"
 #include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
 #include "nativesharp/Frontend/MethodEscapeOrigin.h"
 #include "nativesharp/Frontend/OwnershipFlowSnapshot.h"
@@ -2348,7 +2349,7 @@ private:
         SourceRange range,
         diagnostics::DiagnosticEngine& diagnostics,
         std::string message) const;
-    bool callableCanBeAnalyzed(std::size_t callableOrdinal) const;
+    bool callableCanBeAnalyzed(const ProjectCallableAnalysisContext& context) const;
     void resetCallableScratch(const ClassMemberSymbol& callable);
     std::vector<std::size_t> createOwnedParameterCleanups(
         const ClassMemberSymbol& callable,
@@ -2365,7 +2366,7 @@ private:
         std::size_t callableOrdinal,
         std::size_t rootScopeOrdinal);
     void analyzeCallable(
-        std::size_t callableOrdinal,
+        const ProjectCallableAnalysisContext& context,
         diagnostics::DiagnosticEngine& diagnostics);
 
     const ProjectNameLookup* nameLookup_ = nullptr;
