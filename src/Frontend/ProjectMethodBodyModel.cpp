@@ -14,6 +14,7 @@
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 #include "nativesharp/Frontend/ProjectCallableResultMerger.h"
 #include "nativesharp/Frontend/ProjectCallableWaveReducer.h"
+#include "nativesharp/Frontend/ProjectCallableWaveScheduler.h"
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/AbiSemantics.h"
@@ -931,7 +932,8 @@ bool ProjectMethodBodyModel::build(
     diagnostics::DiagnosticEngine& diagnostics,
     const ProjectGenericConstraintModel* genericConstraintModel,
     std::optional<std::size_t> publicSurfaceProjectOrdinal,
-    language::LanguageEdition languageEdition)
+    language::LanguageEdition languageEdition,
+    const ProjectMethodBodyBuildOptions& options)
 {
     languageEdition_ = languageEdition;
     genericConstraintModel_ = genericConstraintModel;
@@ -1197,11 +1199,12 @@ bool ProjectMethodBodyModel::build(
 
     std::size_t workCursor = 0;
     std::size_t waveOrdinal = 0;
+    ProjectCallableWaveScheduler waveScheduler(options.workerCount);
     while (workCursor < callableWorklist.size())
     {
         const std::size_t waveEnd = callableWorklist.size();
-        std::vector<ProjectCallableAnalysisResult> waveResults;
-        waveResults.reserve(waveEnd - workCursor);
+        std::vector<std::size_t> eligibleCallables;
+        eligibleCallables.reserve(waveEnd - workCursor);
         for (; workCursor < waveEnd; ++workCursor)
         {
             const ProjectCallableAnalysisContext context(
@@ -1214,10 +1217,32 @@ bool ProjectMethodBodyModel::build(
                 ++callableAnalysisStatistics_.callablesSkipped;
                 continue;
             }
-            waveResults.push_back(analyzeCallableIsolated(context));
-            ++callableAnalysisStatistics_.callablesAnalyzed;
-            ++callableAnalysisStatistics_.shardsCreated;
+            eligibleCallables.push_back(context.callableOrdinal());
         }
+
+        std::vector<ProjectCallableAnalysisResult> waveResults;
+        std::string waveError;
+        const bool waveComplete = waveScheduler.run(
+            eligibleCallables,
+            waveOrdinal,
+            [&](std::size_t callableOrdinal, std::size_t scheduledWave) {
+                return analyzeCallableIsolated(ProjectCallableAnalysisContext(
+                    callableOrdinal, scheduledWave,
+                    nameLookup, memberModel, namespaceFunctionModel,
+                    inheritanceModel, interfaceModel, genericModel,
+                    genericConstraintModel, languageEdition));
+            },
+            options.cancellationCheck,
+            waveResults,
+            waveError);
+        if (!waveComplete)
+        {
+            if (options.executionError != nullptr)
+                *options.executionError = std::move(waveError);
+            return false;
+        }
+        callableAnalysisStatistics_.callablesAnalyzed += waveResults.size();
+        callableAnalysisStatistics_.shardsCreated += waveResults.size();
 
         const std::vector<std::size_t> discoveries = ProjectCallableWaveReducer::reduce(
             *this, std::move(waveResults), diagnostics);

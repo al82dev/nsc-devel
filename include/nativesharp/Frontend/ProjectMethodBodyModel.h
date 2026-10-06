@@ -19,6 +19,7 @@
 #include "nativesharp/Frontend/ProjectConstructionSite.h"
 #include "nativesharp/Frontend/ProjectOwnershipFlowStatistics.h"
 #include "nativesharp/Frontend/ProjectEscapePropagationStatistics.h"
+#include "nativesharp/Frontend/ProjectMethodBodyBuildOptions.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Language/CallableSemantics.h"
@@ -1496,7 +1497,8 @@ public:
         diagnostics::DiagnosticEngine& diagnostics,
         const ProjectGenericConstraintModel* genericConstraintModel = nullptr,
         std::optional<std::size_t> publicSurfaceProjectOrdinal = std::nullopt,
-        language::LanguageEdition languageEdition = language::LanguageEdition::V2);
+        language::LanguageEdition languageEdition = language::LanguageEdition::V2,
+        const ProjectMethodBodyBuildOptions& options = {});
 
     std::span<const MethodScope> scopes() const noexcept;
     std::span<const MethodLocalSymbol> locals() const noexcept;

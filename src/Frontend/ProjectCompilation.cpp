@@ -728,13 +728,18 @@ bool ProjectCompilation::compileProjectMethodBodies(
     {
         publicSurfaceProjectOrdinal = projectGraph_->projects().size() - 1U;
     }
+    ProjectMethodBodyBuildOptions methodBodyOptions;
+    methodBodyOptions.workerCount = compilationJobs_;
+    methodBodyOptions.cancellationCheck = cancellationCheck_;
+    methodBodyOptions.executionError = &loadError;
     if (!methodBodyModel_->build(
         *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_,
         genericModel_.get(), diagnostics_,
         genericConstraintModel_.get(), publicSurfaceProjectOrdinal,
         projectGraph_.has_value() && projectGraph_->rootProject() != nullptr
             ? projectGraph_->rootProject()->languageEdition()
-            : language::LanguageEdition::V2)) return false;
+            : language::LanguageEdition::V2,
+        methodBodyOptions)) return false;
     if (!enterStage(CompilationStage::TypeChecking, loadError)) return false;
     return enterStage(CompilationStage::Comptime, loadError);
 }
