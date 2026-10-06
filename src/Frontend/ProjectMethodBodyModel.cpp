@@ -665,6 +665,7 @@ bool ProjectMethodBodyModel::build(
     namespaceFunctionModel_ = &namespaceFunctionModel;
     expressionTypeBindingIndex_.clear();
     callBindingIndex_.clear();
+    nameBindingIndex_.clear();
     namespaceCallableBase_ = memberModel.members().size();
     namespaceCallableAdapters_.clear();
     namespaceCallableAdapters_.reserve(namespaceFunctionModel.functions().size());
@@ -2730,6 +2731,19 @@ std::span<const MethodLocalSymbol> ProjectMethodBodyModel::locals() const noexce
 std::span<const MethodNameBinding> ProjectMethodBodyModel::nameBindings() const noexcept
 {
     return nameBindings_;
+}
+
+const MethodNameBinding* ProjectMethodBodyModel::nameBinding(
+    const ast::AstNode* syntax,
+    std::size_t callableOrdinal) const noexcept
+{
+    const std::optional<std::size_t> bindingOrdinal =
+        nameBindingIndex_.latest(syntax, callableOrdinal);
+    if (!bindingOrdinal.has_value() || *bindingOrdinal >= nameBindings_.size())
+    {
+        return nullptr;
+    }
+    return &nameBindings_[*bindingOrdinal];
 }
 
 std::span<const MethodShadowingEvent> ProjectMethodBodyModel::shadowingEvents() const noexcept
@@ -9416,7 +9430,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.receiverTypeKey = result.typeKey;
             result.receiverTypeOrdinal = referenceTypeOrdinalForTypeKey(result.typeKey);
             result.readonlyReceiver = contextHasReadonlyReceiver(methodMemberOrdinal);
-            nameBindings_.push_back(MethodNameBinding{
+            recordNameBinding(MethodNameBinding{
                 MethodNameBindingKind::ThisReference,
                 expression,
                 methodMemberOrdinal,
@@ -10073,7 +10087,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         "cannot move owner '" + local.name + "' while a borrowed local is alive");
                     break;
                 }
-                nameBindings_.push_back(MethodNameBinding{
+                recordNameBinding(MethodNameBinding{
                     MethodNameBindingKind::Local,
                     expression->first(),
                     methodMemberOrdinal,
@@ -10189,7 +10203,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             "' while a borrowed local is alive");
                     break;
                 }
-                nameBindings_.push_back(MethodNameBinding{
+                recordNameBinding(MethodNameBinding{
                     MethodNameBindingKind::Parameter,
                     expression->first(),
                     methodMemberOrdinal,
@@ -12871,7 +12885,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 result.pointerKnownAlignment = local.pointerKnownAlignment;
                 result.pointerAddressSpace = local.pointerAddressSpace;
                 result.onePastEndPointer = local.onePastEndPointer;
-                nameBindings_.push_back(MethodNameBinding{
+                recordNameBinding(MethodNameBinding{
                     MethodNameBindingKind::Local,
                     expression,
                     methodMemberOrdinal,
@@ -13019,7 +13033,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             result.assignable = parameter.passKind != ParameterPassKind::In;
             result.addressable = true;
             result.readonlyReceiver = parameter.passKind == ParameterPassKind::In;
-            nameBindings_.push_back(MethodNameBinding{
+            recordNameBinding(MethodNameBinding{
                 MethodNameBindingKind::Parameter,
                 expression,
                 methodMemberOrdinal,
@@ -13133,7 +13147,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             result.receiverTypeKey = thisTypeKey;
             result.receiverTypeOrdinal = accessingTypeOrdinal;
         }
-        nameBindings_.push_back(MethodNameBinding{
+        recordNameBinding(MethodNameBinding{
             event.isStatic ? MethodNameBindingKind::StaticEvent : MethodNameBindingKind::ImplicitEvent,
             expression,
             methodMemberOrdinal,
@@ -13180,7 +13194,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             result.receiverTypeKey = thisTypeKey;
             result.receiverTypeOrdinal = accessingTypeOrdinal;
         }
-        nameBindings_.push_back(MethodNameBinding{
+        recordNameBinding(MethodNameBinding{
             field.isStatic ? MethodNameBindingKind::StaticField : MethodNameBindingKind::ImplicitField,
             expression,
             methodMemberOrdinal,
@@ -13258,7 +13272,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 result.assignmentMemberOrdinal = *backing;
                 result.receiverTypeKey = thisTypeKey;
                 result.receiverTypeOrdinal = accessingTypeOrdinal;
-                nameBindings_.push_back(MethodNameBinding{
+                recordNameBinding(MethodNameBinding{
                     MethodNameBindingKind::ImplicitField,
                     expression,
                     methodMemberOrdinal,
@@ -13311,7 +13325,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             result.receiverTypeOrdinal = accessingTypeOrdinal;
             result.readonlyReceiver = contextHasReadonlyReceiver(methodMemberOrdinal);
         }
-        nameBindings_.push_back(MethodNameBinding{
+        recordNameBinding(MethodNameBinding{
             allStatic ? MethodNameBindingKind::StaticMethodGroup : MethodNameBindingKind::ImplicitMethodGroup,
             expression,
             methodMemberOrdinal,
@@ -13403,7 +13417,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.assignable = !state.isConst;
     result.addressable = true;
     result.readonlyReceiver = state.isConst;
-    nameBindings_.push_back(MethodNameBinding{
+    recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::NamespaceState,
         expression,
         methodMemberOrdinal,
@@ -13576,7 +13590,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         receiver.receiverSyntax = expression->first();
         receiver.receiverTypeKey = receiver.typeKey;
         receiver.receiverTypeOrdinal = typeOrdinal;
-        nameBindings_.push_back(MethodNameBinding{
+        recordNameBinding(MethodNameBinding{
             MethodNameBindingKind::TypeReference,
             expression->first(),
             methodMemberOrdinal,
@@ -13620,7 +13634,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         receiver.receiverTypeKey = receiver.typeKey;
         receiver.receiverTypeOrdinal = baseType;
         receiver.baseReceiver = true;
-        nameBindings_.push_back(MethodNameBinding{
+        recordNameBinding(MethodNameBinding{
             MethodNameBindingKind::BaseReference,
             expression->first(),
             methodMemberOrdinal,
@@ -13748,7 +13762,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
                     result.ownershipSourceParameterOrdinal = receiver.ownershipSourceParameterOrdinal;
                     result.borrowedLocalOrdinal = receiver.borrowedLocalOrdinal;
                     result.integerConstant = receiver.integerConstant;
-                    nameBindings_.push_back(MethodNameBinding{
+                    recordNameBinding(MethodNameBinding{
                         MethodNameBindingKind::ExplicitObjectMethodGroup,
                         expression,
                         methodMemberOrdinal,
@@ -13817,7 +13831,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.receiverTypeKey = receiver.typeKey;
         result.receiverTypeOrdinal = receiver.receiverTypeOrdinal;
         result.assignable = false;
-        nameBindings_.push_back(MethodNameBinding{
+        recordNameBinding(MethodNameBinding{
             MethodNameBindingKind::ExplicitObjectMethodGroup,
             expression,
             methodMemberOrdinal,
@@ -13991,7 +14005,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
         result.receiverTypeOrdinal = typeReceiver ? std::nullopt : receiverType;
         result.baseReceiver = receiver.baseReceiver;
-        nameBindings_.push_back(MethodNameBinding{
+        recordNameBinding(MethodNameBinding{
             eventBindingKind,
             expression,
             methodMemberOrdinal,
@@ -14095,7 +14109,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
         result.receiverTypeOrdinal = typeReceiver ? std::nullopt : receiverType;
         result.baseReceiver = receiver.baseReceiver;
-        nameBindings_.push_back(MethodNameBinding{
+        recordNameBinding(MethodNameBinding{
             fieldBindingKind,
             expression,
             methodMemberOrdinal,
@@ -14157,7 +14171,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
                 result.receiverSyntax = expression->first();
                 result.receiverTypeKey = receiver.typeKey;
                 result.receiverTypeOrdinal = receiverType;
-                nameBindings_.push_back(MethodNameBinding{
+                recordNameBinding(MethodNameBinding{
                     MethodNameBindingKind::ExplicitThisField,
                     expression,
                     methodMemberOrdinal,
@@ -14214,7 +14228,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.ownershipSourceLocalOrdinal = receiver.ownershipSourceLocalOrdinal;
         result.ownershipSourceParameterOrdinal = receiver.ownershipSourceParameterOrdinal;
         result.borrowedLocalOrdinal = receiver.borrowedLocalOrdinal;
-        nameBindings_.push_back(MethodNameBinding{
+        recordNameBinding(MethodNameBinding{
             methodBindingKind,
             expression,
             methodMemberOrdinal,
@@ -14262,7 +14276,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.receiverTypeKey = receiver.typeKey;
         result.receiverTypeOrdinal = receiverType;
         result.typeKey = kEnumRootFacadeTypeKey;
-        nameBindings_.push_back(MethodNameBinding{
+        recordNameBinding(MethodNameBinding{
             MethodNameBindingKind::ExplicitObjectMethodGroup,
             expression,
             methodMemberOrdinal,
@@ -14299,7 +14313,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.receiverTypeKey = receiver.typeKey;
         result.receiverTypeOrdinal = receiverType;
         result.typeKey = kStructRootFacadeTypeKey;
-        nameBindings_.push_back(MethodNameBinding{
+        recordNameBinding(MethodNameBinding{
             MethodNameBindingKind::ExplicitObjectMethodGroup,
             expression,
             methodMemberOrdinal,
@@ -14361,7 +14375,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         if (functionOrdinal < namespaceCallableAdapters_.size())
             result.methodCandidates.push_back(namespaceCallableBase_ + functionOrdinal);
     }
-    nameBindings_.push_back(MethodNameBinding{
+    recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::StaticMethodGroup,
         expression,
         callerCallableOrdinal,
@@ -20009,7 +20023,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             left.typeKey = local.typeKey;
             left.valid = true;
             left.assignable = true;
-            nameBindings_.push_back(MethodNameBinding{
+            recordNameBinding(MethodNameBinding{
                 MethodNameBindingKind::Local,
                 expression->first(),
                 methodMemberOrdinal,
@@ -20037,7 +20051,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                     left.typeKey = parameter.typeKey;
                     left.valid = true;
                     left.assignable = true;
-                    nameBindings_.push_back(MethodNameBinding{
+                    recordNameBinding(MethodNameBinding{
                         MethodNameBindingKind::Parameter,
                         expression->first(),
                         methodMemberOrdinal,
@@ -24081,6 +24095,15 @@ void ProjectMethodBodyModel::recordCallBinding(MethodCallBinding binding)
     const std::size_t callableOrdinal = binding.callerMethodMemberOrdinal;
     calls_.push_back(std::move(binding));
     callBindingIndex_.record(callableOrdinal, syntax, bindingOrdinal);
+}
+
+void ProjectMethodBodyModel::recordNameBinding(MethodNameBinding binding)
+{
+    const std::size_t bindingOrdinal = nameBindings_.size();
+    const ast::AstNode* syntax = binding.syntax;
+    const std::size_t callableOrdinal = binding.methodMemberOrdinal;
+    nameBindings_.push_back(std::move(binding));
+    nameBindingIndex_.record(callableOrdinal, syntax, bindingOrdinal);
 }
 
 void ProjectMethodBodyModel::reportPrevious(

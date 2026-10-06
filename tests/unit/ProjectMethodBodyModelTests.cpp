@@ -155,6 +155,9 @@ void testPrimaryModel(TestContext& tests, const std::filesystem::path& root)
     const auto& latestCall = model.calls().back();
     tests.expect(model.callBinding(latestCall.syntax, latestCall.callerMethodMemberOrdinal) == &latestCall,
         "call lookup returns the newest exact callable binding"); // 17
+    const auto& latestName = model.nameBindings().back();
+    tests.expect(model.nameBinding(latestName.syntax, latestName.methodMemberOrdinal) == &latestName,
+        "name lookup returns the newest exact callable binding"); // 18
 }
 
 void testScopeRules(TestContext& tests, const std::filesystem::path& root)

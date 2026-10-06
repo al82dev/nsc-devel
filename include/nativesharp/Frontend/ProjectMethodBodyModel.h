@@ -1545,6 +1545,9 @@ public:
     std::span<const MethodScope> scopes() const noexcept;
     std::span<const MethodLocalSymbol> locals() const noexcept;
     std::span<const MethodNameBinding> nameBindings() const noexcept;
+    const MethodNameBinding* nameBinding(
+        const ast::AstNode* syntax,
+        std::size_t callableOrdinal) const noexcept;
     std::span<const MethodShadowingEvent> shadowingEvents() const noexcept;
     std::span<const MethodExpressionTypeBinding> expressionTypes() const noexcept;
     const MethodExpressionTypeBinding* expressionTypeBinding(
@@ -2413,6 +2416,7 @@ private:
         std::size_t scopeOrdinal,
         const ExpressionResult& result);
     void recordCallBinding(MethodCallBinding binding);
+    void recordNameBinding(MethodNameBinding binding);
     bool deferCaptureAllowsLocal(
         std::string_view name, std::size_t localScopeOrdinal) const noexcept;
     bool deferCaptureAllowsParameter(std::string_view name) const noexcept;
@@ -2435,6 +2439,7 @@ private:
     std::vector<std::vector<ScopeName>> scopeNames_;
     std::vector<MethodLocalSymbol> locals_;
     std::vector<MethodNameBinding> nameBindings_;
+    ProjectCallableBindingIndex nameBindingIndex_;
     std::vector<MethodShadowingEvent> shadowingEvents_;
     std::vector<MethodExpressionTypeBinding> expressionTypes_;
     ProjectCallableBindingIndex expressionTypeBindingIndex_;
