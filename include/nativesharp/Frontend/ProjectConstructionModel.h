@@ -199,10 +199,6 @@ private:
     void scanUnsupportedContexts(
         const ast::AstNode* node,
         diagnostics::DiagnosticEngine& diagnostics);
-    void scanNode(
-        const ast::AstNode* node,
-        std::size_t callerMemberOrdinal,
-        diagnostics::DiagnosticEngine& diagnostics);
     void bindImplicitDefaultConstructors(diagnostics::DiagnosticEngine& diagnostics);
     void bindImplicitDefaultConstructor(
         std::size_t typeOrdinal,
@@ -212,8 +208,7 @@ private:
         diagnostics::DiagnosticEngine& diagnostics);
     void validateThisConstructorCycles(diagnostics::DiagnosticEngine& diagnostics);
     void bindConstruction(
-        const ast::AstNode* expression,
-        std::size_t callerMemberOrdinal,
+        const ProjectConstructionSite& site,
         diagnostics::DiagnosticEngine& diagnostics);
     std::optional<MethodExpressionTypeBinding> expressionType(
         const ast::AstNode* syntax,

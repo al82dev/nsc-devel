@@ -191,49 +191,25 @@ bool ProjectConstructionModel::build(
         }
     }
 
-    for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
+    std::vector<const ProjectConstructionSite*> orderedSites;
+    orderedSites.reserve(methodBodyModel.constructionSites().size());
+    for (const ProjectConstructionSite& site : methodBodyModel.constructionSites())
     {
-        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
-        if (member.syntax == nullptr || member.syntax->first() == nullptr)
-        {
-            continue;
-        }
-        if (member.kind == ClassMemberKind::Field)
-        {
-            scanNode(member.syntax->first(), memberOrdinal, diagnostics);
-            continue;
-        }
-        if (member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor &&
-            member.kind != ClassMemberKind::Destructor)
-        {
-            continue;
-        }
-        if (member.kind == ClassMemberKind::Constructor && member.syntax->second() != nullptr)
-        {
-            for (const ast::AstNode* argument : member.syntax->second()->children())
-            {
-                scanNode(argument, memberOrdinal, diagnostics);
-            }
-        }
-        scanNode(member.syntax->first(), memberOrdinal, diagnostics);
+        orderedSites.push_back(&site);
     }
-
-    // T29. Namespace functions already use synthetic callable ordinals in MethodBodyModel and
-    // OOP HIR. Bind their construction expressions with that same identity instead of rejecting
-    // them during the whole-tree unsupported-context scan.
-    const std::size_t namespaceCallableBase = memberModel.members().size();
-    for (std::size_t functionOrdinal = 0;
-         functionOrdinal < namespaceFunctionModel.functions().size(); ++functionOrdinal)
-    {
-        const NamespaceFunctionSymbol& function = namespaceFunctionModel.functions()[functionOrdinal];
-        if (function.definitionSyntax == nullptr || function.definitionSyntax->first() == nullptr)
+    std::ranges::sort(
+        orderedSites,
+        [](const ProjectConstructionSite* left, const ProjectConstructionSite* right)
         {
-            continue;
-        }
-        scanNode(
-            function.definitionSyntax->first(),
-            namespaceCallableBase + functionOrdinal,
-            diagnostics);
+            if (left->callableOrdinal != right->callableOrdinal)
+            {
+                return left->callableOrdinal < right->callableOrdinal;
+            }
+            return left->sequenceWithinCallable < right->sequenceWithinCallable;
+        });
+    for (const ProjectConstructionSite* site : orderedSites)
+    {
+        bindConstruction(*site, diagnostics);
     }
 
     built_ = true;
@@ -291,66 +267,45 @@ void ProjectConstructionModel::scanUnsupportedContexts(
     const ast::AstNode* node,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (node == nullptr)
+    std::vector<const ast::AstNode*> work;
+    if (node != nullptr)
     {
-        return;
+        work.push_back(node);
     }
-    if (node->kind() == ast::AstNodeKind::MethodDeclaration ||
-        node->kind() == ast::AstNodeKind::ConstructorDeclaration ||
-        node->kind() == ast::AstNodeKind::FieldDeclaration ||
-        node->kind() == ast::AstNodeKind::FunctionDeclaration)
+    while (!work.empty())
     {
-        return;
-    }
-    if (node->kind() == ast::AstNodeKind::ObjectCreationExpression ||
-        node->kind() == ast::AstNodeKind::PlacementConstructionExpression)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidCall,
-            diagnostics::DiagnosticSeverity::Error,
-            node->range(),
-            "Macro A binds new C(args) only inside instance methods and constructors; "
-            "global-function OOP body integration remains outside this macro-delivery");
-        return;
-    }
-    scanUnsupportedContexts(node->first(), diagnostics);
-    scanUnsupportedContexts(node->second(), diagnostics);
-    scanUnsupportedContexts(node->third(), diagnostics);
-    for (const ast::AstNode* child : node->children())
-    {
-        scanUnsupportedContexts(child, diagnostics);
-    }
-}
-
-void ProjectConstructionModel::scanNode(
-    const ast::AstNode* node,
-    std::size_t callerMemberOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
-{
-    if (node == nullptr)
-    {
-        return;
-    }
-
-    if (node->kind() == ast::AstNodeKind::ObjectCreationExpression ||
-        node->kind() == ast::AstNodeKind::PlacementConstructionExpression)
-    {
-        if (node->kind() == ast::AstNodeKind::PlacementConstructionExpression)
-            scanNode(node->first(), callerMemberOrdinal, diagnostics);
-        for (const ast::AstNode* argument : node->children())
+        const ast::AstNode* current = work.back();
+        work.pop_back();
+        if (current == nullptr)
         {
-            scanNode(argument, callerMemberOrdinal, diagnostics);
+            continue;
         }
-        bindConstruction(node, callerMemberOrdinal, diagnostics);
-        return;
-    }
+        if (current->kind() == ast::AstNodeKind::MethodDeclaration ||
+            current->kind() == ast::AstNodeKind::ConstructorDeclaration ||
+            current->kind() == ast::AstNodeKind::FieldDeclaration ||
+            current->kind() == ast::AstNodeKind::FunctionDeclaration)
+        {
+            continue;
+        }
+        if (current->kind() == ast::AstNodeKind::ObjectCreationExpression ||
+            current->kind() == ast::AstNodeKind::PlacementConstructionExpression)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error,
+                current->range(),
+                "object construction is not valid in this declaration context");
+            continue;
+        }
 
-    scanNode(node->first(), callerMemberOrdinal, diagnostics);
-    scanNode(node->second(), callerMemberOrdinal, diagnostics);
-    scanNode(node->third(), callerMemberOrdinal, diagnostics);
-    for (const ast::AstNode* child : node->children())
-    {
-        scanNode(child, callerMemberOrdinal, diagnostics);
+        const std::span<ast::AstNode* const> children = current->children();
+        for (auto child = children.rbegin(); child != children.rend(); ++child)
+        {
+            work.push_back(*child);
+        }
+        work.push_back(current->third());
+        work.push_back(current->second());
+        work.push_back(current->first());
     }
 }
 
@@ -982,10 +937,11 @@ void ProjectConstructionModel::validateThisConstructorCycles(
 }
 
 void ProjectConstructionModel::bindConstruction(
-    const ast::AstNode* expression,
-    std::size_t callerMemberOrdinal,
+    const ProjectConstructionSite& site,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    const ast::AstNode* expression = site.syntax;
+    const std::size_t callerMemberOrdinal = site.callableOrdinal;
     ObjectConstructionBinding binding;
     binding.syntax = expression;
     binding.callerMemberOrdinal = callerMemberOrdinal;
@@ -1014,7 +970,7 @@ void ProjectConstructionModel::bindConstruction(
     // to free. The two share this entire routine because everything here is about WHICH
     // constructor runs (candidates, overload resolution, argument conversions), and none of that
     // depends on where the object lives.
-    const std::optional<std::size_t> targetOrdinal = nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
+    const std::optional<std::size_t> targetOrdinal = site.targetTypeOrdinal;
     const bool targetIsClass = targetOrdinal.has_value() &&
         *targetOrdinal < nameLookup_->namedTypes().size() &&
         nameLookup_->namedTypes()[*targetOrdinal].kind == NamedTypeDeclarationKind::Class;
@@ -1034,7 +990,7 @@ void ProjectConstructionModel::bindConstruction(
 
     binding.targetIsStruct = targetIsStruct;
     binding.targetTypeOrdinal = *targetOrdinal;
-    binding.targetTypeKey = "type:" + nameLookup_->namedTypes()[*targetOrdinal].identity.key();
+    binding.targetTypeKey = site.targetTypeKey;
     if (nameLookup_->namedTypes()[*targetOrdinal].isAbstract)
     {
         diagnostics.report(
@@ -1064,20 +1020,8 @@ void ProjectConstructionModel::bindConstruction(
         memberModel_->constructorsOfType(*targetOrdinal);
     binding.explicitConstructorMemberOrdinals.assign(constructors.begin(), constructors.end());
 
-    std::vector<MethodExpressionTypeBinding> argumentTypes;
-    bool argumentsValid = true;
-    for (const ast::AstNode* argument : expression->children())
-    {
-        const std::optional<MethodExpressionTypeBinding> argumentType =
-            expressionType(argument, callerMemberOrdinal);
-        if (!argumentType.has_value())
-        {
-            argumentsValid = false;
-            break;
-        }
-        argumentTypes.push_back(*argumentType);
-    }
-    if (!argumentsValid)
+    const std::vector<MethodExpressionTypeBinding>& argumentTypes = site.argumentTypes;
+    if (!site.argumentsTyped || argumentTypes.size() != expression->children().size())
     {
         binding.resolution = ConstructionResolutionKind::NoViableCandidate;
         constructions_.push_back(std::move(binding));

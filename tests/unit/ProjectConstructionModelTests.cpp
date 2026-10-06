@@ -589,6 +589,45 @@ void testThisConstructorDelegation(TestContext& tests, const std::filesystem::pa
 
 }
 
+void testTypedSiteOrdering(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "TypedSiteOrdering";
+    writeProject(directory, "TypedSiteOrdering");
+    writeFile(directory / "Main.ns",
+        "namespace Demo; public class Node { "
+        "public Node() {} public Node(Node child) {} "
+        "public Node Field = new Node(); "
+        "public Node Make() { return new Node(new Node()); } }");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectConstructions(
+        directory / "TypedSiteOrdering.nsproj",
+        error);
+    tests.expect(ok && error.empty(),
+        "typed-site ordering fixture binds without diagnostics");
+    if (compilation.constructionModel() == nullptr)
+    {
+        return;
+    }
+
+    const auto constructions = compilation.constructionModel()->constructions();
+    tests.expect(constructions.size() == 3,
+        "field, nested argument and outer construction publish exactly three bindings");
+    if (constructions.size() != 3)
+    {
+        return;
+    }
+
+    const std::uint32_t fieldOffset = constructions[0].syntax->range().begin().offset();
+    const std::uint32_t nestedOffset = constructions[1].syntax->range().begin().offset();
+    const std::uint32_t outerOffset = constructions[2].syntax->range().begin().offset();
+    tests.expect(fieldOffset < outerOffset,
+        "stable callable ordering keeps the earlier field initializer before method sites");
+    tests.expect(nestedOffset > outerOffset,
+        "stable in-callable ordering keeps a nested construction before its outer construction");
+}
+
 int main()
 {
     TestContext tests;
@@ -605,6 +644,7 @@ int main()
     testRanking(tests, root);
     testImplicitBaseConstructorChains(tests, root);
     testThisConstructorDelegation(tests, root);
+    testTypedSiteOrdering(tests, root);
 
     std::filesystem::remove_all(root, error);
     return tests.result();
