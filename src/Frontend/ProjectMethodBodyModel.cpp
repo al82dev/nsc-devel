@@ -1804,12 +1804,15 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
     std::size_t scopeOrdinal) const
 {
     if (expression == nullptr) return {};
+    const std::size_t callableOrdinal = scopeOrdinal < scopes_.size()
+        ? scopes_[scopeOrdinal].methodMemberOrdinal
+        : std::numeric_limits<std::size_t>::max();
 
     const auto typeKeyOf = [&](const ast::AstNode* syntax) -> std::string_view
     {
-        for (auto iterator = expressionTypes_.rbegin(); iterator != expressionTypes_.rend(); ++iterator)
-            if (iterator->syntax == syntax) return iterator->typeKey;
-        return {};
+        const MethodExpressionTypeBinding* binding =
+            expressionTypeBinding(syntax, callableOrdinal);
+        return binding != nullptr ? std::string_view(binding->typeKey) : std::string_view{};
     };
     const auto resolvedCall = [&](const ast::AstNode* syntax) -> const MethodCallBinding*
     {
@@ -3411,6 +3414,9 @@ std::optional<std::string> ProjectMethodBodyModel::storagePlaceKey(
 {
     if (precise != nullptr) *precise = true;
     if (expression == nullptr) return std::nullopt;
+    const std::size_t callableOrdinal = scopeOrdinal < scopes_.size()
+        ? scopes_[scopeOrdinal].methodMemberOrdinal
+        : std::numeric_limits<std::size_t>::max();
 
     const auto integerConstant = [&](const ast::AstNode* syntax) -> std::optional<std::int64_t>
     {
@@ -3425,10 +3431,11 @@ std::optional<std::string> ProjectMethodBodyModel::storagePlaceKey(
                 return locals_[name->semanticOrdinal].constantIntegerValue;
             }
         }
-        for (auto iterator = expressionTypes_.rbegin(); iterator != expressionTypes_.rend(); ++iterator)
+        const MethodExpressionTypeBinding* binding =
+            expressionTypeBinding(syntax, callableOrdinal);
+        if (binding != nullptr && binding->integerConstant.has_value())
         {
-            if (iterator->syntax != syntax || !iterator->integerConstant.has_value()) continue;
-            const ProjectIntegerConstant& value = *iterator->integerConstant;
+            const ProjectIntegerConstant& value = *binding->integerConstant;
             if (value.isNegative)
             {
                 if (value.value > (std::uint64_t{1} << 63U)) return std::nullopt;
@@ -3444,9 +3451,9 @@ std::optional<std::string> ProjectMethodBodyModel::storagePlaceKey(
     };
     const auto recordedTypeKey = [&](const ast::AstNode* syntax) -> std::string_view
     {
-        for (auto iterator = expressionTypes_.rbegin(); iterator != expressionTypes_.rend(); ++iterator)
-            if (iterator->syntax == syntax) return iterator->typeKey;
-        return {};
+        const MethodExpressionTypeBinding* binding =
+            expressionTypeBinding(syntax, callableOrdinal);
+        return binding != nullptr ? std::string_view(binding->typeKey) : std::string_view{};
     };
 
     // F04: a reference-returning call borrows the place named by its lifetime contract. Keep the
@@ -11542,14 +11549,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     {
                         ExpressionResult endpoint;
                         if (syntax == nullptr) return endpoint;
-                        for (auto iterator = expressionTypes_.rbegin();
-                             iterator != expressionTypes_.rend(); ++iterator)
+                        const MethodExpressionTypeBinding* binding =
+                            expressionTypeBinding(syntax, methodMemberOrdinal);
+                        if (binding != nullptr)
                         {
-                            if (iterator->syntax != syntax) continue;
-                            endpoint.typeKey = iterator->typeKey;
-                            endpoint.integerConstant = iterator->integerConstant;
+                            endpoint.typeKey = binding->typeKey;
+                            endpoint.integerConstant = binding->integerConstant;
                             endpoint.valid = !isErrorType(endpoint.typeKey);
-                            return endpoint;
                         }
                         return endpoint;
                     };
@@ -21005,15 +21011,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             const auto appendRecordedExpression = [&](const ast::AstNode* syntax)
             {
                 ExpressionResult value;
-                for (auto iterator = expressionTypes_.rbegin(); iterator != expressionTypes_.rend(); ++iterator)
+                const MethodExpressionTypeBinding* binding =
+                    expressionTypeBinding(syntax, methodMemberOrdinal);
+                if (binding != nullptr)
                 {
-                    if (iterator->syntax == syntax)
-                    {
-                        value.typeKey = iterator->typeKey;
-                        value.integerConstant = iterator->integerConstant;
-                        value.valid = !isErrorType(value.typeKey);
-                        break;
-                    }
+                    value.typeKey = binding->typeKey;
+                    value.integerConstant = binding->integerConstant;
+                    value.valid = !isErrorType(value.typeKey);
                 }
                 setterArguments.push_back(std::move(value));
             };
@@ -21597,14 +21601,8 @@ bool ProjectMethodBodyModel::isCompileTimeConstantExpression(
 
     const auto expressionType = [this](const ast::AstNode* syntax, std::size_t context) -> std::string
     {
-        for (auto iterator = expressionTypes_.rbegin(); iterator != expressionTypes_.rend(); ++iterator)
-        {
-            if (iterator->syntax == syntax && iterator->methodMemberOrdinal == context)
-            {
-                return iterator->typeKey;
-            }
-        }
-        return {};
+        const MethodExpressionTypeBinding* binding = expressionTypeBinding(syntax, context);
+        return binding != nullptr ? binding->typeKey : std::string{};
     };
 
     const auto convertValue = [](Stage37ConstantValue value, std::string_view target)
