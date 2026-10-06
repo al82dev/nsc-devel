@@ -143,6 +143,15 @@ void testPrimaryModel(TestContext& tests, const std::filesystem::path& root)
         model, *compilation.memberModel(), *compilation.nameLookup(), dump);
     tests.expect(dump.str().find("conversion=identity rank=0") != std::string::npos,
         "method-body dump exposes selected argument conversion facts"); // 14
+
+    tests.expect(!model.expressionTypes().empty(),
+        "primary fixture records expression type bindings"); // 15
+    if (!model.expressionTypes().empty())
+    {
+        const auto& latest = model.expressionTypes().back();
+        tests.expect(model.expressionTypeBinding(latest.syntax, latest.methodMemberOrdinal) == &latest,
+            "expression type lookup returns the newest exact callable binding"); // 16
+    }
 }
 
 void testScopeRules(TestContext& tests, const std::filesystem::path& root)

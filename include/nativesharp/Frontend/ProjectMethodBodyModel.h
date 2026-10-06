@@ -9,6 +9,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
+#include "nativesharp/Frontend/ProjectCallableBindingIndex.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Language/CallableSemantics.h"
@@ -1546,6 +1547,9 @@ public:
     std::span<const MethodNameBinding> nameBindings() const noexcept;
     std::span<const MethodShadowingEvent> shadowingEvents() const noexcept;
     std::span<const MethodExpressionTypeBinding> expressionTypes() const noexcept;
+    const MethodExpressionTypeBinding* expressionTypeBinding(
+        const ast::AstNode* syntax,
+        std::size_t callableOrdinal) const noexcept;
     const MethodAggregateInitializerBinding* aggregateInitializerBinding(
         const ast::AstNode* syntax) const noexcept;
     const MethodDeconstructionBinding* deconstructionBinding(
@@ -2427,6 +2431,7 @@ private:
     std::vector<MethodNameBinding> nameBindings_;
     std::vector<MethodShadowingEvent> shadowingEvents_;
     std::vector<MethodExpressionTypeBinding> expressionTypes_;
+    ProjectCallableBindingIndex expressionTypeBindingIndex_;
     std::vector<MethodAggregateInitializerBinding> aggregateInitializerBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> aggregateInitializerBindingBySyntax_;
     std::vector<MethodDeconstructionBinding> deconstructionBindings_;

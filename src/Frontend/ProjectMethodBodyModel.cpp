@@ -663,6 +663,7 @@ bool ProjectMethodBodyModel::build(
     nameLookup_ = &nameLookup;
     memberModel_ = &memberModel;
     namespaceFunctionModel_ = &namespaceFunctionModel;
+    expressionTypeBindingIndex_.clear();
     namespaceCallableBase_ = memberModel.members().size();
     namespaceCallableAdapters_.clear();
     namespaceCallableAdapters_.reserve(namespaceFunctionModel.functions().size());
@@ -2721,6 +2722,19 @@ std::span<const MethodShadowingEvent> ProjectMethodBodyModel::shadowingEvents() 
 std::span<const MethodExpressionTypeBinding> ProjectMethodBodyModel::expressionTypes() const noexcept
 {
     return expressionTypes_;
+}
+
+const MethodExpressionTypeBinding* ProjectMethodBodyModel::expressionTypeBinding(
+    const ast::AstNode* syntax,
+    std::size_t callableOrdinal) const noexcept
+{
+    const std::optional<std::size_t> bindingOrdinal =
+        expressionTypeBindingIndex_.latest(syntax, callableOrdinal);
+    if (!bindingOrdinal.has_value() || *bindingOrdinal >= expressionTypes_.size())
+    {
+        return nullptr;
+    }
+    return &expressionTypes_[*bindingOrdinal];
 }
 
 const MethodAggregateInitializerBinding* ProjectMethodBodyModel::aggregateInitializerBinding(
@@ -24043,7 +24057,9 @@ void ProjectMethodBodyModel::recordExpressionType(
     binding.flowIntegerMaximum = result.flowIntegerMaximum;
     binding.flowActiveVariantCase = result.flowActiveVariantCase;
     binding.flowRuntimeCheckElided = result.flowRuntimeCheckElided;
+    const std::size_t bindingOrdinal = expressionTypes_.size();
     expressionTypes_.push_back(std::move(binding));
+    expressionTypeBindingIndex_.record(methodMemberOrdinal, expression, bindingOrdinal);
 }
 
 void ProjectMethodBodyModel::reportPrevious(
