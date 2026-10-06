@@ -388,17 +388,7 @@ void ProjectConstructionModel::bindImplicitDefaultConstructors(
                 });
             if (hasInstanceStorage) continue;
         }
-        bool hasExplicitConstructor = false;
-        for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
-        {
-            if (memberOrdinal < memberModel_->members().size() &&
-                memberModel_->members()[memberOrdinal].kind == ClassMemberKind::Constructor)
-            {
-                hasExplicitConstructor = true;
-                break;
-            }
-        }
-        if (!hasExplicitConstructor)
+        if (memberModel_->constructorsOfType(typeOrdinal).empty())
         {
             bindImplicitDefaultConstructor(typeOrdinal, diagnostics);
         }
@@ -433,15 +423,8 @@ void ProjectConstructionModel::bindImplicitDefaultConstructor(
     }
 
     const std::size_t baseTypeOrdinal = *binding.baseTypeOrdinal;
-    std::vector<std::size_t> baseConstructors;
-    for (const std::size_t memberOrdinal : memberModel_->membersOfType(baseTypeOrdinal))
-    {
-        if (memberOrdinal < memberModel_->members().size() &&
-            memberModel_->members()[memberOrdinal].kind == ClassMemberKind::Constructor)
-        {
-            baseConstructors.push_back(memberOrdinal);
-        }
-    }
+    const std::span<const std::size_t> baseConstructors =
+        memberModel_->constructorsOfType(baseTypeOrdinal);
 
     if (!baseConstructors.empty())
     {
@@ -583,14 +566,9 @@ void ProjectConstructionModel::bindConstructorInitializer(
     }
 
     const std::size_t targetTypeOrdinal = *binding.targetTypeOrdinal;
-    for (const std::size_t memberOrdinal : memberModel_->membersOfType(targetTypeOrdinal))
-    {
-        if (memberOrdinal < memberModel_->members().size() &&
-            memberModel_->members()[memberOrdinal].kind == ClassMemberKind::Constructor)
-        {
-            binding.explicitConstructorMemberOrdinals.push_back(memberOrdinal);
-        }
-    }
+    const std::span<const std::size_t> constructors =
+        memberModel_->constructorsOfType(targetTypeOrdinal);
+    binding.explicitConstructorMemberOrdinals.assign(constructors.begin(), constructors.end());
 
     std::vector<MethodExpressionTypeBinding> argumentTypes;
     bool argumentsValid = true;
@@ -598,7 +576,8 @@ void ProjectConstructionModel::bindConstructorInitializer(
     {
         for (const ast::AstNode* argument : binding.initializerSyntax->children())
         {
-            const std::optional<MethodExpressionTypeBinding> type = expressionType(argument);
+            const std::optional<MethodExpressionTypeBinding> type =
+                expressionType(argument, constructorMemberOrdinal);
             if (!type.has_value())
             {
                 argumentsValid = false;
@@ -1081,20 +1060,16 @@ void ProjectConstructionModel::bindConstruction(
         return;
     }
 
-    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*targetOrdinal))
-    {
-        if (memberOrdinal < memberModel_->members().size() &&
-            memberModel_->members()[memberOrdinal].kind == ClassMemberKind::Constructor)
-        {
-            binding.explicitConstructorMemberOrdinals.push_back(memberOrdinal);
-        }
-    }
+    const std::span<const std::size_t> constructors =
+        memberModel_->constructorsOfType(*targetOrdinal);
+    binding.explicitConstructorMemberOrdinals.assign(constructors.begin(), constructors.end());
 
     std::vector<MethodExpressionTypeBinding> argumentTypes;
     bool argumentsValid = true;
     for (const ast::AstNode* argument : expression->children())
     {
-        const std::optional<MethodExpressionTypeBinding> argumentType = expressionType(argument);
+        const std::optional<MethodExpressionTypeBinding> argumentType =
+            expressionType(argument, callerMemberOrdinal);
         if (!argumentType.has_value())
         {
             argumentsValid = false;
@@ -1442,20 +1417,18 @@ void ProjectConstructionModel::bindConstruction(
 }
 
 std::optional<MethodExpressionTypeBinding> ProjectConstructionModel::expressionType(
-    const ast::AstNode* syntax) const
+    const ast::AstNode* syntax,
+    std::size_t callerMemberOrdinal) const
 {
     if (methodBodyModel_ == nullptr || syntax == nullptr)
     {
         return std::nullopt;
     }
-    for (const MethodExpressionTypeBinding& binding : methodBodyModel_->expressionTypes())
-    {
-        if (binding.syntax == syntax)
-        {
-            return binding;
-        }
-    }
-    return std::nullopt;
+    const MethodExpressionTypeBinding* binding =
+        methodBodyModel_->expressionTypeBinding(syntax, callerMemberOrdinal);
+    return binding != nullptr
+        ? std::optional<MethodExpressionTypeBinding>(*binding)
+        : std::nullopt;
 }
 
 bool ProjectConstructionModel::explainOwnershipRejection(

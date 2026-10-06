@@ -215,7 +215,9 @@ private:
         const ast::AstNode* expression,
         std::size_t callerMemberOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
-    std::optional<MethodExpressionTypeBinding> expressionType(const ast::AstNode* syntax) const;
+    std::optional<MethodExpressionTypeBinding> expressionType(
+        const ast::AstNode* syntax,
+        std::size_t callerMemberOrdinal) const;
     // NSC-LIMIT-010. Cuando ningun candidato es viable, dice si la unica objecion fue el contrato
     // de propiedad -- y si lo fue, la explica: que argumento, contra que parametro, y cual de los
     // tres incumplimientos. Devuelve true si emitio algo; false deja el diagnostico generico al
