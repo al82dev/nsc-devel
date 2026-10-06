@@ -1,6 +1,6 @@
 namespace NativeSharp.Core.Numerics
 {
-    public struct Int64x4
+    public copy struct Int64x4
     {
         public long X; public long Y; public long Z; public long W;
 

@@ -90,7 +90,7 @@ namespace NativeSharp.Core.Collections.Generic
             return tail;
         }
 
-        public owned T RemoveFirst()
+        public owned T RemoveFirst() throws InvalidOperationException
         {
             if (headSlot[0] == null)
             {
@@ -110,7 +110,7 @@ namespace NativeSharp.Core.Collections.Generic
             return removed.TakeValue();
         }
 
-        public owned T RemoveLast()
+        public owned T RemoveLast() throws InvalidOperationException
         {
             if (tail == null)
             {

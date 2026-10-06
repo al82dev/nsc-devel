@@ -1,7 +1,7 @@
 namespace NativeSharp.Core.Numerics
 {
     // Formato GPU RGBA8_UNORM: R ocupa los bits menos significativos y A los superiores.
-    public struct Rgba8Unorm
+    public copy struct Rgba8Unorm
     {
         public uint Packed;
 

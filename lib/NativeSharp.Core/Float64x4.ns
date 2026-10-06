@@ -1,7 +1,7 @@
 namespace NativeSharp.Core.Numerics
 {
     // Four double-precision lanes in a stable sequential 32-byte carrier.
-    public struct Float64x4
+    public copy struct Float64x4
     {
         public double X;
         public double Y;

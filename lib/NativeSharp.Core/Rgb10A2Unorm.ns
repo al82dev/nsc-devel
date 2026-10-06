@@ -1,7 +1,7 @@
 namespace NativeSharp.Core.Numerics
 {
     // Formato GPU RGB10_A2_UNORM. Pack enmascara entradas para que ningun canal invada al siguiente.
-    public struct Rgb10A2Unorm
+    public copy struct Rgb10A2Unorm
     {
         public uint Packed;
 

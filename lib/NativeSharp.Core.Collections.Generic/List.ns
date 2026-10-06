@@ -14,21 +14,12 @@ namespace NativeSharp.Core.Collections.Generic
     //     also a Stage 52 fix). `RemoveAt`/`Remove`/`Clear`/the destructor all `delete` the
     //     element(s) they discard, which frees a reference-typed element and is a no-op for a
     //     value-typed one.
-    //   - The indexer is READ-ONLY (`this[int index] { get; }`). NativeSharp property/indexer
-    //     setters have an implicit, unqualified `value` parameter that cannot be declared
-    //     `owned`, and -- this was checked directly against the compiler while designing this
-    //     package -- assigning a plain (non-owned) reference into an `owned T[]` slot is
-    //     rejected by the compiler. Internal relocation uses explicit move() between slots, so
-    //     the "each live pointer has exactly one owning slot" invariant also holds during each
-    //     operation, not only before and after it. A public setter would still be unsafe because
-    //     its implicit value parameter cannot state that the caller transfers ownership (the
-    //     caller could keep its own reference alive after handing it in, producing a second,
-    //     untracked owner of the same object -- a double-free waiting to happen). So the write
-    //     path is the explicit `SetAt(int index, owned T value)` method instead, which forces a
-    //     real ownership transfer at the call site exactly like `Add` does. This is a deliberate,
-    //     documented API-shape choice (get via `list[i]`, set via `list.SetAt(i, value)`) driven
-    //     by a genuine gap in the current compiler's array-assignment ownership checking; the
-    //     didactic writeup names it as a good target for a future stage's hardening pass.
+    //   - The indexer is declared `owned T`, using NativeSharp 3.0's asymmetric owned-accessor
+    //     contract: GET returns a plain non-owning alias, while SET receives an owned implicit
+    //     `value`. Therefore `list[i] = move(reference)` transfers exactly one owner and
+    //     `list[i] = scalar` remains the natural value-type spelling. Internal relocation and
+    //     the setter both use explicit move(), so every live reference has one owning slot.
+    //     SetAt remains as a source-compatible named form with the identical contract.
     //   - `ToArray()`/`CopyTo()` return/fill a plain (non-owned) `T[]` snapshot -- deliberately
     //     NOT `owned T[]`. The snapshot aliases the list's own elements (exactly like real C#'s
     //     ToArray(), whose returned array holds the same GC-tracked references as the source);
@@ -78,9 +69,10 @@ namespace NativeSharp.Core.Collections.Generic
             return items.Length;
         }
 
-        public T this[int index]
+        public owned T this[int index]
         {
             get { return items[index]; }
+            set { items[index] = move(value); }
         }
 
         // Mirrors List<T>.EnsureCapacity: grows the backing array (using the same doubling
@@ -154,9 +146,7 @@ namespace NativeSharp.Core.Collections.Generic
             count = count + 1;
         }
 
-        // Replaces the element at `index`, freeing the element it displaces first (a no-op for a
-        // value-typed T). See the class comment for why this is a method rather than
-        // `this[index] { set; }`.
+        // Source-compatible named form of the owned indexer setter.
         public void SetAt(int index, owned T value)
         {
             items[index] = move(value);
@@ -421,12 +411,12 @@ namespace NativeSharp.Core.Collections.Generic
             return -1;
         }
 
-        public int FindIndex(Predicate<T> match)
+        public int FindIndex(Predicate<T> predicate)
         {
             int i = 0;
             while (i < count)
             {
-                if (match(items[i])) { return i; }
+                if (predicate(items[i])) { return i; }
                 i = i + 1;
             }
             return -1;
@@ -434,29 +424,29 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Mirrors real C#'s List<T>.Find: returns default(T) (0/false/null, depending on T) when
         // no element matches, rather than trapping on an out-of-range read.
-        public T Find(Predicate<T> match)
+        public T Find(Predicate<T> predicate)
         {
-            int index = FindIndex(match);
+            int index = FindIndex(predicate);
             if (index < 0) { return default(T); }
             return items[index];
         }
 
         // Mirrors List<T>.FindLastIndex: the same scan as FindIndex, from the end.
-        public int FindLastIndex(Predicate<T> match)
+        public int FindLastIndex(Predicate<T> predicate)
         {
             int i = count - 1;
             while (i >= 0)
             {
-                if (match(items[i])) { return i; }
+                if (predicate(items[i])) { return i; }
                 i = i - 1;
             }
             return -1;
         }
 
         // Mirrors List<T>.FindLast: returns default(T) when no element matches, same as Find.
-        public T FindLast(Predicate<T> match)
+        public T FindLast(Predicate<T> predicate)
         {
-            int index = FindLastIndex(match);
+            int index = FindLastIndex(predicate);
             if (index < 0) { return default(T); }
             return items[index];
         }
@@ -464,13 +454,13 @@ namespace NativeSharp.Core.Collections.Generic
         // Mirrors List<T>.FindAll: a snapshot array of every matching element, in order. Plain
         // (non-owned) `T[]`, for the same ownership reason ToArray()/GetRange() are -- see the
         // class comment.
-        public T[] FindAll(Predicate<T> match)
+        public T[] FindAll(Predicate<T> predicate)
         {
             int matchCount = 0;
             int i = 0;
             while (i < count)
             {
-                if (match(items[i])) { matchCount = matchCount + 1; }
+                if (predicate(items[i])) { matchCount = matchCount + 1; }
                 i = i + 1;
             }
             const T[] result = new T[matchCount];
@@ -478,7 +468,7 @@ namespace NativeSharp.Core.Collections.Generic
             i = 0;
             while (i < count)
             {
-                if (match(items[i]))
+                if (predicate(items[i]))
                 {
                     result[writeIndex] = items[i];
                     writeIndex = writeIndex + 1;
@@ -488,29 +478,29 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
-        public bool Exists(Predicate<T> match)
+        public bool Exists(Predicate<T> predicate)
         {
-            return FindIndex(match) >= 0;
+            return FindIndex(predicate) >= 0;
         }
 
-        public bool TrueForAll(Predicate<T> match)
+        public bool TrueForAll(Predicate<T> predicate)
         {
             int i = 0;
             while (i < count)
             {
-                if (!match(items[i])) { return false; }
+                if (!predicate(items[i])) { return false; }
                 i = i + 1;
             }
             return true;
         }
 
-        public int RemoveAll(Predicate<T> match)
+        public int RemoveAll(Predicate<T> predicate)
         {
             int removed = 0;
             int i = 0;
             while (i < count)
             {
-                if (match(items[i]))
+                if (predicate(items[i]))
                 {
                     RemoveAt(i);
                     removed = removed + 1;

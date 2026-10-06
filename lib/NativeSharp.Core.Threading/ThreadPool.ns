@@ -1,14 +1,25 @@
 namespace NativeSharp.Core.Threading
 {
+    /// EN: Explicit result of bounded ThreadPool submission. The callback is borrowed, never consumed;
+    ///     therefore every rejection leaves its owner with the caller.
+    /// ES: Resultado explícito de envío acotado. El callback se presta, nunca se consume; por eso todo
+    ///     rechazo deja su owner con el llamador.
+    public enum ThreadPoolQueueStatus : byte
+    {
+        Accepted = 0,
+        Full = 1,
+        Stopping = 2,
+        InvalidWorker = 3,
+        InvalidCallback = 4
+    }
+
     // Item 371/374. A fixed-size native worker pool with one bounded FIFO per worker. Work is
     // represented by the already-proven ThreadStart delegate and executed outside the queue
     // monitor, so producers and workers only hold the lock while changing queue state.
     public class ThreadPool
     {
         private owned Thread[] workers_;
-        // The pool owns the queue buffer, but each slot only borrows the caller/Job delegate.
-        // The destructor releases the buffer without destroying those borrowed delegate cells.
-        private ThreadStart[] queues_;
+        private owned ThreadStart[] queues_;
         private owned int[] heads_;
         private owned int[] counts_;
         private owned Monitor gate_;
@@ -113,11 +124,21 @@ namespace NativeSharp.Core.Threading
         // skipping queues that are currently full.
         public bool Queue(ThreadStart work)
         {
+            return TryQueue(work) == ThreadPoolQueueStatus.Accepted;
+        }
+
+        /// EN: Bounded submission with a causal result. `work` is borrowed until execution and is not consumed
+        ///     on any path; its owner must outlive WaitIdle/Shutdown when accepted.
+        /// ES: Envío acotado con resultado causal. `work` se presta hasta ejecutarse y no se consume en ninguna
+        ///     ruta; su owner debe sobrevivir a WaitIdle/Shutdown cuando se acepta.
+        public ThreadPoolQueueStatus TryQueue(ThreadStart work)
+        {
+            if (work == null) { return ThreadPoolQueueStatus.InvalidCallback; }
             gate_.Enter();
             if (stopping_)
             {
                 gate_.Exit();
-                return false;
+                return ThreadPoolQueueStatus.Stopping;
             }
 
             int checkedQueues = 0;
@@ -131,7 +152,7 @@ namespace NativeSharp.Core.Threading
             if (checkedQueues == workers_.Length)
             {
                 gate_.Exit();
-                return false;
+                return ThreadPoolQueueStatus.Full;
             }
 
             EnqueueLocked(target, work);
@@ -139,7 +160,7 @@ namespace NativeSharp.Core.Threading
             if (nextQueue_ == workers_.Length) { nextQueue_ = 0; }
             gate_.PulseAll();
             gate_.Exit();
-            return true;
+            return ThreadPoolQueueStatus.Accepted;
         }
 
         // Directed submission is useful for affinity-sensitive work and makes each worker queue
@@ -147,17 +168,32 @@ namespace NativeSharp.Core.Threading
         // work stealing.
         public bool QueueOnWorker(int workerIndex, ThreadStart work)
         {
-            if (workerIndex < 0 || workerIndex >= workers_.Length) { return false; }
+            return TryQueueOnWorker(workerIndex, work) == ThreadPoolQueueStatus.Accepted;
+        }
+
+        /// EN: Directed bounded submission with the same borrowed-callback ownership contract as TryQueue.
+        /// ES: Envío dirigido acotado con el mismo contrato borrowed de TryQueue.
+        public ThreadPoolQueueStatus TryQueueOnWorker(int workerIndex, ThreadStart work)
+        {
+            if (work == null) { return ThreadPoolQueueStatus.InvalidCallback; }
+            if (workerIndex < 0 || workerIndex >= workers_.Length) {
+                return ThreadPoolQueueStatus.InvalidWorker;
+            }
             gate_.Enter();
-            if (stopping_ || counts_[workerIndex] == queueCapacity_)
+            if (stopping_)
             {
                 gate_.Exit();
-                return false;
+                return ThreadPoolQueueStatus.Stopping;
+            }
+            if (counts_[workerIndex] == queueCapacity_)
+            {
+                gate_.Exit();
+                return ThreadPoolQueueStatus.Full;
             }
             EnqueueLocked(workerIndex, work);
             gate_.PulseAll();
             gate_.Exit();
-            return true;
+            return ThreadPoolQueueStatus.Accepted;
         }
 
         private void EnqueueLocked(int workerIndex, ThreadStart work)

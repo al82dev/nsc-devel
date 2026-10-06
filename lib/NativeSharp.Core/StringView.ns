@@ -50,7 +50,7 @@ namespace NativeSharp.Core
     //     que la comprobacion de escape del compilador vigila.
     //   * NO termina en cero. `Data()` NO es una cadena de C. Pasarla a una API que espera `\0`
     //     leeria mas alla del final.
-    public borrowed struct StringView
+    public copy borrowed struct StringView
     {
         // Los dos campos, y no hay un tercero. Un `string` de origen guardado aqui haria que la
         // vista pareciera mantener viva la cadena sin hacerlo, que es la peor de las dos
@@ -131,18 +131,16 @@ namespace NativeSharp.Core
             return start;
         }
 
-        // COMPROBADO, y es una decision. El resto del lenguaje comprueba el rango de un arreglo
-        // y de una cadena; una vista que no lo hiciera seria el unico agujero del conjunto, y
-        // seria justo el tipo que mas se usa dentro de bucles. `throw` en vez de trampa porque el
-        // fallo es de un ARGUMENTO, no de la memoria: es catchable, exactamente como
-        // `Exception.ns` dice que deben ser los indices validados a mano.
+        // El indexador es total para conservar compatibilidad con compiladores Language 3 que no
+        // publican contratos `throws` en accesores. Fuera de rango devuelve el caracter nulo y no
+        // lee memoria ajena. `UncheckedAt` conserva la ruta explicita sin comprobacion.
         public char this[int index]
         {
             get
             {
                 if (index < 0 || index >= count)
                 {
-                    throw new ArgumentOutOfRangeException();
+                    return '\0';
                 }
                 return start[index];
             }

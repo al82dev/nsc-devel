@@ -57,7 +57,7 @@ namespace NativeSharp.Core.Collections.Generic
                 delete value;
                 return false;
             }
-            items.Add(move(value), true);
+            items.AddOrUpdate(move(value), true);
             return true;
         }
 
@@ -78,7 +78,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         // O(1): the backing SortedList<T, bool> keeps its keys sorted at all times, so the
         // element at a given position is already known without any extra work.
-        public T Min()
+        public T Min() throws InvalidOperationException
         {
             if (items.Count() == 0)
             {
@@ -87,7 +87,7 @@ namespace NativeSharp.Core.Collections.Generic
             return items.KeyAt(0);
         }
 
-        public T Max()
+        public T Max() throws InvalidOperationException
         {
             if (items.Count() == 0)
             {
@@ -144,16 +144,16 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
-        // Mirrors SortedSet<T>.RemoveWhere: removes every element matching `match`, returns how
+        // Mirrors SortedSet<T>.RemoveWhere: removes every element matching `predicate`, returns how
         // many were removed.
-        public int RemoveWhere(Predicate<T> match)
+        public int RemoveWhere(Predicate<T> predicate)
         {
             const T[] snapshot = items.Keys();
             int removed = 0;
             int i = 0;
             while (i < snapshot.Length)
             {
-                if (match(snapshot[i]))
+                if (predicate(snapshot[i]))
                 {
                     items.Remove(snapshot[i]);
                     removed = removed + 1;
@@ -173,7 +173,7 @@ namespace NativeSharp.Core.Collections.Generic
             {
                 if (!items.ContainsKey(snapshot[i]))
                 {
-                    items.Add(snapshot[i], true);
+                    items.AddOrUpdate(snapshot[i], true);
                 }
                 i = i + 1;
             }
@@ -220,7 +220,7 @@ namespace NativeSharp.Core.Collections.Generic
                 }
                 else
                 {
-                    items.Add(snapshot[i], true);
+                    items.AddOrUpdate(snapshot[i], true);
                 }
                 i = i + 1;
             }

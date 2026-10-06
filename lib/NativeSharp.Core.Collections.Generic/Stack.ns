@@ -83,7 +83,7 @@ namespace NativeSharp.Core.Collections.Generic
         }
 
         // Real C#'s Stack<T>.Pop() throws InvalidOperationException on an empty stack.
-        public owned T Pop()
+        public owned T Pop() throws InvalidOperationException
         {
             if (count == 0)
             {
@@ -94,7 +94,7 @@ namespace NativeSharp.Core.Collections.Generic
             return move(items[index]);
         }
 
-        public T Peek()
+        public T Peek() throws InvalidOperationException
         {
             if (count == 0)
             {

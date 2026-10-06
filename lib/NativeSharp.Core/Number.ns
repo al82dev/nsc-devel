@@ -574,7 +574,10 @@ namespace NativeSharp.Core
             return true;
         }
 
-        public static bool TryParseSingle(string text, out float value)
+        // `float` is the language spelling; keep Single as a compatibility alias. Parsing first
+        // as double is intentional, but a value outside the finite float range is rejected rather
+        // than silently becoming an infinity during the narrowing conversion.
+        public static bool TryParseFloat(string text, out float value)
         {
             value = (float)0;
             double wide;
@@ -582,8 +585,18 @@ namespace NativeSharp.Core
             {
                 return false;
             }
+            if (wide > (double)NumericLimits.FloatMax() ||
+                wide < (double)NumericLimits.FloatMin())
+            {
+                return false;
+            }
             value = (float)wide;
             return true;
+        }
+
+        public static bool TryParseSingle(string text, out float value)
+        {
+            return TryParseFloat(text, out value);
         }
 
         // Base explicita sobre la cadena entera: `TryParseUInt64Radix("1F", 16, out v)` da 31.

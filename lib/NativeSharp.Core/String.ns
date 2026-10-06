@@ -1012,8 +1012,8 @@ namespace NativeSharp.Core
             return (int)hash;
         }
 
-        // The call allocates a new independent buffer. Publishing that fact lets the caller bind
-        // it directly to `raii char[]` instead of rebuilding the same copy with CopyTo.
+        // El allocation tiene un solo owner: el caller. El contrato explicito permite enlazarlo
+        // directamente a una local raii y evita confundir la transferencia con un prestamo.
         public static owned char[] ToCharArray(string value)
         {
             char[] buffer = new char[value.Length];
@@ -1723,6 +1723,18 @@ namespace NativeSharp.Core
         public static owned string ToString(ulong value)
         {
             return FormatUnsignedDigits(value);
+        }
+
+        public static owned string ToString(uint value)
+        {
+            return FormatUnsignedDigits((ulong)value);
+        }
+
+        // NativeSharp 3.0 targets Windows x64, so nuint has the complete ulong range. This
+        // widening preserves every bit and prevents sizeof results from taking a signed path.
+        public static owned string ToString(nuint value)
+        {
+            return FormatUnsignedDigits((ulong)value);
         }
 
         public static owned string ToString(long value)

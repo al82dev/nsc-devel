@@ -20,7 +20,7 @@ namespace NativeSharp.Core.Threading
         public bool Cancel();
     }
 
-    public class Job<T> : IJob
+    public class Job<T> : IJob where T : copy
     {
         private JobFunction<T> function_;
         private ThreadStart work_;
@@ -29,7 +29,7 @@ namespace NativeSharp.Core.Threading
         private owned Event completed_;
         // The array allocation is owned by this Job, but its elements are plain non-owning
         // references. This is the same borrowed-elements pattern used by snapshot enumerators.
-        private IJob[] dependencies_;
+        private owned IJob[] dependencies_;
         private int dependencyCount_;
 
         public Job(JobFunction<T> function)

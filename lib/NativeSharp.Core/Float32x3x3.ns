@@ -2,7 +2,7 @@ namespace NativeSharp.Core.Numerics
 {
     // Matriz nativa column-major de 3x3. El carrier conserva exactamente nueve floats (36 bytes)
     // para buffers de GPU y para interoperar sin una representacion administrada auxiliar.
-    public struct Float32x3x3
+    public copy struct Float32x3x3
     {
         public Float32x3 C0;
         public Float32x3 C1;

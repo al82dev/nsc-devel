@@ -4,7 +4,8 @@ namespace NativeSharp.Core.Collections.Generic
     // snapshot pair: Dictionary<TKey,TValue>/SortedDictionary<TKey,TValue> hand these out (from
     // an enumerator, or Entries()) while the container itself keeps owning the real storage --
     // exactly like real C#'s readonly struct, whose fields never own anything because the CLR's
-    // GC tracks the underlying objects' lifetime instead.
+    // GC tracks the underlying objects' lifetime instead. `copy` is explicit in Language 3 so
+    // array elements and enumerator Current values preserve the intended value semantics.
     //
     // Structs in NativeSharp cannot declare constructors (a pre-existing Stage 40 restriction,
     // unrelated to Stage 52 and out of this stage's scope) -- every KeyValuePair<TKey,TValue> is
@@ -13,7 +14,7 @@ namespace NativeSharp.Core.Collections.Generic
     //     KeyValuePair<int, string> pair;
     //     pair.Key = 1;
     //     pair.Value = "one";
-    public struct KeyValuePair<TKey, TValue>
+    public copy struct KeyValuePair<TKey, TValue>
     {
         public TKey Key;
         public TValue Value;

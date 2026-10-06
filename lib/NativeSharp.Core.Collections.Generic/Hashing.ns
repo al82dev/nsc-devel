@@ -13,6 +13,25 @@ namespace NativeSharp.Core.Collections.Generic
     // Knuth's multiplicative hash for folding a 64-bit value into 32 bits).
     public class Hashing
     {
+        // `Default` is intentionally an overload family rather than a pretend universal hash.
+        // A Dictionary<TKey,TValue> default constructor resolves this method group after TKey is
+        // specialized. Built-in integral keys and string therefore need no boilerplate hasher;
+        // structs/classes and floating-point keys still require an explicit HashFunc<T> so their
+        // equality/hash policy cannot be guessed by the runtime.
+        public static int Default(int value) { return Int32(value); }
+        public static int Default(uint value) { return UInt32(value); }
+        public static int Default(long value) { return Int64(value); }
+        public static int Default(ulong value) { return UInt64(value); }
+        public static int Default(nint value) { return Int64((long)value); }
+        public static int Default(nuint value) { return UInt64((ulong)value); }
+        public static int Default(bool value) { return Boolean(value); }
+        public static int Default(char value) { return Char(value); }
+        public static int Default(byte value) { return Byte(value); }
+        public static int Default(sbyte value) { return (int)value; }
+        public static int Default(short value) { return Short(value); }
+        public static int Default(ushort value) { return (int)value; }
+        public static int Default(string value) { return Str(value); }
+
         public static int Int32(int value)
         {
             return value;

@@ -193,9 +193,9 @@ namespace NativeSharp.Core.Collections.Generic
             int fin = cuantos - 1;
             while (fin > 0)
             {
-                var temporal = datos[0];
-                datos[0] = datos[fin];
-                datos[fin] = temporal;
+                var temporal = datos.UncheckedAt(0);
+                datos.UncheckedSet(0, datos.UncheckedAt(fin));
+                datos.UncheckedSet(fin, temporal);
                 Hundir<T>(datos, 0, fin);
                 fin = fin - 1;
             }
@@ -216,32 +216,11 @@ namespace NativeSharp.Core.Collections.Generic
             int fin = cuantos - 1;
             while (fin > 0)
             {
-                var temporal = datos[0];
-                datos[0] = datos[fin];
-                datos[fin] = temporal;
+                var temporal = datos.UncheckedAt(0);
+                datos.UncheckedSet(0, datos.UncheckedAt(fin));
+                datos.UncheckedSet(fin, temporal);
                 HundirCon<T>(datos, 0, fin, comparador);
                 fin = fin - 1;
-            }
-        }
-
-        // Orden estable para tablas donde dos claves iguales deben conservar el orden canonico de
-        // descubrimiento. Insertion sort es deliberado: no aloca, es estable por usar `< 0` (no
-        // mueve empates) y las listas por scope del compilador son pequenas. Las tablas grandes
-        // deben ordenar indices o usar un merge buffer explicito en una fase posterior.
-        public static void StableSort<T>(Span<T> datos, Comparison<T> comparador)
-        {
-            int i = 1;
-            while (i < datos.Length())
-            {
-                var actual = datos[i];
-                int destino = i;
-                while (destino > 0 && comparador(actual, datos[destino - 1]) < 0)
-                {
-                    datos[destino] = datos[destino - 1];
-                    destino = destino - 1;
-                }
-                datos[destino] = actual;
-                i = i + 1;
             }
         }
 
@@ -262,13 +241,19 @@ namespace NativeSharp.Core.Collections.Generic
                 int izquierdo = 2 * actual + 1;
                 int derecho = izquierdo + 1;
 
-                if (izquierdo < limite && datos[mayor] < datos[izquierdo]) { mayor = izquierdo; }
-                if (derecho < limite && datos[mayor] < datos[derecho]) { mayor = derecho; }
+                if (izquierdo < limite && datos.UncheckedAt(mayor) < datos.UncheckedAt(izquierdo))
+                {
+                    mayor = izquierdo;
+                }
+                if (derecho < limite && datos.UncheckedAt(mayor) < datos.UncheckedAt(derecho))
+                {
+                    mayor = derecho;
+                }
                 if (mayor == actual) { return; }
 
-                var temporal = datos[actual];
-                datos[actual] = datos[mayor];
-                datos[mayor] = temporal;
+                var temporal = datos.UncheckedAt(actual);
+                datos.UncheckedSet(actual, datos.UncheckedAt(mayor));
+                datos.UncheckedSet(mayor, temporal);
                 actual = mayor;
             }
         }
@@ -282,13 +267,21 @@ namespace NativeSharp.Core.Collections.Generic
                 int izquierdo = 2 * actual + 1;
                 int derecho = izquierdo + 1;
 
-                if (izquierdo < limite && comparador(datos[mayor], datos[izquierdo]) < 0) { mayor = izquierdo; }
-                if (derecho < limite && comparador(datos[mayor], datos[derecho]) < 0) { mayor = derecho; }
+                if (izquierdo < limite &&
+                    comparador(datos.UncheckedAt(mayor), datos.UncheckedAt(izquierdo)) < 0)
+                {
+                    mayor = izquierdo;
+                }
+                if (derecho < limite &&
+                    comparador(datos.UncheckedAt(mayor), datos.UncheckedAt(derecho)) < 0)
+                {
+                    mayor = derecho;
+                }
                 if (mayor == actual) { return; }
 
-                var temporal = datos[actual];
-                datos[actual] = datos[mayor];
-                datos[mayor] = temporal;
+                var temporal = datos.UncheckedAt(actual);
+                datos.UncheckedSet(actual, datos.UncheckedAt(mayor));
+                datos.UncheckedSet(mayor, temporal);
                 actual = mayor;
             }
         }

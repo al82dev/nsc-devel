@@ -82,12 +82,17 @@ namespace NativeSharp.Core.Collections.Generic
             return items.TryGetValue(key, result);
         }
 
+        // A missing key follows Core's total-accessor contract and returns default(TValue).
+        // TryGetValue remains the non-ambiguous lookup when default(TValue) can be stored.
         public TValue this[TKey key]
         {
-            get { return items[key]; }
+            get
+            {
+                return items[key];
+            }
         }
 
-        public void Add(owned TKey key, owned TValue value)
+        public void Add(owned TKey key, owned TValue value) throws ArgumentException
         {
             items.Add(move(key), move(value));
         }
@@ -97,7 +102,7 @@ namespace NativeSharp.Core.Collections.Generic
             items.AddOrUpdate(move(key), move(value));
         }
 
-        public void SetValue(TKey key, owned TValue value)
+        public void SetValue(TKey key, owned TValue value) throws KeyNotFoundException
         {
             items.SetValue(key, move(value));
         }

@@ -1,7 +1,7 @@
 namespace NativeSharp.Core.Numerics
 {
     // Matriz nativa column-major de 4x4. Cuatro columnas SIMD forman un carrier ABI de 64 bytes.
-    public struct Float32x4x4
+    public copy struct Float32x4x4
     {
         public Float32x4 C0;
         public Float32x4 C1;
@@ -11,10 +11,14 @@ namespace NativeSharp.Core.Numerics
         public static Float32x4 Transform(Float32x4x4 matrix, Float32x4 vector)
         {
             Float32x4 result;
-            result.X = matrix.C0.X * vector.X + matrix.C1.X * vector.Y + matrix.C2.X * vector.Z + matrix.C3.X * vector.W;
-            result.Y = matrix.C0.Y * vector.X + matrix.C1.Y * vector.Y + matrix.C2.Y * vector.Z + matrix.C3.Y * vector.W;
-            result.Z = matrix.C0.Z * vector.X + matrix.C1.Z * vector.Y + matrix.C2.Z * vector.Z + matrix.C3.Z * vector.W;
-            result.W = matrix.C0.W * vector.X + matrix.C1.W * vector.Y + matrix.C2.W * vector.Z + matrix.C3.W * vector.W;
+            result.X = matrix.C0.X * vector.X + matrix.C1.X * vector.Y +
+                matrix.C2.X * vector.Z + matrix.C3.X * vector.W;
+            result.Y = matrix.C0.Y * vector.X + matrix.C1.Y * vector.Y +
+                matrix.C2.Y * vector.Z + matrix.C3.Y * vector.W;
+            result.Z = matrix.C0.Z * vector.X + matrix.C1.Z * vector.Y +
+                matrix.C2.Z * vector.Z + matrix.C3.Z * vector.W;
+            result.W = matrix.C0.W * vector.X + matrix.C1.W * vector.Y +
+                matrix.C2.W * vector.Z + matrix.C3.W * vector.W;
             return result;
         }
 

@@ -1,0 +1,22 @@
+namespace NativeSharp.Core
+{
+    // Always active at O0..O3 and catchable. NativeSharp has no automatic caller-location
+    // intrinsic yet, so the optional message is the explicit source/context channel.
+    public class Assertions
+    {
+        public static void Require(bool condition) throws AssertionException
+        {
+            if (!condition) { throw new AssertionException("Assertion failed."); }
+        }
+
+        public static void Require(bool condition, string message) throws AssertionException
+        {
+            if (!condition) { throw new AssertionException(message); }
+        }
+
+        public static void Fail(string message) throws AssertionException
+        {
+            throw new AssertionException(message);
+        }
+    }
+}

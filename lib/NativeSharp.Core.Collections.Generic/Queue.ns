@@ -118,7 +118,7 @@ namespace NativeSharp.Core.Collections.Generic
         // Real C#'s Queue<T>.Dequeue() throws InvalidOperationException on an empty queue rather
         // than returning a default value -- mirrored here now that NativeSharp.Core.Exception is
         // a shipped, real base type (see lib/NativeSharp.Core/Exception.ns).
-        public owned T Dequeue()
+        public owned T Dequeue() throws InvalidOperationException
         {
             if (count == 0)
             {
@@ -130,7 +130,7 @@ namespace NativeSharp.Core.Collections.Generic
             return move(items[index]);
         }
 
-        public T Peek()
+        public T Peek() throws InvalidOperationException
         {
             if (count == 0)
             {

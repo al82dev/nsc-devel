@@ -175,7 +175,7 @@ namespace NativeSharp.Core.Collections.Generic
             SiftUp(count - 1);
         }
 
-        public TElement Peek()
+        public TElement Peek() throws InvalidOperationException
         {
             if (count == 0)
             {
@@ -186,7 +186,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         // See the class comment for why the root is swapped to the (about to become out-of-range)
         // last slot before `count` shrinks, rather than copying the last element's value forward.
-        public owned TElement Dequeue()
+        public owned TElement Dequeue() throws InvalidOperationException
         {
             if (count == 0)
             {

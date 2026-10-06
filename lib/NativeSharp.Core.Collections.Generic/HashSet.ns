@@ -22,6 +22,16 @@ namespace NativeSharp.Core.Collections.Generic
     {
         private Dictionary<T, bool> items;
 
+        public HashSet()
+        {
+            items = new Dictionary<T, bool>();
+        }
+
+        public HashSet(int capacity)
+        {
+            items = new Dictionary<T, bool>(capacity);
+        }
+
         public HashSet(HashFunc<T> hashFunc)
         {
             items = new Dictionary<T, bool>(hashFunc);
@@ -37,18 +47,11 @@ namespace NativeSharp.Core.Collections.Generic
             return items.Count();
         }
 
-        // Mirrors real C#'s HashSet<T>.Add: returns whether `value` was actually a NEW element
-        // (false if it was already present -- the dictionary's own Add() would throw on a
-        // duplicate key, which is the wrong behavior for a set's Add, so this checks first).
+        // Mirrors real C#'s HashSet<T>.Add: returns whether `value` was actually a NEW element.
+        // Dictionary.TryAdd preserves that non-throwing contract and consumes either outcome.
         public bool Add(owned T value)
         {
-            if (items.ContainsKey(value))
-            {
-                delete value;
-                return false;
-            }
-            items.Add(move(value), true);
-            return true;
+            return items.TryAdd(move(value), true);
         }
 
         public bool Contains(T value)
@@ -100,7 +103,7 @@ namespace NativeSharp.Core.Collections.Generic
             {
                 if (!items.ContainsKey(snapshot[i]))
                 {
-                    items.Add(snapshot[i], true);
+                    items.TryAdd(snapshot[i], true);
                 }
                 i = i + 1;
             }
@@ -151,7 +154,7 @@ namespace NativeSharp.Core.Collections.Generic
                 }
                 else
                 {
-                    items.Add(snapshot[i], true);
+                    items.TryAdd(snapshot[i], true);
                 }
                 i = i + 1;
             }
@@ -226,16 +229,16 @@ namespace NativeSharp.Core.Collections.Generic
             return Count() == other.Count() && IsSubsetOf(other);
         }
 
-        // Mirrors HashSet<T>.RemoveWhere: removes every element matching `match`, returns how
+        // Mirrors HashSet<T>.RemoveWhere: removes every element matching `predicate`, returns how
         // many were removed.
-        public int RemoveWhere(Predicate<T> match)
+        public int RemoveWhere(Predicate<T> predicate)
         {
             const T[] snapshot = items.Keys();
             int removed = 0;
             int i = 0;
             while (i < snapshot.Length)
             {
-                if (match(snapshot[i]))
+                if (predicate(snapshot[i]))
                 {
                     items.Remove(snapshot[i]);
                     removed = removed + 1;

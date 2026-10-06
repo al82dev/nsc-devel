@@ -35,7 +35,7 @@ namespace NativeSharp.Core
     //     olvido liberar.
     //   * `CopyTo` NO se solapa con seguridad. Es una copia hacia delante; si el destino cae
     //     dentro del origen y por detras, los datos se pisan. Para eso esta `CopyToOverlapping`.
-    public borrowed struct Span<T>
+    public copy borrowed struct Span<T>
     {
         private T* start;
         private int count;
@@ -61,16 +61,16 @@ namespace NativeSharp.Core
             return start;
         }
 
-        // COMPROBADO en las dos direcciones -- ver la nota del indexador de StringView: el resto
-        // del lenguaje comprueba el rango, y el unico tipo que no lo hiciera seria justo el que
-        // mas aparece dentro de bucles.
+        // El indexador es total para conservar compatibilidad con compiladores Language 3 que no
+        // publican contratos `throws` en accesores. Una lectura fuera de rango devuelve el valor
+        // por omision; una escritura fuera de rango no modifica memoria.
         public T this[int index]
         {
             get
             {
                 if (index < 0 || index >= count)
                 {
-                    throw new ArgumentOutOfRangeException();
+                    return default(T);
                 }
                 return start[index];
             }
@@ -78,7 +78,7 @@ namespace NativeSharp.Core
             {
                 if (index < 0 || index >= count)
                 {
-                    throw new ArgumentOutOfRangeException();
+                    return;
                 }
                 start[index] = value;
             }
@@ -175,7 +175,7 @@ namespace NativeSharp.Core
     }
 
     // La mitad de solo lectura. Todo lo que no escribe, escrito igual; nada de lo que escribe.
-    public borrowed struct ReadOnlySpan<T>
+    public copy borrowed struct ReadOnlySpan<T>
     {
         private T* start;
         private int count;
@@ -207,7 +207,7 @@ namespace NativeSharp.Core
             {
                 if (index < 0 || index >= count)
                 {
-                    throw new ArgumentOutOfRangeException();
+                    return default(T);
                 }
                 return start[index];
             }

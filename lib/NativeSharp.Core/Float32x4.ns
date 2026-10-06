@@ -3,7 +3,7 @@ namespace NativeSharp.Core.Numerics
     // Vector SIMD publico de 128 bits. El layout es deliberadamente un struct ordinario de
     // cuatro floats: puede cruzar ABI, metadata y PDB sin exponer un tipo dependiente del target.
     // Add/Subtract/Multiply se reconocen por firma exacta y bajan a operaciones LLVM vectoriales.
-    public struct Float32x4
+    public copy struct Float32x4
     {
         public float X;
         public float Y;

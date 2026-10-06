@@ -17,7 +17,71 @@ namespace NativeSharp.Core
     // `NativeSharp.Core.Exception` to find.
     public class Exception
     {
+        private owned string messageStorage;
+        private owned Exception innerStorage;
+        private owned string stackTraceStorage;
+
         public string Message;
+        public Exception InnerException;
+        public string StackTrace;
+
+        public Exception()
+        {
+            messageStorage = null;
+            innerStorage = null;
+            stackTraceStorage = null;
+            Message = null;
+            InnerException = null;
+            StackTrace = null;
+        }
+
+        public Exception(string message)
+        {
+            messageStorage = String.Copy(message);
+            innerStorage = null;
+            stackTraceStorage = null;
+            Message = messageStorage;
+            InnerException = null;
+            StackTrace = null;
+        }
+
+        public Exception(string message, owned Exception innerException)
+        {
+            messageStorage = String.Copy(message);
+            innerStorage = move(innerException);
+            stackTraceStorage = null;
+            Message = messageStorage;
+            InnerException = innerStorage;
+            StackTrace = null;
+        }
+
+        public void SetStackTrace(string stackTrace)
+        {
+            stackTraceStorage = String.Copy(stackTrace);
+            StackTrace = stackTraceStorage;
+        }
+
+        public owned string ToDiagnosticString()
+        {
+            string ownMessage = Message;
+            if (ownMessage == null) { ownMessage = "Exception"; }
+            raii string result = String.Copy(ownMessage);
+            if (InnerException != null)
+            {
+                raii string withMarker = String.Concat(result, " ---> ");
+                string innerMessage = InnerException.Message;
+                if (innerMessage == null) { innerMessage = "Exception"; }
+                raii string withInner = String.Concat(withMarker, innerMessage);
+                result = move(withInner);
+            }
+            if (StackTrace != null)
+            {
+                raii string withBreak = String.Concat(result, "\n");
+                raii string withStack = String.Concat(withBreak, StackTrace);
+                result = move(withStack);
+            }
+            return move(result);
+        }
     }
 
     // Mirrors System.InvalidOperationException: the receiver is in a state that does not support
@@ -25,6 +89,10 @@ namespace NativeSharp.Core
     // collection).
     public class InvalidOperationException : Exception
     {
+        public InvalidOperationException() : base() { }
+        public InvalidOperationException(string message) : base(message) { }
+        public InvalidOperationException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
     }
 
     // Mirrors System.ArgumentOutOfRangeException: an index/count argument fell outside the
@@ -34,6 +102,10 @@ namespace NativeSharp.Core
     // failure is catchable exactly like real C#'s List<T>[index]/RemoveAt(index).
     public class ArgumentOutOfRangeException : Exception
     {
+        public ArgumentOutOfRangeException() : base() { }
+        public ArgumentOutOfRangeException(string message) : base(message) { }
+        public ArgumentOutOfRangeException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
     }
 
     // Mirrors System.Collections.Generic.KeyNotFoundException: Dictionary<TKey,TValue>'s
@@ -42,6 +114,10 @@ namespace NativeSharp.Core
     // TryGetValue.
     public class KeyNotFoundException : Exception
     {
+        public KeyNotFoundException() : base() { }
+        public KeyNotFoundException(string message) : base(message) { }
+        public KeyNotFoundException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
     }
 
     // Mirrors System.ArgumentException: an argument's VALUE (as opposed to merely its range,
@@ -51,5 +127,89 @@ namespace NativeSharp.Core
     // Dictionary<TKey,TValue>.Add.
     public class ArgumentException : Exception
     {
+        public ArgumentException() : base() { }
+        public ArgumentException(string message) : base(message) { }
+        public ArgumentException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
+    }
+
+    public class DivideByZeroException : Exception
+    {
+        public DivideByZeroException() : base() { }
+        public DivideByZeroException(string message) : base(message) { }
+        public DivideByZeroException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
+    }
+
+    public class FormatException : Exception
+    {
+        public FormatException() : base() { }
+        public FormatException(string message) : base(message) { }
+        public FormatException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
+    }
+
+    public class NullReferenceException : Exception
+    {
+        public NullReferenceException() : base() { }
+        public NullReferenceException(string message) : base(message) { }
+        public NullReferenceException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
+    }
+
+    public class IndexOutOfRangeException : Exception
+    {
+        public IndexOutOfRangeException() : base() { }
+        public IndexOutOfRangeException(string message) : base(message) { }
+        public IndexOutOfRangeException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
+    }
+
+    public class InvalidCastException : Exception
+    {
+        public InvalidCastException() : base() { }
+        public InvalidCastException(string message) : base(message) { }
+        public InvalidCastException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
+    }
+
+    public class TimeoutException : Exception
+    {
+        public TimeoutException() : base() { }
+        public TimeoutException(string message) : base(message) { }
+        public TimeoutException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
+    }
+
+    public class IOException : Exception
+    {
+        public IOException() : base() { }
+        public IOException(string message) : base(message) { }
+        public IOException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
+    }
+
+    public class FileNotFoundException : IOException
+    {
+        public FileNotFoundException() : base() { }
+        public FileNotFoundException(string message) : base(message) { }
+        public FileNotFoundException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
+    }
+
+    public class UnauthorizedAccessException : IOException
+    {
+        public UnauthorizedAccessException() : base() { }
+        public UnauthorizedAccessException(string message) : base(message) { }
+        public UnauthorizedAccessException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
+    }
+
+    public class AssertionException : Exception
+    {
+        public AssertionException() : base() { }
+        public AssertionException(string message) : base(message) { }
+        public AssertionException(string message, owned Exception innerException)
+            : base(message, move(innerException)) { }
     }
 }

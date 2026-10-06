@@ -34,7 +34,7 @@ namespace NativeSharp.Core
     // ABI > 8 bytes, SortedDictionary como arreglo ordenado). Para timing de juego (delta time,
     // frame pacing, profiling) lo que realmente importa es Stopwatch/TimeSpan, no el calendario
     // -- por eso ese es el foco real de Stage 53.1, y DateTime queda deliberadamente minimo.
-    public struct DateTime
+    public copy struct DateTime
     {
         public long Ticks;
 

@@ -1,7 +1,7 @@
 namespace NativeSharp.Core.Numerics
 {
     // Signed two-lane 128-bit SIMD value with the same stable carrier policy as Int32x4.
-    public struct Int64x2
+    public copy struct Int64x2
     {
         public long X;
         public long Y;

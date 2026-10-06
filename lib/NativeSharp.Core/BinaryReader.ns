@@ -30,7 +30,7 @@ namespace NativeSharp.Core
     // LA POSICION NO RETROCEDE SOLA. Una lectura que no cabe devuelve None y **no avanza**, asi
     // que el lector queda exactamente donde estaba y el llamador puede decidir. Avanzar en una
     // lectura fallida dejaria la posicion en un sitio que no significa nada.
-    public borrowed struct BinaryReader
+    public copy borrowed struct BinaryReader
     {
         private byte* data;
         private int length;

@@ -190,6 +190,8 @@ namespace NativeSharp.Core.Collections.Generic
             return true;
         }
 
+        // Language 3 collection accessors are total for compatibility with the official NSC.
+        // Use TryGetValue when a stored default(TValue) must be distinguished from a missing key.
         public TValue this[TKey key]
         {
             get
@@ -197,7 +199,7 @@ namespace NativeSharp.Core.Collections.Generic
                 int index = FindIndex(key);
                 if (index < 0)
                 {
-                    throw new KeyNotFoundException();
+                    return default(TValue);
                 }
                 return values[index];
             }
@@ -279,7 +281,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Mirrors real C#'s SortedList<TKey,TValue>.Add: throws ArgumentException on a duplicate
         // key, exactly like the CLR's SortedList<TKey,TValue>.
-        public void Add(owned TKey key, owned TValue value)
+        public void Add(owned TKey key, owned TValue value) throws ArgumentException
         {
             int insertAt = LowerBound(key);
             if (insertAt < count && KeyEquals(keys[insertAt], key))
@@ -308,7 +310,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Replaces the value of an ALREADY-PRESENT key (throws KeyNotFoundException otherwise) --
         // needs no ownership of the key at all, since the container already owns the one stored.
-        public void SetValue(TKey key, owned TValue value)
+        public void SetValue(TKey key, owned TValue value) throws KeyNotFoundException
         {
             int index = FindIndex(key);
             if (index < 0)

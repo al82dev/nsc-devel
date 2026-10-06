@@ -17,7 +17,7 @@ namespace NativeSharp.Core
     // y arriesgar un fallo de compilacion tardio, TotalSeconds/TotalMilliseconds/etc. son
     // metodos comunes (), exactamente el mismo patron que examples/project_stage40's
     // "public struct Word { public int Sum() {...} }" ya prueba que funciona sobre structs.
-    public struct TimeSpan
+    public copy struct TimeSpan
     {
         public long Ticks;
 

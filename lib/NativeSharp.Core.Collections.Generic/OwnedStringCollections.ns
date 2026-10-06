@@ -1,0 +1,50 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core.Collections.Generic
+{
+    // Explicit copy-side companions to the consuming collection APIs. Add/Insert/AddFirst/
+    // AddLast keep their transfer contract; these methods say `Copy` in the call site and pay
+    // for a distinct String.Copy before transferring the new owner into the destination.
+    public class OwnedStringCollections
+    {
+        public static void AddCopy(List<string> destination, string value)
+        {
+            raii string copy = String.Copy(value);
+            destination.Add(move(copy));
+        }
+
+        public static void InsertCopy(List<string> destination, int index, string value)
+        {
+            raii string copy = String.Copy(value);
+            destination.Insert(index, move(copy));
+        }
+
+        public static void AddFirstCopy(LinkedList<string> destination, string value)
+        {
+            raii string copy = String.Copy(value);
+            destination.AddFirst(move(copy));
+        }
+
+        public static void AddLastCopy(LinkedList<string> destination, string value)
+        {
+            raii string copy = String.Copy(value);
+            destination.AddLast(move(copy));
+        }
+
+        // Creates a new owning array and a distinct owned string for every source element.
+        // This is the concise safe form of the §126 copy loop; transfer from existing owners
+        // remains explicit through move(source[i]) and is intentionally not hidden here.
+        public static owned string[] CopyToOwnedArray(string[] values)
+        {
+            raii string[] result = new string[values.Length];
+            int i = 0;
+            while (i < values.Length)
+            {
+                raii string copy = String.Copy(values[i]);
+                result[i] = move(copy);
+                i = i + 1;
+            }
+            return move(result);
+        }
+    }
+}

@@ -1,6 +1,6 @@
 namespace NativeSharp.Core.Numerics
 {
-    public struct Int32x8
+    public copy struct Int32x8
     {
         public int X; public int Y; public int Z; public int W;
         public int A; public int B; public int C; public int D;

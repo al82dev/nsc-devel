@@ -24,10 +24,9 @@ namespace NativeSharp.Core
     // ningun valor de T, y se puede devolver, pasar y componer como cualquier otro valor.
     //
     // ------------------------------------------------------------------------------------------
-    // NO ES UNA VISTA, y por eso NO es `borrowed struct`. Guarda una COPIA de T por valor: dos
-    // campos, el valor y un booleano. Nada aqui presta de nadie y nada aqui muere antes de
-    // tiempo, asi que someterlo a la comprobacion de escape del SHR-013 seria mentir en la otra
-    // direccion.
+    // NO ES UNA VISTA, y por eso NO es `borrowed struct`. Guarda T por valor: dos campos, el
+    // payload y un booleano. Un T copy puede observarse con Value/ValueOr/UncheckedValue; un T
+    // move-only se extrae una sola vez con Take/TakeOr/UncheckedTake.
     //
     // LO QUE SI HEREDA de T: si T es una REFERENCIA a clase, el `Optional<T>` guarda esa
     // referencia sin poseerla -- exactamente como la guardaria un campo normal. No alarga la vida
@@ -49,7 +48,7 @@ namespace NativeSharp.Core
         // `present` es exactamente `false`. No hay dos formas de estar vacio.
         public Optional(T item)
         {
-            value = item;
+            value = move(item);
             present = true;
         }
 
@@ -67,7 +66,7 @@ namespace NativeSharp.Core
         // error del programa, no un resultado. La alternativa --devolver el T a cero-- convierte
         // un error en un dato plausible, que es la clase de defecto que este tipo existe para
         // eliminar. Quien no quiera la excepcion tiene `ValueOr`.
-        public T Value()
+        public T Value() throws InvalidOperationException
         {
             if (!present)
             {
@@ -95,6 +94,36 @@ namespace NativeSharp.Core
         {
             return value;
         }
+
+        // Extrae el payload, deja el Optional vacio y preserva el contrato move-only de T.
+        public T Take() throws InvalidOperationException
+        {
+            if (!present)
+            {
+                throw new InvalidOperationException();
+            }
+            present = false;
+            return move(value);
+        }
+
+        // Extrae el payload o consume el fallback. En ambos caminos el resultado tiene un solo
+        // propietario y el Optional queda vacio.
+        public T TakeOr(T fallback)
+        {
+            if (!present)
+            {
+                return move(fallback);
+            }
+            present = false;
+            return move(value);
+        }
+
+        // Variante sin comprobacion para quien ya verifico HasValue().
+        public T UncheckedTake()
+        {
+            present = false;
+            return move(value);
+        }
     }
 
     // Las fabricas, fuera del struct POR EL MISMO HUECO DEL LENGUAJE que documenta `Spans` en
@@ -102,7 +131,9 @@ namespace NativeSharp.Core
     // nombres no se repiten con aridad de tipos igual (ID 132).
     public class Optionals
     {
-        public static Optional<T> Some<T>(T value)
+        // La fabrica de conveniencia conserva semantica de copia. Los payloads move-only usan
+        // directamente el constructor y se consumen mediante Take.
+        public static Optional<T> Some<T>(T value) where T : copy
         {
             return new Optional<T>(value);
         }

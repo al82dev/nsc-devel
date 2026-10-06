@@ -1,0 +1,50 @@
+namespace NativeSharp.Core
+{
+    // The frontend cannot declare a generic delegate whose return type is its own not-yet-bound
+    // type parameter. A small factory interface expresses the same contract without reflection or
+    // an untyped object carrier.
+    public interface ILazyValueFactory<T>
+    {
+        T Create();
+    }
+
+    // Synchronous exactly-once initialization. Thread-safe publication belongs to
+    // NativeSharp.Core.Threading and is not hidden behind this Core type. The factory is borrowed
+    // and must outlive the Lazy instance.
+    public class Lazy<T> where T : copy
+    {
+        private ILazyValueFactory<T> factory;
+        private T cachedValue;
+        private bool created;
+        private bool evaluating;
+
+        public Lazy(ILazyValueFactory<T> valueFactory)
+        {
+            factory = valueFactory;
+            created = false;
+            evaluating = false;
+        }
+
+        public bool IsValueCreated() { return created; }
+
+        public T Value() throws InvalidOperationException
+        {
+            if (created) { return cachedValue; }
+            if (evaluating)
+            {
+                throw new InvalidOperationException("Lazy factory recursively requested its value.");
+            }
+            evaluating = true;
+            try
+            {
+                cachedValue = factory.Create();
+                created = true;
+            }
+            finally
+            {
+                evaluating = false;
+            }
+            return cachedValue;
+        }
+    }
+}

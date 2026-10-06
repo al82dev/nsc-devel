@@ -1,0 +1,34 @@
+namespace NativeSharp.Core.Collections.Generic
+{
+    // Enumeration is snapshot-based so a foreach sees every pair that existed when it started
+    // exactly once. `snapshot` owns only its array block: KeyValuePair's fields are plain aliases
+    // to keys and values still owned by the Dictionary. The dictionary must therefore outlive
+    // this enumerator, which is naturally true for foreach's scoped RAII enumerator local.
+    public class DictionaryEnumerator<TKey, TValue>
+    {
+        private KeyValuePair<TKey, TValue>[] snapshot;
+        private int index;
+
+        public DictionaryEnumerator(Dictionary<TKey, TValue> source)
+        {
+            snapshot = source.ToArray();
+            index = -1;
+        }
+
+        public bool MoveNext()
+        {
+            index = index + 1;
+            return index < snapshot.Length;
+        }
+
+        public KeyValuePair<TKey, TValue> Current
+        {
+            get { return snapshot[index]; }
+        }
+
+        ~DictionaryEnumerator()
+        {
+            delete[] snapshot;
+        }
+    }
+}

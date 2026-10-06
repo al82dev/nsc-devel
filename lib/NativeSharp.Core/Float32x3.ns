@@ -1,6 +1,6 @@
 namespace NativeSharp.Core.Numerics
 {
-    public struct Float32x3
+    public copy struct Float32x3
     {
         public float X;
         public float Y;
