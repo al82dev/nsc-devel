@@ -5294,6 +5294,15 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_driver_tests)
     add_test(NAME nsc.driver COMMAND nsc_driver_tests)
 
+    add_executable(nsc_project_callable_wave_driver_tests
+        tests/unit/ProjectCallableWaveDriverTests.cpp)
+    target_link_libraries(nsc_project_callable_wave_driver_tests PRIVATE
+        nsc_driver nsc_frontend nsc_target)
+    target_compile_features(nsc_project_callable_wave_driver_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_project_callable_wave_driver_tests)
+    add_test(NAME nsc.project-callable-wave-driver
+        COMMAND nsc_project_callable_wave_driver_tests)
+
     add_executable(nsc_compilation_telemetry_tests tests/unit/CompilationTelemetryTests.cpp)
     target_link_libraries(nsc_compilation_telemetry_tests PRIVATE nsc_driver)
     target_compile_features(nsc_compilation_telemetry_tests PRIVATE cxx_std_20)
