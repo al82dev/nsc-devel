@@ -13,6 +13,7 @@
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 #include "nativesharp/Frontend/ProjectCallableResultMerger.h"
+#include "nativesharp/Frontend/ProjectCallableWaveReducer.h"
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/AbiSemantics.h"
@@ -1197,7 +1198,8 @@ bool ProjectMethodBodyModel::build(
     while (workCursor < callableWorklist.size())
     {
         const std::size_t waveEnd = callableWorklist.size();
-        std::vector<std::size_t> newlyDemanded;
+        std::vector<ProjectCallableAnalysisResult> waveResults;
+        waveResults.reserve(waveEnd - workCursor);
         for (; workCursor < waveEnd; ++workCursor)
         {
             const ProjectCallableAnalysisContext context(
@@ -1206,19 +1208,18 @@ bool ProjectMethodBodyModel::build(
                 inheritanceModel, interfaceModel, genericModel,
                 genericConstraintModel, languageEdition);
             if (!callableCanBeAnalyzed(context)) continue;
-            ProjectCallableAnalysisResult result = analyzeCallableIsolated(context);
-            for (const std::size_t target : result.discoveredCallables())
-            {
-                if (isDeferredGenericMethod(target) &&
-                    demandedGenericMethods.insert(target).second)
-                    newlyDemanded.push_back(target);
-            }
-            ProjectCallableResultMerger::merge(
-                *this, std::move(result), diagnostics);
+            waveResults.push_back(analyzeCallableIsolated(context));
         }
 
-        std::ranges::sort(newlyDemanded);
-        newlyDemanded.erase(std::unique(newlyDemanded.begin(), newlyDemanded.end()), newlyDemanded.end());
+        const std::vector<std::size_t> discoveries = ProjectCallableWaveReducer::reduce(
+            *this, std::move(waveResults), diagnostics);
+        std::vector<std::size_t> newlyDemanded;
+        for (const std::size_t target : discoveries)
+        {
+            if (isDeferredGenericMethod(target) &&
+                demandedGenericMethods.insert(target).second)
+                newlyDemanded.push_back(target);
+        }
         callableWorklist.insert(
             callableWorklist.end(), newlyDemanded.begin(), newlyDemanded.end());
         ++waveOrdinal;

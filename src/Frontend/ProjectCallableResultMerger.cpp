@@ -190,8 +190,7 @@ void mergeEscapeStatistics(
 
 void ProjectCallableResultMerger::merge(
     ProjectMethodBodyModel& destination,
-    ProjectCallableAnalysisResult&& result,
-    diagnostics::DiagnosticEngine& diagnostics)
+    ProjectCallableAnalysisResult&& result)
 {
     ProjectMethodBodyModel& source = result.shard();
     const std::size_t scopeBase = destination.scopes_.size();
@@ -270,9 +269,6 @@ void ProjectCallableResultMerger::merge(
         destination.ownershipFlowStatistics_, source.ownershipFlowStatistics_);
     mergeEscapeStatistics(
         destination.escapePropagationStatistics_, source.escapePropagationStatistics_);
-    for (const diagnostics::Diagnostic& diagnostic : result.diagnostics().diagnostics())
-        diagnostics.append(diagnostic);
-
     for (std::size_t index = nameBase; index < destination.nameBindings_.size(); ++index)
     {
         const MethodNameBinding& binding = destination.nameBindings_[index];
