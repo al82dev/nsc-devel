@@ -2348,6 +2348,25 @@ private:
         SourceRange range,
         diagnostics::DiagnosticEngine& diagnostics,
         std::string message) const;
+    bool callableCanBeAnalyzed(std::size_t callableOrdinal) const;
+    void resetCallableScratch(const ClassMemberSymbol& callable);
+    std::vector<std::size_t> createOwnedParameterCleanups(
+        const ClassMemberSymbol& callable,
+        std::size_t callableOrdinal,
+        std::size_t rootScopeOrdinal);
+    void analyzeConstructorInitializer(
+        const ClassMemberSymbol& callable,
+        std::size_t callableOrdinal,
+        std::size_t rootScopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void closeOwnedParameterCleanups(
+        std::span<const std::size_t> cleanupOrdinals,
+        const ClassMemberSymbol& callable,
+        std::size_t callableOrdinal,
+        std::size_t rootScopeOrdinal);
+    void analyzeCallable(
+        std::size_t callableOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
 
     const ProjectNameLookup* nameLookup_ = nullptr;
     const ProjectMemberModel* memberModel_ = nullptr;

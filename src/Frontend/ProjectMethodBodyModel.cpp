@@ -724,6 +724,131 @@ int escapeClassRank(language::EscapeClass item) noexcept
 }
 }
 
+bool ProjectMethodBodyModel::callableCanBeAnalyzed(std::size_t callableOrdinal) const
+{
+    if (analyzedCallableMembers_.contains(callableOrdinal)) return false;
+    const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
+    if (callable == nullptr) return false;
+    if (callableOrdinal >= namespaceCallableBase_ || genericConstraintModel_ == nullptr)
+        return true;
+
+    if (!genericConstraintModel_->specializationSatisfiesConstraints(callable->syntax))
+        return false;
+    return nameLookup_ == nullptr || callable->declaringTypeOrdinal >= nameLookup_->namedTypes().size() ||
+        genericConstraintModel_->specializationSatisfiesConstraints(
+            nameLookup_->namedTypes()[callable->declaringTypeOrdinal].syntax);
+}
+
+void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& callable)
+{
+    currentCallableLocalBase_ = locals_.size();
+    currentCallableParameterCount_ = callable.parameters.size();
+    movedRaiiLocals_.clear();
+    maybeMovedRaiiLocals_.clear();
+    movedOwnedParameters_.clear();
+    maybeMovedOwnedParameters_.clear();
+    invokedFnOnceLocals_.clear();
+    maybeInvokedFnOnceLocals_.clear();
+    partiallyMovedPlaces_.clear();
+    maybePartiallyMovedPlaces_.clear();
+    invalidLocalBorrows_.clear();
+    maybeInvalidLocalBorrows_.clear();
+    assignedLocals_.clear();
+    activeUnionMembers_.clear();
+    nonNullStorages_.clear();
+    integerRanges_.clear();
+    activeVariantCases_.clear();
+    conditionFlowBySyntax_.clear();
+    inUnevaluatedOperand_ = false;
+    definiteAssignmentWriteTarget_ = nullptr;
+    activeUnionWriteTarget_ = nullptr;
+    unsafeBlockDepth_ = 0;
+    ownershipFlowReachable_ = true;
+    partialProjectionReceiverDepth_ = 0;
+    throwFlowStates_.clear();
+}
+
+std::vector<std::size_t> ProjectMethodBodyModel::createOwnedParameterCleanups(
+    const ClassMemberSymbol& callable,
+    std::size_t callableOrdinal,
+    std::size_t rootScopeOrdinal)
+{
+    std::vector<std::size_t> cleanupOrdinals;
+    for (std::size_t parameterOrdinal = 0;
+         parameterOrdinal < callable.parameters.size(); ++parameterOrdinal)
+    {
+        const MethodParameterSymbol& parameter = callable.parameters[parameterOrdinal];
+        const bool valueDrop = parameter.passKind == ParameterPassKind::Value &&
+            memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(parameter.typeKey);
+        if (parameter.ownership != sema::OwnershipKind::Owned && !valueDrop) continue;
+        const std::size_t cleanupOrdinal = createCleanupRegion(
+            valueDrop ? MethodCleanupRegionKind::ValueParameterDrop
+                      : MethodCleanupRegionKind::OwnedParameterDestroy,
+            callable.syntax, callable.syntax, callableOrdinal, rootScopeOrdinal);
+        cleanupRegions_[cleanupOrdinal].resourceParameterOrdinal = parameterOrdinal;
+        activeCleanupRegions_.push_back(cleanupOrdinal);
+        cleanupOrdinals.push_back(cleanupOrdinal);
+    }
+    return cleanupOrdinals;
+}
+
+void ProjectMethodBodyModel::analyzeConstructorInitializer(
+    const ClassMemberSymbol& callable,
+    std::size_t callableOrdinal,
+    std::size_t rootScopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (callable.kind != ClassMemberKind::Constructor || callable.syntax->second() == nullptr)
+        return;
+    const ast::AstNode* initializer = callable.syntax->second();
+    if (initializer->kind() != ast::AstNodeKind::BaseConstructorInitializer &&
+        initializer->kind() != ast::AstNodeKind::ThisConstructorInitializer)
+        return;
+    for (const ast::AstNode* argument : initializer->children())
+    {
+        analyzeExpression(
+            argument, callableOrdinal, rootScopeOrdinal, diagnostics,
+            /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
+    }
+}
+
+void ProjectMethodBodyModel::closeOwnedParameterCleanups(
+    std::span<const std::size_t> cleanupOrdinals,
+    const ClassMemberSymbol& callable,
+    std::size_t callableOrdinal,
+    std::size_t rootScopeOrdinal)
+{
+    for (std::size_t index = cleanupOrdinals.size(); index > 0; --index)
+    {
+        recordNormalCleanupContinuation(
+            cleanupOrdinals[index - 1], callable.syntax->first(), callableOrdinal, rootScopeOrdinal);
+    }
+}
+
+void ProjectMethodBodyModel::analyzeCallable(
+    std::size_t callableOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (!callableCanBeAnalyzed(callableOrdinal)) return;
+    const ClassMemberSymbol& callable = *methodSymbol(callableOrdinal);
+    analyzedCallableMembers_.insert(callableOrdinal);
+    resetCallableScratch(callable);
+    const MethodScopeKind rootKind = callable.kind == ClassMemberKind::Constructor
+        ? MethodScopeKind::Constructor
+        : callable.kind == ClassMemberKind::Destructor
+            ? MethodScopeKind::Destructor : MethodScopeKind::Method;
+    const std::size_t rootScopeOrdinal = createScope(rootKind, callableOrdinal, std::nullopt);
+    seedParameters(callableOrdinal, rootScopeOrdinal, diagnostics);
+    const std::vector<std::size_t> cleanupOrdinals =
+        createOwnedParameterCleanups(callable, callableOrdinal, rootScopeOrdinal);
+    analyzeConstructorInitializer(callable, callableOrdinal, rootScopeOrdinal, diagnostics);
+    analyzeBlock(
+        callable.syntax->first(), callableOrdinal, rootScopeOrdinal, false, diagnostics);
+    closeOwnedParameterCleanups(
+        cleanupOrdinals, callable, callableOrdinal, rootScopeOrdinal);
+    activeCleanupRegions_.clear();
+}
+
 bool ProjectMethodBodyModel::build(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
@@ -1005,133 +1130,7 @@ bool ProjectMethodBodyModel::build(
         const std::size_t waveEnd = callableWorklist.size();
         for (; workCursor < waveEnd; ++workCursor)
         {
-            const std::size_t memberOrdinal = callableWorklist[workCursor];
-            if (analyzedCallableMembers_.contains(memberOrdinal)) continue;
-            const ClassMemberSymbol* memberPointer = methodSymbol(memberOrdinal);
-            if (memberPointer == nullptr) continue;
-            const ClassMemberSymbol& member = *memberPointer;
-        // NSC-LIMIT-007. UNA ESPECIALIZACION QUE YA INCUMPLIO SU `where` NO SE ANALIZA.
-        //
-        // Su cuerpo se sustituyo con un `T` que la clausula prohibe, de modo que analizarlo
-        // produce errores sobre codigo que el programa no usa: `F<int>(1)` con una sobrecarga
-        // `F<T>(T, int) where T : IComponente` fallaba dentro de un `x.Peso()` que nadie llama.
-        //
-        // No se BORRA el registro: la fase de constraints lo necesita para poder explicar, si al
-        // final ninguna candidata sirve, POR QUE ninguna servia. Lo que no se hace es tratarlo
-        // como codigo del programa. HIR lo salta por la misma pregunta y en el mismo sentido.
-        //
-        // Se preguntan DOS nodos, y hacen falta los dos. Para un METODO generico la invalidez
-        // esta en su propio nodo; para un TIPO generico --`Caja<int>` con `where T : class`--
-        // esta en el nodo del tipo, y sus metodos son hijos suyos, asi que preguntar solo por
-        // `member.syntax` no la veria nunca.
-            if (memberOrdinal < namespaceCallableBase_ && genericConstraintModel_ != nullptr &&
-                (!genericConstraintModel_->specializationSatisfiesConstraints(member.syntax) ||
-                 (member.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
-                  !genericConstraintModel_->specializationSatisfiesConstraints(
-                      nameLookup.namedTypes()[member.declaringTypeOrdinal].syntax))))
-            {
-                continue;
-            }
-
-            analyzedCallableMembers_.insert(memberOrdinal);
-
-        currentCallableLocalBase_ = locals_.size();
-        currentCallableParameterCount_ = member.parameters.size();
-
-        const MethodScopeKind rootKind = member.kind == ClassMemberKind::Constructor
-            ? MethodScopeKind::Constructor
-            : member.kind == ClassMemberKind::Destructor
-                ? MethodScopeKind::Destructor
-                : MethodScopeKind::Method;
-        movedRaiiLocals_.clear();
-        maybeMovedRaiiLocals_.clear();
-        movedOwnedParameters_.clear();
-        maybeMovedOwnedParameters_.clear();
-        invokedFnOnceLocals_.clear();
-        maybeInvokedFnOnceLocals_.clear();
-        partiallyMovedPlaces_.clear();
-        maybePartiallyMovedPlaces_.clear();
-        invalidLocalBorrows_.clear();
-        maybeInvalidLocalBorrows_.clear();
-        assignedLocals_.clear();
-        activeUnionMembers_.clear();
-        nonNullStorages_.clear();
-        integerRanges_.clear();
-        activeVariantCases_.clear();
-        conditionFlowBySyntax_.clear();
-        inUnevaluatedOperand_ = false;
-        definiteAssignmentWriteTarget_ = nullptr;
-        activeUnionWriteTarget_ = nullptr;
-        unsafeBlockDepth_ = 0;
-        ownershipFlowReachable_ = true;
-        partialProjectionReceiverDepth_ = 0;
-        throwFlowStates_.clear();
-        const std::size_t rootScopeOrdinal = createScope(
-            rootKind,
-            memberOrdinal,
-            std::nullopt);
-        seedParameters(memberOrdinal, rootScopeOrdinal, diagnostics);
-
-        // An `owned` reference parameter and a move-only value parameter with drop-bearing
-        // storage both belong to the callee. Keep their cleanup active for the entire callable.
-        // Keep its cleanup active for the entire callable so returns and exceptional exits
-        // destroy it exactly once. A later move nulls the parameter storage in LLVM, making
-        // this cleanup naturally idempotent.
-        std::vector<std::size_t> ownedParameterCleanupOrdinals;
-        for (std::size_t parameterOrdinal = 0; parameterOrdinal < member.parameters.size(); ++parameterOrdinal)
-        {
-            const MethodParameterSymbol& parameter = member.parameters[parameterOrdinal];
-            const bool valueDrop = parameter.passKind == ParameterPassKind::Value &&
-                memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(parameter.typeKey);
-            if (parameter.ownership != sema::OwnershipKind::Owned && !valueDrop)
-            {
-                continue;
-            }
-            const std::size_t cleanupOrdinal = createCleanupRegion(
-                valueDrop
-                    ? MethodCleanupRegionKind::ValueParameterDrop
-                    : MethodCleanupRegionKind::OwnedParameterDestroy,
-                member.syntax,
-                member.syntax,
-                memberOrdinal,
-                rootScopeOrdinal);
-            cleanupRegions_[cleanupOrdinal].resourceParameterOrdinal = parameterOrdinal;
-            activeCleanupRegions_.push_back(cleanupOrdinal);
-            ownedParameterCleanupOrdinals.push_back(cleanupOrdinal);
-        }
-
-        if (member.kind == ClassMemberKind::Constructor && member.syntax->second() != nullptr &&
-            (member.syntax->second()->kind() == ast::AstNodeKind::BaseConstructorInitializer ||
-             member.syntax->second()->kind() == ast::AstNodeKind::ThisConstructorInitializer))
-        {
-            // NSC-LIMIT-010: `this(...)` y `base(...)` son llamadas a constructor, asi que sus
-            // argumentos se analizan con `allowMove` como los de un `new` y los de una llamada
-            // ordinaria. Sin esto, delegar la propiedad --`: this(move(entrante))`, que es la
-            // forma en cadena natural-- se rechazaba aunque el constructor destino declarara el
-            // parametro `owned`.
-            for (const ast::AstNode* argument : member.syntax->second()->children())
-            {
-                analyzeExpression(
-                    argument, memberOrdinal, rootScopeOrdinal, diagnostics,
-                    /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
-            }
-        }
-        analyzeBlock(
-            member.syntax->first(),
-            memberOrdinal,
-            rootScopeOrdinal,
-            false,
-            diagnostics);
-
-        for (std::size_t index = ownedParameterCleanupOrdinals.size(); index > 0; --index)
-        {
-            recordNormalCleanupContinuation(
-                ownedParameterCleanupOrdinals[index - 1],
-                member.syntax->first(),
-                memberOrdinal,
-                rootScopeOrdinal);
-        }
-            activeCleanupRegions_.clear();
+            analyzeCallable(callableWorklist[workCursor], diagnostics);
         }
 
         std::vector<std::size_t> newlyDemanded;
