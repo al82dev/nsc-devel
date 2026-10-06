@@ -1,0 +1,36 @@
+digraph SemanticPerformancePipeline {
+    graph [
+        bgcolor="transparent",
+        fontname="Segoe UI",
+        rankdir=LR,
+        splines=ortho
+    ];
+    node [
+        color="#46668c",
+        fillcolor="#eef5fc",
+        fontname="Segoe UI",
+        shape=box,
+        style="rounded,filled"
+    ];
+    edge [color="#46668c", fontname="Segoe UI"];
+
+    catalogs [label="Immutable catalogs\nNSC.SEMANTICS.INDEX"];
+    scheduler [label="Deterministic waves\nNSC.SEMANTICS.SCHEDULER"];
+    callable [label="Callable analysis context\nNSC.SEMANTICS.METHOD_BODIES"];
+    ownership [label="Dense ownership flow\nNSC.SEMANTICS.OWNERSHIP"];
+    merge [label="Stable ordinal merge"];
+    escape [label="Escape worklist\nNSC.SEMANTICS.ESCAPE"];
+    construction [label="Typed construction sites\nNSC.SEMANTICS.CONSTRUCTION"];
+    consumers [label="Dumps, metadata and LLVM"];
+
+    catalogs -> scheduler;
+    scheduler -> callable;
+    callable -> ownership;
+    ownership -> merge;
+    merge -> escape;
+    merge -> construction;
+    escape -> consumers;
+    construction -> consumers;
+    merge -> scheduler [label="stable discovered work"];
+}
+
