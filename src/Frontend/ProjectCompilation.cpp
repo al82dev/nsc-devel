@@ -731,6 +731,7 @@ bool ProjectCompilation::compileProjectMethodBodies(
     ProjectMethodBodyBuildOptions methodBodyOptions;
     methodBodyOptions.workerCount = compilationJobs_;
     methodBodyOptions.cancellationCheck = cancellationCheck_;
+    methodBodyOptions.phaseTimingSink = phaseTimingSink_;
     methodBodyOptions.executionError = &loadError;
     if (!methodBodyModel_->build(
         *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_,

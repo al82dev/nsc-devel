@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -1200,6 +1201,8 @@ bool ProjectMethodBodyModel::build(
     std::size_t workCursor = 0;
     std::size_t waveOrdinal = 0;
     ProjectCallableWaveScheduler waveScheduler(options.workerCount);
+    callableAnalysisStatistics_.requestedWorkers = waveScheduler.requestedWorkerCount();
+    callableAnalysisStatistics_.effectiveWorkers = waveScheduler.effectiveWorkerCount();
     while (workCursor < callableWorklist.size())
     {
         const std::size_t waveEnd = callableWorklist.size();
@@ -1219,6 +1222,13 @@ bool ProjectMethodBodyModel::build(
             }
             eligibleCallables.push_back(context.callableOrdinal());
         }
+        callableAnalysisStatistics_.maximumWaveWidth = std::max(
+            callableAnalysisStatistics_.maximumWaveWidth,
+            eligibleCallables.size());
+        if (waveScheduler.usesParallelWave(eligibleCallables.size()))
+            ++callableAnalysisStatistics_.parallelWaves;
+        else
+            ++callableAnalysisStatistics_.synchronousWaves;
 
         std::vector<ProjectCallableAnalysisResult> waveResults;
         std::string waveError;
@@ -1234,7 +1244,8 @@ bool ProjectMethodBodyModel::build(
             },
             options.cancellationCheck,
             waveResults,
-            waveError);
+            waveError,
+            options.phaseTimingSink);
         if (!waveComplete)
         {
             if (options.executionError != nullptr)
@@ -1244,8 +1255,20 @@ bool ProjectMethodBodyModel::build(
         callableAnalysisStatistics_.callablesAnalyzed += waveResults.size();
         callableAnalysisStatistics_.shardsCreated += waveResults.size();
 
+        const auto mergeStarted = options.phaseTimingSink
+            ? std::chrono::steady_clock::now()
+            : std::chrono::steady_clock::time_point{};
         const std::vector<std::size_t> discoveries = ProjectCallableWaveReducer::reduce(
             *this, std::move(waveResults), diagnostics);
+        if (options.phaseTimingSink)
+        {
+            const std::string phase = "method-bodies-wave-" +
+                std::to_string(waveOrdinal) + "-merge";
+            options.phaseTimingSink(
+                phase,
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - mergeStarted));
+        }
         std::vector<std::size_t> newlyDemanded;
         for (const std::size_t target : discoveries)
         {

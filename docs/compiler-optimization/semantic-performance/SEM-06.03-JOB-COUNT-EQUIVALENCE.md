@@ -24,5 +24,6 @@ La prueba no congela hashes, textos de herramientas, número global de tests ni 
 ## Evidencia dirigida
 
 Se construye y ejecuta exclusivamente `nsc_project_method_body_model_tests`, junto con los tests
-puntuales del scheduler/reductor y escape afectados. Todo fixture NativeSharp usa O0. No se ejecuta
-baseline, minibaseline, CTest general ni O1/O2/O3.
+puntuales del scheduler/reductor y escape afectados. Este fixture llama directamente a la fase
+semántica, que no recibe un nivel de optimización; la equivalencia explícita de Driver en O0 se
+verifica por separado. No se ejecuta baseline, minibaseline, CTest general ni O1/O2/O3.

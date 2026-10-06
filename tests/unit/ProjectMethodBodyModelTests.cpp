@@ -20,6 +20,7 @@ using nativesharp::frontend::MethodCallResolutionKind;
 using nativesharp::frontend::MethodNameBindingKind;
 using nativesharp::frontend::MethodScopeKind;
 using nativesharp::frontend::MethodShadowingKind;
+using nativesharp::frontend::ProjectCallableAnalysisStatistics;
 using nativesharp::frontend::ProjectCompilation;
 using nativesharp::tests::TestContext;
 
@@ -685,6 +686,33 @@ bool diagnosticsEqual(
     return true;
 }
 
+bool semanticStatisticsEqual(
+    const ProjectCallableAnalysisStatistics& left,
+    const ProjectCallableAnalysisStatistics& right)
+{
+    return left.callablesQueued == right.callablesQueued &&
+        left.callablesAnalyzed == right.callablesAnalyzed &&
+        left.callablesSkipped == right.callablesSkipped &&
+        left.callablesReused == right.callablesReused &&
+        left.shardsCreated == right.shardsCreated &&
+        left.resultsMerged == right.resultsMerged &&
+        left.wavesReduced == right.wavesReduced &&
+        left.discoveriesPublished == right.discoveriesPublished &&
+        left.maximumWaveWidth == right.maximumWaveWidth;
+}
+
+std::size_t countWavePhases(
+    const std::vector<std::string>& phases,
+    std::string_view suffix)
+{
+    return static_cast<std::size_t>(std::ranges::count_if(
+        phases,
+        [suffix](const std::string& phase) {
+            return phase.starts_with("method-bodies-wave-") &&
+                phase.ends_with(suffix);
+        }));
+}
+
 void testDeterministicCallableWaves(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path directory = root / "DeterministicCallableWaves";
@@ -707,6 +735,11 @@ void testDeterministicCallableWaves(TestContext& tests, const std::filesystem::p
     serial.setCompilationJobs(1);
     dual.setCompilationJobs(2);
     wide.setCompilationJobs(12);
+    std::vector<std::string> dualPhases;
+    dual.setPhaseTimingSink(
+        [&](std::string_view phase, std::chrono::nanoseconds) {
+            dualPhases.emplace_back(phase);
+        });
     std::string serialError;
     std::string dualError;
     std::string wideError;
@@ -738,6 +771,18 @@ void testDeterministicCallableWaves(TestContext& tests, const std::filesystem::p
             serialStats.resultsMerged == dualStats.resultsMerged &&
             dualStats.resultsMerged == wideStats.resultsMerged,
         "parallel job counts preserve analyzed and merged callable cardinality");
+    tests.expect(semanticStatisticsEqual(serialStats, dualStats) &&
+            semanticStatisticsEqual(dualStats, wideStats),
+        "parallel job counts preserve every semantic analysis counter");
+    tests.expect(serialStats.requestedWorkers == 1 &&
+            dualStats.requestedWorkers == 2 && wideStats.requestedWorkers == 12 &&
+            serialStats.parallelWaves == 0 && dualStats.parallelWaves > 0 &&
+            wideStats.parallelWaves > 0,
+        "wave topology records the requested job budget and actual parallel waves");
+    tests.expect(countWavePhases(dualPhases, "-analysis") == dualStats.wavesReduced &&
+            countWavePhases(dualPhases, "-merge") == dualStats.wavesReduced &&
+            countWavePhases(dualPhases, "-wait") == dualStats.parallelWaves,
+        "timing mode emits analysis, merge and parallel wait telemetry per wave");
 }
 }
 

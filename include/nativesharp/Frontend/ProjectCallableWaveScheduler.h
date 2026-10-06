@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectCallableAnalysisResult.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <exception>
 #include <functional>
@@ -27,6 +28,9 @@ public:
         std::size_t callableOrdinal,
         std::size_t waveOrdinal)>;
     using CancellationCheck = std::function<bool()>;
+    // TimingSink is coordinator-only and must not throw, matching ProjectCompilation phase sinks.
+    using TimingSink =
+        std::function<void(std::string_view, std::chrono::nanoseconds)>;
 
     explicit ProjectCallableWaveScheduler(std::size_t workerCount) noexcept;
     ~ProjectCallableWaveScheduler();
@@ -40,9 +44,12 @@ public:
         const Analyze& analyze,
         const CancellationCheck& cancellationCheck,
         std::vector<ProjectCallableAnalysisResult>& results,
-        std::string& error);
+        std::string& error,
+        const TimingSink& timingSink = {});
 
     [[nodiscard]] std::size_t requestedWorkerCount() const noexcept;
+    [[nodiscard]] std::size_t effectiveWorkerCount() const noexcept;
+    [[nodiscard]] bool usesParallelWave(std::size_t callableCount) const noexcept;
 
 private:
     [[nodiscard]] bool runExclusive(
@@ -51,7 +58,8 @@ private:
         const Analyze& analyze,
         const CancellationCheck& cancellationCheck,
         std::vector<ProjectCallableAnalysisResult>& results,
-        std::string& error);
+        std::string& error,
+        const TimingSink& timingSink);
 
     std::size_t workerCount_ = 1;
     std::unique_ptr<driver::CompilationWorkerPool> pool_;

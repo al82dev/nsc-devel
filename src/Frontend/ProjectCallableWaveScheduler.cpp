@@ -34,6 +34,24 @@ std::string failureMessage(
     }
 }
 
+std::string wavePhaseName(std::size_t waveOrdinal, std::string_view suffix)
+{
+    return "method-bodies-wave-" + std::to_string(waveOrdinal) + "-" +
+        std::string(suffix);
+}
+
+void emitTiming(
+    const ProjectCallableWaveScheduler::TimingSink& sink,
+    std::size_t waveOrdinal,
+    std::string_view suffix,
+    std::chrono::steady_clock::time_point started)
+{
+    if (!sink) return;
+    sink(wavePhaseName(waveOrdinal, suffix),
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - started));
+}
+
 bool cancellationRequested(
     const ProjectCallableWaveScheduler::CancellationCheck& check)
 {
@@ -109,30 +127,35 @@ bool runSynchronousWave(
 
 bool waitForWave(
     driver::CompilationWorkerPool& pool,
+    std::size_t waveOrdinal,
     const ProjectCallableWaveScheduler::CancellationCheck& cancellationCheck,
+    const ProjectCallableWaveScheduler::TimingSink& timingSink,
     std::vector<ResultSlot>& slots,
     std::vector<ProjectCallableAnalysisResult>& results,
     std::string& error)
 {
+    const auto started = timingSink
+        ? std::chrono::steady_clock::now()
+        : std::chrono::steady_clock::time_point{};
+    std::exception_ptr failure;
     try
     {
         pool.wait();
-        if (cancellationRequested(cancellationCheck))
-        {
-            error = "callable analysis cancelled before publishing the wave";
-            results.clear();
-            return false;
-        }
-    }
-    catch (const std::exception&)
-    {
-        error = failureMessage("callable analysis failed", std::current_exception());
-        results.clear();
-        return false;
     }
     catch (...)
     {
-        error = failureMessage("callable analysis failed", std::current_exception());
+        failure = std::current_exception();
+    }
+    emitTiming(timingSink, waveOrdinal, "wait", started);
+    if (failure != nullptr)
+    {
+        error = failureMessage("callable analysis failed", failure);
+        results.clear();
+        return false;
+    }
+    if (cancellationRequested(cancellationCheck))
+    {
+        error = "callable analysis cancelled before publishing the wave";
         results.clear();
         return false;
     }
@@ -159,6 +182,7 @@ bool runParallelWave(
     driver::CompilationWorkerPool& pool,
     const ProjectCallableWaveScheduler::Analyze& analyze,
     const ProjectCallableWaveScheduler::CancellationCheck& cancellationCheck,
+    const ProjectCallableWaveScheduler::TimingSink& timingSink,
     std::vector<ProjectCallableAnalysisResult>& results,
     std::string& error)
 {
@@ -183,7 +207,8 @@ bool runParallelWave(
         results.clear();
         return false;
     }
-    return waitForWave(pool, cancellationCheck, slots, results, error);
+    return waitForWave(
+        pool, waveOrdinal, cancellationCheck, timingSink, slots, results, error);
 }
 }
 
@@ -213,7 +238,8 @@ bool ProjectCallableWaveScheduler::run(
     const Analyze& analyze,
     const CancellationCheck& cancellationCheck,
     std::vector<ProjectCallableAnalysisResult>& results,
-    std::string& error)
+    std::string& error,
+    const TimingSink& timingSink)
 {
     error.clear();
     results.clear();
@@ -224,10 +250,14 @@ bool ProjectCallableWaveScheduler::run(
         return false;
     }
     bool succeeded = false;
+    const auto started = timingSink
+        ? std::chrono::steady_clock::now()
+        : std::chrono::steady_clock::time_point{};
     try
     {
         succeeded = runExclusive(
-            callables, waveOrdinal, analyze, cancellationCheck, results, error);
+            callables, waveOrdinal, analyze, cancellationCheck,
+            results, error, timingSink);
     }
     catch (...)
     {
@@ -235,6 +265,7 @@ bool ProjectCallableWaveScheduler::run(
         results.clear();
     }
     running_.store(false);
+    emitTiming(timingSink, waveOrdinal, "analysis", started);
     return succeeded;
 }
 
@@ -244,7 +275,8 @@ bool ProjectCallableWaveScheduler::runExclusive(
     const Analyze& analyze,
     const CancellationCheck& cancellationCheck,
     std::vector<ProjectCallableAnalysisResult>& results,
-    std::string& error)
+    std::string& error,
+    const TimingSink& timingSink)
 {
     if (!analyze)
     {
@@ -270,11 +302,23 @@ bool ProjectCallableWaveScheduler::runExclusive(
 
     return runParallelWave(
         callables, waveOrdinal, *pool_, analyze,
-        cancellationCheck, results, error);
+        cancellationCheck, timingSink, results, error);
 }
 
 std::size_t ProjectCallableWaveScheduler::requestedWorkerCount() const noexcept
 {
     return workerCount_;
+}
+
+std::size_t ProjectCallableWaveScheduler::effectiveWorkerCount() const noexcept
+{
+    return pool_ != nullptr ? pool_->workerCount() : 1;
+}
+
+bool ProjectCallableWaveScheduler::usesParallelWave(
+    std::size_t callableCount) const noexcept
+{
+    return pool_ != nullptr && callableCount >= 2 &&
+        driver::currentCompilationWorkerIndex() == driver::kNoCompilationWorker;
 }
 }
