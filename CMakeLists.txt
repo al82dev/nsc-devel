@@ -4543,6 +4543,18 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage48_2_library_metadata_tests)
     add_test(NAME nsc.stage48_2.library-metadata COMMAND nsc_stage48_2_library_metadata_tests)
 
+    add_executable(
+        nsc_library_metadata_version_tolerance_tests
+        tests/unit/LibraryMetadataVersionToleranceTests.cpp)
+    target_link_libraries(
+        nsc_library_metadata_version_tolerance_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_library_metadata_version_tolerance_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_library_metadata_version_tolerance_tests)
+    add_test(
+        NAME nsc.library-metadata-version-tolerance
+        COMMAND nsc_library_metadata_version_tolerance_tests)
+
     add_executable(nsc_library_metadata_merger_tests tests/unit/LibraryMetadataMergerTests.cpp)
     target_link_libraries(nsc_library_metadata_merger_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_library_metadata_merger_tests PRIVATE cxx_std_20)

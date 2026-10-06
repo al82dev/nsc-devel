@@ -13,11 +13,11 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
 
 #include <array>
-#include <charconv>
 #include <fstream>
 #include <iterator>
 #include <string_view>
 #include <system_error>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -27,23 +27,16 @@ namespace
 {
 using Field = std::pair<std::string, std::string>;
 
-struct SemanticVersion final
-{
-    unsigned major = 0;
-    unsigned minor = 0;
-    unsigned patch = 0;
-};
-
 std::vector<Field> fields()
 {
     using namespace interop;
     return {
         {"compiler_release", std::string(kCompilerReleaseVersion)},
         {"language_release", std::string(kLanguageVersion)},
-        {"compiler_compatibility", "same-minor-before-1;same-major-after-1"},
-        {"language_compatibility", "same-minor-before-1;same-major-after-1"},
+        {"compiler_compatibility", "capability-based;version-label-informational"},
+        {"language_compatibility", "capability-based;version-label-informational"},
         {"deprecation", "diagnostic-before-removal;one-minor-minimum"},
-        {"nsmeta_read", "1.0-1." + std::to_string(interop::kMetadataFormatMinor)},
+        {"nsmeta_read", "content-compatible;version-label-informational"},
         {"nsmeta_write", std::to_string(interop::kMetadataFormatMajor) + "." + std::to_string(interop::kMetadataFormatMinor)},
         {"native_abi", std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
         {"runtime_abi", std::to_string(kRuntimeAbiMajor) + "." + std::to_string(kRuntimeAbiMinor)},
@@ -69,26 +62,6 @@ void removeCarriageReturn(std::string &line)
     }
 }
 
-bool parseComponent(std::string_view text, unsigned &value)
-{
-    if (text.empty())
-    {
-        return false;
-    }
-    const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
-    return result.ec == std::errc{} && result.ptr == text.data() + text.size() && std::to_string(value) == text;
-}
-
-bool parseSemanticVersion(std::string_view text, SemanticVersion &version)
-{
-    const std::size_t first = text.find('.');
-    const std::size_t second = first == std::string_view::npos ? first : text.find('.', first + 1U);
-    return first != std::string_view::npos && second != std::string_view::npos &&
-           text.find('.', second + 1U) == std::string_view::npos &&
-           parseComponent(text.substr(0, first), version.major) &&
-           parseComponent(text.substr(first + 1U, second - first - 1U), version.minor) &&
-           parseComponent(text.substr(second + 1U), version.patch);
-}
 } // namespace
 
 std::string currentCompatibilityPolicy()
@@ -147,34 +120,31 @@ bool verifyCompatibilityPolicy(const std::filesystem::path &source, std::string 
         return false;
     }
     removeCarriageReturn(line);
-    const std::string header = "NSCOMPAT " + std::to_string(kCompatibilityPolicyFormatVersion);
-    if (line != header)
+    if (!line.starts_with("NSCOMPAT ") || line.size() == std::string_view("NSCOMPAT ").size())
     {
-        error = "unsupported compatibility policy header '" + line + "'; expected '" + header + "'";
+        error = "malformed compatibility policy header '" + line + "'";
         return false;
     }
-    const std::vector<Field> expected = fields();
-    for (std::size_t index = 0; index < expected.size(); ++index)
-    {
-        if (!std::getline(stream, line))
-        {
-            error = "compatibility policy is missing field '" + expected[index].first + "'";
-            return false;
-        }
-        removeCarriageReturn(line);
-        const std::string expectedLine = expected[index].first + '=' + expected[index].second;
-        if (line != expectedLine)
-        {
-            error = "incompatible compatibility policy field on line " + std::to_string(index + 2U) + ": found '" +
-                    line + "', expected '" + expectedLine + "'";
-            return false;
-        }
-    }
-    if (std::getline(stream, line))
+    std::unordered_set<std::string> keys;
+    while (std::getline(stream, line))
     {
         removeCarriageReturn(line);
-        error = "unexpected compatibility policy field '" + line + "'";
-        return false;
+        if (line.empty())
+        {
+            continue;
+        }
+        const std::size_t separator = line.find('=');
+        if (separator == std::string::npos || separator == 0U)
+        {
+            error = "malformed compatibility policy field '" + line + "'";
+            return false;
+        }
+        const std::string key = line.substr(0, separator);
+        if (!keys.insert(key).second)
+        {
+            error = "duplicate compatibility policy field '" + key + "'";
+            return false;
+        }
     }
     return !stream.bad();
 }
@@ -183,34 +153,9 @@ bool checkCompilerCompatibility(std::string_view requiredVersion, std::string &e
 {
     explanation.clear();
     error.clear();
-    SemanticVersion current;
-    SemanticVersion required;
-    if (!parseSemanticVersion(kCompilerReleaseVersion, current))
-    {
-        error = "compiler contains an invalid release version";
-        return false;
-    }
-    if (!parseSemanticVersion(requiredVersion, required))
-    {
-        error = "required compiler version '" + std::string(requiredVersion) + "' is not canonical major.minor.patch";
-        return false;
-    }
-
-    bool compatible = false;
-    if (current.major == 0U || required.major == 0U)
-    {
-        compatible =
-            current.major == required.major && current.minor == required.minor && current.patch >= required.patch;
-    }
-    else
-    {
-        compatible =
-            current.major == required.major &&
-            (current.minor > required.minor || (current.minor == required.minor && current.patch >= required.patch));
-    }
-    explanation = "compiler " + std::string(kCompilerReleaseVersion) +
-                  (compatible ? " satisfies " : " does not satisfy ") + std::string(requiredVersion);
-    return compatible;
+    explanation = "compiler version labels are informational; requested '" +
+        std::string(requiredVersion) + "' is accepted and concrete capabilities are validated when used";
+    return true;
 }
 
 std::string currentCompatibilityMatrix()

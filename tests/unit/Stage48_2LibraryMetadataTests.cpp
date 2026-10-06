@@ -1397,8 +1397,8 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     const auto versionPath = directory / "version.nsmeta";
     writeBytes(versionPath, versionMismatch);
     error.clear();
-    tests.expect(!codec.read(versionPath, ignored, error) && error.find("unsupported") != std::string::npos,
-        "unsupported metadata major version is rejected explicitly");
+    tests.expect(codec.read(versionPath, ignored, error) && codec.verifyCurrentCompiler(ignored, error),
+        "metadata with a different version label is accepted when its payload is compatible");
 
     std::vector<std::uint8_t> futureMinor = readBytes(validPath);
     futureMinor[10] = static_cast<std::uint8_t>(nativesharp::interop::kMetadataFormatMinor + 1U);
@@ -1406,11 +1406,9 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     const auto futureMinorPath = directory / "future-minor.nsmeta";
     writeBytes(futureMinorPath, futureMinor);
     error.clear();
-    const std::string futureMinorDiagnostic = "unsupported NativeSharp metadata format 1." +
-        std::to_string(nativesharp::interop::kMetadataFormatMinor + 1U);
-    tests.expect(!codec.read(futureMinorPath, ignored, error) &&
-                     error.find(futureMinorDiagnostic) != std::string::npos,
-                 "a future NSMETA minor is rejected before payload decoding");
+    tests.expect(codec.read(futureMinorPath, ignored, error) &&
+                     codec.verifyCurrentCompiler(ignored, error),
+                 "a future NSMETA label is accepted when the payload remains compatible");
 
     std::vector<std::uint8_t> badMagic = readBytes(validPath);
     badMagic[0] = 'X';
@@ -1429,9 +1427,8 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     LibraryMetadata incompatible = metadata;
     incompatible.producerVersion = "0.2.0-dev-old";
     error.clear();
-    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("producer version") != std::string::npos,
-                 "compiler-version compatibility gate rejects metadata produced "
-                 "by a different compiler release");
+    tests.expect(codec.verifyCurrentCompiler(incompatible, error),
+                 "producer identity does not override compatible metadata contents");
     incompatible = metadata;
     incompatible.producerVersion = std::string(nativesharp::kCompilerReleaseVersion) +
         "+build.20000101T000000Z.0000000000000000";

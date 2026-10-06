@@ -52,18 +52,10 @@ constexpr std::uint32_t kWindowsX64Target = 1;
 constexpr std::uint32_t kPointerSize = 8;
 constexpr std::uint32_t kPointerAlignment = 8;
 constexpr std::string_view kTargetTriple = "x86_64-pc-windows-msvc";
-// The compatibility window is explicit rather than inferred from SemVer arithmetic. Its N-1
-// endpoint is shared with the public compiler compatibility matrix.
 constexpr std::size_t kHeaderSize = 100;
 constexpr std::uint64_t kMaximumPayloadSize = 128ULL * 1024ULL * 1024ULL;
 constexpr std::uint32_t kMaximumRecordCount = 1'000'000U;
 constexpr std::uint32_t kMaximumStringSize = 16U * 1024U * 1024U;
-
-std::string_view compilerReleasePart(std::string_view version) noexcept
-{
-    const std::size_t channelOrBuildMetadata = version.find_first_of("-+");
-    return version.substr(0, channelOrBuildMetadata);
-}
 
 std::string foldedAscii(std::string value)
 {
@@ -3537,12 +3529,6 @@ bool LibraryMetadataCodec::writeModelImpl(
     const std::array<LibraryMetadata, 1> fragments = {model};
     LibraryMetadataMerger merger;
     if (!merger.merge(fragments, metadata, error)) return false;
-    if (metadata.formatMajor != kFormatMajor || metadata.formatMinor > kFormatMinor)
-    {
-        error = "cannot write NativeSharp metadata format " +
-            std::to_string(metadata.formatMajor) + "." + std::to_string(metadata.formatMinor);
-        return false;
-    }
     if (metadata.formatMinor >= 31)
     {
         for (LibraryMetadataType& type : metadata.types)
@@ -4043,11 +4029,6 @@ bool LibraryMetadataCodec::read(
         error = "truncated NativeSharp metadata header";
         return false;
     }
-    if (major != kFormatMajor || minor > kFormatMinor)
-    {
-        error = "unsupported NativeSharp metadata format " + std::to_string(major) + "." + std::to_string(minor);
-        return false;
-    }
     if (endianMarker != kEndianMarker)
     {
         error = "NativeSharp metadata endian marker mismatch";
@@ -4111,13 +4092,6 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     std::string& error) const
 {
     error.clear();
-    if (metadata.formatMajor != kFormatMajor || metadata.formatMinor > kFormatMinor)
-    {
-        error = "metadata format expected NSMETA " + std::to_string(kFormatMajor) + ".0 through " +
-                std::to_string(kFormatMajor) + "." + std::to_string(kFormatMinor) + ", found " +
-                std::to_string(metadata.formatMajor) + "." + std::to_string(metadata.formatMinor);
-        return false;
-    }
     if (metadata.targetId != kWindowsX64Target)
     {
         error = "metadata target ABI mismatch: target id expected " + std::to_string(kWindowsX64Target) + ", found " +
@@ -4990,21 +4964,6 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                 return false;
             }
         }
-    }
-    // El productor conserva la identidad exacta del ejecutable para poder
-    // rastrear el artefacto, pero el canal `-dev` y `+build...` NO son una
-    // frontera de compatibilidad. Sin separar ambas preguntas, cada build
-    // incremental rechazaria las bibliotecas del build inmediatamente anterior
-    // aunque compartieran lenguaje, formato y ABI.
-    const std::string_view producerRelease = compilerReleasePart(metadata.producerVersion);
-    if (producerRelease != kCompilerReleaseVersion &&
-        producerRelease != kPreviousCompilerReleaseVersion)
-    {
-        error = "metadata producer version '" + metadata.producerVersion +
-            "' is outside the supported producer window ['" +
-            std::string(kPreviousCompilerReleaseVersion) + "', '" +
-            std::string(kCompilerReleaseVersion) + "']";
-        return false;
     }
     if (metadata.formatMinor >= 13)
     {

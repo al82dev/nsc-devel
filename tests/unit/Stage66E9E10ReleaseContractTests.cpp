@@ -263,9 +263,10 @@ int main()
     tests.expect(policy.find("compiler_release=3.0.0\n") != std::string::npos &&
                      policy.find("language_release=3.0.0\n") != std::string::npos,
         "policy separates compiler and language releases");
-    tests.expect(policy.find("nsmeta_read=1.0-" + metadataFormat + "\n") != std::string::npos &&
+    tests.expect(policy.find("nsmeta_read=content-compatible;version-label-informational\n") !=
+                         std::string::npos &&
                      policy.find("nsmeta_write=" + metadataFormat + "\n") != std::string::npos,
-        "policy publishes metadata read and write ranges independently");
+        "policy separates capability-based reading from the producer format label");
     tests.expect(policy.find("native_abi=" + nativeAbi + "\n") != std::string::npos &&
                      policy.find("runtime_abi=" + runtimeAbi + "\n") != std::string::npos,
         "binary compatibility versions are explicit");
@@ -278,30 +279,26 @@ int main()
     tests.expect(driver::writeCompatibilityPolicy(policyPath, error), "compatibility policy writer succeeds");
     tests.expect(readFile(policyPath) == policy, "writer emits exactly the canonical policy bytes");
     tests.expect(driver::verifyCompatibilityPolicy(policyPath, error), "current compatibility policy verifies");
-    tests.expect(writeFile(policyPath, "NSCOMPAT 9\n") && !driver::verifyCompatibilityPolicy(policyPath, error) &&
-                     error.find("unsupported compatibility policy header") != std::string::npos,
-        "future policy format is rejected precisely");
+    tests.expect(writeFile(policyPath, "NSCOMPAT 9\n") && driver::verifyCompatibilityPolicy(policyPath, error),
+        "future policy label is accepted when no unsupported capability is requested");
     tests.expect(writeFile(policyPath, policy + "unknown=value\n") &&
-                     !driver::verifyCompatibilityPolicy(policyPath, error) &&
-                     error.find("unexpected compatibility policy field") != std::string::npos,
-        "policy rejects unknown trailing fields");
+                     driver::verifyCompatibilityPolicy(policyPath, error),
+        "unknown policy fields remain forward-compatible");
 
     std::string explanation;
     tests.expect(driver::checkCompilerCompatibility("3.0.0", explanation, error) &&
-                     explanation.find("satisfies") != std::string::npos,
-        "current compiler release satisfies its exact requirement");
-    tests.expect(!driver::checkCompilerCompatibility("2.0.0", explanation, error) && error.empty(),
-        "a prior major requirement requires the explicit migration path");
-    tests.expect(!driver::checkCompilerCompatibility("3.0.1", explanation, error) && error.empty() &&
-                     explanation.find("does not satisfy") != std::string::npos,
-        "newer patch requirement is incompatible");
-    tests.expect(!driver::checkCompilerCompatibility("3.1.0", explanation, error) && error.empty(),
-        "a future minor requirement in the same major line is incompatible");
-    tests.expect(!driver::checkCompilerCompatibility("4.0.0", explanation, error) && error.empty(),
-        "a different stable major line is not silently compatible");
-    tests.expect(!driver::checkCompilerCompatibility("1.0", explanation, error) &&
-                     error.find("canonical major.minor.patch") != std::string::npos,
-        "non-canonical version requirement is rejected");
+                     explanation.find("informational") != std::string::npos,
+        "current compiler release is informational");
+    tests.expect(driver::checkCompilerCompatibility("2.0.0", explanation, error) && error.empty(),
+        "a prior release label does not block compatible input");
+    tests.expect(driver::checkCompilerCompatibility("3.0.1", explanation, error) && error.empty(),
+        "a newer patch label does not block compatible input");
+    tests.expect(driver::checkCompilerCompatibility("3.1.0", explanation, error) && error.empty(),
+        "a future minor label does not block compatible input");
+    tests.expect(driver::checkCompilerCompatibility("4.0.0", explanation, error) && error.empty(),
+        "a different major label does not block compatible input");
+    tests.expect(driver::checkCompilerCompatibility("1.0", explanation, error) && error.empty(),
+        "version spelling does not replace capability validation");
 
     driver::Driver compiler;
     std::ostringstream output;
