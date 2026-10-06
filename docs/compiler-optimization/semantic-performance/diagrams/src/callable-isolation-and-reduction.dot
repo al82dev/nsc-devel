@@ -1,0 +1,38 @@
+digraph CallableIsolationAndReduction {
+    graph [
+        bgcolor="transparent",
+        fontname="Segoe UI",
+        rankdir=LR,
+        splines=ortho
+    ];
+    node [
+        color="#46668c",
+        fillcolor="#eef5fc",
+        fontname="Segoe UI",
+        shape=box,
+        style="rounded,filled"
+    ];
+    edge [color="#46668c", fontname="Segoe UI"];
+
+    catalog [label="Immutable catalogs\nmember/type/generic context"];
+    context [label="ProjectCallableAnalysisContext\nstable callable + wave"];
+    shard [label="Isolated shard\nlocal mutable state"];
+    result [label="ProjectCallableAnalysisResult\nmodel + diagnostics + discoveries"];
+    reducer [label="ProjectCallableWaveReducer\nstable order + one error budget"];
+    model [label="Root semantic model\npublished deterministically"];
+    next [label="Next wave\nsorted + deduplicated"];
+
+    catalog -> context;
+    context -> shard [label="read only"];
+    shard -> result [label="exclusive ownership"];
+    result -> reducer [label="completion order irrelevant"];
+    reducer -> model [label="merge by callable ordinal"];
+    reducer -> next [label="canonical discoveries"];
+    model -> shard [
+        color="#9b3b3b",
+        fontcolor="#9b3b3b",
+        label="worker global writes = 0",
+        style=dashed,
+        arrowhead=none
+    ];
+}

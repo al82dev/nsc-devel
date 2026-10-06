@@ -19,6 +19,14 @@ Hacer observable la nueva frontera aislada sin depender de tiempos, texto de con
 Los contadores pertenecen al modelo raíz. Los shards no comparten ni actualizan este estado;
 el coordinador registra creación y análisis, y la reducción serial registra publicación.
 
+## Arquitectura
+
+La fuente versionada
+[`callable-isolation-and-reduction.dot`](diagrams/src/callable-isolation-and-reduction.dot)
+documenta la frontera exacta entre catálogos inmutables, shard exclusivo, resultado movible y
+reducción serial determinista. El generador común producirá el SVG cuando Graphviz esté
+disponible; la ausencia local de esa herramienta no modifica ni bloquea el compilador.
+
 ## Criterios comprobables
 
 - `resultsMerged == shardsCreated` al concluir un análisis sin cancelación;
@@ -33,6 +41,7 @@ el coordinador registra creación y análisis, y la reducción serial registra p
 - `ProjectCallableResultMerger.cpp`;
 - `ProjectCallableWaveReducer.cpp`;
 - `ProjectCallableWaveReducerTests.cpp`;
+- `diagrams/src/callable-isolation-and-reduction.dot`;
 - este documento.
 
 ## Validación dirigida
