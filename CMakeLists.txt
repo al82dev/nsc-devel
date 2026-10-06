@@ -712,12 +712,26 @@ add_custom_command(TARGET nsc POST_BUILD
 # E9 / Stage 64. Esta lista describe el payload esperado por la version que se esta construyendo.
 # No se obtiene enumerando el prefijo despues de instalar: hacerlo asi legitimaria como actuales
 # los residuos de una version anterior. Las rutas se ordenan y normalizan al configurar; CMake
-# vuelve a configurarse si cambia el arbol publico de lib/, spec/ o docs/1.0.1.
-file(GLOB_RECURSE NSC_INSTALLATION_LIBRARY_FILES
-    CONFIGURE_DEPENDS
-    LIST_DIRECTORIES false
-    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/lib/*")
+# vuelve a configurarse si cambia el arbol publico distribuido, spec/ o docs/1.0.1.
+#
+# Core.IO y Core.Diagnostics siguen disponibles dentro del arbol del compilador para sus pruebas
+# internas y el self-host historico, pero ya no forman parte de la stdlib modular distribuida de
+# Language 3. Mantener el inventario explicito impide volver a publicarlos accidentalmente.
+set(NSC_DISTRIBUTION_LIBRARY_DIRECTORIES
+    NativeSharp.Core
+    NativeSharp.Core.Collections.Generic
+    NativeSharp.Core.Threading
+    NativeSharp.LLVM.C
+    NativeSharp.Win32.Compiler)
+set(NSC_INSTALLATION_LIBRARY_FILES)
+foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
+    file(GLOB_RECURSE _nsc_library_files
+        CONFIGURE_DEPENDS
+        LIST_DIRECTORIES false
+        RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/lib"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*")
+    list(APPEND NSC_INSTALLATION_LIBRARY_FILES ${_nsc_library_files})
+endforeach()
 file(GLOB_RECURSE NSC_INSTALLATION_SPECIFICATION_FILES
     CONFIGURE_DEPENDS
     LIST_DIRECTORIES false
@@ -767,12 +781,11 @@ foreach(_nsc_install_path IN LISTS NSC_INSTALLATION_EXPECTED_PATHS)
 endforeach()
 
 # "--deploy": instala el compilador ya construido en la ruta de instalacion elegida (p. ej.
-# C:\native-sharp-3.0), junto con el arbol lib/ ENTERO -- las bibliotecas .ns
-# (NativeSharp.Core/NativeSharp.Core.Threading/NativeSharp.Core.Collections.Generic/
-# NativeSharp.Core.IO/NativeSharp.Core.Diagnostics) que la distribucion oficial todavia consume
-# via ProjectReference. Desde 1.0, nsc tambien produce y consume bibliotecas precompiladas mediante
-# LibraryReference (.lib + .nsmeta y, para SharedLibrary, .dll); este install conserva Core como
-# fuente hasta que su empaquetado oficial migre a esos productos -- ver
+# C:\native-sharp-3.0), junto con la stdlib modular Language 3 y las bibliotecas internas que
+# forman parte de la distribucion. Desde 1.0, nsc tambien produce y consume bibliotecas
+# precompiladas mediante LibraryReference (.lib + .nsmeta y, para SharedLibrary, .dll); este
+# install conserva los modulos distribuidos como fuente hasta que su empaquetado oficial migre a
+# esos productos -- ver
 # claude/05_metodo_de_trabajo_y_archivo_historico.md, "Convencion: el zip incremental siempre
 # incluye lib/ completo" para el porque. Por eso esas fuentes necesitan viajar junto al ejecutable, no solo
 # el .exe solo, para que un proyecto pueda referenciarlas sin tener el repo entero al lado.
@@ -804,7 +817,11 @@ install(TARGETS nsc RUNTIME DESTINATION bin)
 if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
     install(FILES "${NSC_LLVM_C_RUNTIME}" DESTINATION bin)
 endif()
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib/ DESTINATION lib)
+foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
+    install(DIRECTORY
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}"
+        DESTINATION lib)
+endforeach()
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ DESTINATION share/nativesharp/spec)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/docs/
     DESTINATION share/nativesharp/docs)

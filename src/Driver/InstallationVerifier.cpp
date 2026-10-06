@@ -20,16 +20,12 @@ struct RequiredFile final {
   std::string_view component;
 };
 
-constexpr std::array<RequiredFile, 5> kRequiredLibraries = {{
+constexpr std::array<RequiredFile, 3> kRequiredLibraries = {{
     {"lib/NativeSharp.Core/NativeSharp.Core.nsproj",
      "NativeSharp.Core project manifest"},
     {"lib/NativeSharp.Core.Collections.Generic/"
      "NativeSharp.Core.Collections.Generic.nsproj",
      "NativeSharp.Core.Collections.Generic project manifest"},
-    {"lib/NativeSharp.Core.Diagnostics/NativeSharp.Core.Diagnostics.nsproj",
-     "NativeSharp.Core.Diagnostics project manifest"},
-    {"lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj",
-     "NativeSharp.Core.IO project manifest"},
     {"lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj",
      "NativeSharp.Core.Threading project manifest"},
 }};

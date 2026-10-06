@@ -22,13 +22,11 @@
 #include <vector>
 
 namespace {
-constexpr std::array<std::string_view, 32> kRequiredFiles = {
+constexpr std::array<std::string_view, 30> kRequiredFiles = {
     "bin/nsc.exe",
     "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
     "lib/NativeSharp.Core.Collections.Generic/"
     "NativeSharp.Core.Collections.Generic.nsproj",
-    "lib/NativeSharp.Core.Diagnostics/NativeSharp.Core.Diagnostics.nsproj",
-    "lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj",
     "lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj",
     "share/nativesharp/spec/NativeSharp_Language_Specification_1_0.md",
     "share/nativesharp/spec/NativeSharp_Grammar_1_0.ebnf",
