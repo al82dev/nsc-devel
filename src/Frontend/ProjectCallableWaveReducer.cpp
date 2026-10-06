@@ -3,6 +3,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Frontend/ProjectCallableAnalysisResult.h"
 #include "nativesharp/Frontend/ProjectCallableResultMerger.h"
+#include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 
 #include <algorithm>
 #include <tuple>
@@ -19,6 +20,7 @@ std::vector<std::size_t> ProjectCallableWaveReducer::reduce(
         return std::tuple(left.waveOrdinal(), left.callableOrdinal()) <
             std::tuple(right.waveOrdinal(), right.callableOrdinal());
     });
+    ++destination.callableAnalysisStatistics_.wavesReduced;
 
     std::vector<std::size_t> discoveries;
     std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
@@ -37,6 +39,7 @@ std::vector<std::size_t> ProjectCallableWaveReducer::reduce(
     std::ranges::sort(discoveries);
     discoveries.erase(
         std::unique(discoveries.begin(), discoveries.end()), discoveries.end());
+    destination.callableAnalysisStatistics_.discoveriesPublished += discoveries.size();
     return discoveries;
 }
 }

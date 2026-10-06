@@ -264,6 +264,7 @@ void ProjectCallableResultMerger::merge(
     destination.assignedOutParameters_.insert(
         source.assignedOutParameters_.begin(), source.assignedOutParameters_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
+    ++destination.callableAnalysisStatistics_.resultsMerged;
     destination.nextLambdaOrdinal_ += source.nextLambdaOrdinal_;
     mergeOwnershipStatistics(
         destination.ownershipFlowStatistics_, source.ownershipFlowStatistics_);

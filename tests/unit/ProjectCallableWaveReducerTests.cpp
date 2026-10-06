@@ -82,5 +82,9 @@ int main()
         "wave discoveries are stable and canonical");
     tests.expect(forwardModel.scopes().empty() && reverseModel.scopes().empty(),
         "empty callable shards merge without shared mutable state");
+    tests.expect(forwardModel.callableAnalysisStatistics().wavesReduced == 1 &&
+            forwardModel.callableAnalysisStatistics().resultsMerged == 2 &&
+            forwardModel.callableAnalysisStatistics().discoveriesPublished == 2,
+        "wave reducer publishes structural callable telemetry");
     return tests.result();
 }

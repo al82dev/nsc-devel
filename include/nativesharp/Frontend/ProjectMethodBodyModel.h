@@ -12,6 +12,7 @@
 #include "nativesharp/Frontend/ProjectCallableBindingIndex.h"
 #include "nativesharp/Frontend/ProjectCallableAnalysisContext.h"
 #include "nativesharp/Frontend/ProjectCallableAnalysisResult.h"
+#include "nativesharp/Frontend/ProjectCallableAnalysisStatistics.h"
 #include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
 #include "nativesharp/Frontend/MethodEscapeOrigin.h"
 #include "nativesharp/Frontend/OwnershipFlowSnapshot.h"
@@ -46,6 +47,7 @@ class ProjectGenericConstraintModel;
 class ProjectGenericModel;
 class ProjectReferenceEscapeEvaluator;
 class ProjectCallableResultMerger;
+class ProjectCallableWaveReducer;
 
 enum class MethodScopeKind
 {
@@ -1476,6 +1478,7 @@ class ProjectMethodBodyModel final
 {
     friend class ProjectReferenceEscapeEvaluator;
     friend class ProjectCallableResultMerger;
+    friend class ProjectCallableWaveReducer;
 
 public:
     // NSC-LIMIT-007, tercera vuelta. El modelo de constraints entra aqui porque la unica fase que
@@ -1560,6 +1563,7 @@ public:
         std::size_t callableOrdinal) const noexcept;
     const ProjectOwnershipFlowStatistics& ownershipFlowStatistics() const noexcept;
     const ProjectEscapePropagationStatistics& escapePropagationStatistics() const noexcept;
+    const ProjectCallableAnalysisStatistics& callableAnalysisStatistics() const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -2522,6 +2526,7 @@ private:
     std::size_t currentCallableParameterCount_ = 0;
     mutable ProjectOwnershipFlowStatistics ownershipFlowStatistics_;
     mutable ProjectEscapePropagationStatistics escapePropagationStatistics_;
+    ProjectCallableAnalysisStatistics callableAnalysisStatistics_;
     bool built_ = false;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };

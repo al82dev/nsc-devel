@@ -942,6 +942,7 @@ bool ProjectMethodBodyModel::build(
     }
     ownershipFlowStatistics_ = {};
     escapePropagationStatistics_ = {};
+    callableAnalysisStatistics_ = {};
     if (!nameLookup.isBuilt() || !memberModel.isBuilt() || !inheritanceModel.isBuilt() ||
         !interfaceModel.isBuilt())
     {
@@ -1192,6 +1193,7 @@ bool ProjectMethodBodyModel::build(
         if (callable.syntax != nullptr && callable.syntax->first() != nullptr)
             callableWorklist.push_back(namespaceCallableBase_ + functionOrdinal);
     }
+    callableAnalysisStatistics_.callablesQueued = callableWorklist.size();
 
     std::size_t workCursor = 0;
     std::size_t waveOrdinal = 0;
@@ -1207,8 +1209,14 @@ bool ProjectMethodBodyModel::build(
                 nameLookup, memberModel, namespaceFunctionModel,
                 inheritanceModel, interfaceModel, genericModel,
                 genericConstraintModel, languageEdition);
-            if (!callableCanBeAnalyzed(context)) continue;
+            if (!callableCanBeAnalyzed(context))
+            {
+                ++callableAnalysisStatistics_.callablesSkipped;
+                continue;
+            }
             waveResults.push_back(analyzeCallableIsolated(context));
+            ++callableAnalysisStatistics_.callablesAnalyzed;
+            ++callableAnalysisStatistics_.shardsCreated;
         }
 
         const std::vector<std::size_t> discoveries = ProjectCallableWaveReducer::reduce(
@@ -1222,6 +1230,7 @@ bool ProjectMethodBodyModel::build(
         }
         callableWorklist.insert(
             callableWorklist.end(), newlyDemanded.begin(), newlyDemanded.end());
+        callableAnalysisStatistics_.callablesQueued += newlyDemanded.size();
         ++waveOrdinal;
     }
 
@@ -3020,6 +3029,12 @@ const ProjectEscapePropagationStatistics&
 ProjectMethodBodyModel::escapePropagationStatistics() const noexcept
 {
     return escapePropagationStatistics_;
+}
+
+const ProjectCallableAnalysisStatistics&
+ProjectMethodBodyModel::callableAnalysisStatistics() const noexcept
+{
+    return callableAnalysisStatistics_;
 }
 
 bool ProjectMethodBodyModel::isBuilt() const noexcept
