@@ -337,6 +337,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectConversionClassifier.cpp
     src/Frontend/ProjectCallableBindingIndex.cpp
     src/Frontend/ProjectMethodBodyModel.cpp
+    src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
     src/Frontend/ProjectConstructionModel.cpp
     src/Frontend/ProjectConstructionModelDumper.cpp

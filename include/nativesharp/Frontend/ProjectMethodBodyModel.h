@@ -42,6 +42,7 @@ namespace nativesharp::frontend
 {
 class ProjectGenericConstraintModel;
 class ProjectGenericModel;
+class ProjectReferenceEscapeEvaluator;
 
 enum class MethodScopeKind
 {
@@ -1470,6 +1471,8 @@ struct NamespaceFunctionCallBinding final
 
 class ProjectMethodBodyModel final
 {
+    friend class ProjectReferenceEscapeEvaluator;
+
 public:
     // NSC-LIMIT-007, tercera vuelta. El modelo de constraints entra aqui porque la unica fase que
     // puede decidir si una violacion de constraint es un error del programa es esta: la que
