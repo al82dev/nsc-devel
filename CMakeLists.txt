@@ -335,6 +335,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectTypeConversion.cpp
     src/Frontend/ProjectIntegerEvaluator.cpp
     src/Frontend/ProjectConversionClassifier.cpp
+    src/Frontend/ProjectCallableBindingIndex.cpp
     src/Frontend/ProjectMethodBodyModel.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
     src/Frontend/ProjectConstructionModel.cpp
@@ -3861,6 +3862,16 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_project_method_body_model_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_project_method_body_model_tests)
     add_test(NAME nsc.project-method-body-model COMMAND nsc_project_method_body_model_tests)
+
+    add_executable(
+        nsc_project_callable_binding_index_tests
+        tests/unit/ProjectCallableBindingIndexTests.cpp)
+    target_link_libraries(nsc_project_callable_binding_index_tests PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(nsc_project_callable_binding_index_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_project_callable_binding_index_tests)
+    add_test(
+        NAME nsc.project-callable-binding-index
+        COMMAND nsc_project_callable_binding_index_tests)
 
     add_executable(nsc_project_construction_model_tests tests/unit/ProjectConstructionModelTests.cpp)
     target_link_libraries(nsc_project_construction_model_tests PRIVATE nsc_frontend nsc_compilation)
