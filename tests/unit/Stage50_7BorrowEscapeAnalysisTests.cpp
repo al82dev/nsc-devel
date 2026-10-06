@@ -161,6 +161,15 @@ class SafeReturns
         {
             return borrow.kind == MethodBorrowKind::BorrowedReturnForward;
         }), "borrowed-returning calls can be forwarded without manufacturing ownership");
+    const auto& statistics =
+        compilation.methodBodyModel()->escapePropagationStatistics();
+    tests.expect(statistics.cells > 0 && statistics.edges > 0 &&
+            statistics.argumentOriginsClassified > 0 &&
+            statistics.cellsEvaluated > 0,
+        "escape summaries are closed through the dependency worklist");
+    tests.expect(statistics.legacyGlobalCallRescans == 0 &&
+            statistics.recursiveVariableArrayFallbacks == 0,
+        "escape closure performs no global call rescans or recursive VLA fallback");
 }
 
 void testReturnEscapes(TestContext& tests, const std::filesystem::path& root)

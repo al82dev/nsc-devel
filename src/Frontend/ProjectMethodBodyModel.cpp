@@ -743,6 +743,7 @@ bool ProjectMethodBodyModel::build(
         return !diagnostics.hasErrors();
     }
     ownershipFlowStatistics_ = {};
+    escapePropagationStatistics_ = {};
     if (!nameLookup.isBuilt() || !memberModel.isBuilt() || !inheritanceModel.isBuilt() ||
         !interfaceModel.isBuilt())
     {
@@ -1894,27 +1895,31 @@ std::optional<std::size_t> ProjectMethodBodyModel::variableArrayRootLocalOfExpre
     const ast::AstNode* expression,
     std::size_t scopeOrdinal) const
 {
-    if (expression == nullptr) return std::nullopt;
-    if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
+    std::vector<const ast::AstNode*> work;
+    if (expression != nullptr) work.push_back(expression);
+    while (!work.empty())
     {
-        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
-        if (name.has_value() && name->kind == ScopeNameKind::Local &&
-            name->semanticOrdinal < locals_.size())
+        const ast::AstNode* current = work.back();
+        work.pop_back();
+        if (current == nullptr) continue;
+        if (current->kind() == ast::AstNodeKind::IdentifierExpression)
         {
-            return locals_[name->semanticOrdinal].variableLengthArrayRootLocalOrdinal;
+            const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, current->text());
+            if (name.has_value() && name->kind == ScopeNameKind::Local &&
+                name->semanticOrdinal < locals_.size())
+            {
+                const std::optional<std::size_t> root =
+                    locals_[name->semanticOrdinal].variableLengthArrayRootLocalOrdinal;
+                if (root.has_value()) return root;
+            }
         }
-        return std::nullopt;
-    }
-    const auto probe = [&](const ast::AstNode* child) -> std::optional<std::size_t>
-    {
-        return variableArrayRootLocalOfExpression(child, scopeOrdinal);
-    };
-    if (auto root = probe(expression->first()); root.has_value()) return root;
-    if (auto root = probe(expression->second()); root.has_value()) return root;
-    if (auto root = probe(expression->third()); root.has_value()) return root;
-    for (const ast::AstNode* child : expression->children())
-    {
-        if (auto root = probe(child); root.has_value()) return root;
+
+        const std::span<ast::AstNode* const> children = current->children();
+        for (auto child = children.rbegin(); child != children.rend(); ++child)
+            work.push_back(*child);
+        work.push_back(current->third());
+        work.push_back(current->second());
+        work.push_back(current->first());
     }
     return std::nullopt;
 }
@@ -3211,6 +3216,12 @@ const ProjectOwnershipFlowStatistics&
 ProjectMethodBodyModel::ownershipFlowStatistics() const noexcept
 {
     return ownershipFlowStatistics_;
+}
+
+const ProjectEscapePropagationStatistics&
+ProjectMethodBodyModel::escapePropagationStatistics() const noexcept
+{
+    return escapePropagationStatistics_;
 }
 
 bool ProjectMethodBodyModel::isBuilt() const noexcept
@@ -23619,6 +23630,7 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
             parameterEscapeSummaries_[callableOrdinal].size();
     }
     const std::size_t cellCount = callableCellOffsets.back();
+    escapePropagationStatistics_.cells = cellCount;
     std::vector<std::size_t> cellCallableOrdinals(cellCount, 0U);
     std::vector<std::size_t> cellParameterOrdinals(cellCount, 0U);
     for (std::size_t callableOrdinal = 0;
@@ -23657,6 +23669,7 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
                 continue;
             const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
                 argumentSyntaxes[argumentOrdinal], scopeOrdinal);
+            ++escapePropagationStatistics_.argumentOriginsClassified;
             if (!origin.ordinal.has_value() ||
                 (origin.kind != MethodEscapeOriginKind::ExternalStorage &&
                  origin.kind != MethodEscapeOriginKind::CurrentFrameParameter) ||
@@ -23701,6 +23714,7 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
     {
         std::ranges::sort(targets);
         targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
+        escapePropagationStatistics_.edges += targets.size();
     }
 
     std::vector<std::size_t> worklist;
@@ -23712,6 +23726,7 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
     while (cursor < worklist.size())
     {
         const std::size_t sourceCell = worklist[cursor++];
+        ++escapePropagationStatistics_.cellsEvaluated;
         queued[sourceCell] = false;
         const std::size_t sourceCallable = cellCallableOrdinals[sourceCell];
         const std::size_t sourceParameter = cellParameterOrdinals[sourceCell];
@@ -23719,12 +23734,14 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
             parameterEscapeSummaries_[sourceCallable][sourceParameter];
         for (const std::size_t dependentCell : dependents[sourceCell])
         {
+            ++escapePropagationStatistics_.edgeEvaluations;
             const std::size_t targetCallable = cellCallableOrdinals[dependentCell];
             const std::size_t targetParameter = cellParameterOrdinals[dependentCell];
             language::EscapeClass& targetClass =
                 parameterEscapeSummaries_[targetCallable][targetParameter];
             if (escapeClassRank(sourceClass) <= escapeClassRank(targetClass)) continue;
             targetClass = sourceClass;
+            ++escapePropagationStatistics_.summaryUpdates;
             if (!queued[dependentCell])
             {
                 queued[dependentCell] = true;

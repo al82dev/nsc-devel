@@ -14,6 +14,7 @@
 #include "nativesharp/Frontend/OwnershipFlowSnapshot.h"
 #include "nativesharp/Frontend/ProjectConstructionSite.h"
 #include "nativesharp/Frontend/ProjectOwnershipFlowStatistics.h"
+#include "nativesharp/Frontend/ProjectEscapePropagationStatistics.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Language/CallableSemantics.h"
@@ -1570,6 +1571,7 @@ public:
     std::span<const language::EscapeClass> parameterEscapeSummary(
         std::size_t callableOrdinal) const noexcept;
     const ProjectOwnershipFlowStatistics& ownershipFlowStatistics() const noexcept;
+    const ProjectEscapePropagationStatistics& escapePropagationStatistics() const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -2505,6 +2507,7 @@ private:
     std::size_t currentCallableLocalBase_ = 0;
     std::size_t currentCallableParameterCount_ = 0;
     mutable ProjectOwnershipFlowStatistics ownershipFlowStatistics_;
+    ProjectEscapePropagationStatistics escapePropagationStatistics_;
     bool built_ = false;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };
