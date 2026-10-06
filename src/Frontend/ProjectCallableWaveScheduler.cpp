@@ -3,8 +3,10 @@
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 
 #include <algorithm>
+#include <cassert>
 #include <exception>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 namespace nativesharp::frontend
@@ -12,6 +14,25 @@ namespace nativesharp::frontend
 namespace
 {
 using ResultSlot = std::optional<ProjectCallableAnalysisResult>;
+
+std::string failureMessage(
+    std::string_view prefix,
+    const std::exception_ptr& failure)
+{
+    if (failure == nullptr) return std::string(prefix);
+    try
+    {
+        std::rethrow_exception(failure);
+    }
+    catch (const std::exception& exception)
+    {
+        return std::string(prefix) + ": " + exception.what();
+    }
+    catch (...)
+    {
+        return std::string(prefix);
+    }
+}
 
 bool cancellationRequested(
     const ProjectCallableWaveScheduler::CancellationCheck& check)
@@ -35,7 +56,11 @@ bool publishCompletedSlots(
     }
     results.reserve(slots.size());
     for (ResultSlot& slot : slots)
-        results.push_back(std::move(*slot));
+    {
+        assert(slot.has_value());
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access): validated above for atomic publish.
+        results.push_back(std::move(slot.value()));
+    }
     return true;
 }
 
@@ -67,15 +92,15 @@ bool runSynchronousWave(
             return false;
         }
     }
-    catch (const std::exception& exception)
+    catch (const std::exception&)
     {
-        error = "callable analysis failed: " + std::string(exception.what());
+        error = failureMessage("callable analysis failed", std::current_exception());
         results.clear();
         return false;
     }
     catch (...)
     {
-        error = "callable analysis failed";
+        error = failureMessage("callable analysis failed", std::current_exception());
         results.clear();
         return false;
     }
@@ -99,30 +124,32 @@ bool waitForWave(
             return false;
         }
     }
-    catch (const std::exception& exception)
+    catch (const std::exception&)
     {
-        error = "parallel callable analysis failed: " + std::string(exception.what());
+        error = failureMessage("callable analysis failed", std::current_exception());
         results.clear();
         return false;
     }
     catch (...)
     {
-        error = "parallel callable analysis failed";
+        error = failureMessage("callable analysis failed", std::current_exception());
         results.clear();
         return false;
     }
     return publishCompletedSlots(slots, results, error);
 }
 
-void cancelSubmittedTasks(driver::CompilationWorkerPool& pool) noexcept
+std::exception_ptr cancelSubmittedTasks(driver::CompilationWorkerPool& pool) noexcept
 {
     pool.requestCancellation();
     try
     {
         pool.wait();
+        return nullptr;
     }
     catch (...)
     {
+        return std::current_exception();
     }
 }
 
@@ -135,36 +162,28 @@ bool runParallelWave(
     std::vector<ProjectCallableAnalysisResult>& results,
     std::string& error)
 {
+    std::vector<ResultSlot> slots(callables.size());
     try
     {
-        std::vector<ResultSlot> slots(callables.size());
-        try
+        for (std::size_t index = 0; index < callables.size(); ++index)
         {
-            for (std::size_t index = 0; index < callables.size(); ++index)
-            {
-                pool.submit([&, index](std::size_t) {
-                    slots[index].emplace(analyze(callables[index], waveOrdinal));
-                });
-            }
+            pool.submit([&, index](std::size_t) {
+                slots[index].emplace(analyze(callables[index], waveOrdinal));
+            });
         }
-        catch (...)
-        {
-            cancelSubmittedTasks(pool);
-            throw;
-        }
-        return waitForWave(
-            pool, cancellationCheck, slots, results, error);
-    }
-    catch (const std::exception& exception)
-    {
-        error = "parallel callable scheduling failed: " + std::string(exception.what());
     }
     catch (...)
     {
-        error = "parallel callable scheduling failed";
+        const std::exception_ptr schedulingFailure = std::current_exception();
+        const std::exception_ptr cleanupFailure = cancelSubmittedTasks(pool);
+        error = failureMessage("callable analysis scheduling failed", schedulingFailure);
+        if (cleanupFailure != nullptr)
+            error += "; " + failureMessage(
+                "callable analysis cleanup failed", cleanupFailure);
+        results.clear();
+        return false;
     }
-    results.clear();
-    return false;
+    return waitForWave(pool, cancellationCheck, slots, results, error);
 }
 }
 
@@ -181,7 +200,7 @@ ProjectCallableWaveScheduler::ProjectCallableWaveScheduler(
         }
         catch (...)
         {
-            poolInitializationFailed_ = true;
+            poolInitializationFailure_ = std::current_exception();
         }
     }
 }
@@ -194,21 +213,58 @@ bool ProjectCallableWaveScheduler::run(
     const Analyze& analyze,
     const CancellationCheck& cancellationCheck,
     std::vector<ProjectCallableAnalysisResult>& results,
-    std::string& error) const
+    std::string& error)
 {
     error.clear();
     results.clear();
+    bool expected = false;
+    if (!running_.compare_exchange_strong(expected, true))
+    {
+        error = "callable analysis scheduler is already running";
+        return false;
+    }
+    bool succeeded = false;
+    try
+    {
+        succeeded = runExclusive(
+            callables, waveOrdinal, analyze, cancellationCheck, results, error);
+    }
+    catch (...)
+    {
+        error = failureMessage("callable analysis failed", std::current_exception());
+        results.clear();
+    }
+    running_.store(false);
+    return succeeded;
+}
+
+bool ProjectCallableWaveScheduler::runExclusive(
+    std::span<const std::size_t> callables,
+    std::size_t waveOrdinal,
+    const Analyze& analyze,
+    const CancellationCheck& cancellationCheck,
+    std::vector<ProjectCallableAnalysisResult>& results,
+    std::string& error)
+{
     if (!analyze)
     {
         error = "callable analysis callback is empty";
         return false;
     }
-    if (poolInitializationFailed_)
+    if (poolInitializationFailure_ != nullptr)
     {
-        error = "callable analysis worker pool initialization failed";
+        error = failureMessage(
+            "callable analysis worker pool initialization failed",
+            poolInitializationFailure_);
         return false;
     }
-    if (pool_ == nullptr || callables.size() < 2)
+    if (cancellationRequested(cancellationCheck))
+    {
+        error = "callable analysis cancelled before starting the wave";
+        return false;
+    }
+    if (pool_ == nullptr || callables.size() < 2 ||
+        driver::currentCompilationWorkerIndex() != driver::kNoCompilationWorker)
         return runSynchronousWave(
             callables, waveOrdinal, analyze, cancellationCheck, results, error);
 
