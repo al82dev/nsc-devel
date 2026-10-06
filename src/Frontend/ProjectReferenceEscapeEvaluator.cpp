@@ -63,6 +63,7 @@ ProjectReferenceEscapeEvaluator::ProjectReferenceEscapeEvaluator(
 MethodEscapeOrigin ProjectReferenceEscapeEvaluator::evaluate(
     const ast::AstNode* expression) const
 {
+    ++model_.escapePropagationStatistics_.referenceOriginEvaluations;
     const ast::AstNode* next = expression;
     MethodEscapeOrigin result;
     std::vector<ReferenceEscapeEvaluationFrame> continuations;
@@ -179,7 +180,7 @@ void ProjectReferenceEscapeEvaluator::startMatch(
         result = {};
         return;
     }
-    continuations.push_back(std::move(frame));
+    pushContinuation(std::move(frame), continuations);
 }
 
 void ProjectReferenceEscapeEvaluator::startMember(
@@ -250,7 +251,7 @@ void ProjectReferenceEscapeEvaluator::startCall(
     frame.kind = ReferenceEscapeContinuationKind::CallArguments;
     frame.syntax = expression;
     if (!scheduleNextCallArgument(frame, next)) return;
-    continuations.push_back(std::move(frame));
+    pushContinuation(std::move(frame), continuations);
 }
 
 void ProjectReferenceEscapeEvaluator::startDereference(
@@ -334,6 +335,18 @@ bool ProjectReferenceEscapeEvaluator::scheduleNextCallArgument(
         return true;
     }
     return false;
+}
+
+void ProjectReferenceEscapeEvaluator::pushContinuation(
+    ReferenceEscapeEvaluationFrame frame,
+    std::vector<ReferenceEscapeEvaluationFrame>& continuations) const
+{
+    continuations.push_back(std::move(frame));
+    ProjectEscapePropagationStatistics& statistics = model_.escapePropagationStatistics_;
+    ++statistics.referenceContinuationFrames;
+    statistics.maximumReferenceContinuationDepth = std::max(
+        statistics.maximumReferenceContinuationDepth,
+        continuations.size());
 }
 
 std::string_view ProjectReferenceEscapeEvaluator::typeKeyOf(const ast::AstNode* syntax) const

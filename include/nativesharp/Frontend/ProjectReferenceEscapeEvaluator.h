@@ -62,6 +62,9 @@ private:
     bool scheduleNextCallArgument(
         ReferenceEscapeEvaluationFrame& frame,
         const ast::AstNode*& next) const;
+    void pushContinuation(
+        ReferenceEscapeEvaluationFrame frame,
+        std::vector<ReferenceEscapeEvaluationFrame>& continuations) const;
     [[nodiscard]] std::string_view typeKeyOf(const ast::AstNode* syntax) const;
     [[nodiscard]] const MethodCallBinding* resolvedCall(const ast::AstNode* syntax) const;
     [[nodiscard]] const ClassMemberSymbol* resolvedCallee(const ast::AstNode* syntax) const;

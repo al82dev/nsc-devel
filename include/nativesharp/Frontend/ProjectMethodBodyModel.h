@@ -2491,7 +2491,7 @@ private:
     std::size_t currentCallableLocalBase_ = 0;
     std::size_t currentCallableParameterCount_ = 0;
     mutable ProjectOwnershipFlowStatistics ownershipFlowStatistics_;
-    ProjectEscapePropagationStatistics escapePropagationStatistics_;
+    mutable ProjectEscapePropagationStatistics escapePropagationStatistics_;
     bool built_ = false;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };
