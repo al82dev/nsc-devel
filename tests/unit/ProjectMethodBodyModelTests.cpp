@@ -460,6 +460,31 @@ void testDiagnosticsAndContexts(TestContext& tests, const std::filesystem::path&
     }
 }
 
+void testLongLogicalChains(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "LongLogicalChains";
+    writeProject(directory, "LongLogicalChains");
+
+    std::string conjunction = "value";
+    std::string disjunction = "value";
+    for (std::size_t index = 0; index < 128; ++index)
+    {
+        conjunction += " && value";
+        disjunction += " || value";
+    }
+    writeFile(
+        directory / "Main.ns",
+        "class Chain { bool All(bool value) { return " + conjunction +
+            "; } bool Any(bool value) { return " + disjunction + "; } }\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "LongLogicalChains.nsproj", error);
+    tests.expect(ok && error.empty() && !compilation.diagnostics().hasErrors(),
+        "long logical chains bind without exhausting the host stack");
+}
+
 void testQualifiedStaticTypeRoots(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path alpha = root / "QualifiedAlpha";
@@ -564,6 +589,7 @@ int main()
     testScopeRules(tests, root);
     testOverloadResolution(tests, root);
     testDiagnosticsAndContexts(tests, root);
+    testLongLogicalChains(tests, root);
     testQualifiedStaticTypeRoots(tests, root);
 
     std::filesystem::remove_all(root, error);

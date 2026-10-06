@@ -18638,73 +18638,94 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
 {
     const TokenKind operation = expression->tokenKind();
 
+    // Long left-associative logical chains must not consume one native stack frame per operand.
+    // Besides exhausting the Windows stack in O0 host builds, recursive descent is unnecessary:
+    // every node in a homogeneous &&/|| left spine has the same ordered short-circuit contract.
+    if (isLogical(operation))
+    {
+        std::vector<const ast::AstNode*> logicalChain;
+        const ast::AstNode* leftmost = expression;
+        while (leftmost != nullptr && leftmost->kind() == ast::AstNodeKind::BinaryExpression &&
+            leftmost->tokenKind() == operation)
+        {
+            logicalChain.push_back(leftmost);
+            leftmost = leftmost->first();
+        }
+        std::ranges::reverse(logicalChain);
+
+        ExpressionResult accumulated = analyzeExpression(
+            leftmost, methodMemberOrdinal, scopeOrdinal, diagnostics);
+        for (const ast::AstNode* logical : logicalChain)
+        {
+            const OwnershipFlowSnapshot afterLeft = captureOwnershipFlow();
+            OwnershipFlowSnapshot leftTrue = afterLeft;
+            OwnershipFlowSnapshot leftFalse = afterLeft;
+            if (const auto flow = conditionFlowBySyntax_.find(logical->first());
+                flow != conditionFlowBySyntax_.end())
+            {
+                leftTrue = flow->second.whenTrue;
+                leftFalse = flow->second.whenFalse;
+            }
+
+            ExpressionResult right;
+            const OwnershipFlowSnapshot& rhsEntry = operation == TokenKind::AmpAmp
+                ? leftTrue : leftFalse;
+            const OwnershipFlowSnapshot rhsEvaluated = analyzeBranchState(
+                rhsEntry,
+                [&]
+                {
+                    right = analyzeExpression(
+                        logical->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                });
+            OwnershipFlowSnapshot rightTrue = rhsEvaluated;
+            OwnershipFlowSnapshot rightFalse = rhsEvaluated;
+            if (const auto flow = conditionFlowBySyntax_.find(logical->second());
+                flow != conditionFlowBySyntax_.end())
+            {
+                rightTrue = flow->second.whenTrue;
+                rightFalse = flow->second.whenFalse;
+            }
+
+            ConditionFlowStates conditionFlow;
+            if (operation == TokenKind::AmpAmp)
+            {
+                conditionFlow.whenTrue = rightTrue;
+                conditionFlow.whenFalse = joinOwnershipFlow(leftFalse, rightFalse);
+            }
+            else
+            {
+                conditionFlow.whenTrue = joinOwnershipFlow(leftTrue, rightTrue);
+                conditionFlow.whenFalse = rightFalse;
+            }
+            conditionFlowBySyntax_.insert_or_assign(logical, conditionFlow);
+            commitBranchJoin(conditionFlow.whenTrue, conditionFlow.whenFalse);
+
+            if (!accumulated.valid || !right.valid)
+            {
+                accumulated = {};
+                continue;
+            }
+            if (accumulated.typeKey != "builtin:bool" || right.typeKey != "builtin:bool")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    logical->range(),
+                    "logical operators require bool operands");
+                accumulated = {};
+                continue;
+            }
+            accumulated = {};
+            accumulated.typeKey = "builtin:bool";
+            accumulated.valid = true;
+        }
+        return accumulated;
+    }
+
     const ExpressionResult left = analyzeExpression(
         expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-
-    // CC1-207 / CC1-208. `&&` y `||` NO evaluan siempre su operando derecho, y el backend ya lo
-    // sabe: lowerShortCircuit emite un salto condicional y un phi de verdad. El analisis, en
-    // cambio, analizaba los dos operandos en secuencia y despues miraba que operador era -- asi que
-    // todo lo que el RHS produjera (una asignacion, un move, un borrow) quedaba registrado como si
-    // hubiera corrido siempre.
-    //
-    // El caso concreto: `c && (x = 1)` daba `x` por definitivamente asignada. Definite assignment
-    // es un conjunto MUST cuyo join es una INTERSECCION, y analizar en secuencia equivale a UNIR,
-    // que es la direccion insegura. Es el mismo defecto que tenia `?:`, y se arregla con la misma
-    // pieza -- no con dos parches locales distintos.
-    //
-    // La rama "RHS no evaluado" es el estado tal cual quedo tras el operando izquierdo: en ese
-    // camino el corto-circuito ya decidio el resultado y nada mas se ejecuta.
-    const bool shortCircuits = operation == TokenKind::AmpAmp || operation == TokenKind::PipePipe;
-    ExpressionResult right;
-    if (shortCircuits)
-    {
-        const OwnershipFlowSnapshot afterLeft = captureOwnershipFlow();
-        OwnershipFlowSnapshot leftTrue = afterLeft;
-        OwnershipFlowSnapshot leftFalse = afterLeft;
-        if (const auto flow = conditionFlowBySyntax_.find(expression->first());
-            flow != conditionFlowBySyntax_.end())
-        {
-            leftTrue = flow->second.whenTrue;
-            leftFalse = flow->second.whenFalse;
-        }
-
-        const OwnershipFlowSnapshot& rhsEntry = operation == TokenKind::AmpAmp
-            ? leftTrue : leftFalse;
-        const OwnershipFlowSnapshot rhsEvaluated = analyzeBranchState(
-            rhsEntry,
-            [&]
-            {
-                right = analyzeExpression(
-                    expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-            });
-        OwnershipFlowSnapshot rightTrue = rhsEvaluated;
-        OwnershipFlowSnapshot rightFalse = rhsEvaluated;
-        if (const auto flow = conditionFlowBySyntax_.find(expression->second());
-            flow != conditionFlowBySyntax_.end())
-        {
-            rightTrue = flow->second.whenTrue;
-            rightFalse = flow->second.whenFalse;
-        }
-
-        ConditionFlowStates conditionFlow;
-        if (operation == TokenKind::AmpAmp)
-        {
-            conditionFlow.whenTrue = rightTrue;
-            conditionFlow.whenFalse = joinOwnershipFlow(leftFalse, rightFalse);
-        }
-        else
-        {
-            conditionFlow.whenTrue = joinOwnershipFlow(leftTrue, rightTrue);
-            conditionFlow.whenFalse = rightFalse;
-        }
-        conditionFlowBySyntax_.insert_or_assign(expression, conditionFlow);
-        commitBranchJoin(conditionFlow.whenTrue, conditionFlow.whenFalse);
-    }
-    else
-    {
-        right = analyzeExpression(
-            expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-    }
+    const ExpressionResult right = analyzeExpression(
+        expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
 
     if (!left.valid || !right.valid)
     {
@@ -18852,22 +18873,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
             "operator is not defined for this portable SIMD lane kind");
         return result;
     }
-    if (isLogical(operation))
-    {
-        if (left.typeKey != "builtin:bool" || right.typeKey != "builtin:bool")
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "logical operators require bool operands");
-            return result;
-        }
-        result.typeKey = "builtin:bool";
-        result.valid = true;
-        return result;
-    }
-
     // NSC-LIMIT-012. Bitwise operations between values of the exact same enum preserve that enum.
     // Mixing enum/integer or two distinct enums remains invalid; this does not introduce general
     // implicit numeric conversions for enums.
