@@ -535,6 +535,7 @@ bool ProjectMemberModel::build(
     nameLookup_ = &nameLookup;
     genericModel_ = genericModel;
     membersByType_.resize(nameLookup.namedTypes().size());
+    constructorsByType_.resize(nameLookup.namedTypes().size());
     promotedMembersByType_.resize(nameLookup.namedTypes().size());
     membersByName_.resize(nameLookup.namedTypes().size());
     transitiveOwnershipCache_.assign(nameLookup.namedTypes().size(), std::nullopt);
@@ -976,6 +977,17 @@ std::span<const std::size_t> ProjectMemberModel::membersOfType(std::size_t typeO
         return empty;
     }
     return membersByType_[typeOrdinal];
+}
+
+std::span<const std::size_t> ProjectMemberModel::constructorsOfType(
+    std::size_t typeOrdinal) const noexcept
+{
+    static const std::vector<std::size_t> empty;
+    if (typeOrdinal >= constructorsByType_.size())
+    {
+        return empty;
+    }
+    return constructorsByType_[typeOrdinal];
 }
 
 bool ProjectMemberModel::typeTransitivelyOwnsStorage(std::string_view typeKey) const
@@ -2933,6 +2945,10 @@ bool ProjectMemberModel::collectTypeMembers(
             const std::size_t memberOrdinal = members_.size();
             members_.push_back(std::move(symbol));
             membersByType_[typeOrdinal].push_back(memberOrdinal);
+            if (members_[memberOrdinal].kind == ClassMemberKind::Constructor)
+            {
+                constructorsByType_[typeOrdinal].push_back(memberOrdinal);
+            }
             membersByName_[typeOrdinal][members_[memberOrdinal].name].push_back(memberOrdinal);
             memberBySyntax_.emplace(memberNode, memberOrdinal);
             byName[members_[memberOrdinal].name].push_back(memberOrdinal);

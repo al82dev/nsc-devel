@@ -241,6 +241,44 @@ void testCrossFileMembers(TestContext& tests, const std::filesystem::path& root)
         "member dump exposes overload identity explicitly");
 }
 
+void testConstructorIndex(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "ConstructorIndex";
+    writeProject(directory, "ConstructorIndex");
+    writeFile(
+        directory / "Main.ns",
+        "class Box { public Box() { } public Box(int value) { } int Read() { return 0; } }\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMembers(directory / "ConstructorIndex.nsproj", error);
+    tests.expect(ok, "constructor index fixture binds successfully");
+    tests.expect(compilation.nameLookup() != nullptr && compilation.memberModel() != nullptr,
+        "constructor index fixture exposes semantic models");
+    if (compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr)
+    {
+        return;
+    }
+
+    const std::optional<std::size_t> typeOrdinal = findTypeOrdinal(
+        *compilation.nameLookup(),
+        "ConstructorIndex::Box");
+    tests.expect(typeOrdinal.has_value(), "constructor owner has a stable type ordinal");
+    if (!typeOrdinal.has_value())
+    {
+        return;
+    }
+
+    const auto constructors = compilation.memberModel()->constructorsOfType(*typeOrdinal);
+    tests.expect(constructors.size() == 2, "constructor index contains exactly the two declarations");
+    tests.expect(constructors.size() == 2 &&
+            compilation.memberModel()->members()[constructors[0]].kind == ClassMemberKind::Constructor &&
+            compilation.memberModel()->members()[constructors[1]].kind == ClassMemberKind::Constructor,
+        "constructor index excludes ordinary methods");
+    tests.expect(compilation.memberModel()->constructorsOfType(*typeOrdinal + 1000).empty(),
+        "out-of-range constructor lookup returns an empty span");
+}
+
 void testNamedTypeCanonicalSignatures(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path core = root / "CanonicalCore";
@@ -519,6 +557,7 @@ int main()
     std::filesystem::create_directories(root);
 
     testCrossFileMembers(tests, root);
+    testConstructorIndex(tests, root);
     testNamedTypeCanonicalSignatures(tests, root);
     testConflicts(tests, root);
     testInitialOverloadLookup(tests, root);
