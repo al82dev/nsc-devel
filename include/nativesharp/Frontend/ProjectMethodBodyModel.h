@@ -11,6 +11,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectCallableBindingIndex.h"
 #include "nativesharp/Frontend/ProjectCallableAnalysisContext.h"
+#include "nativesharp/Frontend/ProjectCallableAnalysisResult.h"
 #include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
 #include "nativesharp/Frontend/MethodEscapeOrigin.h"
 #include "nativesharp/Frontend/OwnershipFlowSnapshot.h"
@@ -2369,6 +2370,11 @@ private:
     void analyzeCallable(
         const ProjectCallableAnalysisContext& context,
         diagnostics::DiagnosticEngine& diagnostics);
+    [[nodiscard]] std::unique_ptr<ProjectMethodBodyModel> createCallableShard(
+        const ProjectCallableAnalysisContext& context) const;
+    [[nodiscard]] ProjectCallableAnalysisResult analyzeCallableIsolated(
+        const ProjectCallableAnalysisContext& context) const;
+    static void collectCallableDiscoveries(ProjectCallableAnalysisResult& result);
 
     const ProjectNameLookup* nameLookup_ = nullptr;
     const ProjectMemberModel* memberModel_ = nullptr;

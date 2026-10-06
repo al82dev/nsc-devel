@@ -854,6 +854,71 @@ void ProjectMethodBodyModel::analyzeCallable(
     activeCleanupRegions_.clear();
 }
 
+std::unique_ptr<ProjectMethodBodyModel> ProjectMethodBodyModel::createCallableShard(
+    const ProjectCallableAnalysisContext& context) const
+{
+    auto shard = std::make_unique<ProjectMethodBodyModel>();
+    shard->nameLookup_ = &context.nameLookup();
+    shard->memberModel_ = &context.memberModel();
+    shard->namespaceFunctionModel_ = &context.namespaceFunctionModel();
+    shard->inheritanceModel_ = &context.inheritanceModel();
+    shard->interfaceModel_ = &context.interfaceModel();
+    shard->genericModel_ = context.genericModel();
+    shard->genericConstraintModel_ = context.genericConstraintModel();
+    shard->namespaceCallableBase_ = namespaceCallableBase_;
+    shard->namespaceCallableAdaptersView_ = namespaceCallableAdapters();
+    shard->languageEdition_ = context.languageEdition();
+    shard->parameterEscapeSummaries_.resize(parameterEscapeSummaries_.size());
+    return shard;
+}
+
+ProjectCallableAnalysisResult ProjectMethodBodyModel::analyzeCallableIsolated(
+    const ProjectCallableAnalysisContext& context) const
+{
+    std::unique_ptr<ProjectMethodBodyModel> shard = createCallableShard(context);
+    diagnostics::DiagnosticEngine localDiagnostics(
+        std::numeric_limits<std::size_t>::max());
+    shard->analyzeCallable(context, localDiagnostics);
+    ProjectCallableAnalysisResult result(
+        context.callableOrdinal(), context.waveOrdinal(),
+        std::move(shard), std::move(localDiagnostics));
+    collectCallableDiscoveries(result);
+    result.normalizeDiscoveredCallables();
+    return result;
+}
+
+void ProjectMethodBodyModel::collectCallableDiscoveries(
+    ProjectCallableAnalysisResult& result)
+{
+    const ProjectMethodBodyModel& shard = result.shard();
+    for (const MethodCallBinding& call : shard.calls_)
+    {
+        if (call.resolution == MethodCallResolutionKind::Resolved &&
+            call.selectedMemberOrdinal.has_value())
+            result.addDiscoveredCallable(*call.selectedMemberOrdinal);
+    }
+    for (const MethodDelegateBinding& binding : shard.delegateBindings_)
+    {
+        if (binding.kind == MethodDelegateOperationKind::Create &&
+            binding.selectedMemberOrdinal.has_value())
+            result.addDiscoveredCallable(*binding.selectedMemberOrdinal);
+    }
+    for (const MethodOptionalCarrierBinding& binding : shard.optionalCarrierBindings_)
+    {
+        result.addDiscoveredCallable(binding.hasValueMemberOrdinal);
+        result.addDiscoveredCallable(binding.uncheckedValueMemberOrdinal);
+    }
+    for (const MethodResultPropagationBinding& binding : shard.resultPropagationBindings_)
+    {
+        result.addDiscoveredCallable(binding.sourceSuccessTestMemberOrdinal);
+        result.addDiscoveredCallable(binding.sourceSuccessExtractorMemberOrdinal);
+        result.addDiscoveredCallable(binding.sourceErrorExtractorMemberOrdinal);
+        result.addDiscoveredCallable(binding.returnErrorFactoryMemberOrdinal);
+        if (binding.errorConversionMemberOrdinal.has_value())
+            result.addDiscoveredCallable(*binding.errorConversionMemberOrdinal);
+    }
+}
+
 bool ProjectMethodBodyModel::build(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
