@@ -39,3 +39,15 @@ siendo comprobable y no depende de una propiedad de version del proyecto.
 - Ejecutar T06 para medir que expectativas antiguas de exclusividad requieren migracion posterior;
   no se cambiaran en esta tanda.
 - No ejecutar baseline, instalar ni hacer push.
+
+## Resultado
+
+- Commit de implementacion: `d1a8cfa8c`.
+- Targets dirigidos: compilados correctamente.
+- `nsc.item312.reference-locals`: `PASSED`.
+- `nsc.item314.reference-indexers`: `PASSED`.
+- `nsc.item313.reference-returns`: 29/31 comprobaciones pasaron; los dos fallos restantes
+  pertenecen a la proyeccion de una fixture NSMETA 1.14, no al modelo de referencias.
+- T06 conserva 10 expectativas antiguas de exclusividad implicita o move-only por edicion; se
+  clasificaron para la migracion de contratos y no se usaron para revertir el lenguaje acumulativo.
+- Baseline, instalacion y push: no ejecutados.
