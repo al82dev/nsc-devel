@@ -6,9 +6,9 @@
 
 **Configuracion prioritaria:** O0
 
-**Estado:** plan de implementacion aprobado; codigo aun no implementado
+**Estado:** seis tandas implementadas; validacion dirigida O0 aprobada; baseline y carga real final pendientes
 
-**Fecha de corte:** 2026-10-05
+**Fecha de corte:** 2026-10-06
 
 ## 1. Proposito
 
@@ -153,6 +153,21 @@ CallableAnalysisResult
 Los nombres finales pueden ajustarse al codigo existente, pero la separacion de responsabilidades es obligatoria.
 
 ## 6. Tandas de implementacion
+
+### Corte de ejecucion
+
+| Tanda | Estado | Rango principal | Correcciones o cierre posterior |
+|---|---|---|---|
+| 1. Indices O(1) | Implementada y verificada de forma dirigida | `45dea40ec..1c6ba12f0` | — |
+| 2. Sitios de construccion tipados | Implementada y verificada de forma dirigida | `76f97f49e..660145f87` | — |
+| 3. Ownership compacto | Implementada y verificada de forma dirigida | `597247fb7..5f3bc3c3f` | — |
+| 4. Escape por worklist | Implementada y verificada de forma dirigida | `882f63688..e7af5ae70` | — |
+| 5. Aislamiento por callable | Verificada | `d33627b59..1a6effc7d` | Escape preservado en `a83e359a2` |
+| 6. Oleadas deterministas | Verificada | `fc4048bf2..72f7ad7cb` | Merge O(N) en `ad374b717` |
+
+Este corte describe la implementacion de las seis tandas de este documento. No equivale al cierre del plan global de
+compilacion incremental de v3.0.4, no certifica un baseline y no afirma que exista ya un pool global compartido entre
+requests o fases del compilador.
 
 ### Tanda 1. Indices semanticos de acceso O(1)
 
@@ -309,6 +324,27 @@ Estas cifras son objetivos de ingenieria, no resultados ya obtenidos:
 No se aceptara una mejora basada en omitir validaciones semanticas. Si una meta no se alcanza, los contadores y
 perfiles de la nueva arquitectura deben indicar el siguiente costo dominante sin volver a depender de conjeturas.
 
+### Resultado medido del corte
+
+El probe productivo dirigido genera 1024 callables independientes, entra por el Driver en O0, descarta una pasada de
+calentamiento y calcula la mediana de tres rondas con orden rotativo. El cierre del 2026-10-06 produjo:
+
+| Jobs | Pared | `method-bodies` | Analisis de oleadas | Fusion |
+|---:|---:|---:|---:|---:|
+| 1 | 110 ms | 39,823 us | 26,885 us | 9,339 us |
+| 2 | 97 ms | 31,981 us | 16,761 us | 9,870 us |
+| 12 | 88 ms | 20,776 us | 5,308 us | 10,051 us |
+
+Entre `j1` y `j12`, el analisis mejora 80.3 %, la fase completa `method-bodies` mejora 47.8 % y la pared del Driver
+mejora 20.0 %. El maximo de proceso observado en la matriz fue 212,320,256 bytes (202.5 MiB). Las tres ejecuciones
+producen el mismo resumen semantico.
+
+La repeticion final de `NativeSharp.Math.Functions` no fue posible con los artefactos O0 instalados en A: porque su
+fingerprint ABI corresponde a un compilador anterior. El intento queda conservado en
+`_nscbuilder/semantic-performance/SEM-06.07/math-functions-j12.log`. No se reconstruyeron librerias ni se consumio
+`C:\native-sharp`, porque ambas acciones estan fuera del alcance autorizado. Por ello, las metas de 30/600/180 s
+para esa carga real permanecen sin verificar y no se sustituyen por los resultados del probe.
+
 ## 8. Instrumentacion requerida
 
 Las mediciones deben ser baratas y estar desactivadas o resumidas fuera del modo de telemetria. Como minimo se
@@ -389,6 +425,26 @@ La reingenieria queda cerrada solo cuando se cumpla todo lo siguiente:
 - las pruebas dirigidas pasan en O0;
 - la medicion final documenta tiempo por etapa y memoria;
 - no se declara certificacion hasta que el usuario ejecute y apruebe el baseline final.
+
+### Matriz de cierre dirigida
+
+| Evidencia | Resultado del corte 2026-10-06 |
+|---|---:|
+| Scheduler acotado | 12/12 |
+| Contrato de resultado aislado | 6/6 |
+| Reductor determinista | 5/5 |
+| Modelo de cuerpos | 76/76 |
+| Equivalencia Driver O0 `j1/j2/j12` | 6/6 |
+| Borrow escape Stage 50.7 | 40/40 |
+| Escape unificado Item 315 | 16/16 |
+| Resumenes de escape T06 | 8/8 |
+| Probe O0 de 1024 callables | aprobado; resumen semantico identico |
+| Build dirigido de `nsc` y blancos afectados | aprobado con warnings como errores |
+
+En total pasaron 169 comprobaciones funcionales dirigidas, ademas del probe. No se ejecuto CTest general, baseline,
+minibaseline, O1, O2 ni O3. El baseline final, la medicion de `Math.Functions` con dependencias ABI compatibles y un
+detector dinamico de data races siguen siendo evidencia externa pendiente; no invalidan el cierre de implementacion,
+pero impiden llamarlo certificacion final.
 
 ## 13. Decision tecnica
 

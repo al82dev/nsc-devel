@@ -16,14 +16,14 @@ que cada optimizacion posterior tenga una causa medida, un contrato observable y
 
 ## 2. Trazabilidad
 
-| Requisito | Implementacion objetivo | Evidencia de cierre |
-|---|---|---|
-| `SEM-PERF-001` | Indices laterales O(1) sin alterar vectores ordenados | Pruebas de colision y ultimo binding |
-| `SEM-PERF-002` | `construction` consume sitios tipados | Prueba que no redescubre cuerpos |
-| `SEM-PERF-003` | Ownership usa estado denso por callable | Pruebas de branch, loop, move y borrow |
-| `SEM-PERF-004` | Escape usa grafo inverso y worklist | Pruebas de ciclos, monotonia y orden |
-| `SEM-PERF-005` | Analisis mutable aislado por callable | Fusion invertida produce igual salida |
-| `SEM-PERF-006` | Oleadas paralelas con fusion estable | Identidad entre `-j 1`, `-j 2` y `-j 12` |
+| Requisito | Estado | Implementacion | Evidencia de cierre |
+|---|---|---|---|
+| `SEM-PERF-001` | Verificado dirigido | `45dea40ec..1c6ba12f0` | Colision, ultimo binding e indices por callable |
+| `SEM-PERF-002` | Verificado dirigido | `76f97f49e..660145f87` | Sitios tipados y `bodyAstNodesRescanned == 0` |
+| `SEM-PERF-003` | Verificado dirigido | `597247fb7..5f3bc3c3f` | Snapshots densos y cero copias del hash legado |
+| `SEM-PERF-004` | Verificado dirigido | `882f63688..e7af5ae70` | Worklist, ciclos y evaluacion iterativa de origen |
+| `SEM-PERF-005` | Verificado | `d33627b59..a83e359a2` | Shards, reduccion estable y escape |
+| `SEM-PERF-006` | Verificado dirigido | `fc4048bf2..72f7ad7cb` | Identidad O0 `j1/j2/j12` y probe reproducible |
 
 El orden de implementacion es vinculante porque cada fila prepara los invariantes de la siguiente. Los vectores
 existentes continuan determinando dumps, diagnosticos y serializacion; los indices solo aceleran lectura.
@@ -88,8 +88,13 @@ supresiones aceptadas. Cada tanda ejecutara analisis dirigido con el toolchain q
 si la incompatibilidad persiste, el build con warnings como errores y la inspeccion de los archivos modificados seran
 gates complementarios, nunca una afirmacion falsa de limpieza.
 
-La segunda pasada completa del alcance se ejecutara despues de la tanda 6. Todo hallazgo nuevo se corrige o se
-clasifica con archivo, simbolo, causa y riesgo.
+La segunda pasada dirigida se ejecuto sobre los TUs pequenos tocados por el cierre. El merger, el probe y el fixture
+de Driver quedaron limpios con `clang-analyzer-*`, `bugprone-*` y `performance-*`, descontando exclusivamente ruido
+preexistente ya identificado. El scheduler conserva una supresion local justificada por su contrato de callback.
+
+El TU monolitico `ProjectMethodBodyModel.cpp` no produjo diagnostico ni termino dentro de 150 segundos y se
+interrumpio. No se presenta como limpio. Su cobertura complementaria es el build con warnings como errores y las
+pruebas funcionales dirigidas. Tampoco se afirma limpieza global del repositorio ni se ejecuto un baseline.
 
 ## 6. Reglas de implementacion
 
@@ -110,10 +115,12 @@ clasifica con archivo, simbolo, causa y riesgo.
 - la limitacion actual de `clang-tidy` esta registrada sin presentarla como exito;
 - el repositorio mantiene una ruta unica desde requisito hasta prueba y evidencia.
 
+Para este cierre concreto el usuario retiro los diagramas del alcance. No se modificaron ni regeneraron fuentes o
+figuras; su estado historico no se usa como criterio para aprobar las seis tandas.
+
 ## 8. Archivos de esta entrega
 
 - `docs/compiler-optimization/semantic-performance/SEM-00.01-ASSURANCE-FOUNDATION.md`;
 - `docs/compiler-optimization/semantic-performance/diagrams/src/semantic-performance-pipeline.dot`;
 - `docs/compiler-optimization/semantic-performance/diagrams/generated/semantic-performance-pipeline.svg`;
 - `tools/generate_semantic_performance_diagrams.py`.
-

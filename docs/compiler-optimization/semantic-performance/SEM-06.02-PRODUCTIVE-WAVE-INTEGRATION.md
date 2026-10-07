@@ -1,5 +1,11 @@
 # SEM-06.02 — Integración productiva de oleadas
 
+**Estado:** implementado y verificado de forma dirigida
+
+**Commit principal:** `c57b26ba0`
+
+**Verificacion posterior:** `5313d0089`, `8d029723d`
+
 ## Propósito
 
 Hacer que `ProjectCompilation::setCompilationJobs` alcance por primera vez el análisis de
@@ -28,6 +34,15 @@ durante la oleada. Cada worker crea y posee un shard completo; no existen pools 
 
 ## Validación dirigida
 
-Build de los blancos afectados y pruebas puntuales del scheduler, method bodies y escape en O0.
-La equivalencia `j1/j2/j12` se cierra en el siguiente commit con un fixture productivo dedicado.
+El build dirigido de `nsc` y de los blancos afectados paso con warnings como errores. La matriz final obtuvo:
+
+- scheduler: 12/12;
+- modelado de cuerpos: 76/76;
+- Driver O0 `j1/j2/j12`: 6/6;
+- escape summaries: 8/8.
+
+La cancelacion y el fallo se comprueban en el scheduler antes de publicar la oleada; el modelo coordinador solo
+recibe resultados despues del exito completo. El mecanismo no ofrece aun cancelacion global entre todas las fases
+del compilador ni un presupuesto global entre requests simultaneos de LanguageService.
+
 No se ejecuta baseline, minibaseline, CTest general ni O1/O2/O3.

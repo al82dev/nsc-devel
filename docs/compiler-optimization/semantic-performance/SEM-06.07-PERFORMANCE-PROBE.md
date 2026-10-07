@@ -57,14 +57,18 @@ Corpus de 1024 callables, O0, una pasada de calentamiento, tres rondas rotativas
 
 | Jobs | Pared | Method bodies | Analysis | Merge |
 |---:|---:|---:|---:|---:|
-| 1 | 127 ms | 45,904 us | 28,970 us | 12,845 us |
-| 2 | 95 ms | 29,844 us | 14,698 us | 10,241 us |
-| 12 | 87 ms | 20,842 us | 5,172 us | 10,267 us |
+| 1 | 110 ms | 39,823 us | 26,885 us | 9,339 us |
+| 2 | 97 ms | 31,981 us | 16,761 us | 9,870 us |
+| 12 | 88 ms | 20,776 us | 5,308 us | 10,051 us |
 
-El análisis de la oleada mejora 82.1 % entre `j1` y `j12`; `method-bodies` mejora 54.6 % y la
-pared completa del Driver mejora 31.5 %. El máximo de proceso observado fue 212,951,040 bytes
-(203.1 MiB). La evidencia se conserva en
+El análisis de la oleada mejora 80.3 % entre `j1` y `j12`; `method-bodies` mejora 47.8 % y la
+pared completa del Driver mejora 20.0 %. El máximo de proceso observado fue 212,320,256 bytes
+(202.5 MiB). La evidencia histórica reproducible se conserva en
 `_nscbuilder/semantic-performance/SEM-06.07/callable-wave-performance.log`.
+
+Estos valores corresponden a la matriz final dirigida del 2026-10-06. El log citado conserva una
+corrida anterior del mismo probe; las cifras pueden variar por carga de máquina, pero el corpus,
+la rotación, el estadístico y la igualdad semántica son fijos.
 
 El objetivo compila con warnings como errores y clang-tidy dirigido queda limpio con checks de
 analyzer, bugprone y performance.

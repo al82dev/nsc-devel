@@ -1,5 +1,9 @@
 # SEM-06.01 — Planificador acotado de oleadas
 
+**Estado:** implementado y verificado de forma dirigida
+
+**Commits:** `fc4048bf2`, `114bbdeb2`, `0d7d67eec`
+
 ## Propósito
 
 Definir el mecanismo concurrente antes de conectarlo al modelo productivo. El planificador debe
@@ -30,3 +34,10 @@ estructurales y la igualdad del diagnóstico propio entre `j1` y `j2`; no depend
 herramientas, hashes, conteos globales ni tiempos.
 
 No se ejecuta baseline, minibaseline, CTest general ni optimizaciones O1/O2/O3.
+
+Resultado final: `nsc_project_callable_wave_scheduler_tests` paso 12/12 comprobaciones. El fast path `j1`, los slots
+exclusivos y la publicacion serial preservan ownership sin locks por resultado. La cola del pool es O(N), la espera
+es O(N) y el orden publicado permanece O(N) respecto de los callables de la oleada.
+
+El pool es persistente durante una construccion de `ProjectMethodBodyModel`; no es todavia el pool global de
+`CompilationService` previsto por la reingenieria amplia de v3.0.4. No se afirma deteccion dinamica de data races.
