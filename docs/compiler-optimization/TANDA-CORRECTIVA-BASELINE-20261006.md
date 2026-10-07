@@ -138,4 +138,8 @@ precompiladas. Dos ediciones declaradas y contradictorias siguen produciendo
   faltantes fueron eliminadas por el commit independiente `9232bcfc0`; su
   restauracion o migracion corresponde a bibliotecas y no se encubre mediante
   cambios al compilador ni a las pruebas historicas.
+- Tanda 5 terminada: etiquetas informativas, contenido NSMETA realmente
+  decodificado, capacidades requeridas por una instalacion y productores legacy
+  conocidos vuelven a ser contratos separados. Los seis tests dirigidos pasan
+  juntos sin modificar consumidores historicos.
 - No se ejecuto baseline ni minibaseline.

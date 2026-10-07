@@ -15,6 +15,10 @@ bool writeCompatibilityPolicy(const std::filesystem::path &destination, std::str
 
 bool verifyCompatibilityPolicy(const std::filesystem::path &source, std::string &error);
 
+bool verifyInstalledCompatibilityCapabilities(
+    const std::filesystem::path &source,
+    std::string &error);
+
 bool checkCompilerCompatibility(std::string_view requiredVersion, std::string &explanation, std::string &error);
 
 std::string currentCompatibilityMatrix();

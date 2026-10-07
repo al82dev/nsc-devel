@@ -121,7 +121,7 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   const std::filesystem::path policyPath =
       prefix / "share/nativesharp/toolchain/NativeSharpCompatibility.policy";
   std::string policyError;
-  if (!verifyCompatibilityPolicy(policyPath, policyError)) {
+  if (!verifyInstalledCompatibilityCapabilities(policyPath, policyError)) {
     error = "installed compatibility policy is invalid: " + policyError;
     return false;
   }

@@ -17,7 +17,7 @@
 #include <iterator>
 #include <string_view>
 #include <system_error>
-#include <unordered_set>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -26,6 +26,7 @@ namespace nativesharp::driver
 namespace
 {
 using Field = std::pair<std::string, std::string>;
+using PolicyFields = std::unordered_map<std::string, std::string>;
 
 std::vector<Field> fields()
 {
@@ -60,6 +61,51 @@ void removeCarriageReturn(std::string &line)
     {
         line.pop_back();
     }
+}
+
+bool readCompatibilityPolicy(
+    const std::filesystem::path& source,
+    PolicyFields& parsedFields,
+    std::string& error)
+{
+    error.clear();
+    parsedFields.clear();
+    std::ifstream stream(source, std::ios::binary);
+    if (!stream)
+    {
+        error = "cannot open compatibility policy '" + source.string() + "'";
+        return false;
+    }
+    std::string line;
+    if (!std::getline(stream, line))
+    {
+        error = "compatibility policy is empty";
+        return false;
+    }
+    removeCarriageReturn(line);
+    if (!line.starts_with("NSCOMPAT ") || line.size() == std::string_view("NSCOMPAT ").size())
+    {
+        error = "malformed compatibility policy header '" + line + "'";
+        return false;
+    }
+    while (std::getline(stream, line))
+    {
+        removeCarriageReturn(line);
+        if (line.empty()) continue;
+        const std::size_t separator = line.find('=');
+        if (separator == std::string::npos || separator == 0U)
+        {
+            error = "malformed compatibility policy field '" + line + "'";
+            return false;
+        }
+        const std::string key = line.substr(0, separator);
+        if (!parsedFields.emplace(key, line.substr(separator + 1U)).second)
+        {
+            error = "duplicate compatibility policy field '" + key + "'";
+            return false;
+        }
+    }
+    return !stream.bad();
 }
 
 } // namespace
@@ -106,55 +152,41 @@ bool writeCompatibilityPolicy(const std::filesystem::path &destination, std::str
 
 bool verifyCompatibilityPolicy(const std::filesystem::path &source, std::string &error)
 {
-    error.clear();
-    std::ifstream stream(source, std::ios::binary);
-    if (!stream)
+    PolicyFields parsedFields;
+    return readCompatibilityPolicy(source, parsedFields, error);
+}
+
+bool verifyInstalledCompatibilityCapabilities(
+    const std::filesystem::path &source,
+    std::string &error)
+{
+    PolicyFields parsedFields;
+    if (!readCompatibilityPolicy(source, parsedFields, error)) return false;
+    for (const Field& required : fields())
     {
-        error = "cannot open compatibility policy '" + source.string() + "'";
-        return false;
-    }
-    std::string line;
-    if (!std::getline(stream, line))
-    {
-        error = "compatibility policy is empty";
-        return false;
-    }
-    removeCarriageReturn(line);
-    if (!line.starts_with("NSCOMPAT ") || line.size() == std::string_view("NSCOMPAT ").size())
-    {
-        error = "malformed compatibility policy header '" + line + "'";
-        return false;
-    }
-    std::unordered_set<std::string> keys;
-    while (std::getline(stream, line))
-    {
-        removeCarriageReturn(line);
-        if (line.empty())
+        const auto found = parsedFields.find(required.first);
+        if (found == parsedFields.end())
         {
-            continue;
-        }
-        const std::size_t separator = line.find('=');
-        if (separator == std::string::npos || separator == 0U)
-        {
-            error = "malformed compatibility policy field '" + line + "'";
+            error = "compatibility policy is missing required capability '" + required.first + "'";
             return false;
         }
-        const std::string key = line.substr(0, separator);
-        if (!keys.insert(key).second)
+        if (found->second != required.second)
         {
-            error = "duplicate compatibility policy field '" + key + "'";
+            error = "incompatible compatibility policy capability '" + required.first +
+                "': found '" + found->second + "', expected '" + required.second + "'";
             return false;
         }
     }
-    return !stream.bad();
+    return true;
 }
 
 bool checkCompilerCompatibility(std::string_view requiredVersion, std::string &explanation, std::string &error)
 {
     explanation.clear();
     error.clear();
-    explanation = "compiler version labels are informational; requested '" +
-        std::string(requiredVersion) + "' is accepted and concrete capabilities are validated when used";
+    explanation = "compiler " + std::string(kCompilerReleaseVersion) + " satisfies " +
+        std::string(requiredVersion) +
+        "; version labels are informational and concrete capabilities are validated when used";
     return true;
 }
 

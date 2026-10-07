@@ -536,6 +536,11 @@ struct LibraryMetadata final
 {
     std::uint16_t formatMajor = kMetadataFormatMajor;
     std::uint16_t formatMinor = kMetadataFormatMinor;
+    // Transient provenance. This is never serialized and is set only after the
+    // current reader has decoded and authenticated the complete payload. It lets
+    // verification distinguish a forward-labelled file whose actual contents
+    // were understood from an in-memory model that merely claims a future format.
+    bool payloadDecodedByCurrentReader = false;
     std::uint32_t targetId = 1;
     std::uint32_t pointerSize = 8;
     std::uint32_t pointerAlignment = 8;

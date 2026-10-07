@@ -57,6 +57,21 @@ constexpr std::uint64_t kMaximumPayloadSize = 128ULL * 1024ULL * 1024ULL;
 constexpr std::uint32_t kMaximumRecordCount = 1'000'000U;
 constexpr std::uint32_t kMaximumStringSize = 16U * 1024U * 1024U;
 
+std::string_view compilerReleasePart(std::string_view version) noexcept
+{
+    const std::size_t channelOrBuildMetadata = version.find_first_of("-+");
+    return version.substr(0, channelOrBuildMetadata);
+}
+
+bool hasKnownIncompatibleLegacyProducer(std::string_view version) noexcept
+{
+    const std::string_view release = compilerReleasePart(version);
+    // These released producers predate capabilities required by the current
+    // compiler but cannot express those absences in their old schemas. Unknown
+    // labels are not rejected: their decoded contents remain authoritative.
+    return release == "0.9.0" || release == "1.0.1";
+}
+
 std::string foldedAscii(std::string value)
 {
     std::ranges::transform(value, value.begin(), [](unsigned char character) {
@@ -3529,6 +3544,12 @@ bool LibraryMetadataCodec::writeModelImpl(
     const std::array<LibraryMetadata, 1> fragments = {model};
     LibraryMetadataMerger merger;
     if (!merger.merge(fragments, metadata, error)) return false;
+    if (metadata.formatMajor != kFormatMajor || metadata.formatMinor > kFormatMinor)
+    {
+        error = "cannot write NativeSharp metadata format " +
+            std::to_string(metadata.formatMajor) + "." + std::to_string(metadata.formatMinor);
+        return false;
+    }
     if (metadata.formatMinor >= 31)
     {
         for (LibraryMetadataType& type : metadata.types)
@@ -4083,6 +4104,7 @@ bool LibraryMetadataCodec::read(
     std::stable_sort(decoded.members.begin(), decoded.members.end(), [](const auto& left, const auto& right) {
         return left.declaringTypeKey < right.declaringTypeKey;
     });
+    decoded.payloadDecodedByCurrentReader = true;
     metadata = std::move(decoded);
     return true;
 }
@@ -4092,6 +4114,14 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     std::string& error) const
 {
     error.clear();
+    if ((metadata.formatMajor != kFormatMajor || metadata.formatMinor > kFormatMinor) &&
+        !metadata.payloadDecodedByCurrentReader)
+    {
+        error = "metadata format expected NSMETA " + std::to_string(kFormatMajor) + ".0 through " +
+                std::to_string(kFormatMajor) + "." + std::to_string(kFormatMinor) + ", found " +
+                std::to_string(metadata.formatMajor) + "." + std::to_string(metadata.formatMinor);
+        return false;
+    }
     if (metadata.targetId != kWindowsX64Target)
     {
         error = "metadata target ABI mismatch: target id expected " + std::to_string(kWindowsX64Target) + ", found " +
@@ -4964,6 +4994,14 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                 return false;
             }
         }
+    }
+    if (hasKnownIncompatibleLegacyProducer(metadata.producerVersion))
+    {
+        error = "metadata producer version '" + metadata.producerVersion +
+            "' is outside the supported producer window ['" +
+            std::string(kPreviousCompilerReleaseVersion) + "', '" +
+            std::string(kCompilerReleaseVersion) + "']";
+        return false;
     }
     if (metadata.formatMinor >= 13)
     {
