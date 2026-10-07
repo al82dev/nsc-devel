@@ -40,14 +40,12 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
 std::filesystem::path writeProject(
     const std::filesystem::path& directory,
     std::string_view name,
-    std::string_view source,
-    int edition = 3)
+    std::string_view source)
 {
     const std::filesystem::path project = directory / (std::string(name) + ".nsproj");
     writeFile(project,
         "<Project><PropertyGroup><Name>" + std::string(name) +
-        "</Name><Language>" + std::to_string(edition) +
-        "</Language><OutputType>Exe</OutputType></PropertyGroup>"
+        "</Name><OutputType>Exe</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(directory / "Main.ns", source);
     return project;
@@ -257,9 +255,11 @@ namespace NativeSharp.Core
         root / "move-only", "ForeachMoveOnly", R"NS(
 namespace ForeachMoveOnly
 {
+    public class Resource { }
     public struct Guard
     {
         public int value;
+        public owned Resource owner;
         ~Guard() { value = 0; }
     }
     public class Program
@@ -297,8 +297,8 @@ class Program
     tests.expect(rangeRefRejected,
         "reference foreach rejects storage-free integer ranges (" + diagnostic + ")");
 
-    const std::filesystem::path edition2 = writeProject(
-        root / "edition2", "ForeachEdition2", R"NS(
+    const std::filesystem::path compatibility = writeProject(
+        root / "compatibility", "ForeachCompatibility", R"NS(
 class Program
 {
     public static int Main()
@@ -308,11 +308,11 @@ class Program
         return values[0];
     }
 }
-)NS", 2);
+)NS");
     diagnostic.clear();
-    const bool historicalEditionAccepted =
-        !rejectedWith(edition2, "requires <Language>3</Language>", diagnostic);
-    tests.expect(historicalEditionAccepted,
+    const bool referenceIterationAccepted =
+        !rejectedWith(compatibility, "requires <Language>3</Language>", diagnostic);
+    tests.expect(referenceIterationAccepted,
         "reference iteration is independent of historical edition input (" + diagnostic + ")");
 
     const std::filesystem::path trait = writeProject(
