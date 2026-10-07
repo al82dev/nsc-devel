@@ -18,6 +18,7 @@ from typing import TextIO
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MANIFEST = ROOT / "test.run"
+DEFAULT_BUILD = ROOT / "build-failed-tests"
 DEFAULT_HISTORY = ROOT / "_nscbuilder" / "failed-tests"
 DEFAULT_NSC = Path(r"C:\native-sharp\bin\nsc.exe")
 DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
@@ -42,12 +43,18 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--build-dir",
         type=Path,
-        help="Árbol CTest ya construido; si se omite, se descubre dentro del repositorio.",
+        default=DEFAULT_BUILD,
+        help="Árbol dedicado para compilar solamente los targets incluidos en test.run.",
     )
     parser.add_argument("--tests-file", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_HISTORY)
     parser.add_argument("--nsc", type=Path, default=DEFAULT_NSC)
     parser.add_argument("--nslink", type=Path, default=DEFAULT_NSLINK)
+    parser.add_argument(
+        "--no-prepare",
+        action="store_true",
+        help="Omite configuración y compilación; exige que --build-dir ya esté preparado.",
+    )
     parser.add_argument("--list", action="store_true", help="Muestra la selección y no ejecuta.")
     return parser.parse_args()
 
@@ -74,39 +81,102 @@ def safe_name(value: str) -> str:
     return normalized or "test"
 
 
-def ctest_names(path: Path) -> set[str]:
-    """Read registered test names from generated CTest metadata without executing CMake."""
-    text = path.read_text(encoding="utf-8", errors="replace")
-    return set(re.findall(r'add_test\(\s*"([^"]+)"', text))
+def run_stage(command: list[str], log_path: Path, label: str) -> None:
+    """Run one preparation stage with progressive console and persistent log output."""
+    encoding = locale.getpreferredencoding(False) or "utf-8"
+    with log_path.open("w", encoding="utf-8", errors="replace") as log:
+        print(f"\n{label}: {subprocess.list2cmdline(command)}")
+        process = subprocess.Popen(
+            command,
+            cwd=str(ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding=encoding,
+            errors="replace",
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            log.write(line)
+            log.flush()
+        exit_code = process.wait()
+    if exit_code != 0:
+        raise ValueError(f"{label} terminó con código {exit_code}; consulte {log_path}")
 
 
-def discover_test_tree(requested: Path | None, names: list[str]) -> Path:
-    """Find the existing CTest tree that contains the complete requested manifest."""
-    if requested is not None:
-        build_dir = requested.resolve()
-        if not (build_dir / CTEST_FILE).is_file():
-            raise ValueError(f"El árbol CTest indicado no existe: {build_dir}")
-        return build_dir
-
-    required = set(names)
-    candidates: list[tuple[Path, int]] = []
-    for child in sorted(ROOT.iterdir(), key=lambda path: path.name.casefold()):
-        metadata = child / CTEST_FILE
-        if not child.is_dir() or not metadata.is_file():
-            continue
-        coverage = len(required & ctest_names(metadata))
-        candidates.append((child.resolve(), coverage))
-    complete = [path for path, coverage in candidates if coverage == len(required)]
-    if complete:
-        preferred = ROOT / "build-test-nslink"
-        return preferred.resolve() if preferred.resolve() in complete else complete[0]
-    details = ", ".join(f"{path} ({coverage}/{len(required)})" for path, coverage in candidates)
-    if not details:
-        details = "ninguno"
-    raise ValueError(
-        "No existe un árbol CTest construido que contenga todo test.run. "
-        f"Árboles encontrados: {details}"
+def llvm_cmake_directory() -> Path:
+    """Ask the llvm-config found through PATH for the matching CMake package directory."""
+    result = subprocess.run(
+        ["llvm-config", "--cmakedir"],
+        cwd=str(ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding=locale.getpreferredencoding(False) or "utf-8",
+        errors="replace",
+        check=False,
     )
+    directory = Path(result.stdout.strip())
+    if result.returncode != 0 or not (directory / "LLVMConfig.cmake").is_file():
+        detail = result.stderr.strip() or result.stdout.strip() or "sin salida"
+        raise ValueError(f"llvm-config --cmakedir no produjo un paquete LLVM válido: {detail}")
+    return directory.resolve()
+
+
+def configure_test_tree(build_dir: Path, nsc: Path, nslink: Path, log_path: Path) -> None:
+    """Configure a dedicated tree while resolving every auxiliary program through PATH."""
+    command = [
+        "cmake",
+        "-S",
+        str(ROOT),
+        "-B",
+        str(build_dir),
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=clang-cl",
+        "-DCMAKE_CXX_COMPILER=clang-cl",
+        "-DCMAKE_LINKER=lld-link",
+        "-DCMAKE_MT=llvm-mt",
+        "-DCMAKE_RC_COMPILER=llvm-rc",
+        "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
+        f"-DLLVM_DIR={llvm_cmake_directory().as_posix()}",
+        "-DNSC_BUILD_TESTS=ON",
+        "-DNSC_WARNINGS_AS_ERRORS=ON",
+        f"-DNSC_TEST_COMPILER={nsc.as_posix()}",
+        f"-DNSC_NSLINK_EXECUTABLE={nslink.as_posix()}",
+    ]
+    run_stage(command, log_path, "Configurar pruebas seleccionadas")
+
+
+def selected_cpp_targets(metadata: Path, names: list[str], build_dir: Path) -> list[str]:
+    """Map selected CTest executable commands to their CMake target names."""
+    text = metadata.read_text(encoding="utf-8", errors="replace")
+    targets: list[str] = []
+    for name in names:
+        pattern = re.compile(r'add_test\("' + re.escape(name) + r'"\s+"([^"]+)"')
+        match = pattern.search(text)
+        if match is None:
+            raise ValueError(f"CTest no registró la prueba solicitada: {name}")
+        command = Path(match.group(1).replace("/", os.sep))
+        try:
+            command.resolve().relative_to(build_dir.resolve())
+        except ValueError:
+            continue
+        if command.suffix.casefold() == ".exe" and command.stem not in targets:
+            targets.append(command.stem)
+    return targets
+
+
+def build_selected_targets(build_dir: Path, targets: list[str], log_path: Path) -> None:
+    """Build only C++ test executables named by test.run and their normal dependencies."""
+    if not targets:
+        log_path.write_text("No hay targets C++ seleccionados.\n", encoding="utf-8")
+        return
+    command = ["cmake", "--build", str(build_dir), "--parallel", "--target", *targets]
+    run_stage(command, log_path, f"Compilar {len(targets)} targets seleccionados")
 
 
 def write_both(master: TextIO, per_test: TextIO, text: str) -> None:
@@ -312,7 +382,7 @@ def test_environment(nsc: Path, nslink: Path) -> dict[str, str]:
 
 
 def execute(args: argparse.Namespace, names: list[str]) -> int:
-    build_dir = discover_test_tree(args.build_dir, names)
+    build_dir = args.build_dir.resolve()
     nsc = args.nsc.resolve()
     nslink = args.nslink.resolve()
     if not nsc.is_file():
@@ -324,6 +394,13 @@ def execute(args: argparse.Namespace, names: list[str]) -> int:
     run_dir.mkdir(parents=True, exist_ok=False)
     logs_dir = run_dir / "tests"
     logs_dir.mkdir()
+    if not args.no_prepare:
+        configure_test_tree(build_dir, nsc, nslink, run_dir / "configure.log")
+        targets = selected_cpp_targets(build_dir / CTEST_FILE, names, build_dir)
+        build_selected_targets(build_dir, targets, run_dir / "build.log")
+        print(f"\nTargets C++ seleccionados: {len(targets)}")
+    elif not (build_dir / CTEST_FILE).is_file():
+        raise ValueError(f"El árbol CTest indicado no está preparado: {build_dir}")
     test_dir = prepare_ctest_overlay(build_dir, run_dir, nsc, nslink)
     environment = test_environment(nsc, nslink)
     results: list[dict] = []
