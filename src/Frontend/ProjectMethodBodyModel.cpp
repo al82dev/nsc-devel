@@ -6325,19 +6325,6 @@ void ProjectMethodBodyModel::analyzeVariable(
                         "' cannot be copied into a non-owning local; Stage 49 requires ownership transfer with move(...)");
             }
         }
-        const bool isCompilerGeneratedDeferCopy =
-            isDeferValueCapture &&
-            variable->first()->kind() == ast::AstNodeKind::MoveExpression &&
-            variable->first()->auxiliaryText() == "defer-value-capture";
-        if (variable->first()->kind() == ast::AstNodeKind::MoveExpression &&
-            !isRaii && !isMoveOnly && !isCompilerGeneratedDeferCopy)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                variable->first()->range(),
-                "move construction requires a RAII or move-only destination local");
-        }
         // Stage 52: an "owned"/"borrowed"-returning call whose declared return type is a
         // generic T closed over a plain value type (int, bool, a struct, ...) carries an
         // ownership qualifier that is structurally meaningless for that T -- there is nothing
@@ -10195,9 +10182,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 break;
             }
 
-            const bool deferValueCapture =
-                expression->auxiliaryText() == "defer-value-capture";
-            bool copiedForDefer = false;
+            bool copyShapedMove = false;
             if (source->kind == ScopeNameKind::Local)
             {
                 if (source->semanticOrdinal >= locals_.size())
@@ -10207,19 +10192,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
                 const bool sourceRequiresMove = local.isRaii || local.isMoveOnly ||
                     compilerVariantResultTransfer;
-                copiedForDefer = (deferValueCapture || compilerVariantPayloadTransfer ||
-                    compilerComprehensionResult) &&
-                    !sourceRequiresMove;
-                if (!sourceRequiresMove && !copiedForDefer)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        expression->range(),
-                        "move(...) source must be a RAII local or owned parameter, or a move-only "
-                        "local/parameter");
-                    break;
-                }
+                copyShapedMove = !sourceRequiresMove;
                 if (sourceRequiresMove && local.isPinned)
                 {
                     diagnostics.report(
@@ -10330,20 +10303,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     parameter.passKind == ParameterPassKind::Value &&
                     callableBelongsToGenericTypeSpecialization(methodMemberOrdinal) &&
                     !sourceRequiresMove;
-                copiedForDefer = (deferValueCapture || compilerVariantPayloadTransfer ||
-                    compilerComprehensionResult) &&
-                    !sourceRequiresMove;
-                copiedForDefer = copiedForDefer || genericCopyShapedMove;
-                if (!sourceRequiresMove && !copiedForDefer)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        expression->range(),
-                        "move(...) source must be a RAII local or owned parameter, or a move-only "
-                        "local/parameter");
-                    break;
-                }
+                copyShapedMove = !sourceRequiresMove || genericCopyShapedMove;
                 if (sourceRequiresMove && movedOwnedParameters_.contains(source->semanticOrdinal))
                 {
                     diagnostics.report(
@@ -10430,10 +10390,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
             result.valid = true;
             result.assignable = false;
-            result.ownership = copiedForDefer
+            result.ownership = copyShapedMove
                 ? sema::OwnershipKind::None : sema::OwnershipKind::Owned;
-            result.ownershipTransfer = !copiedForDefer;
-            if (copiedForDefer)
+            result.ownershipTransfer = !copyShapedMove;
+            if (copyShapedMove)
             {
                 result.ownershipSourceLocalOrdinal.reset();
                 result.ownershipSourceParameterOrdinal.reset();
