@@ -54,10 +54,10 @@ int main()
     if (compilation.memberModel() != nullptr)
     {
         const auto& model = *compilation.memberModel();
-        constexpr std::string_view leaf = "OwnershipCache::Leaf";
-        constexpr std::string_view middle = "OwnershipCache::Middle";
-        constexpr std::string_view rootType = "OwnershipCache::Root";
-        constexpr std::string_view plain = "OwnershipCache::Plain";
+        constexpr std::string_view leaf = "type:OwnershipCache::Leaf";
+        constexpr std::string_view middle = "type:OwnershipCache::Middle";
+        constexpr std::string_view rootType = "type:OwnershipCache::Root";
+        constexpr std::string_view plain = "type:OwnershipCache::Plain";
         tests.expect(model.typeTransitivelyOwnsStorage(leaf), "direct owned field marks its struct");
         tests.expect(model.typeTransitivelyOwnsStorage(middle), "ownership reaches one outer struct");
         tests.expect(model.typeTransitivelyOwnsStorage(rootType), "ownership reaches the complete chain");

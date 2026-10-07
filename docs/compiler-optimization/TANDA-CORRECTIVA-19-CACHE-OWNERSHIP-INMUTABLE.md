@@ -52,4 +52,7 @@ EN IMPLEMENTACION.
 
 ## Evidencia
 
-Pendiente de la prueba puntual posterior al commit de implementacion.
+- El target nuevo compilo correctamente.
+- La primera ejecucion detecto que el fixture consultaba identidades de declaracion sin el prefijo
+  canonico `type:` exigido por `typeOrdinalForKey`; la implementacion no se modifico.
+- La correccion del fixture queda registrada antes de repetir la prueba puntual.
