@@ -1026,13 +1026,10 @@ int main(int argc, char** argv)
         R"(class Program { public static int Main() { foreach (int value in ^1..4) { return value; } return 0; } })",
         "a from-end endpoint requires a sized receiver", "3");
 
-    // T06-F06: pin is an edition-3 ownership commitment. The owner remains borrowable and its
-    // ordinary lexical cleanup stays active, but neither ownership transfer nor replacement may
-    // relocate it after construction.
-    checkRejected(
+    // Pin is an ownership commitment independent of the historical project Language property.
+    checkAccepted(
         tests, root, "ns3-t06-pin-requires-edition3",
-        R"(class Payload { } class Program { public static int Main() { pin raii Payload stable = new Payload(); return 0; } })",
-        "pin raii locals requires <Language>3</Language>", "2");
+        R"(class Payload { } class Program { public static int Main() { pin raii Payload stable = new Payload(); return 0; } })");
     checkRejected(
         tests, root, "ns3-t06-pinned-owner-cannot-move",
         R"(class Payload { } class Program { public static int Main() { pin raii Payload stable = new Payload(); owned Payload moved = move(stable); return 0; } })",

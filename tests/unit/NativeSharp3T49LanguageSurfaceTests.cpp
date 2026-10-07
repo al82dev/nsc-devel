@@ -142,15 +142,10 @@ int main()
 
     nativesharp::frontend::FrontendCompilation edition2(
         nativesharp::language::LanguageEdition::V2);
-    edition2.compileBuffer("raw-v2.ns", "string Value() { return \"\"\"raw\"\"\"; }", false);
-    bool rawRequires3 = false;
-    for (const nativesharp::diagnostics::Diagnostic& diagnostic : edition2.diagnostics().diagnostics())
-    {
-        rawRequires3 = rawRequires3 ||
-            diagnostic.id() ==
-                nativesharp::diagnostics::DiagnosticId::NS3002FeatureRequiresLanguageEdition3;
-    }
-    tests.expect(rawRequires3, "raw string literals require the explicit Language 3 edition");
+    const bool rawRecognized = edition2.compileBuffer(
+        "raw-v2.ns", "string Value() { return \"\"\"raw\"\"\"; }", false);
+    tests.expect(rawRecognized && !edition2.diagnostics().hasErrors(),
+        "raw string literals are recognized independently of historical edition input");
 
     nativesharp::source::SourceManager rawSources;
     const nativesharp::FileId rawFile = rawSources.addBuffer(

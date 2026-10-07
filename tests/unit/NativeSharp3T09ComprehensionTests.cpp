@@ -263,10 +263,10 @@ public class Program
 }
 )NS", 2);
     diagnostic.clear();
-    const bool edition2Rejected =
-        rejectedWith(edition2, "requires <Language>3</Language>", diagnostic);
-    tests.expect(edition2Rejected,
-        "comprehensions remain edition-3 gated (" + diagnostic + ")");
+    const bool historicalEditionAccepted =
+        !rejectedWith(edition2, "requires <Language>3</Language>", diagnostic);
+    tests.expect(historicalEditionAccepted,
+        "comprehensions are independent of historical edition input (" + diagnostic + ")");
 
     std::string mir;
     diagnostic.clear();

@@ -77,8 +77,9 @@ int main()
     compilation::ProjectLoader loader;
     const auto edition2 = loader.load(edition2Project, error);
     const auto edition3 = loader.load(edition3Project, error);
-    tests.expect(edition2.has_value() && edition2->languageEdition() == LanguageEdition::V2,
-        "project loader publishes edition 2");
+    tests.expect(edition2.has_value() && edition2->languageEdition() == LanguageEdition::V3 &&
+            !edition2->hasExplicitLanguageEdition(),
+        "project loader ignores a historical Language value");
     tests.expect(edition3.has_value() && edition3->languageEdition() == LanguageEdition::V3,
         "project loader publishes edition 3");
     if (edition3.has_value())
@@ -90,17 +91,15 @@ int main()
     }
 
     const auto invalidProject = writeProject(root, "InvalidEdition", "4");
-    tests.expect(!loader.load(invalidProject, error).has_value() &&
-            error.find("Language must be '2' or '3'") != std::string::npos,
-        "unknown language edition is diagnostic");
+    tests.expect(loader.load(invalidProject, error).has_value(),
+        "an unknown administrative Language value cannot reject a project");
 
     const auto dependency = writeProject(root, "Dependency", "2");
     const std::string reference =
         "<ProjectReference Include=\"../Dependency/Dependency.nsproj\"/>";
     const auto mixedRoot = writeProject(root, "MixedRoot", "3", reference);
-    tests.expect(!compilation::ProjectGraphLoader().load(mixedRoot, error).has_value() &&
-            error.find("NS3001") != std::string::npos,
-        "project graph rejects mixed editions with stable NS3001");
+    tests.expect(compilation::ProjectGraphLoader().load(mixedRoot, error).has_value(),
+        "project graph accepts mixed historical Language values");
     const auto compatibleRoot = writeProject(root, "CompatibleRoot", "2", reference);
     tests.expect(compilation::ProjectGraphLoader().load(compatibleRoot, error).has_value(),
         "project graph accepts one explicit edition");
@@ -113,9 +112,8 @@ int main()
             "LegacyEdition2",
             LanguageEdition::V2}};
     tests.expect(mixedMetadataGraph.has_value() &&
-            !mixedMetadataGraph->addPrecompiledProjects(mixedMetadata, error) &&
-            error.find("NS3001") != std::string::npos,
-        "project graph rejects precompiled metadata from another edition with stable NS3001");
+            mixedMetadataGraph->addPrecompiledProjects(mixedMetadata, error),
+        "project graph accepts metadata regardless of its historical edition field");
     auto alignedMetadataGraph = compilation::ProjectGraphLoader().load(edition3Project, error);
     const std::array alignedMetadata = {
         compilation::PrecompiledProjectDescriptor{
@@ -126,7 +124,7 @@ int main()
     tests.expect(alignedMetadataGraph.has_value() &&
             alignedMetadataGraph->addPrecompiledProjects(alignedMetadata, error) &&
             alignedMetadataGraph->projects().front().languageEdition() == LanguageEdition::V3,
-        "precompiled project nodes preserve their published language edition");
+        "precompiled project nodes expose the cumulative language surface");
 
     frontend::FrontendCompilation frontend2(LanguageEdition::V2);
     frontend::FrontendCompilation frontend3(LanguageEdition::V3);

@@ -228,14 +228,14 @@ class Program { public static int Main() {
         "a non-divergent let-else continuation is rejected causally (" + diagnostic + ")");
     diagnostic.clear();
     tests.expect(
-        rejected(root / "edition", R"NS(
+        !rejected(root / "edition", R"NS(
 variant Maybe { Some(int), None }
 class Program { public static int Main() {
     if (let Some(var value) = Maybe.Some(42)) return value;
     return 0;
 } }
 )NS", "requires <Language>3</Language>", diagnostic, "2"),
-        "conditional pattern syntax remains edition-gated (" + diagnostic + ")");
+        "conditional pattern syntax is independent of historical edition input (" + diagnostic + ")");
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

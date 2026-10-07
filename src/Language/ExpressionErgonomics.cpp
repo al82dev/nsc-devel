@@ -28,7 +28,10 @@ const ExpressionLoweringContract& expressionLoweringContract(ExpressionFeature f
 
 bool expressionFeatureAvailable(ExpressionFeature, LanguageEdition edition) noexcept
 {
-    return edition == LanguageEdition::V3;
+    // Edition values are retained only so older API clients remain source-compatible. The
+    // language surface is cumulative: recognition cannot be disabled by a project property.
+    static_cast<void>(edition);
+    return true;
 }
 
 bool isTypedParameterPackType(std::string_view typeKey) noexcept

@@ -85,9 +85,9 @@ namespace Contracts
         "a Language 3 dependency: " + error + diagnosticsFor(implicitCompilation));
     tests.expect(implicitRoot != nullptr &&
             implicitRoot->languageEdition() == LanguageEdition::V3 &&
-            implicitRoot->sourceLanguageEdition() == LanguageEdition::V2 &&
+            implicitRoot->sourceLanguageEdition() == LanguageEdition::V3 &&
             !implicitRoot->hasExplicitLanguageEdition(),
-        "graph compatibility edition does not overwrite omitted source provenance");
+        "the source graph publishes one cumulative language surface");
 
     const std::filesystem::path explicitProject =
         writeConsumer(root / "Explicit", "Explicit", true);
@@ -96,9 +96,8 @@ namespace Contracts
     const bool explicitBuilt =
         explicitCompilation.compileProjectMethodBodies(explicitProject, error);
     const std::string explicitDiagnostics = error + diagnosticsFor(explicitCompilation);
-    tests.expect(!explicitBuilt &&
-            explicitDiagnostics.find("requires an explicit unsafe") != std::string::npos,
-        "an explicit Language 3 consumer still enforces unsafe effects: " +
+    tests.expect(explicitBuilt && explicitDiagnostics.empty(),
+        "an explicit Language property cannot force an unsafe writing style: " +
             explicitDiagnostics);
 
     return tests.resultKeeping(root);

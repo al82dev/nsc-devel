@@ -800,27 +800,9 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
                         ok = false;
                         continue;
                     }
-                    if (explicitImpl && info != nullptr && info->isTrait)
-                    {
-                        const ast::AstNode* traitSyntax =
-                            nameLookup_->namedTypes()[*candidate].syntax;
-                        const bool traitIsUnsafe =
-                            traitSyntax != nullptr && traitSyntax->isUnsafe();
-                        const bool implIsUnsafe =
-                            part.syntax != nullptr && part.syntax->isUnsafe();
-                        if (traitIsUnsafe != implIsUnsafe)
-                        {
-                            diagnostics.report(
-                                diagnostics::DiagnosticId::NS3030MissingEffectContext,
-                                diagnostics::DiagnosticSeverity::Error,
-                                specification->range(),
-                                traitIsUnsafe
-                                    ? "implementing an unsafe trait requires 'unsafe impl'"
-                                    : "'unsafe impl' is valid only for a trait declared unsafe");
-                            ok = false;
-                            continue;
-                        }
-                    }
+                    // The historical unsafe marker remains readable, but it is not a
+                    // caller- or implementation-side permission boundary in a native language.
+                    // Trait compatibility is determined by its actual method contracts.
                     if (const auto duplicate = directInterfaces.find(*candidate);
                         duplicate != directInterfaces.end() &&
                         (explicitImpl || duplicate->second.explicitImpl))

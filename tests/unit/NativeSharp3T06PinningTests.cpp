@@ -174,7 +174,7 @@ public class Program
             error + output + ")");
 
     std::string observed;
-    tests.expect(rejectsWith(root, "edition-two", R"NS(
+    tests.expect(!rejectsWith(root, "edition-two", R"NS(
 public class Program
 {
     public static int Main()
@@ -185,7 +185,7 @@ public class Program
     }
 }
 )NS", "pin ref locals requires <Language>3</Language>", observed, "2"),
-        "pin ref is gated to Language=3 (" + observed + ")");
+        "pin ref is independent of historical edition input (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "dynamic-container", R"NS(

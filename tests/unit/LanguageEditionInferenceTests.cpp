@@ -56,9 +56,9 @@ int main()
     const auto loadedImplicit = loader.load(implicitProject, error);
     tests.expect(
         loadedImplicit.has_value() &&
-            loadedImplicit->languageEdition() == LanguageEdition::V2 &&
+            loadedImplicit->languageEdition() == LanguageEdition::V3 &&
             !loadedImplicit->hasExplicitLanguageEdition(),
-        "an omitted Language keeps the V2 default and records implicit provenance: " + error);
+        "an omitted Language selects the cumulative language surface: " + error);
 
     const auto explicitDependency = writeProject(evidence, "ExplicitDependency", "3");
     const std::string dependencyReference =
@@ -69,32 +69,31 @@ int main()
     const auto inferredGraph =
         nativesharp::compilation::ProjectGraphLoader().load(implicitRoot, error);
     bool allEdition3 = inferredGraph.has_value();
-    bool preservedProvenance = inferredGraph.has_value();
+    bool ignoresAdministrativeEdition = inferredGraph.has_value();
     if (inferredGraph.has_value())
     {
         for (const auto& project : inferredGraph->projects())
         {
             allEdition3 = allEdition3 && project.languageEdition() == LanguageEdition::V3;
             if (project.moduleName() == "ImplicitRoot")
-                preservedProvenance = preservedProvenance &&
+                ignoresAdministrativeEdition = ignoresAdministrativeEdition &&
                     !project.hasExplicitLanguageEdition();
             if (project.moduleName() == "ExplicitDependency")
-                preservedProvenance = preservedProvenance &&
-                    project.hasExplicitLanguageEdition();
+                ignoresAdministrativeEdition = ignoresAdministrativeEdition &&
+                    !project.hasExplicitLanguageEdition();
         }
     }
     tests.expect(allEdition3,
         "an implicit source project adopts the sole explicit graph edition: " + error);
-    tests.expect(preservedProvenance,
-        "source graph inference preserves explicit and implicit provenance");
+    tests.expect(ignoresAdministrativeEdition,
+        "source graph ignores administrative edition provenance");
 
     const auto explicitV2Root =
         writeProject(evidence, "ExplicitV2Root", "2", dependencyReference);
     error.clear();
     tests.expect(
-        !nativesharp::compilation::ProjectGraphLoader().load(explicitV2Root, error).has_value() &&
-            error.find("NS3001") != std::string::npos,
-        "conflicting explicit editions remain rejected with NS3001");
+        nativesharp::compilation::ProjectGraphLoader().load(explicitV2Root, error).has_value(),
+        "mixed historical Language properties do not reject a source graph: " + error);
 
     return tests.resultKeeping(evidence);
 }

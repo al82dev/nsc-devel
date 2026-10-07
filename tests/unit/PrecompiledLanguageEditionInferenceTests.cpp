@@ -56,7 +56,7 @@ int main()
     tests.expect(inferred && implicitGraph->rootProject() != nullptr &&
             implicitGraph->rootProject()->languageEdition() == LanguageEdition::V3 &&
             !implicitGraph->rootProject()->hasExplicitLanguageEdition(),
-        "NSMETA inference preserves omitted-language provenance");
+        "NSMETA edition metadata does not become a source-language boundary");
 
     const std::filesystem::path explicitV2Project = writeProject(evidence, "ExplicitV2", "2");
     auto explicitV2Graph = ProjectGraphLoader().load(explicitV2Project, error);
@@ -65,9 +65,8 @@ int main()
             explicitV2Project, evidence / "Modern.nsmeta", "Modern", LanguageEdition::V3}};
     error.clear();
     tests.expect(explicitV2Graph.has_value() &&
-            !explicitV2Graph->addPrecompiledProjects(incompatibleMetadata, error) &&
-            error.find("NS3001") != std::string::npos,
-        "explicit Language 2 remains incompatible with Language 3 NSMETA");
+            explicitV2Graph->addPrecompiledProjects(incompatibleMetadata, error),
+        "a historical Language property consumes current NSMETA without rejection: " + error);
 
     auto conflictingGraph = ProjectGraphLoader().load(implicitProject, error);
     const std::array conflictingMetadata = {
@@ -77,9 +76,8 @@ int main()
             implicitProject, evidence / "Modern.nsmeta", "Modern", LanguageEdition::V3}};
     error.clear();
     tests.expect(conflictingGraph.has_value() &&
-            !conflictingGraph->addPrecompiledProjects(conflictingMetadata, error) &&
-            error.find("NS3001") != std::string::npos,
-        "an implicit graph rejects contradictory NSMETA language authorities");
+            conflictingGraph->addPrecompiledProjects(conflictingMetadata, error),
+        "mixed historical NSMETA edition fields do not reject a cumulative graph: " + error);
 
     return tests.resultKeeping(evidence);
 }

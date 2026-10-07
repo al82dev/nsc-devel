@@ -310,10 +310,10 @@ class Program
 }
 )NS", 2);
     diagnostic.clear();
-    const bool edition2Rejected =
-        rejectedWith(edition2, "requires <Language>3</Language>", diagnostic);
-    tests.expect(edition2Rejected,
-        "reference iteration is edition-gated (" + diagnostic + ")");
+    const bool historicalEditionAccepted =
+        !rejectedWith(edition2, "requires <Language>3</Language>", diagnostic);
+    tests.expect(historicalEditionAccepted,
+        "reference iteration is independent of historical edition input (" + diagnostic + ")");
 
     const std::filesystem::path trait = writeProject(
         root / "trait", "ForeachTrait", R"NS(

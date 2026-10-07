@@ -194,7 +194,7 @@ namespace LayoutB.Api { public struct BValue { public AValue Other; } }
     error.clear();
     const auto legacyGraph = loader.load(legacy / "A/A.nsproj", error);
     tests.expect(!legacyGraph.has_value() && error.find("project reference cycle") != std::string::npos,
-        "edition 2 retains its cycle rejection instead of silently changing compatibility");
+        "project cycles are rejected structurally, independently of historical edition input");
 
     return tests.resultKeeping(root);
 }

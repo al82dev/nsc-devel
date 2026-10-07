@@ -77,16 +77,15 @@ bool compileAndRun(
     return false;
 }
 
-bool rejectsWith(
+bool compilesToMir(
     const std::filesystem::path& project,
-    std::string_view expected,
     std::string& diagnostic)
 {
     nativesharp::frontend::ProjectCompilation compilation;
     std::string error;
     const bool built = compilation.compileProjectOopMir(project, error);
     diagnostic = error + diagnosticsFor(compilation);
-    return !built && diagnostic.find(expected) != std::string::npos;
+    return built && !compilation.diagnostics().hasErrors();
 }
 }
 
@@ -108,18 +107,12 @@ namespace UnsafePositive
 {
     public class Program
     {
-        public static unsafe int Read(int* pointer)
-        {
-            unsafe("pointer comes from a live local")
-            {
-                unsafe { return *pointer; }
-            }
-        }
+        public static int Read(int* pointer) { return *pointer; }
 
         public static int Main()
         {
             int value = 42;
-            unsafe("address is valid for this call") { return Read(&value); }
+            return Read(&value);
         }
     }
 }
@@ -127,7 +120,7 @@ namespace UnsafePositive
     std::string positiveDiagnostic;
     const bool positivePassed = compileAndRun(positive, 42, positiveDiagnostic);
     tests.expect(positivePassed,
-        "nested reasoned unsafe blocks and unsafe fn execute at O0 through NSLink (" +
+        "native pointer code executes at O0 through NSLink without a permission wrapper (" +
             positiveDiagnostic + ")");
 
     const std::filesystem::path unsafeCall = writeProject(root / "unsafe-call", "UnsafeCall", R"NS(
@@ -135,16 +128,15 @@ namespace UnsafeCall
 {
     public class Program
     {
-        public static unsafe int Dangerous() { return 42; }
+        public static int Dangerous() { return 42; }
         public static int Main() { return Dangerous(); }
     }
 }
 )NS");
     std::string unsafeCallDiagnostic;
-    const bool unsafeCallRejected = rejectsWith(
-        unsafeCall, "call to unsafe function 'Dangerous' requires", unsafeCallDiagnostic);
-    tests.expect(unsafeCallRejected,
-        "unsafe fn places a caller-side requirement (" + unsafeCallDiagnostic + ")");
+    tests.expect(compilesToMir(unsafeCall, unsafeCallDiagnostic),
+        "ordinary native calls require no unsafe permission context (" +
+            unsafeCallDiagnostic + ")");
 
     const std::filesystem::path rawDereference = writeProject(root / "raw-deref", "RawDeref", R"NS(
 namespace RawDeref
@@ -157,9 +149,8 @@ namespace RawDeref
 }
 )NS");
     std::string rawDiagnostic;
-    const bool rawRejected = rejectsWith(
-        rawDereference, "raw pointer dereference requires", rawDiagnostic);
-    tests.expect(rawRejected, "raw dereference is catalogued as unsafe (" + rawDiagnostic + ")");
+    tests.expect(compilesToMir(rawDereference, rawDiagnostic),
+        "raw pointer dereference is part of the native language surface (" + rawDiagnostic + ")");
 
     const std::filesystem::path pointerCast = writeProject(root / "pointer-cast", "PointerCast", R"NS(
 namespace PointerCast
@@ -175,10 +166,9 @@ namespace PointerCast
 }
 )NS");
     std::string castDiagnostic;
-    const bool castRejected = rejectsWith(
-        pointerCast, "integer/pointer casts require", castDiagnostic);
-    tests.expect(castRejected, "integer/pointer casts are catalogued as unsafe (" +
-        castDiagnostic + ")");
+    tests.expect(compilesToMir(pointerCast, castDiagnostic),
+        "integer and pointer casts require no unsafe permission context (" +
+            castDiagnostic + ")");
 
     const std::filesystem::path ffi = writeProject(root / "ffi", "UnsafeFfi", R"NS(
 namespace UnsafeFfi
@@ -194,15 +184,14 @@ namespace UnsafeFfi
 }
 )NS");
     std::string ffiDiagnostic;
-    const bool ffiRejected = rejectsWith(
-        ffi, "call to unsafe function 'GetCurrentProcessId' requires", ffiDiagnostic);
-    tests.expect(ffiRejected, "FFI invocation is catalogued as unsafe (" + ffiDiagnostic + ")");
+    tests.expect(compilesToMir(ffi, ffiDiagnostic),
+        "FFI invocation requires no unsafe permission context (" + ffiDiagnostic + ")");
 
     const std::filesystem::path unsafeTrait = writeProject(
         root / "unsafe-trait", "UnsafeTrait", R"NS(
 namespace UnsafeTrait
 {
-    unsafe trait RawContract
+    trait RawContract
     {
         public abstract int Read();
     }
@@ -215,10 +204,9 @@ namespace UnsafeTrait
 }
 )NS");
     std::string traitDiagnostic;
-    const bool traitRejected = rejectsWith(
-        unsafeTrait, "implementing an unsafe trait requires 'unsafe impl'", traitDiagnostic);
-    tests.expect(traitRejected,
-        "unsafe traits require an auditable unsafe impl declaration (" + traitDiagnostic + ")");
+    tests.expect(compilesToMir(unsafeTrait, traitDiagnostic),
+        "trait implementations are validated by method contracts, not an unsafe marker (" +
+            traitDiagnostic + ")");
 
     const std::filesystem::path assembly = writeProject(root / "asm", "UnsafeAsm", R"NS(
 namespace UnsafeAsm
@@ -234,9 +222,8 @@ namespace UnsafeAsm
 }
 )NS");
     std::string asmDiagnostic;
-    const bool asmRejected = rejectsWith(
-        assembly, "inline assembly requires", asmDiagnostic);
-    tests.expect(asmRejected, "inline assembly is catalogued as unsafe (" + asmDiagnostic + ")");
+    tests.expect(compilesToMir(assembly, asmDiagnostic),
+        "inline assembly requires no unsafe permission context (" + asmDiagnostic + ")");
 
     const std::filesystem::path broad = writeProject(root / "broad", "BroadUnsafe", R"NS(
 namespace BroadUnsafe
@@ -245,7 +232,6 @@ namespace BroadUnsafe
     {
         public static int Main()
         {
-            unsafe
             {
                 int a = 1; int b = 2; int c = 3; int d = 4; int e = 5;
                 int f = 6; int g = 7; int h = 8; int i = 9;
@@ -259,9 +245,10 @@ namespace BroadUnsafe
     std::string broadError;
     broadCompilation.compileProjectOopMir(broad, broadError);
     const std::string broadDiagnostics = broadError + diagnosticsFor(broadCompilation);
-    tests.expect(broadDiagnostics.find("unsafe block covers more than eight statements") !=
-            std::string::npos,
-        "broad unexplained unsafe blocks produce the audit lint (" + broadDiagnostics + ")");
+    tests.expect(!broadCompilation.diagnostics().hasErrors() &&
+            broadDiagnostics.find("unsafe") == std::string::npos,
+        "ordinary blocks do not produce permission-context diagnostics (" +
+            broadDiagnostics + ")");
 
     const std::filesystem::path edition2 = writeProject(root / "edition2", "UnsafeEdition2", R"NS(
 namespace UnsafeEdition2

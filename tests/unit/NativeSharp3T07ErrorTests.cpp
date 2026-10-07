@@ -1061,7 +1061,7 @@ public class Program
     public static int Main()
     {
         assert(true);
-        unsafe { assume(true); }
+        assume(true);
         return 42;
     }
 }
@@ -1072,12 +1072,12 @@ public class Program
             assertionsEvidence.mir.find("assert type=builtin:void") != std::string::npos &&
             assertionsEvidence.mir.find("assume type=builtin:void") != std::string::npos &&
             assertionsEvidence.mir.find("unreachable type=builtin:never") != std::string::npos,
-        "assert, unsafe assume, and unreachable are explicit productive MIR operations (" +
+        "assert, assume, and unreachable are explicit productive MIR operations (" +
             assertionsEvidence.error + assertionsEvidence.diagnostics + assertionsEvidence.mir + ")");
     std::string assertionExecutionDiagnostic;
     tests.expect(
         compileAndRun(assertionsProject, 42, assertionExecutionDiagnostic),
-        "assert(true) and unsafe assume(true) preserve O0/NSLink execution (" +
+        "assert(true) and assume(true) preserve O0/NSLink execution (" +
             assertionExecutionDiagnostic + ")");
 
     const std::filesystem::path falseAssertProject = writeProject(
@@ -1170,12 +1170,17 @@ public class Program
         "the custom panic handler receives payload and source location before abort (" +
             handlerDiagnostic + ")");
 
-    expectRejected("AssumeRequiresUnsafe", R"NS(
+    const std::filesystem::path assumeProject = writeProject(
+        root / "AssumeWithoutPermission", "AssumeWithoutPermission", R"NS(
 public class Program
 {
     public static int Main() { assume(true); return 0; }
 }
-)NS", "assume() requires an explicit unsafe");
+)NS");
+    const CompilationEvidence assumeEvidence = compileMir(assumeProject);
+    tests.expect(assumeEvidence.succeeded && assumeEvidence.error.empty(),
+        "assume is available without an unsafe permission wrapper (" +
+            assumeEvidence.error + assumeEvidence.diagnostics + ")");
     expectRejected("AssertionConditionMustBeBool", R"NS(
 public class Program
 {

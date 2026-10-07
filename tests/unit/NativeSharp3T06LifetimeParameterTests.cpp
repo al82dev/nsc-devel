@@ -441,14 +441,14 @@ public class Program
         "a closure cannot erase a named borrowed parameter's lifetime (" + observed + ")");
 
     observed.clear();
-    tests.expect(rejectsWith(root, "edition2", R"NS(
+    tests.expect(!rejectsWith(root, "edition2", R"NS(
 public class Program
 {
     private static ref[a] int Pick<lifetime a>(ref[a] int value) { return ref value; }
     public static int Main() { return 0; }
 }
 )NS", "requires <Language>3</Language>", observed, "2"),
-        "named lifetime syntax is edition-gated (" + observed + ")");
+        "named lifetime syntax is independent of historical edition input (" + observed + ")");
 
     return tests.resultKeeping(root);
 }

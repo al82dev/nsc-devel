@@ -107,11 +107,8 @@ namespace FfiPositive
         }
         public static int Main()
         {
-            unsafe("process id import has a non-unwinding Win32 contract")
-            {
-                uint process = GetCurrentProcessId();
-                return process == 0 ? 1 : 42;
-            }
+            uint process = GetCurrentProcessId();
+            return process == 0 ? 1 : 42;
         }
     }
 }

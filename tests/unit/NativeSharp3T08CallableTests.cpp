@@ -316,32 +316,31 @@ namespace InvalidAnonymousInference
         "an unconverted lambda does not guess parameter types without context (" +
             untypedError + untypedDiagnostics + ")");
 
-    const std::filesystem::path invalidProject = writeProject(
-        directedRoot / "invalid", "InvalidFunctionTypes", R"NS(
-namespace InvalidFunctionTypes
+    const std::filesystem::path directProject = writeProject(
+        directedRoot / "direct", "DirectFunctionTypes", R"NS(
+namespace DirectFunctionTypes
 {
     public class Program
     {
         private static int Dangerous(int value) { return value; }
         public static int Main()
         {
-            fn*(int) -> int unsafe callback = Dangerous;
+            fn*(int) -> int callback = Dangerous;
             return callback(42);
         }
     }
 }
 )NS");
-    nativesharp::frontend::ProjectCompilation invalidCompilation;
-    std::string invalidError;
-    const bool invalidBuilt = invalidCompilation.compileProjectOopMir(
-        invalidProject, invalidError);
-    std::string invalidDiagnostics;
-    for (const auto& diagnostic : invalidCompilation.diagnostics().diagnostics())
-        invalidDiagnostics += diagnostic.message() + " | ";
-    tests.expect(!invalidBuilt &&
-            invalidDiagnostics.find("requires an explicit unsafe") != std::string::npos,
-        "unsafe structural function values require an explicit unsafe block (" +
-            invalidError + invalidDiagnostics + ")");
+    nativesharp::frontend::ProjectCompilation directCompilation;
+    std::string directError;
+    const bool directBuilt = directCompilation.compileProjectOopMir(
+        directProject, directError);
+    std::string directDiagnostics;
+    for (const auto& diagnostic : directCompilation.diagnostics().diagnostics())
+        directDiagnostics += diagnostic.message() + " | ";
+    tests.expect(directBuilt && !directCompilation.diagnostics().hasErrors(),
+        "structural function values require no unsafe permission wrapper (" +
+            directError + directDiagnostics + ")");
 
     const std::filesystem::path metadataProject = writeProject(
         directedRoot / "metadata", "FunctionContracts", R"NS(

@@ -126,13 +126,8 @@ int Demo(int a, int b)
 
     Parsed edition2;
     parse(edition2, std::string(source), language::LanguageEdition::V2);
-    const std::size_t editionErrors = std::ranges::count_if(
-        edition2.diagnostics.diagnostics(), [](const diagnostics::Diagnostic& diagnostic)
-        {
-            return diagnostic.id() == diagnostics::DiagnosticId::NS3002FeatureRequiresLanguageEdition3;
-        });
-    tests.expect(editionErrors >= 4,
-        "edition 2 rejects T02 surface syntax with stable NS3002 diagnostics");
+    tests.expect(edition2.root != nullptr && edition2.diagnostics.errorCount() == 0,
+        "historical edition input recognizes the complete T02 syntax");
 
     return tests.result();
 }

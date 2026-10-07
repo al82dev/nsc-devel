@@ -269,14 +269,14 @@ public class Program
         "defer rejects duplicate capture entries (" + diagnostic + ")");
 
     diagnostic.clear();
-    const bool rejectsEditionTwo = rejectsWith(root, "edition-two", R"NS(
+    const bool acceptsHistoricalEdition = !rejectsWith(root, "edition-two", R"NS(
 public class Program
 {
     public static int Main() { defer [] { } return 42; }
 }
 )NS", "requires <Language>3</Language>", diagnostic, "2");
-    tests.expect(rejectsEditionTwo,
-        "defer is gated to Language=3 (" + diagnostic + ")");
+    tests.expect(acceptsHistoricalEdition,
+        "defer is independent of historical edition input (" + diagnostic + ")");
 
     return tests.resultKeeping(root);
 }

@@ -120,15 +120,12 @@ namespace PointerPositive
 {
     public class Program
     {
-        public static unsafe int Read(int*! pointer)
-        {
-            unsafe("nonnull pointer from caller") { return *pointer; }
-        }
+        public static int Read(int*! pointer) { return *pointer; }
         public static int Main()
         {
             int value = 42;
             int*! pointer = &value;
-            unsafe("callee requires raw-pointer audit") { return Read(pointer); }
+            return Read(pointer);
         }
     }
 }
@@ -172,9 +169,9 @@ namespace AlignmentStrengthening
             alignmentStrengthening, "pointer initializer does not satisfy", alignmentDiagnostic),
         "alignment knowledge cannot be invented implicitly (" + alignmentDiagnostic + ")");
 
-    const std::filesystem::path unsafeCastRequired = writeProject(
-        root / "unsafe-cast-required", "UnsafeCastRequired", R"NS(
-namespace UnsafeCastRequired
+    const std::filesystem::path explicitCast = writeProject(
+        root / "explicit-cast", "ExplicitCast", R"NS(
+namespace ExplicitCast
 {
     public class Program
     {
@@ -188,9 +185,9 @@ namespace UnsafeCastRequired
 }
 )NS");
     std::string castDiagnostic;
-    tests.expect(rejectsWith(
-            unsafeCastRequired, "pointer cast strengthens nullability", castDiagnostic),
-        "casts that invent nonnull guarantees require unsafe (" + castDiagnostic + ")");
+    tests.expect(compileAndRun(explicitCast, 0, castDiagnostic),
+        "an explicit cast states the programmer's pointer-contract intent without a second "
+        "permission wrapper (" + castDiagnostic + ")");
 
     const std::filesystem::path auditedCast = writeProject(
         root / "audited-cast", "AuditedPointerCast", R"NS(
@@ -203,18 +200,15 @@ namespace AuditedPointerCast
             int value = 42;
             int*? source = &value;
             int*! align(4) target;
-            unsafe("caller proves liveness and alignment")
-            {
-                target = (int*! align(4))source;
-                return *target;
-            }
+            target = (int*! align(4))source;
+            return *target;
         }
     }
 }
 )NS");
     std::string auditedDiagnostic;
     tests.expect(compileAndRun(auditedCast, 42, auditedDiagnostic),
-        "audited qualifier strengthening executes at O0 through NSLink (" +
+        "explicit qualifier strengthening executes at O0 through NSLink (" +
             auditedDiagnostic + ")");
 
     const std::filesystem::path provenance = writeProject(
@@ -223,16 +217,13 @@ namespace PointerProvenance
 {
     public class Program
     {
-        public static unsafe int Consume(int*! provenance(tracked) pointer) { return 0; }
+        public static int Consume(int*! provenance(tracked) pointer) { return 0; }
         public static int Main()
         {
             int value = 0;
             int*! provenance(none) raw;
-            unsafe("explicitly erase provenance")
-            {
-                raw = (int*! provenance(none))&value;
-                return Consume(raw);
-            }
+            raw = (int*! provenance(none))&value;
+            return Consume(raw);
         }
     }
 }
@@ -290,7 +281,7 @@ namespace PointerArithmeticContract
         {
             int value = 42;
             int*! align(4) aligned;
-            unsafe("caller proves stack alignment") { aligned = (int*! align(4))&value; }
+            aligned = (int*! align(4))&value;
             int*! align(4) shifted = aligned + 0;
             return 0;
         }

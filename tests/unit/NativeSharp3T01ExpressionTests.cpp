@@ -80,8 +80,8 @@ int main()
                 contract.primaryEvaluatedOnce && !contract.mayAllocateImplicitly && contract.preservesAbi,
             "every T01 lowering contract is ordered, single-evaluation, allocation-free and ABI-preserving");
         tests.expect(language::expressionFeatureAvailable(feature, language::LanguageEdition::V3) &&
-                !language::expressionFeatureAvailable(feature, language::LanguageEdition::V2),
-            "every T01 feature is gated by language edition 3");
+                language::expressionFeatureAvailable(feature, language::LanguageEdition::V2),
+            "every T01 feature belongs to the cumulative language surface");
     }
 
     tests.expect(language::isTypedParameterPackType("type:NativeSharp.Core.ReadOnlySpan<builtin:int>"),
@@ -171,12 +171,8 @@ int Demo(int* left, int* right, int[] items, Box value)
 
     Parsed edition2;
     parse(edition2, std::string(source), language::LanguageEdition::V2);
-    const std::size_t editionErrors = std::ranges::count_if(
-        edition2.diagnostics.diagnostics(), [](const diagnostics::Diagnostic& diagnostic)
-        {
-            return diagnostic.id() == diagnostics::DiagnosticId::NS3002FeatureRequiresLanguageEdition3;
-        });
-    tests.expect(editionErrors >= 7, "edition 2 rejects T01 syntax with stable NS3002 diagnostics");
+    tests.expect(edition2.root != nullptr && edition2.diagnostics.errorCount() == 0,
+        "historical edition input recognizes the complete T01 syntax");
 
     return tests.result();
 }
