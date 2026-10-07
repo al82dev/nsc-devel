@@ -34,3 +34,7 @@ modular aún no existía. CMake sólo buscaba NSLink en `PATH` si no recibía el
 ## Verificación
 
 El commit se crea antes de ejecutar cualquier comprobación. No se ejecuta baseline ni se modifica `C:`.
+
+El 7 de octubre de 2026 el usuario confirmó desde la otra máquina que la resolución de NSLink ya quedó
+operativa. Esta confirmación cierra el defecto de configuración de la tanda; no constituye baseline ni
+autoriza instalación o cambios adicionales.
