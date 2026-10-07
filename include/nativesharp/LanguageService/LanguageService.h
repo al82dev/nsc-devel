@@ -1,6 +1,5 @@
 #pragma once
 
-#include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/LanguageService/ProtocolTypes.h"
 
 #include <cstddef>
@@ -21,9 +20,6 @@ inline constexpr std::uint32_t kAnalysisAbiVersion = 2;
 struct LanguageServiceIdentity final
 {
     std::string_view compilerRelease;
-    std::string_view languageVersion;
-    language::LanguageEdition defaultLanguageEdition = language::LanguageEdition::V2;
-    std::string_view supportedLanguageEditions;
     std::string_view compilerStage;
     std::string_view target;
     std::string_view buildId;
@@ -45,7 +41,6 @@ public:
     bool available() const noexcept;
     std::uint64_t generation() const noexcept;
     const std::filesystem::path& projectPath() const noexcept;
-    std::optional<language::LanguageEdition> languageEdition() const noexcept;
     bool currentAnalysisSucceeded() const noexcept;
     bool semanticModelAvailable() const noexcept;
     bool usedPreviousSemanticModel() const noexcept;

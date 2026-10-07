@@ -55,16 +55,6 @@ std::string pathKey(const std::filesystem::path& path)
     return key;
 }
 
-std::string semanticCacheKey(
-    std::string_view projectKey,
-    language::LanguageEdition edition)
-{
-    std::string result(projectKey);
-    result.push_back('\n');
-    result += language::languageEditionFingerprint(edition);
-    return result;
-}
-
 bool positionLess(TextPosition left, TextPosition right) noexcept
 {
     return left.line < right.line || (left.line == right.line && left.character < right.character);
@@ -600,7 +590,6 @@ class AnalysisSnapshot::Implementation final
 public:
     std::uint64_t generation = 0;
     std::filesystem::path projectPath;
-    std::optional<language::LanguageEdition> languageEdition;
     bool currentAnalysisSucceeded = false;
     bool usedPreviousSemanticModel = false;
     bool cancelled = false;
@@ -660,13 +649,6 @@ const std::filesystem::path& AnalysisSnapshot::projectPath() const noexcept
 {
     static const std::filesystem::path empty;
     return implementation_ != nullptr ? implementation_->projectPath : empty;
-}
-
-std::optional<language::LanguageEdition> AnalysisSnapshot::languageEdition() const noexcept
-{
-    return implementation_ != nullptr
-        ? implementation_->languageEdition
-        : std::optional<language::LanguageEdition>{};
 }
 
 bool AnalysisSnapshot::currentAnalysisSucceeded() const noexcept
@@ -972,9 +954,6 @@ LanguageServiceIdentity LanguageService::identity() const noexcept
 {
     return LanguageServiceIdentity{
         kCompilerReleaseVersion,
-        kLanguageVersion,
-        language::LanguageEdition::V2,
-        "2,3",
         kCompilerStage,
         target::TargetInfo::WindowsX64().llvmTriple(),
         kCompilerBuildId,
@@ -1154,12 +1133,6 @@ AnalysisSnapshot LanguageService::analyzeProject(
     result->currentCompilation = compilation;
     result->currentAnalysisSucceeded =
         compilation->compileProjectMethodBodies(result->projectPath, result->error);
-    if (compilation->projectGraph() != nullptr &&
-        compilation->projectGraph()->rootProject() != nullptr)
-    {
-        result->languageEdition =
-            compilation->projectGraph()->rootProject()->languageEdition();
-    }
     result->cancelled = cancellationCheck && cancellationCheck();
     for (const diagnostics::Diagnostic& diagnostic : compilation->diagnostics().diagnostics())
     {
@@ -1173,17 +1146,11 @@ AnalysisSnapshot LanguageService::analyzeProject(
     if (result->currentAnalysisSucceeded && !compilation->diagnostics().hasErrors())
     {
         result->semanticIndex = buildSemanticIndex(compilation);
-        if (result->languageEdition.has_value())
-        {
-            implementation_->lastGoodSemantic[
-                semanticCacheKey(keyedProject->first, *result->languageEdition)] =
-                result->semanticIndex;
-        }
+        implementation_->lastGoodSemantic[keyedProject->first] = result->semanticIndex;
     }
-    else if (result->languageEdition.has_value())
+    else
     {
-        const auto previous = implementation_->lastGoodSemantic.find(
-            semanticCacheKey(keyedProject->first, *result->languageEdition));
+        const auto previous = implementation_->lastGoodSemantic.find(keyedProject->first);
         if (previous != implementation_->lastGoodSemantic.end())
         {
             result->semanticIndex = previous->second;
