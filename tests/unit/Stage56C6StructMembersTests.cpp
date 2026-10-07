@@ -395,23 +395,12 @@ namespace proj {
 
 // --- what stays refused, and why ------------------------------------------------------------------
 
-void testDestructorsAndVirtualStayRefusedWithReasons(
+void testVirtualAndProtectedStayRefusedWithReasons(
     TestContext& tests, const std::filesystem::path& root)
 {
-    // These two are the reason the gate existed, and the reason it could not simply be deleted.
-    // Both COMPILE with the gate lifted, and both are wrong: the destructor body is emitted and
-    // never called, and the virtual method becomes a direct call. An error that explains itself is
-    // the only honest outcome.
-    reject(
-        tests, root, "StructDestructorRefused",
-        R"NS(
-namespace proj {
-    public struct Handle { public nint value; ~Handle() { value = 0; } }
-    class Program { public static int Main() { return 0; } }
-}
-)NS",
-        "a value type has no owner and is copied freely");
-
+    // Virtual dispatch and protected inheritance access have no representation on a value type.
+    // T06-F02 covers destructors positively: they make the struct move-only and execute through
+    // value-drop cleanup.
     reject(
         tests, root, "StructVirtualRefused",
         R"NS(
@@ -602,7 +591,7 @@ int main()
     testOperatorsOnStructs(tests, root);
     testUserConversionsOnStructs(tests, root);
 
-    testDestructorsAndVirtualStayRefusedWithReasons(tests, root);
+    testVirtualAndProtectedStayRefusedWithReasons(tests, root);
     testRichStructKeepsItsExactCLayout(tests, root);
 
     testMathFixtureAndExampleCompile(tests);

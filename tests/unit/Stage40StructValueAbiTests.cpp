@@ -312,9 +312,8 @@ void testExplicitBoundaries(TestContext& tests, const std::filesystem::path& roo
     // instance/static methods") mixed things that merely had not been implemented with things
     // that must never be allowed. Constructors, properties, indexers and operators are now legal
     // -- they change nothing about a struct's layout or its ABI, which is why they were never a
-    // real restriction. The two below stay refused, and each says WHY, because with the gate
-    // lifted both COMPILE AND SILENTLY MISBEHAVE (measured: a struct destructor's body is emitted
-    // and never called; a virtual struct method degrades to a direct call).
+    // real restriction. Virtual dispatch and protected inheritance access remain invalid. A
+    // destructor now makes an ordinary struct move-only; T06-F02 verifies its complete drop path.
     const auto expectSyntaxInvalid =
         [&](std::string_view name, std::string_view source, std::string_view reason)
     {
@@ -329,9 +328,6 @@ void testExplicitBoundaries(TestContext& tests, const std::filesystem::path& roo
             std::string(name) + " explains why, rather than only that it is unsupported");
     };
 
-    expectSyntaxInvalid(
-        "StructDestructor", "struct S { public int X; ~S() { } }",
-        "a struct cannot declare a destructor");
     expectSyntaxInvalid(
         "StructVirtual", "struct S { public virtual int F() { return 0; } }",
         "a struct method cannot be virtual, override, abstract or sealed");
