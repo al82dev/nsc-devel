@@ -19,4 +19,19 @@ Eliminar la excepción funcional que permitía ciclos de referencias únicamente
 
 ## Verificación
 
-Después del commit se reconstruirá desde cero y se ejecutará la batería completa O0 con NSLink.
+Ejecutada después del commit `466112307` mediante reconstrucción limpia y batería completa O0 con NSLink.
+
+- Corrida: `universal-o0-t02-20261007`.
+- Evidencia: `A:\\nsc-devel\\_nscbuilder\\history\\universal-o0-t02-20261007\\report.md`.
+- Construcción del compilador: correcta.
+- Construcción de los 429 ejecutables CTest: correcta (`1151/1151` pasos).
+- CTest completo: `639/684` aprobados; `45` fallos restantes.
+- `nsc.ns3.t12.semantic-modules`: aprobado.
+- `nsc.project-graph`: aprobado.
+- Ambos fallos del alcance de la tanda desaparecieron; el total bajó de `48` a `45`.
+- `nsc.compilation-artifact-cache` también pasó en esta corrida, pero no se atribuye a este cambio porque era un fallo concurrente intermitente y el código de caché no fue modificado.
+- Fixtures O0: `89/90` aprobados; permanece `cc1_c23_views_and_lifetimes` con salida `8` en vez de `42`.
+- Bug triage O0: `9/9` aprobado.
+- No se modificó `C:\\native-sharp` y no se certificó un baseline.
+
+La tanda queda implementada y verificada en su alcance. La batería integral todavía conserva fallos pertenecientes a las siguientes tandas universales.
