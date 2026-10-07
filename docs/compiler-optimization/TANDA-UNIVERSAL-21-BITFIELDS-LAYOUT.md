@@ -20,5 +20,7 @@ edición y validar el comportamiento por compilación y ejecución reales.
 
 ## Validación dirigida
 
-Pendiente después del commit: `nsc.ns3.t13.bitfields-integers` en O0. No se
-ejecuta baseline, certificación, promoción ni instalación.
+- Construcción dirigida: `nsc_ns3_t13_bitfield_integer_tests`, correcta.
+- CTest: `nsc.ns3.t13.bitfields-integers`, `1/1` correcto en `0.54 s`.
+- Linker de productos NativeSharp: `C:\native-sharp\bin\nslink.exe`.
+- No se ejecutó baseline, certificación, promoción ni instalación.
