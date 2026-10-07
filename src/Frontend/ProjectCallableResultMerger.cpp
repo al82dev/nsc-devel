@@ -151,7 +151,6 @@ void appendRemapped(
     std::size_t lambdaBase,
     std::size_t localBorrowBase)
 {
-    destination.reserve(destination.size() + source.size());
     for (Item& item : source)
     {
         remapNested(item, scopeBase, localBase, cleanupBase, lambdaBase, localBorrowBase);
@@ -209,8 +208,6 @@ void ProjectCallableResultMerger::merge(
     const std::size_t callBase = destination.calls_.size();
     const std::size_t namespaceCallBase = destination.namespaceFunctionCalls_.size();
 
-    destination.scopeNames_.reserve(
-        destination.scopeNames_.size() + source.scopeNames_.size());
     for (auto& names : source.scopeNames_)
     {
         for (auto& name : names)
