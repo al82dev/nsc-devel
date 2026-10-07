@@ -872,6 +872,8 @@ std::unique_ptr<ProjectMethodBodyModel> ProjectMethodBodyModel::createCallableSh
     shard->namespaceCallableBase_ = namespaceCallableBase_;
     shard->namespaceCallableAdaptersView_ = namespaceCallableAdapters();
     shard->languageEdition_ = context.languageEdition();
+    shard->enforceLanguage3Effects_ =
+        callableEnforcesLanguage3Effects(context.callableOrdinal());
     shard->isolatedCallableOrdinal_ = context.callableOrdinal();
     if (context.callableOrdinal() < parameterEscapeSummaries_.size())
     {
@@ -899,7 +901,7 @@ ProjectCallableAnalysisResult ProjectMethodBodyModel::analyzeCallableIsolated(
 language::LanguageEdition ProjectMethodBodyModel::callableLanguageEdition(
     std::size_t callableOrdinal) const noexcept
 {
-    if (projectSourceLanguageEditions_.empty()) return languageEdition_;
+    if (projectRecognizedLanguageEditions_.empty()) return languageEdition_;
 
     std::optional<std::size_t> projectOrdinal;
     if (callableOrdinal < namespaceCallableBase_)
@@ -918,9 +920,36 @@ language::LanguageEdition ProjectMethodBodyModel::callableLanguageEdition(
         if (functionOrdinal < namespaceFunctionModel_->functions().size())
             projectOrdinal = namespaceFunctionModel_->functions()[functionOrdinal].projectOrdinal;
     }
-    if (projectOrdinal.has_value() && *projectOrdinal < projectSourceLanguageEditions_.size())
-        return projectSourceLanguageEditions_[*projectOrdinal];
+    if (projectOrdinal.has_value() && *projectOrdinal < projectRecognizedLanguageEditions_.size())
+        return projectRecognizedLanguageEditions_[*projectOrdinal];
     return languageEdition_;
+}
+
+bool ProjectMethodBodyModel::callableEnforcesLanguage3Effects(
+    std::size_t callableOrdinal) const noexcept
+{
+    if (projectLanguage3EffectPolicies_.empty()) return false;
+
+    std::optional<std::size_t> projectOrdinal;
+    if (callableOrdinal < namespaceCallableBase_)
+    {
+        const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
+        if (callable != nullptr && nameLookup_ != nullptr &&
+            callable->declaringTypeOrdinal < nameLookup_->namedTypes().size())
+        {
+            projectOrdinal =
+                nameLookup_->namedTypes()[callable->declaringTypeOrdinal].projectOrdinal;
+        }
+    }
+    else if (namespaceFunctionModel_ != nullptr)
+    {
+        const std::size_t functionOrdinal = callableOrdinal - namespaceCallableBase_;
+        if (functionOrdinal < namespaceFunctionModel_->functions().size())
+            projectOrdinal = namespaceFunctionModel_->functions()[functionOrdinal].projectOrdinal;
+    }
+    return projectOrdinal.has_value() &&
+        *projectOrdinal < projectLanguage3EffectPolicies_.size() &&
+        projectLanguage3EffectPolicies_[*projectOrdinal] != 0U;
 }
 
 void ProjectMethodBodyModel::collectCallableDiscoveries(
@@ -969,9 +998,12 @@ bool ProjectMethodBodyModel::build(
     const ProjectMethodBodyBuildOptions& options)
 {
     languageEdition_ = languageEdition;
-    projectSourceLanguageEditions_.assign(
-        options.projectSourceLanguageEditions.begin(),
-        options.projectSourceLanguageEditions.end());
+    projectRecognizedLanguageEditions_.assign(
+        options.projectRecognizedLanguageEditions.begin(),
+        options.projectRecognizedLanguageEditions.end());
+    projectLanguage3EffectPolicies_.assign(
+        options.projectLanguage3EffectPolicies.begin(),
+        options.projectLanguage3EffectPolicies.end());
     genericConstraintModel_ = genericConstraintModel;
     genericModel_ = genericModel;
     if (built_)
@@ -1088,8 +1120,8 @@ bool ProjectMethodBodyModel::build(
         {
             if (type.kind != NamedTypeDeclarationKind::Delegate || type.syntax == nullptr ||
                 type.syntax->throwsTypeSyntax() == nullptr ||
-                (type.projectOrdinal < projectSourceLanguageEditions_.size() &&
-                 projectSourceLanguageEditions_[type.projectOrdinal] !=
+                (type.projectOrdinal < projectRecognizedLanguageEditions_.size() &&
+                 projectRecognizedLanguageEditions_[type.projectOrdinal] !=
                     language::LanguageEdition::V3))
                 continue;
             const std::string errorTypeKey = memberModel.canonicalTypeKey(
@@ -1343,6 +1375,7 @@ bool ProjectMethodBodyModel::build(
         }
 
         languageEdition_ = callableLanguageEdition(memberOrdinal);
+        enforceLanguage3Effects_ = callableEnforcesLanguage3Effects(memberOrdinal);
 
         currentCallableLocalBase_ = locals_.size();
         currentCallableParameterCount_ = 0;
@@ -1432,6 +1465,7 @@ bool ProjectMethodBodyModel::build(
         }
     }
     languageEdition_ = languageEdition;
+    enforceLanguage3Effects_ = false;
 
     // NSC-LIMIT-019. Validate after every initializer has been analyzed. ProjectMemberModel orders
     // types by stable identity rather than source order, so a transitive evaluator needs all name
@@ -4938,7 +4972,7 @@ void ProjectMethodBodyModel::analyzeStatement(
             break;
         }
         case ast::AstNodeKind::InlineAssemblyStatement:
-            if (languageEdition_ == language::LanguageEdition::V3 && unsafeBlockDepth_ == 0)
+            if (enforceLanguage3Effects_ && unsafeBlockDepth_ == 0)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::NS3030MissingEffectContext,
@@ -5609,7 +5643,7 @@ void ProjectMethodBodyModel::analyzeTry(
             }
         }
 
-        if (languageEdition_ == language::LanguageEdition::V3)
+        if (enforceLanguage3Effects_)
         {
             for (std::size_t errorIndex = 0; errorIndex < declaredTryErrors.size(); ++errorIndex)
             {
@@ -5653,7 +5687,7 @@ void ProjectMethodBodyModel::analyzeTry(
         joinedExitState = joinOwnershipFlow(joinedExitState, captureOwnershipFlow());
     }
 
-    if (languageEdition_ == language::LanguageEdition::V3 &&
+    if (enforceLanguage3Effects_ &&
         !activeTryErrorSets_.empty())
     {
         for (std::size_t errorIndex = 0; errorIndex < declaredTryErrors.size(); ++errorIndex)
@@ -5792,7 +5826,7 @@ bool ProjectMethodBodyModel::validateErrorPropagation(
     diagnostics::DiagnosticEngine& diagnostics,
     std::string_view operation)
 {
-    if (languageEdition_ != language::LanguageEdition::V3 || errorTypeKey.empty())
+    if (!enforceLanguage3Effects_ || errorTypeKey.empty())
         return true;
 
     if (!activeTryErrorSets_.empty())
@@ -11190,7 +11224,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     operand.typeKey != "builtin:bool";
                 const bool targetInteger = ProjectTypeConversion::isIntegral(result.typeKey) &&
                     result.typeKey != "builtin:bool";
-                if (result.valid && languageEdition_ == language::LanguageEdition::V3 &&
+                if (result.valid && enforceLanguage3Effects_ &&
                     unsafeBlockDepth_ == 0 &&
                     ((sourceRawPointer && targetInteger) ||
                      (sourceInteger && targetRawPointer)))
@@ -11211,7 +11245,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         operand.pointerHasProvenance,
                         operand.pointerKnownAlignment,
                         operand.pointerAddressSpace};
-                    if (languageEdition_ == language::LanguageEdition::V3 &&
+                    if (enforceLanguage3Effects_ &&
                         language::pointerCastRequiresUnsafe(
                             sourcePointerContract, targetPointerContract) &&
                         unsafeBlockDepth_ == 0)
@@ -15063,7 +15097,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         }
 
         if (assertionIntrinsic == "builtin-assume" &&
-            languageEdition_ == language::LanguageEdition::V3 && unsafeBlockDepth_ == 0)
+            enforceLanguage3Effects_ && unsafeBlockDepth_ == 0)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
@@ -15711,7 +15745,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         if (const std::optional<language::FunctionType> functionType =
                 language::parseFunctionTypeIdentity(callee.typeKey);
             functionType.has_value() && functionType->isUnsafe &&
-            languageEdition_ == language::LanguageEdition::V3 && unsafeBlockDepth_ == 0)
+            enforceLanguage3Effects_ && unsafeBlockDepth_ == 0)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidCall,
@@ -16442,7 +16476,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 }
             }
         }
-        if (selectedMember.isUnsafe && languageEdition_ == language::LanguageEdition::V3 &&
+        if (selectedMember.isUnsafe && enforceLanguage3Effects_ &&
             unsafeBlockDepth_ == 0)
         {
             diagnostics.report(
@@ -18581,7 +18615,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
         if (diagnoseFailure && selectedMember.isUnsafe &&
-            languageEdition_ == language::LanguageEdition::V3 && unsafeBlockDepth_ == 0)
+            enforceLanguage3Effects_ && unsafeBlockDepth_ == 0)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::NS3030MissingEffectContext,
@@ -18964,7 +18998,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
                 "a one-past-end pointer is a comparison/iteration sentinel and cannot be dereferenced");
             return result;
         }
-        if (languageEdition_ == language::LanguageEdition::V3 && unsafeBlockDepth_ == 0)
+        if (enforceLanguage3Effects_ && unsafeBlockDepth_ == 0)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::NS3030MissingEffectContext,

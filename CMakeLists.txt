@@ -939,6 +939,19 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_implicit_language_edition_semantics_tests)
 
     add_executable(
+        nsc_implicit_language_feature_recognition_tests
+        tests/unit/ImplicitLanguageFeatureRecognitionTests.cpp)
+    target_link_libraries(
+        nsc_implicit_language_feature_recognition_tests
+        PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(
+        nsc_implicit_language_feature_recognition_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_implicit_language_feature_recognition_tests)
+    add_test(
+        NAME nsc.compilation.implicit-language-feature-recognition
+        COMMAND nsc_implicit_language_feature_recognition_tests)
+
+    add_executable(
         nsc_ns3_t01_expression_tests
         tests/unit/NativeSharp3T01ExpressionTests.cpp)
     target_link_libraries(

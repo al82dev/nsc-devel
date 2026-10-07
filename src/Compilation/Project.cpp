@@ -76,11 +76,21 @@ language::LanguageEdition Project::languageEdition() const noexcept
 
 language::LanguageEdition Project::sourceLanguageEdition() const noexcept
 {
-    // Graph reconciliation may raise an omitted edition to the one required by its
-    // dependencies. That makes the module graph coherent, but it must not silently opt
-    // historical source into stricter syntax/effect rules. Only an explicit <Language>
-    // declaration selects those rules.
+    // Graph reconciliation may raise an omitted edition to satisfy dependencies, but it must
+    // not rewrite what the author selected. Omission keeps the historical source contract.
     return languageEditionExplicit_ ? languageEdition_ : language::LanguageEdition::V2;
+}
+
+language::LanguageEdition Project::recognizedLanguageEdition() const noexcept
+{
+    // Compatibility mode accepts the current source surface. Explicit Language 2 remains a
+    // frozen contract, while mandatory Language 3 effects are selected independently.
+    return languageEditionExplicit_ ? languageEdition_ : language::LanguageEdition::V3;
+}
+
+bool Project::enforcesLanguage3Effects() const noexcept
+{
+    return languageEditionExplicit_ && languageEdition_ == language::LanguageEdition::V3;
 }
 
 bool Project::hasExplicitLanguageEdition() const noexcept

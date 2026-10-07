@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <exception>
 #include <set>
 #include <memory>
@@ -733,14 +734,21 @@ bool ProjectCompilation::compileProjectMethodBodies(
     methodBodyOptions.cancellationCheck = cancellationCheck_;
     methodBodyOptions.phaseTimingSink = phaseTimingSink_;
     methodBodyOptions.executionError = &loadError;
-    std::vector<language::LanguageEdition> projectSourceLanguageEditions;
+    std::vector<language::LanguageEdition> projectRecognizedLanguageEditions;
+    std::vector<std::uint8_t> projectLanguage3EffectPolicies;
     if (projectGraph_.has_value())
     {
-        projectSourceLanguageEditions.reserve(projectGraph_->projects().size());
+        projectRecognizedLanguageEditions.reserve(projectGraph_->projects().size());
+        projectLanguage3EffectPolicies.reserve(projectGraph_->projects().size());
         for (const compilation::Project& project : projectGraph_->projects())
-            projectSourceLanguageEditions.push_back(project.sourceLanguageEdition());
+        {
+            projectRecognizedLanguageEditions.push_back(project.recognizedLanguageEdition());
+            projectLanguage3EffectPolicies.push_back(
+                project.enforcesLanguage3Effects() ? 1U : 0U);
+        }
     }
-    methodBodyOptions.projectSourceLanguageEditions = projectSourceLanguageEditions;
+    methodBodyOptions.projectRecognizedLanguageEditions = projectRecognizedLanguageEditions;
+    methodBodyOptions.projectLanguage3EffectPolicies = projectLanguage3EffectPolicies;
     if (!methodBodyModel_->build(
         *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_,
         genericModel_.get(), diagnostics_,
@@ -983,7 +991,7 @@ bool ProjectCompilation::compileSyntaxCore(
                 projectOrdinal,
                 source.ordinal,
                 project.moduleName(),
-                project.sourceLanguageEdition(),
+                project.recognizedLanguageEdition(),
                 source.absolutePath,
                 std::nullopt,
                 std::nullopt,

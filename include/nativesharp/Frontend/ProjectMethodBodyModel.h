@@ -2386,6 +2386,8 @@ private:
         const ProjectCallableAnalysisContext& context) const;
     [[nodiscard]] language::LanguageEdition callableLanguageEdition(
         std::size_t callableOrdinal) const noexcept;
+    [[nodiscard]] bool callableEnforcesLanguage3Effects(
+        std::size_t callableOrdinal) const noexcept;
     static void collectCallableDiscoveries(ProjectCallableAnalysisResult& result);
 
     const ProjectNameLookup* nameLookup_ = nullptr;
@@ -2535,7 +2537,9 @@ private:
     mutable ProjectOwnershipFlowStatistics ownershipFlowStatistics_;
     mutable ProjectEscapePropagationStatistics escapePropagationStatistics_;
     ProjectCallableAnalysisStatistics callableAnalysisStatistics_;
-    std::vector<language::LanguageEdition> projectSourceLanguageEditions_;
+    std::vector<language::LanguageEdition> projectRecognizedLanguageEditions_;
+    std::vector<std::uint8_t> projectLanguage3EffectPolicies_;
+    bool enforceLanguage3Effects_ = false;
     bool built_ = false;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };

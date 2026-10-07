@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <span>
 #include <string>
@@ -17,6 +18,7 @@ struct ProjectMethodBodyBuildOptions final
     std::function<bool()> cancellationCheck;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink;
     std::string* executionError = nullptr;
-    std::span<const language::LanguageEdition> projectSourceLanguageEditions;
+    std::span<const language::LanguageEdition> projectRecognizedLanguageEditions;
+    std::span<const std::uint8_t> projectLanguage3EffectPolicies;
 };
 }
