@@ -19,7 +19,7 @@ endif()
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
 option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
-set(NSC_NSLINK_EXECUTABLE "" CACHE FILEPATH
+set(NSC_NSLINK_EXECUTABLE "C:/native-sharp/bin/nslink.exe" CACHE FILEPATH
     "NSLink executable used by generated NativeSharp build products")
 set(NSC_NSLINK_ROOT "" CACHE PATH
     "NSLink source or installation root used to locate nslink.exe")
@@ -898,26 +898,19 @@ endif()
 # =====================================================================================
 # NSC_TEST_COMPILER -- EL COMPILADOR QUE MIDE CTEST.
 #
-# El valor por defecto es el objetivo `nsc` del mismo arbol de build. De esta forma cada
-# prueba dirigida y el baseline final, cuando Alberto lo autorice, miden exactamente el
-# compilador que acaba de generarse y no una instalacion anterior en C:. El generator
-# expression se resuelve al ejecutable correcto para la configuracion activa.
+# El valor por defecto es el compilador oficial instalado. Los arboles de build, fixtures y
+# evidencia viven en A:, pero CTest siempre mide las herramientas publicadas en C:\native-sharp.
 #
 # Una corrida de certificacion que necesite medir deliberadamente otro artefacto puede pasar
 # `-DNSC_TEST_COMPILER=<ruta>`. Ese override es explicito y se valida al configurar; nunca se
 # selecciona una instalacion externa de forma silenciosa.
 # =====================================================================================
-set(NSC_TEST_COMPILER "" CACHE FILEPATH
-    "Ejecutable nsc que mide ctest (vacio = objetivo nsc del arbol de build)")
+set(NSC_TEST_COMPILER "C:/native-sharp/bin/nsc.exe" CACHE FILEPATH
+    "Ejecutable nsc oficial que mide ctest")
 set(NSC_BOOTSTRAP_LOCK "${CMAKE_CURRENT_SOURCE_DIR}/selfhost/bootstrap/bootstrap.lock" CACHE FILEPATH
     "Lock físico del bootstrap; nscbuilder usa una copia inmutable por corrida")
-set(_nsc_test_compiler_es_ruta TRUE)
-if(NSC_TEST_COMPILER STREQUAL "")
-    set(NSC_TEST_COMPILER "$<TARGET_FILE:nsc>")
-    set(_nsc_test_compiler_es_ruta FALSE)
-endif()
 message(STATUS "ctest mide el compilador: ${NSC_TEST_COMPILER}")
-if(_nsc_test_compiler_es_ruta AND NOT EXISTS "${NSC_TEST_COMPILER}")
+if(NOT EXISTS "${NSC_TEST_COMPILER}")
     message(WARNING
         "NSC_TEST_COMPILER todavia no existe: ${NSC_TEST_COMPILER} -- los tests que lo "
         "invocan saldran `Not Run`; construya o corrija el override explicito")
@@ -1285,7 +1278,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.ns3.t39.frontend-abi
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
             "-DFIXTURE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ns3_t39_frontend_abi"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t39-frontend-abi"
@@ -1294,7 +1287,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.ns3.t40.flow
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
             "-DFIXTURE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ns3_t40_flow"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t40-flow"
@@ -1303,7 +1296,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.ns3.t41.ownership
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
             "-DFIXTURE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ns3_t41_ownership"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t41-ownership"
@@ -1312,7 +1305,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.ns3.t42.pointers-linkage
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
             "-DFIXTURE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ns3_t42_pointers_linkage"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t42-pointers-linkage"
@@ -1321,7 +1314,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.ns3.t43.callables-events
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
             "-DFIXTURE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ns3_t43_callables_events"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t43-callables-events"
@@ -1330,7 +1323,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.ns3.t44.metadata-closure
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
             "-DFIXTURE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ns3_t44_metadata_closure"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ns3-t44-metadata-closure"
@@ -2596,7 +2589,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.ns3.t00.conformance-compiler
         COMMAND "${Python3_EXECUTABLE}" -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/ns3_conformance.py"
-            --compiler "$<TARGET_FILE:nsc>"
+            --compiler "${NSC_TEST_COMPILER}"
             --work-root "${CMAKE_CURRENT_BINARY_DIR}/ns3-conformance-t00"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/t00/edition3-project.json"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/t00/edition3-mir.json")
@@ -2622,7 +2615,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.bootstrap-profile-positive
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-profile"
@@ -2632,7 +2625,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.compiler-host-workload
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-host-workload"
             "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
@@ -2642,7 +2635,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.llvm-c-bridge
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-llvm-c-bridge"
@@ -2653,7 +2646,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.llvm-backend
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-llvm-backend"
@@ -2664,7 +2657,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.project-driver
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-project-driver"
@@ -2675,7 +2668,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.first-generation
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-first-generation"
@@ -2686,7 +2679,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.image-replay-retired
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-image-replay-retired"
@@ -2696,7 +2689,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.source-derived-backend
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-derived-backend"
@@ -2707,7 +2700,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.source-functions
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-functions"
@@ -2718,7 +2711,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.source-control-flow
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-control-flow"
@@ -2729,7 +2722,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.source-loop-control
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-loop-control"
@@ -2740,7 +2733,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.source-bool-void
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-bool-void"
@@ -2751,7 +2744,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.source-expressions
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-expressions"
@@ -2762,7 +2755,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.source-integer-widths
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-integer-widths"
@@ -2773,7 +2766,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.source-pointers
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-pointers"
@@ -2784,7 +2777,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.source-floating-scalars
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-floating-scalars"
@@ -2795,7 +2788,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.source-graph
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-graph"
@@ -2805,7 +2798,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.module-set
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-module-set"
@@ -2815,19 +2808,19 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.backend-general
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-backend-general"
             "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
-            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpBackendGeneral.cmake")
     set_tests_properties(nsc.selfhost.backend-general PROPERTIES RUN_SERIAL TRUE)
 
     add_test(
         NAME nsc.selfhost.program-ir
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-program-ir"
@@ -2837,129 +2830,129 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.data-layout
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-data-layout"
             "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
-            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDataLayout.cmake")
     set_tests_properties(nsc.selfhost.data-layout PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.program-ir)
 
     add_test(
         NAME nsc.selfhost.object-model
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-object-model"
             "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
-            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpObjectModel.cmake")
     set_tests_properties(nsc.selfhost.object-model PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.data-layout)
 
     add_test(
         NAME nsc.selfhost.native-text
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-native-text"
             "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
-            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpNativeText.cmake")
     set_tests_properties(nsc.selfhost.native-text PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.object-model)
 
     add_test(
         NAME nsc.selfhost.arrays-memory
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-arrays-memory"
             "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
-            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpArraysMemory.cmake")
     set_tests_properties(nsc.selfhost.arrays-memory PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.native-text)
 
     add_test(
         NAME nsc.selfhost.interop-base
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-interop-base"
             "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
-            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpInteropBase.cmake")
     set_tests_properties(nsc.selfhost.interop-base PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.arrays-memory)
 
     add_test(
         NAME nsc.selfhost.generics-aot
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-generics-aot"
             "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
-            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpGenericsAot.cmake")
     set_tests_properties(nsc.selfhost.generics-aot PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.interop-base)
 
     add_test(NAME nsc.selfhost.ownership-cleanup COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-ownership-cleanup"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpOwnershipCleanup.cmake")
     set_tests_properties(nsc.selfhost.ownership-cleanup PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.generics-aot)
 
     add_test(NAME nsc.selfhost.callable-graph COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-callable-graph"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpCallableGraph.cmake")
     set_tests_properties(nsc.selfhost.callable-graph PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.ownership-cleanup)
 
     add_test(NAME nsc.selfhost.bootstrap-surface COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-bootstrap-surface"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpBootstrapSurface.cmake")
     set_tests_properties(nsc.selfhost.bootstrap-surface PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.callable-graph)
 
     add_test(NAME nsc.selfhost.eh-regions COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-eh-regions"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpEhRegions.cmake")
     set_tests_properties(nsc.selfhost.eh-regions PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.bootstrap-surface)
 
     add_test(NAME nsc.selfhost.driver-products COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-driver-products"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDriverProducts.cmake")
     set_tests_properties(nsc.selfhost.driver-products PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.eh-regions)
 
     add_test(NAME nsc.selfhost.bootstrap-dependencies COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-bootstrap-dependencies"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpBootstrapDependencies.cmake")
     set_tests_properties(nsc.selfhost.bootstrap-dependencies PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.driver-products)
 
     add_test(NAME nsc.selfhost.self-hosted-generation COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSelfHostedGeneration.cmake")
     set_tests_properties(nsc.selfhost.self-hosted-generation PROPERTIES
         RUN_SERIAL FALSE PROCESSORS 4 COST 1035
         DEPENDS nsc.selfhost.bootstrap-dependencies)
 
     add_test(NAME nsc.selfhost.functional-equivalence COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh42"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpFunctionalEquivalence.cmake")
     set_tests_properties(nsc.selfhost.functional-equivalence PROPERTIES
         RUN_SERIAL FALSE PROCESSORS 4 COST 273
@@ -2969,7 +2962,7 @@ if(NSC_BUILD_TESTS)
         "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh43"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpRepeatedFixedPoint.cmake")
     set_tests_properties(nsc.selfhost.repeated-fixed-point PROPERTIES
         RUN_SERIAL FALSE PROCESSORS 4 COST 849
@@ -2979,7 +2972,7 @@ if(NSC_BUILD_TESTS)
         "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh44"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpCrossMachineDeterminism.cmake")
     set_tests_properties(nsc.selfhost.cross-machine-determinism PROPERTIES
         RUN_SERIAL FALSE PROCESSORS 4 COST 1010
@@ -2989,7 +2982,7 @@ if(NSC_BUILD_TESTS)
         "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh45"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpLowLevelParity.cmake")
     set_tests_properties(nsc.selfhost.low-level-parity PROPERTIES RUN_SERIAL TRUE
         DEPENDS "nsc.selfhost.functional-equivalence;nsc.selfhost.repeated-fixed-point;nsc.selfhost.cross-machine-determinism")
@@ -2998,7 +2991,7 @@ if(NSC_BUILD_TESTS)
         "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh46"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpInteropParity.cmake")
     set_tests_properties(nsc.selfhost.interop-parity PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.low-level-parity)
 
@@ -3010,7 +3003,7 @@ if(NSC_BUILD_TESTS)
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh47"
             "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
-            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             "-DNSASM_EXECUTABLE=${NSC_TEST_NSASM}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSpecializedCode.cmake")
         set_tests_properties(nsc.selfhost.specialized-code PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.interop-parity)
@@ -3020,11 +3013,11 @@ if(NSC_BUILD_TESTS)
     endif()
 
     add_test(NAME nsc.selfhost.runtime-library COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh48"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
-        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpRuntimeLibrary.cmake")
     set_tests_properties(nsc.selfhost.runtime-library PROPERTIES
         RUN_SERIAL TRUE DEPENDS "${_nsc_sh48_dependencies}")
@@ -3046,7 +3039,7 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.performance PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.advanced-toolchain)
 
     add_test(NAME nsc.selfhost.developer-experience COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh51"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
@@ -3055,7 +3048,7 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.developer-experience PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.performance)
 
     add_test(NAME nsc.selfhost.robustness-final COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh52"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
@@ -3064,10 +3057,10 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.robustness-final PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.developer-experience)
 
     add_test(NAME nsc.selfhost.distribution-final COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DBOOTSTRAP_COMPILER=${NSC_TEST_COMPILER}"
         "-DCMAKE_EXECUTABLE=${CMAKE_COMMAND}"
-        "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+        "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh53"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
@@ -3076,7 +3069,7 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.selfhost.distribution-final PROPERTIES RUN_SERIAL TRUE DEPENDS nsc.selfhost.robustness-final)
 
     add_test(NAME nsc.selfhost.final-certification COMMAND "${CMAKE_COMMAND}"
-        "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh54"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
@@ -3086,7 +3079,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.selfhost.promotion-readiness
-        COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+        COMMAND "${CMAKE_COMMAND}" "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-promotion-readiness"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpPromotionReadiness.cmake")
@@ -3103,7 +3096,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.nsc-next-skeleton
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-nsc-next-skeleton"
@@ -3113,7 +3106,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.frontend
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-frontend"
@@ -3123,7 +3116,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.semantics
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-semantics"
@@ -3133,7 +3126,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.selfhost.ir
         COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-ir"
@@ -4666,7 +4659,7 @@ if(NSC_BUILD_TESTS)
     target_link_libraries(nsc_stage46_native_libraries_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage46_native_libraries_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_stage46_native_libraries_tests PRIVATE
-        NSC_TEST_NSC_EXECUTABLE="$<TARGET_FILE:nsc>")
+        NSC_TEST_NSC_EXECUTABLE="${NSC_TEST_COMPILER}")
     nsc_enable_warnings(nsc_stage46_native_libraries_tests)
     add_test(NAME nsc.stage46.native-libraries COMMAND nsc_stage46_native_libraries_tests)
 
@@ -5527,7 +5520,7 @@ if(NSC_BUILD_TESTS)
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
-            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             "-DDEBUG_T36_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/debug_scopes_t36/DebugScopesT36.nsproj"
             "-DDEBUG_T36_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-scopes-t36-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDebugScopesT36.cmake")
@@ -5539,7 +5532,7 @@ if(NSC_BUILD_TESTS)
             "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
             "-DLLVM_READOBJ=${NSC_LLVM_READOBJ_EXECUTABLE}"
             "-DLLVM_OBJDUMP=${NSC_LLVM_OBJDUMP_EXECUTABLE}"
-            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             "-DRUNTIME_LIBRARY=${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp.Runtime.Win32.lib"
             "-DNSIMPORTS_FILE=${CMAKE_CURRENT_SOURCE_DIR}/sdk/win64/nativesharp-runtime.nsimports"
             "-DDEBUG_T37_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/debug_values_t37/DebugValuesT37.nsproj"
@@ -5570,7 +5563,7 @@ if(NSC_BUILD_TESTS)
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DCLANG_C=${NSC_TEST_CLANG_EXECUTABLE}"
             "-DCLANG_CXX=${NSC_TEST_CLANGXX_EXECUTABLE}"
-            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             "-DASSEMBLY_ABI_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/asm_abi"
             "-DASSEMBLY_ABI_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/assembly-abi-o0-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpAssemblyAbiO0.cmake")
@@ -5585,7 +5578,7 @@ if(NSC_BUILD_TESTS)
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DCLANG_C=${NSC_TEST_CLANG_EXECUTABLE}"
             "-DCLANG_CXX=${NSC_TEST_CLANGXX_EXECUTABLE}"
-            "-DNSLINK_EXECUTABLE=${CMAKE_INSTALL_PREFIX}/bin/nslink.exe"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             "-DVARARG_ABI_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/item333_vararg_abi"
             "-DVARARG_ABI_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/item333-vararg-abi-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpWin64VarargAbi.cmake")

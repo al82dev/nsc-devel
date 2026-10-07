@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_MANIFEST = ROOT / "test.run"
 DEFAULT_BUILD = ROOT / "build-test-nslink"
 DEFAULT_HISTORY = ROOT / "_nscbuilder" / "failed-tests"
+DEFAULT_NSC = Path(r"C:\native-sharp\bin\nsc.exe")
+DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
 SOURCE_ERROR = re.compile(
     r"^(?:[A-Za-z]:)?[^\r\n]+?(?:\(\d+(?:,\d+)?\)|:\d+:\d+):\s*"
     r"(?:fatal\s+)?error(?:\[[^]]+\])?:\s*.+$",
@@ -34,6 +36,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--build-dir", type=Path, default=DEFAULT_BUILD)
     parser.add_argument("--tests-file", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_HISTORY)
+    parser.add_argument("--nsc", type=Path, default=DEFAULT_NSC)
+    parser.add_argument("--nslink", type=Path, default=DEFAULT_NSLINK)
     parser.add_argument("--ctest", default="ctest", help="Ejecutable ctest o nombre en PATH.")
     parser.add_argument("--list", action="store_true", help="Muestra la selección y no ejecuta.")
     return parser.parse_args()
@@ -75,6 +79,7 @@ def run_one_test(
     name: str,
     master: TextIO,
     log_path: Path,
+    environment: dict[str, str],
 ) -> dict:
     command = [
         ctest,
@@ -103,6 +108,7 @@ def run_one_test(
             encoding=encoding,
             errors="replace",
             bufsize=1,
+            env=environment,
         )
         assert process.stdout is not None
         try:
@@ -173,6 +179,8 @@ def public_result(result: dict) -> dict:
 def write_reports(
     run_dir: Path,
     tests_file: Path,
+    nsc: Path,
+    nslink: Path,
     requested: int,
     results: list[dict],
     interrupted: bool,
@@ -183,6 +191,8 @@ def write_reports(
         "schema": "nativesharp-failed-ctest-run",
         "version": 1,
         "tests_file": str(tests_file.resolve()),
+        "nsc": str(nsc),
+        "nslink": str(nslink),
         "requested": requested,
         "executed": len(results),
         "passed": len(public) - len(failed),
@@ -197,6 +207,9 @@ def write_reports(
     lines = [
         "# Ejecución dirigida de CTests fallidas",
         "",
+        f"- NSC: `{nsc}`",
+        f"- NSLink: `{nslink}`",
+        "- CMake y CTest: resueltos mediante PATH o la configuración existente del árbol.",
         f"- Solicitadas: {requested}",
         f"- Ejecutadas: {len(results)}",
         f"- Aprobadas: {len(public) - len(failed)}",
@@ -222,8 +235,49 @@ def write_reports(
     (run_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def configure_test_tree(build_dir: Path, nsc: Path, nslink: Path, log_path: Path) -> None:
+    """Regenerate CTest so every NativeSharp command uses the official installed tools."""
+    command = [
+        "cmake",
+        "-S",
+        str(ROOT),
+        "-B",
+        str(build_dir),
+        f"-DNSC_TEST_COMPILER={nsc.as_posix()}",
+        f"-DNSC_NSLINK_EXECUTABLE={nslink.as_posix()}",
+    ]
+    result = subprocess.run(
+        command,
+        cwd=str(ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding=locale.getpreferredencoding(False) or "utf-8",
+        errors="replace",
+        check=False,
+    )
+    log_path.write_text(result.stdout, encoding="utf-8", errors="replace")
+    print(result.stdout, end="")
+    if result.returncode != 0:
+        raise ValueError(f"CMake no pudo fijar NSC/NSLink oficiales; consulte {log_path}")
+
+
+def test_environment(nsc: Path, nslink: Path) -> dict[str, str]:
+    """Expose only the two explicit NativeSharp tool paths; every other tool remains PATH-owned."""
+    environment = dict(os.environ)
+    environment["NSC_EXE"] = str(nsc)
+    environment["NSC_LINKER"] = str(nslink)
+    return environment
+
+
 def execute(args: argparse.Namespace, names: list[str]) -> int:
     build_dir = args.build_dir.resolve()
+    nsc = args.nsc.resolve()
+    nslink = args.nslink.resolve()
+    if not nsc.is_file():
+        raise ValueError(f"No existe el compilador oficial: {nsc}")
+    if not nslink.is_file():
+        raise ValueError(f"No existe el linker oficial: {nslink}")
     if not (build_dir / "CTestTestfile.cmake").is_file():
         raise ValueError(f"El árbol CTest no está configurado: {build_dir}")
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
@@ -231,6 +285,8 @@ def execute(args: argparse.Namespace, names: list[str]) -> int:
     run_dir.mkdir(parents=True, exist_ok=False)
     logs_dir = run_dir / "tests"
     logs_dir.mkdir()
+    configure_test_tree(build_dir, nsc, nslink, run_dir / "configure.log")
+    environment = test_environment(nsc, nslink)
     results: list[dict] = []
     interrupted = False
     master_path = run_dir / "full.log"
@@ -244,12 +300,13 @@ def execute(args: argparse.Namespace, names: list[str]) -> int:
                     name,
                     master,
                     logs_dir / f"{index:03d}-{safe_name(name)}.log",
+                    environment,
                 )
             except KeyboardInterrupt:
                 interrupted = True
                 break
             results.append(result)
-    write_reports(run_dir, args.tests_file, len(names), results, interrupted)
+    write_reports(run_dir, args.tests_file, nsc, nslink, len(names), results, interrupted)
     print(f"\nLog completo : {master_path}")
     print(f"Resumen       : {run_dir / 'summary.md'}")
     print(f"Datos         : {run_dir / 'summary.json'}")

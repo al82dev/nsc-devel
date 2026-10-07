@@ -26,6 +26,13 @@ corridas anteriores sin modificar su evidencia.
 
 from __future__ import annotations
 
+# Keep the windowed entry point on the same implementation as nscbuilder.py.  This branch runs
+# before the historical duplicate below, so direct .pyw launches cannot silently miss fixes.
+if __name__ == "__main__":
+    from nscbuilder import main as canonical_main
+
+    raise SystemExit(canonical_main())
+
 import argparse
 import ctypes
 import hashlib

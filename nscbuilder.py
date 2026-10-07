@@ -168,6 +168,8 @@ DEFAULT_BUILD = ROOT / "build-clang"
 DEFAULT_TEST_BUILD_LLD = ROOT / "build-test-lldlinker"
 DEFAULT_TEST_BUILD_NSLINK = ROOT / "build-test-nslink"
 DEFAULT_PREFIX = Path(r"C:\native-sharp")
+TEST_NSC = DEFAULT_PREFIX / "bin" / "nsc.exe"
+TEST_NSLINK = DEFAULT_PREFIX / "bin" / "nslink.exe"
 DEFAULT_BASELINE_PREFIX = Path(r"A:\native-sharp-3.0-baseline")
 DEFAULT_LLVM = Path(r"C:\clang-llvm")
 DEFAULT_NSLINK_ROOT = Path(r"A:\nslink-devel")
@@ -1828,7 +1830,7 @@ class PipelineWorker(QObject):
         build_dir: Path | None = None,
     ) -> tuple[Path, str]:
         build = (build_dir or self._test_build_dir(linker)).resolve()
-        compiler = (Path(self.plan.prefix) / "bin" / "nsc.exe").resolve()
+        compiler = TEST_NSC.resolve()
         environment = self._base_environment(linker)
         linker_executable = Path(environment["NSC_LINKER"]).resolve()
         digest = hashlib.sha256(b"nscbuilder-ctest-result-v1\0")
@@ -2116,7 +2118,8 @@ class PipelineWorker(QObject):
         # error1.log, etc. El comportamiento normal de nsc fuera del builder no cambia.
         env["NSC_NO_ERROR_LOG"] = "1"
         if linker is not None:
-            env["NSC_LINKER"] = str(self._effective_nslink_executable())
+            env["NSC_EXE"] = str(TEST_NSC)
+            env["NSC_LINKER"] = str(TEST_NSLINK)
         # Enlazador y librarian son herramientas distintas. NSLink construye PE, pero no debe
         # recibir /lib ni archivos archive como si fueran objetos COFF.
         env["NSC_LLVM_LIB"] = str(Path(self.plan.llvm_root) / "bin" / "llvm-lib.exe")
@@ -2266,12 +2269,11 @@ class PipelineWorker(QObject):
         elif installing and shutil.which("cmake") is None:
             required.append(Path("cmake.exe (PATH)"))
         if running_tests:
-            # En `baseline` el compilador instalado lo produce esta misma corrida, asi que exigirlo
-            # de entrada rechazaria una maquina limpia por no tener todavia lo que va a construir.
-            if self.plan.operation != "baseline":
-                required.append(Path(self.plan.prefix) / "bin" / "nsc.exe")
-            if "NSLink" in self.plan.linkers and self.plan.operation != "baseline":
-                required.append(Path(self.plan.nslink_exe))
+            # Test execution has a single published authority.  Source, build products, fixtures,
+            # logs and libraries may remain on A:, but the two NativeSharp tools come from C:.
+            required.append(TEST_NSC)
+            if "NSLink" in self.plan.linkers:
+                required.append(TEST_NSLINK)
         if self.plan.operation == "baseline":
             try:
                 validate_baseline_nslink_source(
@@ -2334,8 +2336,8 @@ class PipelineWorker(QObject):
             build_tests=True,
             build_dir=self._test_build_dir(linker),
         )
-        compiler = (Path(self.plan.prefix) / "bin" / "nsc.exe").as_posix()
-        command.append(f"-DNSC_TEST_COMPILER={compiler}")
+        command.append(f"-DNSC_TEST_COMPILER={TEST_NSC.as_posix()}")
+        command.append(f"-DNSC_NSLINK_EXECUTABLE={TEST_NSLINK.as_posix()}")
         if self.bootstrap_lock_path is not None:
             command.append(f"-DNSC_BOOTSTRAP_LOCK={self.bootstrap_lock_path.as_posix()}")
         return command
@@ -2993,7 +2995,7 @@ class PipelineWorker(QObject):
 
     def _case_commands(self, case: CaseSpec, exe: Path, optimization: str) -> tuple[list[str], list[str]]:
         project = Path(self.plan.root) / case.project
-        compiler = Path(self.plan.prefix) / "bin" / "nsc.exe"
+        compiler = TEST_NSC
         obj = exe.with_suffix(".obj")
         common = [str(project), optimization]
         return (
@@ -3027,7 +3029,7 @@ class PipelineWorker(QObject):
             if not project.is_file():
                 raise FileNotFoundError(f"Proyecto no encontrado: {project}")
             object_command, executable_command = self._case_commands(case, exe, optimization)
-            compiler = Path(self.plan.prefix) / "bin" / "nsc.exe"
+            compiler = TEST_NSC
             linker_exe = Path(env.get("NSC_LINKER", ""))
             fingerprint = incremental_fingerprint(
                 project,
