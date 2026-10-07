@@ -35,3 +35,39 @@ válidos.
 1. Compilar `nsc-next` únicamente en O0.
 2. Ejecutar `--check-project` sobre los cuatro proyectos que comprueba SH40.
 3. Ejecutar la batería CTest completa con el entorno NSLink/NS_LIB_ROOT explícito.
+
+## Evidencia ejecutada
+
+### O0 dirigido
+
+Se compiló `NativeSharp.Compiler.nsproj` en O0 dentro de
+`A:/nsc-devel/build-test-nslink/selfhost-current-grammar` y el ejecutable resultante ejecutó
+`--check-project` sobre los cuatro proyectos de SH40:
+
+| Proyecto | Unidades comprobadas | Fallos de lexer/parser |
+|---|---:|---:|
+| NativeSharp.Core | 42 | 0 |
+| NativeSharp.Core.Collections.Generic | 25 | 0 |
+| NativeSharp.Core.IO | 4 | 0 |
+| NativeSharp.LLVM.C | 3 | 0 |
+
+Antes de esta tanda, el mismo chequeo de Core reportaba 23 de 42 unidades fallidas.
+
+### Batería completa
+
+Comando ejecutado con `NSC_LINKER`, `NSC_NSLINK`, `NSC_NSLINK_EXECUTABLE` y `NS_LIB_ROOT`
+explícitos:
+
+```text
+ctest --test-dir A:/nsc-devel/build-test-nslink --interactive-debug-mode 0
+      --output-on-failure --parallel 12
+```
+
+Resultado: **645 de 684 aprobadas; 39 fallos; 1197.25 s**. La lista de 39 es idéntica a la
+corrida anterior con el entorno correcto: no se introdujo una regresión nueva. Las pruebas
+profundas `nsc.selfhost.frontend`, `nsc.selfhost.semantics` y `nsc.selfhost.ir` aprobaron en
+420.13 s, 53.86 s y 386.67 s respectivamente.
+
+SH40 ya supera el parseo de todas las fuentes. Su fallo restante ocurre después, en el verificador
+Python, por un conteo congelado de dependencias (`o0 dependency counts differ`); no es un rechazo
+de la gramática ni invalida el cierre de esta tanda.
