@@ -310,9 +310,7 @@ class Program
 }
 )NS");
     diagnostic.clear();
-    const bool referenceIterationAccepted =
-        !rejectedWith(compatibility, "requires <Language>3</Language>", diagnostic);
-    tests.expect(referenceIterationAccepted,
+    tests.expect(compileAndRun(compatibility, 42, diagnostic),
         "reference iteration is independent of historical edition input (" + diagnostic + ")");
 
     const std::filesystem::path trait = writeProject(
