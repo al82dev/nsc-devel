@@ -27,5 +27,8 @@ de excepciones ni sus pruebas positivas; elimina únicamente su uso forzado.
 
 ## Validación dirigida
 
-Pendiente después del commit: `nsc.ns3.t07.errors` en O0. No se ejecuta baseline,
-certificación, promoción ni matriz O1/O2/O3.
+`nsc.ns3.t07.errors`: **PASSED**, 58/58 comprobaciones en O0. Las rutas positivas
+de propagación, filtros, cleanup, metadata y ejecución continuaron funcionando; los
+seis escenarios sin manejo explícito compilaron sin imponer el feature.
+
+No se ejecutó baseline, certificación, promoción ni matriz O1/O2/O3.
