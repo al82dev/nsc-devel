@@ -47,7 +47,9 @@ locales cuyo `scopeOrdinal` coincide exactamente.
 ## Estado de verificación
 
 - Análisis estático de causa raíz: completado.
-- Commit previo a pruebas: pendiente al redactar este documento.
-- Build dirigido: pendiente.
-- Prueba nueva: pendiente.
+- Commit previo a pruebas: `aee41920b` (`Remap callable shard locals exactly once`).
+- Build dirigido: completado para los targets del merger, reducer y modelo de cuerpos.
+- Prueba nueva: `PASS: 6 checks`.
+- Reducer determinista existente, sin modificaciones: `PASS: 5 checks`.
+- Modelo completo de method bodies existente, sin modificaciones: `PASS: 76 checks`.
 - Batería O0 externa: pendiente del siguiente corte autorizado.
