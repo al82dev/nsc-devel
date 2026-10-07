@@ -26,6 +26,9 @@ causa.
 
 ## Validación dirigida
 
-Pendiente después del commit. Se ejecutará sólo la prueba Item 339 para obtener la
-causa completa. No se ejecutará baseline ni se usará su resultado O2 para ampliar el
-alcance de implementación.
+La primera repetición expuso la causa completa en ambas variantes: `NS3020` clasificaba
+`table` como retenido globalmente al guardarlo en `instance->VTable`. Esa evidencia
+permitió corregir el análisis de pointees en la tanda universal 13. Después de esa
+corrección, `nsc.item339.com-vtable-production` pasó 2/2.
+
+No se ejecutó baseline ni se usó la variante O2 para ampliar el alcance de implementación.

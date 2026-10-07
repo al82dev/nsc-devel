@@ -42,9 +42,12 @@ el llamador.
 
 ## Validación dirigida
 
-Pendiente después del commit:
-
-- `nsc.item339.com-vtable-production` en O0 como prueba ejecutable principal.
-- La ejecución O2 existente puede observarse, pero no amplía el alcance solicitado.
+- `nsc.item339.com-vtable-production`: **PASSED**, 2/2. El fixture COM devuelve 42
+  tanto en la variante O0 solicitada como en la variante O2 que ya forma parte del
+  mismo ejecutable de prueba.
+- `nsc.ns3.t06.escape-summaries`: 7/8 comprobaciones pasaron. Permaneció protegida la
+  retención global, su propagación transitiva, su publicación NSMETA y el diagnóstico
+  causal. El único fallo restante exige el comportamiento histórico de una etiqueta
+  `<Language>2</Language>` y pertenece a la migración universal de contratos.
 
 No se ejecuta baseline, certificación ni promoción.
