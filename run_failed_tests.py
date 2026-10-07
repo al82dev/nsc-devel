@@ -22,6 +22,13 @@ DEFAULT_BUILD = ROOT / "build-test-nslink"
 DEFAULT_HISTORY = ROOT / "_nscbuilder" / "failed-tests"
 DEFAULT_NSC = Path(r"C:\native-sharp\bin\nsc.exe")
 DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
+CTEST_FILE = "CTestTestfile.cmake"
+PATH_TOOL_PATTERN = re.compile(
+    r"(?i)[A-Za-z]:[/\\][^\"\r\n]*[/\\]"
+    r"(cmake|ctest|ninja|python|clang-cl|clang\+\+|clang|lld-link|llvm-[A-Za-z0-9_-]+)\.exe"
+)
+NSC_PATH_PATTERN = re.compile(r"(?i)[A-Za-z]:[/\\][^\"\r\n]*[/\\]nsc\.exe")
+NSLINK_PATH_PATTERN = re.compile(r"(?i)[A-Za-z]:[/\\][^\"\r\n]*[/\\]nslink\.exe")
 SOURCE_ERROR = re.compile(
     r"^(?:[A-Za-z]:)?[^\r\n]+?(?:\(\d+(?:,\d+)?\)|:\d+:\d+):\s*"
     r"(?:fatal\s+)?error(?:\[[^]]+\])?:\s*.+$",
@@ -38,7 +45,6 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--output-root", type=Path, default=DEFAULT_HISTORY)
     parser.add_argument("--nsc", type=Path, default=DEFAULT_NSC)
     parser.add_argument("--nslink", type=Path, default=DEFAULT_NSLINK)
-    parser.add_argument("--ctest", default="ctest", help="Ejecutable ctest o nombre en PATH.")
     parser.add_argument("--list", action="store_true", help="Muestra la selección y no ejecuta.")
     return parser.parse_args()
 
@@ -74,7 +80,6 @@ def write_both(master: TextIO, per_test: TextIO, text: str) -> None:
 
 
 def run_one_test(
-    ctest: str,
     build_dir: Path,
     name: str,
     master: TextIO,
@@ -82,7 +87,7 @@ def run_one_test(
     environment: dict[str, str],
 ) -> dict:
     command = [
-        ctest,
+        "ctest",
         "--test-dir",
         str(build_dir),
         "--interactive-debug-mode",
@@ -209,7 +214,7 @@ def write_reports(
         "",
         f"- NSC: `{nsc}`",
         f"- NSLink: `{nslink}`",
-        "- CMake y CTest: resueltos mediante PATH o la configuración existente del árbol.",
+        "- CTest y herramientas auxiliares: resueltos mediante PATH.",
         f"- Solicitadas: {requested}",
         f"- Ejecutadas: {len(results)}",
         f"- Aprobadas: {len(public) - len(failed)}",
@@ -235,31 +240,29 @@ def write_reports(
     (run_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def configure_test_tree(build_dir: Path, nsc: Path, nslink: Path, log_path: Path) -> None:
-    """Regenerate CTest so every NativeSharp command uses the official installed tools."""
-    command = [
-        "cmake",
-        "-S",
-        str(ROOT),
-        "-B",
-        str(build_dir),
-        f"-DNSC_TEST_COMPILER={nsc.as_posix()}",
-        f"-DNSC_NSLINK_EXECUTABLE={nslink.as_posix()}",
-    ]
-    result = subprocess.run(
-        command,
-        cwd=str(ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding=locale.getpreferredencoding(False) or "utf-8",
-        errors="replace",
-        check=False,
-    )
-    log_path.write_text(result.stdout, encoding="utf-8", errors="replace")
-    print(result.stdout, end="")
-    if result.returncode != 0:
-        raise ValueError(f"CMake no pudo fijar NSC/NSLink oficiales; consulte {log_path}")
+def path_tool_name(match: re.Match[str]) -> str:
+    """Return only the executable name so Windows resolves the auxiliary tool through PATH."""
+    return f"{match.group(1)}.exe"
+
+
+def prepare_ctest_overlay(
+    build_dir: Path,
+    run_dir: Path,
+    nsc: Path,
+    nslink: Path,
+) -> Path:
+    """Copy only CTest metadata and redirect tool references without touching the built tree."""
+    source = build_dir / CTEST_FILE
+    if not source.is_file():
+        raise ValueError(f"El árbol CTest ya construido no existe: {build_dir}")
+    text = source.read_text(encoding="utf-8", errors="replace")
+    text = NSC_PATH_PATTERN.sub(nsc.as_posix(), text)
+    text = NSLINK_PATH_PATTERN.sub(nslink.as_posix(), text)
+    text = PATH_TOOL_PATTERN.sub(path_tool_name, text)
+    overlay = run_dir / "ctest"
+    overlay.mkdir()
+    (overlay / CTEST_FILE).write_text(text, encoding="utf-8")
+    return overlay
 
 
 def test_environment(nsc: Path, nslink: Path) -> dict[str, str]:
@@ -278,14 +281,12 @@ def execute(args: argparse.Namespace, names: list[str]) -> int:
         raise ValueError(f"No existe el compilador oficial: {nsc}")
     if not nslink.is_file():
         raise ValueError(f"No existe el linker oficial: {nslink}")
-    if not (build_dir / "CTestTestfile.cmake").is_file():
-        raise ValueError(f"El árbol CTest no está configurado: {build_dir}")
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     run_dir = args.output_root.resolve() / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
     logs_dir = run_dir / "tests"
     logs_dir.mkdir()
-    configure_test_tree(build_dir, nsc, nslink, run_dir / "configure.log")
+    test_dir = prepare_ctest_overlay(build_dir, run_dir, nsc, nslink)
     environment = test_environment(nsc, nslink)
     results: list[dict] = []
     interrupted = False
@@ -295,8 +296,7 @@ def execute(args: argparse.Namespace, names: list[str]) -> int:
             print(f"\n[{index}/{len(names)}] {name}")
             try:
                 result = run_one_test(
-                    args.ctest,
-                    build_dir,
+                    test_dir,
                     name,
                     master,
                     logs_dir / f"{index:03d}-{safe_name(name)}.log",
