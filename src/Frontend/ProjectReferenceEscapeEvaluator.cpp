@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
 
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -102,7 +103,7 @@ void ProjectReferenceEscapeEvaluator::startNode(
             startMatch(expression, next, result, continuations);
             return;
         case ast::AstNodeKind::MemberExpression:
-            startMember(expression, next, result);
+            startMember(expression, next, result, continuations);
             return;
         case ast::AstNodeKind::IndexExpression:
             startIndex(expression, next, result);
@@ -186,7 +187,8 @@ void ProjectReferenceEscapeEvaluator::startMatch(
 void ProjectReferenceEscapeEvaluator::startMember(
     const ast::AstNode* expression,
     const ast::AstNode*& next,
-    MethodEscapeOrigin& result) const
+    MethodEscapeOrigin& result,
+    std::vector<ReferenceEscapeEvaluationFrame>& continuations) const
 {
     const ast::AstNode* receiver = expression->first();
     if (receiver != nullptr &&
@@ -196,7 +198,19 @@ void ProjectReferenceEscapeEvaluator::startMember(
         result = {MethodEscapeOriginKind::CurrentReceiver, std::nullopt, std::nullopt, "this"};
         return;
     }
-    if (model_.typeKeyIsStruct(typeKeyOf(receiver))) next = receiver;
+    const std::string_view receiverType = typeKeyOf(receiver);
+    if (model_.typeKeyIsStruct(receiverType))
+    {
+        next = receiver;
+        return;
+    }
+    if (!ProjectTypeConversion::isPointer(receiverType)) return;
+
+    ReferenceEscapeEvaluationFrame frame;
+    frame.kind = ReferenceEscapeContinuationKind::PointerMember;
+    frame.syntax = receiver;
+    pushContinuation(std::move(frame), continuations);
+    next = receiver;
 }
 
 void ProjectReferenceEscapeEvaluator::startIndex(
@@ -272,6 +286,17 @@ void ProjectReferenceEscapeEvaluator::resume(
     std::vector<ReferenceEscapeEvaluationFrame>& continuations) const
 {
     ReferenceEscapeEvaluationFrame& frame = continuations.back();
+    if (frame.kind == ReferenceEscapeContinuationKind::PointerMember)
+    {
+        if (result.kind == MethodEscapeOriginKind::CurrentFrameParameter)
+            result.kind = MethodEscapeOriginKind::ExternalStorage;
+        else if (frame.syntax != nullptr &&
+                 frame.syntax->kind() == ast::AstNodeKind::IdentifierExpression &&
+                 result.kind == MethodEscapeOriginKind::CurrentFrameLocal)
+            result = {};
+        continuations.pop_back();
+        return;
+    }
     if (frame.kind == ReferenceEscapeContinuationKind::CallArguments)
     {
         if (result.kind != MethodEscapeOriginKind::ExternalStorage || !result.lifetimeName.empty())

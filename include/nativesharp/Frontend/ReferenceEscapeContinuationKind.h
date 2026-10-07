@@ -5,6 +5,7 @@ namespace nativesharp::frontend
 enum class ReferenceEscapeContinuationKind
 {
     MatchArms,
-    CallArguments
+    CallArguments,
+    PointerMember
 };
 }
