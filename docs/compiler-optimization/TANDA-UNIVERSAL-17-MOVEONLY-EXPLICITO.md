@@ -23,5 +23,7 @@ oculto y pasa a probar directamente las dos representaciones del lenguaje.
 
 ## Validación dirigida
 
-Pendiente después del commit: `nsc.ns3.t06.move-only-defaults` en O0. No se ejecuta
-baseline, certificación, promoción ni matriz O1/O2/O3.
+- Construcción dirigida: `nsc_ns3_t06_move_only_tests`, correcta.
+- CTest: `nsc.ns3.t06.move-only-defaults`, `1/1` correcto en `0.81 s`.
+- Linker de productos NativeSharp: `C:\native-sharp\bin\nslink.exe`.
+- No se ejecutó baseline, certificación, promoción ni matriz O1/O2/O3.
