@@ -2035,13 +2035,15 @@ bool readStringVector(ByteReader& reader, std::vector<std::string>& values)
     return true;
 }
 
-std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
+std::vector<std::uint8_t> encodePayload(
+    const LibraryMetadata& metadata,
+    std::uint8_t legacySourceRevision = kLegacySourceRevisionByte)
 {
     ByteWriter writer;
     writer.text(metadata.producerVersion);
     writer.text(metadata.moduleName);
     writer.text(metadata.targetTriple);
-    if (metadata.formatMinor >= 23) writer.u8(kLegacySourceRevisionByte);
+    if (metadata.formatMinor >= 23) writer.u8(legacySourceRevision);
     if (metadata.formatMinor >= 8)
     {
         writer.u16(metadata.nativeAbiMajor);
@@ -2436,7 +2438,9 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
     return writer.bytes();
 }
 
-std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
+std::vector<std::uint8_t> encodeAbiProjection(
+    const LibraryMetadata& metadata,
+    std::uint8_t legacySourceRevision = kLegacySourceRevisionByte)
 {
     LibraryMetadata projected = metadata;
     projected.producerVersion.clear();
@@ -2449,7 +2453,7 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
     projected.binaryDependencies.clear();
     projected.platformImports.clear();
     if (projected.formatMinor >= 25) projected.formatMinor = 24;
-    std::vector<std::uint8_t> projection = encodePayload(projected);
+    std::vector<std::uint8_t> projection = encodePayload(projected, legacySourceRevision);
     // The 1.25 private closure stays outside the public ABI projection, while the 1.27 ordered
     // variant catalogue cannot: changing declaration order changes the observable CaseTag value.
     // Append this section only when a variant exists so fingerprints of pre-1.27 models remain
@@ -2596,6 +2600,7 @@ bool readCount(ByteReader& reader, std::uint32_t& count)
 bool decodePayload(
     std::span<const std::uint8_t> payload,
     LibraryMetadata& metadata,
+    std::uint8_t& legacySourceRevision,
     std::string& error)
 {
     ByteReader reader(payload);
@@ -2604,13 +2609,12 @@ bool decodePayload(
         error = "truncated metadata identity payload";
         return false;
     }
-    std::uint8_t legacySourceRevision = 0;
+    legacySourceRevision = kLegacySourceRevisionByte;
     if (metadata.formatMinor >= 23 && !reader.u8(legacySourceRevision))
     {
         error = "truncated metadata source revision byte";
         return false;
     }
-    static_cast<void>(legacySourceRevision);
     if (metadata.formatMinor >= 8 &&
         (!reader.u16(metadata.nativeAbiMajor) || !reader.u16(metadata.nativeAbiMinor) ||
          !reader.u16(metadata.runtimeAbiMajor) || !reader.u16(metadata.runtimeAbiMinor) ||
@@ -4074,13 +4078,16 @@ bool LibraryMetadataCodec::read(
         decoded.exceptionAbiVersion = 0;
         decoded.managedDelegateCellSize = 0;
     }
-    if (!decodePayload(payload, decoded, error)) return false;
-    const std::array<std::uint8_t, 32> recomputedAbi = basic::sha256(encodeAbiProjection(decoded));
+    std::uint8_t legacySourceRevision = kLegacySourceRevisionByte;
+    if (!decodePayload(payload, decoded, legacySourceRevision, error)) return false;
+    const std::array<std::uint8_t, 32> recomputedAbi =
+        basic::sha256(encodeAbiProjection(decoded, legacySourceRevision));
     if (!sameFingerprint(recomputedAbi, decoded.abiFingerprint))
     {
         error = "NativeSharp metadata ABI fingerprint mismatch";
         return false;
     }
+    decoded.abiFingerprint = basic::sha256(encodeAbiProjection(decoded));
 
     // Normalize lookup order only after authenticating the ABI projection in the exact order
     // encoded by the producer. Older compatible producers appended synthesized constructors

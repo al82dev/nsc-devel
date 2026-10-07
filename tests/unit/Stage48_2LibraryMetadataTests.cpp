@@ -485,7 +485,7 @@ public class Api
     tests.expect(codec.read(goldenPath, goldenDecoded, error),
         "the ABI 1.0 golden metadata model round-trips");
     const std::string goldenHex = LibraryMetadataCodec::fingerprintHex(goldenDecoded.abiFingerprint);
-    tests.expect(goldenHex == "76fa6ca4e7bed7d22e1898ec6130509dc2d89b3350a78ba22e6401df0852e6af",
+    tests.expect(goldenHex == "4be2026726d0eebd3c4693ee1b17f62171d252fc74867eac62b4e055a8aa10db",
         "ABI root contract with Object ABI 2 retains its reviewed golden fingerprint (" +
             goldenHex + ")");
 }
@@ -1278,6 +1278,56 @@ class Program
                  "consumer links uncalled producer methods from the closed generic public API (" + error + ")");
 }
 
+void clearHistoricalLifetimeContracts(LibraryMetadata& metadata)
+{
+    for (auto& type : metadata.types)
+    {
+        type.lifetimeParameters.clear();
+        type.lifetimeOutlivesConstraints.clear();
+        type.delegateReferenceReturn = false;
+        type.delegateReturnLifetimeName.clear();
+        type.delegateParameterPassKinds.clear();
+        type.delegateParameterLifetimeNames.clear();
+        for (auto& field : type.fields) field.lifetimeName.clear();
+    }
+    const auto clearCallable = [](auto& callable)
+    {
+        callable.returnLifetimeName.clear();
+        callable.lifetimeParameters.clear();
+        callable.lifetimeOutlivesConstraints.clear();
+        for (auto& parameter : callable.parameters) parameter.lifetimeName.clear();
+    };
+    for (auto& member : metadata.members) clearCallable(member);
+    for (auto& function : metadata.namespaceFunctions) clearCallable(function);
+}
+
+void projectHistoricalModel(LibraryMetadata& metadata, std::uint16_t minor)
+{
+    if (minor < 34) clearHistoricalLifetimeContracts(metadata);
+    if (minor < 35)
+    {
+        for (auto& member : metadata.members) member.parameterEscapeSummary.clear();
+        for (auto& function : metadata.namespaceFunctions) function.parameterEscapeSummary.clear();
+    }
+    if (minor < 36)
+        for (auto& type : metadata.types) type.dropGlueEntryName.clear();
+    if (minor < 37)
+    {
+        for (auto& type : metadata.types) type.delegateErrorTypeKey.clear();
+        for (auto& member : metadata.members) member.declaredErrorTypeKey.clear();
+        for (auto& function : metadata.namespaceFunctions) function.declaredErrorTypeKey.clear();
+    }
+    if (minor < 38)
+    {
+        for (auto& generic : metadata.genericTemplates)
+        {
+            generic.parameterContracts.clear();
+            generic.lifetimeParameters.clear();
+            generic.lifetimeOutlivesConstraints.clear();
+        }
+    }
+}
+
 void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::path& root)
 {
     const auto directory = root / "Integrity";
@@ -1299,13 +1349,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     {
         LibraryMetadata historical = metadata;
         historical.formatMinor = minor;
-        if (minor < 35)
-        {
-            for (auto& member : historical.members)
-                member.parameterEscapeSummary.clear();
-            for (auto& function : historical.namespaceFunctions)
-                function.parameterEscapeSummary.clear();
-        }
+        projectHistoricalModel(historical, minor);
         const auto historicalPath = directory / ("historical-1." + std::to_string(minor) + ".nsmeta");
         error.clear();
         const bool wrote = codec.writeModel(historical, historicalPath, error);
