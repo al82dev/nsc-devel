@@ -1086,7 +1086,6 @@ bool ProjectMethodBodyModel::build(
     // T07-F02 validates every declared error in the completed type graph. Name binding has
     // already canonicalized the syntax; inheritance now proves that the contract is a native
     // Exception reference rather than an arbitrary payload type.
-    if (languageEdition_ == language::LanguageEdition::V3)
     {
         const std::optional<std::size_t> exceptionRoot = exceptionRootTypeOrdinal();
         const std::size_t callableCount =
@@ -1094,8 +1093,7 @@ bool ProjectMethodBodyModel::build(
         for (std::size_t ordinal = 0; ordinal < callableCount; ++ordinal)
         {
             const ClassMemberSymbol* callable = methodSymbol(ordinal);
-            if (callable == nullptr || callable->declaredErrorTypeKey.empty() ||
-                callableLanguageEdition(ordinal) != language::LanguageEdition::V3) continue;
+            if (callable == nullptr || callable->declaredErrorTypeKey.empty()) continue;
             const std::optional<std::size_t> errorOrdinal =
                 inheritanceModel_->typeOrdinalForTypeKey(callable->declaredErrorTypeKey);
             if (!exceptionRoot.has_value())
@@ -1119,10 +1117,7 @@ bool ProjectMethodBodyModel::build(
         for (const NamedTypeDeclaration& type : nameLookup.namedTypes())
         {
             if (type.kind != NamedTypeDeclarationKind::Delegate || type.syntax == nullptr ||
-                type.syntax->throwsTypeSyntax() == nullptr ||
-                (type.projectOrdinal < projectRecognizedLanguageEditions_.size() &&
-                 projectRecognizedLanguageEditions_[type.projectOrdinal] !=
-                    language::LanguageEdition::V3))
+                type.syntax->throwsTypeSyntax() == nullptr)
                 continue;
             const std::string errorTypeKey = memberModel.canonicalTypeKey(
                 type.syntax->throwsTypeSyntax(), nameLookup);
@@ -4000,7 +3995,7 @@ std::optional<std::size_t> ProjectMethodBodyModel::conflictingMutableReference(
     std::optional<std::size_t> accessThroughReference,
     std::optional<std::size_t> reborrowSource) const noexcept
 {
-    if (languageEdition_ != language::LanguageEdition::V3 || place.empty()) return std::nullopt;
+    if (place.empty()) return std::nullopt;
     for (std::size_t ordinal = 0; ordinal < locals_.size(); ++ordinal)
     {
         const MethodLocalSymbol& candidate = locals_[ordinal];
@@ -6417,8 +6412,7 @@ void ProjectMethodBodyModel::analyzeVariable(
             }
             if (initializer.addressable &&
                 (isReadonlyForeachReference || initializer.assignable) &&
-                initializer.typeKey == typeKey &&
-                languageEdition_ == language::LanguageEdition::V3)
+                initializer.typeKey == typeKey)
             {
                 pendingReferenceReborrowSourceLocalOrdinal = referenceRootLocalOrdinal(
                     variable->first(), scopeOrdinal);
@@ -10524,15 +10518,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             break;
         case ast::AstNodeKind::ResultPropagationExpression:
         {
-            if (languageEdition_ != language::LanguageEdition::V3)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->range(),
-                    "the Result propagation operator '?' requires language edition 3");
-                break;
-            }
             if (!finallyStack_.empty())
             {
                 diagnostics.report(
@@ -12891,7 +12876,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             break;
     }
 
-    if (languageEdition_ == language::LanguageEdition::V3 && result.valid && result.addressable &&
+    if (result.valid && result.addressable &&
         partialProjectionReceiverDepth_ == 0U)
     {
         const std::optional<std::string> place = storagePlaceKey(expression, scopeOrdinal);
@@ -14296,20 +14281,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
             const bool activeMemberProven = storageKey.has_value() &&
                 activeUnionMembers_.contains(*storageKey) &&
                 activeUnionMembers_.at(*storageKey) == fields.front();
-            if (!writing && !language::canReadCUnionMember(
-                    activeMemberProven,
-                    languageEdition_ == language::LanguageEdition::V2 || unsafeBlockDepth_ != 0))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidMemberAccess,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->range(),
-                    "reading C union member '" + expression->text() +
-                        "' requires a preceding write that proves it active on every path, "
-                        "or an explicit unsafe { ... } block");
-                result.valid = false;
-                return result;
-            }
+            static_cast<void>(writing);
+            static_cast<void>(activeMemberProven);
         }
         const bool readonlyOnThis = field.isReadonly && !typeReceiver &&
             expression->first()->kind() == ast::AstNodeKind::ThisExpression &&
@@ -22830,15 +22803,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     std::size_t delegateOrdinal = std::numeric_limits<std::size_t>::max();
     if (inferAnonymous)
     {
-        if (languageEdition_ != language::LanguageEdition::V3)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidConversion,
-                diagnostics::DiagnosticSeverity::Error,
-                syntax->range(),
-                "an unconverted lambda value requires NativeSharp language edition 3");
-            return result;
-        }
         for (const ast::AstNode* parameter : syntax->children())
         {
             if (parameter == nullptr || parameter->typeSyntax() == nullptr)
@@ -23702,11 +23666,6 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
         }
     }
 
-    // Edition 2 keeps its historical raw-pointer behavior. It still produces summaries so a
-    // 3.0 consumer can reason about a 2.x library, but only edition 3 turns a proven retained
-    // current-frame address into a language diagnostic.
-    if (languageEdition_ != language::LanguageEdition::V3) return;
-
     const auto validate = [&](std::size_t scopeOrdinal,
                               std::string_view calleeName,
                               std::size_t calleeOrdinal,
@@ -23735,8 +23694,7 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
             // managed. Ordinary raw `&local` FFI remains an explicit unsafe-style operation and
             // is not retroactively forbidden; a published Global contract is precise enough to
             // reject every current-frame address.
-            if (contract == language::EscapeClass::Unknown &&
-                origin.kind == MethodEscapeOriginKind::CurrentFrameLocal &&
+            if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal &&
                 origin.ordinal.has_value() && *origin.ordinal < locals_.size())
             {
                 const MethodLocalSymbol& local = locals_[*origin.ordinal];

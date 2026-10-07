@@ -83,14 +83,16 @@ language::LanguageEdition Project::sourceLanguageEdition() const noexcept
 
 language::LanguageEdition Project::recognizedLanguageEdition() const noexcept
 {
-    // Compatibility mode accepts the current source surface. Explicit Language 2 remains a
-    // frozen contract, while mandatory Language 3 effects are selected independently.
-    return languageEditionExplicit_ ? languageEdition_ : language::LanguageEdition::V3;
+    // NativeSharp has one cumulative source surface. The legacy project field remains readable
+    // while project-file compatibility is retired, but it never hides syntax from the parser.
+    return language::LanguageEdition::V3;
 }
 
 bool Project::enforcesLanguage3Effects() const noexcept
 {
-    return languageEditionExplicit_ && languageEdition_ == language::LanguageEdition::V3;
+    // Effects are explicit properties of the operation that uses them. A project-wide edition
+    // must never turn pointer, ownership, or exception policy into a mandatory writing style.
+    return false;
 }
 
 bool Project::hasExplicitLanguageEdition() const noexcept

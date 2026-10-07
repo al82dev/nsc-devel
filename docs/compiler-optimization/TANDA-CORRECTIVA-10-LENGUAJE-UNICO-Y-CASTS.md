@@ -51,3 +51,53 @@ O1, O2, O3 ni deploy.
   global de reglas por edicion y los restantes manifiestan movimiento,
   ownership o uniones forzados.
 - Estado: en auditoria estatica.
+
+## Cambio 10A: superficie acumulativa y politicas locales
+
+### Causa
+
+`Project::recognizedLanguageEdition()` seleccionaba el parser actual, mientras
+`Project::enforcesLanguage3Effects()` y varias ramas de
+`ProjectMethodBodyModel` convertian la etiqueta del proyecto en politicas
+globales. Ademas, `Parser::parseStructDeclaration()` marcaba todo struct de la
+edicion 3 como `ns3-value` y toda union como `active-member-safe`. La fuente no
+solicitaba esas propiedades: eran inyectadas por el manifiesto.
+
+### Correccion
+
+- El parser reconoce la superficie acumulativa sin `NS3002`.
+- `import`, `export import`, visibilidades, `match` y constraints dejan de estar
+  ocultos por una etiqueta.
+- Un struct ordinario ya no recibe `ns3-value`; vuelve a ser copiable por
+  defecto.
+- Una union ordinaria ya no recibe `active-member-safe`; leer un miembro no
+  exige `unsafe`.
+- Una etiqueta de proyecto ya no activa efectos obligatorios.
+- Las validaciones de features explicitamente escritos (`throws`, referencias,
+  propagacion Result y lambdas autonomas) se ejecutan por presencia del nodo,
+  no por edicion.
+- El analisis de escape no rechaza punteros crudos ordinarios; conserva la
+  comprobacion para referencias, valores prestados, pinning y vistas que si
+  declaran un contrato de lifetime.
+
+### Archivos
+
+- `src/Compilation/Project.cpp`: reconocimiento acumulativo y politica global
+  de efectos desactivada.
+- `src/Parser/Parser.cpp`: gates de edicion retirados y marcadores implicitos
+  eliminados.
+- `src/Frontend/ProjectMethodBodyModel.cpp`: reglas ligadas a nodos y contratos
+  explicitos en lugar de una edicion global.
+
+### Invariantes
+
+- No se modifican runtime, bibliotecas, bindings, Saru ni instalaciones.
+- No se introduce recursión.
+- `move`, `copy`, referencias, excepciones y Result conservan sus nodos y
+  lowering cuando aparecen de forma explicita.
+- El cambio no implementa aun la retirada fisica del campo `<Language>` ni la
+  eliminacion de su registro en NSMETA; esos son cambios separados.
+
+### Verificacion
+
+Pendiente de reconstruccion y bateria CTest completa O0 con NSLink.

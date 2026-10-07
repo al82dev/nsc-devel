@@ -368,13 +368,11 @@ Parser::Parser(
 
 bool Parser::requireEdition3(SourceRange range, std::string_view feature)
 {
-    if (languageEdition_ == language::LanguageEdition::V3) return true;
-    diagnostics_.report(
-        diagnostics::DiagnosticId::NS3002FeatureRequiresLanguageEdition3,
-        diagnostics::DiagnosticSeverity::Error,
-        range,
-        std::string(feature) + " requires <Language>3</Language>");
-    return false;
+    // Kept as a temporary call-site seam while the legacy edition plumbing is removed. Syntax
+    // availability is cumulative and no longer depends on a project manifest value.
+    static_cast<void>(range);
+    static_cast<void>(feature);
+    return true;
 }
 
 ast::AstNode* Parser::parseCompilationUnit()
@@ -2048,18 +2046,6 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
                 isLifetime || isUnmanaged || isNotNull)
             {
                 const lexer::Token& keyword = consume();
-                if (!isKeywordClass && languageEdition_ != language::LanguageEdition::V3)
-                {
-                    diagnostics_.report(
-                        diagnostics::DiagnosticId::ExpectedDeclaration,
-                        diagnostics::DiagnosticSeverity::Error,
-                        keyword.range(),
-                        "the '" + std::string(keyword.lexeme()) +
-                            "' generic constraint is not supported yet; this compiler implements "
-                            "'class', a base class and interfaces in language edition 2; select "
-                            "Language 3 for declarative capability constraints");
-                    ok = false;
-                }
                 const bool conflictsWithEarlierPrimary =
                     (isKeywordClass && (clause.requiresValueType || clause.requiresUnmanaged)) ||
                     (isKeywordStruct && clause.requiresClass);
@@ -2489,11 +2475,11 @@ ast::AstNode* Parser::parseNamespaceMember()
     {
         return parseExtensionDeclaration();
     }
-    if (languageEdition_ == language::LanguageEdition::V3 && atContextualKeyword("import"))
+    if (atContextualKeyword("import"))
     {
         return parseImportDirective();
     }
-    if (languageEdition_ == language::LanguageEdition::V3 && at(TokenKind::KwExport) &&
+    if (at(TokenKind::KwExport) &&
         peek().kind() == TokenKind::Identifier && peek().lexeme() == "import")
     {
         consume();
@@ -3081,8 +3067,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             continue;
         }
         if (at(TokenKind::KwPublic) || at(TokenKind::KwInternal) ||
-            (languageEdition_ == language::LanguageEdition::V3 &&
-             (atContextualKeyword("module") || atContextualKeyword("package"))))
+            atContextualKeyword("module") || atContextualKeyword("package"))
         {
             const lexer::Token& modifier = consume();
             const bool contextualVisibility = modifier.kind() == TokenKind::Identifier;
@@ -3861,8 +3846,6 @@ ast::AstNode* Parser::parseStructDeclaration(
     knownTypeNames_.insert(structName);
     ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::StructDeclaration, name.range());
     node->setText(structName);
-    if (languageEdition_ == language::LanguageEdition::V3)
-        node->setAuxiliaryText("ns3-value");
     // C2.2: a union IS a struct in every respect this compiler already models -- same members,
     // same by-value semantics, same C ABI classification, same LLVM byte-array carrier -- except
     // that its fields all start at the same place. Rather than a parallel declaration kind
@@ -3872,9 +3855,7 @@ ast::AstNode* Parser::parseStructDeclaration(
     {
         std::string markers = node->auxiliaryText();
         markers += (markers.empty() ? "" : ",");
-        markers += languageEdition_ == language::LanguageEdition::V3
-            ? "union,active-member-safe"
-            : "union";
+        markers += "union";
         node->setAuxiliaryText(std::move(markers));
     }
     // SHR-013: la marca de vista viaja por el MISMO canal que "union"/"pack="/"align=" -- el
@@ -4714,31 +4695,15 @@ ast::AstNode* Parser::parseStructBody(
             if (member->kind() == ast::AstNodeKind::DestructorDeclaration)
             {
                 const std::string_view markers = node->auxiliaryText();
-                const bool moveOnlyEdition3 = languageEdition_ == language::LanguageEdition::V3 &&
-                    markers.find("ns3-value") != std::string_view::npos &&
-                    markers.find("copy") == std::string_view::npos &&
-                    markers.find("union") == std::string_view::npos;
-                if (!moveOnlyEdition3)
+                const bool rawUnion = markers.find("union") != std::string_view::npos;
+                if (rawUnion)
                 {
-                    if (languageEdition_ != language::LanguageEdition::V3)
-                    {
-                        diagnostics_.report(
-                            diagnostics::DiagnosticId::ExpectedDeclaration,
-                            diagnostics::DiagnosticSeverity::Error,
-                            member->range(),
-                            "a struct cannot declare a destructor: a value type has no owner and is "
-                            "copied freely, so there is no last copy to run it on; use a raii class, "
-                            "or an owned field, for a resource with a lifetime");
-                    }
-                    else
-                    {
-                        diagnostics_.report(
-                            diagnostics::DiagnosticId::ExpectedDeclaration,
-                            diagnostics::DiagnosticSeverity::Error,
-                            member->range(),
-                            "a struct destructor requires a move-only edition-3 value type; copy and "
-                            "raw-union values have no unique final owner");
-                    }
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        member->range(),
+                        "a raw union cannot declare a destructor because it has no active-member "
+                        "discriminant");
                 }
                 else
                 {
@@ -8718,8 +8683,7 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::KwFor)) return parseForStatement();
     if (at(TokenKind::KwForeach)) return parseForeachStatement();
     if (at(TokenKind::KwSwitch)) return parseSwitchStatement();
-    if (languageEdition_ == language::LanguageEdition::V3 &&
-        atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
+    if (atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
         return parseMatchStatement();
 
     if (!comprehensionContexts_.empty() && atContextualKeyword("yield"))
@@ -13786,8 +13750,7 @@ ast::AstNode* Parser::parseWithExpression(ast::AstNode* source)
 
 ast::AstNode* Parser::parsePrimaryExpression()
 {
-    if (languageEdition_ == language::LanguageEdition::V3 &&
-        atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
+    if (atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
         return parseMatchExpression();
     if (atContextualKeyword("loop") &&
         (peek().kind() == TokenKind::LeftBrace ||
