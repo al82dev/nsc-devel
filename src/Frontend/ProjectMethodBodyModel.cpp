@@ -872,7 +872,12 @@ std::unique_ptr<ProjectMethodBodyModel> ProjectMethodBodyModel::createCallableSh
     shard->namespaceCallableBase_ = namespaceCallableBase_;
     shard->namespaceCallableAdaptersView_ = namespaceCallableAdapters();
     shard->languageEdition_ = context.languageEdition();
-    shard->parameterEscapeSummaries_.resize(parameterEscapeSummaries_.size());
+    shard->isolatedCallableOrdinal_ = context.callableOrdinal();
+    if (context.callableOrdinal() < parameterEscapeSummaries_.size())
+    {
+        shard->isolatedParameterEscapeSummary_ =
+            parameterEscapeSummaries_[context.callableOrdinal()];
+    }
     return shard;
 }
 
@@ -23442,22 +23447,36 @@ bool ProjectMethodBodyModel::parameterMayCarryEscape(
         typeKeyIsViewLike(parameter.typeKey);
 }
 
+std::vector<language::EscapeClass>*
+ProjectMethodBodyModel::mutableParameterEscapeSummary(
+    std::size_t callableOrdinal) noexcept
+{
+    if (isolatedCallableOrdinal_.has_value() &&
+        *isolatedCallableOrdinal_ == callableOrdinal)
+    {
+        return &isolatedParameterEscapeSummary_;
+    }
+    return callableOrdinal < parameterEscapeSummaries_.size()
+        ? &parameterEscapeSummaries_[callableOrdinal]
+        : nullptr;
+}
+
 void ProjectMethodBodyModel::noteParameterEscape(
     std::size_t callableOrdinal,
     std::size_t parameterOrdinal,
     language::EscapeClass escapeClass)
 {
-    if (callableOrdinal >= parameterEscapeSummaries_.size()) return;
-    std::vector<language::EscapeClass>& summary = parameterEscapeSummaries_[callableOrdinal];
-    if (parameterOrdinal >= summary.size()) return;
+    std::vector<language::EscapeClass>* summary =
+        mutableParameterEscapeSummary(callableOrdinal);
+    if (summary == nullptr || parameterOrdinal >= summary->size()) return;
     const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
     if (callable == nullptr || parameterOrdinal >= callable->parameters.size() ||
         !parameterMayCarryEscape(callable->parameters[parameterOrdinal]))
     {
         return;
     }
-    if (escapeClassRank(escapeClass) > escapeClassRank(summary[parameterOrdinal]))
-        summary[parameterOrdinal] = escapeClass;
+    if (escapeClassRank(escapeClass) > escapeClassRank((*summary)[parameterOrdinal]))
+        (*summary)[parameterOrdinal] = escapeClass;
 }
 
 void ProjectMethodBodyModel::finalizeEscapeSummaries(

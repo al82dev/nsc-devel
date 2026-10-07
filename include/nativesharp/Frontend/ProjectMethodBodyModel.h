@@ -2201,6 +2201,8 @@ private:
         diagnostics::DiagnosticEngine& diagnostics,
         std::span<const std::size_t> parameterOrdinals = {}) const;
     bool parameterMayCarryEscape(const MethodParameterSymbol& parameter) const noexcept;
+    std::vector<language::EscapeClass>* mutableParameterEscapeSummary(
+        std::size_t callableOrdinal) noexcept;
     void noteParameterEscape(
         std::size_t callableOrdinal,
         std::size_t parameterOrdinal,
@@ -2524,6 +2526,8 @@ private:
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
     std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;
     std::vector<std::vector<language::EscapeClass>> parameterEscapeSummaries_;
+    std::optional<std::size_t> isolatedCallableOrdinal_;
+    std::vector<language::EscapeClass> isolatedParameterEscapeSummary_;
     std::size_t currentCallableLocalBase_ = 0;
     std::size_t currentCallableParameterCount_ = 0;
     mutable ProjectOwnershipFlowStatistics ownershipFlowStatistics_;

@@ -264,6 +264,13 @@ void ProjectCallableResultMerger::merge(
     destination.assignedOutParameters_.insert(
         source.assignedOutParameters_.begin(), source.assignedOutParameters_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
+    if (source.isolatedCallableOrdinal_.has_value() &&
+        *source.isolatedCallableOrdinal_ == result.callableOrdinal() &&
+        result.callableOrdinal() < destination.parameterEscapeSummaries_.size())
+    {
+        destination.parameterEscapeSummaries_[result.callableOrdinal()] =
+            std::move(source.isolatedParameterEscapeSummary_);
+    }
     ++destination.callableAnalysisStatistics_.resultsMerged;
     destination.nextLambdaOrdinal_ += source.nextLambdaOrdinal_;
     mergeOwnershipStatistics(
