@@ -1133,9 +1133,9 @@ bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) cons
 
         const std::string_view markers = declaration.syntax != nullptr
             ? std::string_view(declaration.syntax->auxiliaryText()) : std::string_view{};
-        const bool edition3Value = markers.find("ns3-value") != std::string_view::npos;
+        const bool declaredMoveOnly = markers.find("move-only-value") != std::string_view::npos;
         const bool explicitCopy = markers.find("copy") != std::string_view::npos;
-        if (edition3Value && !explicitCopy) return false;
+        if (declaredMoveOnly && !explicitCopy) return false;
         // Recursive by-value aggregates are rejected by layout. Returning true at the recursive
         // edge avoids manufacturing a second diagnostic while the outer fields are inspected.
         if (!visited.insert(*ordinal).second) continue;

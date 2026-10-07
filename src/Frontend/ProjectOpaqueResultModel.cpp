@@ -752,7 +752,7 @@ bool ProjectOpaqueResultModel::build(
         // Keeping the marker on the synthetic declaration makes its generated factory return a
         // real move-only local instead of asking the ownership checker to move a copyable value.
         wrapper->setAuxiliaryText(
-            "opaque-result|identity=" + identity + "|trait=" + traitName + "|ns3-value");
+            "opaque-result|identity=" + identity + "|trait=" + traitName + "|move-only-value");
         const TokenKind accessibility = method->hasModifier(TokenKind::KwPublic)
             ? TokenKind::KwPublic : TokenKind::KwInternal;
         wrapper->setTokenKind(accessibility);

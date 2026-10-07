@@ -4150,7 +4150,7 @@ ast::AstNode* Parser::parseVariantDeclaration()
     ast::AstNode* node = arena_.make<ast::AstNode>(
         ast::AstNodeKind::StructDeclaration, name.range());
     node->setText(variantName);
-    node->setAuxiliaryText("variant,ns3-value");
+    node->setAuxiliaryText("variant,move-only-value");
     parseGenericParameterList(node);
     KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
     parseGenericConstraintClauses(node);
@@ -4467,7 +4467,7 @@ ast::AstNode* Parser::parseVariantDeclaration()
     node->addChild(tagMethod);
 
     const bool explicitCopyVariant = node->auxiliaryText().find("copy") != std::string::npos;
-    std::string metadata = "variant,ns3-value";
+    std::string metadata = "variant,move-only-value";
     if (explicitCopyVariant) metadata += ",copy";
     metadata += ",tag=" + tagTypeName + ",cases=";
     for (std::size_t index = 0; index < cases.size(); ++index)
@@ -4511,8 +4511,8 @@ ast::AstNode* Parser::parseOpaqueTypeDeclaration(bool explicitCopy)
         ast::AstNodeKind::StructDeclaration, name.range());
     node->setText(typeName);
     node->setAuxiliaryText(explicitCopy
-        ? "opaque-type,ns3-value,copy"
-        : "opaque-type,ns3-value");
+        ? "opaque-type,move-only-value,copy"
+        : "opaque-type,move-only-value");
     parseGenericParameterList(node);
     KnownGenericTypeScope genericTypeScope(knownTypeNames_, node);
 
