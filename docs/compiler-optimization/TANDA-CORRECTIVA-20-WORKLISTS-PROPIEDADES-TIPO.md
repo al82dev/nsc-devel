@@ -44,8 +44,14 @@ structs, campos `owned`, destructores y ciclos de tipos por valor.
 
 ## Estado
 
-EN IMPLEMENTACION.
+LISTA.
 
 ## Evidencia
 
-Pendiente de la prueba puntual posterior al commit de implementacion.
+- `cmake --build A:\nsc-devel\build-test-nslink --target
+  nsc_project_member_type_worklist_tests --parallel 12`: correcto.
+- `A:\nsc-devel\build-test-nslink\tests\nsc_project_member_type_worklist_tests.exe`:
+  `PASS: 15 checks`.
+- La prueba cubre structs, tuples y fixed arrays en los tres recorridos.
+- No se ejecuto CTest, baseline, minibaseline ni una optimizacion distinta de O0 para productos
+  NativeSharp.
