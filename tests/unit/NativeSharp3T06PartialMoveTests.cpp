@@ -35,7 +35,7 @@ std::filesystem::path writeProject(
     writeFile(
         project,
         "<Project><PropertyGroup><Name>" + std::string(name) +
-        "</Name><Language>3</Language><OutputType>Exe</OutputType></PropertyGroup>"
+        "</Name><OutputType>Exe</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(directory / "Main.ns", source);
     return project;
@@ -163,11 +163,13 @@ public class Program
 namespace NativeSharp.Core { public class Exception { } }
 using NativeSharp.Core;
 public class Problem : Exception { }
+public class Resource { }
 public struct Guard
 {
     public static int Drops = 0;
     public int Value;
-    public Guard(int value) { Value = value; }
+    public owned Resource Owner;
+    public Guard(int value) { Value = value; Owner = new Resource(); }
     ~Guard() { Drops = Drops + 1; }
 }
 public class Program
@@ -306,7 +308,9 @@ public class Program
         "assignment without an ownership transfer (" + diagnostic + ")");
 
     const std::string declarations = R"NS(
-public struct Token { public int Value; public Token(int value) { Value = value; } }
+public class Resource { }
+public struct Token { public int Value; public owned Resource Owner;
+    public Token(int value) { Value = value; Owner = new Resource(); } }
 public struct Pair { public Token Left; public Token Right; public Pair(Token left, Token right) { Left = move(left); Right = move(right); } }
 )NS";
     std::string observed;
@@ -335,7 +339,9 @@ public class Program { public static int Main() { Pair value = new Pair(new Toke
 
     observed.clear();
     tests.expect(rejectsWith(root, "destructor-partial", R"NS(
-public struct Token { public int Value; public Token(int value) { Value = value; } }
+public class Resource { }
+public struct Token { public int Value; public owned Resource Owner;
+    public Token(int value) { Value = value; Owner = new Resource(); } }
 public struct Guard { public Token Value; public Guard(Token value) { Value = move(value); } ~Guard() { } }
 public class Program { public static int Main() { Guard value = new Guard(new Token(42)); Token token = move(value.Value); return token.Value; } }
 )NS", "custom destructor requires the complete value", observed),
