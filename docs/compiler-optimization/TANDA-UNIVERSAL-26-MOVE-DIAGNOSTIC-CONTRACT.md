@@ -28,8 +28,16 @@ presencia de `InvalidOperand`.
 - `docs/compiler-optimization/TANDA-UNIVERSAL-26-MOVE-DIAGNOSTIC-CONTRACT.md`
   - Registra causa, limites y evidencia.
 
-## Verificacion pendiente del commit
+## Evidencia posterior al commit
 
-- Reconstruir el arbol de pruebas existente.
-- Ejecutar las 684 pruebas completas configuradas con O0 y NSLink.
-- Confirmar que Stage 49 pasa sus 87 checks sin relajar el rechazo.
+- La reconstruccion completa del arbol `build-test-nslink` termino correctamente.
+- Se ejecutaron las 684 pruebas existentes con O0 y
+  `C:\native-sharp\bin\nslink.exe`; no se ejecuto baseline ni instalacion.
+- Resultado global: 595 pruebas pasaron y 89 fallaron en 106.16 segundos.
+- `nsc.stage49.raii-move` paso sus 87 checks.
+- El programa con destino no propietario continuo rechazado mediante `InvalidOperand`.
+
+## Conclusion
+
+La prueba conserva el contrato semantico y deja de depender de una frase mutable. La tanda queda
+verificada y cerrada.
