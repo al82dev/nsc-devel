@@ -29,15 +29,13 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
 std::filesystem::path writeProject(
     const std::filesystem::path& directory,
     std::string_view name,
-    std::string_view source,
-    std::string_view edition = "3")
+    std::string_view source)
 {
     const std::filesystem::path project = directory / (std::string(name) + ".nsproj");
     writeFile(
         project,
         "<Project><PropertyGroup><Name>" + std::string(name) +
-        "</Name><Language>" + std::string(edition) +
-        "</Language><OutputType>Exe</OutputType></PropertyGroup>"
+        "</Name><OutputType>Exe</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(directory / "Main.ns", source);
     return project;
@@ -71,6 +69,23 @@ bool rejectsWith(
     observed = error + diagnosticsText(compilation);
     return (!compiled || compilation.diagnostics().hasErrors()) &&
         observed.find(expected) != std::string::npos;
+}
+
+bool accepts(
+    const std::filesystem::path& root,
+    std::string_view name,
+    std::string_view source,
+    std::string& observed)
+{
+    ProjectCompilation compilation;
+    std::string error;
+    std::string projectName(name);
+    for (char& character : projectName)
+        if (character == '-') character = '_';
+    const bool compiled = compilation.compileProjectOopMir(
+        writeProject(root / std::string(name), projectName, source), error);
+    observed = error + diagnosticsText(compilation);
+    return compiled && !compilation.diagnostics().hasErrors();
 }
 
 ExitCode runDriver(
@@ -121,10 +136,12 @@ int main()
     std::filesystem::create_directories(root);
 
     const std::string declarations = R"NS(
+public class Resource { }
 public struct Token
 {
     public int Value;
-    public Token(int value) { Value = value; }
+    public owned Resource Owner;
+    public Token(int value) { Value = value; Owner = new Resource(); }
 }
 public struct Pair
 {
@@ -202,59 +219,59 @@ public class Program
             error + output + ")");
 
     std::string observed;
-    tests.expect(rejectsWith(root, "overlap-field", declarations + R"NS(
+    tests.expect(accepts(root, "overlap-field", declarations + R"NS(
 public class Program { public static int Main() { Pair value = new Pair(new Token(20), new Token(22)); ref int first = ref value.Left.Value; ref int second = ref value.Left.Value; return 0; } }
-)NS", "exclusively borrows an overlapping place", observed),
-        "two independent mutable references to the same field are rejected (" + observed + ")");
+)NS", observed),
+        "two mutable references may alias the same native field (" + observed + ")");
 
     observed.clear();
-    tests.expect(rejectsWith(root, "direct-access", declarations + R"NS(
+    tests.expect(accepts(root, "direct-access", declarations + R"NS(
 public class Program { public static int Main() { Pair value = new Pair(new Token(20), new Token(22)); ref int alias = ref value.Left.Value; value.Left.Value = 42; return alias; } }
-)NS", "exclusively borrows an overlapping place", observed),
-        "direct storage access is rejected while an overlapping mutable reference lives (" +
+)NS", observed),
+        "direct storage access remains valid while a native alias lives (" +
             observed + ")");
 
     observed.clear();
-    tests.expect(rejectsWith(root, "suspended-parent", R"NS(
+    tests.expect(accepts(root, "suspended-parent", R"NS(
 public class Program { public static int Main() { int value = 1; ref int outer = ref value; { ref int inner = ref outer; outer = 2; } return 0; } }
-)NS", "exclusively borrows an overlapping place", observed),
-        "a mutable reborrow suspends access through its parent alias for the child scope (" +
+)NS", observed),
+        "a mutable reborrow and its parent remain ordinary native aliases (" +
             observed + ")");
 
     observed.clear();
-    tests.expect(rejectsWith(root, "same-index", R"NS(
+    tests.expect(accepts(root, "same-index", R"NS(
 public class Program { public static int Main() { int* values = stackalloc int[2]; ref int first = ref values[0]; ref int second = ref values[0]; return 0; } }
-)NS", "exclusively borrows an overlapping place", observed),
-        "equal constant indices overlap (" + observed + ")");
+)NS", observed),
+        "equal constant indices may produce native aliases (" + observed + ")");
 
     observed.clear();
-    tests.expect(rejectsWith(root, "dynamic-index", R"NS(
+    tests.expect(accepts(root, "dynamic-index", R"NS(
 public class Program { public static int Main() { int* values = stackalloc int[2]; int a = 0; int b = 1; ref int first = ref values[a]; ref int second = ref values[b]; return 0; } }
-)NS", "exclusively borrows an overlapping place", observed),
-        "dynamic indices use the conservative overlapping fallback (" + observed + ")");
+)NS", observed),
+        "dynamic indices do not impose an implicit exclusive-borrow policy (" + observed + ")");
 
     observed.clear();
-    tests.expect(rejectsWith(root, "indexer-fallback", R"NS(
+    tests.expect(accepts(root, "indexer-fallback", R"NS(
 public class Cell
 {
     private int Value;
     public ref int this[int index] { get { return ref Value; } }
 }
 public class Program { public static int Main() { Cell cell = new Cell(); ref int first = ref cell[0]; ref int second = ref cell[1]; return 0; } }
-)NS", "exclusively borrows an overlapping place", observed),
-        "user indexers remain conservative because distinct written indices need not name disjoint storage (" +
+)NS", observed),
+        "user indexers may return aliases without implicit exclusivity (" +
             observed + ")");
 
     observed.clear();
-    tests.expect(rejectsWith(root, "unknown-call-origin", R"NS(
+    tests.expect(accepts(root, "unknown-call-origin", R"NS(
 public class Program
 {
     private static int Value;
     private static ref int Slot() { return ref Value; }
     public static int Main() { ref int first = ref Slot(); ref int second = ref Slot(); return 0; }
 }
-)NS", "already borrows an overlapping place", observed),
-        "reference-return calls without comparable place provenance share the conservative unknown region (" +
+)NS", observed),
+        "reference-return calls preserve native alias behavior even with unknown place provenance (" +
             observed + ")");
 
     observed.clear();
@@ -265,7 +282,7 @@ public class Program { public static int Main() { Pair value = new Pair(new Toke
             observed + ")");
 
     const std::filesystem::path compatibility = writeProject(
-        root / "edition2", "ReferenceCompatibility", R"NS(
+        root / "aliases", "ReferenceCompatibility", R"NS(
 public class Program
 {
     public static int Main()
@@ -277,10 +294,10 @@ public class Program
         return first;
     }
 }
-)NS", "2");
+)NS");
     diagnostic.clear();
     tests.expect(compileAndRun(compatibility, 42, diagnostic),
-        "language edition 2 preserves its established reference-alias behavior (" + diagnostic + ")");
+        "ordinary references preserve their established native alias behavior (" + diagnostic + ")");
 
     return tests.resultKeeping(root);
 }
