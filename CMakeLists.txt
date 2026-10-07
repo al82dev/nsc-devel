@@ -3983,6 +3983,17 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_project_callable_wave_reducer_tests)
 
     add_executable(
+        nsc_project_callable_result_merger_ordinal_tests
+        tests/unit/ProjectCallableResultMergerOrdinalTests.cpp)
+    target_link_libraries(nsc_project_callable_result_merger_ordinal_tests PRIVATE
+        nsc_frontend nsc_compilation)
+    target_compile_features(nsc_project_callable_result_merger_ordinal_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_project_callable_result_merger_ordinal_tests)
+    add_test(
+        NAME nsc.project-callable-result-merger-ordinals
+        COMMAND nsc_project_callable_result_merger_ordinal_tests)
+
+    add_executable(
         nsc_project_callable_wave_scheduler_tests
         tests/unit/ProjectCallableWaveSchedulerTests.cpp)
     target_link_libraries(nsc_project_callable_wave_scheduler_tests PRIVATE

@@ -127,9 +127,14 @@ void remapNested(
     std::size_t lambdaBase,
     std::size_t localBorrowBase)
 {
-    remapCommon(item, scopeBase, localBase, cleanupBase, lambdaBase, localBorrowBase);
     if constexpr (std::is_same_v<Item, MethodLocalSymbol>)
+    {
         remapLocal(item, scopeBase, localBase, lambdaBase, localBorrowBase);
+    }
+    else
+    {
+        remapCommon(item, scopeBase, localBase, cleanupBase, lambdaBase, localBorrowBase);
+    }
     if constexpr (std::is_same_v<Item, ProjectConstructionSite>)
         for (MethodExpressionTypeBinding& argument : item.argumentTypes)
             remapCommon(argument, scopeBase, localBase, cleanupBase, lambdaBase, localBorrowBase);
