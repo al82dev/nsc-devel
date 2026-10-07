@@ -23643,26 +23643,12 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
             if (targetParameter >= callee.size() || argumentSyntaxes[argumentOrdinal] == nullptr)
                 continue;
             const language::EscapeClass contract = callee[targetParameter];
-            if (contract != language::EscapeClass::Global &&
-                contract != language::EscapeClass::Unknown) continue;
+            if (contract != language::EscapeClass::Global) continue;
             const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
                 argumentSyntaxes[argumentOrdinal], scopeOrdinal);
             if (origin.kind != MethodEscapeOriginKind::CurrentFrameLocal &&
                 origin.kind != MethodEscapeOriginKind::VariableLengthArray)
                 continue;
-            // Unknown is fail-closed only for an actual borrow whose lifetime is compiler
-            // managed. Ordinary raw `&local` FFI remains an explicit unsafe-style operation and
-            // is not retroactively forbidden; a published Global contract is precise enough to
-            // reject every current-frame address.
-            if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal &&
-                origin.ordinal.has_value() && *origin.ordinal < locals_.size())
-            {
-                const MethodLocalSymbol& local = locals_[*origin.ordinal];
-                if (!local.isReference && !local.isPinned &&
-                    local.ownership != sema::OwnershipKind::Borrowed &&
-                    !typeKeyIsViewLike(local.typeKey))
-                    continue;
-            }
             diagnostics.report(
                 diagnostics::DiagnosticId::NS3020InvalidValueCategory,
                 diagnostics::DiagnosticSeverity::Error,
@@ -23670,9 +23656,7 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
                 "argument " + std::to_string(argumentOrdinal + 1U) + " of '" +
                     std::string(calleeName) + "' refers to current-frame storage, but parameter " +
                     std::to_string(targetParameter + 1U) +
-                    (contract == language::EscapeClass::Global
-                        ? " is retained by the callee's published escape contract"
-                        : " has no proven non-escaping contract"));
+                    " is retained by the callee's published escape contract");
         }
     };
     for (const MethodCallBinding& call : calls_)
