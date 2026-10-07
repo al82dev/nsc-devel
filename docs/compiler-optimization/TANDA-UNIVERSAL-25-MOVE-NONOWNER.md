@@ -30,9 +30,20 @@ que exige una fuente propietaria. La regla se aplica de igual forma a locales y 
 - `docs/compiler-optimization/TANDA-UNIVERSAL-25-MOVE-NONOWNER.md`
   - Registra causa, limites, decision y verificacion.
 
-## Verificacion pendiente del commit
+## Evidencia posterior al commit
 
-- Reconstruir el arbol de pruebas existente.
-- Ejecutar las 684 pruebas completas configuradas con O0 y NSLink.
-- Confirmar que los contratos `MoveNonOwner` pasan y que los movimientos de valores siguen
-  aceptados.
+- La reconstruccion completa del arbol `build-test-nslink` termino correctamente.
+- Se ejecutaron las 684 pruebas existentes con O0 y
+  `C:\native-sharp\bin\nslink.exe`; no se ejecuto baseline ni instalacion.
+- Resultado global: 594 pruebas pasaron y 90 fallaron en 107.95 segundos.
+- `MoveNonOwner` paso y el nuevo `MoveNonOwnerParameter` paso.
+- `nsc.stage50-11.ownership-execution` paso completo, confirmando que el movimiento copy-shaped
+  de valores continua aceptado.
+- `nsc.stage49.raii-move` conserva un solo fallo: una expectativa textual antigua de
+  `MoveNeedsOwnerDestination`; el compilador si rechaza el programa.
+
+## Conclusion
+
+La correccion elimino la fabricacion de ownership desde locales y parametros ordinarios sin
+romper movimientos de tipos valor. La tanda semantica queda verificada y cerrada; la expectativa
+textual restante pertenece al cierre posterior de contratos de prueba.
