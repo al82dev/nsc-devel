@@ -24,5 +24,8 @@ contrato observable.
 
 ## Validación dirigida
 
-Pendiente después del commit: `nsc.ns3.t06.escape-summaries` en O0. No se ejecuta
-baseline, certificación, promoción ni matriz O1/O2/O3.
+`nsc.ns3.t06.escape-summaries`: **PASSED**, 8/8 comprobaciones en O0. Quedaron
+verificados el caso no-escape, el retorno, la retención global, la propagación
+transitiva, la captura, NSMETA y los rechazos globales local y cross-project.
+
+No se ejecutó baseline, certificación, promoción ni matriz O1/O2/O3.
