@@ -9952,6 +9952,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     break;
                 }
                 const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
+                if (local.ownership == sema::OwnershipKind::Borrowed &&
+                    typeKeyIsOwnable(local.typeKey))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "move(...) source must be a RAII local or owned parameter");
+                    break;
+                }
                 const bool sourceRequiresMove = local.isRaii || local.isMoveOnly ||
                     compilerVariantResultTransfer;
                 copyShapedMove = !sourceRequiresMove;
@@ -10055,6 +10065,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     break;
                 }
                 const MethodParameterSymbol& parameter = method->parameters[source->semanticOrdinal];
+                if (parameter.ownership == sema::OwnershipKind::Borrowed &&
+                    typeKeyIsOwnable(parameter.typeKey))
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "move(...) source must be a RAII local or owned parameter");
+                    break;
+                }
                 const bool sourceRequiresMove =
                     parameter.ownership == sema::OwnershipKind::Owned ||
                     (parameter.passKind == ParameterPassKind::Value &&
