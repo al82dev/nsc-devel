@@ -126,15 +126,9 @@ int main()
             alignedMetadataGraph->projects().front().languageEdition() == LanguageEdition::V3,
         "precompiled project nodes expose the cumulative language surface");
 
-    frontend::FrontendCompilation frontend2(LanguageEdition::V2);
-    frontend::FrontendCompilation frontend3(LanguageEdition::V3);
-    tests.expect(frontend2.compileBuffer("same-v2.ns", "int Answer() { return 42; }", false),
-        "the same source compiles under edition 2");
-    tests.expect(frontend3.compileBuffer("same-v3.ns", "int Answer() { return 42; }", false),
-        "the same source compiles under edition 3");
-    tests.expect(frontend2.languageEdition() == LanguageEdition::V2 &&
-            frontend3.languageEdition() == LanguageEdition::V3,
-        "frontend compilation unit retains its edition");
+    frontend::FrontendCompilation frontend;
+    tests.expect(frontend.compileBuffer("same.ns", "int Answer() { return 42; }", false),
+        "the cumulative frontend compiles edition-independent source");
 
     frontend::ProjectCompilation productivePipeline;
     productivePipeline.setCompilationJobs(2);

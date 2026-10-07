@@ -43,8 +43,7 @@ nativesharp::ExitCode runDriver(
 
 bool hasDeferredDiagnostic(std::string_view source, std::string_view feature)
 {
-    nativesharp::frontend::FrontendCompilation compilation(
-        nativesharp::language::LanguageEdition::V3);
+    nativesharp::frontend::FrontendCompilation compilation;
     if (compilation.compileBuffer("t49-negative.ns", std::string(source), false)) return false;
     for (const nativesharp::diagnostics::Diagnostic& diagnostic :
          compilation.diagnostics().diagnostics())
@@ -140,12 +139,11 @@ int main()
         "int Work() { static int value = 1; return value; }", "static-locals"),
         "static locals fail with NS3049 and a lifetime rationale");
 
-    nativesharp::frontend::FrontendCompilation edition2(
-        nativesharp::language::LanguageEdition::V2);
-    const bool rawRecognized = edition2.compileBuffer(
-        "raw-v2.ns", "string Value() { return \"\"\"raw\"\"\"; }", false);
-    tests.expect(rawRecognized && !edition2.diagnostics().hasErrors(),
-        "raw string literals are recognized independently of historical edition input");
+    nativesharp::frontend::FrontendCompilation rawCompilation;
+    const bool rawRecognized = rawCompilation.compileBuffer(
+        "raw.ns", "string Value() { return \"\"\"raw\"\"\"; }", false);
+    tests.expect(rawRecognized && !rawCompilation.diagnostics().hasErrors(),
+        "raw string literals are recognized by the cumulative frontend");
 
     nativesharp::source::SourceManager rawSources;
     const nativesharp::FileId rawFile = rawSources.addBuffer(

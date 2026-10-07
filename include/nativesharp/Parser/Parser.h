@@ -5,7 +5,6 @@
 #include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Lexer/Token.h"
-#include "nativesharp/Language/LanguageEdition.h"
 
 #include <cstddef>
 #include <functional>
@@ -25,8 +24,7 @@ public:
         std::span<const lexer::Token> tokens,
         ast::AstArena& arena,
         diagnostics::DiagnosticEngine& diagnostics,
-        std::span<const std::string> knownTypeNames = {},
-        language::LanguageEdition languageEdition = language::LanguageEdition::V2);
+        std::span<const std::string> knownTypeNames = {});
 
     ast::AstNode* parseCompilationUnit();
 
@@ -368,8 +366,6 @@ private:
     ast::AstNode* parsePrimaryExpression();
     ast::AstNode* parseDeconstructionPattern();
     ast::AstNode* parseWithExpression(ast::AstNode* source);
-    bool requireEdition3(SourceRange range, std::string_view feature);
-
     ast::AstNode* parseBinaryLevel(
         ast::AstNode* (Parser::*nextLevel)(),
         std::span<const lexer::TokenKind> operators,
@@ -395,6 +391,5 @@ private:
     std::size_t nextComprehensionTemporary_ = 0;
     bool parsingExtensionBody_ = false;
     std::unordered_set<std::string> knownTypeNames_;
-    language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };
 }

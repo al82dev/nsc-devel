@@ -11,7 +11,6 @@
 #include "nativesharp/HIR/HirArena.h"
 #include "nativesharp/HIR/HirNode.h"
 #include "nativesharp/Lexer/Token.h"
-#include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/MIR/MirArena.h"
 #include "nativesharp/MIR/MirModule.h"
 #include "nativesharp/Passes/OptimizationArena.h"
@@ -32,8 +31,7 @@ namespace nativesharp::frontend
 class FrontendCompilation final
 {
 public:
-    explicit FrontendCompilation(
-        language::LanguageEdition languageEdition = language::LanguageEdition::V2);
+    FrontendCompilation();
     FrontendCompilation(const FrontendCompilation&) = delete;
     FrontendCompilation& operator=(const FrontendCompilation&) = delete;
     ~FrontendCompilation();
@@ -61,7 +59,6 @@ public:
     const std::string& optimizationError() const noexcept;
     const std::vector<StageBoundary>& verifiedStageBoundaries() const noexcept;
     FileId primaryFileId() const noexcept;
-    language::LanguageEdition languageEdition() const noexcept;
 
 private:
     bool run(FileId fileId, bool requireMain);
@@ -94,6 +91,5 @@ private:
     std::string optimizationError_;
     std::vector<StageBoundary> verifiedStageBoundaries_;
     FileId primaryFileId_;
-    language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };
 }

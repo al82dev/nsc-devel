@@ -1100,8 +1100,7 @@ bool ProjectCompilation::compileSyntaxCore(
                 read.sourceOrdinal,
                 std::move(read.moduleName),
                 fileId,
-                false,
-                read.languageEdition));
+                false));
         }
     }
 
@@ -1153,8 +1152,7 @@ bool ProjectCompilation::compileSyntaxCore(
             0,
             module.moduleName,
             fileId,
-            true,
-            projectGraph_->projects()[*projectOrdinal].languageEdition());
+            true);
         units_.push_back(std::move(unit));
 
         if (!module.templateSourceText.empty())
@@ -1176,8 +1174,7 @@ bool ProjectCompilation::compileSyntaxCore(
                 1,
                 module.moduleName,
                 templateFileId,
-                false,
-                projectGraph_->projects()[*projectOrdinal].languageEdition());
+                false);
             units_.push_back(std::move(templateUnit));
         }
         }

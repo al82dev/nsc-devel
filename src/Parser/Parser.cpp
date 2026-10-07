@@ -336,12 +336,10 @@ Parser::Parser(
     std::span<const lexer::Token> tokens,
     ast::AstArena& arena,
     diagnostics::DiagnosticEngine& diagnostics,
-    std::span<const std::string> knownTypeNames,
-    language::LanguageEdition languageEdition)
+    std::span<const std::string> knownTypeNames)
     : tokens_(tokens),
       arena_(arena),
-      diagnostics_(diagnostics),
-      languageEdition_(languageEdition)
+      diagnostics_(diagnostics)
 {
     static constexpr std::array<std::string_view, 16> builtinNames = {
         "void", "bool", "byte", "char", "short", "ushort", "int", "uint", "long", "ulong",
@@ -364,15 +362,6 @@ Parser::Parser(
             knownTypeNames_.insert(name);
         }
     }
-}
-
-bool Parser::requireEdition3(SourceRange range, std::string_view feature)
-{
-    // Kept as a temporary call-site seam while the legacy edition plumbing is removed. Syntax
-    // availability is cumulative and no longer depends on a project manifest value.
-    static_cast<void>(range);
-    static_cast<void>(feature);
-    return true;
 }
 
 ast::AstNode* Parser::parseCompilationUnit()
@@ -975,7 +964,6 @@ ast::TypeSyntax* Parser::parseType()
     {
         const lexer::Token& qualifier = consume();
         dynamicRange = qualifier.range();
-        requireEdition3(dynamicRange, "dynamic trait object types");
         dynamicTrait = true;
     }
 
@@ -985,7 +973,6 @@ ast::TypeSyntax* Parser::parseType()
     {
         const lexer::Token& qualifier = consume();
         opaqueRange = qualifier.range();
-        requireEdition3(opaqueRange, "opaque result types");
         opaqueResult = true;
         if (dynamicTrait)
         {
@@ -1017,7 +1004,6 @@ ast::TypeSyntax* Parser::parseType()
     {
         const SourceRange functionStart = current().range();
         consume();
-        requireEdition3(functionStart, "structural function types");
         if (dynamicTrait || opaqueResult)
         {
             diagnostics_.report(
@@ -1354,7 +1340,6 @@ ast::TypeSyntax* Parser::parseType()
     if (at(TokenKind::Ellipsis))
     {
         const SourceRange expansion = consume().range();
-        requireEdition3(expansion, "generic pack expansion");
         type->setPackExpansion();
         completeRange = join(completeRange, expansion);
     }
@@ -1367,7 +1352,6 @@ ast::TypeSyntax* Parser::parseType()
     if (pointeeConst)
     {
         pointeeConstRange = consume().range();
-        requireEdition3(pointeeConstRange, "pointer pointee constness");
         type->setPointeeConst();
         completeRange = join(completeRange, pointeeConstRange);
     }
@@ -1569,7 +1553,6 @@ ast::TypeSyntax* Parser::parseType()
 std::string Parser::parseOptionalLifetimeAnnotation(std::string_view context)
 {
     if (!consumeIf(TokenKind::LeftBracket)) return {};
-    requireEdition3(tokens_[index_ - 1].range(), "named lifetime annotations");
     std::string result;
     if (at(TokenKind::Identifier) || at(TokenKind::KwThis) || at(TokenKind::KwStatic))
         result = std::string(consume().lexeme());
@@ -1646,12 +1629,11 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
         const bool lifetimeParameter = atContextualKeyword("lifetime");
         if (lifetimeParameter)
         {
-            requireEdition3(consume().range(), "named lifetime parameters");
+            consume();
         }
         else if (at(TokenKind::KwConst))
         {
             const SourceRange feature = consume().range();
-            requireEdition3(feature, "const generic parameters");
             syntax.kind = ast::GenericParameterSyntaxKind::Constant;
             syntax.constantType = parseType();
             if (syntax.constantType == nullptr) return false;
@@ -1679,7 +1661,6 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
         else if (atContextualKeyword("pack"))
         {
             const SourceRange feature = consume().range();
-            requireEdition3(feature, "generic packs");
             if (consumeIf(TokenKind::KwConst))
             {
                 syntax.kind = ast::GenericParameterSyntaxKind::ConstantPack;
@@ -1918,7 +1899,6 @@ bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
 
         if (consumeIf(TokenKind::EqualEqual))
         {
-            requireEdition3(parameter.range(), "generic equality constraints");
             const bool parameterIsConstant =
                 syntax != declaration->genericParameterSyntaxes().end() &&
                 syntax->kind == ast::GenericParameterSyntaxKind::Constant;
@@ -2162,7 +2142,6 @@ bool Parser::parseTypeArgumentList(std::vector<ast::TypeSyntax*>& arguments)
             at(TokenKind::Tilde) || at(TokenKind::Bang))
         {
             const SourceRange begin = current().range();
-            requireEdition3(begin, "const generic expressions");
             ast::AstNode* expression = at(TokenKind::LeftParen)
                 ? parsePrimaryExpression() : parseUnaryExpression();
             ast::TypeSyntax* argument = arena_.make<ast::TypeSyntax>(
@@ -2177,7 +2156,6 @@ bool Parser::parseTypeArgumentList(std::vector<ast::TypeSyntax*>& arguments)
         if (at(TokenKind::IntegerLiteral))
         {
             const lexer::Token& literal = consume();
-            requireEdition3(literal.range(), "const generic arguments");
             const auto* value = std::get_if<std::uint64_t>(&literal.value());
             const std::uint64_t normalized = value == nullptr ? 0 : *value;
             const std::string typeKey(frontend::builtins::integerLiteralTypeKey(
@@ -2191,7 +2169,6 @@ bool Parser::parseTypeArgumentList(std::vector<ast::TypeSyntax*>& arguments)
         if (at(TokenKind::KwTrue) || at(TokenKind::KwFalse))
         {
             const lexer::Token& literal = consume();
-            requireEdition3(literal.range(), "const generic arguments");
             arguments.push_back(arena_.make<ast::TypeSyntax>(
                 literal.range(), TokenKind::Invalid,
                 language::constGenericArgumentMarker(
@@ -2616,7 +2593,6 @@ ast::AstNode* Parser::parseExtensionDeclaration()
 {
     const std::size_t beginIndex = index_;
     const SourceRange keywordRange = consume().range();
-    requireEdition3(keywordRange, "extension method declarations");
 
     TokenKind receiverPass = TokenKind::Invalid;
     if (atContextualKeyword("ref"))
@@ -2896,7 +2872,6 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         if (atContextualKeyword("repr") && peek().kind() == TokenKind::LeftParen)
         {
             const SourceRange feature = consume().range();
-            requireEdition3(feature, "representation attributes");
             consume();
             std::string value;
             if (atContextualKeyword("native") || atContextualKeyword("C") ||
@@ -2929,7 +2904,6 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             (peek().lexeme() == "trait" || peek().lexeme() == "impl"))
         {
             const lexer::Token& modifier = consume();
-            requireEdition3(modifier.range(), "unsafe trait contracts");
             if (isUnsafeTraitContract)
             {
                 diagnostics_.report(
@@ -3095,7 +3069,6 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         if (atContextualKeyword("record") && peek().kind() == TokenKind::KwStruct)
         {
             const lexer::Token& modifier = consume();
-            requireEdition3(modifier.range(), "record struct declarations");
             if (isRecordStruct)
             {
                 diagnostics_.report(
@@ -3109,8 +3082,8 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         }
 
         // NativeSharp 3.0 T06-F01. `copy` is contextual and is consumed only while it is
-        // unambiguously decorating a value-type declaration. Edition 2 therefore keeps the
-        // identifier available, while edition 3 makes copyability an explicit source contract.
+        // unambiguously decorating a value-type declaration. Other uses keep the identifier
+        // available, while a declaration can make copyability an explicit source contract.
         const bool copyTypeModifier = atContextualKeyword("copy") &&
             (peek().kind() == TokenKind::KwStruct || peek().kind() == TokenKind::KwClass ||
              peek().kind() == TokenKind::KwInterface || peek().kind() == TokenKind::KwEnum ||
@@ -3125,7 +3098,6 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         if (copyTypeModifier)
         {
             const lexer::Token& modifier = consume();
-            requireEdition3(modifier.range(), "explicit Copy value types");
             if (isCopyType)
             {
                 diagnostics_.report(
@@ -3315,7 +3287,6 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     else if (atContextualKeyword("trait") && peek().kind() == TokenKind::Identifier)
     {
         const SourceRange feature = current().range();
-        requireEdition3(feature, "trait declarations");
         if (isAbstract || isSealed || isStatic)
         {
             diagnostics_.report(
@@ -3329,7 +3300,6 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     else if (atContextualKeyword("impl"))
     {
         const SourceRange feature = current().range();
-        requireEdition3(feature, "trait implementation blocks");
         if (accessibility != TokenKind::Invalid || isPartial || isAbstract || isSealed ||
             isStatic || isReadonlyType || isRecordStruct || isBorrowedView ||
             isCopyType || representation.has_value() || layoutPack.has_value() ||
@@ -3893,8 +3863,6 @@ ast::AstNode* Parser::parseStructDeclaration(
     // constructor whose body assigns those fields in textual order.
     if (form == StructLayoutForm::Struct && at(TokenKind::LeftParen))
     {
-        const SourceRange primaryBegin = current().range();
-        requireEdition3(primaryBegin, "primary struct parameters");
         consume();
         std::vector<ast::AstNode*> parameters;
         std::unordered_set<std::string> names;
@@ -4026,7 +3994,6 @@ ast::AstNode* Parser::parseStructDeclaration(
 
     if (consumeIf(TokenKind::Colon))
     {
-        requireEdition3(tokens_[index_ - 1U].range(), "struct trait implementations");
         bool first = true;
         do
         {
@@ -4055,7 +4022,6 @@ ast::AstNode* Parser::parseStructDeclaration(
     {
         if (!atContextualKeyword("derive") || peek().kind() != TokenKind::LeftParen) return;
         const lexer::Token& deriveKeyword = consume();
-        requireEdition3(deriveKeyword.range(), "record derives");
         const bool duplicateClause = sawRecordDeriveClause;
         if (duplicateClause)
         {
@@ -4147,8 +4113,7 @@ ast::AstNode* Parser::parseVariantDeclaration()
     };
 
     const std::size_t beginIndex = index_;
-    const lexer::Token& variantKeyword = consume();
-    requireEdition3(variantKeyword.range(), "variant declaration syntax");
+    consume();
     if (!at(TokenKind::Identifier))
     {
         expect(TokenKind::Identifier, "variant name");
@@ -4496,8 +4461,7 @@ ast::AstNode* Parser::parseVariantDeclaration()
 ast::AstNode* Parser::parseOpaqueTypeDeclaration(bool explicitCopy)
 {
     const std::size_t beginIndex = index_;
-    const lexer::Token& opaqueKeyword = consume();
-    requireEdition3(opaqueKeyword.range(), "opaque type declarations");
+    consume();
     if (!(at(TokenKind::Identifier) && current().lexeme() == "type"))
     {
         diagnostics_.report(
@@ -4682,12 +4646,12 @@ ast::AstNode* Parser::parseStructBody(
             //   * Some needed a small, bounded piece of work -- operators, indexers, constructors.
             //   * Two forms required explicit semantic contracts rather than merely lifting the
             //     old gate. Virtual value methods remain invalid; destructors are now admitted
-            //     only for edition-3 move-only structs, whose unique-owner/drop-flag model gives
-            //     them the final-destruction point edition 2 lacked.
+            //     only for move-only structs, whose unique-owner/drop-flag model gives them a
+            //     deterministic final-destruction point.
             //
-            //       - an edition-2/copy/union struct DESTRUCTOR still has no unique final owner and
-            //         remains rejected. An edition-3 move-only struct has one, and T06-F02 threads
-            //         its destructor through value-drop cleanup.
+            //       - a copy/union struct DESTRUCTOR still has no unique final owner and remains
+            //         rejected. A move-only struct has one, and T06-F02 threads its destructor
+            //         through value-drop cleanup.
             //       - `virtual`/`override`/`abstract`/`sealed` on a struct degrades to a DIRECT
             //         call. A value has no vtable pointer and no place to put one without changing
             //         its layout -- and its layout is the contract it crosses the C boundary with.
@@ -5088,8 +5052,6 @@ ast::AstNode* Parser::parseAssociatedItem(bool implementation)
 {
     const std::size_t beginIndex = index_;
     const bool associatedType = atContextualKeyword("type");
-    const SourceRange feature = current().range();
-    requireEdition3(feature, "trait associated items");
     consume(); // contextual type / const
 
     ast::TypeSyntax* declaredType = nullptr;
@@ -5446,8 +5408,7 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     {
         if (nestedRecordStruct)
         {
-            const lexer::Token& record = consume();
-            requireEdition3(record.range(), "record struct declarations");
+            consume();
         }
         declaration = parseStructDeclaration(
             at(TokenKind::KwStruct) ? StructLayoutForm::Struct : StructLayoutForm::Union,
@@ -5664,7 +5625,6 @@ ast::AstNode* Parser::parseClassMember(
             if (methodModifier)
             {
                 const lexer::Token& modifier = consume();
-                requireEdition3(modifier.range(), "unsafe function declarations");
                 if (isUnsafe)
                 {
                     diagnostics_.report(
@@ -5680,7 +5640,6 @@ ast::AstNode* Parser::parseClassMember(
         if (atContextualKeyword("specialize"))
         {
             const lexer::Token& modifier = consume();
-            requireEdition3(modifier.range(), "controlled generic specialization");
             if (isControlledSpecialization)
             {
                 diagnostics_.report(
@@ -5781,7 +5740,6 @@ ast::AstNode* Parser::parseClassMember(
         if (copyNestedModifier)
         {
             const lexer::Token& modifier = consume();
-            requireEdition3(modifier.range(), "explicit Copy value types");
             if (isCopyType)
             {
                 diagnostics_.report(
@@ -8386,8 +8344,7 @@ void Parser::parseFloatingPointModeClause(ast::AstNode* callable)
     if (callable == nullptr || !atContextualKeyword("fp") ||
         peek().kind() != TokenKind::LeftParen)
         return;
-    const SourceRange clauseRange = consume().range();
-    requireEdition3(clauseRange, "floating-point function modes");
+    consume();
     consume();
     ast::FloatingPointModeSyntaxKind mode = ast::FloatingPointModeSyntaxKind::Inherit;
     if (atContextualKeyword("strict")) mode = ast::FloatingPointModeSyntaxKind::Strict;
@@ -8409,8 +8366,7 @@ void Parser::parseFloatingPointModeClause(ast::AstNode* callable)
 void Parser::parseThrowsClause(ast::AstNode* callable)
 {
     if (callable == nullptr || !atContextualKeyword("throws")) return;
-    const SourceRange keywordRange = consume().range();
-    requireEdition3(keywordRange, "typed throws clauses");
+    consume();
     if (!canStartTypeAt(index_) && !at(TokenKind::Identifier) &&
         !lexer::isOwnershipQualifierKeyword(current().kind()))
     {
@@ -8438,8 +8394,7 @@ void Parser::parseFfiUnwindClause(ast::AstNode* callable)
 {
     if (callable == nullptr || !atContextualKeyword("unwind") ||
         peek().kind() != TokenKind::LeftParen) return;
-    const SourceRange clauseRange = consume().range();
-    requireEdition3(clauseRange, "FFI unwind contracts");
+    consume();
     consume();
     if (atContextualKeyword("forbidden"))
     {
@@ -8468,7 +8423,7 @@ ast::AstNode* Parser::parseParameter()
     const bool parameterPack = atContextualKeyword("params");
     if (parameterPack)
     {
-        requireEdition3(consume().range(), "typed parameter packs");
+        consume();
     }
     // C4 "language references": `ref`/`out`/`in` before the type. The parameter's TYPE becomes a
     // pointer to what was written -- which is what a by-reference parameter actually receives,
@@ -8525,8 +8480,7 @@ ast::AstNode* Parser::parseParameter()
            peek().kind() == TokenKind::LeftParen)
     {
         const bool length = atContextualKeyword("length");
-        const SourceRange contractRange = consume().range();
-        requireEdition3(contractRange, "FFI parameter contracts");
+        consume();
         consume();
         if (length)
         {
@@ -8613,8 +8567,7 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::LeftBrace)) return parseBlock();
     if (atContextualKeyword("fp") && peek().kind() == TokenKind::LeftParen)
     {
-        const SourceRange clauseRange = consume().range();
-        requireEdition3(clauseRange, "scoped floating-point modes");
+        consume();
         consume();
         ast::FloatingPointModeSyntaxKind mode = ast::FloatingPointModeSyntaxKind::Inherit;
         if (atContextualKeyword("strict")) mode = ast::FloatingPointModeSyntaxKind::Strict;
@@ -8643,8 +8596,7 @@ ast::AstNode* Parser::parseStatement()
     if (atContextualKeyword("unsafe") &&
         (peek().kind() == TokenKind::LeftBrace || peek().kind() == TokenKind::LeftParen))
     {
-        const SourceRange unsafeRange = consume().range();
-        requireEdition3(unsafeRange, "unsafe blocks");
+        consume();
         std::string reason;
         if (consumeIf(TokenKind::LeftParen))
         {
@@ -8743,7 +8695,6 @@ ast::AstNode* Parser::parseStatement()
     if (atContextualKeyword("must_tail"))
     {
         const SourceRange attributeRange = consume().range();
-        requireEdition3(attributeRange, "must_tail returns");
         if (!at(TokenKind::KwReturn))
         {
             diagnostics_.report(
@@ -8769,7 +8720,6 @@ ast::AstNode* Parser::parseStatement()
     {
         const std::size_t beginIndex = index_;
         const SourceRange featureRange = consume().range();
-        requireEdition3(featureRange, "tuple deconstruction declarations");
         ast::AstNode* pattern = parseDeconstructionPattern();
         ast::AstNode* declaration = arena_.make<ast::AstNode>(
             ast::AstNodeKind::DeconstructionDeclarationStatement, featureRange);
@@ -9448,8 +9398,6 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
         (atContextualKeyword("pin") && peek().kind() == TokenKind::KwRaii);
     if (isPinned)
     {
-        requireEdition3(
-            current().range(), isPinnedReferenceSyntax ? "pin ref locals" : "pin raii locals");
         consume();
     }
     const bool isReferenceLocal = atContextualKeyword("ref") &&
@@ -9570,7 +9518,6 @@ ast::AstNode* Parser::parseAggregateInitializer()
         if (at(TokenKind::DotDot))
         {
             const SourceRange spread = consume().range();
-            requireEdition3(spread, "spread elements in generalized initializers");
             ast::AstNode* value = parseExpression();
             element = arena_.make<ast::AstNode>(
                 ast::AstNodeKind::SpreadElementExpression,
@@ -9581,8 +9528,7 @@ ast::AstNode* Parser::parseAggregateInitializer()
         else if (at(TokenKind::Identifier) && peek().kind() == TokenKind::Equal)
         {
             const std::string memberName(current().lexeme());
-            const SourceRange memberRange = consume().range();
-            requireEdition3(memberRange, "named members in generalized initializers");
+            consume();
             consume(); // '='
             element = at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression();
             if (element != nullptr) element->setArgumentName(memberName);
@@ -9658,7 +9604,6 @@ ast::AstNode* Parser::parseConditionalPatternStatement()
     {
         expectContextualKeyword("let", "'let'");
     }
-    requireEdition3(featureRange, "conditional patterns (if let, while let, and let else)");
 
     Pattern pattern = parsePattern(false);
     expect(TokenKind::Equal, "'=' between conditional pattern and source expression");
@@ -10806,7 +10751,6 @@ ast::AstNode* Parser::parseMatchStatement()
 
     const std::size_t beginIndex = index_;
     const lexer::Token& matchKeyword = consume();
-    requireEdition3(matchKeyword.range(), "match statement syntax");
     expect(TokenKind::LeftParen, "'(' after 'match'");
     ast::AstNode* governing = parseExpression();
     expect(TokenKind::RightParen, "')' after match governing expression");
@@ -11171,7 +11115,6 @@ ast::AstNode* Parser::parseMatchExpression()
 {
     const std::size_t beginIndex = index_;
     const lexer::Token& matchKeyword = consume();
-    requireEdition3(matchKeyword.range(), "match expression syntax");
     expect(TokenKind::LeftParen, "'(' after 'match'");
     ast::AstNode* governing = parseExpression();
     expect(TokenKind::RightParen, "')' after match governing expression");
@@ -11338,8 +11281,7 @@ ast::AstNode* Parser::parseMatchExpression()
 ast::AstNode* Parser::parseLoopExpression()
 {
     const std::size_t beginIndex = index_;
-    const lexer::Token& loopKeyword = consume();
-    requireEdition3(loopKeyword.range(), "loop expressions");
+    consume();
 
     std::string label;
     if (at(TokenKind::Identifier) && peek().kind() == TokenKind::LeftBrace)
@@ -11366,7 +11308,6 @@ ast::AstNode* Parser::parseComprehensionYieldStatement()
 {
     const std::size_t beginIndex = index_;
     const SourceRange yieldRange = consume().range();
-    requireEdition3(yieldRange, "comprehension yields");
     const ComprehensionContext& context = comprehensionContexts_.back();
 
     if (consumeIf(TokenKind::KwBreak))
@@ -11397,7 +11338,6 @@ ast::AstNode* Parser::parseComprehensionExpression()
 {
     const std::size_t beginIndex = index_;
     const SourceRange keywordRange = consume().range();
-    requireEdition3(keywordRange, "comprehension expressions");
     expect(TokenKind::LeftParen, "'(' after comprehend");
     ast::AstNode* builder = parseExpression();
     expect(TokenKind::RightParen, "')' after comprehension builder");
@@ -11668,14 +11608,13 @@ ast::AstNode* Parser::parseForeachStatement()
     //   foreach (ref T value in source)      // readonly alias
     //   foreach (ref mut T value in source)  // exclusive mutable alias
     //
-    // `ref`/`mut` stay contextual and edition-gated. The synthesized declaration below then
+    // `ref`/`mut` stay contextual. The synthesized declaration below then
     // travels through the ordinary reference-local pipeline, so addressability, exact type,
     // lifetime, exclusivity and LLVM pointer lowering are shared with source ref locals.
     const bool elementByReference = atContextualKeyword("ref");
     bool elementMutableReference = false;
     if (elementByReference)
     {
-        requireEdition3(current().range(), "foreach reference iteration");
         consume();
         if (atContextualKeyword("mut"))
         {
@@ -12123,7 +12062,6 @@ ast::AstNode* Parser::parseDeferStatement()
 {
     const std::size_t beginIndex = index_;
     const SourceRange deferRange = consume().range();
-    requireEdition3(deferRange, "defer statements");
 
     struct Capture final
     {
@@ -12349,13 +12287,12 @@ ast::AstNode* Parser::parseCatchClause()
         clause->setFlag(true);
     }
 
-    // Edition 3 catch filters are contextual so existing identifiers named `when` remain
+    // Catch filters are contextual so existing identifiers named `when` remain
     // source-compatible outside this exact position. Keep the predicate separate from the
     // handler body: first() is the body and second() is the optional boolean filter.
     if (atContextualKeyword("when"))
     {
-        const SourceRange whenRange = consume().range();
-        requireEdition3(whenRange, "catch filters");
+        consume();
         expect(TokenKind::LeftParen, "'(' after catch filter 'when'");
         clause->setSecond(parseExpression());
         expect(TokenKind::RightParen, "')' after catch filter expression");
@@ -12465,9 +12402,6 @@ ast::AstNode* Parser::parseAssignmentExpression()
     }
 
     const TokenKind operation = consume().kind();
-    if (operation == TokenKind::QuestionQuestionEqual)
-        requireEdition3(tokens_[index_ - 1].range(),
-            "the null-coalescing assignment operator '?' '?='");
     ast::AstNode* right = parseAssignmentExpression();
     ast::AstNode* node = arena_.make<ast::AstNode>(
         ast::AstNodeKind::AssignmentExpression,
@@ -12511,7 +12445,6 @@ ast::AstNode* Parser::parseNullCoalescingExpression()
     ast::AstNode* left = parseRangeExpression();
     if (!at(TokenKind::QuestionQuestion)) return left;
     const SourceRange operation = consume().range();
-    requireEdition3(operation, "the null-coalescing operator '?' '?'");
     ast::AstNode* right = parseNullCoalescingExpression();
     ast::AstNode* node = arena_.make<ast::AstNode>(
         ast::AstNodeKind::NullCoalescingExpression,
@@ -12522,7 +12455,7 @@ ast::AstNode* Parser::parseNullCoalescingExpression()
     return node;
 }
 
-// Edition 3 integer ranges are ordinary expressions as well as index operands. Keeping the
+// Integer ranges are ordinary expressions as well as index operands. Keeping the
 // operator below null-coalescing but above logical-or lets `foreach (... in begin..end)` reach the
 // same RangeExpression node that slicing already uses. Bracket parsing continues to handle the
 // fully open `[..]` spelling; this level admits an omitted endpoint only at a delimiter so it
@@ -12535,7 +12468,6 @@ ast::AstNode* Parser::parseRangeExpression()
     const lexer::Token& delimiter = consume();
     const SourceRange operation = delimiter.range();
     const bool inclusive = delimiter.kind() == TokenKind::DotDotEqual;
-    requireEdition3(operation, "range expressions");
     ast::AstNode* end = nullptr;
     if (!at(TokenKind::RightParen) && !at(TokenKind::RightBracket) &&
         !at(TokenKind::Comma) && !at(TokenKind::Semicolon))
@@ -12700,7 +12632,6 @@ ast::AstNode* Parser::parseLambdaExpression()
     std::string captureContract;
     if (consumeIf(TokenKind::LeftBracket))
     {
-        requireEdition3(tokens_[beginIndex].range(), "explicit lambda capture lists");
         captureContract = "captures:";
         std::unordered_set<std::string> captureNames;
         if (!at(TokenKind::RightBracket))
@@ -12785,7 +12716,6 @@ ast::AstNode* Parser::parseLambdaExpression()
     }
     if (at(TokenKind::Less))
     {
-        requireEdition3(current().range(), "generic lambdas");
         parseGenericParameterList(lambda);
     }
     std::vector<ast::AstNode*> parameters;
@@ -12835,7 +12765,6 @@ ast::AstNode* Parser::parseLambdaExpression()
         if (parameter == nullptr || parameter->typeSyntax() == nullptr ||
             parameter->typeSyntax()->baseName() != "auto")
             continue;
-        requireEdition3(parameter->range(), "auto generic-lambda parameters");
         const std::string name = "__lambda_auto_" + std::to_string(automaticOrdinal++);
         ast::GenericParameterSyntax inferred;
         inferred.name = name;
@@ -12965,7 +12894,6 @@ ast::AstNode* Parser::parseUnaryExpression()
     if (at(TokenKind::Caret))
     {
         const SourceRange start = consume().range();
-        requireEdition3(start, "the from-end index operator '^'");
         ast::AstNode* operand = parseUnaryExpression();
         ast::AstNode* node = arena_.make<ast::AstNode>(
             ast::AstNodeKind::FromEndExpression,
@@ -13496,7 +13424,6 @@ ast::AstNode* Parser::parsePostfixExpression()
                 if (intrinsic == "assert" || intrinsic == "unreachable" ||
                     intrinsic == "assume" || intrinsic == "panic")
                 {
-                    requireEdition3(call->range(), "the " + intrinsic + "() intrinsic");
                     call->setAuxiliaryText("builtin-" + intrinsic);
                 }
             }
@@ -13527,7 +13454,6 @@ ast::AstNode* Parser::parsePostfixExpression()
                     if (at(TokenKind::DotDot))
                     {
                         const SourceRange rangeToken = consume().range();
-                        requireEdition3(rangeToken, "range expressions");
                         ast::AstNode* rangeEnd = nullptr;
                         if (!at(TokenKind::Comma) && !at(TokenKind::RightBracket))
                             rangeEnd = parseAssignmentExpression();
@@ -13562,7 +13488,6 @@ ast::AstNode* Parser::parsePostfixExpression()
         if (at(TokenKind::QuestionDot))
         {
             const SourceRange operation = consume().range();
-            requireEdition3(operation, "null-conditional member access");
             if (!at(TokenKind::Identifier))
             {
                 expect(TokenKind::Identifier, "member name after '?.'");
@@ -13640,7 +13565,6 @@ ast::AstNode* Parser::parsePostfixExpression()
         if (at(TokenKind::Question) && !questionBeginsConditional())
         {
             const lexer::Token& operation = consume();
-            requireEdition3(operation.range(), "the Result propagation operator '?'");
             ast::AstNode* propagation = arena_.make<ast::AstNode>(
                 ast::AstNodeKind::ResultPropagationExpression,
                 SourceRange(expression->range().begin(), operation.range().end()));
@@ -13719,7 +13643,6 @@ bool Parser::questionBeginsConditional() const noexcept
 ast::AstNode* Parser::parseWithExpression(ast::AstNode* source)
 {
     const SourceRange keyword = consume().range();
-    requireEdition3(keyword, "with expressions");
     ast::AstNode* node = arena_.make<ast::AstNode>(
         ast::AstNodeKind::WithExpression, join(source->range(), keyword));
     node->setFirst(source);
@@ -13781,12 +13704,9 @@ ast::AstNode* Parser::parsePrimaryExpression()
         case TokenKind::FloatingLiteral: kind = ast::AstNodeKind::FloatingLiteralExpression; break;
         case TokenKind::CharacterLiteral: kind = ast::AstNodeKind::CharacterLiteralExpression; break;
         case TokenKind::StringLiteral:
-            if (token.lexeme().starts_with("\"\"\""))
-                requireEdition3(token.range(), "raw string literals");
             kind = ast::AstNodeKind::StringLiteralExpression;
             break;
         case TokenKind::InterpolatedStringLiteral:
-            requireEdition3(token.range(), "static string interpolation");
             kind = ast::AstNodeKind::InterpolatedStringExpression;
             break;
         case TokenKind::KwTrue:
@@ -13803,7 +13723,6 @@ ast::AstNode* Parser::parsePrimaryExpression()
             const SourceRange open = consume().range();
             if (at(TokenKind::RightParen))
             {
-                requireEdition3(open, "the unit tuple literal");
                 const SourceRange close = consume().range();
                 return arena_.make<ast::AstNode>(
                     ast::AstNodeKind::TupleExpression, join(open, close));
@@ -13811,7 +13730,6 @@ ast::AstNode* Parser::parsePrimaryExpression()
             ast::AstNode* expression = parseArgument();
             if (consumeIf(TokenKind::Comma))
             {
-                requireEdition3(open, "tuple literals and deconstruction targets");
                 ast::AstNode* tuple = arena_.make<ast::AstNode>(
                     ast::AstNodeKind::TupleExpression, open);
                 tuple->addChild(expression);
@@ -13995,8 +13913,7 @@ ast::AstNode* Parser::parsePrimaryExpression()
                         token.range().begin().fileId(), "<runtime-interpolation>", std::move(fragment));
                     lexer::Lexer fragmentLexer(fragmentSource, diagnostics_);
                     const std::vector<lexer::Token> fragmentTokens = fragmentLexer.lexAll();
-                    Parser fragmentParser(
-                        fragmentTokens, arena_, diagnostics_, knownTypes, languageEdition_);
+                    Parser fragmentParser(fragmentTokens, arena_, diagnostics_, knownTypes);
                     ast::AstNode* hole = fragmentParser.parseExpression();
                     if (!fragmentParser.at(TokenKind::EndOfFile))
                     {
