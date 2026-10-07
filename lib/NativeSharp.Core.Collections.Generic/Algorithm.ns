@@ -224,6 +224,28 @@ namespace NativeSharp.Core.Collections.Generic
             }
         }
 
+        // Stable insertion sort for small compiler and tooling tables. Equal elements keep their
+        // discovery order because the inner loop moves only strictly greater predecessors. The
+        // implementation is iterative, uses no auxiliary allocation and deliberately exposes its
+        // O(n^2) cost instead of pretending that the heap-based Sort overload is stable.
+        public static void StableSort<T>(Span<T> datos, Comparison<T> comparador)
+        {
+            int i = 1;
+            while (i < datos.Length())
+            {
+                var current = datos.UncheckedAt(i);
+                int destination = i;
+                while (destination > 0 &&
+                       comparador(current, datos.UncheckedAt(destination - 1)) < 0)
+                {
+                    datos.UncheckedSet(destination, datos.UncheckedAt(destination - 1));
+                    destination = destination - 1;
+                }
+                datos.UncheckedSet(destination, current);
+                i = i + 1;
+            }
+        }
+
         // Baja el elemento de `raiz` hasta que los dos hijos sean menores o iguales. `limite` es
         // cuantos elementos del principio siguen formando parte del monticulo -- lo demas ya esta
         // colocado al final y no se toca.
