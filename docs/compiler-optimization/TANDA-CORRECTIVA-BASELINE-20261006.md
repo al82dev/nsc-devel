@@ -142,4 +142,8 @@ precompiladas. Dos ediciones declaradas y contradictorias siguen produciendo
   decodificado, capacidades requeridas por una instalacion y productores legacy
   conocidos vuelven a ser contratos separados. Los seis tests dirigidos pasan
   juntos sin modificar consumidores historicos.
+- Tanda 6 terminada: ocho contratos unitarios de las rutas semanticas
+  reingenierizadas y el caso de conducta T37 pasan de forma dirigida en O0. Los
+  `error*.log` se confirmaron como artefactos de invocaciones negativas y no se
+  usaron como sustituto del resultado CTest.
 - No se ejecuto baseline ni minibaseline.
