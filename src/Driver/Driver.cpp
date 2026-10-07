@@ -2754,8 +2754,7 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
         0,
         metadata.moduleName,
         fileId,
-        true,
-        static_cast<language::LanguageEdition>(metadata.languageEdition));
+        true);
     std::vector<std::string> knownTypeNames;
     const auto appendKnownType = [&](const std::string &typeKey) {
         appendParserKnownTypeNames(metadata, typeKey, knownTypeNames);
@@ -2926,8 +2925,7 @@ bool verifyPrecompiledGenericTemplateSource(
         0,
         metadata.moduleName,
         fileId,
-        false,
-        static_cast<language::LanguageEdition>(metadata.languageEdition));
+        false);
     if (unit.lex(*file, diagnostics) && unit.parse(diagnostics, knownTypeNames)) return true;
 
     error = "generated precompiled public template surface is not valid NativeSharp source";

@@ -57,4 +57,14 @@ rechazo por manifiesto y obligaba a propagar un dato sin significado por cada un
 
 ## Verificación posterior al commit
 
-Pendiente de la reconstrucción limpia y la batería completa O0 con NSLink.
+### Intento 1: `e63eaa90c`
+
+- Corrida: `universal-o0-t03-20261007`.
+- La configuración limpia pasó.
+- La construcción no produjo `nsc.exe`; por tanto CTest, fixtures y triage no se ejecutaron.
+- Clang detectó cinco variables que sólo alimentaban al gate retirado.
+- Dos consumidores multilínea de `ProjectSyntaxUnit` en `Driver.cpp` todavía pasaban la edición histórica de
+  NSMETA al parser.
+- Se retiraron exclusivamente esos siete residuos; no se cambió semántica ni se amplió el alcance.
+
+Pendiente de un nuevo commit y de reiniciar desde cero la reconstrucción y la batería completa O0 con NSLink.

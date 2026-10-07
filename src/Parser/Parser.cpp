@@ -1633,7 +1633,7 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
         }
         else if (at(TokenKind::KwConst))
         {
-            const SourceRange feature = consume().range();
+            consume();
             syntax.kind = ast::GenericParameterSyntaxKind::Constant;
             syntax.constantType = parseType();
             if (syntax.constantType == nullptr) return false;
@@ -1660,7 +1660,7 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
         }
         else if (atContextualKeyword("pack"))
         {
-            const SourceRange feature = consume().range();
+            consume();
             if (consumeIf(TokenKind::KwConst))
             {
                 syntax.kind = ast::GenericParameterSyntaxKind::ConstantPack;
@@ -3286,7 +3286,6 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     }
     else if (atContextualKeyword("trait") && peek().kind() == TokenKind::Identifier)
     {
-        const SourceRange feature = current().range();
         if (isAbstract || isSealed || isStatic)
         {
             diagnostics_.report(
@@ -3299,7 +3298,6 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     }
     else if (atContextualKeyword("impl"))
     {
-        const SourceRange feature = current().range();
         if (accessibility != TokenKind::Invalid || isPartial || isAbstract || isSealed ||
             isStatic || isReadonlyType || isRecordStruct || isBorrowedView ||
             isCopyType || representation.has_value() || layoutPack.has_value() ||
@@ -13487,7 +13485,7 @@ ast::AstNode* Parser::parsePostfixExpression()
 
         if (at(TokenKind::QuestionDot))
         {
-            const SourceRange operation = consume().range();
+            consume();
             if (!at(TokenKind::Identifier))
             {
                 expect(TokenKind::Identifier, "member name after '?.'");
