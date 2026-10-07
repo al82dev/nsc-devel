@@ -48,11 +48,17 @@ Las consultas realizadas durante el analisis paralelo deben ser de solo lectura.
 
 ## Estado
 
-EN IMPLEMENTACION.
+LISTA.
 
 ## Evidencia
 
 - El target nuevo compilo correctamente.
 - La primera ejecucion detecto que el fixture consultaba identidades de declaracion sin el prefijo
   canonico `type:` exigido por `typeOrdinalForKey`; la implementacion no se modifico.
-- La correccion del fixture queda registrada antes de repetir la prueba puntual.
+- La correccion del fixture se registro antes de repetir la prueba puntual.
+- `cmake --build A:\nsc-devel\build-test-nslink --target
+  nsc_project_member_ownership_cache_tests --parallel 12`: correcto.
+- `A:\nsc-devel\build-test-nslink\tests\nsc_project_member_ownership_cache_tests.exe`:
+  `PASS: 8 checks`.
+- No se ejecuto CTest, baseline, minibaseline ni una optimizacion distinta de O0 para productos
+  NativeSharp.
