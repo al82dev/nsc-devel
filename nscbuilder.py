@@ -175,7 +175,13 @@ DEFAULT_NSLINK_CONFIGURATION = "Release"
 
 def nslink_executable(configuration: str) -> Path:
     normalized = "debug" if configuration.casefold() == "debug" else "release"
-    return DEFAULT_NSLINK_ROOT / "bin" / normalized / "nslink.exe"
+    installed_output = DEFAULT_NSLINK_ROOT / "bin" / normalized / "nslink.exe"
+    if installed_output.is_file():
+        return installed_output
+    legacy_output = DEFAULT_NSLINK_ROOT / f"build-{normalized}" / "bin" / "nslink.exe"
+    if legacy_output.is_file():
+        return legacy_output
+    return installed_output
 
 
 DEFAULT_NSLINK = nslink_executable(DEFAULT_NSLINK_CONFIGURATION)
@@ -5490,7 +5496,12 @@ class MainWindow(QMainWindow):
             Path(r"A:\nslink-devel\build-debug\bin\nslink.exe"),
             Path(r"A:\nslink-devel\build-release\bin\nslink.exe"),
         }
-        if Path(saved_nslink) == Path(legacy_nslink) or Path(saved_nslink) in legacy_build_outputs:
+        saved_nslink_path = Path(saved_nslink)
+        if (
+            saved_nslink_path == Path(legacy_nslink)
+            or saved_nslink_path in legacy_build_outputs
+            or not saved_nslink_path.is_file()
+        ):
             saved_nslink = str(selected_nslink_default)
         self.nslink_path.setText(saved_nslink)
         old_jobs = int(self.settings.value("jobs", min(os.cpu_count() or 4, 16)))

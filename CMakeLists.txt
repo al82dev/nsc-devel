@@ -21,17 +21,41 @@ option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
 option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 set(NSC_NSLINK_EXECUTABLE "" CACHE FILEPATH
     "NSLink executable used by generated NativeSharp build products")
+set(NSC_NSLINK_ROOT "" CACHE PATH
+    "NSLink source or installation root used to locate nslink.exe")
 if(NSC_NSLINK_EXECUTABLE STREQUAL "" AND DEFINED ENV{NSC_LINKER})
     set(NSC_NSLINK_EXECUTABLE "$ENV{NSC_LINKER}" CACHE FILEPATH
         "NSLink executable used by generated NativeSharp build products" FORCE)
 endif()
+if(NSC_NSLINK_EXECUTABLE STREQUAL "" AND DEFINED ENV{NSLINK_EXE})
+    set(NSC_NSLINK_EXECUTABLE "$ENV{NSLINK_EXE}" CACHE FILEPATH
+        "NSLink executable used by generated NativeSharp build products" FORCE)
+endif()
+if(NSC_NSLINK_ROOT STREQUAL "" AND DEFINED ENV{NSLINK_ROOT})
+    set(NSC_NSLINK_ROOT "$ENV{NSLINK_ROOT}" CACHE PATH
+        "NSLink source or installation root used to locate nslink.exe" FORCE)
+endif()
 if(NSC_NSLINK_EXECUTABLE STREQUAL "")
-    find_program(NSC_NSLINK_EXECUTABLE NAMES nslink)
+    get_filename_component(NSC_WORKSPACE_ROOT "${CMAKE_SOURCE_DIR}" DIRECTORY)
+    set(NSC_NSLINK_SEARCH_ROOTS "${NSC_WORKSPACE_ROOT}/nslink-devel")
+    if(NOT NSC_NSLINK_ROOT STREQUAL "")
+        list(PREPEND NSC_NSLINK_SEARCH_ROOTS "${NSC_NSLINK_ROOT}")
+    endif()
+    set(NSC_NSLINK_SEARCH_HINTS "")
+    foreach(NSC_NSLINK_SEARCH_ROOT IN LISTS NSC_NSLINK_SEARCH_ROOTS)
+        list(APPEND NSC_NSLINK_SEARCH_HINTS
+            "${NSC_NSLINK_SEARCH_ROOT}"
+            "${NSC_NSLINK_SEARCH_ROOT}/bin/release"
+            "${NSC_NSLINK_SEARCH_ROOT}/bin/debug"
+            "${NSC_NSLINK_SEARCH_ROOT}/build-release/bin"
+            "${NSC_NSLINK_SEARCH_ROOT}/build-debug/bin")
+    endforeach()
+    find_program(NSC_NSLINK_EXECUTABLE NAMES nslink HINTS ${NSC_NSLINK_SEARCH_HINTS})
 endif()
 if(NOT NSC_NSLINK_EXECUTABLE OR NOT EXISTS "${NSC_NSLINK_EXECUTABLE}")
     message(FATAL_ERROR
         "NSLink is required to build NativeSharp-generated products; set "
-        "NSC_NSLINK_EXECUTABLE to nslink.exe")
+        "NSC_NSLINK_EXECUTABLE to nslink.exe or NSC_NSLINK_ROOT to its root")
 endif()
 set(NSC_HOST_LINKAGE "STATIC" CACHE STRING
     "LLVM linkage for nsc.exe: STATIC (distributable) or DYNAMIC (development only)")
