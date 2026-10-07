@@ -44,7 +44,7 @@ std::filesystem::path writeProject(
             "<PanicHandler>" + std::string(panicHandler) + "</PanicHandler>");
     writeFile(project,
         "<Project><PropertyGroup><Name>" + std::string(name) +
-        "</Name><Language>3</Language><OutputType>Exe</OutputType>"
+        "</Name><OutputType>Exe</OutputType>"
         + panicProperties +
         "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
         "</ItemGroup></Project>");
@@ -402,8 +402,8 @@ namespace TypedThrows
             typed.mir.find("throws=type:TypedThrows::TypedThrows.Error") != std::string::npos &&
             typed.mir.find("throws=type:TypedThrows::TypedThrows.ParseError") != std::string::npos &&
             typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=true exhaustive=false") != std::string::npos &&
-            typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=false exhaustive=true") != std::string::npos,
-        "throws E and source-ordered filtered catches retain exact error identity in MIR 1.29 (" +
+            typed.mir.find("pattern=type:TypedThrows::TypedThrows.Error filter=false") != std::string::npos,
+        "throws E and source-ordered filtered catches retain exact error identity in MIR (" +
             typed.error + typed.diagnostics + typed.mir + ")");
     executionDiagnostic.clear();
     tests.expect(
@@ -696,7 +696,16 @@ public class Program
             std::string(name) + " is rejected by the T07 contract (" +
                 evidence.error + evidence.diagnostics + ")");
     };
-    expectRejected("UnhandledCall", R"NS(
+    const auto expectAccepted = [&](std::string_view name, std::string_view source)
+    {
+        const std::filesystem::path projectPath = writeProject(root / std::string(name), name, source);
+        const CompilationEvidence evidence = compileMir(projectPath);
+        tests.expect(
+            evidence.succeeded,
+            std::string(name) + " compiles without forcing typed-exception handling (" +
+                evidence.error + evidence.diagnostics + ")");
+    };
+    expectAccepted("UnhandledCall", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Program
@@ -704,13 +713,13 @@ public class Program
     private static int Risk() throws Error { throw new Error(); }
     public static int Main() { return Risk(); }
 }
-)NS", "NS3071");
-    expectRejected("UnhandledThrow", R"NS(
+)NS");
+    expectAccepted("UnhandledThrow", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Program { public static int Main() { throw new Error(); } }
-)NS", "NS3071");
-    expectRejected("UnhandledPropertyGet", R"NS(
+)NS");
+    expectAccepted("UnhandledPropertyGet", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Source
@@ -721,8 +730,8 @@ public class Program
 {
     public static int Main() { owned Source source = new Source(); return source.Value; }
 }
-)NS", "NS3071");
-    expectRejected("UnhandledIndexerSet", R"NS(
+)NS");
+    expectAccepted("UnhandledIndexerSet", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Source
@@ -737,7 +746,7 @@ public class Program
 {
     public static int Main() { owned Source source = new Source(); source[0] = 1; return 42; }
 }
-)NS", "NS3071");
+)NS");
     expectRejected("DelegateMismatch", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
@@ -762,7 +771,7 @@ public class Error : NativeSharp.Core.Exception {}
 public extern C delegate int NativeWork() throws Error;
 public class Program { public static int Main() { return 0; } }
 )NS", "cannot declare throws");
-    expectRejected("UnrelatedCatchPattern", R"NS(
+    expectAccepted("UnrelatedCatchPattern", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Other : NativeSharp.Core.Exception {}
@@ -776,8 +785,8 @@ public class Program
         return 42;
     }
 }
-)NS", "cannot match any declared error from the protected region");
-    expectRejected("NonExhaustiveCatch", R"NS(
+)NS");
+    expectAccepted("NonExhaustiveCatch", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Narrow : Error {}
@@ -791,7 +800,7 @@ public class Program
         return 42;
     }
 }
-)NS", "NS3071");
+)NS");
     expectRejected("CatchFilterType", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
@@ -898,13 +907,14 @@ public class Program
 }
 )NS", "whose lifetime ends when the loop expression exits");
 
-    const std::filesystem::path edition2 = root / "edition2";
-    const std::filesystem::path edition2Project = edition2 / "Edition2Identifier.nsproj";
-    writeFile(edition2Project,
-        "<Project><PropertyGroup><Name>Edition2Identifier</Name><Language>2</Language>"
+    const std::filesystem::path contextualIdentifiers = root / "contextual-identifiers";
+    const std::filesystem::path contextualProject =
+        contextualIdentifiers / "ContextualIdentifiers.nsproj";
+    writeFile(contextualProject,
+        "<Project><PropertyGroup><Name>ContextualIdentifiers</Name>"
         "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
         "<Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
-    writeFile(edition2 / "Main.ns", R"NS(
+    writeFile(contextualIdentifiers / "Main.ns", R"NS(
 public class Program
 {
     private static int throws() { return 42; }
@@ -914,15 +924,15 @@ public class Program
 )NS");
     executionDiagnostic.clear();
     tests.expect(
-        compileAndRun(edition2Project, 42, executionDiagnostic),
-        "throws and match remain contextual keywords and preserve edition-2 identifiers (" +
+        compileAndRun(contextualProject, 42, executionDiagnostic),
+        "throws and match remain contextual identifiers without an edition gate (" +
             executionDiagnostic + ")");
 
     const std::filesystem::path producer = root / "producer";
     const std::filesystem::path producerProject = producer / "ThrowsApi.nsproj";
     const std::filesystem::path producerLibrary = producer / "ThrowsApi.lib";
     writeFile(producerProject,
-        "<Project><PropertyGroup><Name>ThrowsApi</Name><Language>3</Language>"
+        "<Project><PropertyGroup><Name>ThrowsApi</Name>"
         "<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>"
         "<Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(producer / "Api.ns", R"NS(
@@ -1018,7 +1028,7 @@ namespace ThrowsApi
     const std::filesystem::path consumer = root / "consumer";
     const std::filesystem::path consumerProject = consumer / "ThrowsConsumer.nsproj";
     writeFile(consumerProject,
-        "<Project><PropertyGroup><Name>ThrowsConsumer</Name><Language>3</Language>"
+        "<Project><PropertyGroup><Name>ThrowsConsumer</Name>"
         "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
         "<Compile Include=\"**/*.ns\" /><LibraryReference Include=\"" +
         producerLibrary.generic_string() + "\" /></ItemGroup></Project>");
