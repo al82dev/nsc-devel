@@ -67,6 +67,35 @@ Validacion correctiva de una optimizacion y refactor no funcional.
 - Cualquier fallo fuera del alcance queda demostrado con evidencia reproducible; no se parchea su consumidor.
 - El resultado se incorpora a este documento mediante un commit editorial separado.
 
-## Estado anterior a la ejecucion
+## Primera ejecucion y defecto de preparacion
 
-PENDIENTE DE EJECUCION. Este commit fija el alcance antes de construir o probar.
+La corrida `20261007-004905-ccdf8cf7` uso el binario correcto, hash de build
+`9ca1a9fa2adcd124`, pero omitio emitir `NativeSharpCore.lib` en el prefijo temporal. El
+resultado 89/99 no era una medida valida de regresiones: nueve casos terminaron antes de leer
+fuentes con el mismo diagnostico de biblioteca ausente. El decimo fallo fue `c23`, salida 8.
+
+La omision no se corrigio en pruebas, proyectos ni fuentes. La tanda 23 fijo y ejecuto la
+precondicion A-local que ya habia usado el corte anterior.
+
+## Resultado integral corregido
+
+- Corrida: `A:\nsc-devel\_nscbuilder\history\20261007-005749-2768a853`.
+- Compilador: prefijo temporal de `A:`, build `9ca1a9fa2adcd124`.
+- Enlazador: `A:\nslink-devel\bin\release\nslink.exe`.
+- Perfil: exclusivamente `-O0`.
+- Casos totales: 99.
+- Casos correctos: 98.
+- Bug triage: 9 de 9 correctos.
+- Fallos atribuibles a NSC dentro del rango correctivo: 0.
+- Baseline, minibaseline, CTest y O1/O2/O3: no ejecutados.
+- `C:`: no escrito ni instalado.
+
+El unico fallo fue nuevamente `cc1_c23_views_and_lifetimes`, salida 8 frente a 42. La evidencia
+de la tanda 17 demuestra que las tres operaciones fuera de rango se emiten con sus regiones de
+excepcion, pero las fuentes protegidas de Core no lanzan. Esa conducta procede de `9232bcfc0`,
+fuera del rango de method bodies/construction, y no puede corregirse alterando NSC o la fixture.
+
+## Estado
+
+VERIFICADA DENTRO DEL ALCANCE. La bateria integral O0 no encontro regresiones de NSC en el rango
+correctivo. El resultado no es baseline ni certificacion general.
