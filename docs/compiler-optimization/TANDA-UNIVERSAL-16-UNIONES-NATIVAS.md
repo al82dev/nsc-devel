@@ -23,5 +23,8 @@ DLL y consumo cross-project. El nombre histórico del CTest no cambia.
 
 ## Validación dirigida
 
-Pendiente después del commit: `nsc.ns3.t03.c-unions` en O0. No se ejecuta baseline,
-certificación, promoción ni matriz O1/O2/O3.
+`nsc.ns3.t03.c-unions`: **PASSED**, 8/8 comprobaciones en O0. Pasaron acceso
+directo, reinterpretación, joins, copia, inicialización, publicación DLL/NSMETA,
+encabezado C y consumo cross-project.
+
+No se ejecutó baseline, certificación, promoción ni matriz O1/O2/O3.
