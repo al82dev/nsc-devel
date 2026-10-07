@@ -1063,44 +1063,35 @@ bool ProjectMemberModel::typeTransitivelyHasCustomDestructor(std::string_view ty
 {
     if (nameLookup_ == nullptr) return false;
 
-    std::unordered_set<std::size_t> visiting;
-    std::function<bool(std::string_view)> hasDestructor =
-        [&](std::string_view candidate) -> bool
+    std::vector<std::string> pending{std::string(typeKey)};
+    std::unordered_set<std::size_t> visited;
+    while (!pending.empty())
     {
+        std::string candidate = std::move(pending.back());
+        pending.pop_back();
         if (const std::optional<std::vector<std::string>> tuple =
                 ProjectTypeConversion::tupleElementTypeKeys(candidate))
-            return std::ranges::any_of(*tuple, [&](const std::string& element)
-            {
-                return hasDestructor(element);
-            });
-        std::string current(candidate);
-        while (const std::optional<std::string> element = fixedArrayElementTypeKey(current))
-            current = *element;
-        const std::optional<std::size_t> ordinal = typeOrdinalForKey(current);
+        {
+            pending.insert(pending.end(), tuple->begin(), tuple->end());
+            continue;
+        }
+        while (const std::optional<std::string> element = fixedArrayElementTypeKey(candidate))
+            candidate = *element;
+        const std::optional<std::size_t> ordinal = typeOrdinalForKey(candidate);
         if (!ordinal.has_value() ||
             nameLookup_->namedTypes()[*ordinal].kind != NamedTypeDeclarationKind::Struct)
-            return false;
-        if (!visiting.insert(*ordinal).second) return false;
+            continue;
+        if (!visited.insert(*ordinal).second) continue;
         for (const std::size_t memberOrdinal : membersByType_[*ordinal])
         {
             if (memberOrdinal >= members_.size()) continue;
             const ClassMemberSymbol& member = members_[memberOrdinal];
-            if (member.kind == ClassMemberKind::Destructor)
-            {
-                visiting.erase(*ordinal);
-                return true;
-            }
-            if (member.kind == ClassMemberKind::Field && !member.isStatic &&
-                hasDestructor(member.declaredTypeKey))
-            {
-                visiting.erase(*ordinal);
-                return true;
-            }
+            if (member.kind == ClassMemberKind::Destructor) return true;
+            if (member.kind == ClassMemberKind::Field && !member.isStatic)
+                pending.push_back(member.declaredTypeKey);
         }
-        visiting.erase(*ordinal);
-        return false;
-    };
-    return hasDestructor(typeKey);
+    }
+    return false;
 }
 
 bool ProjectMemberModel::typeRequiresValueDrop(std::string_view typeKey) const
@@ -1111,41 +1102,34 @@ bool ProjectMemberModel::typeRequiresValueDrop(std::string_view typeKey) const
 
 bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) const
 {
-    if (typeKey.empty() || typeKey == "<error>" || typeKey == "builtin:void") return false;
-    if (language::isFunctionTypeIdentity(typeKey)) return true;
-    if (typeKey.starts_with("builtin:") || typeKey.ends_with("*") || typeKey.ends_with("[]"))
-        return true;
-    if (const std::optional<std::vector<std::string>> tuple =
-            ProjectTypeConversion::tupleElementTypeKeys(typeKey))
-        return std::ranges::all_of(*tuple, [&](const std::string& element)
-        {
-            return typeIsImplicitlyCopyable(element);
-        });
-    if (const std::optional<std::string> element = fixedArrayElementTypeKey(typeKey))
-        return typeIsImplicitlyCopyable(*element);
-    if (nameLookup_ == nullptr) return false;
-
-    std::unordered_set<std::size_t> visiting;
-    std::function<bool(std::string_view)> copyable = [&](std::string_view candidate) -> bool
+    std::vector<std::string> pending{std::string(typeKey)};
+    std::unordered_set<std::size_t> visited;
+    while (!pending.empty())
     {
+        std::string candidate = std::move(pending.back());
+        pending.pop_back();
         if (candidate.empty() || candidate == "<error>" || candidate == "builtin:void")
             return false;
-        if (language::isFunctionTypeIdentity(candidate)) return true;
+        if (language::isFunctionTypeIdentity(candidate)) continue;
         if (candidate.starts_with("builtin:") || candidate.ends_with("*") ||
             candidate.ends_with("[]"))
-            return true;
+            continue;
         if (const std::optional<std::vector<std::string>> tuple =
                 ProjectTypeConversion::tupleElementTypeKeys(candidate))
-            return std::ranges::all_of(*tuple, [&](const std::string& element)
-            {
-                return copyable(element);
-            });
+        {
+            pending.insert(pending.end(), tuple->begin(), tuple->end());
+            continue;
+        }
         if (const std::optional<std::string> element = fixedArrayElementTypeKey(candidate))
-            return copyable(*element);
+        {
+            pending.push_back(*element);
+            continue;
+        }
+        if (nameLookup_ == nullptr) return false;
         const std::optional<std::size_t> ordinal = typeOrdinalForKey(candidate);
         if (!ordinal.has_value()) return false;
         const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[*ordinal];
-        if (declaration.kind != NamedTypeDeclarationKind::Struct) return true;
+        if (declaration.kind != NamedTypeDeclarationKind::Struct) continue;
 
         const std::string_view markers = declaration.syntax != nullptr
             ? std::string_view(declaration.syntax->auxiliaryText()) : std::string_view{};
@@ -1154,42 +1138,48 @@ bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) cons
         if (edition3Value && !explicitCopy) return false;
         // Recursive by-value aggregates are rejected by layout. Returning true at the recursive
         // edge avoids manufacturing a second diagnostic while the outer fields are inspected.
-        if (!visiting.insert(*ordinal).second) return true;
+        if (!visited.insert(*ordinal).second) continue;
         for (const std::size_t memberOrdinal : membersByType_[*ordinal])
         {
             if (memberOrdinal >= members_.size()) continue;
             const ClassMemberSymbol& field = members_[memberOrdinal];
             if (field.kind != ClassMemberKind::Field || field.isStatic || field.isConst) continue;
-            if (field.declaredOwnership == sema::OwnershipKind::Owned ||
-                !copyable(field.declaredTypeKey))
-            {
-                visiting.erase(*ordinal);
-                return false;
-            }
+            if (field.declaredOwnership == sema::OwnershipKind::Owned) return false;
+            pending.push_back(field.declaredTypeKey);
         }
-        visiting.erase(*ordinal);
-        return true;
-    };
-    return copyable(typeKey);
+    }
+    return true;
 }
 
 bool ProjectMemberModel::typeIsMoveOnly(std::string_view typeKey) const
 {
-    if (typeKey.empty() || typeKey == "<error>" || typeKey == "builtin:void" ||
-        typeKey.starts_with("builtin:") || typeKey.ends_with("*") || typeKey.ends_with("[]"))
-        return false;
-    if (const std::optional<std::vector<std::string>> tuple =
-            ProjectTypeConversion::tupleElementTypeKeys(typeKey))
-        return std::ranges::any_of(*tuple, [&](const std::string& element)
+    std::vector<std::string> pending{std::string(typeKey)};
+    while (!pending.empty())
+    {
+        std::string candidate = std::move(pending.back());
+        pending.pop_back();
+        if (candidate.empty() || candidate == "<error>" || candidate == "builtin:void" ||
+            candidate.starts_with("builtin:") || candidate.ends_with("*") ||
+            candidate.ends_with("[]"))
+            continue;
+        if (const std::optional<std::vector<std::string>> tuple =
+                ProjectTypeConversion::tupleElementTypeKeys(candidate))
         {
-            return typeIsMoveOnly(element);
-        });
-    if (const std::optional<std::string> element = fixedArrayElementTypeKey(typeKey))
-        return typeIsMoveOnly(*element);
-    const std::optional<std::size_t> ordinal = typeOrdinalForKey(typeKey);
-    return ordinal.has_value() && nameLookup_ != nullptr &&
-        nameLookup_->namedTypes()[*ordinal].kind == NamedTypeDeclarationKind::Struct &&
-        !typeIsImplicitlyCopyable(typeKey);
+            pending.insert(pending.end(), tuple->begin(), tuple->end());
+            continue;
+        }
+        if (const std::optional<std::string> element = fixedArrayElementTypeKey(candidate))
+        {
+            pending.push_back(*element);
+            continue;
+        }
+        const std::optional<std::size_t> ordinal = typeOrdinalForKey(candidate);
+        if (ordinal.has_value() && nameLookup_ != nullptr &&
+            nameLookup_->namedTypes()[*ordinal].kind == NamedTypeDeclarationKind::Struct &&
+            !typeIsImplicitlyCopyable(candidate))
+            return true;
+    }
+    return false;
 }
 
 std::span<const std::size_t> ProjectMemberModel::promotedMembersOfType(
