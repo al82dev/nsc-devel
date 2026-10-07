@@ -2,6 +2,57 @@
 
 ## SCOPE LOCK
 
+### Enmienda funcional autorizada el 6 de octubre de 2026
+
+Esta enmienda reemplaza exclusivamente las reglas anteriores que conservaban
+ediciones de lenguaje, exigencias globales de `unsafe`, movimiento obligatorio,
+excepciones verificadas o validacion integral externa. El resto del historial de
+este documento se conserva como evidencia de la regresion que condujo a la
+decision actual.
+
+- Objetivo autorizado: convertir NativeSharp en un unico lenguaje acumulativo,
+  sin semantica seleccionada por `<Language>`, sin edicion publicada en NSMETA y
+  sin obligacion de usar `unsafe`, `move`, `copy`, `throws`, `try` o `catch`.
+- Naturaleza: cambio funcional deliberado del contrato interno previo a la
+  primera publicacion, seguido de correccion integral de regresiones.
+- Sintaxis nueva autorizada: `static_cast<T>(value)`,
+  `dynamic_cast<T>(value)` y `reinterpret_cast<T>(value)` con semanticas
+  independientes y diagnosticos propios.
+- Compatibilidad de proyectos: los proyectos nuevos no requieren ni emiten
+  `<Language>`; un campo heredado, si existe, se acepta y se ignora sin alterar
+  sintaxis, semantica, metadata, ABI ni diagnosticos.
+- Compatibilidad de metadata: NSMETA puede conservar una version estructural
+  interna para seleccionar su decodificador, pero no publica ni consume una
+  edicion del lenguaje y nunca rechaza una fuente por esa etiqueta.
+- Semantica de ausencia: un programa que no use casts explicitos, ownership
+  optativo ni excepciones conserva la semantica historica de valores copiables,
+  llamadas ordinarias y acceso nativo directo.
+- Archivos permitidos: productores del compilador bajo `include/` y `src/`,
+  infraestructura y pruebas bajo `tests/` y `cmake/` que afirmen directamente
+  el contrato retirado, y documentacion de la serie bajo
+  `docs/compiler-optimization/`.
+- Pruebas que pueden modificarse: unicamente pruebas creadas para exigir una
+  edicion, `unsafe`, movimiento/copia forzados o propagacion obligatoria de
+  `throws`. Su reemplazo debe comprobar la nueva convencion, no relajar una
+  regresion no relacionada.
+- Superficies protegidas: todas las demas pruebas historicas, fixtures,
+  resultados, ABI, backend no relacionado, runtime, bibliotecas, bindings,
+  Saru, instalaciones y repositorios fuera de `A:\nsc-devel`.
+- Acciones prohibidas: tocar o instalar en `C:`, ejecutar baseline o
+  minibaseline, ejecutar O1/O2/O3, adaptar consumidores externos, usar agentes
+  paralelos, introducir recursión o implementar features ajenos.
+- Validacion obligatoria: despues de cada cambio coherente se reconstruye desde
+  fuentes en `A:` y se ejecuta la bateria CTest completa en O0, usando NSLink
+  para los artefactos NativeSharp generados. Una comprobacion puntual no cierra
+  una tanda.
+- Commits: cada unidad logica se entrega en un commit pequeno con Markdown
+  editorial propio; el archivo ajeno `_tmp_strip_saru_exceptions.py` permanece
+  sin tocar ni versionar.
+- Criterio de cierre: cero ramas operativas por edicion, cero exigencias de
+  `unsafe`, casts diferenciados implementados, valores ordinarios no consumidos
+  implicitamente, excepciones optativas, proyectos y NSMETA sin contrato de
+  edicion y bateria completa O0 en cero fallos.
+
 - Objetivo autorizado: auditar las 234 manifestaciones del reporte posterior a
   la reingenieria semantica, agruparlas por productor comun y corregirlas hacia
   adelante sin retirar las mejoras de rendimiento.
