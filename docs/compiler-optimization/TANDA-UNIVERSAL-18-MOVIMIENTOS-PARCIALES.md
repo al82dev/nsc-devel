@@ -22,5 +22,7 @@ contrato de seguridad, pero ahora la capacidad move-only nace de la representaci
 
 ## Validación dirigida
 
-Pendiente después del commit: `nsc.ns3.t06.partial-moves` en O0. No se ejecuta
-baseline, certificación, promoción ni instalación.
+- Construcción dirigida: `nsc_ns3_t06_partial_move_tests`, correcta.
+- CTest: `nsc.ns3.t06.partial-moves`, `1/1` correcto en `0.98 s`.
+- Linker de productos NativeSharp: `C:\native-sharp\bin\nslink.exe`.
+- No se ejecutó baseline, certificación, promoción ni instalación.
