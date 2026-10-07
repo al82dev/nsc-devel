@@ -28,8 +28,17 @@ declaracion sin uso.
 - `docs/compiler-optimization/TANDA-UNIVERSAL-28-STRUCT-CONSTRAINT-CONTRACT.md`
   - Registra causa, cobertura complementaria y limites.
 
-## Verificacion pendiente del commit
+## Evidencia posterior al commit
 
-- Reconstruir `nsc_cc1_correctness_tests`.
-- Ejecutar las 684 pruebas completas configuradas con O0 y NSLink.
-- Confirmar que CC1 y T04 declarative constraints pasan juntos.
+- Se reconstruyeron `nsc_cc1_correctness_tests` y
+  `nsc_ns3_t04_declarative_constraint_tests`.
+- Se ejecutaron las 684 pruebas existentes con O0 y
+  `C:\native-sharp\bin\nslink.exe`; no se ejecuto baseline ni instalacion.
+- Resultado global: 598 pruebas pasaron y 86 fallaron en 90.11 segundos.
+- `nsc.cc1.correctness` paso sus 495 checks.
+- `nsc.ns3.t04.declarative-constraints` paso.
+
+## Conclusion
+
+El caso historico ahora protege la capacidad implementada y la matriz T04 conserva las negativas
+reales. La tanda queda verificada y cerrada.
