@@ -7,10 +7,10 @@ objeto entregado por el llamador.
 
 ## Causa confirmada
 
-`ProjectReferenceEscapeEvaluator` sólo conservaba la procedencia de un acceso a
-miembro cuando el receptor tenía tipo struct. En `instance->VTable = table`, el
-receptor tiene tipo `RawComInterface*`; el evaluador perdía el ordinal de `instance`
-y clasificaba el destino como almacenamiento externo global.
+El parser normaliza `instance->VTable` como `(*instance).VTable`. El acceso al miembro
+sí seguía el struct sintetizado, pero el evaluador de `*` sólo reconocía arreglos de
+longitud variable. Para cualquier otro puntero devolvía almacenamiento externo sin
+procedencia; así perdía el ordinal de `instance` y clasificaba el destino como global.
 
 La pérdida convertía el resumen de `table` en `Global`. Después, una llamada válida
 con dos objetos del mismo frame era rechazada con `NS3020` aunque ninguno abandonara
@@ -18,7 +18,8 @@ el llamador.
 
 ## Implementación
 
-- Se agregó una continuación iterativa para miembros accedidos mediante puntero.
+- Se agregó una continuación iterativa para obtener la procedencia del pointee en `*`.
+- La misma ruta cubre `p->campo` y su forma normalizada `(*p).campo`.
 - Si el receptor es un parámetro puntero, su pointee se conserva como almacenamiento
   externo asociado a ese parámetro.
 - La asignación entre parámetros se clasifica como `CallerOwned`, no `Global`.

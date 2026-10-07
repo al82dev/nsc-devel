@@ -1,7 +1,6 @@
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
 
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
-#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -103,7 +102,7 @@ void ProjectReferenceEscapeEvaluator::startNode(
             startMatch(expression, next, result, continuations);
             return;
         case ast::AstNodeKind::MemberExpression:
-            startMember(expression, next, result, continuations);
+            startMember(expression, next, result);
             return;
         case ast::AstNodeKind::IndexExpression:
             startIndex(expression, next, result);
@@ -117,7 +116,7 @@ void ProjectReferenceEscapeEvaluator::startNode(
     if (expression->kind() == ast::AstNodeKind::UnaryExpression &&
         expression->tokenKind() == lexer::TokenKind::Star)
     {
-        startDereference(expression, result);
+        startDereference(expression, next, result, continuations);
         return;
     }
     next = expression->first();
@@ -187,8 +186,7 @@ void ProjectReferenceEscapeEvaluator::startMatch(
 void ProjectReferenceEscapeEvaluator::startMember(
     const ast::AstNode* expression,
     const ast::AstNode*& next,
-    MethodEscapeOrigin& result,
-    std::vector<ReferenceEscapeEvaluationFrame>& continuations) const
+    MethodEscapeOrigin& result) const
 {
     const ast::AstNode* receiver = expression->first();
     if (receiver != nullptr &&
@@ -198,19 +196,7 @@ void ProjectReferenceEscapeEvaluator::startMember(
         result = {MethodEscapeOriginKind::CurrentReceiver, std::nullopt, std::nullopt, "this"};
         return;
     }
-    const std::string_view receiverType = typeKeyOf(receiver);
-    if (model_.typeKeyIsStruct(receiverType))
-    {
-        next = receiver;
-        return;
-    }
-    if (!ProjectTypeConversion::isPointer(receiverType)) return;
-
-    ReferenceEscapeEvaluationFrame frame;
-    frame.kind = ReferenceEscapeContinuationKind::PointerMember;
-    frame.syntax = receiver;
-    pushContinuation(std::move(frame), continuations);
-    next = receiver;
+    if (model_.typeKeyIsStruct(typeKeyOf(receiver))) next = receiver;
 }
 
 void ProjectReferenceEscapeEvaluator::startIndex(
@@ -270,14 +256,24 @@ void ProjectReferenceEscapeEvaluator::startCall(
 
 void ProjectReferenceEscapeEvaluator::startDereference(
     const ast::AstNode* expression,
-    MethodEscapeOrigin& result) const
+    const ast::AstNode*& next,
+    MethodEscapeOrigin& result,
+    std::vector<ReferenceEscapeEvaluationFrame>& continuations) const
 {
     const std::optional<std::size_t> vla =
         model_.variableArrayRootLocalOfExpression(expression->first(), scopeOrdinal_);
-    if (!vla.has_value()) return;
-    result = {MethodEscapeOriginKind::VariableLengthArray, vla,
-        *vla < model_.locals_.size()
-            ? std::optional<std::size_t>(model_.locals_[*vla].scopeOrdinal) : std::nullopt, {}};
+    if (vla.has_value())
+    {
+        result = {MethodEscapeOriginKind::VariableLengthArray, vla,
+            *vla < model_.locals_.size()
+                ? std::optional<std::size_t>(model_.locals_[*vla].scopeOrdinal) : std::nullopt, {}};
+        return;
+    }
+    ReferenceEscapeEvaluationFrame frame;
+    frame.kind = ReferenceEscapeContinuationKind::PointerPointee;
+    frame.syntax = expression->first();
+    pushContinuation(std::move(frame), continuations);
+    next = expression->first();
 }
 
 void ProjectReferenceEscapeEvaluator::resume(
@@ -286,7 +282,7 @@ void ProjectReferenceEscapeEvaluator::resume(
     std::vector<ReferenceEscapeEvaluationFrame>& continuations) const
 {
     ReferenceEscapeEvaluationFrame& frame = continuations.back();
-    if (frame.kind == ReferenceEscapeContinuationKind::PointerMember)
+    if (frame.kind == ReferenceEscapeContinuationKind::PointerPointee)
     {
         if (result.kind == MethodEscapeOriginKind::CurrentFrameParameter)
             result.kind = MethodEscapeOriginKind::ExternalStorage;

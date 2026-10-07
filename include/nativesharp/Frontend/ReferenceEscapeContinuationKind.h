@@ -6,6 +6,6 @@ enum class ReferenceEscapeContinuationKind
 {
     MatchArms,
     CallArguments,
-    PointerMember
+    PointerPointee
 };
 }

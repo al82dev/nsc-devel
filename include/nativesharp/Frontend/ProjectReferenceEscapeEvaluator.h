@@ -42,8 +42,7 @@ private:
     void startMember(
         const ast::AstNode* expression,
         const ast::AstNode*& next,
-        MethodEscapeOrigin& result,
-        std::vector<ReferenceEscapeEvaluationFrame>& continuations) const;
+        MethodEscapeOrigin& result) const;
     void startIndex(
         const ast::AstNode* expression,
         const ast::AstNode*& next,
@@ -52,7 +51,11 @@ private:
         const ast::AstNode* expression,
         const ast::AstNode*& next,
         std::vector<ReferenceEscapeEvaluationFrame>& continuations) const;
-    void startDereference(const ast::AstNode* expression, MethodEscapeOrigin& result) const;
+    void startDereference(
+        const ast::AstNode* expression,
+        const ast::AstNode*& next,
+        MethodEscapeOrigin& result,
+        std::vector<ReferenceEscapeEvaluationFrame>& continuations) const;
     void resume(
         const ast::AstNode*& next,
         MethodEscapeOrigin& result,
