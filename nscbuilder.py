@@ -2267,6 +2267,7 @@ class PipelineWorker(QObject):
             "-DNSC_WARNINGS_AS_ERRORS=ON",
             f"-DNSC_HOST_LINKAGE={self.plan.host_linkage}",
             f"-DNSC_HOST_OPTIMIZATION={self.plan.host_optimization}",
+            f"-DNSC_NSLINK_EXECUTABLE={Path(self.plan.nslink_exe).resolve().as_posix()}",
         ]
         # Always write the cache entry, including the empty value. Otherwise a build directory
         # previously used for a reproducible baseline silently keeps its fixed identity when it

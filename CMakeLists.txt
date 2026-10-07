@@ -19,6 +19,20 @@ endif()
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
 option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+set(NSC_NSLINK_EXECUTABLE "" CACHE FILEPATH
+    "NSLink executable used by generated NativeSharp build products")
+if(NSC_NSLINK_EXECUTABLE STREQUAL "" AND DEFINED ENV{NSC_LINKER})
+    set(NSC_NSLINK_EXECUTABLE "$ENV{NSC_LINKER}" CACHE FILEPATH
+        "NSLink executable used by generated NativeSharp build products" FORCE)
+endif()
+if(NSC_NSLINK_EXECUTABLE STREQUAL "")
+    find_program(NSC_NSLINK_EXECUTABLE NAMES nslink)
+endif()
+if(NOT NSC_NSLINK_EXECUTABLE OR NOT EXISTS "${NSC_NSLINK_EXECUTABLE}")
+    message(FATAL_ERROR
+        "NSLink is required to build NativeSharp-generated products; set "
+        "NSC_NSLINK_EXECUTABLE to nslink.exe")
+endif()
 set(NSC_HOST_LINKAGE "STATIC" CACHE STRING
     "LLVM linkage for nsc.exe: STATIC (distributable) or DYNAMIC (development only)")
 set_property(CACHE NSC_HOST_LINKAGE PROPERTY STRINGS STATIC DYNAMIC)
@@ -699,7 +713,9 @@ add_custom_command(TARGET nsc POST_BUILD
     COMMAND $<TARGET_FILE:nsc> --write-runtime-abi-contract "${NSC_RUNTIME_ABI_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-concurrency-contract "${NSC_CONCURRENCY_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-numeric-contract "${NSC_NUMERIC_CONTRACT}"
-    COMMAND $<TARGET_FILE:nsc> --write-windows-runtime-library "${NSC_WINDOWS_RUNTIME_LIBRARY}"
+    COMMAND "${CMAKE_COMMAND}" -E env
+        "NSC_LINKER=${NSC_NSLINK_EXECUTABLE}"
+        $<TARGET_FILE:nsc> --write-windows-runtime-library "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
                "${NSC_COMPATIBILITY_POLICY}"
                "${NSC_MIGRATION_BASELINE}"
