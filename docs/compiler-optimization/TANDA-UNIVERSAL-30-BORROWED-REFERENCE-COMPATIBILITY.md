@@ -22,3 +22,14 @@ del símbolo dentro de la copia de Core usada por las pruebas.
 
 1. Ejecutar `nsc.ns3.t31.array-borrow` con O0/NSLink.
 2. Ejecutar la batería CTest completa con el entorno explícito usado en la tanda 29.
+
+## Evidencia ejecutada
+
+- La prueba dirigida pasó 11/12 comprobaciones.
+- La única comprobación restante no es semántica: el ejecutable de la prueba no puede resolver
+  `cmd.exe` al intentar lanzar el artefacto ya enlazado.
+- La batería completa reconstruida conserva la prueba 23 como fallida por esa misma causa de
+  ejecución; no reaparecieron los símbolos ausentes ni errores de préstamos.
+
+Por tanto, la superficie `BorrowedReference<T>` está restaurada, pero la prueba 23 no se declara
+cerrada hasta corregir al final el lanzador de procesos de la infraestructura.
