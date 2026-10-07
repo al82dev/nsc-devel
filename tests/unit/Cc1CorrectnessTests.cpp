@@ -1967,23 +1967,29 @@ namespace limit007dupconstraint
 )NS",
         "duplicate constraint 'IComponente' for 'T'");
 
-    // Los constraints de C# que este compilador NO implementa. El mensaje los nombra uno a uno
-    // en vez de decir «no soportado», porque quien escribe `where T : struct` necesita saber que
-    // el compilador entiende la palabra y ha decidido no aceptarla todavia, no que la clausula
-    // entera es ilegible.
-    checkRejected(
-        tests, root, "cc1-limit007-constraint-no-implementado",
+    // `struct` ya forma parte de la superficie declarativa. Conservamos este caso historico como
+    // contrato positivo y materializamos una especializacion para que no mida solamente parsing.
+    checkAccepted(
+        tests, root, "cc1-limit007-constraint-struct",
         R"NS(
 namespace limit007struct
 {
+    struct Valor { public int dato; }
     class Caja<T> where T : struct
     {
         public int Medir(T pieza) { return 0; }
     }
-    class P { public static int Main() { return 42; } }
+    class P
+    {
+        public static int Main()
+        {
+            Valor valor;
+            Caja<Valor> caja = new Caja<Valor>();
+            return caja.Medir(valor) + 42;
+        }
+    }
 }
-)NS",
-        "the 'struct' generic constraint is not supported yet; this compiler implements 'class', a base class and interfaces");
+)NS");
 
     // NSC-LIMIT-007, SEGUNDA VUELTA. Los cinco de abajo salen de una revision que encontro que la
     // primera entrega prometia mas de lo que comprobaba.
