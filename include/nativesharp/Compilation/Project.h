@@ -74,10 +74,6 @@ private:
     std::vector<std::filesystem::path> projectReferences_;
     std::vector<LibraryReference> libraryReferences_;
     std::vector<SdkManifest> sdkReferences_;
-    // Temporary ABI-compatible construction seam. Source recognition no longer branches on
-    // editions; every project uses the cumulative NativeSharp language surface.
-    language::LanguageEdition languageEdition_ = language::LanguageEdition::V3;
-    bool languageEditionExplicit_ = false;
     language::PanicProfile panicProfile_ = language::PanicProfile::Abort;
     std::string panicHandler_;
     std::string packageName_;

@@ -25,13 +25,15 @@ Project::Project(
       projectReferences_(std::move(projectReferences)),
       libraryReferences_(std::move(libraryReferences)),
       sdkReferences_(std::move(sdkReferences)),
-      languageEdition_(languageEdition),
-      languageEditionExplicit_(languageEditionExplicit),
       panicProfile_(panicProfile),
       panicHandler_(std::move(panicHandler)),
       packageName_(packageName.empty() ? moduleName_ : std::move(packageName)),
       friendModules_(std::move(friendModules))
 {
+    // Kept in the constructor temporarily so callers can migrate independently without making
+    // an administrative edition operational again.
+    (void)languageEdition;
+    (void)languageEditionExplicit;
 }
 
 const std::filesystem::path& Project::projectFile() const noexcept
