@@ -41,7 +41,6 @@ std::optional<int> integerArgument(std::string_view value) noexcept
 }
 
 bool ProjectMetaprogrammingModel::build(
-    const compilation::ProjectGraph& graph,
     const ProjectNameLookup& names,
     const ProjectMemberModel& members,
     const ProjectMethodBodyModel& methodBodies,
@@ -301,13 +300,10 @@ bool ProjectMetaprogrammingModel::build(
     };
     bool availabilityValid = true;
     const auto validateUse = [&](const StaticAvailabilityInfo& contract,
-                                 std::size_t requestingProjectOrdinal,
                                  std::optional<std::size_t> enclosingType,
                                  SourceRange range,
                                  diagnostics::DiagnosticId errorId)
     {
-        if (requestingProjectOrdinal >= graph.projects().size()) return;
-        const int edition = static_cast<int>(graph.projects()[requestingProjectOrdinal].languageEdition());
         const std::string declaration = contract.memberOrdinal.has_value()
             ? members.members()[*contract.memberOrdinal].name
             : names.namedTypes()[*contract.typeOrdinal].identity.key();
@@ -321,10 +317,6 @@ bool ProjectMetaprogrammingModel::build(
             if (error_.empty()) error_ = message;
             diagnostics.report(errorId, diagnostics::DiagnosticSeverity::Error, range, message);
         };
-        if (contract.sinceEdition.has_value() && edition < *contract.sinceEdition)
-            reject("is available since language edition " + std::to_string(*contract.sinceEdition));
-        if (contract.removedEdition.has_value() && edition >= *contract.removedEdition)
-            reject("was removed in language edition " + std::to_string(*contract.removedEdition));
         if (!contract.target.empty() && contract.target != "windows")
             reject("is unavailable for target windows");
         if (!contract.architecture.empty() && contract.architecture != "x64")
@@ -341,7 +333,7 @@ bool ProjectMetaprogrammingModel::build(
         if (!binding.targetTypeOrdinal.has_value()) continue;
         const auto found = availabilityByType.find(*binding.targetTypeOrdinal);
         if (found == availabilityByType.end() || binding.syntax == nullptr) continue;
-        validateUse(availability_[found->second], binding.projectOrdinal,
+        validateUse(availability_[found->second],
             binding.enclosingTypeOrdinals.empty()
                 ? std::optional<std::size_t>{} : binding.enclosingTypeOrdinals.back(),
             binding.syntax->range(), diagnostics::DiagnosticId::InvalidType);
@@ -353,9 +345,7 @@ bool ProjectMetaprogrammingModel::build(
         const auto found = availabilityByMember.find(*call.selectedMemberOrdinal);
         if (found == availabilityByMember.end()) continue;
         const ClassMemberSymbol& caller = members.members()[call.callerMethodMemberOrdinal];
-        const std::size_t projectOrdinal = caller.declaringTypeOrdinal < names.namedTypes().size()
-            ? names.namedTypes()[caller.declaringTypeOrdinal].projectOrdinal : 0;
-        validateUse(availability_[found->second], projectOrdinal, caller.declaringTypeOrdinal,
+        validateUse(availability_[found->second], caller.declaringTypeOrdinal,
             call.syntax->range(), diagnostics::DiagnosticId::InvalidCall);
     }
     if (!availabilityValid)

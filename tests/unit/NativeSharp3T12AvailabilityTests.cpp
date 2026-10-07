@@ -31,7 +31,7 @@ std::filesystem::path writeProject(
     const std::filesystem::path directory = root / name;
     writeFile(directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
-        "</Name><OutputType>Exe</OutputType><Language>3</Language></PropertyGroup>"
+        "</Name><OutputType>Exe</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
     writeFile(directory / "Main.ns", source);
     return directory / (std::string(name) + ".nsproj");
@@ -81,7 +81,7 @@ public class Program
     std::string output;
     std::string error;
     const bool compiled = runDriver(emit, output, error) == ExitCode::Success;
-    tests.expect(compiled, "matching edition/target/architecture compiles at O0 (" + error + output + ")");
+    tests.expect(compiled, "matching target and architecture compile at O0 (" + error + output + ")");
     if (compiled)
         tests.expect(std::system(("\"" + availableExe + "\"").c_str()) == 42,
             "availability-qualified executable links with NSLink and returns 42");
@@ -95,9 +95,9 @@ public class Program { public static int Main() { FutureValue value; return 0; }
     const std::array<std::string_view, 3> futureCheck = {
         "--check-project-oop-hir", futureProject, "-O0"};
     output.clear(); error.clear();
-    tests.expect(runDriver(futureCheck, output, error) != ExitCode::Success &&
-            (error + output).find("available since language edition 4") != std::string::npos,
-        "since rejects a use before its normative edition (" + error + output + ")");
+    tests.expect(runDriver(futureCheck, output, error) == ExitCode::Success,
+        "since metadata cannot reject source understood by the cumulative language (" +
+            error + output + ")");
 
     const std::filesystem::path removed = writeProject(root, "Removed", R"NS(
 #[removed(3, "the old API has been retired")]
@@ -108,9 +108,9 @@ public class Program { public static int Main() { OldValue value; return 0; } }
     const std::array<std::string_view, 3> removedCheck = {
         "--check-project-oop-hir", removedProject, "-O0"};
     output.clear(); error.clear();
-    tests.expect(runDriver(removedCheck, output, error) != ExitCode::Success &&
-            (error + output).find("was removed in language edition 3") != std::string::npos,
-        "removed rejects a use at and after its normative edition (" + error + output + ")");
+    tests.expect(runDriver(removedCheck, output, error) == ExitCode::Success,
+        "removed metadata cannot reject source understood by the cumulative language (" +
+            error + output + ")");
 
     const std::filesystem::path wrongArch = writeProject(root, "WrongArch", R"NS(
 #[architecture("arm64")]

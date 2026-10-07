@@ -87,11 +87,10 @@ bool ProjectGraph::addLibraryReferences(
                 project.projectReferences().begin(), project.projectReferences().end()),
             std::move(libraries),
             std::vector<SdkManifest>(project.sdkReferences().begin(), project.sdkReferences().end()),
-            project.languageEdition(), project.panicProfile(),
+            project.panicProfile(),
             std::string(project.panicHandler()), std::string(project.packageName()),
             std::vector<std::string>(
-                project.friendModules().begin(), project.friendModules().end()),
-            project.hasExplicitLanguageEdition());
+                project.friendModules().begin(), project.friendModules().end()));
     }
     if (!foundOwner)
     {
@@ -179,11 +178,10 @@ bool ProjectGraph::replaceLibraryReferencesWithSourceProjects(
             std::move(projectReferences),
             std::move(libraries),
             std::vector<SdkManifest>(project.sdkReferences().begin(), project.sdkReferences().end()),
-            project.languageEdition(), project.panicProfile(),
+            project.panicProfile(),
             std::string(project.panicHandler()), std::string(project.packageName()),
             std::vector<std::string>(
-                project.friendModules().begin(), project.friendModules().end()),
-            project.hasExplicitLanguageEdition());
+                project.friendModules().begin(), project.friendModules().end()));
     }
 
     std::vector<std::uint8_t> state(rewired.size(), 0U);
@@ -343,8 +341,7 @@ bool ProjectGraph::addPrecompiledProjects(
             std::move(emptySources),
             std::move(peerMetadata),
             std::vector<LibraryReference>{},
-            std::vector<SdkManifest>{},
-            language::LanguageEdition::V3);
+            std::vector<SdkManifest>{});
     }
     for (const Project& project : projects_)
     {
@@ -371,11 +368,10 @@ bool ProjectGraph::addPrecompiledProjects(
                 project.libraryReferences().begin(), project.libraryReferences().end()),
             std::vector<SdkManifest>(
                 project.sdkReferences().begin(), project.sdkReferences().end()),
-            project.languageEdition(), project.panicProfile(),
+            project.panicProfile(),
             std::string(project.panicHandler()), std::string(project.packageName()),
             std::vector<std::string>(
-                project.friendModules().begin(), project.friendModules().end()),
-            project.hasExplicitLanguageEdition());
+                project.friendModules().begin(), project.friendModules().end()));
     }
     projects_ = std::move(expanded);
     return true;

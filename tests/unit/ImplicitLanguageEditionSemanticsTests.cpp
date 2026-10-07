@@ -1,5 +1,4 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
-#include "nativesharp/Language/LanguageEdition.h"
 
 #include "../support/TestContext.h"
 
@@ -50,7 +49,6 @@ std::string diagnosticsFor(const nativesharp::frontend::ProjectCompilation& comp
 
 int main()
 {
-    using nativesharp::language::LanguageEdition;
     nativesharp::tests::TestContext tests;
     const std::filesystem::path root =
         nativesharp::tests::evidenceRoot("nativesharp_implicit_language_semantics");
@@ -77,17 +75,13 @@ namespace Contracts
     std::string error;
     const bool implicitBuilt =
         implicitCompilation.compileProjectMethodBodies(implicitProject, error);
-    const auto* implicitRoot = implicitCompilation.projectGraph() != nullptr
-        ? implicitCompilation.projectGraph()->rootProject() : nullptr;
     tests.expect(implicitBuilt && error.empty() &&
             !implicitCompilation.diagnostics().hasErrors(),
-        "an omitted-language consumer keeps historical effect semantics while consuming "
-        "a Language 3 dependency: " + error + diagnosticsFor(implicitCompilation));
-    tests.expect(implicitRoot != nullptr &&
-            implicitRoot->languageEdition() == LanguageEdition::V3 &&
-            implicitRoot->sourceLanguageEdition() == LanguageEdition::V3 &&
-            !implicitRoot->hasExplicitLanguageEdition(),
-        "the source graph publishes one cumulative language surface");
+        "a consumer without Language accepts an unsafe-declared dependency without requiring "
+        "unsafe at the call site: " + error + diagnosticsFor(implicitCompilation));
+    tests.expect(implicitCompilation.projectGraph() != nullptr &&
+            implicitCompilation.projectGraph()->projects().size() == 2U,
+        "the source graph preserves both modules without an edition boundary");
 
     const std::filesystem::path explicitProject =
         writeConsumer(root / "Explicit", "Explicit", true);
@@ -97,7 +91,7 @@ namespace Contracts
         explicitCompilation.compileProjectMethodBodies(explicitProject, error);
     const std::string explicitDiagnostics = error + diagnosticsFor(explicitCompilation);
     tests.expect(explicitBuilt && explicitDiagnostics.empty(),
-        "an explicit Language property cannot force an unsafe writing style: " +
+        "a historical Language property cannot force an unsafe writing style: " +
             explicitDiagnostics);
 
     return tests.resultKeeping(root);

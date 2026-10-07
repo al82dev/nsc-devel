@@ -2,7 +2,6 @@
 
 #include "nativesharp/Compilation/ProjectSourceSet.h"
 #include "nativesharp/Compilation/SdkManifest.h"
-#include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Language/ErrorSemantics.h"
 
 #include <filesystem>
@@ -41,12 +40,10 @@ public:
         std::vector<std::filesystem::path> projectReferences,
         std::vector<LibraryReference> libraryReferences,
         std::vector<SdkManifest> sdkReferences,
-        language::LanguageEdition languageEdition = language::LanguageEdition::V3,
         language::PanicProfile panicProfile = language::PanicProfile::Abort,
         std::string panicHandler = {},
         std::string packageName = {},
-        std::vector<std::string> friendModules = {},
-        bool languageEditionExplicit = true);
+        std::vector<std::string> friendModules = {});
 
     const std::filesystem::path& projectFile() const noexcept;
     const std::string& moduleName() const noexcept;
@@ -55,12 +52,6 @@ public:
     std::span<const std::filesystem::path> projectReferences() const noexcept;
     std::span<const LibraryReference> libraryReferences() const noexcept;
     std::span<const SdkManifest> sdkReferences() const noexcept;
-    language::LanguageEdition languageEdition() const noexcept;
-    language::LanguageEdition sourceLanguageEdition() const noexcept;
-    language::LanguageEdition recognizedLanguageEdition() const noexcept;
-    bool enforcesLanguage3Effects() const noexcept;
-    bool hasExplicitLanguageEdition() const noexcept;
-    void adoptInferredLanguageEdition(language::LanguageEdition edition) noexcept;
     language::PanicProfile panicProfile() const noexcept;
     std::string_view panicHandler() const noexcept;
     std::string_view packageName() const noexcept;

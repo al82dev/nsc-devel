@@ -1,7 +1,5 @@
 #pragma once
 
-#include "nativesharp/Language/LanguageEdition.h"
-
 #include <cstddef>
 
 namespace nativesharp::frontend
@@ -26,8 +24,7 @@ public:
         const ProjectInheritanceModel& inheritanceModel,
         const ProjectInterfaceModel& interfaceModel,
         const ProjectGenericModel* genericModel,
-        const ProjectGenericConstraintModel* genericConstraintModel,
-        language::LanguageEdition languageEdition) noexcept;
+        const ProjectGenericConstraintModel* genericConstraintModel) noexcept;
 
     [[nodiscard]] std::size_t callableOrdinal() const noexcept;
     [[nodiscard]] std::size_t waveOrdinal() const noexcept;
@@ -38,7 +35,6 @@ public:
     [[nodiscard]] const ProjectInterfaceModel& interfaceModel() const noexcept;
     [[nodiscard]] const ProjectGenericModel* genericModel() const noexcept;
     [[nodiscard]] const ProjectGenericConstraintModel* genericConstraintModel() const noexcept;
-    [[nodiscard]] language::LanguageEdition languageEdition() const noexcept;
 
 private:
     std::size_t callableOrdinal_ = 0;
@@ -50,6 +46,5 @@ private:
     const ProjectInterfaceModel* interfaceModel_ = nullptr;
     const ProjectGenericModel* genericModel_ = nullptr;
     const ProjectGenericConstraintModel* genericConstraintModel_ = nullptr;
-    language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };
 }

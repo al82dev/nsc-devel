@@ -11,8 +11,7 @@ ProjectCallableAnalysisContext::ProjectCallableAnalysisContext(
     const ProjectInheritanceModel& inheritanceModel,
     const ProjectInterfaceModel& interfaceModel,
     const ProjectGenericModel* genericModel,
-    const ProjectGenericConstraintModel* genericConstraintModel,
-    language::LanguageEdition languageEdition) noexcept
+    const ProjectGenericConstraintModel* genericConstraintModel) noexcept
     : callableOrdinal_(callableOrdinal),
       waveOrdinal_(waveOrdinal),
       nameLookup_(&nameLookup),
@@ -21,8 +20,7 @@ ProjectCallableAnalysisContext::ProjectCallableAnalysisContext(
       inheritanceModel_(&inheritanceModel),
       interfaceModel_(&interfaceModel),
       genericModel_(genericModel),
-      genericConstraintModel_(genericConstraintModel),
-      languageEdition_(languageEdition)
+      genericConstraintModel_(genericConstraintModel)
 {
 }
 
@@ -73,8 +71,4 @@ ProjectCallableAnalysisContext::genericConstraintModel() const noexcept
     return genericConstraintModel_;
 }
 
-language::LanguageEdition ProjectCallableAnalysisContext::languageEdition() const noexcept
-{
-    return languageEdition_;
-}
 }

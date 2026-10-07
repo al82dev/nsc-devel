@@ -1699,16 +1699,6 @@ bool ProjectOopMirModel::build(
     return true;
 }
 
-void ProjectOopMirModel::setLanguageEdition(language::LanguageEdition edition) noexcept
-{
-    languageEdition_ = edition;
-}
-
-language::LanguageEdition ProjectOopMirModel::languageEdition() const noexcept
-{
-    return languageEdition_;
-}
-
 void ProjectOopMirModel::setPanicProfile(language::PanicProfile profile) noexcept
 {
     panicProfile_ = profile;

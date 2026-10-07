@@ -85,7 +85,6 @@ class ProjectMetaprogrammingModel final
 {
 public:
     bool build(
-        const compilation::ProjectGraph& graph,
         const ProjectNameLookup& names,
         const ProjectMemberModel& members,
         const ProjectMethodBodyModel& methodBodies,

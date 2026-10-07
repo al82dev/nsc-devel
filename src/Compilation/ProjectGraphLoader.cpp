@@ -188,11 +188,10 @@ bool normalizeTransitiveSourceOwnership(
                 project.libraryReferences().begin(), project.libraryReferences().end()),
             std::vector<SdkManifest>(
                 project.sdkReferences().begin(), project.sdkReferences().end()),
-            project.languageEdition(), project.panicProfile(),
+            project.panicProfile(),
             std::string(project.panicHandler()), std::string(project.packageName()),
             std::vector<std::string>(
-                project.friendModules().begin(), project.friendModules().end()),
-            project.hasExplicitLanguageEdition());
+                project.friendModules().begin(), project.friendModules().end()));
     }
 
     projects = std::move(normalized);
@@ -247,11 +246,10 @@ void preferExactSourceModuleArtifacts(
                 std::move(libraryReferences),
                 std::vector<SdkManifest>(
                     project.sdkReferences().begin(), project.sdkReferences().end()),
-                project.languageEdition(), project.panicProfile(),
+                project.panicProfile(),
                 std::string(project.panicHandler()), std::string(project.packageName()),
                 std::vector<std::string>(
-                    project.friendModules().begin(), project.friendModules().end()),
-                project.hasExplicitLanguageEdition()));
+                    project.friendModules().begin(), project.friendModules().end())));
     }
     projects = std::move(rewired);
 }

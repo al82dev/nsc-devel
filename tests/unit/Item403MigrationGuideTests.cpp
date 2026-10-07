@@ -24,8 +24,10 @@ int main()
         "migration guide fixes both release endpoints");
     tests.expect(guide.find("breaking_change_ledger=NSBREAKING 1\n") != std::string::npos,
         "migration guide is bound to the certified breaking-change ledger");
-    tests.expect(guide.find("select-Language-3-explicitly-only-for-opted-in-projects") != std::string::npos,
-        "migration guide preserves Language 2 by default and makes Language 3 opt-in");
+    tests.expect(guide.find("build-all-understood-source-with-the-cumulative-language") !=
+            std::string::npos &&
+            guide.find("compat.source-language=cumulative\n") != std::string::npos,
+        "migration guide publishes one cumulative source language");
     tests.expect(guide.find("compat.nsmeta-1.21=accepted\n") != std::string::npos &&
             guide.find("compat.runtime-abi-1.0=accepted\n") != std::string::npos,
         "migration guide records preserved exchange contracts");

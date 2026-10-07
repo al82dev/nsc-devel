@@ -21,7 +21,6 @@
 #include "nativesharp/Frontend/ProjectEscapePropagationStatistics.h"
 #include "nativesharp/Frontend/ProjectMethodBodyBuildOptions.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
-#include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
 
@@ -1497,7 +1496,6 @@ public:
         diagnostics::DiagnosticEngine& diagnostics,
         const ProjectGenericConstraintModel* genericConstraintModel = nullptr,
         std::optional<std::size_t> publicSurfaceProjectOrdinal = std::nullopt,
-        language::LanguageEdition languageEdition = language::LanguageEdition::V2,
         const ProjectMethodBodyBuildOptions& options = {});
 
     std::span<const MethodScope> scopes() const noexcept;
@@ -1920,13 +1918,6 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
-    bool validateErrorPropagation(
-        std::string_view errorTypeKey,
-        const ast::AstNode* syntax,
-        std::size_t callerCallableOrdinal,
-        diagnostics::DiagnosticEngine& diagnostics,
-        std::string_view operation);
-    bool errorIsHandled(std::string_view errorTypeKey) const;
     std::string delegateErrorTypeKey(std::string_view delegateTypeKey) const;
     std::optional<std::size_t> exceptionRootTypeOrdinal() const noexcept;
     bool isExceptionTypeOrdinal(std::size_t typeOrdinal) const noexcept;
@@ -2384,10 +2375,6 @@ private:
         const ProjectCallableAnalysisContext& context) const;
     [[nodiscard]] ProjectCallableAnalysisResult analyzeCallableIsolated(
         const ProjectCallableAnalysisContext& context) const;
-    [[nodiscard]] language::LanguageEdition callableLanguageEdition(
-        std::size_t callableOrdinal) const noexcept;
-    [[nodiscard]] bool callableEnforcesLanguage3Effects(
-        std::size_t callableOrdinal) const noexcept;
     static void collectCallableDiscoveries(ProjectCallableAnalysisResult& result);
 
     const ProjectNameLookup* nameLookup_ = nullptr;
@@ -2474,7 +2461,6 @@ private:
     // very statement that assigns a local would be reported as a read of it.
     const ast::AstNode* definiteAssignmentWriteTarget_ = nullptr;
     const ast::AstNode* activeUnionWriteTarget_ = nullptr;
-    std::size_t unsafeBlockDepth_ = 0;
     // One diagnostic per offending read: a statement can be analyzed more than once (the
     // unreachable-code probe in analyzeBlock does exactly that), and that must not multiply the
     // same message.
@@ -2492,17 +2478,6 @@ private:
     std::size_t partialMoveSourceDepth_ = 0;
     IterativeExpressionAnalysis* iterativeExpressionAnalysis_ = nullptr;
     std::vector<OwnershipFlowSnapshot> throwFlowStates_;
-    struct ActiveErrorHandlers final
-    {
-        bool catchAll = false;
-        std::vector<std::string> typeKeys;
-    };
-    struct ActiveTryErrorSet final
-    {
-        std::vector<std::string> typeKeys;
-    };
-    std::vector<ActiveErrorHandlers> activeErrorHandlers_;
-    std::vector<ActiveTryErrorSet> activeTryErrorSets_;
     std::vector<std::string> currentCatchErrorTypes_;
     std::vector<MethodSwitchBinding> switchBindings_;
     std::vector<MethodStructuredExitBinding> structuredExits_;
@@ -2537,11 +2512,7 @@ private:
     mutable ProjectOwnershipFlowStatistics ownershipFlowStatistics_;
     mutable ProjectEscapePropagationStatistics escapePropagationStatistics_;
     ProjectCallableAnalysisStatistics callableAnalysisStatistics_;
-    std::vector<language::LanguageEdition> projectRecognizedLanguageEditions_;
-    std::vector<std::uint8_t> projectLanguage3EffectPolicies_;
-    bool enforceLanguage3Effects_ = false;
     bool built_ = false;
-    language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
 };
 
 const char* methodScopeKindName(MethodScopeKind kind) noexcept;

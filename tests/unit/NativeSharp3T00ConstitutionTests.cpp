@@ -7,7 +7,6 @@
 #include "nativesharp/Frontend/FrontendCompilation.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
-#include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Sema/EffectContext.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
 #include "nativesharp/Source/SourceManager.h"
@@ -60,34 +59,22 @@ int main()
     std::filesystem::remove_all(root, ignored);
     std::filesystem::create_directories(root);
 
-    using language::LanguageEdition;
-    tests.expect(language::parseLanguageEdition("2") == LanguageEdition::V2,
-        "language edition 2 is selectable");
-    tests.expect(language::parseLanguageEdition("3") == LanguageEdition::V3,
-        "language edition 3 is selectable");
-    tests.expect(!language::parseLanguageEdition("latest").has_value(),
-        "implicit latest edition is rejected");
-    tests.expect(language::languageEditionFingerprint(LanguageEdition::V2) !=
-            language::languageEditionFingerprint(LanguageEdition::V3),
-        "changing edition changes the incremental identity");
-
     const auto edition2Project = writeProject(root, "Edition2", "2");
     const auto edition3Project = writeProject(root, "Edition3", "3");
     std::string error;
     compilation::ProjectLoader loader;
     const auto edition2 = loader.load(edition2Project, error);
     const auto edition3 = loader.load(edition3Project, error);
-    tests.expect(edition2.has_value() && edition2->languageEdition() == LanguageEdition::V3 &&
-            !edition2->hasExplicitLanguageEdition(),
-        "project loader ignores a historical Language value");
-    tests.expect(edition3.has_value() && edition3->languageEdition() == LanguageEdition::V3,
-        "project loader publishes edition 3");
+    tests.expect(edition2.has_value() && edition2->moduleName() == "Edition2",
+        "project loader accepts a historical Language value as compatibility input");
+    tests.expect(edition3.has_value() && edition3->moduleName() == "Edition3",
+        "project loader accepts a current historical Language value as compatibility input");
     if (edition3.has_value())
     {
         std::ostringstream dump;
         compilation::ProjectDumper().dump(*edition3, dump);
-        tests.expect(dump.str().find("language: 3") != std::string::npos,
-            "project dump exposes the selected edition");
+        tests.expect(dump.str().find("language:") == std::string::npos,
+            "project dump has no language-edition identity");
     }
 
     const auto invalidProject = writeProject(root, "InvalidEdition", "4");
@@ -109,8 +96,7 @@ int main()
         compilation::PrecompiledProjectDescriptor{
             edition3Project,
             root / "LegacyEdition2.nsmeta",
-            "LegacyEdition2",
-            LanguageEdition::V2}};
+            "LegacyEdition2"}};
     tests.expect(mixedMetadataGraph.has_value() &&
             mixedMetadataGraph->addPrecompiledProjects(mixedMetadata, error),
         "project graph accepts metadata regardless of its historical edition field");
@@ -119,12 +105,11 @@ int main()
         compilation::PrecompiledProjectDescriptor{
             edition3Project,
             root / "Edition3.nsmeta",
-            "Edition3Metadata",
-            LanguageEdition::V3}};
+            "Edition3Metadata"}};
     tests.expect(alignedMetadataGraph.has_value() &&
             alignedMetadataGraph->addPrecompiledProjects(alignedMetadata, error) &&
-            alignedMetadataGraph->projects().front().languageEdition() == LanguageEdition::V3,
-        "precompiled project nodes expose the cumulative language surface");
+            alignedMetadataGraph->projects().front().moduleName() == "Edition3Metadata",
+        "precompiled project nodes expose module identity without an edition boundary");
 
     frontend::FrontendCompilation frontend;
     tests.expect(frontend.compileBuffer("same.ns", "int Answer() { return 42; }", false),
@@ -159,9 +144,8 @@ int main()
     interop::LibraryMetadata decodedMetadata;
     const bool metadataRead = metadataWritten &&
         metadataCodec.read(metadataPath, decodedMetadata, error);
-    tests.expect(metadataRead && writtenMetadata.languageEdition == 3U &&
-            decodedMetadata.languageEdition == 3U,
-        "NSMETA round-trip preserves language edition 3: " + error);
+    tests.expect(metadataRead && decodedMetadata.moduleName == writtenMetadata.moduleName,
+        "NSMETA round-trip preserves module identity without selecting source syntax: " + error);
 
     frontend::CompilationStageTracker stages;
     tests.expect(!stages.enter(frontend::CompilationStage::Binding, error) &&

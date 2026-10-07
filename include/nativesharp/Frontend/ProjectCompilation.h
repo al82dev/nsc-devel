@@ -46,7 +46,6 @@ struct PrecompiledSyntaxModule final
     std::vector<PrecompiledMemberIdentity> members;
     std::vector<PrecompiledNamespaceFunctionIdentity> namespaceFunctions;
     std::vector<PrecompiledGenericSpecialization> genericSpecializations;
-    language::LanguageEdition languageEdition = language::LanguageEdition::V2;
 };
 
 class ProjectCompilation final

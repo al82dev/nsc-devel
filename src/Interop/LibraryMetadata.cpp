@@ -794,9 +794,10 @@ bool buildMetadataModel(
     metadata.producerVersion = std::string(kCompilerVersion);
     metadata.moduleName = compilation.projectGraph()->rootProject()->moduleName();
     metadata.targetTriple = std::string(kTargetTriple);
-    metadata.languageEdition = static_cast<std::uint8_t>(
-        compilation.projectGraph()->rootProject()->languageEdition());
-    const bool publishLifetimeContracts = metadata.languageEdition >= 3U;
+    // NSMETA 1.23 still reserves this byte for readers of the historical wire format. Source
+    // syntax is cumulative now, so metadata emission cannot derive behavior from a project tag.
+    metadata.languageEdition = 3U;
+    const bool publishLifetimeContracts = true;
 
     const auto types = compilation.nameLookup()->namedTypes();
     const auto members = compilation.memberModel()->members();

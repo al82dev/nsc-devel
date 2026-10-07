@@ -734,28 +734,10 @@ bool ProjectCompilation::compileProjectMethodBodies(
     methodBodyOptions.cancellationCheck = cancellationCheck_;
     methodBodyOptions.phaseTimingSink = phaseTimingSink_;
     methodBodyOptions.executionError = &loadError;
-    std::vector<language::LanguageEdition> projectRecognizedLanguageEditions;
-    std::vector<std::uint8_t> projectLanguage3EffectPolicies;
-    if (projectGraph_.has_value())
-    {
-        projectRecognizedLanguageEditions.reserve(projectGraph_->projects().size());
-        projectLanguage3EffectPolicies.reserve(projectGraph_->projects().size());
-        for (const compilation::Project& project : projectGraph_->projects())
-        {
-            projectRecognizedLanguageEditions.push_back(project.recognizedLanguageEdition());
-            projectLanguage3EffectPolicies.push_back(
-                project.enforcesLanguage3Effects() ? 1U : 0U);
-        }
-    }
-    methodBodyOptions.projectRecognizedLanguageEditions = projectRecognizedLanguageEditions;
-    methodBodyOptions.projectLanguage3EffectPolicies = projectLanguage3EffectPolicies;
     if (!methodBodyModel_->build(
         *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_,
         genericModel_.get(), diagnostics_,
         genericConstraintModel_.get(), publicSurfaceProjectOrdinal,
-        projectGraph_.has_value() && projectGraph_->rootProject() != nullptr
-            ? projectGraph_->rootProject()->languageEdition()
-            : language::LanguageEdition::V2,
         methodBodyOptions)) return false;
     if (!enterStage(CompilationStage::TypeChecking, loadError)) return false;
     return enterStage(CompilationStage::Comptime, loadError);
@@ -842,7 +824,7 @@ bool ProjectCompilation::compileProjectObjectLayouts(
         return false;
     metaprogrammingModel_ = std::make_unique<ProjectMetaprogrammingModel>();
     if (!metaprogrammingModel_->build(
-            *projectGraph_, *nameLookup_, *memberModel_, *methodBodyModel_,
+            *nameLookup_, *memberModel_, *methodBodyModel_,
             *objectLayoutModel_, comptimeRecords_, diagnostics_))
     {
         loadError = metaprogrammingModel_->error();
@@ -910,7 +892,6 @@ bool ProjectCompilation::compileProjectOopMir(
     oopMirModel_ = std::make_unique<ProjectOopMirModel>();
     if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr)
     {
-        oopMirModel_->setLanguageEdition(projectGraph_->rootProject()->languageEdition());
         oopMirModel_->setPanicProfile(projectGraph_->rootProject()->panicProfile());
         oopMirModel_->setPanicHandler(std::string(projectGraph_->rootProject()->panicHandler()));
     }
@@ -959,8 +940,7 @@ bool ProjectCompilation::compileSyntaxCore(
         precompiledDescriptors.push_back({
             module.ownerProjectFile,
             module.metadataPath,
-            module.moduleName,
-            module.languageEdition});
+            module.moduleName});
     }
     if (!projectGraph_->addPrecompiledProjects(precompiledDescriptors, loadError))
     {
@@ -971,7 +951,6 @@ bool ProjectCompilation::compileSyntaxCore(
         std::size_t projectOrdinal = 0;
         std::size_t sourceOrdinal = 0;
         std::string moduleName;
-        language::LanguageEdition languageEdition = language::LanguageEdition::V2;
         std::filesystem::path path;
         std::optional<std::string> buffer;
         std::optional<ComptimeResult> comptime;
@@ -991,7 +970,6 @@ bool ProjectCompilation::compileSyntaxCore(
                 projectOrdinal,
                 source.ordinal,
                 project.moduleName(),
-                project.recognizedLanguageEdition(),
                 source.absolutePath,
                 std::nullopt,
                 std::nullopt,

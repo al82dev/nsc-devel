@@ -1,6 +1,5 @@
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
-#include "nativesharp/Language/LanguageEdition.h"
 
 #include "../support/TestContext.h"
 
@@ -57,7 +56,6 @@ std::string diagnosticsFor(const nativesharp::frontend::ProjectCompilation& comp
 
 int main()
 {
-    using nativesharp::language::LanguageEdition;
     nativesharp::tests::TestContext tests;
     const std::filesystem::path root =
         nativesharp::tests::evidenceRoot("nativesharp_implicit_language_feature_recognition");
@@ -70,11 +68,9 @@ int main()
     nativesharp::compilation::ProjectLoader loader;
     const auto implicitDescriptor = loader.load(implicitProject, error);
     tests.expect(implicitDescriptor.has_value() &&
-            implicitDescriptor->languageEdition() == LanguageEdition::V3 &&
-            implicitDescriptor->sourceLanguageEdition() == LanguageEdition::V3 &&
-            implicitDescriptor->recognizedLanguageEdition() == LanguageEdition::V3 &&
-            !implicitDescriptor->enforcesLanguage3Effects(),
-        "an omitted edition recognizes the cumulative source surface");
+            implicitDescriptor->moduleName() == "Implicit" &&
+            implicitDescriptor->sourceSet().sources().size() == 1U,
+        "an omitted Language recognizes the cumulative source surface");
 
     nativesharp::frontend::ProjectCompilation implicitCompilation;
     error.clear();
@@ -82,16 +78,15 @@ int main()
         implicitCompilation.compileProjectMethodBodies(implicitProject, error);
     tests.expect(implicitBuilt && error.empty() &&
             !implicitCompilation.diagnostics().hasErrors(),
-        "an omitted edition recognizes explicit Copy without enabling mandatory Language 3 "
-        "effects: " + error + diagnosticsFor(implicitCompilation));
+        "an omitted Language recognizes explicit Copy without mandatory effects: " +
+            error + diagnosticsFor(implicitCompilation));
 
     const std::filesystem::path explicitV2Project =
         writeProject(root, "ExplicitV2", "2");
     const auto explicitV2Descriptor = loader.load(explicitV2Project, error);
     tests.expect(explicitV2Descriptor.has_value() &&
-            explicitV2Descriptor->sourceLanguageEdition() == LanguageEdition::V3 &&
-            explicitV2Descriptor->recognizedLanguageEdition() == LanguageEdition::V3 &&
-            !explicitV2Descriptor->enforcesLanguage3Effects(),
+            explicitV2Descriptor->moduleName() == "ExplicitV2" &&
+            explicitV2Descriptor->sourceSet().sources().size() == 1U,
         "a historical Language property does not freeze the source contract");
 
     nativesharp::frontend::ProjectCompilation explicitV2Compilation;
@@ -107,9 +102,8 @@ int main()
         writeProject(root, "ExplicitV3", "3");
     const auto explicitV3Descriptor = loader.load(explicitV3Project, error);
     tests.expect(explicitV3Descriptor.has_value() &&
-            explicitV3Descriptor->sourceLanguageEdition() == LanguageEdition::V3 &&
-            explicitV3Descriptor->recognizedLanguageEdition() == LanguageEdition::V3 &&
-            !explicitV3Descriptor->enforcesLanguage3Effects(),
+            explicitV3Descriptor->moduleName() == "ExplicitV3" &&
+            explicitV3Descriptor->sourceSet().sources().size() == 1U,
         "a current Language property is also administrative and does not force effects");
 
     return tests.resultKeeping(root);

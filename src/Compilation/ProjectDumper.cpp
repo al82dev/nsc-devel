@@ -20,7 +20,6 @@ void ProjectDumper::dump(const Project& project, std::ostream& output) const
         outputKind = "shared-library";
     }
     output << "  output: " << outputKind << '\n';
-    output << "  language: " << language::languageEditionName(project.languageEdition()) << '\n';
     output << "  sources: " << project.sourceSet().sources().size() << '\n';
     for (const ProjectSource& source : project.sourceSet().sources())
     {

@@ -1070,12 +1070,10 @@ std::optional<Project> ProjectLoader::load(
         std::move(projectReferences),
         std::move(libraryReferences),
         std::move(sdkReferences),
-        language::LanguageEdition::V3,
         descriptor.panicProfile.value_or(language::PanicProfile::Abort),
         descriptor.panicHandler.value_or(std::string{}),
         descriptor.packageName.value_or(moduleName),
-        std::move(descriptor.friendModules),
-        false);
+        std::move(descriptor.friendModules));
 }
 
 ProjectLoaderStatistics ProjectLoader::statistics() const

@@ -1,6 +1,5 @@
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
-#include "nativesharp/Language/LanguageEdition.h"
 
 #include "../support/TestContext.h"
 
@@ -36,7 +35,6 @@ int main()
 {
     using nativesharp::compilation::PrecompiledProjectDescriptor;
     using nativesharp::compilation::ProjectGraphLoader;
-    using nativesharp::language::LanguageEdition;
     nativesharp::tests::TestContext tests;
     const std::filesystem::path evidence =
         nativesharp::tests::evidenceRoot("nativesharp_precompiled_language_inference");
@@ -49,20 +47,20 @@ int main()
     auto implicitGraph = ProjectGraphLoader().load(implicitProject, error);
     const std::array edition3Metadata = {
         PrecompiledProjectDescriptor{
-            implicitProject, evidence / "Core.nsmeta", "Core", LanguageEdition::V3}};
+            implicitProject, evidence / "Core.nsmeta", "Core"}};
     const bool inferred = implicitGraph.has_value() &&
         implicitGraph->addPrecompiledProjects(edition3Metadata, error);
-    tests.expect(inferred, "implicit source graph accepts one Language 3 NSMETA authority: " + error);
+    tests.expect(inferred, "source graph accepts a precompiled module without edition authority: " + error);
     tests.expect(inferred && implicitGraph->rootProject() != nullptr &&
-            implicitGraph->rootProject()->languageEdition() == LanguageEdition::V3 &&
-            !implicitGraph->rootProject()->hasExplicitLanguageEdition(),
-        "NSMETA edition metadata does not become a source-language boundary");
+            implicitGraph->projects().size() == 2U &&
+            implicitGraph->rootProject()->moduleName() == "Implicit",
+        "precompiled metadata does not become a source-language boundary");
 
     const std::filesystem::path explicitV2Project = writeProject(evidence, "ExplicitV2", "2");
     auto explicitV2Graph = ProjectGraphLoader().load(explicitV2Project, error);
     const std::array incompatibleMetadata = {
         PrecompiledProjectDescriptor{
-            explicitV2Project, evidence / "Modern.nsmeta", "Modern", LanguageEdition::V3}};
+            explicitV2Project, evidence / "Modern.nsmeta", "Modern"}};
     error.clear();
     tests.expect(explicitV2Graph.has_value() &&
             explicitV2Graph->addPrecompiledProjects(incompatibleMetadata, error),
@@ -71,9 +69,9 @@ int main()
     auto conflictingGraph = ProjectGraphLoader().load(implicitProject, error);
     const std::array conflictingMetadata = {
         PrecompiledProjectDescriptor{
-            implicitProject, evidence / "Legacy.nsmeta", "Legacy", LanguageEdition::V2},
+            implicitProject, evidence / "Legacy.nsmeta", "Legacy"},
         PrecompiledProjectDescriptor{
-            implicitProject, evidence / "Modern.nsmeta", "Modern", LanguageEdition::V3}};
+            implicitProject, evidence / "Modern.nsmeta", "Modern"}};
     error.clear();
     tests.expect(conflictingGraph.has_value() &&
             conflictingGraph->addPrecompiledProjects(conflictingMetadata, error),

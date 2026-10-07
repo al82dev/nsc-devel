@@ -1,6 +1,5 @@
 #pragma once
 
-#include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Language/ErrorSemantics.h"
 
 #include "nativesharp/Frontend/InliningPolicy.h"
@@ -819,8 +818,6 @@ struct ProjectOopMirInterfaceBinding final
 class ProjectOopMirModel final
 {
 public:
-    void setLanguageEdition(language::LanguageEdition edition) noexcept;
-    language::LanguageEdition languageEdition() const noexcept;
     void setPanicProfile(language::PanicProfile profile) noexcept;
     language::PanicProfile panicProfile() const noexcept;
     void setPanicHandler(std::string handler);
@@ -893,7 +890,6 @@ private:
     std::vector<ProjectOopMirGenericSpecialization> genericSpecializations_;
     std::vector<ProjectOopMirInterfaceBinding> interfaceBindings_;
     bool built_ = false;
-    language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
     language::PanicProfile panicProfile_ = language::PanicProfile::Abort;
     std::string panicHandler_;
     std::string panicHandlerMangledName_;

@@ -3258,8 +3258,7 @@ bool configurePrecompiledModules(
                             hasConcreteDeclaration});
                     }
                     return result;
-                }(),
-                static_cast<language::LanguageEdition>(metadata.languageEdition)});
+                }()});
     }
     if (!compilation.setPrecompiledModules(std::move(modules), error)) return false;
     return compilation.setPreloadedProjectGraph(std::move(*graph), error);

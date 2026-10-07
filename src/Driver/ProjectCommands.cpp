@@ -1455,13 +1455,10 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     if (!publishContentDirectory(project.parent_path(), artifact.parent_path(), contentFiles, message))
         return result.failure(error, message, ExitCode::InternalError);
     if (buildResult != nullptr) *buildResult = BuildResult{project, artifact, compilerOutput.str(), compilerError.str()};
-    const std::string language =
-        std::string(language::languageEditionName(loaded->languageEdition()));
     return result.success(output,
-        "Build succeeded (Language " + language + "): " + artifact.string(),
+        "Build succeeded: " + artifact.string(),
         "\"artifact\":\"" + jsonEscape(pathText(artifact)) + "\",\"configuration\":\"" +
         jsonEscape(configuration) + "\",\"optimization\":\"" + jsonEscape(optimization) +
-        "\",\"language\":\"" + jsonEscape(language) +
         "\",\"linker\":\"" + jsonEscape(linker) + "\",\"contentFiles\":" +
         std::to_string(contentFiles) +
         (options.dependencyReport

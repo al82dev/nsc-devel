@@ -770,7 +770,6 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     inUnevaluatedOperand_ = false;
     definiteAssignmentWriteTarget_ = nullptr;
     activeUnionWriteTarget_ = nullptr;
-    unsafeBlockDepth_ = 0;
     ownershipFlowReachable_ = true;
     partialProjectionReceiverDepth_ = 0;
     throwFlowStates_.clear();
@@ -871,9 +870,6 @@ std::unique_ptr<ProjectMethodBodyModel> ProjectMethodBodyModel::createCallableSh
     shard->genericConstraintModel_ = context.genericConstraintModel();
     shard->namespaceCallableBase_ = namespaceCallableBase_;
     shard->namespaceCallableAdaptersView_ = namespaceCallableAdapters();
-    shard->languageEdition_ = context.languageEdition();
-    shard->enforceLanguage3Effects_ =
-        callableEnforcesLanguage3Effects(context.callableOrdinal());
     shard->isolatedCallableOrdinal_ = context.callableOrdinal();
     if (context.callableOrdinal() < parameterEscapeSummaries_.size())
     {
@@ -896,60 +892,6 @@ ProjectCallableAnalysisResult ProjectMethodBodyModel::analyzeCallableIsolated(
     collectCallableDiscoveries(result);
     result.normalizeDiscoveredCallables();
     return result;
-}
-
-language::LanguageEdition ProjectMethodBodyModel::callableLanguageEdition(
-    std::size_t callableOrdinal) const noexcept
-{
-    if (projectRecognizedLanguageEditions_.empty()) return languageEdition_;
-
-    std::optional<std::size_t> projectOrdinal;
-    if (callableOrdinal < namespaceCallableBase_)
-    {
-        const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
-        if (callable != nullptr && nameLookup_ != nullptr &&
-            callable->declaringTypeOrdinal < nameLookup_->namedTypes().size())
-        {
-            projectOrdinal =
-                nameLookup_->namedTypes()[callable->declaringTypeOrdinal].projectOrdinal;
-        }
-    }
-    else if (namespaceFunctionModel_ != nullptr)
-    {
-        const std::size_t functionOrdinal = callableOrdinal - namespaceCallableBase_;
-        if (functionOrdinal < namespaceFunctionModel_->functions().size())
-            projectOrdinal = namespaceFunctionModel_->functions()[functionOrdinal].projectOrdinal;
-    }
-    if (projectOrdinal.has_value() && *projectOrdinal < projectRecognizedLanguageEditions_.size())
-        return projectRecognizedLanguageEditions_[*projectOrdinal];
-    return languageEdition_;
-}
-
-bool ProjectMethodBodyModel::callableEnforcesLanguage3Effects(
-    std::size_t callableOrdinal) const noexcept
-{
-    if (projectLanguage3EffectPolicies_.empty()) return false;
-
-    std::optional<std::size_t> projectOrdinal;
-    if (callableOrdinal < namespaceCallableBase_)
-    {
-        const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
-        if (callable != nullptr && nameLookup_ != nullptr &&
-            callable->declaringTypeOrdinal < nameLookup_->namedTypes().size())
-        {
-            projectOrdinal =
-                nameLookup_->namedTypes()[callable->declaringTypeOrdinal].projectOrdinal;
-        }
-    }
-    else if (namespaceFunctionModel_ != nullptr)
-    {
-        const std::size_t functionOrdinal = callableOrdinal - namespaceCallableBase_;
-        if (functionOrdinal < namespaceFunctionModel_->functions().size())
-            projectOrdinal = namespaceFunctionModel_->functions()[functionOrdinal].projectOrdinal;
-    }
-    return projectOrdinal.has_value() &&
-        *projectOrdinal < projectLanguage3EffectPolicies_.size() &&
-        projectLanguage3EffectPolicies_[*projectOrdinal] != 0U;
 }
 
 void ProjectMethodBodyModel::collectCallableDiscoveries(
@@ -994,16 +936,8 @@ bool ProjectMethodBodyModel::build(
     diagnostics::DiagnosticEngine& diagnostics,
     const ProjectGenericConstraintModel* genericConstraintModel,
     std::optional<std::size_t> publicSurfaceProjectOrdinal,
-    language::LanguageEdition languageEdition,
     const ProjectMethodBodyBuildOptions& options)
 {
-    languageEdition_ = languageEdition;
-    projectRecognizedLanguageEditions_.assign(
-        options.projectRecognizedLanguageEditions.begin(),
-        options.projectRecognizedLanguageEditions.end());
-    projectLanguage3EffectPolicies_.assign(
-        options.projectLanguage3EffectPolicies.begin(),
-        options.projectLanguage3EffectPolicies.end());
     genericConstraintModel_ = genericConstraintModel;
     genericModel_ = genericModel;
     if (built_)
@@ -1280,8 +1214,7 @@ bool ProjectMethodBodyModel::build(
                 callableWorklist[workCursor], waveOrdinal,
                 nameLookup, memberModel, namespaceFunctionModel,
                 inheritanceModel, interfaceModel, genericModel,
-                genericConstraintModel,
-                callableLanguageEdition(callableWorklist[workCursor]));
+                genericConstraintModel);
             if (!callableCanBeAnalyzed(context))
             {
                 ++callableAnalysisStatistics_.callablesSkipped;
@@ -1307,7 +1240,7 @@ bool ProjectMethodBodyModel::build(
                     callableOrdinal, scheduledWave,
                     nameLookup, memberModel, namespaceFunctionModel,
                     inheritanceModel, interfaceModel, genericModel,
-                    genericConstraintModel, callableLanguageEdition(callableOrdinal)));
+                    genericConstraintModel));
             },
             options.cancellationCheck,
             waveResults,
@@ -1368,9 +1301,6 @@ bool ProjectMethodBodyModel::build(
         {
             continue;
         }
-
-        languageEdition_ = callableLanguageEdition(memberOrdinal);
-        enforceLanguage3Effects_ = callableEnforcesLanguage3Effects(memberOrdinal);
 
         currentCallableLocalBase_ = locals_.size();
         currentCallableParameterCount_ = 0;
@@ -1459,9 +1389,6 @@ bool ProjectMethodBodyModel::build(
                 "const fields are limited to integral, bool, float, double, and string types");
         }
     }
-    languageEdition_ = languageEdition;
-    enforceLanguage3Effects_ = false;
-
     // NSC-LIMIT-019. Validate after every initializer has been analyzed. ProjectMemberModel orders
     // types by stable identity rather than source order, so a transitive evaluator needs all name
     // and expression bindings to exist before it follows qualified dependencies.
@@ -2940,9 +2867,6 @@ std::optional<MethodDeconstructionBinding> ProjectMethodBodyModel::bindDeconstru
     }
 
     const ClassMemberSymbol& selected = memberModel_->members()[validCandidates.front()];
-    validateErrorPropagation(
-        selected.declaredErrorTypeKey, sourceSyntax, methodMemberOrdinal,
-        diagnostics, "Deconstruct call");
     if (!elementTypeHasTrivialLifetime(selected.declaredTypeKey))
     {
         diagnostics.report(
@@ -4264,8 +4188,6 @@ void ProjectMethodBodyModel::analyzeBlock(
         return;
     }
 
-    const bool unsafeBlock = block->auxiliaryText() == "unsafe-block";
-    if (unsafeBlock) ++unsafeBlockDepth_;
     std::size_t activeScope = scopeOrdinal;
     if (createNestedScope)
     {
@@ -4329,8 +4251,6 @@ void ProjectMethodBodyModel::analyzeBlock(
     }
     activeCleanupRegions_.resize(cleanupDepthAtEntry);
     if (deferCaptureBoundary) deferCaptureStack_.pop_back();
-    if (unsafeBlock) --unsafeBlockDepth_;
-
     constexpr std::string_view matchCoveragePrefix = "match-coverage:v1:";
     if (block->auxiliaryText().starts_with(matchCoveragePrefix) && !block->text().empty())
     {
@@ -4967,14 +4887,6 @@ void ProjectMethodBodyModel::analyzeStatement(
             break;
         }
         case ast::AstNodeKind::InlineAssemblyStatement:
-            if (enforceLanguage3Effects_ && unsafeBlockDepth_ == 0)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::NS3030MissingEffectContext,
-                    diagnostics::DiagnosticSeverity::Error,
-                    statement->range(),
-                    "inline assembly requires an explicit unsafe { ... } block");
-            }
             for (ast::AstNode* child : statement->children())
             {
                 if (child->kind() == ast::AstNodeKind::InlineAssemblyInputOperand &&
@@ -5482,33 +5394,7 @@ void ProjectMethodBodyModel::analyzeTry(
 
     const OwnershipFlowSnapshot tryEntryState = captureOwnershipFlow();
     const std::size_t throwStateBegin = throwFlowStates_.size();
-    ActiveErrorHandlers handlers;
-    for (const ast::AstNode* catchClause : statement->children())
-    {
-        if (catchClause == nullptr || catchClause->kind() != ast::AstNodeKind::CatchClause)
-            continue;
-        const bool filterAlwaysTrue = catchClause->second() == nullptr ||
-            (catchClause->second()->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
-             catchClause->second()->tokenKind() == lexer::TokenKind::KwTrue);
-        // A runtime filter can decline the exception. Only an unfiltered (or literal-true)
-        // clause proves that the protected operation is handled on every execution path.
-        if (!filterAlwaysTrue) continue;
-        if (catchClause->flag())
-        {
-            handlers.catchAll = true;
-            continue;
-        }
-        if (catchClause->typeSyntax() != nullptr)
-            handlers.typeKeys.push_back(
-                memberModel_->canonicalTypeKey(catchClause->typeSyntax(), *nameLookup_));
-    }
-    activeTryErrorSets_.push_back({});
-    activeErrorHandlers_.push_back(std::move(handlers));
     analyzeBlock(statement->first(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
-    activeErrorHandlers_.pop_back();
-    std::vector<std::string> declaredTryErrors =
-        std::move(activeTryErrorSets_.back().typeKeys);
-    activeTryErrorSets_.pop_back();
     const OwnershipFlowSnapshot tryExitState = captureOwnershipFlow();
 
     // A catch can observe ownership state from any explicit throw point and, conservatively,
@@ -5523,17 +5409,6 @@ void ProjectMethodBodyModel::analyzeTry(
     const std::optional<std::size_t> exceptionRoot = exceptionRootTypeOrdinal();
     bool sawCatchAll = false;
     std::vector<std::size_t> previousTypedCatchOrdinals;
-    std::vector<bool> fullyCoveredErrors(declaredTryErrors.size(), false);
-    const auto isSameOrDerived = [&](std::string_view source, std::string_view target)
-    {
-        if (source == target) return true;
-        const std::optional<std::size_t> sourceOrdinal =
-            inheritanceModel_->typeOrdinalForTypeKey(source);
-        const std::optional<std::size_t> targetOrdinal =
-            inheritanceModel_->typeOrdinalForTypeKey(target);
-        return sourceOrdinal.has_value() && targetOrdinal.has_value() &&
-            inheritanceModel_->isDerivedFrom(*sourceOrdinal, *targetOrdinal, true);
-    };
     for (const ast::AstNode* catchClause : statement->children())
     {
         if (catchClause == nullptr || catchClause->kind() != ast::AstNodeKind::CatchClause)
@@ -5638,37 +5513,6 @@ void ProjectMethodBodyModel::analyzeTry(
             }
         }
 
-        if (enforceLanguage3Effects_)
-        {
-            for (std::size_t errorIndex = 0; errorIndex < declaredTryErrors.size(); ++errorIndex)
-            {
-                if (fullyCoveredErrors[errorIndex]) continue;
-                const std::string& declaredError = declaredTryErrors[errorIndex];
-                const bool possibleMatch = binding.catchAll ||
-                    isSameOrDerived(declaredError, binding.exceptionTypeKey) ||
-                    isSameOrDerived(binding.exceptionTypeKey, declaredError);
-                if (!possibleMatch) continue;
-                binding.matchedErrorTypeKeys.push_back(declaredError);
-                if (binding.filterAlwaysTrue && (binding.catchAll ||
-                    isSameOrDerived(declaredError, binding.exceptionTypeKey))
-                )
-                    fullyCoveredErrors[errorIndex] = true;
-            }
-            binding.exhaustive = !declaredTryErrors.empty() &&
-                std::ranges::all_of(fullyCoveredErrors, [](bool covered) { return covered; });
-            if (binding.matchedErrorTypeKeys.empty())
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    catchClause->range(),
-                    binding.catchAll
-                        ? "catch-all pattern cannot match because the protected region declares no errors"
-                        : "catch pattern '" + binding.exceptionTypeKey +
-                            "' cannot match any declared error from the protected region");
-            }
-        }
-
         exceptionBindings_.push_back(std::move(binding));
         ++currentCatchDepth_;
         currentCatchErrorTypes_.push_back(catchClause->flag()
@@ -5680,18 +5524,6 @@ void ProjectMethodBodyModel::analyzeTry(
         currentCatchErrorTypes_.pop_back();
         --currentCatchDepth_;
         joinedExitState = joinOwnershipFlow(joinedExitState, captureOwnershipFlow());
-    }
-
-    if (enforceLanguage3Effects_ &&
-        !activeTryErrorSets_.empty())
-    {
-        for (std::size_t errorIndex = 0; errorIndex < declaredTryErrors.size(); ++errorIndex)
-        {
-            if (fullyCoveredErrors[errorIndex]) continue;
-            auto& parentErrors = activeTryErrorSets_.back().typeKeys;
-            if (std::ranges::find(parentErrors, declaredTryErrors[errorIndex]) == parentErrors.end())
-                parentErrors.push_back(declaredTryErrors[errorIndex]);
-        }
     }
 
     restoreOwnershipFlow(joinedExitState);
@@ -5756,9 +5588,7 @@ void ProjectMethodBodyModel::analyzeThrow(
         }
         else if (!currentCatchErrorTypes_.empty())
         {
-            validateErrorPropagation(
-                currentCatchErrorTypes_.back(), statement, methodMemberOrdinal,
-                diagnostics, "rethrow");
+            binding.exceptionTypeKey = currentCatchErrorTypes_.back();
         }
         exceptionBindings_.push_back(std::move(binding));
         throwFlowStates_.push_back(captureOwnershipFlow());
@@ -5792,62 +5622,9 @@ void ProjectMethodBodyModel::analyzeThrow(
                     "throw operand type '" + value.typeKey + "' must be NativeSharp.Core.Exception or derive from it");
             }
         }
-        validateErrorPropagation(
-            value.typeKey, statement, methodMemberOrdinal, diagnostics, "throw");
     }
     exceptionBindings_.push_back(std::move(binding));
     throwFlowStates_.push_back(captureOwnershipFlow());
-}
-
-bool ProjectMethodBodyModel::errorIsHandled(std::string_view errorTypeKey) const
-{
-    if (errorTypeKey.empty()) return true;
-    for (auto iterator = activeErrorHandlers_.rbegin();
-         iterator != activeErrorHandlers_.rend(); ++iterator)
-    {
-        if (iterator->catchAll) return true;
-        for (const std::string& handled : iterator->typeKeys)
-        {
-            if (classifyImplicit(errorTypeKey, handled).exists()) return true;
-        }
-    }
-    return false;
-}
-
-bool ProjectMethodBodyModel::validateErrorPropagation(
-    std::string_view errorTypeKey,
-    const ast::AstNode* syntax,
-    std::size_t callerCallableOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    std::string_view operation)
-{
-    if (!enforceLanguage3Effects_ || errorTypeKey.empty())
-        return true;
-
-    if (!activeTryErrorSets_.empty())
-    {
-        auto& errors = activeTryErrorSets_.back().typeKeys;
-        if (std::ranges::find(errors, errorTypeKey) == errors.end())
-            errors.emplace_back(errorTypeKey);
-    }
-    if (errorIsHandled(errorTypeKey)) return true;
-
-    std::string_view declaredErrorTypeKey = currentLambdaErrorTypeKey_;
-    const ClassMemberSymbol* caller = methodSymbol(callerCallableOrdinal);
-    if (!currentLambdaOrdinal_.has_value() && caller != nullptr)
-        declaredErrorTypeKey = caller->declaredErrorTypeKey;
-    if (!declaredErrorTypeKey.empty() &&
-        classifyImplicit(errorTypeKey, declaredErrorTypeKey).exists())
-        return true;
-
-    diagnostics.report(
-        diagnostics::DiagnosticId::InvalidCall,
-        diagnostics::DiagnosticSeverity::Error,
-        syntax != nullptr ? syntax->range() : SourceRange{},
-        "NS3071: " + std::string(operation) + " may produce error '" +
-            std::string(errorTypeKey) +
-            "'; catch it or declare a compatible throws error on the enclosing callable");
-    return false;
 }
 
 std::string ProjectMethodBodyModel::delegateErrorTypeKey(
@@ -11163,47 +10940,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.pointerKnownAlignment = targetPointerContract.knownAlignment;
                 result.pointerAddressSpace = targetPointerContract.addressSpace;
                 result.onePastEndPointer = operand.onePastEndPointer;
-                const bool sourceRawPointer = ProjectTypeConversion::isPointer(operand.typeKey);
-                const bool targetRawPointer = ProjectTypeConversion::isPointer(result.typeKey);
-                const bool sourceInteger = ProjectTypeConversion::isIntegral(operand.typeKey) &&
-                    operand.typeKey != "builtin:bool";
-                const bool targetInteger = ProjectTypeConversion::isIntegral(result.typeKey) &&
-                    result.typeKey != "builtin:bool";
-                if (result.valid && enforceLanguage3Effects_ &&
-                    unsafeBlockDepth_ == 0 &&
-                    ((sourceRawPointer && targetInteger) ||
-                     (sourceInteger && targetRawPointer)))
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::NS3030MissingEffectContext,
-                        diagnostics::DiagnosticSeverity::Error,
-                        expression->range(),
-                        "integer/pointer casts require an explicit unsafe { ... } block because provenance is not preserved");
-                    result.valid = false;
-                    break;
-                }
-                if (result.valid && sourceRawPointer && targetRawPointer)
-                {
-                    const language::PointerContract sourcePointerContract{
-                        operand.pointerNullable,
-                        !operand.pointerPointeeReadonly,
-                        operand.pointerHasProvenance,
-                        operand.pointerKnownAlignment,
-                        operand.pointerAddressSpace};
-                    if (enforceLanguage3Effects_ &&
-                        language::pointerCastRequiresUnsafe(
-                            sourcePointerContract, targetPointerContract) &&
-                        unsafeBlockDepth_ == 0)
-                    {
-                        diagnostics.report(
-                            diagnostics::DiagnosticId::NS3030MissingEffectContext,
-                            diagnostics::DiagnosticSeverity::Error,
-                            expression->range(),
-                            "pointer cast strengthens nullability, mutability, provenance, alignment, or address-space guarantees and requires unsafe { ... }");
-                        result.valid = false;
-                        break;
-                    }
-                }
                 const std::string_view namedCast = expression->auxiliaryText().starts_with("cast:")
                     ? std::string_view(expression->auxiliaryText()).substr(5U)
                     : std::string_view{};
@@ -14921,9 +14657,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             diagnostics,
             parameterOrdinals);
     }
-    validateErrorPropagation(
-        callable.declaredErrorTypeKey, expression, callerCallableOrdinal,
-        diagnostics, "call to '" + callable.name + "'");
     call.resolution = MethodCallResolutionKind::Resolved;
     call.selectedFunctionOrdinal = functionOrdinal;
     call.selectedConversions = selected.conversions;
@@ -15026,17 +14759,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     : "() requires exactly " + std::to_string(expectedArguments) +
                         " value argument" + (expectedArguments == 1U ? "" : "s") +
                     " and no generic type arguments"));
-            return {};
-        }
-
-        if (assertionIntrinsic == "builtin-assume" &&
-            enforceLanguage3Effects_ && unsafeBlockDepth_ == 0)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "assume() requires an explicit unsafe { ... } block because a false premise is undefined behavior");
             return {};
         }
 
@@ -15579,9 +15301,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             }
             binding.argumentConversions.push_back(std::move(conversion));
         }
-        validateErrorPropagation(
-            delegateErrorTypeKey(targetType), expression, methodMemberOrdinal,
-            diagnostics, "generic lambda invocation");
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
@@ -15663,9 +15382,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             }
             binding.argumentConversions.push_back(std::move(conversion));
         }
-        validateErrorPropagation(
-            delegateErrorTypeKey(event.declaredTypeKey), expression, methodMemberOrdinal,
-            diagnostics, "event delegate invocation");
         eventBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
@@ -15675,18 +15391,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (!callee.methodGroup && isDelegateTypeKey(callee.typeKey))
     {
         if (!allArgumentsValid) return result;
-        if (const std::optional<language::FunctionType> functionType =
-                language::parseFunctionTypeIdentity(callee.typeKey);
-            functionType.has_value() && functionType->isUnsafe &&
-            enforceLanguage3Effects_ && unsafeBlockDepth_ == 0)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidCall,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "invoking an unsafe function value requires an explicit unsafe { ... } block");
-            return result;
-        }
         std::string returnType;
         std::vector<std::string> parameterTypes;
         std::size_t delegateOrdinal = 0;
@@ -15704,9 +15408,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 "delegate invocation argument count does not match its signature");
             return result;
         }
-        validateErrorPropagation(
-            delegateErrorTypeKey(callee.typeKey), expression, methodMemberOrdinal,
-            diagnostics, "delegate invocation");
         MethodDelegateBinding binding;
         binding.kind = MethodDelegateOperationKind::Invoke;
         binding.syntax = expression;
@@ -16409,19 +16110,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 }
             }
         }
-        if (selectedMember.isUnsafe && enforceLanguage3Effects_ &&
-            unsafeBlockDepth_ == 0)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::NS3030MissingEffectContext,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "call to unsafe function '" + selectedMember.name +
-                    "' requires an explicit unsafe { ... } block");
-            call.resolution = MethodCallResolutionKind::NoViableCandidate;
-            recordCallBinding(std::move(call));
-            return result;
-        }
         const std::string_view variantMarker = selectedMember.syntax != nullptr
             ? std::string_view(selectedMember.syntax->auxiliaryText()) : std::string_view{};
         const auto markerCase = [](std::string_view marker) -> std::optional<std::size_t>
@@ -16527,14 +16215,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 activeVariantCases_.erase(*storage);
             }
         }
-    if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
-    {
-        const ClassMemberSymbol& throwingMember =
-            memberModel_->members()[selected.memberOrdinal];
-        validateErrorPropagation(
-            throwingMember.declaredErrorTypeKey, expression, methodMemberOrdinal,
-            diagnostics, "call to '" + throwingMember.name + "'");
-    }
     call.resolution = MethodCallResolutionKind::Resolved;
     call.selectedMemberOrdinal = selected.memberOrdinal;
     call.selectedConversions = selected.conversions;
@@ -18547,19 +18227,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
-        if (diagnoseFailure && selectedMember.isUnsafe &&
-            enforceLanguage3Effects_ && unsafeBlockDepth_ == 0)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::NS3030MissingEffectContext,
-                diagnostics::DiagnosticSeverity::Error,
-                syntax != nullptr ? syntax->range() : SourceRange{},
-                "call to unsafe function '" + selectedMember.name +
-                    "' requires an explicit unsafe { ... } block");
-            call.resolution = MethodCallResolutionKind::NoViableCandidate;
-            recordCallBinding(std::move(call));
-            return result;
-        }
         if (readonlyReceiver && selectedMember.declaringTypeIsStruct &&
             !selectedMember.isStatic && !selectedMember.isReadonly)
         {
@@ -18582,15 +18249,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
         !memberModel_->members()[selected.memberOrdinal].isUserOperator)
     {
         checkArgumentPassKinds(syntax, call.methodName, selected.memberOrdinal, arguments, diagnostics);
-    }
-    if (diagnoseFailure && memberModel_ != nullptr &&
-        selected.memberOrdinal < memberModel_->members().size())
-    {
-        const ClassMemberSymbol& throwingMember =
-            memberModel_->members()[selected.memberOrdinal];
-        validateErrorPropagation(
-            throwingMember.declaredErrorTypeKey, syntax, methodMemberOrdinal,
-            diagnostics, "call to '" + throwingMember.name + "'");
     }
     call.resolution = MethodCallResolutionKind::Resolved;
     call.selectedMemberOrdinal = selected.memberOrdinal;
@@ -18929,15 +18587,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
                 "a one-past-end pointer is a comparison/iteration sentinel and cannot be dereferenced");
-            return result;
-        }
-        if (enforceLanguage3Effects_ && unsafeBlockDepth_ == 0)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::NS3030MissingEffectContext,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "raw pointer dereference requires an explicit unsafe { ... } block");
             return result;
         }
         result.typeKey = operand.typeKey.substr(0, operand.typeKey.size() - 1);

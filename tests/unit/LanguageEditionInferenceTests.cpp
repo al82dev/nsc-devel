@@ -1,6 +1,5 @@
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
-#include "nativesharp/Language/LanguageEdition.h"
 
 #include "../support/TestContext.h"
 
@@ -42,8 +41,6 @@ std::filesystem::path writeProject(
 int main()
 {
     nativesharp::tests::TestContext tests;
-    using nativesharp::language::LanguageEdition;
-
     const std::filesystem::path evidence =
         nativesharp::tests::evidenceRoot("nativesharp_language_edition_inference");
     std::error_code ignored;
@@ -56,9 +53,9 @@ int main()
     const auto loadedImplicit = loader.load(implicitProject, error);
     tests.expect(
         loadedImplicit.has_value() &&
-            loadedImplicit->languageEdition() == LanguageEdition::V3 &&
-            !loadedImplicit->hasExplicitLanguageEdition(),
-        "an omitted Language selects the cumulative language surface: " + error);
+            loadedImplicit->moduleName() == "ImplicitStandalone" &&
+            loadedImplicit->sourceSet().sources().size() == 1U,
+        "a project without Language loads through the cumulative language: " + error);
 
     const auto explicitDependency = writeProject(evidence, "ExplicitDependency", "3");
     const std::string dependencyReference =
@@ -68,25 +65,20 @@ int main()
     error.clear();
     const auto inferredGraph =
         nativesharp::compilation::ProjectGraphLoader().load(implicitRoot, error);
-    bool allEdition3 = inferredGraph.has_value();
-    bool ignoresAdministrativeEdition = inferredGraph.has_value();
+    bool containsRoot = false;
+    bool containsDependency = false;
     if (inferredGraph.has_value())
     {
         for (const auto& project : inferredGraph->projects())
         {
-            allEdition3 = allEdition3 && project.languageEdition() == LanguageEdition::V3;
-            if (project.moduleName() == "ImplicitRoot")
-                ignoresAdministrativeEdition = ignoresAdministrativeEdition &&
-                    !project.hasExplicitLanguageEdition();
-            if (project.moduleName() == "ExplicitDependency")
-                ignoresAdministrativeEdition = ignoresAdministrativeEdition &&
-                    !project.hasExplicitLanguageEdition();
+            containsRoot = containsRoot || project.moduleName() == "ImplicitRoot";
+            containsDependency = containsDependency ||
+                project.moduleName() == "ExplicitDependency";
         }
     }
-    tests.expect(allEdition3,
-        "an implicit source project adopts the sole explicit graph edition: " + error);
-    tests.expect(ignoresAdministrativeEdition,
-        "source graph ignores administrative edition provenance");
+    tests.expect(inferredGraph.has_value() && inferredGraph->projects().size() == 2U &&
+            containsRoot && containsDependency,
+        "Language properties do not partition a cumulative source graph: " + error);
 
     const auto explicitV2Root =
         writeProject(evidence, "ExplicitV2Root", "2", dependencyReference);
