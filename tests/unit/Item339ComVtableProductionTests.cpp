@@ -127,13 +127,13 @@ public class Program
 )NS");
 
     std::string diagnostic;
-    tests.expect(
-        compileAndRun(root / "ComProducer.nsproj", root / "ComProducerO0.exe", "-O0", diagnostic),
-        "NativeSharp-produced COM vtable executes at O0 (" + diagnostic + ")");
+    const bool o0Passed =
+        compileAndRun(root / "ComProducer.nsproj", root / "ComProducerO0.exe", "-O0", diagnostic);
+    tests.expect(o0Passed, "NativeSharp-produced COM vtable executes at O0 (" + diagnostic + ")");
     diagnostic.clear();
-    tests.expect(
-        compileAndRun(root / "ComProducer.nsproj", root / "ComProducerO2.exe", "-O2", diagnostic),
-        "NativeSharp-produced COM vtable executes at O2 (" + diagnostic + ")");
+    const bool o2Passed =
+        compileAndRun(root / "ComProducer.nsproj", root / "ComProducerO2.exe", "-O2", diagnostic);
+    tests.expect(o2Passed, "NativeSharp-produced COM vtable executes at O2 (" + diagnostic + ")");
 
     std::filesystem::remove_all(root, filesystemError);
     return tests.result();
