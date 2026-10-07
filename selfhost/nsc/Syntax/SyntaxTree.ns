@@ -14,6 +14,7 @@ namespace NativeSharp.Compiler.Syntax
         private owned string genericText;
         private owned string constraintsText;
         private owned string modifiersText;
+        private owned string throwsTypeText;
         private TokenKind operatorKind;
         private int first;
         private int second;
@@ -34,6 +35,7 @@ namespace NativeSharp.Compiler.Syntax
             genericText = String.Copy("");
             constraintsText = String.Copy("");
             modifiersText = String.Copy("");
+            throwsTypeText = String.Copy("");
             operatorKind = TokenKind.Invalid;
             first = -1; second = -1; third = -1;
             children = new List<int>();
@@ -49,6 +51,7 @@ namespace NativeSharp.Compiler.Syntax
         public string GenericText() { return genericText; }
         public string ConstraintsText() { return constraintsText; }
         public string ModifiersText() { return modifiersText; }
+        public string ThrowsTypeText() { return throwsTypeText; }
         public TokenKind OperatorKind() { return operatorKind; }
         public int First() { return first; }
         public int Second() { return second; }
@@ -66,6 +69,7 @@ namespace NativeSharp.Compiler.Syntax
         public void SetGenericText(string value) { if (mutable) { genericText = String.Copy(value); } }
         public void SetConstraintsText(string value) { if (mutable) { constraintsText = String.Copy(value); } }
         public void SetModifiersText(string value) { if (mutable) { modifiersText = String.Copy(value); } }
+        public void SetThrowsTypeText(string value) { if (mutable) { throwsTypeText = String.Copy(value); } }
         public void SetOperator(TokenKind value) { if (mutable) { operatorKind = value; } }
         public void SetFirst(int value) { if (mutable) { first = value; } }
         public void SetSecond(int value) { if (mutable) { second = value; } }
@@ -135,6 +139,10 @@ namespace NativeSharp.Compiler.Syntax
                 output.Append(" generic=<"); output.Append(node.GenericText()); output.Append('>');
             }
             if (node.ConstraintsText().Length != 0) { output.Append(node.ConstraintsText()); }
+            if (node.ThrowsTypeText().Length != 0)
+            {
+                output.Append(" throws "); output.Append(node.ThrowsTypeText());
+            }
             if (node.OperatorKind() != TokenKind.Invalid) { output.Append(" op="); output.Append(TokenFacts.Name(node.OperatorKind())); }
             if (node.TypeText().Length != 0) { output.Append(" type="); output.Append(node.TypeText()); }
             if (node.Flag()) { output.Append(" flag=true"); }

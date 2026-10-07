@@ -110,6 +110,15 @@ namespace NativeSharp.Compiler.Parser
         {
             return kind == TokenKind.KwOwned || kind == TokenKind.KwBorrowed;
         }
+        private bool CopyTypeModifier()
+        {
+            if (!AtText("copy")) { return false; }
+            TokenKind next = Peek(1);
+            return next == TokenKind.KwStruct || next == TokenKind.KwClass ||
+                next == TokenKind.KwInterface || next == TokenKind.KwEnum ||
+                next == TokenKind.KwDelegate || next == TokenKind.KwReadonly ||
+                next == TokenKind.KwBorrowed;
+        }
         private owned string ParseLayoutModifiers()
         {
             int pack = -1; int alignment = -1; int size = -1; int offset = -1;
@@ -272,6 +281,14 @@ namespace NativeSharp.Compiler.Parser
                 }
             }
             raii string text = clauses.ToOwnedString(); Node(declaration).SetConstraintsText(text);
+        }
+
+        private void ParseThrowsClause(int declaration)
+        {
+            if (!AtText("throws")) { return; }
+            Consume();
+            raii string errorType = ParseType();
+            Node(declaration).SetThrowsTypeText(errorType);
         }
 
         private int IdentifierExpression()
@@ -1041,11 +1058,33 @@ namespace NativeSharp.Compiler.Parser
             Expect(TokenKind.RightParen);
         }
 
+        private int ParseConstructorInitializer()
+        {
+            if (!ConsumeIf(TokenKind.Colon)) { return -1; }
+            bool baseInitializer = At(TokenKind.KwBase);
+            bool thisInitializer = At(TokenKind.KwThis);
+            if (!baseInitializer && !thisInitializer) { AddError(); return -1; }
+            Consume();
+            int initializer = NewNode(baseInitializer ?
+                "BaseConstructorInitializer" : "ThisConstructorInitializer");
+            Expect(TokenKind.LeftParen);
+            if (!At(TokenKind.RightParen))
+            {
+                while (true)
+                {
+                    Node(initializer).AddChild(ParseExpression());
+                    if (!ConsumeIf(TokenKind.Comma)) { break; }
+                }
+            }
+            Expect(TokenKind.RightParen); return initializer;
+        }
+
         private int ParseFunction(owned string type, owned string name, bool externalOnly, string nodeKind)
         {
             int function = NewNode(nodeKind); Node(function).SetText(name); ApplyType(function, type);
             ParseGenericParameters(function);
             ParseParameters(function);
+            ParseThrowsClause(function);
             ParseGenericConstraints(function);
             if (ConsumeIf(TokenKind.Semicolon)) { Node(function).SetFlag(true); }
             else { Node(function).SetFirst(ParseBlock()); }
@@ -1111,7 +1150,7 @@ namespace NativeSharp.Compiler.Parser
                 }
                 TokenKind accessibility = TokenKind.Invalid;
                 raii StringBuilder modifierBuilder = new StringBuilder();
-                while (Modifier(Current()))
+                while (Modifier(Current()) || CopyTypeModifier())
                 {
                     if (modifierBuilder.Length() != 0) { modifierBuilder.Append(','); }
                     raii string modifierName = CurrentText(); modifierBuilder.Append(modifierName);
@@ -1156,7 +1195,10 @@ namespace NativeSharp.Compiler.Parser
                         Consume(); int constructor = NewNode("ConstructorDeclaration");
                         Node(constructor).SetText(name); Node(constructor).SetOperator(accessibility);
                         Node(constructor).SetModifiersText(memberModifiers);
-                        ParseParameters(constructor); Node(constructor).SetFirst(ParseBlock());
+                        ParseParameters(constructor);
+                        int initializer = ParseConstructorInitializer();
+                        if (initializer >= 0) { Node(constructor).SetSecond(initializer); }
+                        Node(constructor).SetFirst(ParseBlock());
                         Node(declaration).AddChild(constructor); continue;
                     }
                 }
@@ -1269,6 +1311,7 @@ namespace NativeSharp.Compiler.Parser
             int declaration = NewNode("DelegateDeclaration"); Node(declaration).SetText(name); ApplyType(declaration, type);
             Node(declaration).SetAuxiliary("delegate");
             AddKnownType(name); ParseGenericParameters(declaration); ParseParameters(declaration);
+            ParseThrowsClause(declaration);
             ParseGenericConstraints(declaration); Expect(TokenKind.Semicolon); return declaration;
         }
 
@@ -1301,6 +1344,7 @@ namespace NativeSharp.Compiler.Parser
         {
             Consume(); TokenKind operation = Current(); Consume(); int method = NewNode("MethodDeclaration");
             ApplyType(method, type); Node(method).SetOperator(accessibility); ParseParameters(method);
+            ParseThrowsClause(method);
             raii string name = OperatorMethodName(operation, Node(method).ChildCount()); Node(method).SetText(name);
             raii string auxiliary = String.Concat("operator:", TokenFacts.Name(operation)); Node(method).SetAuxiliary(auxiliary);
             Node(method).SetFirst(ParseBlock()); return method;
@@ -1311,6 +1355,7 @@ namespace NativeSharp.Compiler.Parser
             int method = NewNode("MethodDeclaration"); Node(method).SetText(name);
             Node(method).SetAuxiliary(auxiliary); ApplyType(method, returnType); Node(method).SetOperator(accessibility);
             Node(method).SetSemanticType(returnType);
+            ParseThrowsClause(method);
             if (ConsumeIf(TokenKind.Semicolon)) { return method; }
             Node(method).SetFirst(ParseBlock()); return method;
         }
@@ -1379,7 +1424,7 @@ namespace NativeSharp.Compiler.Parser
             bool constant = ConsumeIf(TokenKind.KwConst);
             TokenKind accessibility = TokenKind.Invalid;
             raii StringBuilder modifierBuilder = new StringBuilder(); if (constant) { modifierBuilder.Append("const"); }
-            while (Modifier(Current()))
+            while (Modifier(Current()) || CopyTypeModifier())
             {
                 if (modifierBuilder.Length() != 0) { modifierBuilder.Append(','); }
                 raii string modifierName = CurrentText(); modifierBuilder.Append(modifierName);
