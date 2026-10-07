@@ -10,8 +10,8 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
@@ -19,7 +19,6 @@ from typing import TextIO
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MANIFEST = ROOT / "test.run"
 DEFAULT_BUILD = ROOT / "build-failed-tests"
-DEFAULT_HISTORY = ROOT / "_nscbuilder" / "failed-tests"
 DEFAULT_NSC = Path(r"C:\native-sharp\bin\nsc.exe")
 DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
 CTEST_FILE = "CTestTestfile.cmake"
@@ -47,7 +46,6 @@ def parse_arguments() -> argparse.Namespace:
         help="Árbol dedicado para compilar solamente los targets incluidos en test.run.",
     )
     parser.add_argument("--tests-file", type=Path, default=DEFAULT_MANIFEST)
-    parser.add_argument("--output-root", type=Path, default=DEFAULT_HISTORY)
     parser.add_argument("--nsc", type=Path, default=DEFAULT_NSC)
     parser.add_argument("--nslink", type=Path, default=DEFAULT_NSLINK)
     parser.add_argument(
@@ -81,11 +79,23 @@ def safe_name(value: str) -> str:
     return normalized or "test"
 
 
+def next_log_path() -> Path:
+    """Return the first unused consecutive log name beside this script."""
+    number = 1
+    while True:
+        candidate = ROOT / f"putadas_que_fallan_{number}.log"
+        if not candidate.exists():
+            return candidate
+        number += 1
+
+
 def run_stage(command: list[str], log_path: Path, label: str) -> None:
     """Run one preparation stage with progressive console and persistent log output."""
     encoding = locale.getpreferredencoding(False) or "utf-8"
-    with log_path.open("w", encoding="utf-8", errors="replace") as log:
-        print(f"\n{label}: {subprocess.list2cmdline(command)}")
+    with log_path.open("a", encoding="utf-8", errors="replace") as log:
+        header = f"\n{label}: {subprocess.list2cmdline(command)}\n"
+        print(header, end="")
+        log.write(header)
         process = subprocess.Popen(
             command,
             cwd=str(ROOT),
@@ -173,7 +183,8 @@ def selected_cpp_targets(metadata: Path, names: list[str], build_dir: Path) -> l
 def build_selected_targets(build_dir: Path, targets: list[str], log_path: Path) -> None:
     """Build only C++ test executables named by test.run and their normal dependencies."""
     if not targets:
-        log_path.write_text("No hay targets C++ seleccionados.\n", encoding="utf-8")
+        with log_path.open("a", encoding="utf-8") as log:
+            log.write("No hay targets C++ seleccionados.\n")
         return
     command = ["cmake", "--build", str(build_dir), "--parallel", "--target", *targets]
     run_stage(command, log_path, f"Compilar {len(targets)} targets seleccionados")
@@ -389,42 +400,37 @@ def execute(args: argparse.Namespace, names: list[str]) -> int:
         raise ValueError(f"No existe el compilador oficial: {nsc}")
     if not nslink.is_file():
         raise ValueError(f"No existe el linker oficial: {nslink}")
-    run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-    run_dir = args.output_root.resolve() / run_id
-    run_dir.mkdir(parents=True, exist_ok=False)
-    logs_dir = run_dir / "tests"
-    logs_dir.mkdir()
-    if not args.no_prepare:
-        configure_test_tree(build_dir, nsc, nslink, run_dir / "configure.log")
-        targets = selected_cpp_targets(build_dir / CTEST_FILE, names, build_dir)
-        build_selected_targets(build_dir, targets, run_dir / "build.log")
-        print(f"\nTargets C++ seleccionados: {len(targets)}")
-    elif not (build_dir / CTEST_FILE).is_file():
-        raise ValueError(f"El árbol CTest indicado no está preparado: {build_dir}")
-    test_dir = prepare_ctest_overlay(build_dir, run_dir, nsc, nslink)
-    environment = test_environment(nsc, nslink)
+    master_path = next_log_path()
+    master_path.write_text("", encoding="utf-8")
     results: list[dict] = []
     interrupted = False
-    master_path = run_dir / "full.log"
-    with master_path.open("w", encoding="utf-8", errors="replace") as master:
-        for index, name in enumerate(names, 1):
-            print(f"\n[{index}/{len(names)}] {name}")
-            try:
-                result = run_one_test(
-                    test_dir,
-                    name,
-                    master,
-                    logs_dir / f"{index:03d}-{safe_name(name)}.log",
-                    environment,
-                )
-            except KeyboardInterrupt:
-                interrupted = True
-                break
-            results.append(result)
-    write_reports(run_dir, args.tests_file, nsc, nslink, len(names), results, interrupted)
+    with tempfile.TemporaryDirectory(prefix="run-failed-tests-", dir=ROOT) as temporary:
+        run_dir = Path(temporary)
+        if not args.no_prepare:
+            configure_test_tree(build_dir, nsc, nslink, master_path)
+            targets = selected_cpp_targets(build_dir / CTEST_FILE, names, build_dir)
+            build_selected_targets(build_dir, targets, master_path)
+            print(f"\nTargets C++ seleccionados: {len(targets)}")
+        elif not (build_dir / CTEST_FILE).is_file():
+            raise ValueError(f"El árbol CTest indicado no está preparado: {build_dir}")
+        test_dir = prepare_ctest_overlay(build_dir, run_dir, nsc, nslink)
+        environment = test_environment(nsc, nslink)
+        with master_path.open("a", encoding="utf-8", errors="replace") as master:
+            for index, name in enumerate(names, 1):
+                print(f"\n[{index}/{len(names)}] {name}")
+                try:
+                    result = run_one_test(
+                        test_dir,
+                        name,
+                        master,
+                        Path(os.devnull),
+                        environment,
+                    )
+                except KeyboardInterrupt:
+                    interrupted = True
+                    break
+                results.append(result)
     print(f"\nLog completo : {master_path}")
-    print(f"Resumen       : {run_dir / 'summary.md'}")
-    print(f"Datos         : {run_dir / 'summary.json'}")
     failed = sum(result["status"] != "passed" for result in results)
     return 130 if interrupted else (1 if failed else 0)
 

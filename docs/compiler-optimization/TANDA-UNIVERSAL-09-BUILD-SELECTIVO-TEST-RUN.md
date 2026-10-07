@@ -34,6 +34,15 @@ y únicamente sus dependencias normales. No se usa el target `all`.
 6. Crear el overlay de metadatos sin modificar el árbol construido.
 7. Ejecutar exclusivamente los nombres originales de `test.run`.
 
+La única evidencia persistente es un log consecutivo junto al script:
+
+```text
+putadas_que_fallan_NUMERO.log
+```
+
+Los metadatos CTest adaptados son temporales y se eliminan automáticamente. No se generan reportes Markdown,
+JSON, carpetas de historial ni logs individuales.
+
 ## Complejidad
 
 El análisis del metadato cuesta `O(t * n)`, donde `t` es la cantidad de pruebas solicitadas y `n` el tamaño del
