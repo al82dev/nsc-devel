@@ -1,6 +1,32 @@
 # Correccion de regresiones O0 posteriores a method bodies
 
-## Bloqueo de alcance
+## SCOPE LOCK
+
+- Objetivo autorizado: auditar las 234 manifestaciones del reporte posterior a
+  la reingenieria semantica, agruparlas por productor comun y corregirlas hacia
+  adelante sin retirar las mejoras de rendimiento.
+- Naturaleza: correccion de regresiones y compatibilidad del compilador; no es
+  una migracion de pruebas, proyectos, Core ni consumidores.
+- Oraculo: la bateria historica que pasaba antes de la reingenieria permanece
+  byte por byte intacta y conserva su comportamiento observable.
+- Revision correcta conocida: el ultimo estado certificado anterior al rango
+  `45dea40ec..72f7ad7cb`; el rango de rendimiento se conserva y se corrige sobre
+  `development`.
+- Archivos permitidos: productores del compilador dentro de `include/`, `src/`
+  y nueva cobertura correctiva en archivos nuevos bajo `tests/`; documentos de
+  esta serie bajo `docs/compiler-optimization/`.
+- Archivos protegidos: pruebas historicas, fixtures, fuentes de prueba,
+  expectativas, proyectos `.nsproj`, bibliotecas, runtime, ejemplos y todo
+  repositorio o instalacion fuera de `A:\nsc-devel`.
+- Pruebas protegidas: las 678 pruebas descubiertas por el arbol CTest actual y,
+  en particular, las 234 manifestaciones del reporte externo; ninguna se
+  modifica, omite, filtra ni reclasifica para hacerla pasar.
+- Acciones prohibidas: tocar o instalar en `C:`, ejecutar baseline,
+  minibaseline, matrices O1/O2/O3, adaptar consumidores o incorporar features
+  aplazados como `throws` en constructores.
+- Cierre: cada causa raiz queda corregida en su productor, con commit pequeno,
+  Markdown propio y comprobacion dirigida O0; la certificacion integral queda
+  reservada a la ejecucion externa del usuario.
 
 - Se corrige hacia adelante desde `development`; no se restaura un milestone ni se
   retiran las mejoras de rendimiento ya implementadas.
@@ -10,8 +36,11 @@
 - La validacion de esta serie usa exclusivamente O0. No se ejecutan baseline,
   minibaselines ni matrices O1/O2/O3.
 - Cada correccion logica lleva un commit pequeno y un Markdown propio.
-- `throws` no forma parte de esta serie: el reporte no contiene `NS3071`,
-  `catch it or declare` ni otro diagnostico de propagacion de excepciones.
+- Implementar o extender `throws` no forma parte de esta serie. Al retirar la
+  primera barrera de edicion aparecieron cuatro pruebas historicas con `NS3071`
+  y una con rechazo de patron `catch`: se corregira la imposicion global que
+  altero programas antes validos, sin implementar `throws` en constructores ni
+  modificar esos programas.
 
 ## Evidencia del reporte externo
 
@@ -20,11 +49,34 @@ independientes. El analisis estatico los agrupa asi:
 
 | Grupo | Evidencia | Causa primaria |
 |---|---|---|
-| Edicion del lenguaje | 361 apariciones de `NS3001` y `mixed editions are not allowed` | Los proyectos sin `<Language>` se materializan inmediatamente como Language 2 y pierden el dato de que la edicion fue omitida; despues chocan con Core/NSMETA Language 3 |
-| Sintaxis de valores | 34 apariciones de `NS3002` | Efecto secundario: un consumidor sin edicion queda fijado artificialmente a Language 2 antes de analizar su grafo |
-| Superficie de Core | `ReferenceCounts`, `ReferenceCountHook`, relaciones no propietarias y overloads de `Console` ausentes | Contratos publicos que deben auditarse despues de retirar la barrera de edicion |
-| Compatibilidad de metadata | discrepancias en Stage 48.2, 50.9, 63, 66 e Item 407 | Politicas de compatibilidad que deben validarse por capacidad real, no por etiqueta textual |
-| Self-host derivado | cuatro ausencias de SH41/nsc2 | Fallos derivados: SH41 no produce artefactos cuando falla antes la carga/compilacion |
+| Edicion del lenguaje | 361 `NS3001` | La omision se confundia con Language 2 explicito |
+| Sintaxis de valores | 34 `NS3002` | Fallo derivado de la edicion implicita |
+| Superficie de Core | Simbolos y overloads ausentes | Auditar despues de retirar la barrera de edicion |
+| Compatibilidad de metadata | Stage 48.2, 50.9, 63, 66 e Item 407 | Validar capacidades, no etiquetas |
+| Self-host derivado | Cuatro ausencias de SH41/nsc2 | SH41 no produjo sus artefactos |
+
+## Segundo corte causal despues de la tanda 2
+
+La ejecucion diagnostica del arbol CTest construido encontro 104 pruebas
+fallidas. No representa una nueva bateria autorizada ni una certificacion: se
+usa exclusivamente como evidencia estatica para evitar corregir sintomas uno
+por uno. La agrupacion completa es:
+
+| Productor compartido | Pruebas | Disposicion |
+|---|---:|---|
+| Entorno CTest sin bibliotecas A-locales | 42 | Infraestructura invalida; no copiar desde `C:` |
+| Politicas implicitas de compatibilidad | 17 | Restaurar optatividad; conservar Language 3 estricto |
+| Sintaxis Language 3 en proyectos sin etiqueta | 3 | Separar reconocimiento actual de seleccion explicita de politica |
+| Cierre NSMETA que aun trata la omision como Language 2 explicito | 1 | Tanda 3 |
+| Compatibilidad NSMETA basada en etiquetas | 3 directas y 4 derivadas | Tanda 5 |
+| Superficie publica de Core | 2 | Tanda 4; auditar sin modificar Core durante la optimizacion |
+| Self-host derivado de productores anteriores | 2 directas y varias transitivas | Tanda 7 |
+| Inventario, equivalencia semantica y conducta generada | 3 | Tanda 6, despues de retirar barreras anteriores |
+| Diagnosticos agregados aun no atribuibles | 31 | Reabrir con artefactos A-locales validos |
+
+La cifra de cada grupo es una cuenta de pruebas, no de defectos. Las pruebas
+que dependen de bibliotecas ausentes no se utilizan para inferir semantica hasta
+que el entorno A-only publique sus productores correctos.
 
 ## Causa raiz confirmada de la primera barrera
 
