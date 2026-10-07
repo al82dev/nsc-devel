@@ -34,7 +34,7 @@ std::filesystem::path writeProject(
     writeFile(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
-        "</Name><Language>3</Language><OutputType>" + std::string(outputType) +
+        "</Name><OutputType>" + std::string(outputType) +
         "</OutputType></PropertyGroup><ItemGroup>" + std::string(items) +
         "</ItemGroup></Project>");
     writeFile(directory / "Main.ns", source);
@@ -53,23 +53,6 @@ ExitCode runDriver(
     output = out.str();
     error = err.str();
     return result;
-}
-
-bool rejected(
-    const std::filesystem::path& directory,
-    std::string_view source,
-    std::string_view expected,
-    std::string& diagnostic)
-{
-    const auto project = writeProject(directory, "RejectedCUnion", "Exe", source);
-    const std::string projectText = project.string();
-    const std::array<std::string_view, 3> arguments = {
-        "--check-project-oop-hir", projectText, "-O0"};
-    std::string output;
-    std::string error;
-    const ExitCode result = runDriver(arguments, output, error);
-    diagnostic = error + output;
-    return result != ExitCode::Success && diagnostic.find(expected) != std::string::npos;
 }
 
 bool compileAndRun(
@@ -129,8 +112,8 @@ namespace ActiveMember
 
     diagnostic.clear();
     tests.expect(
-        compileAndRun(root / "unsafe", "UnsafeReinterpret", R"NS(
-namespace UnsafeReinterpret
+        compileAndRun(root / "reinterpret", "NativeReinterpret", R"NS(
+namespace NativeReinterpret
 {
     public union WordBytes { public uint Whole; public byte First; }
     public class Program
@@ -139,35 +122,41 @@ namespace UnsafeReinterpret
         {
             WordBytes value;
             value.Whole = 42;
-            unsafe { return (int)value.First; }
+            return (int)value.First;
         }
     }
 }
 )NS", 42, diagnostic),
-        "unsafe permits an explicit little-endian reinterpretation of inactive C-union storage (" +
+        "native union access permits an explicit little-endian reinterpretation (" +
             diagnostic + ")");
 
     diagnostic.clear();
     tests.expect(
-        rejected(root / "inactive", R"NS(
-union Word { public int Signed; public uint Unsigned; }
-class Program { public static int Main() {
-    Word value; value.Unsigned = 42; return value.Signed;
-} }
-)NS", "requires a preceding write that proves it active", diagnostic),
-        "safe code rejects a read through an inactive member (" + diagnostic + ")");
+        compileAndRun(root / "inactive", "InactiveMember", R"NS(
+namespace InactiveMember
+{
+    public union Word { public int Signed; public uint Unsigned; }
+    public class Program { public static int Main() {
+        Word value; value.Unsigned = 42; return value.Signed;
+    } }
+}
+)NS", 42, diagnostic),
+        "a union member can reinterpret storage written through another member (" + diagnostic + ")");
 
     diagnostic.clear();
     tests.expect(
-        rejected(root / "branch", R"NS(
-union Word { public int Signed; public uint Unsigned; }
-class Program { public static int Main() {
-    Word value;
-    if (true) value.Signed = 42; else value.Unsigned = 42;
-    return value.Signed;
-} }
-)NS", "requires a preceding write that proves it active", diagnostic),
-        "control-flow joins discard conflicting active-member proofs (" + diagnostic + ")");
+        compileAndRun(root / "branch", "BranchReinterpret", R"NS(
+namespace BranchReinterpret
+{
+    public union Word { public int Signed; public uint Unsigned; }
+    public class Program { public static int Main() {
+        Word value;
+        if (true) value.Signed = 42; else value.Unsigned = 42;
+        return value.Signed;
+    } }
+}
+)NS", 42, diagnostic),
+        "control-flow joins preserve the shared union storage (" + diagnostic + ")");
 
     diagnostic.clear();
     tests.expect(
@@ -197,7 +186,7 @@ namespace CUnionAbi
     {
         public static export extern C int Read(Word value)
         {
-            unsafe { return value.Signed; }
+            return value.Signed;
         }
     }
 }
@@ -210,10 +199,10 @@ namespace CUnionAbi
     std::string error;
     const ExitCode dllResult = runDriver(dllArguments, output, error);
 
-    const std::filesystem::path importedReject = root / "dll" / "ImportedReject";
-    const auto importedRejectProject = writeProject(
-        importedReject,
-        "ImportedReject",
+    const std::filesystem::path imported = root / "dll" / "Imported";
+    const auto importedProject = writeProject(
+        imported,
+        "Imported",
         "Exe",
         R"NS(
 using CUnionAbi;
@@ -223,19 +212,17 @@ class Program { public static int Main() {
 )NS",
         "<Compile Include=\"**/*.ns\" />"
         "<LibraryReference Include=\"../Producer/CUnionAbi.lib\" />");
-    const std::string importedRejectProjectText = importedRejectProject.string();
-    const std::array<std::string_view, 3> importedRejectArguments = {
-        "--check-project-oop-hir", importedRejectProjectText, "-O0"};
+    const std::string importedProjectText = importedProject.string();
+    const std::array<std::string_view, 3> importedArguments = {
+        "--check-project-oop-hir", importedProjectText, "-O0"};
     output.clear();
     error.clear();
-    const ExitCode importedRejectResult = dllResult == ExitCode::Success
-        ? runDriver(importedRejectArguments, output, error)
+    const ExitCode importedResult = dllResult == ExitCode::Success
+        ? runDriver(importedArguments, output, error)
         : ExitCode::CompilationError;
     tests.expect(
-        importedRejectResult != ExitCode::Success &&
-            (error + output).find("requires a preceding write that proves it active") !=
-                std::string::npos,
-        "an imported C union preserves the active-member safety contract in NSMETA (" +
+        importedResult == ExitCode::Success,
+        "an imported C union preserves native shared-storage access through NSMETA (" +
             error + output + ")");
 
     const std::string headerText = (producer / "CUnionAbi.h").string();
