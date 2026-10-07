@@ -6195,21 +6195,6 @@ void ProjectMethodBodyModel::analyzeVariable(
                             "pin ref requires a statically stable storage place; dynamic or "
                             "unknown projections may relocate their elements");
                     }
-                    if (const std::optional<std::size_t> conflict = conflictingMutableReference(
-                            pendingReferencePlaceKey,
-                            scopeOrdinal,
-                            std::nullopt,
-                            pendingReferenceReborrowSourceLocalOrdinal);
-                        conflict.has_value())
-                    {
-                        diagnostics.report(
-                            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
-                            diagnostics::DiagnosticSeverity::Error,
-                            variable->first()->range(),
-                            "cannot create mutable reference local '" + variable->text() +
-                                "' because mutable reference local '" + locals_[*conflict].name +
-                                "' already borrows an overlapping place");
-                    }
                 }
             }
         }
@@ -12572,31 +12557,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             break;
     }
 
-    if (result.valid && result.addressable &&
-        partialProjectionReceiverDepth_ == 0U)
-    {
-        const std::optional<std::string> place = storagePlaceKey(expression, scopeOrdinal);
-        const std::optional<std::size_t> accessReference =
-            referenceRootLocalOrdinal(expression, scopeOrdinal);
-        if (place.has_value())
-        {
-            const std::optional<std::size_t> conflict = conflictingMutableReference(
-                *place, scopeOrdinal, accessReference);
-            if (conflict.has_value())
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::NS3020InvalidValueCategory,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->range(),
-                    "cannot access storage place '" + *place +
-                        "' while mutable reference local '" + locals_[*conflict].name +
-                        "' exclusively borrows an overlapping place");
-                result.valid = false;
-                result.assignable = false;
-                result.addressable = false;
-            }
-        }
-    }
     recordExpressionType(expression, methodMemberOrdinal, scopeOrdinal, result);
     return result;
 }
