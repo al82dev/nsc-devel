@@ -22,10 +22,6 @@ DEFAULT_BUILD = ROOT / "build-failed-tests"
 DEFAULT_NSC = Path(r"C:\native-sharp\bin\nsc.exe")
 DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
 CTEST_FILE = "CTestTestfile.cmake"
-PATH_TOOL_PATTERN = re.compile(
-    r"(?i)[A-Za-z]:[/\\][^\"\r\n]*[/\\]"
-    r"(cmake|ctest|ninja|python|clang-cl|clang\+\+|clang|lld-link|llvm-[A-Za-z0-9_-]+)\.exe"
-)
 NSC_PATH_PATTERN = re.compile(r"(?i)[A-Za-z]:[/\\][^\"\r\n]*[/\\]nsc\.exe")
 NSLINK_PATH_PATTERN = re.compile(r"(?i)[A-Za-z]:[/\\][^\"\r\n]*[/\\]nslink\.exe")
 SOURCE_ERROR = re.compile(
@@ -146,6 +142,7 @@ def configure_test_tree(build_dir: Path, nsc: Path, nslink: Path, log_path: Path
         "-G",
         "Ninja",
         "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_INSTALL_PREFIX=C:/native-sharp",
         "-DCMAKE_C_COMPILER=clang-cl",
         "-DCMAKE_CXX_COMPILER=clang-cl",
         "-DCMAKE_LINKER=lld-link",
@@ -359,11 +356,6 @@ def write_reports(
     (run_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def path_tool_name(match: re.Match[str]) -> str:
-    """Return only the executable name so Windows resolves the auxiliary tool through PATH."""
-    return f"{match.group(1)}.exe"
-
-
 def prepare_ctest_overlay(
     build_dir: Path,
     run_dir: Path,
@@ -377,7 +369,6 @@ def prepare_ctest_overlay(
     text = source.read_text(encoding="utf-8", errors="replace")
     text = NSC_PATH_PATTERN.sub(nsc.as_posix(), text)
     text = NSLINK_PATH_PATTERN.sub(nslink.as_posix(), text)
-    text = PATH_TOOL_PATTERN.sub(path_tool_name, text)
     overlay = run_dir / "ctest"
     overlay.mkdir()
     (overlay / CTEST_FILE).write_text(text, encoding="utf-8")
@@ -387,8 +378,15 @@ def prepare_ctest_overlay(
 def test_environment(nsc: Path, nslink: Path) -> dict[str, str]:
     """Expose only the two explicit NativeSharp tool paths; every other tool remains PATH-owned."""
     environment = dict(os.environ)
+    prefix = nsc.parent.parent
     environment["NSC_EXE"] = str(nsc)
     environment["NSC_LINKER"] = str(nslink)
+    environment["NS_ROOT"] = str(prefix)
+    environment["NS_LIB_ROOT"] = str(prefix / "lib")
+    environment["NS_LIB_READY"] = "1"
+    environment["NSC_WINDOWS_RUNTIME_LIBRARY"] = str(
+        prefix / "lib" / "nativesharp" / "runtime" / "NativeSharp.Runtime.Win32.lib"
+    )
     return environment
 
 

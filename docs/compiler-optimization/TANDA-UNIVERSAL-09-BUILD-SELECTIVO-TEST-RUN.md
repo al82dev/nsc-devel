@@ -46,6 +46,11 @@ JSON, carpetas de historial ni logs individuales.
 La configuración y la compilación selectiva se muestran únicamente en consola. El log consecutivo se crea
 después de ambas etapas y contiene exclusivamente la ejecución de las pruebas de `test.run`.
 
+El árbol dedicado se configura con `CMAKE_INSTALL_PREFIX=C:/native-sharp`. El entorno de ejecución publica
+`NS_ROOT`, `NS_LIB_ROOT`, `NS_LIB_READY` y `NSC_WINDOWS_RUNTIME_LIBRARY` desde esa misma instalación. El overlay
+reemplaza únicamente NSC y NSLink; no degrada las rutas de herramientas descubiertas por CMake a nombres que
+los verificadores confundan con archivos inexistentes.
+
 ## Complejidad
 
 El análisis del metadato cuesta `O(t * n)`, donde `t` es la cantidad de pruebas solicitadas y `n` el tamaño del
