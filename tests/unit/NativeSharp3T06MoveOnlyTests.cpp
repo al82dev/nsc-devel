@@ -31,7 +31,6 @@ std::filesystem::path writeProject(
     const std::filesystem::path& directory,
     std::string_view name,
     std::string_view source,
-    int edition = 3,
     std::string_view outputType = "Exe",
     std::string_view extraItems = {})
 {
@@ -39,8 +38,8 @@ std::filesystem::path writeProject(
     writeFile(
         project,
         "<Project><PropertyGroup><Name>" + std::string(name) +
-        "</Name><Language>" + std::to_string(edition) + "</Language><OutputType>" +
-        std::string(outputType) + "</OutputType></PropertyGroup><ItemGroup>" +
+        "</Name><OutputType>" + std::string(outputType) +
+        "</OutputType></PropertyGroup><ItemGroup>" +
         "<Compile Include=\"**/*.ns\" />" + std::string(extraItems) +
         "</ItemGroup></Project>");
     writeFile(directory / "Main.ns", source);
@@ -63,8 +62,7 @@ bool rejectsWith(
     std::string_view name,
     std::string_view source,
     std::string_view expected,
-    std::string& observed,
-    int edition = 3)
+    std::string& observed)
 {
     ProjectCompilation compilation;
     std::string error;
@@ -72,7 +70,7 @@ bool rejectsWith(
     for (char& character : projectName)
         if (character == '-') character = '_';
     const bool compiled = compilation.compileProjectOopMir(
-        writeProject(root / std::string(name), projectName, source, edition), error);
+        writeProject(root / std::string(name), projectName, source), error);
     observed = error + diagnosticsText(compilation);
     return (!compiled || compilation.diagnostics().hasErrors()) &&
         observed.find(expected) != std::string::npos;
@@ -132,7 +130,7 @@ public copy struct Pair
     public int right;
     public Pair(int a, int b) { left = a; right = b; }
 }
-public struct Token
+public moveonly struct Token
 {
     public int value;
     public Token(int source) { value = source; }
@@ -162,21 +160,21 @@ public class Program
 
     std::string observed;
     tests.expect(rejectsWith(root, "local-copy", R"NS(
-public struct Token { public int value; public Token(int source) { value = source; } }
+public moveonly struct Token { public int value; public Token(int source) { value = source; } }
 public class Program { public static int Main() { Token a = new Token(1); Token b = a; return b.value; } }
 )NS", "cannot be copied into local", observed),
         "an addressable move-only local cannot be copied into another local (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "use-after-move", R"NS(
-public struct Token { public int value; public Token(int source) { value = source; } }
+public moveonly struct Token { public int value; public Token(int source) { value = source; } }
 public class Program { public static int Main() { Token a = new Token(1); Token b = move(a); return a.value; } }
 )NS", "use of moved-from move-only local", observed),
-        "use-after-move is rejected for ordinary edition-3 value locals (" + observed + ")");
+        "use-after-move is rejected for explicitly move-only value locals (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "parameter-copy", R"NS(
-public struct Token { public int value; public Token(int source) { value = source; } }
+public moveonly struct Token { public int value; public Token(int source) { value = source; } }
 public class Program {
     public static int Read(Token value) { return value.value; }
     public static int Main() { Token token = new Token(42); return Read(token); }
@@ -186,7 +184,7 @@ public class Program {
 
     observed.clear();
     tests.expect(rejectsWith(root, "namespace-parameter-copy", R"NS(
-public struct Token { public int value; public Token(int source) { value = source; } }
+public moveonly struct Token { public int value; public Token(int source) { value = source; } }
 namespace Values { public int Read(Token value) { return value.value; } }
 public class Program { public static int Main() { Token token = new Token(42); return Values.Read(token); } }
 )NS", "move-only argument cannot be copied", observed),
@@ -194,7 +192,7 @@ public class Program { public static int Main() { Token token = new Token(42); r
 
     observed.clear();
     tests.expect(rejectsWith(root, "constructor-parameter-copy", R"NS(
-public struct Token { public int value; public Token(int source) { value = source; } }
+public moveonly struct Token { public int value; public Token(int source) { value = source; } }
 public struct Box { public int value; public Box(Token token) { value = token.value; } }
 public class Program { public static int Main() { Token token = new Token(42); Box box = new Box(token); return box.value; } }
 )NS", "move-only value cannot be copied into constructor parameter", observed),
@@ -202,28 +200,28 @@ public class Program { public static int Main() { Token token = new Token(42); B
 
     observed.clear();
     tests.expect(rejectsWith(root, "return-copy", R"NS(
-public struct Token { public int value; public Token(int source) { value = source; } }
+public moveonly struct Token { public int value; public Token(int source) { value = source; } }
 public class Program { public static Token Make() { Token token = new Token(42); return token; } public static int Main() { return 0; } }
 )NS", "requires return move(value)", observed),
         "returning a named move-only local requires an explicit move (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "branch-move", R"NS(
-public struct Token { public int value; public Token(int source) { value = source; } }
+public moveonly struct Token { public int value; public Token(int source) { value = source; } }
 public class Program { public static int Main() { Token token = new Token(42); if (token.value == 42) { Token other = move(token); } return token.value; } }
 )NS", "possibly moved", observed),
         "branch joins preserve possibly-moved state (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "loop-move", R"NS(
-public struct Token { public int value; public Token(int source) { value = source; } }
+public moveonly struct Token { public int value; public Token(int source) { value = source; } }
 public class Program { public static int Main() { Token token = new Token(42); bool again = true; while (again) { Token other = move(token); again = false; } return token.value; } }
 )NS", "possibly moved", observed),
         "loop joins preserve possibly-moved state (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "invalid-copy-field", R"NS(
-public struct Token { public int value; }
+public moveonly struct Token { public int value; }
 public copy struct Invalid { public Token token; }
 public class Program { public static int Main() { return 0; } }
 )NS", "contains non-Copy field", observed),
@@ -231,32 +229,33 @@ public class Program { public static int Main() { return 0; } }
 
     observed.clear();
     tests.expect(rejectsWith(root, "fixed-array-copy", R"NS(
-public struct Token { public int value; public Token(int source) { value = source; } }
+public moveonly struct Token { public int value; public Token(int source) { value = source; } }
 public class Program { public static int Main() { Token[2] a = { new Token(1), new Token(2) }; Token[2] b = a; return b[0].value; } }
 )NS", "cannot be copied into local", observed),
         "fixed arrays inherit the element Copy capability (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "generic-copy", R"NS(
-public struct Token { public int value; public Token(int source) { value = source; } }
+public moveonly struct Token { public int value; public Token(int source) { value = source; } }
 public class Program {
     public static int Accept<T>(T value) where T : copy { return 42; }
     public static int Main() { return Accept<Token>(new Token(1)); }
 }
 )NS", "requires copyable storage", observed),
-        "where T : copy rejects a move-only edition-3 value even when passed as a fresh temporary (" +
+        "where T : copy rejects an explicitly move-only value even when passed as a fresh temporary (" +
             observed + ")");
 
-    const std::filesystem::path legacy = writeProject(root / "legacy", "LegacyCopy", R"NS(
+    const std::filesystem::path structural = writeProject(root / "structural", "StructuralCopy", R"NS(
 public struct Pair { public int left; public int right; }
 public class Program { public static int Main() { Pair a; a.left = 20; a.right = 22; Pair b = a; return b.left + b.right; } }
-)NS", 2);
-    ProjectCompilation legacyCompilation;
-    std::string legacyError;
-    const bool legacyCompiled = legacyCompilation.compileProjectOopMir(legacy, legacyError);
-    tests.expect(legacyCompiled && !legacyCompilation.diagnostics().hasErrors(),
-        "edition 2 preserves structural implicit-copy compatibility (" + legacyError +
-            diagnosticsText(legacyCompilation) + ")");
+)NS");
+    ProjectCompilation structuralCompilation;
+    std::string structuralError;
+    const bool structuralCompiled =
+        structuralCompilation.compileProjectOopMir(structural, structuralError);
+    tests.expect(structuralCompiled && !structuralCompilation.diagnostics().hasErrors(),
+        "ordinary structs preserve structural implicit-copy semantics without an edition gate (" +
+            structuralError + diagnosticsText(structuralCompilation) + ")");
 
     const std::filesystem::path producerDirectory = root / "cross-module" / "Producer";
     const std::filesystem::path producer = writeProject(
@@ -270,7 +269,7 @@ namespace CopyApi
         public Point(int left, int right) { x = left; y = right; }
     }
 }
-)NS", 3, "StaticLibrary");
+)NS", "StaticLibrary");
     const std::string producerProject = producer.string();
     const std::string library = (producerDirectory / "CopyApi.lib").string();
     const std::array<std::string_view, 5> producerArguments = {
@@ -307,7 +306,7 @@ public class Program
         return copied.x + copied.y;
     }
 }
-)NS", 3, "Exe", "<LibraryReference Include=\"../Producer/CopyApi.lib\" />");
+)NS", "Exe", "<LibraryReference Include=\"../Producer/CopyApi.lib\" />");
     diagnostic.clear();
     tests.expect(producerResult == ExitCode::Success && compileAndRun(consumer, 42, diagnostic),
         "a consumer reconstructs and executes Copy semantics across a LibraryReference (" +
