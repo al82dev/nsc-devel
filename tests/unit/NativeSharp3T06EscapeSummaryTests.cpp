@@ -47,15 +47,13 @@ std::filesystem::path writeProject(
     const std::filesystem::path& directory,
     std::string_view name,
     std::string_view source,
-    std::string_view edition = "3",
     std::string_view outputType = "Exe",
     std::string_view extraItems = {})
 {
     const std::filesystem::path project = directory / (std::string(name) + ".nsproj");
     writeFile(project,
         "<Project><PropertyGroup><Name>" + std::string(name) +
-        "</Name><Language>" + std::string(edition) +
-        "</Language><OutputType>" + std::string(outputType) +
+        "</Name><OutputType>" + std::string(outputType) +
         "</OutputType></PropertyGroup><ItemGroup>"
         "<Compile Include=\"**/*.ns\" />" + std::string(extraItems) +
         "</ItemGroup></Project>");
@@ -107,7 +105,7 @@ namespace EscapeContracts
     public class EscapeApi
     {
         public static int* Stored;
-        public static int Read(int* value) { unsafe { return *value; } }
+        public static int Read(int* value) { return *value; }
         public static int* Identity(int* value) { return value; }
         public static void Retain(int* value) { Stored = value; }
         public static void Forward(int* value) { Retain(value); }
@@ -121,7 +119,7 @@ namespace EscapeContracts
     ProjectCompilation producer;
     std::string error;
     const std::filesystem::path producerProject = writeProject(
-        root / "producer", "EscapeProducer", producerSource, "3", "StaticLibrary");
+        root / "producer", "EscapeProducer", producerSource, "StaticLibrary");
     const bool producerCompiled = producer.compileProjectOopMir(producerProject, error);
     tests.expect(
         producerCompiled && !producer.diagnostics().hasErrors() &&
@@ -218,13 +216,10 @@ public class Program
     public static int Main()
     {
         int local = 42;
-        unsafe("the noescape contract keeps the address within this call")
-        {
-            return EscapeApi.Read(&local);
-        }
+        return EscapeApi.Read(&local);
     }
 }
-)NS", "3", "Exe", producerReference);
+)NS", "Exe", producerReference);
     const std::string safeProjectText = safeProject.string();
     const std::array<std::string_view, 3> safeArguments = {
         "--dump-project-method-bodies", safeProjectText, "-O0"};
@@ -243,14 +238,11 @@ public class Program
     public static int Main()
     {
         int local = 42;
-        unsafe("the explicit address operation must still satisfy escape analysis")
-        {
-            EscapeApi.Retain(&local);
-        }
+        EscapeApi.Retain(&local);
         return local;
     }
 }
-)NS", "3", "Exe", producerReference);
+)NS", "Exe", producerReference);
     const std::string unsafeProjectText = unsafeProject.string();
     const std::array<std::string_view, 3> unsafeArguments = {
         "--dump-project-method-bodies", unsafeProjectText, "-O0"};
@@ -265,24 +257,28 @@ public class Program
         "a proven global escape rejects current-frame storage with a causal diagnostic (" +
             unsafeDiagnostics + ")");
 
-    const std::filesystem::path editionTwoProject = writeProject(
-        root / "edition2", "EscapeEdition2", R"NS(
+    const std::filesystem::path directGlobalProject = writeProject(
+        root / "direct-global", "EscapeDirectGlobal", R"NS(
 public class Program
 {
     private static int* Stored;
     private static void Retain(int* value) { Stored = value; }
     public static int Main() { int local = 42; Retain(&local); return local; }
 }
-)NS", "2");
-    const std::string editionTwoProjectText = editionTwoProject.string();
-    const std::array<std::string_view, 3> editionTwoArguments = {
-        "--dump-project-method-bodies", editionTwoProjectText, "-O0"};
-    std::string editionTwoOutput;
-    std::string editionTwoError;
-    tests.expect(runDriver(editionTwoArguments, editionTwoOutput, editionTwoError) ==
-            nativesharp::ExitCode::Success,
-        "edition 2 preserves its historical raw-pointer behavior while still producing summaries (" +
-            editionTwoError + editionTwoOutput + ")");
+)NS");
+    const std::string directGlobalProjectText = directGlobalProject.string();
+    const std::array<std::string_view, 3> directGlobalArguments = {
+        "--dump-project-method-bodies", directGlobalProjectText, "-O0"};
+    std::string directGlobalOutput;
+    std::string directGlobalError;
+    const nativesharp::ExitCode directGlobalResult =
+        runDriver(directGlobalArguments, directGlobalOutput, directGlobalError);
+    const std::string directGlobalDiagnostics = directGlobalError + directGlobalOutput;
+    tests.expect(directGlobalResult != nativesharp::ExitCode::Success &&
+            directGlobalDiagnostics.find("retained by the callee's published escape contract") !=
+                std::string::npos,
+        "a direct global escape rejects current-frame storage without an edition gate (" +
+            directGlobalDiagnostics + ")");
 
     return tests.resultKeeping(root);
 }
