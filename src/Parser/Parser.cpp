@@ -409,6 +409,31 @@ bool Parser::atContextualKeyword(std::string_view keyword) const noexcept
     return current().kind() == TokenKind::Identifier && current().lexeme() == keyword;
 }
 
+bool Parser::startsParenthesizedBlock(std::string_view keyword) const noexcept
+{
+    if (!atContextualKeyword(keyword) || peek().kind() != TokenKind::LeftParen)
+        return false;
+
+    std::size_t depth = 0;
+    for (std::size_t cursor = index_ + 1U; cursor < tokens_.size(); ++cursor)
+    {
+        const TokenKind kind = tokens_[cursor].kind();
+        if (kind == TokenKind::LeftParen)
+        {
+            ++depth;
+            continue;
+        }
+        if (kind != TokenKind::RightParen || depth == 0)
+            continue;
+
+        --depth;
+        if (depth == 0)
+            return cursor + 1U < tokens_.size() &&
+                tokens_[cursor + 1U].kind() == TokenKind::LeftBrace;
+    }
+    return false;
+}
+
 bool Parser::expectContextualKeyword(
     std::string_view keyword,
     std::string_view description)
@@ -8633,7 +8658,7 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::KwFor)) return parseForStatement();
     if (at(TokenKind::KwForeach)) return parseForeachStatement();
     if (at(TokenKind::KwSwitch)) return parseSwitchStatement();
-    if (atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
+    if (startsParenthesizedBlock("match"))
         return parseMatchStatement();
 
     if (!comprehensionContexts_.empty() && atContextualKeyword("yield"))
@@ -13671,7 +13696,7 @@ ast::AstNode* Parser::parseWithExpression(ast::AstNode* source)
 
 ast::AstNode* Parser::parsePrimaryExpression()
 {
-    if (atContextualKeyword("match") && peek().kind() == TokenKind::LeftParen)
+    if (startsParenthesizedBlock("match"))
         return parseMatchExpression();
     if (atContextualKeyword("loop") &&
         (peek().kind() == TokenKind::LeftBrace ||
