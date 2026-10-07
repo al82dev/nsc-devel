@@ -32,8 +32,15 @@ semantica del lenguaje para hacer pasar una prueba.
 - `docs/compiler-optimization/TANDA-UNIVERSAL-23-T49-RAW-STRING.md`
   - Registra causa, limite y evidencia de esta correccion.
 
-## Verificacion pendiente del commit
+## Evidencia posterior al commit
 
-- Reconstruir el arbol de pruebas existente.
-- Ejecutar la bateria completa configurada con `O0` y NSLink.
-- Confirmar que T49 pasa y que el inventario global disminuye exactamente en este falso negativo.
+- El arbol `build-test-nslink` se reconstruyo correctamente.
+- Se ejecutaron las 684 pruebas con `C:\\native-sharp\\bin\\nslink.exe` como NSLink.
+- `nsc.ns3.t49.language-surface` paso en `0.09 s`.
+- La corrida global termino con 93 fallos, pero dos de ellos (`t32.range-arrays` y
+  `t33.package-coherence`) fueron falsos fallos del entorno porque sus procesos no resolvieron
+  `cmd.exe`. Por ello ese total no se usa como conteo causal de esta tanda.
+- No reaparecio ningun fallo de raw strings, lexer, parser ni generacion O0/COFF.
+
+La evidencia valida de esta tanda es local y concreta: T49 paso completo. Los fallos de entorno y
+artefactos externos permanecen separados para la tanda de infraestructura final.
