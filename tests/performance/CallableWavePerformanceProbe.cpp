@@ -19,6 +19,8 @@
 namespace
 {
 using Clock = std::chrono::steady_clock;
+using RawMeasurement =
+    std::tuple<long long, long long, long long, long long, long long, std::string>;
 using Measurement = std::tuple<long long, long long, long long, long long, std::string>;
 using MetricSamples = std::array<std::vector<long long>, 4>;
 
@@ -55,6 +57,22 @@ long long phaseMicroseconds(std::string_view output, std::string_view phase)
     return std::stoll(std::string(output.substr(valueBegin, valueEnd - valueBegin)));
 }
 
+long long phasePeakBytes(std::string_view output, std::string_view phase)
+{
+    const std::string prefix = "timing phase=" + std::string(phase) + " ";
+    const std::size_t begin = output.find(prefix);
+    if (begin == std::string_view::npos) return -1;
+    const std::size_t lineEnd = output.find('\n', begin);
+    constexpr std::string_view marker = "peak_working_set_bytes=";
+    const std::size_t markerBegin = output.find(marker, begin);
+    if (markerBegin == std::string_view::npos || markerBegin > lineEnd) return -1;
+    const std::size_t valueBegin = markerBegin + marker.size();
+    const std::size_t space = output.find(' ', valueBegin);
+    const std::size_t valueEnd = space == std::string_view::npos || space > lineEnd
+        ? lineEnd : space;
+    return std::stoll(std::string(output.substr(valueBegin, valueEnd - valueBegin)));
+}
+
 std::string semanticSummary(std::string_view output)
 {
     constexpr std::string_view prefix = "project method-body semantic check:";
@@ -64,7 +82,7 @@ std::string semanticSummary(std::string_view output)
     return std::string(output.substr(begin, end - begin));
 }
 
-Measurement measure(const std::filesystem::path& project, std::string_view jobs)
+RawMeasurement measure(const std::filesystem::path& project, std::string_view jobs)
 {
     const std::string projectText = project.string();
     const std::vector<std::string_view> arguments{
@@ -83,15 +101,17 @@ Measurement measure(const std::filesystem::path& project, std::string_view jobs)
         phaseMicroseconds(output.str(), "method-bodies"),
         phaseMicroseconds(output.str(), "method-bodies-wave-0-analysis"),
         phaseMicroseconds(output.str(), "method-bodies-wave-0-merge"),
+        phasePeakBytes(output.str(), "method-bodies"),
         semanticSummary(output.str())};
 }
 
 void appendSample(
     MetricSamples& samples,
     std::string& summary,
-    Measurement measurement)
+    long long& maximumPeakBytes,
+    RawMeasurement measurement)
 {
-    auto [wall, bodies, analysis, merge, currentSummary] = std::move(measurement);
+    auto [wall, bodies, analysis, merge, peakBytes, currentSummary] = std::move(measurement);
     if (!summary.empty() && summary != currentSummary)
         throw std::runtime_error("performance probe changed between repetitions");
     summary = std::move(currentSummary);
@@ -99,6 +119,7 @@ void appendSample(
     samples[1].push_back(bodies);
     samples[2].push_back(analysis);
     samples[3].push_back(merge);
+    maximumPeakBytes = std::max(maximumPeakBytes, peakBytes);
 }
 
 long long median(std::vector<long long> values)
@@ -113,20 +134,28 @@ Measurement summarize(const MetricSamples& samples, std::string summary)
         median(samples[3]), std::move(summary)};
 }
 
-std::array<Measurement, 3> measureConfigurations(const std::filesystem::path& project)
+std::array<Measurement, 3> measureConfigurations(
+    const std::filesystem::path& project,
+    long long& maximumPeakBytes)
 {
     constexpr std::array<std::string_view, 3> jobs{"1", "2", "12"};
     constexpr std::size_t repetitions = 3;
     std::array<MetricSamples, jobs.size()> samples;
     std::array<std::string, jobs.size()> summaries;
     for (std::size_t index = 0; index < jobs.size(); ++index)
-        summaries[index] = std::get<4>(measure(project, jobs[index]));
+    {
+        RawMeasurement warmup = measure(project, jobs[index]);
+        maximumPeakBytes = std::max(maximumPeakBytes, std::get<4>(warmup));
+        summaries[index] = std::move(std::get<5>(warmup));
+    }
     for (std::size_t repetition = 0; repetition < repetitions; ++repetition)
     {
         for (std::size_t offset = 0; offset < jobs.size(); ++offset)
         {
             const std::size_t index = (repetition + offset) % jobs.size();
-            appendSample(samples[index], summaries[index], measure(project, jobs[index]));
+            appendSample(
+                samples[index], summaries[index], maximumPeakBytes,
+                measure(project, jobs[index]));
         }
     }
     std::array<Measurement, jobs.size()> result;
@@ -148,7 +177,9 @@ int runProbe()
         "<Project><PropertyGroup><Name>CallableWavePerformance</Name><Language>3</Language>"
         "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>\n");
     writeFile(root / "Main.ns", buildSource(callableCount));
-    const std::array<Measurement, 3> measurements = measureConfigurations(project);
+    long long maximumPeakBytes = 0;
+    const std::array<Measurement, 3> measurements =
+        measureConfigurations(project, maximumPeakBytes);
     const auto& [j1Wall, j1Bodies, j1Analysis, j1Merge, j1Summary] = measurements[0];
     const auto& [j2Wall, j2Bodies, j2Analysis, j2Merge, j2Summary] = measurements[1];
     const auto& [j12Wall, j12Bodies, j12Analysis, j12Merge, j12Summary] = measurements[2];
@@ -162,7 +193,8 @@ int runProbe()
               << "j2 wall_ms=" << j2Wall << " method_bodies_us=" << j2Bodies
               << " wave_analysis_us=" << j2Analysis << " wave_merge_us=" << j2Merge << '\n'
               << "j12 wall_ms=" << j12Wall << " method_bodies_us=" << j12Bodies
-              << " wave_analysis_us=" << j12Analysis << " wave_merge_us=" << j12Merge << '\n';
+              << " wave_analysis_us=" << j12Analysis << " wave_merge_us=" << j12Merge << '\n'
+              << "maximum_peak_working_set_bytes=" << maximumPeakBytes << '\n';
     return 0;
 }
 }

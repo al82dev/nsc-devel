@@ -24,6 +24,10 @@ El ejecutable informa por configuración:
 También separa `wave_analysis_us` y `wave_merge_us`, de modo que una mejora de workers no pueda
 quedar escondida detrás de la publicación determinista.
 
+El probe publica además el máximo `peak_working_set_bytes` observado durante toda la matriz. Es un
+techo de proceso, no una atribución por configuración: el contador de Windows es monotónico dentro
+del mismo proceso y por ello no se usa para comparar `j1`, `j2` y `j12`.
+
 No contiene umbrales dependientes de una máquina ni convierte una regresión de rendimiento en una
 aprobación falsa. El objetivo es conservar un corpus fijo y una medición reproducible que permita
 comparar revisiones y presupuestos de jobs.
@@ -53,12 +57,13 @@ Corpus de 1024 callables, O0, una pasada de calentamiento, tres rondas rotativas
 
 | Jobs | Pared | Method bodies | Analysis | Merge |
 |---:|---:|---:|---:|---:|
-| 1 | 115 ms | 45,179 us | 26,695 us | 13,133 us |
-| 2 | 107 ms | 37,811 us | 17,264 us | 15,127 us |
-| 12 | 105 ms | 24,528 us | 5,748 us | 12,639 us |
+| 1 | 127 ms | 45,904 us | 28,970 us | 12,845 us |
+| 2 | 95 ms | 29,844 us | 14,698 us | 10,241 us |
+| 12 | 87 ms | 20,842 us | 5,172 us | 10,267 us |
 
-El análisis de la oleada mejora 78.5 % entre `j1` y `j12`; `method-bodies` mejora 45.7 % y la
-pared completa del Driver mejora 8.7 %. La evidencia se conserva en
+El análisis de la oleada mejora 82.1 % entre `j1` y `j12`; `method-bodies` mejora 54.6 % y la
+pared completa del Driver mejora 31.5 %. El máximo de proceso observado fue 212,951,040 bytes
+(203.1 MiB). La evidencia se conserva en
 `_nscbuilder/semantic-performance/SEM-06.07/callable-wave-performance.log`.
 
 El objetivo compila con warnings como errores y clang-tidy dirigido queda limpio con checks de
