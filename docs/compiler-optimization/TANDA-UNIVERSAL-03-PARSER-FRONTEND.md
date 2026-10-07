@@ -67,4 +67,18 @@ rechazo por manifiesto y obligaba a propagar un dato sin significado por cada un
   NSMETA al parser.
 - Se retiraron exclusivamente esos siete residuos; no se cambió semántica ni se amplió el alcance.
 
+### Intento 2: `b7e88a389`
+
+- Corrida: `universal-o0-t03-r2-20261007`.
+- La reconstrucción limpia del compilador pasó: 290/290 pasos.
+- La configuración limpia de CTest encontró los 429 ejecutables previstos.
+- La construcción de CTest llegó a 1148/1151 pasos y falló antes de ejecutar CTest porque
+  `NativeSharp3T01ExpressionTests.cpp` todavía pasaba una edición al constructor de `Parser`.
+- La matriz de fixtures sí concluyó: 89/90; sólo `cc1_c23_views_and_lifetimes` conservó el fallo funcional
+  preexistente (exit 8, esperado 42).
+- Bug triage concluyó 9/9.
+- Una auditoría global de consumidores directos de `Parser` encontró el mismo contrato residual en T01 y T02.
+  Ambos helpers se convirtieron a una sola ejecución acumulativa, sin duplicar el mismo parseo bajo etiquetas
+  V2/V3 que ya no alteran la gramática.
+
 Pendiente de un nuevo commit y de reiniciar desde cero la reconstrucción y la batería completa O0 con NSLink.

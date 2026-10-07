@@ -2,7 +2,6 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Language/AggregateSemantics.h"
-#include "nativesharp/Language/LanguageEdition.h"
 #include "nativesharp/Lexer/Lexer.h"
 #include "nativesharp/Parser/Parser.h"
 #include "nativesharp/Source/SourceManager.h"
@@ -26,13 +25,13 @@ struct Parsed final
     nativesharp::ast::AstNode* root = nullptr;
 };
 
-void parse(Parsed& parsed, std::string source, nativesharp::language::LanguageEdition edition)
+void parse(Parsed& parsed, std::string source)
 {
     const nativesharp::FileId id = parsed.sources.addBuffer("t02.ns", std::move(source));
     nativesharp::lexer::Lexer lexer(*parsed.sources.getFile(id), parsed.diagnostics);
     parsed.tokens = lexer.lexAll();
     nativesharp::parser::Parser parser(
-        parsed.tokens, parsed.arena, parsed.diagnostics, {}, edition);
+        parsed.tokens, parsed.arena, parsed.diagnostics);
     parsed.root = parser.parseCompilationUnit();
 }
 }
@@ -107,12 +106,12 @@ int Demo(int a, int b)
     return 0;
 }
 )ns";
-    Parsed edition3;
-    parse(edition3, std::string(source), language::LanguageEdition::V3);
-    tests.expect(edition3.root != nullptr && edition3.diagnostics.errorCount() == 0,
-        "tuple, deconstruction, spread, and record syntax parse in edition 3");
+    Parsed parsed;
+    parse(parsed, std::string(source));
+    tests.expect(parsed.root != nullptr && parsed.diagnostics.errorCount() == 0,
+        "tuple, deconstruction, spread, and record syntax parse cumulatively");
     std::ostringstream dump;
-    ast::AstDumper{}.dump(edition3.root, dump);
+    ast::AstDumper{}.dump(parsed.root, dump);
     const std::string tree = dump.str();
     tests.expect(tree.find("TupleExpression") != std::string::npos &&
             tree.find("SpreadElementExpression") != std::string::npos,
@@ -123,11 +122,6 @@ int Demo(int a, int b)
             tree.find("FieldDeclaration \"X\"") != std::string::npos &&
             tree.find("ConstructorDeclaration \"Pair\"") != std::string::npos,
         "record primary parameters desugar to fields and a constructor with explicit derives");
-
-    Parsed edition2;
-    parse(edition2, std::string(source), language::LanguageEdition::V2);
-    tests.expect(edition2.root != nullptr && edition2.diagnostics.errorCount() == 0,
-        "historical edition input recognizes the complete T02 syntax");
 
     return tests.result();
 }

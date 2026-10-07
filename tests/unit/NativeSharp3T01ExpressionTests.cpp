@@ -53,15 +53,14 @@ struct Parsed final
 
 void parse(
     Parsed& parsed,
-    std::string source,
-    nativesharp::language::LanguageEdition edition)
+    std::string source)
 {
     const nativesharp::FileId id = parsed.sources.addBuffer("t01.ns", std::move(source));
     nativesharp::lexer::Lexer lexer(*parsed.sources.getFile(id), parsed.diagnostics);
     parsed.tokens = lexer.lexAll();
     const std::array<std::string, 1> knownTypes = {"ReadOnlySpan"};
     nativesharp::parser::Parser parser(
-        parsed.tokens, parsed.arena, parsed.diagnostics, knownTypes, edition);
+        parsed.tokens, parsed.arena, parsed.diagnostics, knownTypes);
     parsed.root = parser.parseCompilationUnit();
 }
 }
@@ -146,12 +145,12 @@ int Demo(int* left, int* right, int[] items, Box value)
 }
 )ns";
 
-    Parsed edition3;
-    parse(edition3, std::string(source), language::LanguageEdition::V3);
-    tests.expect(edition3.root != nullptr && edition3.diagnostics.errorCount() == 0,
-        "T01 surface syntax parses without diagnostics in edition 3");
+    Parsed parsed;
+    parse(parsed, std::string(source));
+    tests.expect(parsed.root != nullptr && parsed.diagnostics.errorCount() == 0,
+        "T01 surface syntax parses without edition-dependent diagnostics");
     std::ostringstream dump;
-    ast::AstDumper{}.dump(edition3.root, dump);
+    ast::AstDumper{}.dump(parsed.root, dump);
     const std::string tree = dump.str();
     tests.expect(tree.find("NullCoalescingExpression") != std::string::npos &&
             tree.find("op=QuestionQuestionEqual") != std::string::npos &&
@@ -168,11 +167,6 @@ int Demo(int* left, int* right, int[] items, Box value)
     tests.expect(tree.find("aux=\"params\"") != std::string::npos &&
             tree.find("name=\"values\"") != std::string::npos,
         "typed packs and named arguments are present in the AST dump");
-
-    Parsed edition2;
-    parse(edition2, std::string(source), language::LanguageEdition::V2);
-    tests.expect(edition2.root != nullptr && edition2.diagnostics.errorCount() == 0,
-        "historical edition input recognizes the complete T01 syntax");
 
     return tests.result();
 }
