@@ -71,14 +71,12 @@ std::span<const SdkManifest> Project::sdkReferences() const noexcept
 
 language::LanguageEdition Project::languageEdition() const noexcept
 {
-    return languageEdition_;
+    return language::LanguageEdition::V3;
 }
 
 language::LanguageEdition Project::sourceLanguageEdition() const noexcept
 {
-    // Graph reconciliation may raise an omitted edition to satisfy dependencies, but it must
-    // not rewrite what the author selected. Omission keeps the historical source contract.
-    return languageEditionExplicit_ ? languageEdition_ : language::LanguageEdition::V2;
+    return language::LanguageEdition::V3;
 }
 
 language::LanguageEdition Project::recognizedLanguageEdition() const noexcept
@@ -97,12 +95,12 @@ bool Project::enforcesLanguage3Effects() const noexcept
 
 bool Project::hasExplicitLanguageEdition() const noexcept
 {
-    return languageEditionExplicit_;
+    return false;
 }
 
 void Project::adoptInferredLanguageEdition(language::LanguageEdition edition) noexcept
 {
-    if (!languageEditionExplicit_) languageEdition_ = edition;
+    (void)edition;
 }
 
 language::PanicProfile Project::panicProfile() const noexcept

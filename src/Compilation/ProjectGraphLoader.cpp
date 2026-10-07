@@ -65,48 +65,6 @@ std::filesystem::path canonicalPath(const std::filesystem::path& path)
     return canonical;
 }
 
-bool resolveImplicitLanguageEditions(
-    std::map<std::string, Project>& projects,
-    std::string& error)
-{
-    const Project* authority = nullptr;
-    for (const auto& [path, project] : projects)
-    {
-        (void)path;
-        if (!project.hasExplicitLanguageEdition()) continue;
-        if (authority == nullptr)
-        {
-            authority = &project;
-            continue;
-        }
-        if (authority->languageEdition() == project.languageEdition()) continue;
-
-        error = "NS3001: project '" + authority->moduleName() +
-            "' explicitly uses language edition " +
-            std::string(language::languageEditionName(authority->languageEdition())) +
-            " but project '" + project.moduleName() +
-            "' explicitly uses language edition " +
-            std::string(language::languageEditionName(project.languageEdition())) +
-            "; mixed explicitly declared editions are not allowed inside one module graph";
-        return false;
-    }
-
-    // Omitted <Language> is a compatibility request, not an explicit Language 2
-    // boundary. Preserve the historical V2 default when the whole graph is
-    // implicit; otherwise make every implicit node follow the graph's sole
-    // explicit contract before cycle and edge validation.
-    if (authority != nullptr)
-    {
-        const language::LanguageEdition inferred = authority->languageEdition();
-        for (auto& [path, project] : projects)
-        {
-            (void)path;
-            project.adoptInferredLanguageEdition(inferred);
-        }
-    }
-    return true;
-}
-
 std::string cycleMessage(const GraphLoadState& state, const std::filesystem::path& repeatedPath)
 {
     const std::string repeatedKey = pathKey(repeatedPath);
@@ -198,16 +156,6 @@ bool visitProject(
         {
             error = "internal error: project reference was not loaded: '" +
                 reference.generic_string() + "'";
-            return false;
-        }
-        if (dependency->second.languageEdition() != project.languageEdition())
-        {
-            error = "NS3001: project '" + project.moduleName() + "' uses language edition " +
-                std::string(language::languageEditionName(project.languageEdition())) +
-                " but imports project '" + dependency->second.moduleName() +
-                "' using language edition " +
-                std::string(language::languageEditionName(dependency->second.languageEdition())) +
-                "; mixed editions are not allowed inside one module graph";
             return false;
         }
         if (!visitProject(reference, projects, state, error))
@@ -428,11 +376,6 @@ std::optional<ProjectGraph> ProjectGraphLoader::load(
     // source module already present in the graph. Non-matching package names remain untouched
     // for the Driver's authoritative metadata-identity resolution.
     preferExactSourceModuleArtifacts(projects, moduleOwners);
-
-    if (!resolveImplicitLanguageEditions(projects, error))
-    {
-        return std::nullopt;
-    }
 
     GraphLoadState state;
     if (!visitProject(root, projects, state, error))

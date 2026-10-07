@@ -37,7 +37,6 @@ struct ProjectDescriptor final
     std::optional<std::string> name;
     std::optional<std::string> packageName;
     std::optional<ProjectOutputKind> outputKind;
-    std::optional<language::LanguageEdition> languageEdition;
     std::optional<language::PanicProfile> panicProfile;
     std::optional<std::string> panicHandler;
     ProjectBuildSettings buildSettings;
@@ -317,17 +316,9 @@ bool parsePropertyGroup(
         }
         else if (property.name == "Language")
         {
-            if (descriptor.languageEdition.has_value())
-            {
-                error = "project property 'Language' is declared more than once";
-                return false;
-            }
-            descriptor.languageEdition = language::parseLanguageEdition(value);
-            if (!descriptor.languageEdition.has_value())
-            {
-                error = "Language must be '2' or '3'";
-                return false;
-            }
+            // Compatibility-only input. Historical project files remain readable, but this
+            // value cannot select, hide, or reject syntax in the cumulative language.
+            (void)value;
         }
         else if (property.name == "PanicProfile")
         {
@@ -1079,12 +1070,12 @@ std::optional<Project> ProjectLoader::load(
         std::move(projectReferences),
         std::move(libraryReferences),
         std::move(sdkReferences),
-        descriptor.languageEdition.value_or(language::LanguageEdition::V2),
+        language::LanguageEdition::V3,
         descriptor.panicProfile.value_or(language::PanicProfile::Abort),
         descriptor.panicHandler.value_or(std::string{}),
         descriptor.packageName.value_or(moduleName),
         std::move(descriptor.friendModules),
-        descriptor.languageEdition.has_value());
+        false);
 }
 
 ProjectLoaderStatistics ProjectLoader::statistics() const

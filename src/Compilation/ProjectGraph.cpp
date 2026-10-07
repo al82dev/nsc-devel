@@ -24,57 +24,6 @@ std::string foldedPath(const std::filesystem::path& path)
     return key;
 }
 
-// Establishes one effective language contract for a source graph and its metadata closure.
-// Explicit source declarations and NSMETA descriptors are authorities; omitted source
-// declarations adopt their unique edition without losing their implicit provenance.
-bool reconcilePrecompiledLanguageEditions(
-    std::vector<Project>& projects,
-    std::span<const PrecompiledProjectDescriptor> descriptors,
-    std::string& error)
-{
-    bool hasAuthority = false;
-    language::LanguageEdition authority = language::LanguageEdition::V2;
-    std::string authorityKind;
-    std::string authorityName;
-    for (const Project& project : projects)
-    {
-        if (!project.hasExplicitLanguageEdition()) continue;
-        if (!hasAuthority)
-        {
-            hasAuthority = true;
-            authority = project.languageEdition();
-            authorityKind = "project";
-            authorityName = project.moduleName();
-            continue;
-        }
-        if (authority == project.languageEdition()) continue;
-        error = "NS3001: " + authorityKind + " '" + authorityName +
-            "' uses language edition " + std::string(language::languageEditionName(authority)) +
-            " but project '" + project.moduleName() + "' uses language edition " +
-            std::string(language::languageEditionName(project.languageEdition()));
-        return false;
-    }
-    for (const PrecompiledProjectDescriptor& descriptor : descriptors)
-    {
-        if (!hasAuthority)
-        {
-            hasAuthority = true;
-            authority = descriptor.languageEdition;
-            authorityKind = "precompiled module";
-            authorityName = descriptor.moduleName;
-            continue;
-        }
-        if (authority == descriptor.languageEdition) continue;
-        error = "NS3001: " + authorityKind + " '" + authorityName +
-            "' uses language edition " + std::string(language::languageEditionName(authority)) +
-            " but precompiled module '" + descriptor.moduleName + "' uses language edition " +
-            std::string(language::languageEditionName(descriptor.languageEdition));
-        return false;
-    }
-    if (!hasAuthority) return true;
-    for (Project& project : projects) project.adoptInferredLanguageEdition(authority);
-    return true;
-}
 }
 
 ProjectGraph::ProjectGraph(std::filesystem::path rootProjectFile, std::vector<Project> projects)
@@ -260,13 +209,6 @@ bool ProjectGraph::replaceLibraryReferencesWithSourceProjects(
                     reference.generic_string() + "'";
                 return false;
             }
-            if (rewired[ordinal].languageEdition() != rewired[dependency->second].languageEdition())
-            {
-                error = "source-preferred project reference mixes language editions between '" +
-                    rewired[ordinal].moduleName() + "' and '" +
-                    rewired[dependency->second].moduleName() + "'";
-                return false;
-            }
             if (!visit(dependency->second)) return false;
         }
         state[ordinal] = 2U;
@@ -332,13 +274,6 @@ bool ProjectGraph::addPrecompiledProjects(
                     "' was assigned conflicting module identities";
                 return false;
             }
-            if (uniqueDescriptors[existing->second].languageEdition != descriptor.languageEdition)
-            {
-                error = "NS3001: precompiled metadata '" +
-                    descriptor.metadataPath.generic_string() +
-                    "' was assigned conflicting language editions";
-                return false;
-            }
             continue;
         }
         const std::string moduleKey =
@@ -354,7 +289,6 @@ bool ProjectGraph::addPrecompiledProjects(
         descriptorByPath.emplace(metadataKey, uniqueDescriptors.size());
         uniqueDescriptors.push_back(descriptor);
     }
-    if (!reconcilePrecompiledLanguageEditions(projects_, uniqueDescriptors, error)) return false;
     std::ranges::sort(uniqueDescriptors, [](const auto& left, const auto& right) {
         const std::string leftIdentity =
             language::canonicalWindowsModuleIdentity({}, left.moduleName);
@@ -412,7 +346,7 @@ bool ProjectGraph::addPrecompiledProjects(
             std::move(peerMetadata),
             std::vector<LibraryReference>{},
             std::vector<SdkManifest>{},
-            descriptor.languageEdition);
+            language::LanguageEdition::V3);
     }
     for (const Project& project : projects_)
     {

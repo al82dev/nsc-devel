@@ -41,7 +41,7 @@ public:
         std::vector<std::filesystem::path> projectReferences,
         std::vector<LibraryReference> libraryReferences,
         std::vector<SdkManifest> sdkReferences,
-        language::LanguageEdition languageEdition = language::LanguageEdition::V2,
+        language::LanguageEdition languageEdition = language::LanguageEdition::V3,
         language::PanicProfile panicProfile = language::PanicProfile::Abort,
         std::string panicHandler = {},
         std::string packageName = {},
@@ -74,8 +74,10 @@ private:
     std::vector<std::filesystem::path> projectReferences_;
     std::vector<LibraryReference> libraryReferences_;
     std::vector<SdkManifest> sdkReferences_;
-    language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
-    bool languageEditionExplicit_ = true;
+    // Temporary ABI-compatible construction seam. Source recognition no longer branches on
+    // editions; every project uses the cumulative NativeSharp language surface.
+    language::LanguageEdition languageEdition_ = language::LanguageEdition::V3;
+    bool languageEditionExplicit_ = false;
     language::PanicProfile panicProfile_ = language::PanicProfile::Abort;
     std::string panicHandler_;
     std::string packageName_;
