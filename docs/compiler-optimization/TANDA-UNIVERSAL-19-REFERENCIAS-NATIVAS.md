@@ -23,5 +23,7 @@ lifetime, escape, procedencia, pinning y bloqueo de movimientos siguen cubiertos
 
 ## Validación dirigida
 
-Pendiente después del commit: `nsc.ns3.t06.reborrow-split` en O0. No se ejecuta
-baseline, certificación, promoción ni instalación.
+- Construcción dirigida: `nsc_ns3_t06_reborrow_split_tests`, correcta.
+- CTest: `nsc.ns3.t06.reborrow-split`, `1/1` correcto en `0.76 s`.
+- Linker de productos NativeSharp: `C:\native-sharp\bin\nslink.exe`.
+- No se ejecutó baseline, certificación, promoción ni instalación.
