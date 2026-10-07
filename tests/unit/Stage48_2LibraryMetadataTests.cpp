@@ -485,7 +485,7 @@ public class Api
     tests.expect(codec.read(goldenPath, goldenDecoded, error),
         "the ABI 1.0 golden metadata model round-trips");
     const std::string goldenHex = LibraryMetadataCodec::fingerprintHex(goldenDecoded.abiFingerprint);
-    tests.expect(goldenHex == "4be2026726d0eebd3c4693ee1b17f62171d252fc74867eac62b4e055a8aa10db",
+    tests.expect(goldenHex == "76fa6ca4e7bed7d22e1898ec6130509dc2d89b3350a78ba22e6401df0852e6af",
         "ABI root contract with Object ABI 2 retains its reviewed golden fingerprint (" +
             goldenHex + ")");
 }

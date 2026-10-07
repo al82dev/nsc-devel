@@ -23,9 +23,9 @@
 
 ## Causa confirmada
 
-NSMETA 1.23 introdujo un byte fisico de revision de fuente. Las huellas historicas se calcularon
-con el valor escrito por cada productor. Despues de retirar la edicion del modelo, el decoder leia
-y descartaba ese byte antes de recomputar la huella con el valor neutral del escritor actual. El
+NSMETA 1.23 introdujo un byte fisico de revision de fuente. El productor historico lo conservaba
+en el payload, pero lo reemplazaba deliberadamente por cero al construir la proyeccion ABI. Tras
+retirar la edicion del modelo, la proyeccion uso por error el valor neutral del escritor actual. El
 payload seguia integro, pero la autenticacion comparaba proyecciones distintas.
 
 La fixture que materializa cada minor historico tambien conservaba contratos agregados en minors
@@ -34,11 +34,10 @@ subconjunto comun que afirmaba probar.
 
 ## Cambio
 
-1. `decodePayload` devuelve el byte fisico en una variable local del lector.
-2. La autenticacion ABI reproduce la proyeccion historica exacta con ese byte.
-3. Tras autenticar, el modelo expuesto recibe la huella neutral del contrato actual.
-4. Los escritores nuevos siguen emitiendo el valor neutral y no aceptan una edicion del modelo.
-5. La prueba limpia contratos de lifetime, escape, drop glue, typed throws y FFI/generics cuando
+1. `decodePayload` consume el byte fisico sin publicarlo en el modelo.
+2. La proyeccion ABI reproduce el cero historico que excluye ese byte del contrato publico.
+3. Los escritores nuevos siguen emitiendo el valor neutral y no aceptan una edicion del modelo.
+4. La prueba limpia contratos de lifetime, escape, drop glue, typed throws y FFI/generics cuando
    el minor seleccionado aun no los representaba.
 
 ## Mejora
