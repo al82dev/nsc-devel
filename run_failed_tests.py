@@ -18,7 +18,6 @@ from typing import TextIO
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MANIFEST = ROOT / "test.run"
-DEFAULT_BUILD = ROOT / "build-test-nslink"
 DEFAULT_HISTORY = ROOT / "_nscbuilder" / "failed-tests"
 DEFAULT_NSC = Path(r"C:\native-sharp\bin\nsc.exe")
 DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
@@ -40,7 +39,11 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Ejecuta únicamente las CTests listadas en test.run.",
     )
-    parser.add_argument("--build-dir", type=Path, default=DEFAULT_BUILD)
+    parser.add_argument(
+        "--build-dir",
+        type=Path,
+        help="Árbol CTest ya construido; si se omite, se descubre dentro del repositorio.",
+    )
     parser.add_argument("--tests-file", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_HISTORY)
     parser.add_argument("--nsc", type=Path, default=DEFAULT_NSC)
@@ -69,6 +72,41 @@ def read_test_manifest(path: Path) -> list[str]:
 def safe_name(value: str) -> str:
     normalized = re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("._")
     return normalized or "test"
+
+
+def ctest_names(path: Path) -> set[str]:
+    """Read registered test names from generated CTest metadata without executing CMake."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return set(re.findall(r'add_test\(\s*"([^"]+)"', text))
+
+
+def discover_test_tree(requested: Path | None, names: list[str]) -> Path:
+    """Find the existing CTest tree that contains the complete requested manifest."""
+    if requested is not None:
+        build_dir = requested.resolve()
+        if not (build_dir / CTEST_FILE).is_file():
+            raise ValueError(f"El árbol CTest indicado no existe: {build_dir}")
+        return build_dir
+
+    required = set(names)
+    candidates: list[tuple[Path, int]] = []
+    for child in sorted(ROOT.iterdir(), key=lambda path: path.name.casefold()):
+        metadata = child / CTEST_FILE
+        if not child.is_dir() or not metadata.is_file():
+            continue
+        coverage = len(required & ctest_names(metadata))
+        candidates.append((child.resolve(), coverage))
+    complete = [path for path, coverage in candidates if coverage == len(required)]
+    if complete:
+        preferred = ROOT / "build-test-nslink"
+        return preferred.resolve() if preferred.resolve() in complete else complete[0]
+    details = ", ".join(f"{path} ({coverage}/{len(required)})" for path, coverage in candidates)
+    if not details:
+        details = "ninguno"
+    raise ValueError(
+        "No existe un árbol CTest construido que contenga todo test.run. "
+        f"Árboles encontrados: {details}"
+    )
 
 
 def write_both(master: TextIO, per_test: TextIO, text: str) -> None:
@@ -274,7 +312,7 @@ def test_environment(nsc: Path, nslink: Path) -> dict[str, str]:
 
 
 def execute(args: argparse.Namespace, names: list[str]) -> int:
-    build_dir = args.build_dir.resolve()
+    build_dir = discover_test_tree(args.build_dir, names)
     nsc = args.nsc.resolve()
     nslink = args.nslink.resolve()
     if not nsc.is_file():

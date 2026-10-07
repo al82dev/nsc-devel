@@ -3,7 +3,7 @@
 ## SCOPE LOCK
 
 - Objetivo autorizado: ejecutar exclusivamente los nombres incluidos en `test.run`.
-- Árbol de pruebas: el ya construido en `A:\nsc-devel\build-test-nslink`.
+- Árbol de pruebas: uno ya construido dentro de `A:\nsc-devel`, descubierto por cobertura completa.
 - Compilador oficial: `C:\native-sharp\bin\nsc.exe`.
 - Linker oficial: `C:\native-sharp\bin\nslink.exe`.
 - Herramientas auxiliares: resolución mediante `PATH`.
@@ -26,11 +26,17 @@ oficial.
 El runner ahora:
 
 1. valida los dos productos NativeSharp oficiales;
-2. lee el único `CTestTestfile.cmake` del árbol existente;
-3. crea una copia de metadatos dentro del directorio de evidencia de la corrida;
-4. sustituye en esa copia las rutas de NSC y NSLink por las instalaciones oficiales;
-5. reduce las rutas de CTest y herramientas auxiliares a nombres resueltos por `PATH`;
-6. ejecuta con `ctest` únicamente cada nombre enumerado en `test.run`.
+2. descubre los árboles CTest existentes directamente bajo la raíz del repositorio;
+3. selecciona uno únicamente si contiene todos los nombres de `test.run`;
+4. lee el `CTestTestfile.cmake` del árbol seleccionado;
+5. crea una copia de metadatos dentro del directorio de evidencia de la corrida;
+6. sustituye en esa copia las rutas de NSC y NSLink por las instalaciones oficiales;
+7. reduce las rutas de CTest y herramientas auxiliares a nombres resueltos por `PATH`;
+8. ejecuta con `ctest` únicamente cada nombre enumerado en `test.run`.
+
+`--build-dir` conserva precedencia explícita. Cuando se proporciona, el runner utiliza exactamente ese árbol y
+no intenta sustituirlo por otro. Sin ese parámetro, el descubrimiento nunca crea directorios ni acepta cobertura
+parcial: la totalidad del manifiesto debe existir en un mismo árbol ya construido.
 
 La copia no contiene binarios ni fuentes. Los comandos CTest siguen apuntando a los ejecutables de prueba ya
 construidos en `A:`. El árbol original no se escribe ni se reconfigura.
