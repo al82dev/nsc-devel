@@ -193,8 +193,6 @@ bool ProjectGraph::replaceLibraryReferencesWithSourceProjects(
         if (state[ordinal] == 2U) return true;
         if (state[ordinal] == 1U)
         {
-            if (rewired[ordinal].languageEdition() == language::LanguageEdition::V3)
-                return true;
             error = "source-preferred project reference introduces a cycle at module '" +
                 rewired[ordinal].moduleName() + "'";
             return false;

@@ -3626,10 +3626,12 @@ bool LibraryMetadataCodec::writeModelImpl(
         error = "metadata language edition must be 2 or 3";
         return false;
     }
-    if (metadata.formatMinor < 23 && metadata.languageEdition != 2U)
+    if (metadata.formatMinor < 23)
     {
-        error = "NativeSharp metadata before 1.23 cannot represent language edition 3";
-        return false;
+        // Editions never participated in the ABI represented by the first 23 metadata minors.
+        // A down-level projection therefore records the historical neutral value instead of
+        // rejecting a cumulative-language model created by the current compiler.
+        metadata.languageEdition = 2U;
     }
 
     // A down-level file must preserve the semantics of that historical minor, not merely omit
