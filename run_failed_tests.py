@@ -400,21 +400,21 @@ def execute(args: argparse.Namespace, names: list[str]) -> int:
         raise ValueError(f"No existe el compilador oficial: {nsc}")
     if not nslink.is_file():
         raise ValueError(f"No existe el linker oficial: {nslink}")
-    master_path = next_log_path()
-    master_path.write_text("", encoding="utf-8")
     results: list[dict] = []
     interrupted = False
     with tempfile.TemporaryDirectory(prefix="run-failed-tests-", dir=ROOT) as temporary:
         run_dir = Path(temporary)
         if not args.no_prepare:
-            configure_test_tree(build_dir, nsc, nslink, master_path)
+            configure_test_tree(build_dir, nsc, nslink, Path(os.devnull))
             targets = selected_cpp_targets(build_dir / CTEST_FILE, names, build_dir)
-            build_selected_targets(build_dir, targets, master_path)
+            build_selected_targets(build_dir, targets, Path(os.devnull))
             print(f"\nTargets C++ seleccionados: {len(targets)}")
         elif not (build_dir / CTEST_FILE).is_file():
             raise ValueError(f"El árbol CTest indicado no está preparado: {build_dir}")
         test_dir = prepare_ctest_overlay(build_dir, run_dir, nsc, nslink)
         environment = test_environment(nsc, nslink)
+        master_path = next_log_path()
+        master_path.write_text("", encoding="utf-8")
         with master_path.open("a", encoding="utf-8", errors="replace") as master:
             for index, name in enumerate(names, 1):
                 print(f"\n[{index}/{len(names)}] {name}")

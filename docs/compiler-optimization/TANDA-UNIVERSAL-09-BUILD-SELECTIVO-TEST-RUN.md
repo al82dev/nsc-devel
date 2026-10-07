@@ -43,6 +43,9 @@ putadas_que_fallan_NUMERO.log
 Los metadatos CTest adaptados son temporales y se eliminan automáticamente. No se generan reportes Markdown,
 JSON, carpetas de historial ni logs individuales.
 
+La configuración y la compilación selectiva se muestran únicamente en consola. El log consecutivo se crea
+después de ambas etapas y contiene exclusivamente la ejecución de las pruebas de `test.run`.
+
 ## Complejidad
 
 El análisis del metadato cuesta `O(t * n)`, donde `t` es la cantidad de pruebas solicitadas y `n` el tamaño del
