@@ -30,8 +30,17 @@ siendo invalidas permanecen intactas. No se agrega una cobertura positiva duplic
 - `docs/compiler-optimization/TANDA-UNIVERSAL-27-STRUCT-DESTRUCTOR-CONTRACTS.md`
   - Registra causa, cobertura sustituta y limites.
 
-## Verificacion pendiente del commit
+## Evidencia posterior al commit
 
-- Reconstruir el arbol de pruebas existente.
-- Ejecutar las 684 pruebas completas configuradas con O0 y NSLink.
-- Confirmar que Stage 40, Stage 56 C6 y T06 partial-moves pasan juntos.
+- Se reconstruyeron los tres ejecutables afectados en `build-test-nslink`.
+- Se ejecutaron las 684 pruebas existentes con O0 y
+  `C:\native-sharp\bin\nslink.exe`; no se ejecuto baseline ni instalacion.
+- Resultado global: 597 pruebas pasaron y 87 fallaron en 88.99 segundos.
+- `nsc.stage40.struct-value-abi` paso.
+- `nsc.stage56.c6-struct-members` paso.
+- `nsc.ns3.t06.partial-moves` paso, incluida la ejecucion exactamente una vez del destructor.
+
+## Conclusion
+
+Las dos negativas obsoletas desaparecieron sin perder la prueba observable del destructor ni las
+fronteras que siguen siendo invalidas. La tanda queda verificada y cerrada.
