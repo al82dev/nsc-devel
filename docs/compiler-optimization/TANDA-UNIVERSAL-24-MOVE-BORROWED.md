@@ -30,8 +30,17 @@ siguen usando la regla copy-shaped existente.
 - `docs/compiler-optimization/TANDA-UNIVERSAL-24-MOVE-BORROWED.md`
   - Registra causa, limites, decision y evidencia.
 
-## Verificacion pendiente del commit
+## Evidencia posterior al commit
 
-- Reconstruir el arbol de pruebas existente.
-- Ejecutar las 684 pruebas completas configuradas con O0 y NSLink.
-- Confirmar que Stage 50.4 y Stage 50.10 cierran sin regresiones de move/copy generico.
+- La reconstruccion completa del arbol `build-test-nslink` termino correctamente.
+- Se ejecutaron las 684 pruebas existentes con O0 y
+  `C:\native-sharp\bin\nslink.exe`; no se ejecuto baseline ni instalacion.
+- Resultado global: 593 pruebas pasaron y 91 fallaron en 88.82 segundos.
+- `nsc.stage50_4.borrowed-parameters` paso.
+- `nsc.stage50_10.ownership-examples-documentation` paso.
+- Los fallos restantes no contienen esos dos contratos y se atienden por causa independiente.
+
+## Conclusion
+
+La correccion cerro las dos manifestaciones conocidas de `move(borrowed)` sin reintroducir la
+restriccion antigua sobre movimientos copy-shaped. La tanda queda verificada y cerrada.
