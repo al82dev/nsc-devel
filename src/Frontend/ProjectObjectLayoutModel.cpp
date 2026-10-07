@@ -686,20 +686,6 @@ bool ProjectObjectLayoutModel::buildStructLayout(
         std::optional<std::uint64_t> bitWidth;
         if (member.isBitField)
         {
-            const bool edition3 = type.syntax != nullptr &&
-                type.syntax->auxiliaryText().find("ns3-value") != std::string::npos;
-            const bool declaredLayout = type.syntax != nullptr &&
-                type.syntax->auxiliaryText().find("repr=") != std::string::npos;
-            if (edition3 && !declaredLayout)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    member.range,
-                    "NativeSharp 3 bit-fields require an explicit repr(native) or repr(C) layout");
-                namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
-                return false;
-            }
             bool validBase = ProjectIntegerEvaluator::isIntegerType(member.declaredTypeKey) ||
                 member.declaredTypeKey == "builtin:bool";
             if (!validBase && member.declaredTypeKey.starts_with("type:"))

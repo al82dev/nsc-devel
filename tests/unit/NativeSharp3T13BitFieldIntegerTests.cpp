@@ -28,7 +28,7 @@ std::filesystem::path writeProject(
     const auto project = directory / (std::string(name) + ".nsproj");
     writeFile(project,
         "<Project><PropertyGroup><Name>" + std::string(name) +
-        "</Name><Language>3</Language><OutputType>Exe</OutputType>"
+        "</Name><OutputType>Exe</OutputType>"
         "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
         "</ItemGroup></Project>");
     writeFile(directory / "Main.ns", source);
@@ -120,9 +120,9 @@ namespace FixedIntegers
 public struct Flags { public u32 Ready : 1; }
 public class Program { public static int Main() { return 0; } }
 )NS");
-    tests.expect(rejectsWith(implicitLayout,
-            "NativeSharp 3 bit-fields require an explicit repr(native) or repr(C) layout", diagnostic),
-        "edition-3 bit-fields reject implicit layout (" + diagnostic + ")");
+    tests.expect(compileAndRun(implicitLayout, 0, diagnostic),
+        "bit-fields accept the ordinary native struct layout without an edition gate (" +
+            diagnostic + ")");
 
     const auto overflow = writeProject(root / "overflow", "BitOverflow", R"NS(
 repr(C) public struct Flags { public u8 Broken : 9; }
