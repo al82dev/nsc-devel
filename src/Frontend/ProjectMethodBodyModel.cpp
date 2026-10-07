@@ -9952,8 +9952,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     break;
                 }
                 const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
-                if (local.ownership == sema::OwnershipKind::Borrowed &&
-                    typeKeyIsOwnable(local.typeKey))
+                const bool sourceRequiresMove = local.isRaii || local.isMoveOnly ||
+                    compilerVariantResultTransfer;
+                // `move` may spell an explicit copy for value-shaped inputs, but it must never
+                // manufacture ownership for a reference which was not owned by its source.
+                if (!sourceRequiresMove && typeKeyIsOwnable(local.typeKey))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
@@ -9962,8 +9965,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         "move(...) source must be a RAII local or owned parameter");
                     break;
                 }
-                const bool sourceRequiresMove = local.isRaii || local.isMoveOnly ||
-                    compilerVariantResultTransfer;
                 copyShapedMove = !sourceRequiresMove;
                 if (sourceRequiresMove && local.isPinned)
                 {
@@ -10065,8 +10066,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     break;
                 }
                 const MethodParameterSymbol& parameter = method->parameters[source->semanticOrdinal];
-                if (parameter.ownership == sema::OwnershipKind::Borrowed &&
-                    typeKeyIsOwnable(parameter.typeKey))
+                const bool sourceRequiresMove =
+                    parameter.ownership == sema::OwnershipKind::Owned ||
+                    (parameter.passKind == ParameterPassKind::Value &&
+                     (memberModel_->typeIsMoveOnly(parameter.typeKey) ||
+                      isGenericValueTypeKey(parameter.typeKey))) ||
+                    compilerVariantResultTransfer;
+                if (!sourceRequiresMove && typeKeyIsOwnable(parameter.typeKey))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
@@ -10075,12 +10081,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         "move(...) source must be a RAII local or owned parameter");
                     break;
                 }
-                const bool sourceRequiresMove =
-                    parameter.ownership == sema::OwnershipKind::Owned ||
-                    (parameter.passKind == ParameterPassKind::Value &&
-                     (memberModel_->typeIsMoveOnly(parameter.typeKey) ||
-                      isGenericValueTypeKey(parameter.typeKey))) ||
-                    compilerVariantResultTransfer;
                 const bool genericCopyShapedMove =
                     parameter.passKind == ParameterPassKind::Value &&
                     callableBelongsToGenericTypeSpecialization(methodMemberOrdinal) &&

@@ -486,6 +486,10 @@ class Resource
         "class H { public static void F() { Resource a = new Resource(); raii Resource b = move(a); } }",
         "move(...) source must be a RAII local");
 
+    expectInvalid(tests, root, "MoveNonOwnerParameter", prefix +
+        "class H { public static void F(Resource a) { raii Resource b = move(a); } }",
+        "move(...) source must be a RAII local or owned parameter");
+
     expectInvalid(tests, root, "MoveNeedsDirectLocal", prefix +
         "class H { public static void F() { raii Resource a = move(new Resource()); } }",
         "move(...) is only valid for a direct RAII local");
