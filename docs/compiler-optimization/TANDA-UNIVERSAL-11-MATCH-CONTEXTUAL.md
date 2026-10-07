@@ -35,9 +35,11 @@ brazos, patrones y `=>`.
 
 ## Validación dirigida
 
-Pendiente después del commit, conforme al aseguramiento de resultados:
-
-- `nsc.stage52.generic-collections-compiler-fixes`
-- prueba contextual existente de T07
+- `nsc.stage52.generic-collections-compiler-fixes`: **PASSED**, incluida la llamada
+  cross-project al delegado cuyo parámetro se llama `match`.
+- `nsc.ns3.t07.errors`: la comprobación existente que ejecuta
+  `match(throws())` dejó de fallar. La prueba completa conserva siete fallos ajenos
+  a esta tanda: seis expectativas antiguas de rechazo por efectos `throws` y una
+  expectativa textual sobre MIR 1.29.
 
 No se ejecuta baseline, certificación, promoción ni matriz O1/O2/O3.
