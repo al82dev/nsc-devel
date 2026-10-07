@@ -81,4 +81,24 @@ rechazo por manifiesto y obligaba a propagar un dato sin significado por cada un
   Ambos helpers se convirtieron a una sola ejecución acumulativa, sin duplicar el mismo parseo bajo etiquetas
   V2/V3 que ya no alteran la gramática.
 
-Pendiente de un nuevo commit y de reiniciar desde cero la reconstrucción y la batería completa O0 con NSLink.
+### Intento 3: `48931781d`
+
+- Corrida: `universal-o0-t03-r3-20261007`.
+- Tiempo total: 1304.987 s.
+- Reconstrucción limpia del compilador: aprobada, 290/290 pasos.
+- Construcción limpia de CTest: aprobada, 1151/1151 pasos para 429 ejecutables.
+- CTest completo: 639/684; 45 fallos, exactamente el mismo total que al cierre de la tanda 2.
+- Fixtures O0: 89/90; sólo `cc1_c23_views_and_lifetimes` conservó el fallo funcional preexistente
+  (exit 8, esperado 42).
+- Bug triage O0: 9/9.
+- `nsc.ns3.t01.expressions`: aprobado.
+- `nsc.ns3.t02.aggregates`: aprobado.
+- `nsc.ns3.t12.semantic-modules`: aprobado.
+- `nsc.project-graph`: aprobado.
+- Las ocho pruebas de Language Service continuaron aprobadas.
+- No se escribió en `C:` y no se ejecutó certificación de baseline.
+
+La igualdad de 45 fallos respecto del corte anterior, junto con la aprobación de los consumidores modificados,
+demuestra que esta tanda cerró el plumbing de edición del parser/frontend sin introducir fallos adicionales. Los
+45 fallos restantes pertenecen a las siguientes fronteras funcionales todavía no migradas: proyecto/NSMETA,
+ownership, contratos de errores y self-host derivado.
