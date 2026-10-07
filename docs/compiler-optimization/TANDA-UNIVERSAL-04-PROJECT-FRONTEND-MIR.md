@@ -129,5 +129,41 @@ etiqueta administrativa participara en la identidad incremental.
 
 ## Verificación posterior al commit
 
-Pendiente de la batería completa O0 con NSLink. La evidencia se agregará en un commit posterior sin reescribir
-el resultado ni declarar cierre si existe una sola prueba fallida, omitida o no ejecutada.
+### Intento de configuración descartado
+
+- Corrida: `universal-o0-t04-20261007`.
+- Resultado: no inició la compilación porque `NSC_BUILD_ID_OVERRIDE` recibió el SHA completo y el contrato de
+  CMake exige exactamente 16 caracteres hexadecimales minúsculos.
+- Efecto: no produjo evidencia de código ni modificó fuentes; se corrigió únicamente el argumento de la
+  ejecución a `fd25ae36902973a0`.
+
+### Batería completa ejecutada
+
+- Commit probado: `fd25ae36902973a0aeff6fa1427a3ca001f94191`.
+- Corrida: `A:\nsc-devel\_nscbuilder\history\universal-o0-t04-r2-20261007`.
+- Configuración: construcción limpia Release del host, productos NativeSharp en `O0`, NSLink, 16 trabajos,
+  sin certificación, promoción ni escritura en `C:`.
+- Compilador: `290/290` pasos, aprobado en `102.629 s`.
+- Árbol CTest: 429 ejecutables descubiertos y `1151/1151` pasos de construcción aprobados en `454.378 s`.
+- CTest: `684/684` ejecutadas; `637` aprobadas y `47` fallidas en `626.524 s`.
+- Fixtures O0: `90/90` ejecutados; `89` aprobados y `1` fallido
+  (`cc1_c23_views_and_lifetimes`, exit `8`, esperado `42`) en `36.778 s`.
+- Bug triage O0: `9/9` aprobados en `5.250 s`.
+- Tiempo total: `1368.601 s`.
+- Estado: **fallida**. La tanda no cumple criterio de cierre y no se presenta como verificada.
+
+### Evidencia funcional de esta tanda
+
+Las pruebas históricas modificadas pasaron dentro del inventario completo, incluidas:
+
+- `nsc.ns3.t00.constitution`;
+- `nsc.language-edition-inference`;
+- `nsc.precompiled-language-edition-inference`;
+- `nsc.implicit-language-edition-semantics`;
+- `nsc.implicit-language-feature-recognition`;
+- `nsc.ns3.t12.availability`.
+
+El conjunto fallido demuestra que retirar el estado del frontend no cerró todos los consumidores históricos.
+La siguiente acción no es reparar 47 casos por tanteo: es inventariar globalmente cada uso funcional restante
+de edición, `unsafe`, contratos de versión y expectativas asociadas, separar nombres históricos de decisiones
+semánticas y corregir el conjunto completo antes de volver a ejecutar la batería O0.
