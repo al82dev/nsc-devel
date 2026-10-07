@@ -39,3 +39,13 @@ de campos visitado y memoria lineal en el peor caso. No se añade recursión.
 
 Después del commit se reconstruirán los consumidores afectados y se ejecutará la batería completa O0 con NSLink.
 No se ejecutará baseline certificado.
+
+## Evidencia posterior al commit
+
+- Commit funcional: `41dcdd686`.
+- Reconstrucción del árbol `A:\nsc-devel\build-test-nslink`: correcta, sin error de compilación o enlace.
+- Batería completa: `684` ejecutadas, `592` aprobadas y `92` fallidas en `91.12 s`.
+- Conteo anterior: `684` ejecutadas, `592` aprobadas y `92` fallidas en `103.60 s`.
+- Los tests de variants y opaque results pasaron; no apareció ninguna regresión nueva.
+- El conjunto de 92 fallos permaneció idéntico y corresponde al inventario pendiente anterior.
+- No se ejecutó baseline, promoción, instalación ni deploy.
