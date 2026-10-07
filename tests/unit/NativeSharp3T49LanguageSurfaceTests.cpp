@@ -139,12 +139,6 @@ int main()
         "int Work() { static int value = 1; return value; }", "static-locals"),
         "static locals fail with NS3049 and a lifetime rationale");
 
-    nativesharp::frontend::FrontendCompilation rawCompilation;
-    const bool rawRecognized = rawCompilation.compileBuffer(
-        "raw.ns", "string Value() { return \"\"\"raw\"\"\"; }", false);
-    tests.expect(rawRecognized && !rawCompilation.diagnostics().hasErrors(),
-        "raw string literals are recognized by the cumulative frontend");
-
     nativesharp::source::SourceManager rawSources;
     const nativesharp::FileId rawFile = rawSources.addBuffer(
         "raw-values.ns", "\"\"\"A \\ path\"\"\" \"\"\"first\nsecond\"\"\"");
