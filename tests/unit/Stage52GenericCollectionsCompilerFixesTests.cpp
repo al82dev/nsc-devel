@@ -179,6 +179,17 @@ void writeProjectWithReference(
             referencedNsproj.generic_string() + "\" /></ItemGroup></Project>");
 }
 
+std::string diagnosticsText(const ProjectCompilation& compilation)
+{
+    std::string result;
+    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+    {
+        if (!result.empty()) result += " | ";
+        result += diagnostic.message();
+    }
+    return result;
+}
+
 // Compiles a fixture all the way to a verified, emitted COFF object, exactly like a real build.
 // Returns the generated LLVM IR text (for callers that want to inspect specific instructions),
 // or an empty string on any failure (with a diagnostic already reported via `tests.expect`).
@@ -190,7 +201,8 @@ std::string compileAndEmitObject(
     ProjectCompilation mir;
     std::string error;
     const bool lowered = mir.compileProjectOopMir(directory / (directory.filename().string() + ".nsproj"), error);
-    tests.expect(lowered, std::string(label) + ": lowers to OOP MIR");
+    tests.expect(lowered, std::string(label) + ": lowers to OOP MIR (" + error +
+        diagnosticsText(mir) + ")");
     tests.expect(error.empty(), std::string(label) + ": no MIR lowering error (" + error + ")");
     if (!lowered || mir.nameLookup() == nullptr || mir.oopMirModel() == nullptr) return {};
 
