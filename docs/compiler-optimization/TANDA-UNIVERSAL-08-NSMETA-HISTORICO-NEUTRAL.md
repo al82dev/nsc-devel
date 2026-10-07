@@ -51,3 +51,13 @@ que un payload alterado o una huella incorrecta continuan siendo rechazados.
 - Compilar solamente `nsc_stage48_2_library_metadata_tests`.
 - Ejecutar solamente `nsc.stage48_2.library-metadata` con NSC y NSLink oficiales.
 - No ejecutar baseline.
+
+## Resultado
+
+- Commit de implementacion: `848dff141`.
+- Correccion de la proyeccion ABI neutral: `2c4c2c4e9`.
+- Target dirigido: compilado correctamente.
+- `nsc.stage48_2.library-metadata`: `PASSED`, 386/386 comprobaciones, 3.47 s.
+- Herramientas de producto: `C:\native-sharp\bin\nsc.exe` y
+  `C:\native-sharp\bin\nslink.exe`.
+- Baseline, instalacion y push: no ejecutados.
