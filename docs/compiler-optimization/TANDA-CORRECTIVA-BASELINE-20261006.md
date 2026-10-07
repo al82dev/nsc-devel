@@ -150,4 +150,8 @@ precompiladas. Dos ediciones declaradas y contradictorias siguen produciendo
   las fuentes implicitas a reglas Language 3. Cuatro contratos dirigidos pasan;
   el self-host O0 se emite y su propia imagen valida grafo, modulos y las 27
   unidades raiz sin errores.
+- Tanda 8 terminada: la serie conserva las pruebas y proyectos historicos,
+  contiene un Markdown por tanda y no deja cambios propios sin commit. El
+  alcance del compilador queda cerrado con evidencia dirigida O0; la
+  certificacion completa permanece externa.
 - No se ejecuto baseline ni minibaseline.

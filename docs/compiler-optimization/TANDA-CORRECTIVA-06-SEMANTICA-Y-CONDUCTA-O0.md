@@ -42,4 +42,3 @@ por separado en la tanda 7.
 
 No se modificaron pruebas, fixtures, proyectos, bibliotecas ni instalaciones.
 No se ejecuto baseline, minibaseline ni matriz general.
-

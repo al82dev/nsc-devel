@@ -58,4 +58,3 @@ seis casos CTest:
 
 Resultado: **6/6 passed**, 6.49 segundos. No se ejecuto baseline, minibaseline ni
 matriz general.
-

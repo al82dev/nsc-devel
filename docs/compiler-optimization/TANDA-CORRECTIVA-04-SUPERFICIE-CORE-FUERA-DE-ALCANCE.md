@@ -45,4 +45,3 @@ No se ejecuto ninguna prueba: una prueba dirigida no puede producir esos
 simbolos ausentes y no se autoriza modificar las bibliotecas durante esta
 serie. La conclusion se obtiene de la historia exacta y de los consumidores
 inmutables.
-
