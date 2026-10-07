@@ -129,5 +129,9 @@ precompiladas. Dos ediciones declaradas y contradictorias siguen produciendo
 
 ## Estado
 
-Tanda 1 terminada por analisis estatico. No se ha modificado codigo productivo y
-no se ha ejecutado ninguna prueba ni baseline en esta tanda.
+- Tanda 1 terminada por analisis estatico.
+- Tanda 2 terminada: procedencia e inferencia entre proyectos fuente.
+- Tanda 3 terminada: inferencia del cierre NSMETA, con tres pruebas dirigidas
+  completas y cinco de seis checks de T33. Su ejecucion final queda no
+  verificable en el sandbox porque `cmd.exe` recibe `PATH` vacio.
+- No se ejecuto baseline ni minibaseline.
