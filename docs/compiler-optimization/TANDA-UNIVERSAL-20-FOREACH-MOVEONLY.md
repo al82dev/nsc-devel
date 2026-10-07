@@ -18,5 +18,7 @@ es move-only, sin derivar esa capacidad de una edición del lenguaje.
 
 ## Validación dirigida
 
-Pendiente después del commit: `nsc.ns3.t09.foreach-protocol` en O0. No se ejecuta
-baseline, certificación, promoción ni instalación.
+- Construcción dirigida: `nsc_ns3_t09_foreach_protocol_tests`, correcta.
+- CTest: `nsc.ns3.t09.foreach-protocol`, `1/1` correcto en `1.22 s`.
+- Linker de productos NativeSharp: `C:\native-sharp\bin\nslink.exe`.
+- No se ejecutó baseline, certificación, promoción ni instalación.
