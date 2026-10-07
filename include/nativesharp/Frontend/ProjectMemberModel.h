@@ -399,6 +399,7 @@ private:
 
     std::string syntaxFingerprint(const ast::AstNode* node) const;
     std::optional<std::size_t> typeOrdinalForKey(std::string_view typeKey) const noexcept;
+    void buildTransitiveOwnershipCache();
     void buildMemberNameIndex();
     bool collectTypeMembers(
         std::size_t typeOrdinal,
@@ -439,7 +440,7 @@ private:
         std::size_t,
         TransparentStringHash,
         std::equal_to<>> typeOrdinalByKey_;
-    mutable std::vector<std::optional<bool>> transitiveOwnershipCache_;
+    std::vector<std::uint8_t> transitiveOwnershipCache_;
     std::unordered_map<const ast::AstNode*, std::size_t> memberBySyntax_;
     bool built_ = false;
 };

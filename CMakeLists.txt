@@ -3949,6 +3949,18 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_project_member_model_tests)
     add_test(NAME nsc.project-member-model COMMAND nsc_project_member_model_tests)
 
+    add_executable(
+        nsc_project_member_ownership_cache_tests
+        tests/unit/ProjectMemberOwnershipCacheTests.cpp)
+    target_link_libraries(
+        nsc_project_member_ownership_cache_tests
+        PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(nsc_project_member_ownership_cache_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_project_member_ownership_cache_tests)
+    add_test(
+        NAME nsc.project-member-ownership-cache
+        COMMAND nsc_project_member_ownership_cache_tests)
+
     nsc_add_unit_test(
         nsc_project_type_conversion_tests
         tests/unit/ProjectTypeConversionTests.cpp

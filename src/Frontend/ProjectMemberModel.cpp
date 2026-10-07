@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <deque>
 #include <functional>
 #include <limits>
 #include <sstream>
@@ -538,7 +539,7 @@ bool ProjectMemberModel::build(
     constructorsByType_.resize(nameLookup.namedTypes().size());
     promotedMembersByType_.resize(nameLookup.namedTypes().size());
     membersByName_.resize(nameLookup.namedTypes().size());
-    transitiveOwnershipCache_.assign(nameLookup.namedTypes().size(), std::nullopt);
+    transitiveOwnershipCache_.assign(nameLookup.namedTypes().size(), 0);
     typeOrdinalByKey_.reserve(nameLookup.namedTypes().size());
     for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
     {
@@ -649,6 +650,10 @@ bool ProjectMemberModel::build(
         }
         collectTypeMembers(typeOrdinal, type, nameLookup, diagnostics);
     }
+
+    // Method-body shards share this model. Complete the ownership closure while build() is still
+    // single-threaded so every later query is a read-only lookup instead of a lazy cache write.
+    buildTransitiveOwnershipCache();
 
     // T06-F01 validates the opt-in only after every field has a canonical type key. Merely
     // spelling `copy` must never turn an owning or recursively move-only representation into a
@@ -994,39 +999,64 @@ bool ProjectMemberModel::typeTransitivelyOwnsStorage(std::string_view typeKey) c
 {
     if (nameLookup_ == nullptr) return false;
 
-    std::unordered_set<std::size_t> visiting;
-    std::function<bool(std::string_view)> owns = [&](std::string_view candidate) -> bool
+    std::string current(typeKey);
+    while (const std::optional<std::string> element = fixedArrayElementTypeKey(current))
+        current = *element;
+    const std::optional<std::size_t> ordinal = typeOrdinalForKey(current);
+    return ordinal.has_value() && *ordinal < transitiveOwnershipCache_.size() &&
+        nameLookup_->namedTypes()[*ordinal].kind == NamedTypeDeclarationKind::Struct &&
+        transitiveOwnershipCache_[*ordinal] != 0;
+}
+
+void ProjectMemberModel::buildTransitiveOwnershipCache()
+{
+    transitiveOwnershipCache_.assign(membersByType_.size(), 0);
+    std::vector<std::vector<std::size_t>> dependents(membersByType_.size());
+    std::deque<std::size_t> pending;
+
+    for (std::size_t typeOrdinal = 0; typeOrdinal < membersByType_.size(); ++typeOrdinal)
     {
-        std::string current(candidate);
-        while (const std::optional<std::string> element = fixedArrayElementTypeKey(current))
-            current = *element;
-        const std::optional<std::size_t> ordinal = typeOrdinalForKey(current);
-        if (!ordinal.has_value() ||
-            nameLookup_->namedTypes()[*ordinal].kind != NamedTypeDeclarationKind::Struct)
-            return false;
-        if (transitiveOwnershipCache_[*ordinal].has_value())
-            return *transitiveOwnershipCache_[*ordinal];
-        // Recursive by-value aggregates receive their own incomplete-type diagnostic in layout.
-        // Treat the cycle as non-owning here so this safety query does not invent a second cause.
-        if (!visiting.insert(*ordinal).second) return false;
-        bool result = false;
-        for (const std::size_t memberOrdinal : membersByType_[*ordinal])
+        if (nameLookup_ == nullptr || typeOrdinal >= nameLookup_->namedTypes().size() ||
+            nameLookup_->namedTypes()[typeOrdinal].kind != NamedTypeDeclarationKind::Struct)
+            continue;
+
+        for (const std::size_t memberOrdinal : membersByType_[typeOrdinal])
         {
             if (memberOrdinal >= members_.size()) continue;
-            const ClassMemberSymbol& nested = members_[memberOrdinal];
-            if (nested.kind != ClassMemberKind::Field || nested.isStatic) continue;
-            if (nested.declaredOwnership == sema::OwnershipKind::Owned ||
-                owns(nested.declaredTypeKey))
+            const ClassMemberSymbol& member = members_[memberOrdinal];
+            if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
+            if (member.declaredOwnership == sema::OwnershipKind::Owned)
             {
-                result = true;
-                break;
+                if (transitiveOwnershipCache_[typeOrdinal] == 0)
+                {
+                    transitiveOwnershipCache_[typeOrdinal] = 1;
+                    pending.push_back(typeOrdinal);
+                }
+                continue;
             }
+
+            std::string nestedTypeKey(member.declaredTypeKey);
+            while (const std::optional<std::string> element = fixedArrayElementTypeKey(nestedTypeKey))
+                nestedTypeKey = *element;
+            const std::optional<std::size_t> nestedOrdinal = typeOrdinalForKey(nestedTypeKey);
+            if (!nestedOrdinal.has_value() || *nestedOrdinal >= membersByType_.size() ||
+                nameLookup_->namedTypes()[*nestedOrdinal].kind != NamedTypeDeclarationKind::Struct)
+                continue;
+            dependents[*nestedOrdinal].push_back(typeOrdinal);
         }
-        visiting.erase(*ordinal);
-        transitiveOwnershipCache_[*ordinal] = result;
-        return result;
-    };
-    return owns(typeKey);
+    }
+
+    while (!pending.empty())
+    {
+        const std::size_t owner = pending.front();
+        pending.pop_front();
+        for (const std::size_t dependent : dependents[owner])
+        {
+            if (transitiveOwnershipCache_[dependent] != 0) continue;
+            transitiveOwnershipCache_[dependent] = 1;
+            pending.push_back(dependent);
+        }
+    }
 }
 
 bool ProjectMemberModel::typeTransitivelyHasCustomDestructor(std::string_view typeKey) const
