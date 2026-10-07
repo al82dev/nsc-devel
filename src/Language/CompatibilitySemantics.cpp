@@ -19,42 +19,34 @@ ModuleCompatibility classifyModuleCompatibility(
     return ModuleCompatibility::ExplicitAdapterRequired;
 }
 
-bool validateEditionCompatibilityPlan(
-    std::span<const EditionCompilationUnit> units,
+bool validateCompilationPlan(
+    std::span<const CompilationUnitContract> units,
     std::string& error)
 {
     error.clear();
-    std::map<std::string, int> moduleEditions;
+    std::unordered_set<std::string> modules;
     std::unordered_set<std::string> identities;
-    for (const EditionCompilationUnit& unit : units)
+    for (const CompilationUnitContract& unit : units)
     {
         if (unit.canonicalModule.empty() || unit.sourceIdentity.empty() ||
             unit.sourceFingerprint.empty() || !identities.insert(unit.sourceIdentity).second)
         {
-            error = "edition compatibility plan requires unique source identities and fingerprints";
+            error = "compilation plan requires unique source identities and fingerprints";
             return false;
         }
-        if ((unit.languageEdition != 2 && unit.languageEdition != 3) ||
-            (unit.languageEdition == 2 && unit.semantics != EditionSemantics::NativeSharp2) ||
-            (unit.languageEdition == 3 && unit.semantics != EditionSemantics::NativeSharp3))
+        if (!modules.insert(unit.canonicalModule).second)
         {
-            error = "frontend semantics must match the selected language edition";
-            return false;
-        }
-        const auto [found, inserted] = moduleEditions.emplace(unit.canonicalModule, unit.languageEdition);
-        if (!inserted && found->second != unit.languageEdition)
-        {
-            error = "a semantic module cannot silently mix language editions";
+            error = "a compilation plan cannot define the same module more than once";
             return false;
         }
     }
-    for (const EditionCompilationUnit& unit : units)
+    for (const CompilationUnitContract& unit : units)
     {
         for (const std::string& imported : unit.imports)
         {
-            if (!moduleEditions.contains(imported))
+            if (!modules.contains(imported))
             {
-                error = "edition compatibility plan contains an unresolved module import";
+                error = "compilation plan contains an unresolved module import";
                 return false;
             }
         }
@@ -62,28 +54,30 @@ bool validateEditionCompatibilityPlan(
     return !units.empty();
 }
 
-std::set<std::string> editionIncrementalRebuildSet(
-    std::span<const EditionCompilationUnit> previous,
-    std::span<const EditionCompilationUnit> current)
+std::set<std::string> incrementalRebuildSet(
+    std::span<const CompilationUnitContract> previous,
+    std::span<const CompilationUnitContract> current)
 {
-    std::map<std::string, EditionCompilationUnit> oldByModule;
-    for (const EditionCompilationUnit& unit : previous) oldByModule[unit.canonicalModule] = unit;
+    std::map<std::string, CompilationUnitContract> oldByModule;
+    for (const CompilationUnitContract& unit : previous)
+        oldByModule[unit.canonicalModule] = unit;
     std::set<std::string> rebuild;
-    for (const EditionCompilationUnit& unit : current)
+    for (const CompilationUnitContract& unit : current)
     {
         const auto old = oldByModule.find(unit.canonicalModule);
-        if (old == oldByModule.end() || old->second.languageEdition != unit.languageEdition ||
-            old->second.sourceFingerprint != unit.sourceFingerprint)
+        if (old == oldByModule.end() || old->second.sourceFingerprint != unit.sourceFingerprint)
             rebuild.insert(unit.canonicalModule);
     }
     bool changed = true;
     while (changed)
     {
         changed = false;
-        for (const EditionCompilationUnit& unit : current)
+        for (const CompilationUnitContract& unit : current)
         {
-            if (!rebuild.contains(unit.canonicalModule) &&
-                std::ranges::any_of(unit.imports, [&](const std::string& imported) { return rebuild.contains(imported); }))
+            const bool importsRebuiltModule = std::ranges::any_of(
+                unit.imports,
+                [&](const std::string& imported) { return rebuild.contains(imported); });
+            if (!rebuild.contains(unit.canonicalModule) && importsRebuiltModule)
             {
                 rebuild.insert(unit.canonicalModule);
                 changed = true;
@@ -137,10 +131,14 @@ bool validateMigrationGuide(
     int previous = -1;
     for (const auto& chapter : chapters)
     {
-        if (chapter.identity.empty() || chapter.order <= previous || !chapter.hasEdition2Before ||
-            !chapter.hasEdition3After || !chapter.identifiesManualDecisions ||
-            !identities.insert(chapter.identity).second)
-        { error = "migration chapters require ordered identities, before/after, and manual decisions"; return false; }
+        const bool validChapter = !chapter.identity.empty() && chapter.order > previous &&
+            chapter.hasBeforeExample && chapter.hasAfterExample &&
+            chapter.identifiesManualDecisions && identities.insert(chapter.identity).second;
+        if (!validChapter)
+        {
+            error = "migration chapters require ordered identities, before/after, and manual decisions";
+            return false;
+        }
         previous = chapter.order;
     }
     return true;

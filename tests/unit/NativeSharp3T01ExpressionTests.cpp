@@ -78,8 +78,7 @@ int main()
         tests.expect(contract.feature == feature && contract.sourceOrder &&
                 contract.primaryEvaluatedOnce && !contract.mayAllocateImplicitly && contract.preservesAbi,
             "every T01 lowering contract is ordered, single-evaluation, allocation-free and ABI-preserving");
-        tests.expect(language::expressionFeatureAvailable(feature, language::LanguageEdition::V3) &&
-                language::expressionFeatureAvailable(feature, language::LanguageEdition::V2),
+        tests.expect(language::expressionFeatureAvailable(feature),
             "every T01 feature belongs to the cumulative language surface");
     }
 

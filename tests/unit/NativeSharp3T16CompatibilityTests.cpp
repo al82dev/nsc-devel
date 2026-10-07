@@ -8,14 +8,17 @@ int main()
 {
     nativesharp::tests::TestContext tests;
     using namespace nativesharp::language;
-    const BinaryModuleContract v2{2, 2, "windows-x64", "abi-A", true};
-    const BinaryModuleContract v3Compatible{3, 3, "windows-x64", "abi-A", true};
-    const BinaryModuleContract v3Changed{3, 3, "windows-x64", "abi-B", true};
-    const BinaryModuleContract corrupt{2, 2, "windows-x64", "abi-A", false};
-    tests.expect(classifyModuleCompatibility(v2, v3Compatible) == ModuleCompatibility::Direct &&
-            classifyModuleCompatibility(v2, v3Changed) == ModuleCompatibility::ExplicitAdapterRequired &&
-            classifyModuleCompatibility(corrupt, v3Compatible) == ModuleCompatibility::Rejected,
-        "edition 2 modules load directly only when structural and ABI contracts are compatible");
+    const BinaryModuleContract producer{2, "windows-x64", "abi-A", true};
+    const BinaryModuleContract compatibleConsumer{3, "windows-x64", "abi-A", true};
+    const BinaryModuleContract changedConsumer{3, "windows-x64", "abi-B", true};
+    const BinaryModuleContract corrupt{2, "windows-x64", "abi-A", false};
+    tests.expect(classifyModuleCompatibility(producer, compatibleConsumer) ==
+            ModuleCompatibility::Direct &&
+            classifyModuleCompatibility(producer, changedConsumer) ==
+                ModuleCompatibility::ExplicitAdapterRequired &&
+            classifyModuleCompatibility(corrupt, compatibleConsumer) ==
+                ModuleCompatibility::Rejected,
+        "modules load directly only when structural and ABI contracts are compatible");
 
     tests.expect(migrationDiagnosticCode(MigrationIssue::CopyToMove) == "MIG3003" &&
             migrationDiagnosticCode(MigrationIssue::CleanupOrder) == "MIG3007",

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "nativesharp/Language/CompatibilitySemantics.h"
-#include "nativesharp/Language/LanguageEdition.h"
 
 #include <optional>
 #include <span>
@@ -11,7 +10,7 @@
 namespace nativesharp::driver
 {
 enum class DeprecationKind { SyntaxAlias, Behavior };
-enum class DeprecationState { Active, Suppressed, Warning, Error, Removed };
+enum class DeprecationState { Suppressed, Warning, Error, Removed };
 
 struct DeprecationRelease final
 {
@@ -31,7 +30,7 @@ struct DeprecatedFeature final
 struct DeprecationDecision final
 {
     const DeprecatedFeature* feature = nullptr;
-    DeprecationState state = DeprecationState::Active;
+    DeprecationState state = DeprecationState::Warning;
 };
 
 std::span<const DeprecatedFeature> deprecatedFeatures() noexcept;
@@ -40,7 +39,6 @@ const DeprecatedFeature* deprecatedFeature(language::MigrationIssue issue) noexc
 
 DeprecationDecision evaluateDeprecation(
     const DeprecatedFeature& feature,
-    language::LanguageEdition edition,
     DeprecationRelease compilerRelease,
     bool suppressed,
     bool warningsAsErrors) noexcept;

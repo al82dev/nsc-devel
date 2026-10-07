@@ -162,7 +162,6 @@ Surface sourceSurface(const LibraryMetadata& metadata)
     Surface result;
     std::string header;
     field(header, canonicalModule(metadata.moduleName));
-    number(header, metadata.languageEdition);
     result.emplace("module", std::move(header));
 
     for (const LibraryMetadataType& type : metadata.types)

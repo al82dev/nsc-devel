@@ -4,7 +4,6 @@
 #include "nativesharp/Language/MetaprogrammingSemantics.h"
 
 #include <algorithm>
-#include <charconv>
 #include <unordered_map>
 
 namespace nativesharp::frontend
@@ -31,13 +30,6 @@ std::string unquote(std::string_view value)
     return std::string(value);
 }
 
-std::optional<int> integerArgument(std::string_view value) noexcept
-{
-    int result = 0;
-    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), result);
-    if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size()) return std::nullopt;
-    return result;
-}
 }
 
 bool ProjectMetaprogrammingModel::build(
@@ -224,8 +216,10 @@ bool ProjectMetaprogrammingModel::build(
     std::unordered_map<std::size_t, std::size_t> availabilityByMember;
     for (const StaticAttributeInfo& attribute : attributes_)
     {
-        if (attribute.identity != "deprecated" && attribute.identity != "since" &&
-            attribute.identity != "removed" && attribute.identity != "target" &&
+        // Historical since/removed annotations remain parseable metadata, but they never create
+        // an availability gate in the cumulative language.
+        if (attribute.identity == "since" || attribute.identity == "removed") continue;
+        if (attribute.identity != "deprecated" && attribute.identity != "target" &&
             attribute.identity != "architecture") continue;
         const std::size_t* existing = nullptr;
         if (attribute.memberOrdinal.has_value())
@@ -259,23 +253,6 @@ bool ProjectMetaprogrammingModel::build(
             contract.deprecated = true;
             if (!attribute.constantArguments.empty()) contract.message = unquote(attribute.constantArguments[0]);
             if (attribute.constantArguments.size() == 2) contract.replacement = unquote(attribute.constantArguments[1]);
-        }
-        else if (attribute.identity == "since" || attribute.identity == "removed")
-        {
-            if (attribute.constantArguments.empty() || attribute.constantArguments.size() > 2)
-                return invalidArguments(attribute, "an edition integer and optional string message");
-            const std::optional<int> edition = integerArgument(attribute.constantArguments[0]);
-            if (!edition.has_value() || *edition < 1)
-                return invalidArguments(attribute, "a positive edition integer");
-            if (attribute.constantArguments.size() == 2)
-            {
-                const std::string& message = attribute.constantArguments[1];
-                if (message.size() < 2 || message.front() != '"' || message.back() != '"')
-                    return invalidArguments(attribute, "an edition integer and optional string message");
-                contract.message = unquote(message);
-            }
-            if (attribute.identity == "since") contract.sinceEdition = *edition;
-            else contract.removedEdition = *edition;
         }
         else
         {

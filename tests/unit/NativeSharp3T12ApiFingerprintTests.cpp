@@ -12,7 +12,6 @@ nativesharp::interop::LibraryMetadata metadata()
     LibraryMetadata value;
     value.moduleName = "Demo.Api";
     value.targetTriple = "x86_64-pc-windows-msvc";
-    value.languageEdition = 3;
 
     LibraryMetadataType type;
     type.kind = LibraryMetadataTypeKind::Struct;

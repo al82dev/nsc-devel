@@ -35,7 +35,7 @@ int main()
             "comptime-input-v1|A=11;B=22;",
         "every declared external input participates in a stable incremental identity");
     tests.expect(validPackageDiagnosticCode("PKG42", "PKG42-001") &&
-            !validPackageDiagnosticCode("PKG42", "NS3001"),
+            !validPackageDiagnosticCode("PKG42", "BAD42"),
         "package diagnostics cannot collide with compiler-owned NS3xxx codes");
 
     ComptimeBudget budget(100, 1024, 8);

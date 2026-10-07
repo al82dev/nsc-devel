@@ -170,17 +170,15 @@ byte suppressed = 7;
     const driver::DeprecatedFeature* importAlias =
         driver::deprecatedFeature("using-import-alias");
     tests.expect(importAlias != nullptr &&
-            driver::evaluateDeprecation(*importAlias, language::LanguageEdition::V2,
-                {3, 0}, false, false).state == driver::DeprecationState::Active &&
-            driver::evaluateDeprecation(*importAlias, language::LanguageEdition::V3,
+            driver::evaluateDeprecation(*importAlias,
                 {3, 0}, false, false).state == driver::DeprecationState::Warning &&
-            driver::evaluateDeprecation(*importAlias, language::LanguageEdition::V3,
+            driver::evaluateDeprecation(*importAlias,
                 {3, 0}, true, false).state == driver::DeprecationState::Suppressed &&
-            driver::evaluateDeprecation(*importAlias, language::LanguageEdition::V3,
+            driver::evaluateDeprecation(*importAlias,
                 {3, 0}, false, true).state == driver::DeprecationState::Error &&
-            driver::evaluateDeprecation(*importAlias, language::LanguageEdition::V3,
+            driver::evaluateDeprecation(*importAlias,
                 {4, 0}, false, false).state == driver::DeprecationState::Removed,
-        "deprecation state depends on language edition, release, suppression, and CI policy");
+        "deprecation state depends on release, suppression, and CI policy");
     tests.expect(importAlias != nullptr &&
             !driver::deprecationRemovalAllowed(*importAlias, {3, 2}, true, false) &&
             driver::deprecationRemovalAllowed(*importAlias, {3, 2}, false, true) &&

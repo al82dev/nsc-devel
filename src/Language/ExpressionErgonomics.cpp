@@ -26,11 +26,8 @@ const ExpressionLoweringContract& expressionLoweringContract(ExpressionFeature f
     return kContracts[static_cast<std::size_t>(feature)];
 }
 
-bool expressionFeatureAvailable(ExpressionFeature, LanguageEdition edition) noexcept
+bool expressionFeatureAvailable(ExpressionFeature) noexcept
 {
-    // Edition values are retained only so older API clients remain source-compatible. The
-    // language surface is cumulative: recognition cannot be disabled by a project property.
-    static_cast<void>(edition);
     return true;
 }
 

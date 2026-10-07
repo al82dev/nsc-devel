@@ -350,9 +350,8 @@ public:
     bool typeTransitivelyHasCustomDestructor(std::string_view typeKey) const;
     bool typeRequiresValueDrop(std::string_view typeKey) const;
 
-    // NativeSharp 3.0 T06-F01. Scalars and reference-shaped values remain Copy. Edition-3
-    // structs are move-only unless their declaration carries the explicit `copy` contract;
-    // edition-2 structs retain the legacy structural rule. Fixed arrays inherit the element
+    // Scalars and reference-shaped values remain Copy. Structs are move-only unless their
+    // declaration carries the explicit `copy` contract. Fixed arrays inherit the element
     // capability, so constraints, calls and method-body flow all ask one canonical service.
     bool typeIsImplicitlyCopyable(std::string_view typeKey) const;
     bool typeIsMoveOnly(std::string_view typeKey) const;

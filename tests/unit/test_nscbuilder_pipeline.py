@@ -94,8 +94,8 @@ class NscBuilderPipelineTests(unittest.TestCase):
             first = root / "first.log"
             second = root / "second.log"
             diagnostic = (
-                "A:\\src\\HashSet.ns:238:21: error[NS3002]: "
-                "match expression syntax requires <Language>3</Language>\n"
+                "A:\\src\\HashSet.ns:238:21: error[NS9002]: "
+                "invalid match expression syntax\n"
             )
             first.write_text(diagnostic, encoding="utf-8")
             second.write_text(diagnostic, encoding="utf-8")
@@ -200,12 +200,12 @@ class NscBuilderPipelineTests(unittest.TestCase):
             second = root / "second.log"
             gate = root / "gate.log"
             first.write_text(
-                "A:\\src\\HashSet.ns:238:21: error[NS3002]: shared cause\n"
+                "A:\\src\\HashSet.ns:238:21: error[NS9002]: shared cause\n"
                 "first complete evidence line\n",
                 encoding="utf-8",
             )
             second.write_text(
-                "A:\\src\\HashSet.ns:238:21: error[NS3002]: shared cause\n"
+                "A:\\src\\HashSet.ns:238:21: error[NS9002]: shared cause\n"
                 "second complete evidence line\n",
                 encoding="utf-8",
             )

@@ -77,7 +77,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
         raise ManifestError(f"NS3099: cannot read manifest '{path}': {error}") from error
     if not isinstance(data, dict):
         raise ManifestError("NS3099: manifest root must be an object")
-    required = {"schema", "id", "kind", "edition", "target", "command", "expected"}
+    required = {"schema", "id", "kind", "target", "command", "expected"}
     missing = sorted(required - data.keys())
     if missing:
         raise ManifestError(f"NS3099: missing fields: {', '.join(missing)}")
@@ -87,8 +87,6 @@ def load_manifest(path: Path) -> dict[str, Any]:
         raise ManifestError("NS3099: 'id' must be a safe 1-128 character identifier")
     if data["kind"] not in ("normative", "regression"):
         raise ManifestError("NS3099: 'kind' must be 'normative' or 'regression'")
-    if data["edition"] not in ("2", "3"):
-        raise ManifestError("NS3099: 'edition' must be '2' or '3'")
     if data["target"] != "windows-x64":
         raise ManifestError("NS3099: T00 supports only target 'windows-x64'")
     _string_list(data["command"], "command")
@@ -165,7 +163,6 @@ def _observe(
 
     command = [_expand(token, case_dir, compiler) for token in manifest["command"]]
     environment = os.environ.copy()
-    environment["NATIVESHARP_LANGUAGE_EDITION"] = manifest["edition"]
     environment["NATIVESHARP_CONFORMANCE_CASE"] = manifest["id"]
     completed = subprocess.run(
         command,
@@ -252,7 +249,6 @@ def self_test() -> int:
         base = {
             "schema": SCHEMA,
             "kind": "normative",
-            "edition": "3",
             "target": "windows-x64",
             "expected": {"exitCode": 0, "stdout": "ok\n", "diagnostics": []},
         }

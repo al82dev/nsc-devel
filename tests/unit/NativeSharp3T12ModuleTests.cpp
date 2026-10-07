@@ -40,11 +40,11 @@ int main()
     tests.expect(reexportedIdentity("Core.Vector", "Facade.Vector") == "Core.Vector",
         "re-export facades preserve original symbol identity and linker instance");
 
-    const Availability available{3, 4, "windows-x64"};
-    tests.expect(availabilityStatus(available, 3, "windows-x64", false) == AvailabilityStatus::Available &&
-            availabilityStatus(available, 4, "windows-x64", false) == AvailabilityStatus::Removed &&
-            availabilityStatus(available, 3, "linux-x64", false) == AvailabilityStatus::WrongTarget,
-        "availability applies edition and architecture without package version solving");
+    const Availability available{"windows-x64"};
+    tests.expect(availabilityStatus(available, "windows-x64", false) == AvailabilityStatus::Available &&
+            availabilityStatus(available, "windows-x64", true) == AvailabilityStatus::Deprecated &&
+            availabilityStatus(available, "linux-x64", false) == AvailabilityStatus::WrongTarget,
+        "availability applies target and deprecation without source-language partitioning");
 
     const std::array<PublicApiSymbol, 3> api = {{{"B", "fn()", "noheap", "", true},
         {"Private", "fn()", "", "", false}, {"A", "struct", "", "size=8", true}}};
@@ -58,7 +58,6 @@ int main()
         LibraryMetadata value;
         value.moduleName = "Demo.Module";
         value.targetTriple = "x86_64-pc-windows-msvc";
-        value.languageEdition = 3;
         LibraryMetadataType type;
         type.kind = LibraryMetadataTypeKind::Struct;
         type.accessibility = 3;

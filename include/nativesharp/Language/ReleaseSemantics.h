@@ -143,7 +143,6 @@ std::vector<std::string> missingPromotionEvidence(const PromotionEvidence& evide
 struct OfficialPromotionManifest final
 {
     PromotionEvidence evidence;
-    int languageEdition = 3;
     std::string stableFeatureSetHash;
     std::string specificationHash;
     std::string conformanceSuiteHash;

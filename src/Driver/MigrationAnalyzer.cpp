@@ -278,7 +278,7 @@ MigrationAnalysis analyzeMigrationSource(
             (index + 5 >= tokens.size() || tokens[index + 5].text != "("))
         {
             addFinding(analysis, disabled, tokens[index + 4], language::MigrationIssue::CopyToMove,
-                "initializing an owned value from a named place moves in edition 3",
+                "initializing an owned value from a named place performs a move",
                 "use move explicitly or clone through the type's declared copy protocol");
         }
 
@@ -293,7 +293,7 @@ MigrationAnalysis analyzeMigrationSource(
         if (token.text == "using" && next != nullptr && next->identifier)
         {
             addFinding(analysis, disabled, token, language::MigrationIssue::ImportLookup,
-                "edition 2 using lookup must be reviewed against explicit 3.0 imports",
+                "implicit using lookup must be reviewed against explicit imports",
                 "replace it with explicit module, symbol, trait, or extension imports");
         }
 
@@ -381,8 +381,8 @@ std::string renderMigrationAnalysis(const MigrationAnalysis& analysis)
                << "  alternative: " << finding.alternative << '\n';
         if (const DeprecatedFeature* feature = deprecatedFeature(finding.issue))
         {
-            const DeprecationDecision decision = evaluateDeprecation(*feature,
-                language::LanguageEdition::V3, {3, 0}, false, false);
+            const DeprecationDecision decision =
+                evaluateDeprecation(*feature, {3, 0}, false, false);
             output << "  deprecation: feature=" << feature->identity
                    << " state=" << deprecationStateName(decision.state)
                    << " since=" << feature->deprecatedSince.major << '.'

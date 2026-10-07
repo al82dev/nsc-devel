@@ -197,7 +197,6 @@ PromotionStatus officialPromotionStatus(
     std::vector<std::string>& missing)
 {
     missing = missingPromotionEvidence(manifest.evidence);
-    if (manifest.languageEdition != 3) missing.emplace_back("stable-edition-3");
     if (manifest.stableFeatureSetHash.empty()) missing.emplace_back("feature-set-hash");
     if (manifest.specificationHash.empty()) missing.emplace_back("specification-hash");
     if (manifest.conformanceSuiteHash.empty()) missing.emplace_back("conformance-suite-hash");

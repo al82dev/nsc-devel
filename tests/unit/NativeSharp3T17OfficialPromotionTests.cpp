@@ -28,8 +28,9 @@ int main()
     auto changed = manifest; changed.evidence.externalBaselinePassed = false;
     check(officialPromotionStatus(changed, missing) == PromotionStatus::NotReady &&
         std::ranges::find(missing, "external-baseline") != missing.end(), "missing baseline fails closed");
-    changed = manifest; changed.languageEdition = 2;
-    check(officialPromotionStatus(changed, missing) == PromotionStatus::NotReady, "edition 2 cannot be promoted as 3.0");
+    changed = manifest; changed.conformanceSuiteHash.clear();
+    check(officialPromotionStatus(changed, missing) == PromotionStatus::NotReady,
+        "missing conformance-suite hash fails");
     changed = manifest; changed.stableFeatureSetHash.clear();
     check(officialPromotionStatus(changed, missing) == PromotionStatus::NotReady, "missing feature-set hash fails");
     changed = manifest; changed.specificationHash.clear();

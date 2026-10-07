@@ -10,7 +10,6 @@ namespace nativesharp::language
 {
 struct BinaryModuleContract final
 {
-    int languageEdition = 2;
     int metadataMajor = 2;
     std::string target;
     std::string abiFingerprint;
@@ -21,22 +20,19 @@ ModuleCompatibility classifyModuleCompatibility(
     const BinaryModuleContract& producer,
     const BinaryModuleContract& consumer) noexcept;
 
-enum class EditionSemantics { NativeSharp2, NativeSharp3 };
-struct EditionCompilationUnit final
+struct CompilationUnitContract final
 {
     std::string canonicalModule;
     std::string sourceIdentity;
-    int languageEdition = 3;
-    EditionSemantics semantics = EditionSemantics::NativeSharp3;
     std::vector<std::string> imports;
     std::string sourceFingerprint;
 };
-bool validateEditionCompatibilityPlan(
-    std::span<const EditionCompilationUnit> units,
+bool validateCompilationPlan(
+    std::span<const CompilationUnitContract> units,
     std::string& error);
-std::set<std::string> editionIncrementalRebuildSet(
-    std::span<const EditionCompilationUnit> previous,
-    std::span<const EditionCompilationUnit> current);
+std::set<std::string> incrementalRebuildSet(
+    std::span<const CompilationUnitContract> previous,
+    std::span<const CompilationUnitContract> current);
 
 enum class MigrationIssue
 {
@@ -76,8 +72,8 @@ struct MigrationChapter final
 {
     std::string identity;
     int order = 0;
-    bool hasEdition2Before = false;
-    bool hasEdition3After = false;
+    bool hasBeforeExample = false;
+    bool hasAfterExample = false;
     bool identifiesManualDecisions = false;
 };
 bool validateMigrationGuide(std::span<const MigrationChapter> chapters, std::string& error);

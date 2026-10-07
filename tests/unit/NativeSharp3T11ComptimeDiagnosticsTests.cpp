@@ -70,7 +70,7 @@ namespace Meta; public struct Value { public int X; }
 
     const auto collision = base / "collision";
     writeProject(collision, R"(
-#compile_error("bad code", "NS3001")
+#compile_error("bad code", "USR3001")
 namespace Meta; public struct Value { public int X; }
 )");
     frontend::ProjectCompilation reserved;

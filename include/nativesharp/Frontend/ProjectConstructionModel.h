@@ -68,7 +68,7 @@ struct ConstructorCandidateBinding final
     // incumplimientos fue.
     std::vector<OwnershipArgumentFit> ownershipFits;
     // Parallel to conversions/ownershipFits. True means the physical conversion exists but a
-    // named edition-3 move-only place would be copied into a by-value constructor parameter.
+    // named move-only place would be copied into a by-value constructor parameter.
     std::vector<bool> moveOnlyCopyRejects;
     // Las transferencias que este candidato exigiria si saliera elegido.
     std::vector<ConstructorOwnershipTransfer> ownershipTransfers;

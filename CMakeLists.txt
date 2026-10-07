@@ -209,7 +209,6 @@ add_library(nsc_compilation STATIC
     src/Language/CrossModuleLifetime.cpp
     src/Language/CoroutineSemantics.cpp
     src/Language/ErrorSemantics.cpp
-    src/Language/LanguageEdition.cpp
     src/Language/MetaprogrammingSemantics.cpp
     src/Language/ModuleSemantics.cpp
     src/Language/NumericSemantics.cpp

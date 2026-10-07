@@ -33,7 +33,7 @@ constexpr std::array<Language3SurfaceEntry, 16> kSurface = {{
     {Language3Feature::TraitOperators, "trait-operators", Language3Disposition::Implemented,
      "stable lang-item witnesses with builtin precedence and intrinsic short-circuit control flow"},
     {Language3Feature::MoveOnlyDefaults, "move-only-defaults", Language3Disposition::Implemented,
-     "edition-3 value types require explicit Copy and named consuming reads require move(value)"},
+     "value types require explicit Copy and named consuming reads require move(value)"},
     {Language3Feature::LongDouble, "long-double", Language3Disposition::RejectedFor3,
      "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp 3.0"},
     {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::DeferredTo4,

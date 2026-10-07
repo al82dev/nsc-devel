@@ -1,7 +1,5 @@
 #pragma once
 
-#include "nativesharp/Language/LanguageEdition.h"
-
 #include <cstddef>
 #include <optional>
 #include <span>
@@ -33,7 +31,7 @@ struct ExpressionLoweringContract final
 };
 
 const ExpressionLoweringContract& expressionLoweringContract(ExpressionFeature feature) noexcept;
-bool expressionFeatureAvailable(ExpressionFeature feature, LanguageEdition edition) noexcept;
+bool expressionFeatureAvailable(ExpressionFeature feature) noexcept;
 
 bool isTypedParameterPackType(std::string_view typeKey) noexcept;
 

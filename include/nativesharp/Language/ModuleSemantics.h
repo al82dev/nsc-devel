@@ -29,14 +29,11 @@ std::string reexportedIdentity(std::string_view originalIdentity, std::string_vi
 
 struct Availability final
 {
-    int sinceEdition = 0;
-    int removedEdition = 0;
     std::string architecture;
 };
-enum class AvailabilityStatus { Available, NotYetAvailable, Deprecated, Removed, WrongTarget };
+enum class AvailabilityStatus { Available, Deprecated, WrongTarget };
 AvailabilityStatus availabilityStatus(
     const Availability& availability,
-    int edition,
     std::string_view architecture,
     bool deprecated) noexcept;
 

@@ -54,15 +54,12 @@ struct StaticAttributeInfo final
     std::optional<std::size_t> memberOrdinal;
 };
 
-// NativeSharp 3.0 T12-F05. Availability is a compile-time semantic contract attached to the
-// canonical declaration ordinal.  Messages and replacements are retained as structured values;
-// consumers never have to scrape display text to decide whether a use is legal.
+// Availability is a compile-time contract attached to the canonical declaration ordinal.
+// Messages and replacements remain structured; source-language revisions never gate a use.
 struct StaticAvailabilityInfo final
 {
     std::optional<std::size_t> typeOrdinal;
     std::optional<std::size_t> memberOrdinal;
-    std::optional<int> sinceEdition;
-    std::optional<int> removedEdition;
     bool deprecated = false;
     std::string message;
     std::string replacement;

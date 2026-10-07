@@ -79,8 +79,6 @@ enum class DiagnosticId
     InvalidMainSignature,
     InvalidExternCSignature,
 
-    NS3001IncompatibleLanguageEdition,
-    NS3002FeatureRequiresLanguageEdition3,
     NS3010InvalidCompilationStage,
     NS3020InvalidValueCategory,
     NS3030MissingEffectContext,
@@ -92,8 +90,6 @@ constexpr bool isNativeSharp3Diagnostic(DiagnosticId id) noexcept
 {
     switch (id)
     {
-        case DiagnosticId::NS3001IncompatibleLanguageEdition:
-        case DiagnosticId::NS3002FeatureRequiresLanguageEdition3:
         case DiagnosticId::NS3010InvalidCompilationStage:
         case DiagnosticId::NS3020InvalidValueCategory:
         case DiagnosticId::NS3030MissingEffectContext:
@@ -182,8 +178,6 @@ constexpr std::string_view diagnosticIdName(DiagnosticId id) noexcept
         NSC_DIAGNOSTIC_NAME(InvalidMainSignature);
         NSC_DIAGNOSTIC_NAME(InvalidExternCSignature);
 #undef NSC_DIAGNOSTIC_NAME
-        case DiagnosticId::NS3001IncompatibleLanguageEdition: return "NS3001";
-        case DiagnosticId::NS3002FeatureRequiresLanguageEdition3: return "NS3002";
         case DiagnosticId::NS3010InvalidCompilationStage: return "NS3010";
         case DiagnosticId::NS3020InvalidValueCategory: return "NS3020";
         case DiagnosticId::NS3030MissingEffectContext: return "NS3030";

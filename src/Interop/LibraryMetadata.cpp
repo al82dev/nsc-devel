@@ -56,6 +56,7 @@ constexpr std::size_t kHeaderSize = 100;
 constexpr std::uint64_t kMaximumPayloadSize = 128ULL * 1024ULL * 1024ULL;
 constexpr std::uint32_t kMaximumRecordCount = 1'000'000U;
 constexpr std::uint32_t kMaximumStringSize = 16U * 1024U * 1024U;
+constexpr std::uint8_t kLegacySourceRevisionByte = 3U;
 
 std::string_view compilerReleasePart(std::string_view version) noexcept
 {
@@ -794,9 +795,6 @@ bool buildMetadataModel(
     metadata.producerVersion = std::string(kCompilerVersion);
     metadata.moduleName = compilation.projectGraph()->rootProject()->moduleName();
     metadata.targetTriple = std::string(kTargetTriple);
-    // NSMETA 1.23 still reserves this byte for readers of the historical wire format. Source
-    // syntax is cumulative now, so metadata emission cannot derive behavior from a project tag.
-    metadata.languageEdition = 3U;
     const bool publishLifetimeContracts = true;
 
     const auto types = compilation.nameLookup()->namedTypes();
@@ -2043,7 +2041,7 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
     writer.text(metadata.producerVersion);
     writer.text(metadata.moduleName);
     writer.text(metadata.targetTriple);
-    if (metadata.formatMinor >= 23) writer.u8(metadata.languageEdition);
+    if (metadata.formatMinor >= 23) writer.u8(kLegacySourceRevisionByte);
     if (metadata.formatMinor >= 8)
     {
         writer.u16(metadata.nativeAbiMajor);
@@ -2442,7 +2440,6 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
 {
     LibraryMetadata projected = metadata;
     projected.producerVersion.clear();
-    projected.languageEdition = 0;
     // Static closure and private imports describe how to link this particular archive; they do
     // not change the public NativeSharp ABI published by the module. Project every current
     // post-1.24 model through 1.24 so the two 1.25 section counts stay outside the public
@@ -2607,11 +2604,13 @@ bool decodePayload(
         error = "truncated metadata identity payload";
         return false;
     }
-    if (metadata.formatMinor >= 23 && !reader.u8(metadata.languageEdition))
+    std::uint8_t legacySourceRevision = 0;
+    if (metadata.formatMinor >= 23 && !reader.u8(legacySourceRevision))
     {
-        error = "truncated metadata language edition";
+        error = "truncated metadata source revision byte";
         return false;
     }
+    static_cast<void>(legacySourceRevision);
     if (metadata.formatMinor >= 8 &&
         (!reader.u16(metadata.nativeAbiMajor) || !reader.u16(metadata.nativeAbiMinor) ||
          !reader.u16(metadata.runtimeAbiMajor) || !reader.u16(metadata.runtimeAbiMinor) ||
@@ -3621,20 +3620,6 @@ bool LibraryMetadataCodec::writeModelImpl(
         return false;
     }
     if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;
-    if (metadata.formatMinor >= 23 && metadata.languageEdition != 2U &&
-        metadata.languageEdition != 3U)
-    {
-        error = "metadata language edition must be 2 or 3";
-        return false;
-    }
-    if (metadata.formatMinor < 23)
-    {
-        // Editions never participated in the ABI represented by the first 23 metadata minors.
-        // A down-level projection therefore records the historical neutral value instead of
-        // rejecting a cumulative-language model created by the current compiler.
-        metadata.languageEdition = 2U;
-    }
-
     // A down-level file must preserve the semantics of that historical minor, not merely omit
     // the bytes introduced later. NSMETA <= 1.10 contained public templates only; retaining a
     // private closure entry while dropping its 1.11 dependency edges would create a file that no
@@ -4145,12 +4130,6 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         return false;
     }
     if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;
-    if (metadata.formatMinor >= 23 && metadata.languageEdition != 2U &&
-        metadata.languageEdition != 3U)
-    {
-        error = "metadata language edition must be 2 or 3";
-        return false;
-    }
     if (metadata.formatMinor >= 8 && metadata.moduleName.empty())
     {
         error = "metadata module identity is empty";

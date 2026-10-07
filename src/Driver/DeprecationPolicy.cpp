@@ -53,13 +53,10 @@ const DeprecatedFeature* deprecatedFeature(language::MigrationIssue issue) noexc
 
 DeprecationDecision evaluateDeprecation(
     const DeprecatedFeature& feature,
-    language::LanguageEdition edition,
     DeprecationRelease compilerRelease,
     bool suppressed,
     bool warningsAsErrors) noexcept
 {
-    if (edition == language::LanguageEdition::V2)
-        return {&feature, DeprecationState::Active};
     if (releaseAtLeast(compilerRelease, feature.removalNotBefore))
         return {&feature, DeprecationState::Removed};
     if (suppressed) return {&feature, DeprecationState::Suppressed};
@@ -95,7 +92,6 @@ std::string_view deprecationStateName(DeprecationState state) noexcept
 {
     switch (state)
     {
-        case DeprecationState::Active: return "active";
         case DeprecationState::Suppressed: return "suppressed";
         case DeprecationState::Warning: return "warning";
         case DeprecationState::Error: return "error";

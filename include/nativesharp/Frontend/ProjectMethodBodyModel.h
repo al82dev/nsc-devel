@@ -135,9 +135,9 @@ struct MethodLocalSymbol final
     // usa para una pregunta concreta --¿el divisor es cero?-- y no para tipar nada.
     std::optional<std::int64_t> constantIntegerValue;
     bool isRaii = false;
-    // NativeSharp 3.0 T06-F01. This local stores an edition-3 value type that did not opt into
-    // Copy. It shares the existing path-sensitive moved-from sets with RAII owners, but it does
-    // not acquire a cleanup region merely for being move-only.
+    // This local stores a value type that did not opt into Copy. It shares the existing
+    // path-sensitive moved-from sets with RAII owners, but it does not acquire a cleanup region
+    // merely for being move-only.
     bool isMoveOnly = false;
     // T08-F03. Present for locals initialized from an explicit-capture closure. The delegate
     // carrier stays ABI-compatible; this semantic capability controls invocation rules.

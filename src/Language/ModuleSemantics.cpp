@@ -124,16 +124,11 @@ std::string reexportedIdentity(std::string_view originalIdentity, std::string_vi
 
 AvailabilityStatus availabilityStatus(
     const Availability& availability,
-    int edition,
     std::string_view architecture,
     bool deprecated) noexcept
 {
     if (!availability.architecture.empty() && availability.architecture != architecture)
         return AvailabilityStatus::WrongTarget;
-    if (availability.sinceEdition != 0 && edition < availability.sinceEdition)
-        return AvailabilityStatus::NotYetAvailable;
-    if (availability.removedEdition != 0 && edition >= availability.removedEdition)
-        return AvailabilityStatus::Removed;
     return deprecated ? AvailabilityStatus::Deprecated : AvailabilityStatus::Available;
 }
 

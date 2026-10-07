@@ -62,7 +62,7 @@ ExecutableMigrationGuide buildExecutableMigrationGuide(
     {
         MigrationFinding verification;
         verification.message = "no known 2.x to 3.0 migration risk detected";
-        verification.alternative = "compile the source under edition 3 and preserve behavioral tests";
+        verification.alternative = "compile the source and preserve behavioral tests";
         grouped["VERIFY"].push_back({verification, "<unchanged>", "<unchanged>", false});
     }
     int order = 1;
@@ -114,7 +114,7 @@ std::string renderExecutableMigrationGuide(
            << "2. `nsc --apply-migration-fixes " << guide.sourcePath.generic_string()
            << " -o <migrated.ns>`\n"
            << "3. Resolve every item in the manual-decision inventory.\n"
-           << "4. Compile the migrated project with language edition 3 and `-O0`.\n"
+           << "4. Compile the migrated project with `-O0`.\n"
            << "5. Compare old/new NSMETA with `nsc --migration-compatibility-matrix`.\n\n";
     for (const ExecutableMigrationChapter& chapter : guide.chapters)
     {

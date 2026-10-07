@@ -748,7 +748,7 @@ bool ProjectOpaqueResultModel::build(
         ast::AstArena& arena = declaration.unit->arena();
         AstNode* wrapper = arena.make<AstNode>(AstNodeKind::StructDeclaration, method->range());
         wrapper->setText(wrapperName);
-        // The compiler-owned wrapper is an edition-3 value just like a user-declared struct.
+        // The compiler-owned wrapper is a value just like a user-declared struct.
         // Keeping the marker on the synthetic declaration makes its generated factory return a
         // real move-only local instead of asking the ownership checker to move a copyable value.
         wrapper->setAuxiliaryText(

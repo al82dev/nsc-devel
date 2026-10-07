@@ -71,12 +71,12 @@ namespace nativesharp::interop
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 // MINOR 21 (2026-09-27): public namespace functions preserve signature and physical identity.
 // MINOR 22 (2026-09-27): public namespace state preserves shared storage and initializers.
-// MINOR 23 (2026-09-29): modules preserve their NativeSharp language edition.
+// MINOR 23 (2026-09-29): identity payloads reserve one historical source-revision byte.
 // MINOR 24 (2026-09-29): parameters preserve the params ReadOnlySpan<T> call-site contract.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // MINOR 34 (2026-10-03): public borrowed types and callable signatures preserve erased lifetime
 // parameters, parameter/result bindings, and normalized outlives edges across LibraryReference.
-// MINOR 33 (2026-10-03): edition-3 value types preserve their explicit Copy capability across
+// MINOR 33 (2026-10-03): value types preserve their explicit Copy capability across
 // LibraryReference boundaries; an absent bit keeps the move-only default.
 // MINOR 32 (2026-10-03): public extension methods preserve their receiver contract and extension
 // lookup identity across LibraryReference boundaries.
@@ -366,7 +366,7 @@ struct LibraryMetadataMember final
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
     // NSMETA 1.35. One entry per parameter. Missing contracts in older metadata are treated as
-    // Unknown by edition-3 consumers rather than silently assuming that a borrow cannot escape.
+    // Unknown rather than silently assuming that a borrow cannot escape.
     std::vector<LibraryMetadataEscapeClass> parameterEscapeSummary;
     std::uint8_t constantKind = 0;
     std::uint64_t constantBits = 0;
@@ -547,7 +547,6 @@ struct LibraryMetadata final
     std::string producerVersion;
     std::string moduleName;
     std::string targetTriple;
-    std::uint8_t languageEdition = 2;
     // NSMETA 1.8. Version del CONTRATO descrito, independiente de formatMajor/formatMinor.
     std::uint16_t nativeAbiMajor = kNativeAbiMajor;
     std::uint16_t nativeAbiMinor = kNativeAbiMinor;

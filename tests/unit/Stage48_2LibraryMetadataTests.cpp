@@ -2257,10 +2257,10 @@ namespace TypedPacks
         metadata.members, [](const LibraryMetadataMember& candidate) {
             return candidate.name == "Sum";
         });
-    tests.expect(read && metadata.formatMinor >= 24U && metadata.languageEdition == 3U &&
+    tests.expect(read && metadata.formatMinor >= 24U &&
                      member != metadata.members.end() && member->parameters.size() == 1U &&
                      member->parameters.front().isParameterPack,
-        "NSMETA 1.24 preserves language edition and params on the public signature (" +
+        "NSMETA 1.24 preserves params on the public signature (" +
             error + ")");
 
     LibraryMetadata downlevel = metadata;

@@ -2,7 +2,6 @@
   <PropertyGroup>
     <Name>Edition3Conformance</Name>
     <OutputType>Library</OutputType>
-    <Language>3</Language>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Main.ns" />

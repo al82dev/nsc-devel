@@ -318,7 +318,6 @@ namespace VariantApi
     historical.producerVersion = metadata.producerVersion;
     historical.moduleName = "Historical126";
     historical.targetTriple = metadata.targetTriple;
-    historical.languageEdition = 3;
     const std::filesystem::path historicalPath = root / "historical-1.26.nsmeta";
     std::string historicalError;
     LibraryMetadata historicalRead;
