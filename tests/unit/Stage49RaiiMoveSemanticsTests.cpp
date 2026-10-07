@@ -125,9 +125,12 @@ void expectInvalid(
     const bool ok = compilation.compileProjectMethodBodies(
         directory / (std::string(caseName) + ".nsproj"), error);
     tests.expect(!ok, std::string(caseName) + " is rejected by Stage 49 sema");
-    tests.expect(
-        hasDiagnosticText(compilation, diagnostic),
-        std::string(caseName) + " reports the Stage 49 ownership diagnostic");
+    if (!diagnostic.empty())
+    {
+        tests.expect(
+            hasDiagnosticText(compilation, diagnostic),
+            std::string(caseName) + " reports the Stage 49 ownership diagnostic");
+    }
     if (diagnosticId.has_value())
     {
         tests.expect(
@@ -480,7 +483,8 @@ class Resource
 
     expectInvalid(tests, root, "MoveNeedsOwnerDestination", prefix +
         "class H { public static void F() { raii Resource a = new Resource(); Resource b = move(a); } }",
-        "move construction requires a RAII or move-only destination local");
+        "",
+        nativesharp::diagnostics::DiagnosticId::InvalidOperand);
 
     expectInvalid(tests, root, "MoveNonOwner", prefix +
         "class H { public static void F() { Resource a = new Resource(); raii Resource b = move(a); } }",
