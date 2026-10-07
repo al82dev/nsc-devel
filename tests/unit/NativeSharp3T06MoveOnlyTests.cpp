@@ -130,10 +130,12 @@ public copy struct Pair
     public int right;
     public Pair(int a, int b) { left = a; right = b; }
 }
-public moveonly struct Token
+public class Resource {}
+public struct Token
 {
     public int value;
-    public Token(int source) { value = source; }
+    public owned Resource owner;
+    public Token(int source) { value = source; owner = new Resource(); }
 }
 public class Program
 {
@@ -160,21 +162,27 @@ public class Program
 
     std::string observed;
     tests.expect(rejectsWith(root, "local-copy", R"NS(
-public moveonly struct Token { public int value; public Token(int source) { value = source; } }
+public class Resource {}
+public struct Token { public int value; public owned Resource owner;
+    public Token(int source) { value = source; owner = new Resource(); } }
 public class Program { public static int Main() { Token a = new Token(1); Token b = a; return b.value; } }
 )NS", "cannot be copied into local", observed),
         "an addressable move-only local cannot be copied into another local (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "use-after-move", R"NS(
-public moveonly struct Token { public int value; public Token(int source) { value = source; } }
+public class Resource {}
+public struct Token { public int value; public owned Resource owner;
+    public Token(int source) { value = source; owner = new Resource(); } }
 public class Program { public static int Main() { Token a = new Token(1); Token b = move(a); return a.value; } }
 )NS", "use of moved-from move-only local", observed),
         "use-after-move is rejected for explicitly move-only value locals (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "parameter-copy", R"NS(
-public moveonly struct Token { public int value; public Token(int source) { value = source; } }
+public class Resource {}
+public struct Token { public int value; public owned Resource owner;
+    public Token(int source) { value = source; owner = new Resource(); } }
 public class Program {
     public static int Read(Token value) { return value.value; }
     public static int Main() { Token token = new Token(42); return Read(token); }
@@ -184,7 +192,9 @@ public class Program {
 
     observed.clear();
     tests.expect(rejectsWith(root, "namespace-parameter-copy", R"NS(
-public moveonly struct Token { public int value; public Token(int source) { value = source; } }
+public class Resource {}
+public struct Token { public int value; public owned Resource owner;
+    public Token(int source) { value = source; owner = new Resource(); } }
 namespace Values { public int Read(Token value) { return value.value; } }
 public class Program { public static int Main() { Token token = new Token(42); return Values.Read(token); } }
 )NS", "move-only argument cannot be copied", observed),
@@ -192,7 +202,9 @@ public class Program { public static int Main() { Token token = new Token(42); r
 
     observed.clear();
     tests.expect(rejectsWith(root, "constructor-parameter-copy", R"NS(
-public moveonly struct Token { public int value; public Token(int source) { value = source; } }
+public class Resource {}
+public struct Token { public int value; public owned Resource owner;
+    public Token(int source) { value = source; owner = new Resource(); } }
 public struct Box { public int value; public Box(Token token) { value = token.value; } }
 public class Program { public static int Main() { Token token = new Token(42); Box box = new Box(token); return box.value; } }
 )NS", "move-only value cannot be copied into constructor parameter", observed),
@@ -200,28 +212,35 @@ public class Program { public static int Main() { Token token = new Token(42); B
 
     observed.clear();
     tests.expect(rejectsWith(root, "return-copy", R"NS(
-public moveonly struct Token { public int value; public Token(int source) { value = source; } }
+public class Resource {}
+public struct Token { public int value; public owned Resource owner;
+    public Token(int source) { value = source; owner = new Resource(); } }
 public class Program { public static Token Make() { Token token = new Token(42); return token; } public static int Main() { return 0; } }
 )NS", "requires return move(value)", observed),
         "returning a named move-only local requires an explicit move (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "branch-move", R"NS(
-public moveonly struct Token { public int value; public Token(int source) { value = source; } }
+public class Resource {}
+public struct Token { public int value; public owned Resource owner;
+    public Token(int source) { value = source; owner = new Resource(); } }
 public class Program { public static int Main() { Token token = new Token(42); if (token.value == 42) { Token other = move(token); } return token.value; } }
 )NS", "possibly moved", observed),
         "branch joins preserve possibly-moved state (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "loop-move", R"NS(
-public moveonly struct Token { public int value; public Token(int source) { value = source; } }
+public class Resource {}
+public struct Token { public int value; public owned Resource owner;
+    public Token(int source) { value = source; owner = new Resource(); } }
 public class Program { public static int Main() { Token token = new Token(42); bool again = true; while (again) { Token other = move(token); again = false; } return token.value; } }
 )NS", "possibly moved", observed),
         "loop joins preserve possibly-moved state (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "invalid-copy-field", R"NS(
-public moveonly struct Token { public int value; }
+public class Resource {}
+public struct Token { public int value; public owned Resource owner; }
 public copy struct Invalid { public Token token; }
 public class Program { public static int Main() { return 0; } }
 )NS", "contains non-Copy field", observed),
@@ -229,14 +248,18 @@ public class Program { public static int Main() { return 0; } }
 
     observed.clear();
     tests.expect(rejectsWith(root, "fixed-array-copy", R"NS(
-public moveonly struct Token { public int value; public Token(int source) { value = source; } }
+public class Resource {}
+public struct Token { public int value; public owned Resource owner;
+    public Token(int source) { value = source; owner = new Resource(); } }
 public class Program { public static int Main() { Token[2] a = { new Token(1), new Token(2) }; Token[2] b = a; return b[0].value; } }
 )NS", "cannot be copied into local", observed),
         "fixed arrays inherit the element Copy capability (" + observed + ")");
 
     observed.clear();
     tests.expect(rejectsWith(root, "generic-copy", R"NS(
-public moveonly struct Token { public int value; public Token(int source) { value = source; } }
+public class Resource {}
+public struct Token { public int value; public owned Resource owner;
+    public Token(int source) { value = source; owner = new Resource(); } }
 public class Program {
     public static int Accept<T>(T value) where T : copy { return 42; }
     public static int Main() { return Accept<Token>(new Token(1)); }

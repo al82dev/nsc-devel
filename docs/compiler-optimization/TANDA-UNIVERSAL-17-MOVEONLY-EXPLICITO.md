@@ -1,13 +1,13 @@
-# Tanda universal 17: `moveonly` explícito
+# Tanda universal 17: move-only explícito por ownership
 
 ## Objetivo
 
-Separar la semántica de valor ordinaria de la semántica move-only mediante sintaxis
-explícita, sin depender de una edición del lenguaje.
+Separar la semántica de valor ordinaria de la semántica move-only mediante ownership
+explícito en la representación, sin depender de una edición del lenguaje.
 
 ## Cambios
 
-- Los fixtures que prueban restricciones de movimiento declaran `moveonly struct`.
+- Los fixtures que prueban restricciones de movimiento contienen un campo `owned`.
 - Los structs ordinarios conservan copia estructural implícita.
 - `copy struct` sigue publicando una capacidad explícita y verificable en NSMETA.
 - Se mantienen los rechazos por copia, uso después de move, joins, parámetros,
@@ -19,7 +19,7 @@ explícita, sin depender de una edición del lenguaje.
 - `tests/unit/NativeSharp3T06MoveOnlyTests.cpp`
 
 El nombre histórico del CTest no cambia. La cobertura deja de depender de un default
-oculto y pasa a probar directamente las dos capacidades del lenguaje.
+oculto y pasa a probar directamente las dos representaciones del lenguaje.
 
 ## Validación dirigida
 
