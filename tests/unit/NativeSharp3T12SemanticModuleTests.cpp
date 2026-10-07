@@ -1,5 +1,4 @@
 #include "nativesharp/Basic/ExitCode.h"
-#include "nativesharp/Compilation/ProjectGraphDumper.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Driver/Driver.h"
 
@@ -33,7 +32,7 @@ void writeProject(
 {
     writeFile(directory / file,
         "<Project><PropertyGroup><Name>" + std::string(module) + "</Name><OutputType>" +
-        std::string(output) + "</OutputType><Language>3</Language></PropertyGroup>"
+        std::string(output) + "</OutputType></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" />" + std::string(references) +
         "</ItemGroup></Project>");
     writeFile(directory / "Main.ns", source);
@@ -57,7 +56,6 @@ nativesharp::ExitCode runDriver(
 int main()
 {
     using nativesharp::ExitCode;
-    using nativesharp::compilation::ProjectGraphDumper;
     using nativesharp::compilation::ProjectGraphLoader;
     nativesharp::tests::TestContext tests;
 
@@ -103,16 +101,14 @@ namespace CycleB.Api
     ProjectGraphLoader loader;
     std::string error;
     const auto first = loader.load(cycleA / "A.nsproj", error);
-    tests.expect(first.has_value() && first->projects().size() == 2 &&
-            first->rootProject() != nullptr && first->rootProject()->moduleName() == "CycleA",
-        "edition-3 binding cycle loads as two semantic modules with the root last (" + error + ")");
+    const std::string firstError = error;
+    tests.expect(!first.has_value() &&
+            firstError.find("project reference cycle: CycleA -> CycleB -> CycleA") !=
+                std::string::npos,
+        "project-reference cycles are rejected structurally (" + firstError + ")");
     const auto second = loader.load(cycleA / "A.nsproj", error);
-    std::ostringstream firstDump;
-    std::ostringstream secondDump;
-    if (first.has_value()) ProjectGraphDumper{}.dump(*first, firstDump);
-    if (second.has_value()) ProjectGraphDumper{}.dump(*second, secondDump);
-    tests.expect(first.has_value() && second.has_value() && firstDump.str() == secondDump.str(),
-        "cyclic semantic-module order is reproducible across repeated loads");
+    tests.expect(!second.has_value() && error == firstError,
+        "project-cycle diagnostics are reproducible across repeated loads");
 
     const std::string cycleProject = (cycleA / "A.nsproj").string();
     const std::string cycleExe = (cycleA / "Cycle.exe").string();
@@ -120,12 +116,11 @@ namespace CycleB.Api
         "--emit-project-oop-exe", cycleProject, "-O0", "-o", cycleExe};
     std::string output;
     error.clear();
-    const bool cycleLinked = runDriver(cycleArgs, output, error) == ExitCode::Success;
-    tests.expect(cycleLinked,
-        "multi-file binding cycle compiles and links at O0 with NSLink (" + error + output + ")");
-    if (cycleLinked)
-        tests.expect(std::system(("\"" + cycleExe + "\"").c_str()) == 42,
-            "importing a module does not execute an unused static initializer");
+    const bool cycleRejected = runDriver(cycleArgs, output, error) != ExitCode::Success;
+    tests.expect(cycleRejected &&
+            (error + output).find("project reference cycle: CycleA -> CycleB -> CycleA") !=
+                std::string::npos,
+        "the driver preserves the universal project-cycle diagnostic (" + error + output + ")");
 
     const std::filesystem::path layoutA = root / "layout-cycle/A";
     const std::filesystem::path layoutB = root / "layout-cycle/B";
@@ -148,12 +143,11 @@ namespace LayoutB.Api { public struct BValue { public AValue Other; } }
     error.clear();
     const bool layoutRejected = runDriver(layoutArgs, output, error) != ExitCode::Success;
     tests.expect(layoutRejected,
-        "a binding-resolvable module cycle still rejects recursive by-value layout");
+        "a project cycle is rejected before recursive by-value layout analysis");
     tests.expect(layoutRejected &&
-            ((error + output).find("layout") != std::string::npos ||
-             (error + output).find("recursive") != std::string::npos ||
-             (error + output).find("cycle") != std::string::npos),
-        "the rejected layout cycle reports its structural cause (" + error + output + ")");
+            (error + output).find("project reference cycle: LayoutA -> LayoutB -> LayoutA") !=
+                std::string::npos,
+        "the rejected layout graph reports its project-cycle cause (" + error + output + ")");
 
     const std::filesystem::path duplicate = root / "duplicate";
     writeProject(duplicate / "Upper", "Upper.nsproj", "SharedModule", "Library",
@@ -182,12 +176,12 @@ namespace LayoutB.Api { public struct BValue { public AValue Other; } }
 
     const std::filesystem::path legacy = root / "legacy-cycle";
     writeFile(legacy / "A/A.nsproj",
-        "<Project><PropertyGroup><Name>LegacyA</Name><Language>2</Language></PropertyGroup>"
+        "<Project><PropertyGroup><Name>LegacyA</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" />"
         "<ProjectReference Include=\"../B/B.nsproj\" /></ItemGroup></Project>");
     writeFile(legacy / "A/Main.ns", "public class AValue { }\n");
     writeFile(legacy / "B/B.nsproj",
-        "<Project><PropertyGroup><Name>LegacyB</Name><Language>2</Language></PropertyGroup>"
+        "<Project><PropertyGroup><Name>LegacyB</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" />"
         "<ProjectReference Include=\"../A/A.nsproj\" /></ItemGroup></Project>");
     writeFile(legacy / "B/Main.ns", "public class BValue { }\n");

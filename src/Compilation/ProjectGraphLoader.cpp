@@ -29,7 +29,6 @@ struct GraphLoadState final
     std::unordered_map<std::string, VisitState> visits;
     std::vector<std::filesystem::path> pathStack;
     std::vector<std::string> moduleStack;
-    std::vector<language::LanguageEdition> editionStack;
     std::vector<Project> orderedProjects;
 };
 
@@ -94,20 +93,6 @@ std::string cycleMessage(const GraphLoadState& state, const std::filesystem::pat
     return message;
 }
 
-bool semanticBindingCycleAllowed(
-    const GraphLoadState& state,
-    const std::filesystem::path& repeatedPath) noexcept
-{
-    const std::string repeatedKey = pathKey(repeatedPath);
-    std::size_t begin = 0;
-    while (begin < state.pathStack.size() && pathKey(state.pathStack[begin]) != repeatedKey)
-        ++begin;
-    if (begin == state.pathStack.size()) return false;
-    for (std::size_t index = begin; index < state.editionStack.size(); ++index)
-        if (state.editionStack[index] != language::LanguageEdition::V3) return false;
-    return true;
-}
-
 bool visitProject(
     const std::filesystem::path& projectFile,
     const std::map<std::string, Project>& projects,
@@ -123,10 +108,6 @@ bool visitProject(
         {
             return true;
         }
-        // Edition 3 modules are semantic declaration spaces rather than an include order. A
-        // binding cycle is therefore admissible here; recursive by-value layout remains a later
-        // object-layout error once every declaration in the strongly connected component exists.
-        if (semanticBindingCycleAllowed(state, canonical)) return true;
         error = cycleMessage(state, canonical);
         return false;
     }
@@ -142,7 +123,6 @@ bool visitProject(
     state.visits.emplace(key, VisitState::Visiting);
     state.pathStack.push_back(project.projectFile());
     state.moduleStack.push_back(project.moduleName());
-    state.editionStack.push_back(project.languageEdition());
 
     std::vector<std::filesystem::path> references(
         project.projectReferences().begin(), project.projectReferences().end());
@@ -166,7 +146,6 @@ bool visitProject(
 
     state.pathStack.pop_back();
     state.moduleStack.pop_back();
-    state.editionStack.pop_back();
     state.visits[key] = VisitState::Complete;
     state.orderedProjects.push_back(project);
     return true;
@@ -176,8 +155,7 @@ bool normalizeTransitiveSourceOwnership(
     std::string& error)
 {
     // A source file has one semantic module owner even when broad globs in several referenced
-    // projects discover it. Dependency-first graph order preserves the historical owner for
-    // acyclic graphs; strongly connected edition-3 components use their deterministic DFS order.
+    // projects discover it. Dependency-first graph order preserves the historical owner.
     std::unordered_map<std::string, std::size_t> sourceOwner;
     for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
     {
