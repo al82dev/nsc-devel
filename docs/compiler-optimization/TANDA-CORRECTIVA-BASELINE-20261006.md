@@ -134,4 +134,8 @@ precompiladas. Dos ediciones declaradas y contradictorias siguen produciendo
 - Tanda 3 terminada: inferencia del cierre NSMETA, con tres pruebas dirigidas
   completas y cinco de seis checks de T33. Su ejecucion final queda no
   verificable en el sandbox porque `cmd.exe` recibe `PATH` vacio.
+- Tanda 4 clasificada y cerrada dentro de este alcance: las superficies de Core
+  faltantes fueron eliminadas por el commit independiente `9232bcfc0`; su
+  restauracion o migracion corresponde a bibliotecas y no se encubre mediante
+  cambios al compilador ni a las pruebas historicas.
 - No se ejecuto baseline ni minibaseline.
