@@ -16,7 +16,8 @@ Project::Project(
     language::PanicProfile panicProfile,
     std::string panicHandler,
     std::string packageName,
-    std::vector<std::string> friendModules)
+    std::vector<std::string> friendModules,
+    bool languageEditionExplicit)
     : projectFile_(std::move(projectFile)),
       moduleName_(std::move(moduleName)),
       outputKind_(outputKind),
@@ -25,6 +26,7 @@ Project::Project(
       libraryReferences_(std::move(libraryReferences)),
       sdkReferences_(std::move(sdkReferences)),
       languageEdition_(languageEdition),
+      languageEditionExplicit_(languageEditionExplicit),
       panicProfile_(panicProfile),
       panicHandler_(std::move(panicHandler)),
       packageName_(packageName.empty() ? moduleName_ : std::move(packageName)),
@@ -70,6 +72,16 @@ std::span<const SdkManifest> Project::sdkReferences() const noexcept
 language::LanguageEdition Project::languageEdition() const noexcept
 {
     return languageEdition_;
+}
+
+bool Project::hasExplicitLanguageEdition() const noexcept
+{
+    return languageEditionExplicit_;
+}
+
+void Project::adoptInferredLanguageEdition(language::LanguageEdition edition) noexcept
+{
+    if (!languageEditionExplicit_) languageEdition_ = edition;
 }
 
 language::PanicProfile Project::panicProfile() const noexcept

@@ -45,7 +45,8 @@ public:
         language::PanicProfile panicProfile = language::PanicProfile::Abort,
         std::string panicHandler = {},
         std::string packageName = {},
-        std::vector<std::string> friendModules = {});
+        std::vector<std::string> friendModules = {},
+        bool languageEditionExplicit = true);
 
     const std::filesystem::path& projectFile() const noexcept;
     const std::string& moduleName() const noexcept;
@@ -55,6 +56,8 @@ public:
     std::span<const LibraryReference> libraryReferences() const noexcept;
     std::span<const SdkManifest> sdkReferences() const noexcept;
     language::LanguageEdition languageEdition() const noexcept;
+    bool hasExplicitLanguageEdition() const noexcept;
+    void adoptInferredLanguageEdition(language::LanguageEdition edition) noexcept;
     language::PanicProfile panicProfile() const noexcept;
     std::string_view panicHandler() const noexcept;
     std::string_view packageName() const noexcept;
@@ -69,6 +72,7 @@ private:
     std::vector<LibraryReference> libraryReferences_;
     std::vector<SdkManifest> sdkReferences_;
     language::LanguageEdition languageEdition_ = language::LanguageEdition::V2;
+    bool languageEditionExplicit_ = true;
     language::PanicProfile panicProfile_ = language::PanicProfile::Abort;
     std::string panicHandler_;
     std::string packageName_;

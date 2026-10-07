@@ -87,7 +87,10 @@ bool ProjectGraph::addLibraryReferences(
             std::move(libraries),
             std::vector<SdkManifest>(project.sdkReferences().begin(), project.sdkReferences().end()),
             project.languageEdition(), project.panicProfile(),
-            std::string(project.panicHandler()));
+            std::string(project.panicHandler()), std::string(project.packageName()),
+            std::vector<std::string>(
+                project.friendModules().begin(), project.friendModules().end()),
+            project.hasExplicitLanguageEdition());
     }
     if (!foundOwner)
     {
@@ -176,7 +179,10 @@ bool ProjectGraph::replaceLibraryReferencesWithSourceProjects(
             std::move(libraries),
             std::vector<SdkManifest>(project.sdkReferences().begin(), project.sdkReferences().end()),
             project.languageEdition(), project.panicProfile(),
-            std::string(project.panicHandler()));
+            std::string(project.panicHandler()), std::string(project.packageName()),
+            std::vector<std::string>(
+                project.friendModules().begin(), project.friendModules().end()),
+            project.hasExplicitLanguageEdition());
     }
 
     std::vector<std::uint8_t> state(rewired.size(), 0U);
@@ -385,7 +391,10 @@ bool ProjectGraph::addPrecompiledProjects(
             std::vector<SdkManifest>(
                 project.sdkReferences().begin(), project.sdkReferences().end()),
             project.languageEdition(), project.panicProfile(),
-            std::string(project.panicHandler()));
+            std::string(project.panicHandler()), std::string(project.packageName()),
+            std::vector<std::string>(
+                project.friendModules().begin(), project.friendModules().end()),
+            project.hasExplicitLanguageEdition());
     }
     projects_ = std::move(expanded);
     return true;

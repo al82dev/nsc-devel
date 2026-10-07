@@ -901,6 +901,18 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.ns3.t00.constitution COMMAND nsc_ns3_t00_constitution_tests)
 
     add_executable(
+        nsc_language_edition_inference_tests
+        tests/unit/LanguageEditionInferenceTests.cpp)
+    target_link_libraries(
+        nsc_language_edition_inference_tests
+        PRIVATE nsc_driver nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_language_edition_inference_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_language_edition_inference_tests)
+    add_test(
+        NAME nsc.compilation.language-edition-inference
+        COMMAND nsc_language_edition_inference_tests)
+
+    add_executable(
         nsc_ns3_t01_expression_tests
         tests/unit/NativeSharp3T01ExpressionTests.cpp)
     target_link_libraries(

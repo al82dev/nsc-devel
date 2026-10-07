@@ -1083,7 +1083,8 @@ std::optional<Project> ProjectLoader::load(
         descriptor.panicProfile.value_or(language::PanicProfile::Abort),
         descriptor.panicHandler.value_or(std::string{}),
         descriptor.packageName.value_or(moduleName),
-        std::move(descriptor.friendModules));
+        std::move(descriptor.friendModules),
+        descriptor.languageEdition.has_value());
 }
 
 ProjectLoaderStatistics ProjectLoader::statistics() const
