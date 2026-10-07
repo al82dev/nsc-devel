@@ -146,4 +146,8 @@ precompiladas. Dos ediciones declaradas y contradictorias siguen produciendo
   reingenierizadas y el caso de conducta T37 pasan de forma dirigida en O0. Los
   `error*.log` se confirmaron como artefactos de invocaciones negativas y no se
   usaron como sustituto del resultado CTest.
+- Tanda 7 terminada: la edicion efectiva del grafo ya no opta silenciosamente
+  las fuentes implicitas a reglas Language 3. Cuatro contratos dirigidos pasan;
+  el self-host O0 se emite y su propia imagen valida grafo, modulos y las 27
+  unidades raiz sin errores.
 - No se ejecuto baseline ni minibaseline.

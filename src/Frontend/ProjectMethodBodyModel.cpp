@@ -896,6 +896,33 @@ ProjectCallableAnalysisResult ProjectMethodBodyModel::analyzeCallableIsolated(
     return result;
 }
 
+language::LanguageEdition ProjectMethodBodyModel::callableLanguageEdition(
+    std::size_t callableOrdinal) const noexcept
+{
+    if (projectSourceLanguageEditions_.empty()) return languageEdition_;
+
+    std::optional<std::size_t> projectOrdinal;
+    if (callableOrdinal < namespaceCallableBase_)
+    {
+        const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
+        if (callable != nullptr && nameLookup_ != nullptr &&
+            callable->declaringTypeOrdinal < nameLookup_->namedTypes().size())
+        {
+            projectOrdinal =
+                nameLookup_->namedTypes()[callable->declaringTypeOrdinal].projectOrdinal;
+        }
+    }
+    else if (namespaceFunctionModel_ != nullptr)
+    {
+        const std::size_t functionOrdinal = callableOrdinal - namespaceCallableBase_;
+        if (functionOrdinal < namespaceFunctionModel_->functions().size())
+            projectOrdinal = namespaceFunctionModel_->functions()[functionOrdinal].projectOrdinal;
+    }
+    if (projectOrdinal.has_value() && *projectOrdinal < projectSourceLanguageEditions_.size())
+        return projectSourceLanguageEditions_[*projectOrdinal];
+    return languageEdition_;
+}
+
 void ProjectMethodBodyModel::collectCallableDiscoveries(
     ProjectCallableAnalysisResult& result)
 {
@@ -942,6 +969,9 @@ bool ProjectMethodBodyModel::build(
     const ProjectMethodBodyBuildOptions& options)
 {
     languageEdition_ = languageEdition;
+    projectSourceLanguageEditions_.assign(
+        options.projectSourceLanguageEditions.begin(),
+        options.projectSourceLanguageEditions.end());
     genericConstraintModel_ = genericConstraintModel;
     genericModel_ = genericModel;
     if (built_)
@@ -1032,7 +1062,8 @@ bool ProjectMethodBodyModel::build(
         for (std::size_t ordinal = 0; ordinal < callableCount; ++ordinal)
         {
             const ClassMemberSymbol* callable = methodSymbol(ordinal);
-            if (callable == nullptr || callable->declaredErrorTypeKey.empty()) continue;
+            if (callable == nullptr || callable->declaredErrorTypeKey.empty() ||
+                callableLanguageEdition(ordinal) != language::LanguageEdition::V3) continue;
             const std::optional<std::size_t> errorOrdinal =
                 inheritanceModel_->typeOrdinalForTypeKey(callable->declaredErrorTypeKey);
             if (!exceptionRoot.has_value())
@@ -1056,7 +1087,10 @@ bool ProjectMethodBodyModel::build(
         for (const NamedTypeDeclaration& type : nameLookup.namedTypes())
         {
             if (type.kind != NamedTypeDeclarationKind::Delegate || type.syntax == nullptr ||
-                type.syntax->throwsTypeSyntax() == nullptr)
+                type.syntax->throwsTypeSyntax() == nullptr ||
+                (type.projectOrdinal < projectSourceLanguageEditions_.size() &&
+                 projectSourceLanguageEditions_[type.projectOrdinal] !=
+                    language::LanguageEdition::V3))
                 continue;
             const std::string errorTypeKey = memberModel.canonicalTypeKey(
                 type.syntax->throwsTypeSyntax(), nameLookup);
@@ -1219,7 +1253,8 @@ bool ProjectMethodBodyModel::build(
                 callableWorklist[workCursor], waveOrdinal,
                 nameLookup, memberModel, namespaceFunctionModel,
                 inheritanceModel, interfaceModel, genericModel,
-                genericConstraintModel, languageEdition);
+                genericConstraintModel,
+                callableLanguageEdition(callableWorklist[workCursor]));
             if (!callableCanBeAnalyzed(context))
             {
                 ++callableAnalysisStatistics_.callablesSkipped;
@@ -1245,7 +1280,7 @@ bool ProjectMethodBodyModel::build(
                     callableOrdinal, scheduledWave,
                     nameLookup, memberModel, namespaceFunctionModel,
                     inheritanceModel, interfaceModel, genericModel,
-                    genericConstraintModel, languageEdition));
+                    genericConstraintModel, callableLanguageEdition(callableOrdinal)));
             },
             options.cancellationCheck,
             waveResults,
@@ -1306,6 +1341,8 @@ bool ProjectMethodBodyModel::build(
         {
             continue;
         }
+
+        languageEdition_ = callableLanguageEdition(memberOrdinal);
 
         currentCallableLocalBase_ = locals_.size();
         currentCallableParameterCount_ = 0;
@@ -1394,6 +1431,7 @@ bool ProjectMethodBodyModel::build(
                 "const fields are limited to integral, bool, float, double, and string types");
         }
     }
+    languageEdition_ = languageEdition;
 
     // NSC-LIMIT-019. Validate after every initializer has been analyzed. ProjectMemberModel orders
     // types by stable identity rather than source order, so a transitive evaluator needs all name

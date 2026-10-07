@@ -733,6 +733,14 @@ bool ProjectCompilation::compileProjectMethodBodies(
     methodBodyOptions.cancellationCheck = cancellationCheck_;
     methodBodyOptions.phaseTimingSink = phaseTimingSink_;
     methodBodyOptions.executionError = &loadError;
+    std::vector<language::LanguageEdition> projectSourceLanguageEditions;
+    if (projectGraph_.has_value())
+    {
+        projectSourceLanguageEditions.reserve(projectGraph_->projects().size());
+        for (const compilation::Project& project : projectGraph_->projects())
+            projectSourceLanguageEditions.push_back(project.sourceLanguageEdition());
+    }
+    methodBodyOptions.projectSourceLanguageEditions = projectSourceLanguageEditions;
     if (!methodBodyModel_->build(
         *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_,
         genericModel_.get(), diagnostics_,
@@ -975,7 +983,7 @@ bool ProjectCompilation::compileSyntaxCore(
                 projectOrdinal,
                 source.ordinal,
                 project.moduleName(),
-                project.languageEdition(),
+                project.sourceLanguageEdition(),
                 source.absolutePath,
                 std::nullopt,
                 std::nullopt,

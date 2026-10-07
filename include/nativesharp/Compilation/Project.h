@@ -56,6 +56,7 @@ public:
     std::span<const LibraryReference> libraryReferences() const noexcept;
     std::span<const SdkManifest> sdkReferences() const noexcept;
     language::LanguageEdition languageEdition() const noexcept;
+    language::LanguageEdition sourceLanguageEdition() const noexcept;
     bool hasExplicitLanguageEdition() const noexcept;
     void adoptInferredLanguageEdition(language::LanguageEdition edition) noexcept;
     language::PanicProfile panicProfile() const noexcept;

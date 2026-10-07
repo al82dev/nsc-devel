@@ -1,8 +1,11 @@
 #pragma once
 
+#include "nativesharp/Language/LanguageEdition.h"
+
 #include <chrono>
 #include <cstddef>
 #include <functional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -14,5 +17,6 @@ struct ProjectMethodBodyBuildOptions final
     std::function<bool()> cancellationCheck;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink;
     std::string* executionError = nullptr;
+    std::span<const language::LanguageEdition> projectSourceLanguageEditions;
 };
 }
