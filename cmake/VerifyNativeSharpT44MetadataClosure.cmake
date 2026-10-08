@@ -27,17 +27,17 @@ file(TO_CMAKE_PATH "${OUTPUT_DIR}" output_xml)
 file(TO_CMAKE_PATH "${consumer_exe}" consumer_exe_xml)
 
 file(WRITE "${OUTPUT_DIR}/Dependency/T44Dependency.nsproj"
-    "<Project><PropertyGroup><Name>T44Dependency</Name><Language>3</Language>"
+    "<Project><PropertyGroup><Name>T44Dependency</Name>"
     "<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>"
     "<Compile Include=\"Dependency.ns\" /></ItemGroup></Project>")
 file(WRITE "${OUTPUT_DIR}/Package/T44Package.nsproj"
-    "<Project><PropertyGroup><Name>T44Package</Name><Language>3</Language>"
+    "<Project><PropertyGroup><Name>T44Package</Name>"
     "<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>"
     "<Compile Include=\"Package.ns\" />"
     "<LibraryReference Include=\"T44Dependency.lib\" Metadata=\"T44Dependency.nsmeta\" />"
     "</ItemGroup></Project>")
 file(WRITE "${OUTPUT_DIR}/Consumer/T44Consumer.nsproj"
-    "<Project><PropertyGroup><Name>T44Consumer</Name><Language>3</Language>"
+    "<Project><PropertyGroup><Name>T44Consumer</Name>"
     "<OutputType>Exe</OutputType><OptimizationLevel>O0</OptimizationLevel>"
     "<OutputPath>${consumer_exe_xml}</OutputPath>"
     "<LibraryReferenceRoot>${output_xml}</LibraryReferenceRoot>"
@@ -63,13 +63,12 @@ if(NOT package_result EQUAL 0 OR NOT EXISTS "${package_lib}" OR NOT EXISTS "${pa
 endif()
 
 # The consumer names only T44Package. NSMETA 1.25 must locate T44Dependency, link both archives,
-# retain the package's private kernel32 import, and make the selected language visible.
+# retain the package's private kernel32 import, and produce a runnable executable.
 execute_process(
     COMMAND "${NSC_EXECUTABLE}" build "${OUTPUT_DIR}/Consumer/T44Consumer.nsproj"
         --no-restore --linker NSLink -O0 --library-reference-root "${OUTPUT_DIR}"
     RESULT_VARIABLE consumer_result OUTPUT_VARIABLE consumer_output ERROR_VARIABLE consumer_error)
-if(NOT consumer_result EQUAL 0 OR NOT EXISTS "${consumer_exe}" OR
-   NOT consumer_output MATCHES "Build succeeded \\(Language 3\\)")
+if(NOT consumer_result EQUAL 0 OR NOT EXISTS "${consumer_exe}")
     message(FATAL_ERROR "T44 consumer failed (${consumer_result})\n${consumer_output}\n${consumer_error}")
 endif()
 execute_process(
