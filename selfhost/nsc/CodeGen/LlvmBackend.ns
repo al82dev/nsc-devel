@@ -1004,6 +1004,27 @@ namespace NativeSharp.Compiler.CodeGen
             return SemanticIntegerBits(semantic, type) != 0 || FloatingScalar(type);
         }
 
+        private static owned string ClosedGenericScalarType(string type)
+        {
+            raii string physical = String.Copy(type);
+            bool qualified = true;
+            while (qualified)
+            {
+                qualified = false;
+                if (String.StartsWith(physical, "owned "))
+                {
+                    raii string inner = String.Substring(physical, 6, physical.Length - 6);
+                    physical = move(inner); qualified = true;
+                }
+                else if (String.StartsWith(physical, "borrowed "))
+                {
+                    raii string inner = String.Substring(physical, 9, physical.Length - 9);
+                    physical = move(inner); qualified = true;
+                }
+            }
+            return move(physical);
+        }
+
         private static void* BoxGenericScalar(void* module, void* builder, void* value)
         {
             void* context = LLVM.LLVMGetModuleContext(module);
@@ -1045,11 +1066,21 @@ namespace NativeSharp.Compiler.CodeGen
             // pointer (and would return a pointer from a closed enum/int indexer).
             if (GenericPlaceholder(destination) && PhysicalValueScalar(semantic, source))
             { return BoxGenericScalar(module, builder, value); }
-            if (GenericPlaceholder(source) && PhysicalValueScalar(semantic, destination))
+            if (GenericPlaceholder(source))
             {
-                void* closedType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic, destination);
-                raii CString loadName = new CString("generic.unbox");
-                return LLVM.LLVMBuildLoad2(builder, closedType, value, loadName.Pointer());
+                // A closed generic result can retain the accessor's ownership spelling even
+                // when its physical value is a scalar (for example, owned T -> owned bool for
+                // List<bool>.this).  Ownership controls lifetime; the generic box contains the
+                // unqualified scalar representation.  Normalize only this closed-result
+                // boundary instead of changing the shared type classifiers.
+                raii string closedScalar = ClosedGenericScalarType(destination);
+                if (PhysicalValueScalar(semantic, closedScalar))
+                {
+                    void* closedType = SemanticValueType(
+                        LLVM.LLVMGetModuleContext(module), semantic, closedScalar);
+                    raii CString loadName = new CString("generic.unbox");
+                    return LLVM.LLVMBuildLoad2(builder, closedType, value, loadName.Pointer());
+                }
             }
             bool sourceEnum = EnumSize(semantic, source) != 0;
             bool destinationEnum = EnumSize(semantic, destination) != 0;
