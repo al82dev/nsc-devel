@@ -3,19 +3,19 @@
 ## Resultado
 
 - Inventario histórico: **684**.
-- Con ruta ejecutable única: **577**.
+- Con ruta ejecutable única: **599**.
 - Registradas pero bloqueadas: **41**.
 - Con más de una ruta: **1**.
-- Sin ruta ejecutable: **65**.
+- Sin ruta ejecutable: **43**.
 - Con destino final correcto y ejecutable: **161**.
-- En capa transitoria incorrecta: **416**.
+- En capa transitoria incorrecta: **438**.
 - Gate de paridad: **FAILED**.
 
 ## Filas no cerradas
 
 | ID histórico | Ejecución | Migración | Destino | Owner |
 |---|---|---|---|---|
-| `nsc.cc1.correctness` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c1-constants` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c10-stackalloc` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c11-raw-new` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
@@ -23,32 +23,32 @@
 | `nsc.cc1.correctness.cc1-c13-increment` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c14-compound-assign` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c15-arrow-member` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c16-enum-layout` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c16-enum-layout` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c17-constant-promotion` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c18-stackalloc-hardening` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c19-sbyte` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c2-ternary-ownership` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c20-property-compound` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c21-number-parsing` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c21-number-parsing` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c22-console-and-formatting` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c23-views-and-lifetimes` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c24-binary-file-io` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c25-binary-roundtrip` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c24-binary-file-io` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c25-binary-roundtrip` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c26-driver-minimo` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c27-algoritmos` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c28-texto` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c29-arena` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c27-algoritmos` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c28-texto` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c29-arena` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c3-dowhile-flow` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c30-contratos` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c31-cadena-c` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c32-division-por-cero` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c33-hilos-join` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c34-enum-nombre` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c30-contratos` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c31-cadena-c` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c32-division-por-cero` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c33-hilos-join` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c34-enum-nombre` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c35-sobrecarga-generica` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c36-utf8` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c37-contrato-de-layout` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c38-enum-ancho` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c39-enum-nombre-o2` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c36-utf8` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c37-contrato-de-layout` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c38-enum-ancho` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c39-enum-nombre-o2` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c4-catch-continue` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c40-receptor-estatico-calificado` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c41-propiedad-receptor-struct` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
@@ -57,7 +57,7 @@
 | `nsc.cc1.correctness.cc1-c44-constraints-genericos` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c45-tipos-anidados` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c46-sobrecargas-genericas` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.correctness.cc1-c47-diferencial-o0-o2` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
+| `nsc.cc1.correctness.cc1-c47-diferencial-o0-o2` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c48-constraints-cross-project` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c49-temporary-string-borrow` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c5-catch-break` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
@@ -229,7 +229,7 @@
 | `nsc.library-metadata-version-tolerance` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/LibraryMetadataVersionToleranceTests.cpp` |
 | `nsc.llvm-codegen` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/LlvmCodeGenerationTests.cpp` |
 | `nsc.llvm-lowering` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/LlvmLoweringTests.cpp` |
-| `nsc.llvm-optimization` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/LlvmOptimizationTests.cpp` |
+| `nsc.llvm-optimization` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/LlvmOptimizationTests.cpp` |
 | `nsc.llvm-pipeline-o2` | UNMAPPED | TARGET_UNMAPPED | manifest | `A:\native-sharp-3.0-baseline\bin\nsc.exe` |
 | `nsc.macro-a-oop` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/MacroAOopTests.cpp` |
 | `nsc.mir` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/MirTests.cpp` |
@@ -248,7 +248,7 @@
 | `nsc.namespace-function-signatures` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NamespaceFunctionSignatureTests.cpp` |
 | `nsc.namespace-state-model` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NamespaceStateModelTests.cpp` |
 | `nsc.namespace-syntax` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NamespaceSyntaxTests.cpp` |
-| `nsc.ns3.e046.smart-pointer-contract` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/NativeSharp3E046SmartPointerTests.cpp` |
+| `nsc.ns3.e046.smart-pointer-contract` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3E046SmartPointerTests.cpp` |
 | `nsc.ns3.t00.constitution` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T00ConstitutionTests.cpp` |
 | `nsc.ns3.t01.expressions` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T01ExpressionTests.cpp` |
 | `nsc.ns3.t01.generalized-initializers` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T01GeneralizedInitializerTests.cpp` |
@@ -309,7 +309,7 @@
 | `nsc.ns3.t09.range-evaluation` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T09RangeEvaluationTests.cpp` |
 | `nsc.ns3.t09.sync-generators` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T09SynchronousGeneratorTests.cpp` |
 | `nsc.ns3.t10.async-generators` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T10AsyncGeneratorTests.cpp` |
-| `nsc.ns3.t10.coroutines` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/NativeSharp3T10CoroutineTests.cpp` |
+| `nsc.ns3.t10.coroutines` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T10CoroutineTests.cpp` |
 | `nsc.ns3.t10.memory-model` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T10MemoryModelTests.cpp` |
 | `nsc.ns3.t10.reference-counts` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T10ReferenceCountTests.cpp` |
 | `nsc.ns3.t10.task-scopes` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T10TaskScopeTests.cpp` |
@@ -472,7 +472,7 @@
 | `nsc.stage45.typed-catch-rtti` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage45TypedCatchRttiTests.cpp` |
 | `nsc.stage45.using-disposable` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage45UsingDisposableTests.cpp` |
 | `nsc.stage46-1.dll-cross-linker-matrix` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage46_1DllCrossLinkerMatrixTests.cpp` |
-| `nsc.stage46.native-libraries` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Stage46NativeLibrariesTests.cpp` |
+| `nsc.stage46.native-libraries` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage46NativeLibrariesTests.cpp` |
 | `nsc.stage47.host-c-abi` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage47HostCAbiTests.cpp` |
 | `nsc.stage48-2.cross-module-callable-identity` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage48_2CrossModuleCallableIdentityTests.cpp` |
 | `nsc.stage48-2.external-template-type-qualification` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage48_2ExternalTemplateTypeQualificationTests.cpp` |

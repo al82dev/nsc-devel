@@ -44,6 +44,11 @@ add_executable(
     consolidated/TestRegistry.cpp
     modules/TransitionalLegacyUnitTests.cpp
     ${NSC_TRANSITIONAL_ADAPTER_SOURCES}
+    modules/ArgumentLegacyUnitTests.cpp
+    argument_legacy_adapters/LlvmOptimizationAdapter.cpp
+    argument_legacy_adapters/NativeSharp3E046SmartPointerAdapter.cpp
+    argument_legacy_adapters/NativeSharp3T10CoroutineAdapter.cpp
+    argument_legacy_adapters/Stage46NativeLibrariesAdapter.cpp
     modules/BackendUnitTests.cpp
     backend_adapters/ForceInlineModifierAdapter.cpp
     backend_adapters/InliningModifierAdapter.cpp
@@ -317,6 +322,14 @@ add_executable(
     hir_mir_pass_adapters/Stage52_1GenericCollectionsAdditionsAdapter.cpp
     hir_mir_pass_adapters/Stage52GenericCollectionsCompilerFixesAdapter.cpp
     modules/SourceUnitTests.cpp)
+
+# Stage 46 historically received the compiler built by the same CMake tree.
+# Keep that definition source-local so unrelated consolidated owners do not
+# acquire a compile-time dependency they never had.
+set_source_files_properties(
+    argument_legacy_adapters/Stage46NativeLibrariesAdapter.cpp
+    PROPERTIES
+        COMPILE_DEFINITIONS "NSC_TEST_NSC_EXECUTABLE=\"$<TARGET_FILE:nsc>\"")
 
 target_include_directories(
     nsc_unit_tests

@@ -2,7 +2,7 @@
   "catalog_counts": {
     "manifest": 76,
     "specialized": 69,
-    "unit": 476
+    "unit": 498
   },
   "schema": 1,
   "source_matrix": "A:/nsc-devel/docs/compiler-optimization/test-infrastructure/test-destination-matrix.json",
@@ -12,13 +12,13 @@
     "blocked": 41,
     "gate_passed": 0,
     "legacy_total": 684,
-    "runnable": 577,
+    "runnable": 599,
     "target_ambiguous": 1,
     "target_blocked": 41,
     "target_runnable": 161,
-    "target_unmapped": 65,
-    "transitional_wrong_layer": 416,
-    "unmapped": 65
+    "target_unmapped": 43,
+    "transitional_wrong_layer": 438,
+    "unmapped": 43
   },
   "tests": [
     {
@@ -45,16 +45,23 @@
     {
       "ctest_id": "nsc.cc1.correctness",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
@@ -214,16 +221,23 @@
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c16-enum-layout",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c16-enum-layout",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "target"
     },
     {
@@ -339,16 +353,23 @@
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c21-number-parsing",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c21-number-parsing",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "lexer"
     },
     {
@@ -398,31 +419,45 @@
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c24-binary-file-io",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c24-binary-file-io",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "runtime"
     },
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c25-binary-roundtrip",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c25-binary-roundtrip",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "runtime"
     },
     {
@@ -450,46 +485,67 @@
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c27-algoritmos",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c27-algoritmos",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "conformance"
     },
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c28-texto",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c28-texto",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "runtime"
     },
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c29-arena",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c29-arena",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "runtime"
     },
     {
@@ -517,76 +573,111 @@
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c30-contratos",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c30-contratos",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "conformance"
     },
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c31-cadena-c",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c31-cadena-c",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "interop"
     },
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c32-division-por-cero",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c32-division-por-cero",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "runtime"
     },
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c33-hilos-join",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c33-hilos-join",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "runtime"
     },
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c34-enum-nombre",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c34-enum-nombre",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "runtime"
     },
     {
@@ -614,61 +705,89 @@
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c36-utf8",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c36-utf8",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "lexer"
     },
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c37-contrato-de-layout",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c37-contrato-de-layout",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "target"
     },
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c38-enum-ancho",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c38-enum-ancho",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "target"
     },
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c39-enum-nombre-o2",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c39-enum-nombre-o2",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "runtime"
     },
     {
@@ -850,16 +969,23 @@
     {
       "ctest_id": "nsc.cc1.correctness.cc1-c47-diferencial-o0-o2",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Cc1CorrectnessTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "sema",
+          "identifier": "nsc.cc1.correctness.cc1-c47-diferencial-o0-o2",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "llvm"
     },
     {
@@ -5549,16 +5675,23 @@
     {
       "ctest_id": "nsc.llvm-optimization",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/LlvmOptimizationTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "llvm",
+          "identifier": "nsc.llvm-optimization",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "llvm"
     },
     {
@@ -6002,15 +6135,22 @@
     {
       "ctest_id": "nsc.ns3.e046.smart-pointer-contract",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/NativeSharp3E046SmartPointerTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.ns3.e046.smart-pointer-contract",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
@@ -7487,15 +7627,22 @@
     {
       "ctest_id": "nsc.ns3.t10.coroutines",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/NativeSharp3T10CoroutineTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.ns3.t10.coroutines",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
@@ -12314,16 +12461,23 @@
     {
       "ctest_id": "nsc.stage46.native-libraries",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TRANSITIONAL_WRONG_LAYER",
       "owner_path": "tests/unit/Stage46NativeLibrariesTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "interop",
+          "identifier": "nsc.stage46.native-libraries",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "interop"
     },
     {
@@ -14002,5 +14156,5 @@
     }
   ],
   "unit_executable": "A:/nsc-devel/build-test-v2/tests/nsc_unit_tests.exe",
-  "unit_executable_sha256": "93fa499ed413cba239f3d35f170948a023d26cb11cd140d0c9302b7cb6c27a6f"
+  "unit_executable_sha256": "102a2379236fc31e7c3d0f235666c6961a854ffb17666a0ca1cd23eba886d9af"
 }

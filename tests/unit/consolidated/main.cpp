@@ -139,6 +139,11 @@ int main(int argumentCount, char** arguments)
 {
     try
     {
+        int childResult = 0;
+        if (nsc::test::handleArgumentLegacyChild(argumentCount, arguments, childResult))
+        {
+            return childResult;
+        }
         const Options options = parseOptions(argumentCount, arguments);
         nsc::test::TestRegistry registry;
         nsc::test::registerBackendUnitTests(registry);
@@ -154,6 +159,7 @@ int main(int argumentCount, char** arguments)
         nsc::test::registerSemanticUnitTests(registry);
         nsc::test::registerSourceUnitTests(registry);
         nsc::test::registerTransitionalLegacyUnitTests(registry);
+        nsc::test::registerArgumentLegacyUnitTests(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

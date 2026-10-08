@@ -17,4 +17,6 @@ void registerRuntimeLinkerInteropUnitTests(TestRegistry& registry);
 void registerSemanticUnitTests(TestRegistry& registry);
 void registerSourceUnitTests(TestRegistry& registry);
 void registerTransitionalLegacyUnitTests(TestRegistry& registry);
+void registerArgumentLegacyUnitTests(TestRegistry& registry);
+bool handleArgumentLegacyChild(int argumentCount, char** arguments, int& result);
 }
