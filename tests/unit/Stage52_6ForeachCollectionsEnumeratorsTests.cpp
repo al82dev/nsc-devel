@@ -6,20 +6,10 @@
 // `public owned XxxEnumerator<T> GetEnumerator()` method, following the exact design List<T>/
 // ListEnumerator<T> already established and this closure round already verified end-to-end.
 //
-// Dictionary<TKey,TValue>, SortedDictionary<TKey,TValue>, and SortedList<TKey,TValue>
-// deliberately do NOT get a GetEnumerator() in this round -- see each class's own comment in its
-// .ns file for the full reasoning: a directly-yielded KeyValuePair<TKey,TValue> per foreach
-// iteration would only work for the narrow subset of TKey/TValue size combinations that happen to
-// fit Stage 40's 1/2/4/8-byte struct-value ABI (foreach's array-mode desugaring materializes the
-// element into a standalone local, exactly the one KeyValuePair<TKey,TValue> consumption shape
-// this codebase's own pre-existing ToArray()/ForEach documentation already says to avoid), and
-// silently fail for every other combination -- exactly the kind of "improvised tuple/struct ABI"
-// outcome the review's own section 12 warns against. testForeachOverDictionaryHasNoGetEnumerator
-// below is the regression guard for that deliberate omission staying deliberate (a clean
-// diagnostic, never a crash or an inconsistent partial success), and
-// testForeachOverDictionaryKeysAndValues confirms the documented alternative
-// (`foreach (var key in dict.Keys())`) already works today with zero additional code, since
-// Keys()/Values() are plain single-type-parameter arrays.
+// Dictionary<TKey,TValue> now publishes a snapshot enumerator. NativeSharp's aggregate ABI can
+// materialize KeyValuePair<TKey,TValue> values, while the enumerator keeps the pair fields as
+// non-owning aliases into the dictionary. The dictionary must therefore outlive the loop.
+// Direct foreach and the Keys()/Values() alternatives are both guarded below.
 //
 // Real execution (Wine, when available) is used throughout, for the same reason as every other
 // Stage 52.x closure round in this repo: a desugaring/wiring bug here (wrong iteration order,
@@ -263,13 +253,11 @@ namespace ForeachCollections
 }
 
 // ---------------------------------------------------------------------------------------
-// Negative: Dictionary<TKey,TValue> deliberately has no GetEnumerator() -- foreach directly over
-// a Dictionary must fail with a clean, ordinary "no accessible member" diagnostic (foreach needs
-// no bespoke pre-check, exactly like analyzeForeach's own design comment says), never a crash or
-// a silently-wrong compile.
+// Positive: Dictionary<TKey,TValue> exposes a snapshot GetEnumerator() and direct foreach resolves
+// through the ordinary enumerator protocol.
 // ---------------------------------------------------------------------------------------
 
-void testForeachOverDictionaryHasNoGetEnumerator(
+void testForeachOverDictionaryUsesGetEnumerator(
     TestContext& tests, const std::filesystem::path& root, const std::filesystem::path& sourceRoot)
 {
     const auto directory = root / "ForeachDictionaryMissing";
@@ -302,12 +290,10 @@ namespace ForeachDictionaryMissing
     std::string error;
     const bool ok = compilation.compileProjectMethodBodies(
         directory / "ForeachDictionaryMissing.nsproj", error);
-    tests.expect(!ok, "foreach directly over a Dictionary<TKey,TValue> is rejected "
-        "(deliberately no GetEnumerator() -- see Dictionary.ns's own class comment)");
+    tests.expect(ok, "foreach directly over a Dictionary<TKey,TValue> resolves its snapshot enumerator");
     tests.expect(
-        hasDiagnosticText(compilation, "no compatible member named 'GetEnumerator'"),
-        "foreach over a Dictionary reports an ordinary, clean member-resolution diagnostic, "
-        "not a crash or a bespoke foreach-specific error");
+        !hasDiagnosticText(compilation, "no compatible member named 'GetEnumerator'"),
+        "foreach over a Dictionary no longer reports the retired missing-enumerator diagnostic");
 }
 
 // ---------------------------------------------------------------------------------------
@@ -380,7 +366,7 @@ int main()
     std::filesystem::create_directories(root);
 
     testForeachOverEachNewlyEnumerableCollection(tests, root, sourceRoot);
-    testForeachOverDictionaryHasNoGetEnumerator(tests, root, sourceRoot);
+    testForeachOverDictionaryUsesGetEnumerator(tests, root, sourceRoot);
     testForeachOverDictionaryKeysAndValues(tests, root, sourceRoot);
 
     std::filesystem::remove_all(root, cleanupError);
