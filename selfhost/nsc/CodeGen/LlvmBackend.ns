@@ -2821,6 +2821,11 @@ namespace NativeSharp.Compiler.CodeGen
             }
             if (node.Kind() == "ConditionalExpression")
             {
+                int resultType = semantic.Fact(syntaxId).TypeId();
+                if (resultType < 0) { return null; }
+                void* llvmType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
+                    semantic.Types().Get(resultType).Display());
+                if (llvmType == null) { return null; }
                 bool conditionValid = false;
                 void* condition = EmitCondition(module, builder, int32Type, i1, tree, semantic,
                     declarationId, function, state, node.First(), out conditionValid);
@@ -2835,25 +2840,21 @@ namespace NativeSharp.Compiler.CodeGen
                 LLVM.LLVMPositionBuilderAtEnd(builder, thenBlock); bool thenValid = false;
                 void* thenValue = EmitScalarExpression(module, builder, int32Type, i1, tree, semantic,
                     declarationId, function, state, node.Second(), out thenValid);
+                if (!thenValid || thenValue == null) { return null; }
+                thenValue = ConvertScalar(module, builder, semantic, thenValue,
+                    semantic.Fact(node.Second()).TypeId(), resultType);
                 void* thenEnd = LLVM.LLVMGetInsertBlock(builder);
-                if (!thenValid || thenValue == null || thenEnd == null || LLVM.LLVMBuildBr(builder, endBlock) == null)
+                if (thenValue == null || thenEnd == null || LLVM.LLVMBuildBr(builder, endBlock) == null)
                 { return null; }
                 LLVM.LLVMPositionBuilderAtEnd(builder, elseBlock); bool elseValid = false;
                 void* elseValue = EmitScalarExpression(module, builder, int32Type, i1, tree, semantic,
                     declarationId, function, state, node.Third(), out elseValid);
-                void* elseEnd = LLVM.LLVMGetInsertBlock(builder);
-                if (!elseValid || elseValue == null || elseEnd == null || LLVM.LLVMBuildBr(builder, endBlock) == null)
-                { return null; }
-                int resultType = semantic.Fact(syntaxId).TypeId();
-                if (resultType < 0) { return null; }
-                thenValue = ConvertScalar(module, builder, semantic, thenValue,
-                    semantic.Fact(node.Second()).TypeId(), resultType);
+                if (!elseValid || elseValue == null) { return null; }
                 elseValue = ConvertScalar(module, builder, semantic, elseValue,
                     semantic.Fact(node.Third()).TypeId(), resultType);
-                if (thenValue == null || elseValue == null) { return null; }
-                void* llvmType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
-                    semantic.Types().Get(resultType).Display());
-                if (llvmType == null) { return null; }
+                void* elseEnd = LLVM.LLVMGetInsertBlock(builder);
+                if (elseValue == null || elseEnd == null || LLVM.LLVMBuildBr(builder, endBlock) == null)
+                { return null; }
                 LLVM.LLVMPositionBuilderAtEnd(builder, endBlock); raii CString phiName = new CString("select.value");
                 void* phi = LLVM.LLVMBuildPhi(builder, llvmType, phiName.Pointer());
                 void*[2] incomingValues; void*[2] incomingBlocks;
