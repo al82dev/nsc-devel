@@ -24,6 +24,13 @@ from _nscbuilder2.model import (  # noqa: E402
     RunStep,
     create_run_plan,
 )
+from _nscbuilder2.compiler import (  # noqa: E402
+    CompilerBuildOptions,
+    CompilerReceipt,
+    create_compiler_build_plan,
+    create_compiler_receipt,
+    validate_compiler_receipt,
+)
 from _nscbuilder2.pipeline import PipelineRunner  # noqa: E402
 from _nscbuilder2.storage import BuilderStorage  # noqa: E402
 from _nscbuilder2.summary import condensed_errors  # noqa: E402
@@ -153,6 +160,37 @@ class NscBuilder2Tests(unittest.TestCase):
             self.assertIn("cmake --build", commands)
             self.assertIn(f"CMAKE_BUILD_TYPE={configuration}", commands)
             self.assertNotIn("C:\\", commands)
+
+    def test_compiler_build_is_separate_and_emits_reusable_receipt(self) -> None:
+        options = CompilerBuildOptions(
+            REPO_ROOT,
+            self.temporary / "compiler-build",
+            self.nslink,
+            self.prefix,
+            "Debug",
+            "STATIC",
+            "O0",
+            "ninja",
+            True,
+            6,
+        )
+        plan = create_compiler_build_plan(
+            options,
+            "compiler-run",
+            self.temporary / "compiler-history",
+            self.temporary / "compiler-work",
+        )
+        self.assertEqual([step.identifier for step in plan.steps], ["compiler-configure", "compiler-build"])
+        commands = "\n".join(" ".join(step.command) for step in plan.steps)
+        self.assertIn("--fresh", commands)
+        self.assertIn("ninja -C", commands)
+        self.assertNotIn("ctest", commands)
+        self.assertNotIn("pruebas", commands)
+        plan.compiler.parent.mkdir(parents=True)
+        plan.compiler.write_bytes(b"nsc-fixture")
+        receipt = create_compiler_receipt(plan, "passed")
+        restored = CompilerReceipt.from_dict(receipt.to_dict())
+        self.assertEqual(validate_compiler_receipt(restored), plan.compiler.resolve())
 
     def test_tool_receipt_requires_all_products_and_detects_mutation(self) -> None:
         source = self.temporary / "nsasm"

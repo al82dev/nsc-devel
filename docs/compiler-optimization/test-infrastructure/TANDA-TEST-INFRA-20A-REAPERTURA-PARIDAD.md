@@ -30,19 +30,19 @@ Builder 2 tendrá fronteras separadas y ordenadas:
 
 | ID | Capacidad del builder anterior | Estado Builder 2 |
 |---|---|---|
-| B2-001 | Construcción del compilador separada de pruebas | PARCIAL; requiere recibo formal |
-| B2-002 | Configuración Release | PENDIENTE |
-| B2-003 | Configuración Debug | PENDIENTE |
-| B2-004 | Build desde cero | PENDIENTE |
-| B2-005 | Build incremental | PARCIAL |
-| B2-006 | Runner `cmake --build` | PARCIAL |
-| B2-007 | Runner Ninja directo | PENDIENTE |
-| B2-008 | Runtime host STATIC/DYNAMIC | PENDIENTE |
-| B2-009 | Optimización host O0/O1/O2/O3 | PENDIENTE |
-| B2-010 | Identidad, ruta y SHA-256 del compilador | PARCIAL; sólo por corrida |
-| B2-011 | Recibo persistente del build | PENDIENTE |
+| B2-001 | Construcción del compilador separada de pruebas | IMPLEMENTADA en modelo |
+| B2-002 | Configuración Release | IMPLEMENTADA en modelo |
+| B2-003 | Configuración Debug | IMPLEMENTADA en modelo |
+| B2-004 | Build desde cero | IMPLEMENTADA mediante CMake `--fresh` |
+| B2-005 | Build incremental | IMPLEMENTADA en modelo |
+| B2-006 | Runner `cmake --build` | IMPLEMENTADA en modelo |
+| B2-007 | Runner Ninja directo | IMPLEMENTADA en modelo |
+| B2-008 | Runtime host STATIC/DYNAMIC | IMPLEMENTADA en modelo |
+| B2-009 | Optimización host O0/O1/O2/O3 | IMPLEMENTADA en modelo |
+| B2-010 | Identidad, ruta y SHA-256 del compilador | IMPLEMENTADA y verificada con fixture |
+| B2-011 | Recibo persistente del build | IMPLEMENTADA y verificada con fixture |
 | B2-012 | Instalar build válido | PENDIENTE; implementar sin ejecutar en C: |
-| B2-013 | Selección explícita de prefijo | PARCIAL |
+| B2-013 | Selección explícita de prefijo | IMPLEMENTADA en modelo |
 | B2-014 | Pruebas bloqueadas sin compilador construido válido | PENDIENTE |
 | B2-015 | Selección O0 | VERIFICADA |
 | B2-016 | Selección O1 | PENDIENTE; implementar sin ejecutar |

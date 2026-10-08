@@ -1,6 +1,13 @@
 """Private implementation package for the independent NSC Builder 2."""
 
 from .model import BuilderConfig, RunSelection, create_run_plan
+from .compiler import (
+    CompilerBuildOptions,
+    CompilerReceipt,
+    create_compiler_build_plan,
+    create_compiler_receipt,
+    validate_compiler_receipt,
+)
 from .pipeline import PipelineRunner, RunResult
 from .storage import BuilderStorage
 from .toolchain import (
@@ -14,11 +21,16 @@ from .toolchain import (
 
 __all__ = [
     "BuilderConfig",
+    "CompilerBuildOptions",
+    "CompilerReceipt",
     "BuilderStorage",
     "PipelineRunner",
     "RunResult",
     "RunSelection",
     "create_run_plan",
+    "create_compiler_build_plan",
+    "create_compiler_receipt",
+    "validate_compiler_receipt",
     "ToolBuildOptions",
     "ToolReceipt",
     "create_tool_build_plan",
