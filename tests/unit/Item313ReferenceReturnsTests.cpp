@@ -2,6 +2,7 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "../support/HistoricalMetadataProjection.h"
 #include "../support/TestContext.h"
 
 #include <array>
@@ -325,9 +326,10 @@ namespace CrossRef
     if (metadataRead)
     {
         metadata.formatMinor = 14U;
+        nativesharp::tests::projectHistoricalFixtureMetadata(metadata, 14U);
         const auto downlevelPath = producer / "RefProducer-1.14.nsmeta";
         tests.expect(codec.writeModel(metadata, downlevelPath, metadataError),
-            "the historical NSMETA 1.14 form can still be emitted");
+            "the historical NSMETA 1.14 form can still be emitted (" + metadataError + ")");
         nativesharp::interop::LibraryMetadata downlevel;
         const bool downlevelRead = codec.read(downlevelPath, downlevel, metadataError);
         bool retainedReferenceReturn = false;

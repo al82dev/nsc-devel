@@ -10,6 +10,7 @@
 #include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 
+#include "../support/HistoricalMetadataProjection.h"
 #include "../support/TestContext.h"
 
 #include <algorithm>
@@ -4103,19 +4104,41 @@ namespace Consumer
                  "a static class in current NSMETA materializes during artifact verification (" +
                      error + ")");
 
-    const auto legacyStaticRoot = staticRoot / "LegacyStaticHierarchy";
-    LibraryMetadata legacyStaticMetadata = nominalMetadata;
-    legacyStaticMetadata.formatMinor = 10;
-    for (auto& member : legacyStaticMetadata.members)
-        member.parameterEscapeSummary.clear();
-    for (auto& function : legacyStaticMetadata.namespaceFunctions)
-        function.parameterEscapeSummary.clear();
-    for (auto& generic : legacyStaticMetadata.genericTemplates)
+    const auto legacyStaticProducer = staticRoot / "LegacyStaticProducer";
+    writeProject(legacyStaticProducer, "LegacyStaticProducer", "StaticLibrary", R"NS(
+namespace Precompiled
+{
+    public class Counter { }
+    public interface IScore { public int Score(); }
+    public static class Utility
     {
-        generic.parameterContracts.clear();
-        generic.lifetimeParameters.clear();
-        generic.lifetimeOutlivesConstraints.clear();
+        public static int Answer() { return 42; }
     }
+}
+)NS");
+    const auto legacyStaticLibrary = legacyStaticProducer / "NativeMath.lib";
+    output.clear();
+    error.clear();
+    const bool emittedLegacyStaticProducer =
+        emitLibrary("--emit-project-oop-lib",
+                    legacyStaticProducer / "LegacyStaticProducer.nsproj",
+                    legacyStaticLibrary,
+                    output,
+                    error,
+                    false) == ExitCode::Success;
+    tests.expect(emittedLegacyStaticProducer,
+                 "dedicated static-hierarchy fixture emits a current library (" + error + ")");
+
+    const auto legacyStaticRoot = staticRoot / "LegacyStaticHierarchy";
+    LibraryMetadata legacyStaticMetadata;
+    error.clear();
+    const bool readLegacyStaticMetadata = emittedLegacyStaticProducer &&
+        metadataCodec.read(
+            legacyStaticProducer / "NativeMath.nsmeta", legacyStaticMetadata, error);
+    tests.expect(readLegacyStaticMetadata,
+                 "dedicated static-hierarchy fixture reads current metadata (" + error + ")");
+    legacyStaticMetadata.formatMinor = 10;
+    nativesharp::tests::projectHistoricalFixtureMetadata(legacyStaticMetadata, 10U);
     const auto legacyUtilityType = std::ranges::find_if(
         legacyStaticMetadata.types,
         [](const auto& type) { return type.fullyQualifiedName == "Precompiled.Utility"; });
@@ -4145,7 +4168,7 @@ namespace Consumer
     output.clear();
     error.clear();
     tests.expect(verifyLibraryArtifacts(legacyStaticMetadataPath,
-                                        staticLibrary,
+                                        legacyStaticLibrary,
                                         output,
                                         error) == ExitCode::Success,
                  "artifact verification ignores base classes and interfaces attached to a static "
@@ -4160,7 +4183,7 @@ public class Program
               "<Project><PropertyGroup><Name>LegacyStaticHierarchy</Name>"
               "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
               "<Compile Include=\"**/*.ns\"/>"
-              "<LibraryReference Include=\"../Producer/NativeMath.lib\" "
+              "<LibraryReference Include=\"../LegacyStaticProducer/NativeMath.lib\" "
               "Metadata=\"NativeMath.nsmeta\"/>"
               "</ItemGroup></Project>");
     output.clear();
