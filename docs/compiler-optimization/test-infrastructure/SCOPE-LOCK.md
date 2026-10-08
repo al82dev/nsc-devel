@@ -32,6 +32,9 @@ No aplica a una regresión entre commits. La matriz inicial se deriva del árbol
 
 - `A:\nsc-devel`.
 - `A:\nsc-refactor-docs` únicamente para mantener el plan maestro externo.
+- `A:\nslink-devel`, `A:\nsasm-devel` y `A:\nsc-debugger` únicamente como
+  productores externos de herramientas: se pueden inspeccionar y construir
+  desde Builder 2, pero sus fuentes permanecen protegidas.
 
 ## Componentes autorizados
 
@@ -39,6 +42,8 @@ No aplica a una regresión entre commits. La matriz inicial se deriva del árbol
 - Infraestructura nueva bajo `tests/harness`, `tests/cases` y `tests/unit`.
 - Integración de pruebas en CMake/CTest cuando la tanda correspondiente lo autorice.
 - `nscbuilder2.py` exclusivamente en la Tanda 20.
+- Integración de construcción, staging y deploy de NSLink, NSASM y NSDBG
+  exclusivamente dentro de Builder 2.
 - Documentación y tracking de esta tarea.
 
 ## Archivos protegidos
@@ -48,6 +53,8 @@ No aplica a una regresión entre commits. La matriz inicial se deriva del árbol
 - `_nscbuilder` y su historial.
 - Las expectativas y entradas actuales hasta que exista paridad demostrada.
 - Instalaciones y herramientas ubicadas en `C:`.
+- Fuentes, pruebas y builders propios de `A:\nslink-devel`,
+  `A:\nsasm-devel` y `A:\nsc-debugger`.
 
 ## Pruebas protegidas
 
@@ -68,6 +75,10 @@ No aplica a una regresión entre commits. La matriz inicial se deriva del árbol
 - Instalar o desplegar en `C:`.
 - Ejecutar baseline, promoción o certificación.
 - Ejecutar O1, O2 u O3.
+- Ejecutar deploy o copiar artefactos a `C:` durante la implementación.
+- Copiar una herramienta a staging o deploy sin recibo vigente y SHA-256.
+- Ejecutar silenciosamente una construcción de herramientas: la selección
+  `Autogenerar antes del deploy` debe ser explícita.
 - Utilizar el NSC instalado en lugar del binario construido seleccionado.
 - Modificar la infraestructura actual de `nscbuilder.py`.
 - Crear runners separados por componente.

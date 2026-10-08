@@ -22,6 +22,9 @@ Builder 2 tendrá fronteras separadas y ordenadas:
    batería; registro unitario y suites especializadas.
 5. **Evidence**: salida completa, errores causales, resultados, historial,
    reintentos y limpieza permanecen separados de la configuración.
+6. **Toolchain**: construcción independiente de NSLink, NSASM y NSDBG;
+   staging en A: junto al NSC construido y selección explícita de herramientas
+   incluidas en deploy.
 
 ## Matriz de paridad
 
@@ -69,14 +72,31 @@ Builder 2 tendrá fronteras separadas y ordenadas:
 | B2-040 | CLI automatizable | PARCIAL |
 | B2-041 | Configuración versionada y variables de entorno | PENDIENTE |
 | B2-042 | Builder anterior completamente intacto | VERIFICADA |
+| B2-043 | Área Toolchain separada en la GUI | PENDIENTE |
+| B2-044 | Construcción NSLink Release/Debug | PENDIENTE |
+| B2-045 | Construcción NSASM Release/Debug | PENDIENTE |
+| B2-046 | Construcción NSDBG Release/Debug | PENDIENTE |
+| B2-047 | Rutas fuente, build y salida configurables por herramienta | PENDIENTE |
+| B2-048 | Recibo persistente y SHA-256 por herramienta | PENDIENTE |
+| B2-049 | Staging de `nslink.exe` junto al NSC construido en A: | PENDIENTE |
+| B2-050 | Staging de `nsasm.exe`, `nsdump.exe` y `nsdis.exe` en A: | PENDIENTE |
+| B2-051 | Staging de `nsdbg.exe` y PDB disponible en A: | PENDIENTE |
+| B2-052 | Selección de herramientas incluidas en deploy | PENDIENTE |
+| B2-053 | Autogeneración seleccionable antes del deploy | PENDIENTE |
+| B2-054 | Deploy exclusivamente mediante acción explícita | PENDIENTE; implementar sin ejecutar en C: |
+| B2-055 | Manifiesto de staging/deploy con procedencia y hash | PENDIENTE |
+| B2-056 | Fallo productor bloquea staging y deploy dependientes | PENDIENTE |
+| B2-057 | CMake/Ninja/compiladores resueltos por PATH o proyecto | PENDIENTE |
+| B2-058 | NSC y herramientas conservan configuración Release/Debug elegida | PENDIENTE |
+| B2-059 | Instalación conjunta sin leer artefactos desde C: | PENDIENTE; implementar sin ejecutar en C: |
 
 ## Gate de cierre corregido
 
 La tanda 20 no volverá a cerrarse hasta cumplir:
 
 ```ini
-capacidades_inventariadas = 42
-capacidades_implementadas + retiradas_explicitas = 42
+capacidades_inventariadas = 59
+capacidades_implementadas + retiradas_explicitas = 59
 capacidades_omitidas = 0
 reducciones_inferidas = 0
 builder_anterior_modificado = 0
