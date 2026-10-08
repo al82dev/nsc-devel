@@ -1,4 +1,5 @@
 #include "nsc_test/TestRegistry.h"
+#include "nsc_test/Modules.h"
 
 #include <filesystem>
 #include <fstream>
@@ -140,6 +141,7 @@ int main(int argumentCount, char** arguments)
     {
         const Options options = parseOptions(argumentCount, arguments);
         nsc::test::TestRegistry registry;
+        nsc::test::registerBasicUnitTests(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

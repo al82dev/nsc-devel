@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "cases": {
+    "nsc.version.identity": {
+      "state": "DUAL_PARITY",
+      "legacy_owner": "tests/unit/Cc1BuildIdentityTests.cpp",
+      "legacy_executable": "nsc_cc1_build_identity_tests.exe",
+      "new_module": "tests/unit/modules/BasicUnitTests.cpp",
+      "new_executable": "nsc_unit_tests.exe",
+      "evidence": "TANDA-TEST-INFRA-06-CPP-PILOT.md"
+    }
+  }
+}
