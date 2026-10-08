@@ -12,6 +12,7 @@ from .compiler import (
 from .pipeline import PipelineRunner, RunResult
 from .storage import BuilderStorage
 from .deploy import DeployPlan, apply_manifest, create_deploy_plan
+from .controller import BuilderController
 from .toolchain import (
     ToolBuildOptions,
     ToolReceipt,
@@ -23,6 +24,7 @@ from .toolchain import (
 
 __all__ = [
     "BuilderConfig",
+    "BuilderController",
     "CompilerBuildOptions",
     "CompilerReceipt",
     "BuilderStorage",
