@@ -21,6 +21,6 @@
 | 17 | TERMINADA |
 | 18 | TERMINADA |
 | 19 | TERMINADA |
-| 20 | TERMINADA |
+| 20 | EN CURSO |
 
-**Avance:** 20/20 tandas terminadas.
+**Avance:** 19/20 tandas terminadas.

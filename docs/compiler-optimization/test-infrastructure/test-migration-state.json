@@ -435,7 +435,7 @@
       "evidence": "TANDA-TEST-INFRA-19-MEDICION-FINAL.md"
     },
     "tanda20-nscbuilder2": {
-      "state": "VERIFIED",
+      "state": "IN_PROGRESS_PARITY_REOPENED",
       "entrypoint": "nscbuilder2.py",
       "storage_root": "_nscbuilder2",
       "old_builder_modified": false,
@@ -449,7 +449,9 @@
       "gui_smoke_exit_code": 0,
       "baseline_executed": false,
       "deployed_to_c": false,
-      "evidence": "TANDA-TEST-INFRA-20-NSCBUILDER2.md"
+      "parity_capabilities": 42,
+      "parity_complete": false,
+      "evidence": "TANDA-TEST-INFRA-20A-REAPERTURA-PARIDAD.md"
     }
   }
 }
