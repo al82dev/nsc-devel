@@ -257,7 +257,11 @@ public class Program
         "T31 consumer compiles and links jagged arrays, views and owning initializers at O0 (" + error + output + ")");
     if (consumerEmitted)
     {
+#if defined(NSC_TEST_CONSOLIDATED_HOST)
+        const std::string command = "\"" + executable + "\"";
+#else
         const std::string command = "cmd.exe /d /s /c \"\"" + executable + "\"\"";
+#endif
         tests.expect(std::system(command.c_str()) == 0,
             "jagged destruction, slot clearing, owning initializer cleanup and borrows execute exactly once");
     }

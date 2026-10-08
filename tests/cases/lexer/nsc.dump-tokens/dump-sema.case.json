@@ -1,0 +1,16 @@
+{
+  "id": "nsc.dump-sema",
+  "component": "sema",
+  "kind": "semantic",
+  "sources": ["full_frontend.ns"],
+  "arguments": ["--dump-sema", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "conversion implicit-string-literal-to-char-pointer"},
+    "stderr": ""
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "semantic-dump"],
+  "requires": []
+}

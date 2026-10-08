@@ -172,6 +172,45 @@
       "legacy_source": "tests/integration/valid/full_frontend.ns",
       "new_manifest": "tests/cases/lexer/nsc.dump-tokens/dump-ast.case.json",
       "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.dump-sema": {
+      "state": "DUAL_PARITY",
+      "legacy_source": "tests/integration/valid/full_frontend.ns",
+      "new_manifest": "tests/cases/lexer/nsc.dump-tokens/dump-sema.case.json",
+      "evidence": "TANDA-TEST-INFRA-10-SEMANTICS-TYPES-COMPTIME.md"
+    }
+  },
+  "groups": {
+    "tanda10-sema": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "case_count": 91,
+      "membership": "tests/unit/include/nsc_test/SemanticLegacyEntries.def",
+      "module": "tests/unit/modules/SemanticUnitTests.cpp",
+      "adapter_root": "tests/unit/semantic_adapters",
+      "evidence": "TANDA-TEST-INFRA-10-SEMANTICS-TYPES-COMPTIME.md"
+    },
+    "tanda10-comptime": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "case_count": 7,
+      "membership": "tests/unit/include/nsc_test/SemanticLegacyEntries.def",
+      "module": "tests/unit/modules/SemanticUnitTests.cpp",
+      "adapter_root": "tests/unit/semantic_adapters",
+      "evidence": "TANDA-TEST-INFRA-10-SEMANTICS-TYPES-COMPTIME.md"
+    },
+    "tanda10-routed": {
+      "state": "ROUTED_TO_LATER_TANDAS",
+      "case_count": 8,
+      "cases": {
+        "nsc.cc1.generic-constraints": 14,
+        "nsc.ns3.t41.ownership": 16,
+        "nsc.stage44.generics": 14,
+        "nsc.stage44.generics-monomorphization": 12,
+        "nsc.stage50-11.ownership-execution": 11,
+        "nsc.stage52-1.generic-collections-additions": 12,
+        "nsc.stage52.generic-collections-compiler-fixes": 12,
+        "nsc.stage56.c7-definite-assignment": 11
+      },
+      "evidence": "TANDA-TEST-INFRA-10-SEMANTICS-TYPES-COMPTIME.md"
     }
   }
 }

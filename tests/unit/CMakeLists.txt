@@ -1,3 +1,8 @@
+set(
+    NSC_TEST_COMPILER_BUILD_DIR
+    "${CMAKE_BINARY_DIR}"
+    CACHE PATH "Build tree containing the selected nsc.exe and generated runtime artifacts")
+
 add_executable(
     nsc_unit_tests
     consolidated/main.cpp
@@ -18,6 +23,59 @@ add_executable(
     adapters/ParserAdapter.cpp
     adapters/Stage45ExceptionsSyntaxAdapter.cpp
     adapters/Stage50_1OwnershipSyntaxAdapter.cpp
+    modules/SemanticUnitTests.cpp
+    semantic_adapters/Cc1CorrectnessAdapter.cpp
+    semantic_adapters/GenericAliasAdapter.cpp
+    semantic_adapters/GenericInferenceAdapter.cpp
+    semantic_adapters/GenericInliningAdapter.cpp
+    semantic_adapters/Item316ReferenceLifetimeAnalysisAdapter.cpp
+    semantic_adapters/Item320ObjectStorageOwnershipAdapter.cpp
+    semantic_adapters/NamespaceFunctionGenericAdapter.cpp
+    semantic_adapters/NativeSharp3T00ConstitutionAdapter.cpp
+    semantic_adapters/NativeSharp3T04ConstGenericAdapter.cpp
+    semantic_adapters/NativeSharp3T04GenericPackAdapter.cpp
+    semantic_adapters/NativeSharp3T04GenericResourceLimitAdapter.cpp
+    semantic_adapters/NativeSharp3T04GenericAdapter.cpp
+    semantic_adapters/NativeSharp3T05OperatorTraitAdapter.cpp
+    semantic_adapters/NativeSharp3T05TraitDeclarationAdapter.cpp
+    semantic_adapters/NativeSharp3T05TraitObjectAdapter.cpp
+    semantic_adapters/NativeSharp3T05TraitAdapter.cpp
+    semantic_adapters/NativeSharp3T06LifetimeParameterAdapter.cpp
+    semantic_adapters/NativeSharp3T06OwnershipAdapter.cpp
+    semantic_adapters/NativeSharp3T06ReborrowSplitAdapter.cpp
+    semantic_adapters/NativeSharp3T08ClosureCaptureAdapter.cpp
+    semantic_adapters/NativeSharp3T08GenericLambdaAdapter.cpp
+    semantic_adapters/NativeSharp3T08MethodValueAdapter.cpp
+    semantic_adapters/NativeSharp3T09ComprehensionAdapter.cpp
+    semantic_adapters/NativeSharp3T09ForeachProtocolAdapter.cpp
+    semantic_adapters/NativeSharp3T09LazyRangeAdapter.cpp
+    semantic_adapters/NativeSharp3T10AwaitProtocolAdapter.cpp
+    semantic_adapters/NativeSharp3T10SendSyncAdapter.cpp
+    semantic_adapters/NativeSharp3T11ComptimeBudgetAdapter.cpp
+    semantic_adapters/NativeSharp3T11ComptimeCapabilitiesAdapter.cpp
+    semantic_adapters/NativeSharp3T11DeriveAdapter.cpp
+    semantic_adapters/NativeSharp3T11HygienicMacrosAdapter.cpp
+    semantic_adapters/NativeSharp3T11TypedIntrospectionAdapter.cpp
+    semantic_adapters/NativeSharp3T11UserAttributesAdapter.cpp
+    semantic_adapters/NativeSharp3T13PointerQualifierAdapter.cpp
+    semantic_adapters/NativeSharp3T13UnsafeAuditingAdapter.cpp
+    semantic_adapters/NativeSharp3T14ConstevalAdapter.cpp
+    semantic_adapters/NativeSharp3T14NumericConversionAdapter.cpp
+    semantic_adapters/NativeSharp3T14OverflowPolicyAdapter.cpp
+    semantic_adapters/NativeSharp3T14StrongNumericAdapter.cpp
+    semantic_adapters/NativeSharp3T31ArrayBorrowAdapter.cpp
+    semantic_adapters/ProjectNameLookupAdapter.cpp
+    semantic_adapters/SemanticAdapter.cpp
+    semantic_adapters/Stage45ExceptionSemaAdapter.cpp
+    semantic_adapters/Stage49RaiiMoveSemanticsAdapter.cpp
+    semantic_adapters/Stage50_10OwnershipExamplesDocumentationAdapter.cpp
+    semantic_adapters/Stage50_3OwnedParametersReturnsAdapter.cpp
+    semantic_adapters/Stage50_4BorrowedParametersAdapter.cpp
+    semantic_adapters/Stage50_5LocalBorrowsLifetimesAdapter.cpp
+    semantic_adapters/Stage50_8OwnershipIrLoweringAdapter.cpp
+    semantic_adapters/Stage52_5ForeachSemanticGapsAdapter.cpp
+    semantic_adapters/Stage58ViewLifetimesAdapter.cpp
+    semantic_adapters/Stage59ClosedGenericMemberAdapter.cpp
     modules/SourceUnitTests.cpp)
 
 target_include_directories(
@@ -27,7 +85,9 @@ target_compile_features(nsc_unit_tests PRIVATE cxx_std_20)
 target_compile_definitions(
     nsc_unit_tests
     PRIVATE
-        NSC_BINARY_DIR="${CMAKE_BINARY_DIR}"
+        NSC_BINARY_DIR="${NSC_TEST_COMPILER_BUILD_DIR}"
+        NSC_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        NSC_TEST_O0_ONLY=1
         NSC_TEST_CASES_DIR="${CMAKE_SOURCE_DIR}/tests/cases")
 target_link_libraries(
     nsc_unit_tests

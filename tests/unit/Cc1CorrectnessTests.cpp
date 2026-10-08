@@ -138,7 +138,13 @@ void checkFixture(
         std::string(label) + ": fixture exists (" + projectPath.string() + ")");
     if (!std::filesystem::exists(projectPath)) return;
 
-    for (const std::string_view optimizationFlag : {std::string_view("-O0"), std::string_view("-O2")})
+#if defined(NSC_TEST_O0_ONLY)
+    const std::array<std::string_view, 1> optimizationFlags = {std::string_view("-O0")};
+#else
+    const std::array<std::string_view, 2> optimizationFlags = {
+        std::string_view("-O0"), std::string_view("-O2")};
+#endif
+    for (const std::string_view optimizationFlag : optimizationFlags)
     {
         const std::string scenario = std::string(label) + " " + std::string(optimizationFlag);
         const auto exePath =

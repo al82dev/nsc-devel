@@ -11,7 +11,7 @@
 | 7 | TERMINADA |
 | 8 | TERMINADA |
 | 9 | TERMINADA |
-| 10 | PENDIENTE |
+| 10 | TERMINADA |
 | 11 | PENDIENTE |
 | 12 | PENDIENTE |
 | 13 | PENDIENTE |
@@ -23,4 +23,4 @@
 | 19 | PENDIENTE |
 | 20 | PENDIENTE |
 
-**Avance:** 9/20 tandas terminadas.
+**Avance:** 10/20 tandas terminadas.
