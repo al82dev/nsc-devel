@@ -309,6 +309,12 @@ namespace NativeSharp.Compiler.CodeGen
             return move(normalized);
         }
 
+        private static bool PhysicalTypeIs(string type, string expected)
+        {
+            raii string physical = PhysicalTypeName(type);
+            return physical == expected;
+        }
+
         private static void* ScalarType(void* context, string type)
         {
             // Ownership changes lifetime semantics, not the LLVM representation of a value.
@@ -526,7 +532,7 @@ namespace NativeSharp.Compiler.CodeGen
                 if (!Number.TryParseDouble(fact.ConstantText(), out value)) { return null; }
                 return LLVM.LLVMConstReal(type, value);
             }
-            if (semantic.Types().Get(symbol.TypeId()).Display() == "bool")
+            if (PhysicalTypeIs(semantic.Types().Get(symbol.TypeId()).Display(), "bool"))
             { return LLVM.LLVMConstInt(type, fact.ConstantText() == "true" ? 1UL : 0UL, 0); }
             long signedValue = 0;
             if (!Number.TryParseInt64(fact.ConstantText(), out signedValue)) { return null; }
@@ -937,8 +943,7 @@ namespace NativeSharp.Compiler.CodeGen
             if (typeId < 0) { return false; }
             SemanticType type = semantic.Types().Get(typeId);
             raii string display = String.Copy(type.Display());
-            return type.Kind() == SemanticTypeKind.StringLiteral || display == "string" ||
-                display == "owned string" || display == "borrowed string";
+            return type.Kind() == SemanticTypeKind.StringLiteral || PhysicalTypeIs(display, "string");
         }
 
         private static int GenericResultPosition(string type)
@@ -1318,7 +1323,7 @@ namespace NativeSharp.Compiler.CodeGen
                 narrowed = LLVM.LLVMBuildAShr(builder, shifted,
                     LLVM.LLVMConstInt(storageType, (ulong)extension, 0), rightName.Pointer());
             }
-            if (declared == "bool")
+            if (PhysicalTypeIs(declared, "bool"))
             {
                 raii CString boolName = new CString("bitfield.bool");
                 return LLVM.LLVMBuildTrunc(builder, narrowed, valueType, boolName.Pointer());
@@ -1334,7 +1339,7 @@ namespace NativeSharp.Compiler.CodeGen
                 Symbol field = semantic.GetSymbol(symbol); int width = field.BitWidth();
                 if (width == 0) { return null; }
                 void* storageType = BitfieldStorageType(LLVM.LLVMGetModuleContext(module), field.Size());
-                if (semantic.Types().Get(field.TypeId()).Display() == "bool")
+                if (PhysicalTypeIs(semantic.Types().Get(field.TypeId()).Display(), "bool"))
                 {
                     raii CString extendName = new CString("bitfield.bool.extend");
                     value = LLVM.LLVMBuildZExt(builder, value, storageType, extendName.Pointer());
@@ -2100,8 +2105,7 @@ namespace NativeSharp.Compiler.CodeGen
                 }
                 SemanticTypeKind receiverKind = semantic.Types().Get(receiverType).Kind();
                 void* data = pointer;
-                if (receiverKind == SemanticTypeKind.Array ||
-                    semantic.Types().Get(receiverType).Display() == "string")
+                if (receiverKind == SemanticTypeKind.Array || StringType(semantic, receiverType))
                 {
                     void* header = LLVM.LLVMConstInt(LLVM.LLVMInt64TypeInContext(
                         LLVM.LLVMGetModuleContext(module)), 8UL, 0);
@@ -2246,7 +2250,7 @@ namespace NativeSharp.Compiler.CodeGen
                     declarationId, function, state, node.First(), out receiverValid);
                 if (!receiverValid || receiver == null) { return null; }
                 int receiverType = semantic.Fact(node.First()).TypeId();
-                if (receiverType >= 0 && semantic.Types().Get(receiverType).Display() == "string")
+                if (receiverType >= 0 && StringType(semantic, receiverType))
                 {
                     raii CString wideName = new CString("string.length64");
                     void* length64 = LLVM.LLVMBuildLoad2(builder, LLVM.LLVMInt64TypeInContext(
@@ -2978,7 +2982,7 @@ namespace NativeSharp.Compiler.CodeGen
                             raii string source = String.Copy(semantic.Types().Get(sourceType).Display());
                             void* context = LLVM.LLVMGetModuleContext(module);
                             raii CString promotionName = new CString("abi.vararg.promotion");
-                            if (source == "float")
+                            if (PhysicalTypeIs(source, "float"))
                             {
                                 arguments[argument + physicalOffset] = LLVM.LLVMBuildFPExt(builder,
                                     arguments[argument + physicalOffset], LLVM.LLVMDoubleTypeInContext(context),
@@ -3208,7 +3212,7 @@ namespace NativeSharp.Compiler.CodeGen
             valid = false; SyntaxNode node = tree.Node(syntaxId); raii CString conditionName = new CString("condition");
             SemanticFact known = semantic.Fact(syntaxId);
             if (known.IsConstant() && known.TypeId() >= 0 &&
-                semantic.Types().Get(known.TypeId()).Display() == "bool")
+                PhysicalTypeIs(semantic.Types().Get(known.TypeId()).Display(), "bool"))
             {
                 valid = true;
                 return LLVM.LLVMConstInt(i1, known.ConstantText() == "true" ? 1UL : 0UL, 0);
@@ -3257,7 +3261,7 @@ namespace NativeSharp.Compiler.CodeGen
                 declarationId, function, state, syntaxId, out valueValid);
             if (!valueValid || value == null) { return null; }
             int valueType = semantic.Fact(syntaxId).TypeId();
-            if (valueType >= 0 && semantic.Types().Get(valueType).Display() == "bool")
+            if (valueType >= 0 && PhysicalTypeIs(semantic.Types().Get(valueType).Display(), "bool"))
             { valid = true; return value; }
             // A successfully lowered unresolved call in condition position is a boolean in the
             // current bootstrap subset (member overload lookup may leave only the call fact as
