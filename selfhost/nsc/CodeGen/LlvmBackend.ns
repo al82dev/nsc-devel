@@ -911,11 +911,49 @@ namespace NativeSharp.Compiler.CodeGen
                 display == "owned string" || display == "borrowed string";
         }
 
+        private static int GenericResultPosition(string type)
+        {
+            if (type == "T" || type == "TElement" || type == "TKey" ||
+                type == "owned T" || type == "owned TElement" || type == "owned TKey" ||
+                type == "borrowed T" || type == "borrowed TElement" || type == "borrowed TKey")
+            { return 0; }
+            if (type == "TValue" || type == "TPriority" ||
+                type == "owned TValue" || type == "owned TPriority" ||
+                type == "borrowed TValue" || type == "borrowed TPriority")
+            { return 1; }
+            return -1;
+        }
+
+        private static bool StringIndexExpression(SemanticModel semantic, SyntaxNode expression,
+            int syntaxId)
+        {
+            if (expression.Kind() != "IndexExpression" || expression.First() < 0) { return false; }
+            int receiverType = semantic.Fact(expression.First()).TypeId();
+            if (receiverType < 0) { return false; }
+            SemanticType receiver = semantic.Types().Get(receiverType);
+            if (receiver.Kind() == SemanticTypeKind.Array)
+            { return StringType(semantic, receiver.ElementType()); }
+
+            int accessor = semantic.Fact(syntaxId).SymbolId();
+            if (accessor < 0 || semantic.GetSymbol(accessor).Kind() != SymbolKind.Method ||
+                semantic.GetSymbol(accessor).TypeId() < 0)
+            { return false; }
+            SemanticType signature = semantic.Types().Get(semantic.GetSymbol(accessor).TypeId());
+            if (signature.Kind() != SemanticTypeKind.Function || signature.ReturnType() < 0)
+            { return false; }
+            raii string declared = String.Copy(semantic.Types().Get(signature.ReturnType()).Display());
+            int position = GenericResultPosition(declared);
+            if (position < 0) { return StringType(semantic, signature.ReturnType()); }
+            raii string closed = ClosedGenericArgument(receiver.Display(), position);
+            return closed.Length != 0 && StringType(semantic, semantic.Types().Intern(closed));
+        }
+
         private static bool StringExpression(SyntaxTree tree, SemanticModel semantic, int syntaxId)
         {
             if (syntaxId < 0) { return false; }
             if (StringType(semantic, semantic.Fact(syntaxId).TypeId())) { return true; }
             SyntaxNode expression = tree.Node(syntaxId); int symbol = semantic.Fact(syntaxId).SymbolId();
+            if (StringIndexExpression(semantic, expression, syntaxId)) { return true; }
             int declaration = -1;
             if (expression.Kind() == "CallExpression" && expression.First() >= 0)
             {
