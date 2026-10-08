@@ -916,8 +916,23 @@ namespace NativeSharp.Compiler.CodeGen
             if (syntaxId < 0) { return false; }
             if (StringType(semantic, semantic.Fact(syntaxId).TypeId())) { return true; }
             SyntaxNode expression = tree.Node(syntaxId); int symbol = semantic.Fact(syntaxId).SymbolId();
+            int declaration = -1;
             if (expression.Kind() == "CallExpression" && expression.First() >= 0)
-            { symbol = semantic.Fact(expression.First()).SymbolId(); }
+            {
+                SyntaxNode callee = tree.Node(expression.First()); symbol = semantic.Fact(expression.First()).SymbolId();
+                int parent = symbol >= 0 ? semantic.GetSymbol(symbol).Parent() : -1;
+                if (parent < 0 && callee.Kind() == "MemberExpression" && callee.First() >= 0)
+                { parent = FindTypeSymbol(semantic, semantic.Fact(callee.First()).TypeId()); }
+                if (symbol >= 0) { declaration = semantic.GetSymbol(symbol).Declaration(); }
+                if (declaration < 0)
+                { declaration = FindBestOverload(tree, semantic, callee.Text(), syntaxId, parent); }
+                if (declaration < 0)
+                { declaration = FindFunctionDeclarationByArity(tree, semantic, tree.Root(),
+                    callee.Text(), expression.ChildCount(), parent); }
+                if (declaration >= 0)
+                { return StringType(semantic, semantic.Types().Intern(
+                    tree.Node(declaration).SemanticTypeText())); }
+            }
             if (symbol < 0) { return false; }
             int declaredType = semantic.GetSymbol(symbol).TypeId();
             if (declaredType < 0) { return false; }
