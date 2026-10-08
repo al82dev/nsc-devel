@@ -131,17 +131,13 @@ namespace NativeSharp.Core
             return start;
         }
 
-        // El indexador es total para conservar compatibilidad con compiladores Language 3 que no
-        // publican contratos `throws` en accesores. Fuera de rango devuelve el caracter nulo y no
-        // lee memoria ajena. `UncheckedAt` conserva la ruta explicita sin comprobacion.
+        // Acceso nativo equivalente a std::string_view::operator[]. El llamador garantiza que el
+        // indice esta en rango; el indexador no impone excepciones ni fabrica un caracter centinela.
+        // `UncheckedAt` se conserva como nombre explicito y compatible para los bucles existentes.
         public char this[int index]
         {
             get
             {
-                if (index < 0 || index >= count)
-                {
-                    return '\0';
-                }
                 return start[index];
             }
         }

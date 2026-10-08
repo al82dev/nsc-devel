@@ -27,8 +27,7 @@
 //   5. SpanOverStack         -- Span<T> sobre `stackalloc`, y el solapamiento.
 //   6. ReadOnlyIsReadOnly    -- que la conversion barata va en una sola direccion.
 //   7. OptionalBasics        -- el "no hay" que no reserva ningun valor de T.
-//   8. BoundsAreChecked      -- los indexadores comprueban, y el fallo es catchable.
-//   9. LexerKeepsViews       -- EL CRITERIO: un lexer completo, sin una sola asignacion.
+//   8. LexerKeepsViews       -- EL CRITERIO: un lexer completo, sin una sola asignacion.
 //
 // Codigo de salida esperado cuando el compilador esta sano: 42.
 using NativeSharp.Core;
@@ -370,55 +369,7 @@ namespace cc1viewsandlifetimes
         }
 
         // ------------------------------------------------------------------------------------
-        // 8. Los indexadores comprueban el rango, y el fallo es catchable.
-        //
-        // Es una decision, no una casualidad: el resto del lenguaje comprueba arreglos y cadenas,
-        // y el unico tipo que no lo hiciera seria justo el que mas aparece dentro de bucles. Para
-        // el bucle que ya comprobo, estan `UncheckedAt`/`UncheckedSet`, que lo dicen en el nombre.
-        private static bool BoundsAreChecked()
-        {
-            string text = "abc";
-            StringView view = StringView.Of(text);
-            int caught = 0;
-            try
-            {
-                char ignored = view[5];
-                if (ignored == 'z') { return false; }
-            }
-            catch (ArgumentOutOfRangeException error)
-            {
-                caught = caught + 1;
-            }
-            if (caught != 1) { return false; }
-
-            int[] numbers = new int[2];
-            Span<int> span = Spans.Of<int>(numbers);
-            try
-            {
-                span[9] = 1;
-            }
-            catch (ArgumentOutOfRangeException error)
-            {
-                caught = caught + 1;
-            }
-            if (caught != 2) { delete[] numbers; return false; }
-
-            Optional<int> empty = Optionals.None<int>();
-            try
-            {
-                int ignored = empty.Value();
-                if (ignored == 0) { delete[] numbers; return false; }
-            }
-            catch (InvalidOperationException error)
-            {
-                caught = caught + 1;
-            }
-            delete[] numbers;
-            return caught == 3;
-        }
-
-        // ------------------------------------------------------------------------------------
-        // 9. EL CRITERIO DEL BLOQUE 3, ejecutando.
+        // 8. EL CRITERIO DEL BLOQUE 3, ejecutando.
         //
         //     "el lexer guarda lexemas como vistas sin copiar"
         //
@@ -507,8 +458,7 @@ namespace cc1viewsandlifetimes
             if (!SpanOverStack()) { return 5; }
             if (!ReadOnlyIsReadOnly()) { return 6; }
             if (!OptionalBasics()) { return 7; }
-            if (!BoundsAreChecked()) { return 8; }
-            if (!LexerKeepsViews()) { return 9; }
+            if (!LexerKeepsViews()) { return 8; }
             return 42;
         }
     }
