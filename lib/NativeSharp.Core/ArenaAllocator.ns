@@ -52,6 +52,9 @@ namespace NativeSharp.Core
         private ArenaBlock actual;
         private int tamanoBloque;
         private int cuantosBloques;
+        private long asignacionesTotales;
+        private long asignacionesActivas;
+        private int reinicios;
 
         // 64 KiB por bloque. Suficientemente grande para que un AST normal quepa en uno o dos
         // --y por tanto para que el coste de encadenar sea irrelevante-- y suficientemente pequeno
@@ -64,6 +67,9 @@ namespace NativeSharp.Core
             primero = new ArenaBlock(tamanoBloque);
             actual = primero;
             cuantosBloques = 1;
+            asignacionesTotales = 0;
+            asignacionesActivas = 0;
+            reinicios = 0;
         }
 
         public ArenaAllocator(int tamanoDeBloque)
@@ -74,6 +80,9 @@ namespace NativeSharp.Core
             primero = new ArenaBlock(tamanoBloque);
             actual = primero;
             cuantosBloques = 1;
+            asignacionesTotales = 0;
+            asignacionesActivas = 0;
+            reinicios = 0;
         }
 
         public int BlockSize() { return tamanoBloque; }
@@ -135,6 +144,8 @@ namespace NativeSharp.Core
             byte* baseDelBloque = Spans.Of<byte>(actual.almacen).Data();
             byte* entregado = baseDelBloque + actual.usado;
             actual.usado = actual.usado + pedido;
+            asignacionesTotales = asignacionesTotales + 1;
+            asignacionesActivas = asignacionesActivas + 1;
             return entregado;
         }
 
@@ -154,7 +165,19 @@ namespace NativeSharp.Core
                 bloque = bloque.siguiente;
             }
             actual = primero;
+            asignacionesActivas = 0;
+            reinicios = reinicios + 1;
         }
+
+        // Arena allocations remain active until Reset or arena destruction. These counters expose
+        // logical allocation obligations rather than operating-system block ownership.
+        public long TotalAllocationCount() { return asignacionesTotales; }
+
+        public long ActiveAllocationCount() { return asignacionesActivas; }
+
+        public int ResetCount() { return reinicios; }
+
+        public bool HasOutstandingAllocations() { return asignacionesActivas != 0; }
 
         public override long BytesUsed()
         {
