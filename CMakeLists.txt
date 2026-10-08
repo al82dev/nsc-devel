@@ -895,6 +895,13 @@ if(WIN32)
     install(SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyInstalledNativeSharp.cmake")
 endif()
 
+option(NSC_TEST_INFRASTRUCTURE_V2
+    "Build only the consolidated unit executable and the manifest/suite harnesses" OFF)
+set(NSC_TEST_SUITE_PREFIX "" CACHE PATH
+    "A: prefix providing the NativeSharp libraries used by isolated O0 tests")
+set(NSC_TEST_JOBS "1" CACHE STRING
+    "Maximum parallel manifest cases used by the consolidated O0 harness")
+
 # =====================================================================================
 # NSC_TEST_COMPILER -- EL COMPILADOR QUE MIDE CTEST.
 #
@@ -905,16 +912,20 @@ endif()
 # `-DNSC_TEST_COMPILER=<ruta>`. Ese override es explicito y se valida al configurar; nunca se
 # selecciona una instalacion externa de forma silenciosa.
 # =====================================================================================
-set(NSC_TEST_COMPILER "C:/native-sharp/bin/nsc.exe" CACHE FILEPATH
-    "Ejecutable nsc oficial que mide ctest")
+if(NOT NSC_TEST_INFRASTRUCTURE_V2)
+    set(NSC_TEST_COMPILER "C:/native-sharp/bin/nsc.exe" CACHE FILEPATH
+        "Ejecutable nsc oficial que mide ctest")
+    message(STATUS "ctest mide el compilador: ${NSC_TEST_COMPILER}")
+    if(NOT EXISTS "${NSC_TEST_COMPILER}")
+        message(WARNING
+            "NSC_TEST_COMPILER todavia no existe: ${NSC_TEST_COMPILER} -- los tests que lo "
+            "invocan saldran `Not Run`; construya o corrija el override explicito")
+    endif()
+else()
+    message(STATUS "ctest v2 mide exclusivamente el target nsc construido en este arbol")
+endif()
 set(NSC_BOOTSTRAP_LOCK "${CMAKE_CURRENT_SOURCE_DIR}/selfhost/bootstrap/bootstrap.lock" CACHE FILEPATH
     "Lock físico del bootstrap; nscbuilder usa una copia inmutable por corrida")
-message(STATUS "ctest mide el compilador: ${NSC_TEST_COMPILER}")
-if(NOT EXISTS "${NSC_TEST_COMPILER}")
-    message(WARNING
-        "NSC_TEST_COMPILER todavia no existe: ${NSC_TEST_COMPILER} -- los tests que lo "
-        "invocan saldran `Not Run`; construya o corrija el override explicito")
-endif()
 
 set(NSC_TEST_NSASM "" CACHE FILEPATH
     "Ejecutable NSAsm opcional para gates de integracion de codigo especializado")
@@ -922,6 +933,89 @@ set(NSC_TEST_NSASM "" CACHE FILEPATH
 if(NSC_BUILD_TESTS)
     enable_testing()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+    if(NSC_TEST_INFRASTRUCTURE_V2)
+        if(NOT IS_DIRECTORY "${NSC_TEST_SUITE_PREFIX}/bin" OR
+           NOT IS_DIRECTORY "${NSC_TEST_SUITE_PREFIX}/lib")
+            message(FATAL_ERROR
+                "NSC_TEST_INFRASTRUCTURE_V2 requires NSC_TEST_SUITE_PREFIX with bin and lib")
+        endif()
+        if(NOT NSC_TEST_JOBS MATCHES "^[1-9][0-9]*$")
+            message(FATAL_ERROR "NSC_TEST_JOBS must be a positive integer")
+        endif()
+
+        set(_nsc_test_path_entries)
+        if(DEFINED ENV{SystemRoot})
+            file(TO_CMAKE_PATH "$ENV{SystemRoot}" _nsc_test_system_root)
+            list(APPEND _nsc_test_path_entries
+                "${_nsc_test_system_root}/System32"
+                "${_nsc_test_system_root}")
+        endif()
+        foreach(_nsc_test_tool IN ITEMS
+                "${CMAKE_COMMAND}"
+                "${CMAKE_MAKE_PROGRAM}"
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_C_COMPILER}"
+                "${CMAKE_CXX_COMPILER}"
+                "${NSC_NSLINK_EXECUTABLE}")
+            get_filename_component(_nsc_test_tool_directory "${_nsc_test_tool}" DIRECTORY)
+            list(APPEND _nsc_test_path_entries "${_nsc_test_tool_directory}")
+        endforeach()
+        list(REMOVE_DUPLICATES _nsc_test_path_entries)
+        list(JOIN _nsc_test_path_entries "\\;" _nsc_test_execution_path)
+        set(NSC_TEST_V2_ENVIRONMENT
+            "PATH=${_nsc_test_execution_path}"
+            "NSC_LINKER=${NSC_NSLINK_EXECUTABLE}"
+            "NS_LIB_ROOT=${NSC_TEST_SUITE_PREFIX}/lib"
+            "NSC_WINDOWS_RUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}")
+
+        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
+        add_subdirectory(tests/unit)
+
+        add_test(
+            NAME nsc.harness.cases-o0
+            COMMAND "${Python3_EXECUTABLE}" -B
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness/run_nsc_tests.py"
+                --nsc "$<TARGET_FILE:nsc>"
+                --nslink "${NSC_NSLINK_EXECUTABLE}"
+                --library-root "${NSC_TEST_SUITE_PREFIX}/lib"
+                --runtime-library "${NSC_WINDOWS_RUNTIME_LIBRARY}"
+                --jobs "${NSC_TEST_JOBS}"
+                --work-root "${CMAKE_BINARY_DIR}/harness-work"
+                --results-root "${CMAKE_BINARY_DIR}/harness-results"
+                --all)
+        set_tests_properties(
+            nsc.harness.cases-o0
+            PROPERTIES
+                ENVIRONMENT "${NSC_TEST_V2_ENVIRONMENT}"
+                TIMEOUT 1800)
+
+        add_test(
+            NAME nsc.harness.specialized-o0
+            COMMAND "${Python3_EXECUTABLE}" -B
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness/run_nsc_tests.py"
+                --nsc "$<TARGET_FILE:nsc>"
+                --nslink "${NSC_NSLINK_EXECUTABLE}"
+                --build-dir "${CMAKE_BINARY_DIR}"
+                --suite-prefix "${NSC_TEST_SUITE_PREFIX}"
+                --jobs 1
+                # SH44 deliberately adds a long path suffix.  Keep the v2 prefix
+                # short so the fixture, rather than harness nesting, owns that
+                # path-length budget on Windows.
+                --work-root "${CMAKE_BINARY_DIR}/w"
+                --results-root "${CMAKE_BINARY_DIR}/harness-results"
+                --all-suites)
+        set_tests_properties(
+            nsc.harness.specialized-o0
+            PROPERTIES
+                ENVIRONMENT "${NSC_TEST_V2_ENVIRONMENT}"
+                RUN_SERIAL TRUE
+                TIMEOUT 7200)
+
+        add_custom_target(pruebas DEPENDS nsc nsc_unit_tests)
+        message(STATUS
+            "test infrastructure v2: 1 consolidated executable, manifest harness and suite adapter")
+    else()
 
     add_executable(
         nsc_ns3_t00_constitution_tests
@@ -6374,4 +6468,5 @@ if(NSC_BUILD_TESTS)
     endif()
     add_custom_target(pruebas DEPENDS ${_nsc_pruebas})
     message(STATUS "objetivo `pruebas`: ${_nsc_pruebas_n} ejecutables, sin `nsc`")
+    endif()
 endif()

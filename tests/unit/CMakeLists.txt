@@ -270,3 +270,9 @@ target_link_libraries(
 nsc_enable_warnings(nsc_unit_tests)
 
 add_test(NAME nsc.unit.consolidated COMMAND nsc_unit_tests --all)
+
+if(NSC_TEST_INFRASTRUCTURE_V2)
+    set_property(
+        TEST nsc.unit.consolidated
+        PROPERTY ENVIRONMENT "${NSC_TEST_V2_ENVIRONMENT}")
+endif()

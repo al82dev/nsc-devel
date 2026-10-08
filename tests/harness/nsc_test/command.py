@@ -17,6 +17,8 @@ LINK_KINDS = {CaseKind.LINK_RUN, CaseKind.EMIT_LIBRARY}
 class NscCommandBuilder:
     nsc: Path
     nslink: Path | None = None
+    library_root: Path | None = None
+    runtime_library: Path | None = None
 
     def __post_init__(self) -> None:
         resolved_nsc = self.nsc.resolve()
@@ -28,6 +30,16 @@ class NscCommandBuilder:
             if not resolved_nslink.is_file():
                 raise ValueError(f"NSLink does not exist: {resolved_nslink}")
             object.__setattr__(self, "nslink", resolved_nslink)
+        if self.library_root is not None:
+            resolved_library_root = self.library_root.resolve()
+            if not resolved_library_root.is_dir():
+                raise ValueError(f"library root does not exist: {resolved_library_root}")
+            object.__setattr__(self, "library_root", resolved_library_root)
+        if self.runtime_library is not None:
+            resolved_runtime = self.runtime_library.resolve()
+            if not resolved_runtime.is_file():
+                raise ValueError(f"runtime library does not exist: {resolved_runtime}")
+            object.__setattr__(self, "runtime_library", resolved_runtime)
 
     def build(self, case: TestCase, workspace: CaseWorkspace) -> ProcessRequest:
         if case.kind in LINK_KINDS and self.nslink is None:
@@ -58,6 +70,10 @@ class NscCommandBuilder:
         environment["TMP"] = str(workspace.root)
         if self.nslink is not None:
             environment["NSC_LINKER"] = str(self.nslink)
+        if self.library_root is not None:
+            environment["NS_LIB_ROOT"] = str(self.library_root)
+        if self.runtime_library is not None:
+            environment["NSC_WINDOWS_RUNTIME_LIBRARY"] = str(self.runtime_library)
         return ProcessRequest(
             command=tuple(command),
             working_directory=workspace.root,

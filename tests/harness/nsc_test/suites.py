@@ -163,8 +163,27 @@ class SuiteAdapter:
         command = list(suite.command)
         command[0] = self._tool(command[0])
         adapted = [command[0]]
-        for argument in command[1:]:
-            adapted.append(self._argument(argument))
+        index = 1
+        while index < len(command):
+            argument = command[index]
+            adapted.append(argument)
+            # Some historical Python owners receive tools as positional option
+            # values instead of CMake -D definitions.  Freeze both values here;
+            # otherwise a passing suite could silently exercise an installed NSC
+            # or write into the legacy build tree.
+            if argument == "--compiler" and index + 1 < len(command):
+                adapted.append(self.nsc.as_posix())
+                index += 2
+                continue
+            if argument == "--work-root" and index + 1 < len(command):
+                suite_work = (self.evidence_root / suite.identifier / "work").resolve()
+                if not suite_work.is_relative_to(self.evidence_root):
+                    raise SuiteError(f"suite work root escapes evidence root: {suite.identifier}")
+                adapted.append(suite_work.as_posix())
+                index += 2
+                continue
+            adapted[-1] = self._argument(argument)
+            index += 1
         environment = {
             "NSC_LINKER": str(self.nslink) if self.nslink is not None else "",
             "NS_ROOT": str(self.prefix),

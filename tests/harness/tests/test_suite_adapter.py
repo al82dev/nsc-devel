@@ -99,6 +99,58 @@ class SuiteAdapterTests(unittest.TestCase):
         finally:
             remove_tree_iterative(temporary)
 
+    def test_replaces_positional_compiler_and_work_root_options(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        temporary = Path(tempfile.mkdtemp(dir=repo, prefix="suite-options-"))
+        try:
+            owner = temporary / "owner.py"
+            owner.write_text("raise SystemExit(0)\n", encoding="utf-8")
+            matrix = temporary / "matrix.json"
+            matrix.write_text(
+                json.dumps(
+                    {
+                        "tests": [
+                            {
+                                "ctest_id": "nsc.test.command-options",
+                                "primary_component": "infrastructure",
+                                "destination": "KEEP_SPECIALIZED",
+                                "owner_path": owner.relative_to(repo).as_posix(),
+                                "command": [
+                                    sys.executable,
+                                    owner.as_posix(),
+                                    "--compiler",
+                                    "A:/native-sharp-3.0-baseline/bin/nsc.exe",
+                                    "--work-root",
+                                    "A:/nsc-devel/build-test-nslink/old-work",
+                                ],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            nsc = temporary / "nsc.exe"
+            nsc.write_bytes(b"nsc")
+            build = temporary / "build"
+            build.mkdir()
+            prefix = temporary / "prefix"
+            (prefix / "bin").mkdir(parents=True)
+            (prefix / "lib").mkdir()
+            evidence = temporary / "evidence"
+            suite = SuiteCatalog.load(matrix, repo).require("nsc.test.command-options")
+            request = SuiteAdapter(nsc, None, repo, build, prefix, evidence).build(suite)
+            compiler_index = request.command.index("--compiler") + 1
+            work_index = request.command.index("--work-root") + 1
+            self.assertEqual(request.command[compiler_index], nsc.resolve().as_posix())
+            self.assertEqual(
+                request.command[work_index],
+                (evidence / suite.identifier / "work").resolve().as_posix(),
+            )
+            self.assertNotIn("native-sharp-3.0-baseline", " ".join(request.command))
+            self.assertNotIn("build-test-nslink", " ".join(request.command))
+        finally:
+            remove_tree_iterative(temporary)
+
     def test_orders_selfhost_consumers_after_generation(self) -> None:
         repo = Path(__file__).resolve().parents[3]
         catalog = SuiteCatalog.load(

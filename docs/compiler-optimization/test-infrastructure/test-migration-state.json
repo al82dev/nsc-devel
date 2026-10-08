@@ -388,6 +388,30 @@
       "normalized_results_identical": true,
       "exclusive_policy": "barrier",
       "evidence": "TANDA-TEST-INFRA-17-PARALELISMO-CONTROLADO.md"
+    },
+    "tanda18-v2-o0-graph": {
+      "state": "VERIFIED",
+      "cmake_option": "NSC_TEST_INFRASTRUCTURE_V2",
+      "legacy_inventory_count": 684,
+      "legacy_traceability": "docs/compiler-optimization/test-infrastructure/test-destination-matrix.json",
+      "ctest_entry_count": 3,
+      "ctest_entries": [
+        "nsc.unit.consolidated",
+        "nsc.harness.cases-o0",
+        "nsc.harness.specialized-o0"
+      ],
+      "consolidated_internal_checks": 289,
+      "manifest_cases": 76,
+      "specialized_suites": 28,
+      "unit_passed": 289,
+      "manifest_passed": 76,
+      "specialized_passed": 28,
+      "selected_compiler": "A:/nsc-devel/build-test-v2/bin/nsc.exe",
+      "selected_nslink": "A:/nslink-devel/bin/release/nslink.exe",
+      "old_installed_nsc_references": 0,
+      "old_build_tree_references": 0,
+      "legacy_graph": "preserved inactive because non-O0 and prohibited owners remain outside this migration scope",
+      "evidence": "TANDA-TEST-INFRA-18-CORTE-GRAFO-V2.md"
     }
   }
 }

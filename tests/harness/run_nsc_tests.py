@@ -36,6 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="NativeSharp compiler test harness")
     parser.add_argument("--nsc", required=True, type=existing_file)
     parser.add_argument("--nslink", type=existing_file)
+    parser.add_argument("--library-root", type=Path)
+    parser.add_argument("--runtime-library", type=existing_file)
     parser.add_argument(
         "--catalog",
         type=Path,
@@ -111,7 +113,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"cases={len(selected)}")
         return 0
 
-    builder = NscCommandBuilder(arguments.nsc, arguments.nslink)
+    builder = NscCommandBuilder(
+        arguments.nsc,
+        arguments.nslink,
+        arguments.library_root,
+        arguments.runtime_library,
+    )
 
     def execute_case(case):
         workspace = CaseWorkspace.create(case, arguments.work_root)
