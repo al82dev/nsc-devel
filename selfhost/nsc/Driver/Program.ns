@@ -195,7 +195,17 @@ namespace NativeSharp.Compiler.Driver
             int line = 0;
             int column = 0;
             source.GetLineColumn(4, out line, out column);
-            if (line != 3 || column != 1) { return 16; }
+            if (line != 3 || column != 1)
+            {
+                raii StringBuilder mismatch = new StringBuilder();
+                mismatch.Append("SH04 line-column mismatch: line=");
+                mismatch.Append(line);
+                mismatch.Append(" column=");
+                mismatch.Append(column);
+                raii string mismatchText = mismatch.ToOwnedString();
+                Console.ErrorWriteLine(mismatchText);
+                return 16;
+            }
 
             raii Diagnostic unknown = DiagnosticCatalog.UnknownOption("--bad");
             raii string rendered = DiagnosticRenderer.Human(unknown);
