@@ -319,6 +319,7 @@ namespace NativeSharp.Compiler.CodeGen
         {
             // Ownership changes lifetime semantics, not the LLVM representation of a value.
             raii string physical = PhysicalTypeName(type);
+            TraceScalarClassification(type, physical);
             if (physical == "void") { return LLVM.LLVMVoidTypeInContext(context); }
             if (physical == "bool") { return LLVM.LLVMInt1TypeInContext(context); }
             if (physical == "byte" || physical == "sbyte" || physical == "char")
@@ -367,10 +368,14 @@ namespace NativeSharp.Compiler.CodeGen
         private static void* AbiValueType(void* context, SemanticModel semantic, string type)
         {
             raii string physical = PhysicalTypeName(type);
+            int semanticAggregate = AggregateSize(semantic, type);
             int aggregateSize = AggregateSize(semantic, physical);
+            int semanticEnum = EnumSize(semantic, type);
+            int physicalEnum = EnumSize(semantic, physical);
+            TracePhysicalAbi(semantic, type, physical, semanticAggregate, aggregateSize,
+                semanticEnum, physicalEnum);
             if (DirectAggregateSize(aggregateSize)) { return DirectAggregateType(context, aggregateSize); }
-            int enumSize = EnumSize(semantic, physical);
-            if (DirectAggregateSize(enumSize)) { return DirectAggregateType(context, enumSize); }
+            if (DirectAggregateSize(physicalEnum)) { return DirectAggregateType(context, physicalEnum); }
             return ScalarType(context, physical);
         }
 
@@ -1039,6 +1044,56 @@ namespace NativeSharp.Compiler.CodeGen
             return SemanticIntegerBits(semantic, type) != 0 || FloatingScalar(type);
         }
 
+        // NSC_SH41_181_DIAGNOSTIC_BEGIN
+        // Temporary evidence for test 181. Remove after the causal comparison is complete.
+        private static void TraceScalarClassification(string type, string physical)
+        {
+            if (type == physical) { return; }
+            raii StringBuilder message = new StringBuilder();
+            message.Append("[NSC_SH41_181_DIAGNOSTIC][SCALAR_TYPE] semantic='");
+            message.Append(type); message.Append("' physical='"); message.Append(physical);
+            message.Append("'"); raii string rendered = message.ToOwnedString();
+            Console.ErrorWriteLine(rendered);
+        }
+
+        private static void TracePhysicalConversion(SemanticModel semantic,
+            string source, string sourcePhysical, string destination, string destinationPhysical)
+        {
+            bool sourceGeneric = GenericPlaceholder(source);
+            bool destinationGeneric = GenericPlaceholder(destination);
+            if (source == sourcePhysical && destination == destinationPhysical &&
+                !sourceGeneric && !destinationGeneric)
+            { return; }
+            raii StringBuilder message = new StringBuilder();
+            message.Append("[NSC_SH41_181_DIAGNOSTIC][CONVERT_SCALAR] source='");
+            message.Append(source); message.Append("' source_physical='");
+            message.Append(sourcePhysical); message.Append("' destination='");
+            message.Append(destination); message.Append("' destination_physical='");
+            message.Append(destinationPhysical); message.Append("' source_generic=");
+            message.Append(sourceGeneric ? "true" : "false"); message.Append(" destination_generic=");
+            message.Append(destinationGeneric ? "true" : "false"); message.Append(" source_scalar=");
+            message.Append(PhysicalValueScalar(semantic, sourcePhysical) ? "true" : "false");
+            message.Append(" destination_scalar=");
+            message.Append(PhysicalValueScalar(semantic, destinationPhysical) ? "true" : "false");
+            raii string rendered = message.ToOwnedString(); Console.ErrorWriteLine(rendered);
+        }
+
+        private static void TracePhysicalAbi(SemanticModel semantic, string type, string physical,
+            int semanticAggregate, int physicalAggregate, int semanticEnum, int physicalEnum)
+        {
+            if (type == physical && semanticAggregate == physicalAggregate && semanticEnum == physicalEnum)
+            { return; }
+            raii StringBuilder message = new StringBuilder();
+            message.Append("[NSC_SH41_181_DIAGNOSTIC][ABI_VALUE] semantic='");
+            message.Append(type); message.Append("' physical='"); message.Append(physical);
+            message.Append("' aggregate_semantic="); message.Append(semanticAggregate);
+            message.Append(" aggregate_physical="); message.Append(physicalAggregate);
+            message.Append(" enum_semantic="); message.Append(semanticEnum);
+            message.Append(" enum_physical="); message.Append(physicalEnum);
+            raii string rendered = message.ToOwnedString(); Console.ErrorWriteLine(rendered);
+        }
+        // NSC_SH41_181_DIAGNOSTIC_END
+
         private static void* BoxGenericScalar(void* module, void* builder, void* value)
         {
             void* context = LLVM.LLVMGetModuleContext(module);
@@ -1072,6 +1127,7 @@ namespace NativeSharp.Compiler.CodeGen
             if (source == destination) { return value; }
             raii string sourcePhysical = PhysicalTypeName(source);
             raii string destinationPhysical = PhysicalTypeName(destination);
+            TracePhysicalConversion(semantic, source, sourcePhysical, destination, destinationPhysical);
             bool sourcePointer = sourcePhysical.Length > 0 && sourcePhysical[sourcePhysical.Length - 1] == '*';
             bool destinationPointer = destinationPhysical.Length > 0 &&
                 destinationPhysical[destinationPhysical.Length - 1] == '*';
