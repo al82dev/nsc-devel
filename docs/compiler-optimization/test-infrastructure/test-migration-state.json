@@ -412,6 +412,27 @@
       "old_build_tree_references": 0,
       "legacy_graph": "preserved inactive because non-O0 and prohibited owners remain outside this migration scope",
       "evidence": "TANDA-TEST-INFRA-18-CORTE-GRAFO-V2.md"
+    },
+    "tanda19-final-measurement": {
+      "state": "VERIFIED",
+      "tool": "tools/measure_test_infrastructure.py",
+      "raw_metrics": "TANDA-TEST-INFRA-19-METRICS.json",
+      "legacy_clean_build_seconds": 455.686577,
+      "v2_clean_build_seconds": 281.515007,
+      "clean_build_reduction_percent": 38.22,
+      "legacy_logical_executables": 430,
+      "v2_logical_executables": 2,
+      "executable_reduction_percent": 99.53,
+      "legacy_unique_build_processes": 1985,
+      "v2_unique_build_processes": 562,
+      "process_reduction_percent": 71.69,
+      "legacy_clean_disk_bytes": 15278373651,
+      "v2_clean_disk_bytes": 302288488,
+      "disk_reduction_percent": 98.02,
+      "o0_v2_wall_seconds": 1614.11,
+      "legacy_o0_wall_seconds": null,
+      "legacy_o0_reason": "not executed because baseline and non-O0 operations are prohibited by scope",
+      "evidence": "TANDA-TEST-INFRA-19-MEDICION-FINAL.md"
     }
   }
 }
