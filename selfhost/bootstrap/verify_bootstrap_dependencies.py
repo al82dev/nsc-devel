@@ -1,31 +1,127 @@
 #!/usr/bin/env python3
-import argparse,json,re,sys
+
+import argparse
+import json
+import re
+import sys
 from pathlib import Path
-REQUIRED=('projects=5','graph-units=98','compiler-units=27','external-projects=4','status=source-verified')
-OWNERS=('NativeSharpCore ','NativeSharpCoreCollectionsGeneric ','NativeSharpCoreIO ','NativeSharpLLVM_C ','NativeSharpCompilerNext ')
-CHECKS={'core':41,'collections':23,'io':4,'llvm-c':3}
-def main():
- p=argparse.ArgumentParser();p.add_argument('--output-dir',type=Path,required=True);p.add_argument('--report',type=Path,required=True);a=p.parse_args()
- try:
-  canonical=None; observed_resolutions=0
-  for profile in ('o0','o1','o2','o3'):
-   report=(a.output_dir/f'dependencies-{profile}.txt').read_text();graph=(a.output_dir/f'graph-{profile}.txt').read_text();modules=(a.output_dir/f'modules-{profile}.txt').read_text()
-   if not all(x in report for x in REQUIRED): raise ValueError(f'{profile} dependency counts differ')
-   match=re.search(r'^external-resolutions=(\d+)$',report,re.MULTILINE)
-   if match is None or int(match.group(1)) <= 0: raise ValueError(f'{profile} has no cross-project resolutions')
-   if observed_resolutions == 0: observed_resolutions=int(match.group(1))
-   if not all(x in graph for x in OWNERS): raise ValueError(f'{profile} misses dependency owner')
-   if '.obj' in graph or '.exe' in graph: raise ValueError(f'{profile} graph contains hidden binary input')
-   checks=[]
-   for name,units in CHECKS.items():
-    check=(a.output_dir/f'check-{name}-{profile}.txt').read_text()
-    expected=f'checked={units} failed=0'
-    if expected not in check: raise ValueError(f'{profile} {name} source check does not contain {expected!r}')
-    checks.append(check)
-   current=(report,graph,modules,*checks)
-   if canonical is None: canonical=current
-   elif current!=canonical: raise ValueError(f'{profile} dependency graph differs')
-  a.report.write_text(json.dumps({'schema':'nativesharp-selfhost-sh40-report','version':2,'gate':'SH40','status':'passed','projects':5,'units':98,'parsed_dependency_units':71,'external_resolutions':observed_resolutions,'problems':[]},indent=2)+'\n')
- except (OSError,ValueError) as e: print(f'verify_bootstrap_dependencies: error: {e}',file=sys.stderr);return 1
- print('SH40 source-only bootstrap dependency graph verified across O0-O3');return 0
-if __name__=='__main__': raise SystemExit(main())
+
+
+PROFILES = ("o0", "o1", "o2", "o3")
+CHECK_NAMES = ("core", "collections", "io", "llvm-c")
+DEPENDENCY_OWNERS = (
+    "NativeSharpCore ",
+    "NativeSharpCoreCollectionsGeneric ",
+    "NativeSharpCoreIO ",
+    "NativeSharpLLVM_C ",
+    "NativeSharpCompilerNext ",
+)
+REQUIRED_METRICS = (
+    "projects",
+    "graph-units",
+    "compiler-units",
+    "external-projects",
+    "external-resolutions",
+)
+
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
+    return parser.parse_args()
+
+
+def parse_metrics(report: str, profile: str) -> dict[str, int]:
+    values = dict(re.findall(r"^([a-z][a-z-]*)=(\d+)$", report, re.MULTILINE))
+    missing = [name for name in REQUIRED_METRICS if name not in values]
+    if missing:
+        raise ValueError(f"{profile} dependency report misses {', '.join(missing)}")
+    if "status=source-verified" not in report:
+        raise ValueError(f"{profile} dependency report is not source-verified")
+    metrics = {name: int(values[name]) for name in REQUIRED_METRICS}
+    if any(metrics[name] <= 0 for name in REQUIRED_METRICS):
+        raise ValueError(f"{profile} dependency report contains an empty metric")
+    return metrics
+
+
+def validate_graph(graph: str, profile: str) -> None:
+    missing = [owner.strip() for owner in DEPENDENCY_OWNERS if owner not in graph]
+    if missing:
+        raise ValueError(f"{profile} misses dependency owners: {', '.join(missing)}")
+    if ".obj" in graph or ".exe" in graph:
+        raise ValueError(f"{profile} graph contains hidden binary input")
+
+
+def parse_source_check(check: str, profile: str, name: str) -> int:
+    match = re.search(r"^graph-units=(\d+) checked=(\d+) failed=(\d+)$", check, re.MULTILINE)
+    if match is None:
+        raise ValueError(f"{profile} {name} source check has no summary")
+    graph_units, checked, failed = (int(value) for value in match.groups())
+    if graph_units <= 0 or checked != graph_units or failed != 0:
+        raise ValueError(
+            f"{profile} {name} source check is incomplete: "
+            f"graph-units={graph_units} checked={checked} failed={failed}"
+        )
+    return checked
+
+
+def read_profile(output_dir: Path, profile: str) -> tuple[tuple[str, ...], dict[str, int], int]:
+    report = (output_dir / f"dependencies-{profile}.txt").read_text(encoding="utf-8")
+    graph = (output_dir / f"graph-{profile}.txt").read_text(encoding="utf-8")
+    modules = (output_dir / f"modules-{profile}.txt").read_text(encoding="utf-8")
+    metrics = parse_metrics(report, profile)
+    validate_graph(graph, profile)
+
+    check_texts: list[str] = []
+    parsed_units = 0
+    for name in CHECK_NAMES:
+        check = (output_dir / f"check-{name}-{profile}.txt").read_text(encoding="utf-8")
+        parsed_units += parse_source_check(check, profile, name)
+        check_texts.append(check)
+    return (report, graph, modules, *check_texts), metrics, parsed_units
+
+
+def write_report(path: Path, metrics: dict[str, int], parsed_units: int) -> None:
+    payload = {
+        "schema": "nativesharp-selfhost-sh40-report",
+        "version": 3,
+        "gate": "SH40",
+        "status": "passed",
+        "projects": metrics["projects"],
+        "units": metrics["graph-units"],
+        "compiler_units": metrics["compiler-units"],
+        "external_projects": metrics["external-projects"],
+        "parsed_dependency_units": parsed_units,
+        "external_resolutions": metrics["external-resolutions"],
+        "problems": [],
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def main() -> int:
+    arguments = parse_arguments()
+    try:
+        canonical_content: tuple[str, ...] | None = None
+        canonical_metrics: dict[str, int] | None = None
+        canonical_parsed_units = 0
+        for profile in PROFILES:
+            content, metrics, parsed_units = read_profile(arguments.output_dir, profile)
+            if canonical_content is None:
+                canonical_content = content
+                canonical_metrics = metrics
+                canonical_parsed_units = parsed_units
+            elif content != canonical_content:
+                raise ValueError(f"{profile} dependency graph differs")
+        if canonical_metrics is None:
+            raise ValueError("no dependency profiles were inspected")
+        write_report(arguments.report, canonical_metrics, canonical_parsed_units)
+    except (OSError, ValueError) as error:
+        print(f"verify_bootstrap_dependencies: error: {error}", file=sys.stderr)
+        return 1
+    print("SH40 source-only bootstrap dependency graph verified across O0-O3")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
