@@ -89,17 +89,24 @@ Builder 2 tendrá fronteras separadas y ordenadas:
 | B2-057 | CMake/Ninja/compiladores resueltos por PATH o proyecto | IMPLEMENTADA en planes de herramientas |
 | B2-058 | NSC y herramientas conservan configuración Release/Debug elegida | IMPLEMENTADA en modelo |
 | B2-059 | Instalación conjunta sin leer artefactos desde C: | IMPLEMENTADA; no ejecutada en C: |
+| B2-060 | Paridad ejecutable uno a uno de los 684 IDs históricos | EN CURSO: 390 ejecutables, 41 bloqueados, 252 sin mapear y 1 ambiguo; sólo 132 en destino final |
 
 ## Gate de cierre corregido
 
 La tanda 20 no volverá a cerrarse hasta cumplir:
 
 ```ini
-capacidades_inventariadas = 59
-capacidades_implementadas + retiradas_explicitas = 59
+capacidades_inventariadas = 60
+capacidades_implementadas + retiradas_explicitas = 60
 capacidades_omitidas = 0
 reducciones_inferidas = 0
 builder_anterior_modificado = 0
+pruebas_historicas = 684
+pruebas_con_ruta_ejecutable_unica = 684
+pruebas_en_destino_final_correcto = 684
+pruebas_bloqueadas = 0
+pruebas_sin_mapear = 0
+pruebas_ambiguas = 0
 ```
 
 Las capacidades no autorizadas para ejecución deben quedar implementadas y

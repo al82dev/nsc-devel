@@ -61,6 +61,13 @@ No aplica a una regresión entre commits. La matriz inicial se deriva del árbol
 - Los 684 identificadores del inventario inicial.
 - Ningún caso puede desaparecer sin decisión, migración y evidencia de paridad.
 - No se modifica una expectativa para acomodar la infraestructura nueva.
+- Cada identificador histórico debe conservar una ruta individual, inequívoca y
+  realmente ejecutable; un conteo agregado, una suite que sólo cubra parte del
+  contrato o la existencia de un archivo no demuestran esa ruta.
+- La auditoría de paridad se realiza fila por fila sobre los 684 identificadores
+  y distingue entre registro, posibilidad de ejecución y destino final correcto.
+- Un adaptador transitorio puede conservar ejecución durante la migración, pero
+  no permite declarar migrado un caso destinado a manifiesto o unidad consolidada.
 
 ## Configuración autorizada
 
@@ -103,6 +110,9 @@ No aplica a una regresión entre commits. La matriz inicial se deriva del árbol
 - Las 20 tandas están implementadas y documentadas.
 - Cada tanda tiene validación proporcional, Markdown y commit autocontenido.
 - Los 684 casos conservan trazabilidad.
+- Los 684 casos poseen exactamente una ruta ejecutable comprobable.
+- Los 684 casos están en la capa final indicada por la matriz de destino.
+- No existen casos bloqueados, ambiguos ni sin mapear en la auditoría uno a uno.
 - La batería O0 completa puede ejecutarse con el compilador construido.
 - La infraestructura antigua se retira sólo después de paridad.
 - `nscbuilder2.py` integra al final la infraestructura terminada sin modificar `nscbuilder.py`.
