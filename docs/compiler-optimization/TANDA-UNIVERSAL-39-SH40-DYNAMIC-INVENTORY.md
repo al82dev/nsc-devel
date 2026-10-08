@@ -16,7 +16,8 @@ El verificador ahora:
 - descubre los conteos del reporte producido por el compilador;
 - exige que todas las métricas requeridas existan y sean positivas;
 - exige `source-verified`;
-- comprueba que cada proyecto analice todas sus unidades y tenga cero fallos;
+- comprueba que `checked` coincida con las unidades propias enumeradas, que no exceda el cierre
+  transitivo del grafo y que tenga cero fallos;
 - compara de forma exacta reportes, grafos, módulos y checks entre O0/O1/O2/O3;
 - deriva el JSON final de la evidencia observada.
 
@@ -35,4 +36,3 @@ esperado.
 2. Ejecutar `nsc.selfhost.bootstrap-dependencies` de forma dirigida.
 3. Ejecutar las etapas derivadas sólo después de que SH40 produzca el candidato.
 4. Incluir todo en la corrida integral final.
-

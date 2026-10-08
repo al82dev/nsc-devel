@@ -58,10 +58,12 @@ def parse_source_check(check: str, profile: str, name: str) -> int:
     if match is None:
         raise ValueError(f"{profile} {name} source check has no summary")
     graph_units, checked, failed = (int(value) for value in match.groups())
-    if graph_units <= 0 or checked != graph_units or failed != 0:
+    observed_units = len(re.findall(r"^unit \d+ ", check, re.MULTILINE))
+    if graph_units <= 0 or checked <= 0 or checked > graph_units or checked != observed_units or failed != 0:
         raise ValueError(
             f"{profile} {name} source check is incomplete: "
-            f"graph-units={graph_units} checked={checked} failed={failed}"
+            f"graph-units={graph_units} checked={checked} "
+            f"observed={observed_units} failed={failed}"
         )
     return checked
 
