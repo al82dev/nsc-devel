@@ -288,52 +288,22 @@ namespace NativeSharp.Compiler.CodeGen
             return AggregateSize(semantic, element);
         }
 
-        private static owned string PhysicalTypeName(string type)
-        {
-            raii string normalized = String.Copy(type);
-            bool qualified = true;
-            while (qualified)
-            {
-                qualified = false;
-                if (String.StartsWith(normalized, "owned "))
-                {
-                    raii string baseType = String.Substring(normalized, 6, normalized.Length - 6);
-                    normalized = move(baseType); qualified = true;
-                }
-                else if (String.StartsWith(normalized, "borrowed "))
-                {
-                    raii string baseType = String.Substring(normalized, 9, normalized.Length - 9);
-                    normalized = move(baseType); qualified = true;
-                }
-            }
-            return move(normalized);
-        }
-
-        private static bool PhysicalTypeIs(string type, string expected)
-        {
-            raii string physical = PhysicalTypeName(type);
-            return physical == expected;
-        }
-
         private static void* ScalarType(void* context, string type)
         {
-            // Ownership changes lifetime semantics, not the LLVM representation of a value.
-            raii string physical = PhysicalTypeName(type);
-            TraceScalarClassification(type, physical);
-            if (physical == "void") { return LLVM.LLVMVoidTypeInContext(context); }
-            if (physical == "bool") { return LLVM.LLVMInt1TypeInContext(context); }
-            if (physical == "byte" || physical == "sbyte" || physical == "char")
+            if (type == "void") { return LLVM.LLVMVoidTypeInContext(context); }
+            if (type == "bool") { return LLVM.LLVMInt1TypeInContext(context); }
+            if (type == "byte" || type == "sbyte" || type == "char")
             { return LLVM.LLVMInt8TypeInContext(context); }
-            if (physical == "short" || physical == "ushort") { return LLVM.LLVMInt16TypeInContext(context); }
-            if (physical == "int" || physical == "uint") { return LLVM.LLVMInt32TypeInContext(context); }
-            if (physical == "long" || physical == "ulong" || physical == "nint" || physical == "nuint")
+            if (type == "short" || type == "ushort") { return LLVM.LLVMInt16TypeInContext(context); }
+            if (type == "int" || type == "uint") { return LLVM.LLVMInt32TypeInContext(context); }
+            if (type == "long" || type == "ulong" || type == "nint" || type == "nuint")
             { return LLVM.LLVMInt64TypeInContext(context); }
-            if (physical == "float") { return LLVM.LLVMFloatTypeInContext(context); }
-            if (physical == "double") { return LLVM.LLVMDoubleTypeInContext(context); }
-            if (IntegerEnum(physical)) { return LLVM.LLVMInt32TypeInContext(context); }
-            if (physical.Length > 0 && physical[physical.Length - 1] == '*')
+            if (type == "float") { return LLVM.LLVMFloatTypeInContext(context); }
+            if (type == "double") { return LLVM.LLVMDoubleTypeInContext(context); }
+            if (IntegerEnum(type)) { return LLVM.LLVMInt32TypeInContext(context); }
+            if (type.Length > 0 && type[type.Length - 1] == '*')
             { return LLVM.LLVMPointerTypeInContext(context, 0u); }
-            if (physical.Length != 0) { return LLVM.LLVMPointerTypeInContext(context, 0u); }
+            if (type.Length != 0) { return LLVM.LLVMPointerTypeInContext(context, 0u); }
             return null;
         }
         private static int AggregateSize(SemanticModel semantic, string type)
@@ -367,24 +337,18 @@ namespace NativeSharp.Compiler.CodeGen
 
         private static void* AbiValueType(void* context, SemanticModel semantic, string type)
         {
-            raii string physical = PhysicalTypeName(type);
-            int semanticAggregate = AggregateSize(semantic, type);
-            int aggregateSize = AggregateSize(semantic, physical);
-            int semanticEnum = EnumSize(semantic, type);
-            int physicalEnum = EnumSize(semantic, physical);
-            TracePhysicalAbi(semantic, type, physical, semanticAggregate, aggregateSize,
-                semanticEnum, physicalEnum);
+            int aggregateSize = AggregateSize(semantic, type);
             if (DirectAggregateSize(aggregateSize)) { return DirectAggregateType(context, aggregateSize); }
-            if (DirectAggregateSize(physicalEnum)) { return DirectAggregateType(context, physicalEnum); }
-            return ScalarType(context, physical);
+            int enumSize = EnumSize(semantic, type);
+            if (DirectAggregateSize(enumSize)) { return DirectAggregateType(context, enumSize); }
+            return ScalarType(context, type);
         }
 
         private static void* SemanticValueType(void* context, SemanticModel semantic, string type)
         {
-            raii string physical = PhysicalTypeName(type);
-            int enumSize = EnumSize(semantic, physical);
+            int enumSize = EnumSize(semantic, type);
             if (DirectAggregateSize(enumSize)) { return DirectAggregateType(context, enumSize); }
-            return ScalarType(context, physical);
+            return ScalarType(context, type);
         }
 
         private static int ParameterDeclarationAt(SyntaxTree tree, int declarationId, int ordinal)
@@ -537,7 +501,7 @@ namespace NativeSharp.Compiler.CodeGen
                 if (!Number.TryParseDouble(fact.ConstantText(), out value)) { return null; }
                 return LLVM.LLVMConstReal(type, value);
             }
-            if (PhysicalTypeIs(semantic.Types().Get(symbol.TypeId()).Display(), "bool"))
+            if (semantic.Types().Get(symbol.TypeId()).Display() == "bool")
             { return LLVM.LLVMConstInt(type, fact.ConstantText() == "true" ? 1UL : 0UL, 0); }
             long signedValue = 0;
             if (!Number.TryParseInt64(fact.ConstantText(), out signedValue)) { return null; }
@@ -915,18 +879,16 @@ namespace NativeSharp.Compiler.CodeGen
 
         private static int SemanticIntegerBits(SemanticModel semantic, string type)
         {
-            raii string physical = PhysicalTypeName(type);
-            int bits = IntegerBits(physical);
+            int bits = IntegerBits(type);
             if (bits != 0) { return bits; }
-            int enumSize = EnumSize(semantic, physical);
+            int enumSize = EnumSize(semantic, type);
             return enumSize > 0 ? enumSize * 8 : 0;
         }
 
         private static bool UnsignedInteger(string type)
         {
-            raii string physical = PhysicalTypeName(type);
-            return physical == "bool" || physical == "byte" || physical == "char" || physical == "ushort" ||
-                physical == "uint" || physical == "ulong" || physical == "nuint";
+            return type == "bool" || type == "byte" || type == "char" || type == "ushort" ||
+                type == "uint" || type == "ulong" || type == "nuint";
         }
 
         private static void* BitfieldStorageType(void* context, int size)
@@ -938,17 +900,15 @@ namespace NativeSharp.Compiler.CodeGen
         }
 
         private static bool FloatingScalar(string type)
-        {
-            raii string physical = PhysicalTypeName(type);
-            return physical == "float" || physical == "double";
-        }
+        { return type == "float" || type == "double"; }
 
         private static bool StringType(SemanticModel semantic, int typeId)
         {
             if (typeId < 0) { return false; }
             SemanticType type = semantic.Types().Get(typeId);
             raii string display = String.Copy(type.Display());
-            return type.Kind() == SemanticTypeKind.StringLiteral || PhysicalTypeIs(display, "string");
+            return type.Kind() == SemanticTypeKind.StringLiteral || display == "string" ||
+                display == "owned string" || display == "borrowed string";
         }
 
         private static int GenericResultPosition(string type)
@@ -1044,56 +1004,6 @@ namespace NativeSharp.Compiler.CodeGen
             return SemanticIntegerBits(semantic, type) != 0 || FloatingScalar(type);
         }
 
-        // NSC_SH41_181_DIAGNOSTIC_BEGIN
-        // Temporary evidence for test 181. Remove after the causal comparison is complete.
-        private static void TraceScalarClassification(string type, string physical)
-        {
-            if (type == physical) { return; }
-            raii StringBuilder message = new StringBuilder();
-            message.Append("[NSC_SH41_181_DIAGNOSTIC][SCALAR_TYPE] semantic='");
-            message.Append(type); message.Append("' physical='"); message.Append(physical);
-            message.Append("'"); raii string rendered = message.ToOwnedString();
-            Console.ErrorWriteLine(rendered);
-        }
-
-        private static void TracePhysicalConversion(SemanticModel semantic,
-            string source, string sourcePhysical, string destination, string destinationPhysical)
-        {
-            bool sourceGeneric = GenericPlaceholder(source);
-            bool destinationGeneric = GenericPlaceholder(destination);
-            if (source == sourcePhysical && destination == destinationPhysical &&
-                !sourceGeneric && !destinationGeneric)
-            { return; }
-            raii StringBuilder message = new StringBuilder();
-            message.Append("[NSC_SH41_181_DIAGNOSTIC][CONVERT_SCALAR] source='");
-            message.Append(source); message.Append("' source_physical='");
-            message.Append(sourcePhysical); message.Append("' destination='");
-            message.Append(destination); message.Append("' destination_physical='");
-            message.Append(destinationPhysical); message.Append("' source_generic=");
-            message.Append(sourceGeneric ? "true" : "false"); message.Append(" destination_generic=");
-            message.Append(destinationGeneric ? "true" : "false"); message.Append(" source_scalar=");
-            message.Append(PhysicalValueScalar(semantic, sourcePhysical) ? "true" : "false");
-            message.Append(" destination_scalar=");
-            message.Append(PhysicalValueScalar(semantic, destinationPhysical) ? "true" : "false");
-            raii string rendered = message.ToOwnedString(); Console.ErrorWriteLine(rendered);
-        }
-
-        private static void TracePhysicalAbi(SemanticModel semantic, string type, string physical,
-            int semanticAggregate, int physicalAggregate, int semanticEnum, int physicalEnum)
-        {
-            if (type == physical && semanticAggregate == physicalAggregate && semanticEnum == physicalEnum)
-            { return; }
-            raii StringBuilder message = new StringBuilder();
-            message.Append("[NSC_SH41_181_DIAGNOSTIC][ABI_VALUE] semantic='");
-            message.Append(type); message.Append("' physical='"); message.Append(physical);
-            message.Append("' aggregate_semantic="); message.Append(semanticAggregate);
-            message.Append(" aggregate_physical="); message.Append(physicalAggregate);
-            message.Append(" enum_semantic="); message.Append(semanticEnum);
-            message.Append(" enum_physical="); message.Append(physicalEnum);
-            raii string rendered = message.ToOwnedString(); Console.ErrorWriteLine(rendered);
-        }
-        // NSC_SH41_181_DIAGNOSTIC_END
-
         private static void* BoxGenericScalar(void* module, void* builder, void* value)
         {
             void* context = LLVM.LLVMGetModuleContext(module);
@@ -1125,29 +1035,24 @@ namespace NativeSharp.Compiler.CodeGen
             raii string source = String.Copy(semantic.Types().Get(sourceType).Display());
             raii string destination = String.Copy(semantic.Types().Get(destinationType).Display());
             if (source == destination) { return value; }
-            raii string sourcePhysical = PhysicalTypeName(source);
-            raii string destinationPhysical = PhysicalTypeName(destination);
-            TracePhysicalConversion(semantic, source, sourcePhysical, destination, destinationPhysical);
-            bool sourcePointer = sourcePhysical.Length > 0 && sourcePhysical[sourcePhysical.Length - 1] == '*';
-            bool destinationPointer = destinationPhysical.Length > 0 &&
-                destinationPhysical[destinationPhysical.Length - 1] == '*';
+            bool sourcePointer = source.Length > 0 && source[source.Length - 1] == '*';
+            bool destinationPointer = destination.Length > 0 && destination[destination.Length - 1] == '*';
             SemanticTypeKind sourceKind = semantic.Types().Get(sourceType).Kind();
             SemanticTypeKind destinationKind = semantic.Types().Get(destinationType).Kind();
             // Handle erased generic value boundaries before nominal-reference shortcuts: enums
             // are nominal in the semantic table but physically i32, so treating every Named
             // source as a reference would silently pass an integer where the erased ABI needs a
             // pointer (and would return a pointer from a closed enum/int indexer).
-            if (GenericPlaceholder(destination) && PhysicalValueScalar(semantic, sourcePhysical))
+            if (GenericPlaceholder(destination) && PhysicalValueScalar(semantic, source))
             { return BoxGenericScalar(module, builder, value); }
-            if (GenericPlaceholder(source) && PhysicalValueScalar(semantic, destinationPhysical))
+            if (GenericPlaceholder(source) && PhysicalValueScalar(semantic, destination))
             {
-                void* closedType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic,
-                    destinationPhysical);
+                void* closedType = SemanticValueType(LLVM.LLVMGetModuleContext(module), semantic, destination);
                 raii CString loadName = new CString("generic.unbox");
                 return LLVM.LLVMBuildLoad2(builder, closedType, value, loadName.Pointer());
             }
-            bool sourceEnum = EnumSize(semantic, sourcePhysical) != 0;
-            bool destinationEnum = EnumSize(semantic, destinationPhysical) != 0;
+            bool sourceEnum = EnumSize(semantic, source) != 0;
+            bool destinationEnum = EnumSize(semantic, destination) != 0;
             bool sourceReference = sourcePointer || (sourceKind == SemanticTypeKind.Named && !sourceEnum) ||
                 sourceKind == SemanticTypeKind.Array || sourceKind == SemanticTypeKind.StringLiteral ||
                 sourceKind == SemanticTypeKind.TypeParameter || sourceKind == SemanticTypeKind.Function;
@@ -1166,17 +1071,17 @@ namespace NativeSharp.Compiler.CodeGen
                 return ByteOffset(module, builder, value, header, "string.literal.data");
             }
             if (sourceReference && destinationReference) { return value; }
-            if (destinationPointer && (sourcePointer || sourcePhysical == "null")) { return value; }
-            int sourceBits = SemanticIntegerBits(semantic, sourcePhysical);
-            int destinationBits = SemanticIntegerBits(semantic, destinationPhysical);
+            if (destinationPointer && (sourcePointer || source == "null")) { return value; }
+            int sourceBits = SemanticIntegerBits(semantic, source);
+            int destinationBits = SemanticIntegerBits(semantic, destination);
             void* context = LLVM.LLVMGetModuleContext(module);
-            void* destinationLlvm = SemanticValueType(context, semantic, destinationPhysical);
+            void* destinationLlvm = SemanticValueType(context, semantic, destination);
             raii CString conversionName = new CString("scalar.convert");
-            if (destinationPhysical == "bool")
+            if (destination == "bool")
             {
                 raii CString comparisonName = new CString("scalar.to.bool");
-                void* sourceLlvm = SemanticValueType(context, semantic, sourcePhysical);
-                if (FloatingScalar(sourcePhysical))
+                void* sourceLlvm = SemanticValueType(context, semantic, source);
+                if (FloatingScalar(source))
                 {
                     return LLVM.LLVMBuildFCmp(builder, LLVMRealPredicate.UnorderedNotEqual, value,
                         LLVM.LLVMConstReal(sourceLlvm, 0.0), comparisonName.Pointer());
@@ -1184,21 +1089,21 @@ namespace NativeSharp.Compiler.CodeGen
                 return LLVM.LLVMBuildICmp(builder, LLVMIntPredicate.NotEqual, value,
                     LLVM.LLVMConstInt(sourceLlvm, 0UL, 0), comparisonName.Pointer());
             }
-            if (FloatingScalar(sourcePhysical) && FloatingScalar(destinationPhysical))
+            if (FloatingScalar(source) && FloatingScalar(destination))
             {
-                if (sourcePhysical == "float")
+                if (source == "float")
                 { return LLVM.LLVMBuildFPExt(builder, value, destinationLlvm, conversionName.Pointer()); }
                 return LLVM.LLVMBuildFPTrunc(builder, value, destinationLlvm, conversionName.Pointer());
             }
-            if (FloatingScalar(sourcePhysical) && destinationBits != 0)
+            if (FloatingScalar(source) && destinationBits != 0)
             {
-                return UnsignedInteger(destinationPhysical) ?
+                return UnsignedInteger(destination) ?
                     LLVM.LLVMBuildFPToUI(builder, value, destinationLlvm, conversionName.Pointer()) :
                     LLVM.LLVMBuildFPToSI(builder, value, destinationLlvm, conversionName.Pointer());
             }
-            if (sourceBits != 0 && FloatingScalar(destinationPhysical))
+            if (sourceBits != 0 && FloatingScalar(destination))
             {
-                return UnsignedInteger(sourcePhysical) ?
+                return UnsignedInteger(source) ?
                     LLVM.LLVMBuildUIToFP(builder, value, destinationLlvm, conversionName.Pointer()) :
                     LLVM.LLVMBuildSIToFP(builder, value, destinationLlvm, conversionName.Pointer());
             }
@@ -1206,7 +1111,7 @@ namespace NativeSharp.Compiler.CodeGen
             if (sourceBits == destinationBits) { return value; }
             if (sourceBits > destinationBits)
             { return LLVM.LLVMBuildTrunc(builder, value, destinationLlvm, conversionName.Pointer()); }
-            if (UnsignedInteger(sourcePhysical))
+            if (UnsignedInteger(source))
             { return LLVM.LLVMBuildZExt(builder, value, destinationLlvm, conversionName.Pointer()); }
             return LLVM.LLVMBuildSExt(builder, value, destinationLlvm, conversionName.Pointer());
         }
@@ -1379,7 +1284,7 @@ namespace NativeSharp.Compiler.CodeGen
                 narrowed = LLVM.LLVMBuildAShr(builder, shifted,
                     LLVM.LLVMConstInt(storageType, (ulong)extension, 0), rightName.Pointer());
             }
-            if (PhysicalTypeIs(declared, "bool"))
+            if (declared == "bool")
             {
                 raii CString boolName = new CString("bitfield.bool");
                 return LLVM.LLVMBuildTrunc(builder, narrowed, valueType, boolName.Pointer());
@@ -1395,7 +1300,7 @@ namespace NativeSharp.Compiler.CodeGen
                 Symbol field = semantic.GetSymbol(symbol); int width = field.BitWidth();
                 if (width == 0) { return null; }
                 void* storageType = BitfieldStorageType(LLVM.LLVMGetModuleContext(module), field.Size());
-                if (PhysicalTypeIs(semantic.Types().Get(field.TypeId()).Display(), "bool"))
+                if (semantic.Types().Get(field.TypeId()).Display() == "bool")
                 {
                     raii CString extendName = new CString("bitfield.bool.extend");
                     value = LLVM.LLVMBuildZExt(builder, value, storageType, extendName.Pointer());
@@ -2161,7 +2066,8 @@ namespace NativeSharp.Compiler.CodeGen
                 }
                 SemanticTypeKind receiverKind = semantic.Types().Get(receiverType).Kind();
                 void* data = pointer;
-                if (receiverKind == SemanticTypeKind.Array || StringType(semantic, receiverType))
+                if (receiverKind == SemanticTypeKind.Array ||
+                    semantic.Types().Get(receiverType).Display() == "string")
                 {
                     void* header = LLVM.LLVMConstInt(LLVM.LLVMInt64TypeInContext(
                         LLVM.LLVMGetModuleContext(module)), 8UL, 0);
@@ -2306,7 +2212,7 @@ namespace NativeSharp.Compiler.CodeGen
                     declarationId, function, state, node.First(), out receiverValid);
                 if (!receiverValid || receiver == null) { return null; }
                 int receiverType = semantic.Fact(node.First()).TypeId();
-                if (receiverType >= 0 && StringType(semantic, receiverType))
+                if (receiverType >= 0 && semantic.Types().Get(receiverType).Display() == "string")
                 {
                     raii CString wideName = new CString("string.length64");
                     void* length64 = LLVM.LLVMBuildLoad2(builder, LLVM.LLVMInt64TypeInContext(
@@ -3038,7 +2944,7 @@ namespace NativeSharp.Compiler.CodeGen
                             raii string source = String.Copy(semantic.Types().Get(sourceType).Display());
                             void* context = LLVM.LLVMGetModuleContext(module);
                             raii CString promotionName = new CString("abi.vararg.promotion");
-                            if (PhysicalTypeIs(source, "float"))
+                            if (source == "float")
                             {
                                 arguments[argument + physicalOffset] = LLVM.LLVMBuildFPExt(builder,
                                     arguments[argument + physicalOffset], LLVM.LLVMDoubleTypeInContext(context),
@@ -3268,7 +3174,7 @@ namespace NativeSharp.Compiler.CodeGen
             valid = false; SyntaxNode node = tree.Node(syntaxId); raii CString conditionName = new CString("condition");
             SemanticFact known = semantic.Fact(syntaxId);
             if (known.IsConstant() && known.TypeId() >= 0 &&
-                PhysicalTypeIs(semantic.Types().Get(known.TypeId()).Display(), "bool"))
+                semantic.Types().Get(known.TypeId()).Display() == "bool")
             {
                 valid = true;
                 return LLVM.LLVMConstInt(i1, known.ConstantText() == "true" ? 1UL : 0UL, 0);
@@ -3317,7 +3223,7 @@ namespace NativeSharp.Compiler.CodeGen
                 declarationId, function, state, syntaxId, out valueValid);
             if (!valueValid || value == null) { return null; }
             int valueType = semantic.Fact(syntaxId).TypeId();
-            if (valueType >= 0 && PhysicalTypeIs(semantic.Types().Get(valueType).Display(), "bool"))
+            if (valueType >= 0 && semantic.Types().Get(valueType).Display() == "bool")
             { valid = true; return value; }
             // A successfully lowered unresolved call in condition position is a boolean in the
             // current bootstrap subset (member overload lookup may leave only the call fact as
