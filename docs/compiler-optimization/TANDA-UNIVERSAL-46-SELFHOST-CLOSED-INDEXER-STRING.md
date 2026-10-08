@@ -51,3 +51,18 @@ deduplicación por contenido de los nombres de proyecto.
 Después del commit se ejecutará únicamente la reproducción combinada y, si pasa, la etapa dirigida
 SH41. Ninguna de las 19 pruebas residuales se considerará cerrada hasta la batería integral O0 con
 NSLink.
+
+## Evidencia O0 posterior al commit
+
+- La combinación `Core + LLVM.C` produjo `status=ok`, 3 proyectos y 46 unidades.
+- `nsc2-o0-nslink.exe --check-project selfhost/nsc/NativeSharp.Compiler.nsproj` revisó 27
+  unidades propias dentro de un grafo de 102 y terminó con 0 errores.
+- `nsc3-o0-nslink.exe` repitió el mismo resultado: 102 unidades de grafo, 27 revisadas y 0
+  errores.
+- `nsc2-o0.obj` y `nsc3-o0.obj` produjeron el mismo SHA-256, lo que demuestra punto fijo O0 para
+  esta generación.
+
+El verificador SH41 intentó continuar automáticamente con O1 después de producir la evidencia O0.
+Se canceló en ese límite para respetar la restricción vigente de ejecutar únicamente O0. Por esta
+razón la evidencia es dirigida y parcial: no equivale al cierre de SH41 ni reduce por sí sola la
+lista integral de 19 pruebas fallidas.
