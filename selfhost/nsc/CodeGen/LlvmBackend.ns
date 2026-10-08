@@ -245,6 +245,49 @@ namespace NativeSharp.Compiler.CodeGen
             return -1;
         }
 
+        private static owned string ClosedGenericArgument(string display, int requested)
+        {
+            int open = String.IndexOf(display, "<");
+            if (open < 0) { return String.Copy(""); }
+            int depth = 0; int current = 0; int begin = open + 1; int cursor = begin;
+            while (cursor < display.Length)
+            {
+                char value = display[cursor];
+                if (value == '<') { depth = depth + 1; }
+                else if (value == '>' && depth == 0)
+                {
+                    if (current == requested)
+                    {
+                        raii string raw = String.Substring(display, begin, cursor - begin);
+                        return String.Trim(raw);
+                    }
+                    break;
+                }
+                else if (value == '>') { depth = depth - 1; }
+                else if (value == ',' && depth == 0)
+                {
+                    if (current == requested)
+                    {
+                        raii string raw = String.Substring(display, begin, cursor - begin);
+                        return String.Trim(raw);
+                    }
+                    current = current + 1; begin = cursor + 1;
+                }
+                cursor = cursor + 1;
+            }
+            return String.Copy("");
+        }
+
+        private static int ClosedSpanElementSize(SemanticModel semantic, string display)
+        {
+            raii string element = ClosedGenericArgument(display, 0);
+            if (element.Length == 0) { return 0; }
+            int typeId = semantic.Types().Intern(element);
+            int size = semantic.Types().Get(typeId).Size();
+            if (size > 0) { return size; }
+            return AggregateSize(semantic, element);
+        }
+
         private static void* ScalarType(void* context, string type)
         {
             if (type == "void") { return LLVM.LLVMVoidTypeInContext(context); }
@@ -1259,6 +1302,81 @@ namespace NativeSharp.Compiler.CodeGen
                 &arguments[0], 3u, resultName.Pointer());
         }
 
+        private static void* MoveNativeBytes(void* module, void* builder,
+            void* destination, void* source, void* length)
+        {
+            void* context = LLVM.LLVMGetModuleContext(module);
+            void* pointerType = LLVM.LLVMPointerTypeInContext(context, 0u);
+            raii CString name = new CString("memmove");
+            void* function = LLVM.LLVMGetNamedFunction(module, name.Pointer());
+            if (function == null)
+            {
+                void*[3] parameters; parameters[0] = pointerType; parameters[1] = pointerType;
+                parameters[2] = LLVM.LLVMInt64TypeInContext(context);
+                void* type = LLVM.LLVMFunctionType(pointerType, &parameters[0], 3u, 0);
+                function = LLVM.LLVMAddFunction(module, name.Pointer(), type);
+            }
+            void*[3] arguments; arguments[0] = destination; arguments[1] = source; arguments[2] = length;
+            raii CString resultName = new CString("span.move");
+            return LLVM.LLVMBuildCall2(builder, LLVM.LLVMGlobalGetValueType(function), function,
+                &arguments[0], 3u, resultName.Pointer());
+        }
+
+        private static void* EmitClosedSpanCopy(void* module, void* builder, void* int32Type, void* i1,
+            SyntaxTree tree, SemanticModel semantic, int declarationId, void* function,
+            FunctionLoweringState state, SyntaxNode call, string method, out bool valid)
+        {
+            valid = false; SyntaxNode callee = tree.Node(call.First());
+            if (callee.Kind() != "MemberExpression" || call.ChildCount() != 1) { return null; }
+            bool sourceValid = false; bool destinationValid = false;
+            void* source = EmitScalarExpression(module, builder, int32Type, i1, tree, semantic,
+                declarationId, function, state, callee.First(), out sourceValid);
+            void* destination = EmitScalarExpression(module, builder, int32Type, i1, tree, semantic,
+                declarationId, function, state, call.ChildAt(0), out destinationValid);
+            int sourceType = semantic.Fact(callee.First()).TypeId();
+            if (!sourceValid || !destinationValid || source == null || destination == null || sourceType < 0)
+            { return null; }
+            int elementSize = ClosedSpanElementSize(semantic, semantic.Types().Get(sourceType).Display());
+            if (elementSize < 1) { return null; }
+            void* context = LLVM.LLVMGetModuleContext(module);
+            void* pointerType = LLVM.LLVMPointerTypeInContext(context, 0u);
+            void* int64Type = LLVM.LLVMInt64TypeInContext(context);
+            void* eight = LLVM.LLVMConstInt(int64Type, 8UL, 0);
+            raii CString sourceDataName = new CString("span.copy.source.data");
+            raii CString destinationDataName = new CString("span.copy.destination.data");
+            void* sourceData = LLVM.LLVMBuildLoad2(builder, pointerType, source, sourceDataName.Pointer());
+            void* destinationData = LLVM.LLVMBuildLoad2(builder, pointerType, destination, destinationDataName.Pointer());
+            void* sourceCountAddress = ByteOffset(module, builder, source, eight, "span.copy.source.count.address");
+            void* destinationCountAddress = ByteOffset(module, builder, destination, eight, "span.copy.destination.count.address");
+            raii CString sourceCountName = new CString("span.copy.source.count");
+            raii CString destinationCountName = new CString("span.copy.destination.count");
+            void* sourceCount = LLVM.LLVMBuildLoad2(builder, int32Type, sourceCountAddress, sourceCountName.Pointer());
+            void* destinationCount = LLVM.LLVMBuildLoad2(builder, int32Type, destinationCountAddress, destinationCountName.Pointer());
+            raii CString shorterName = new CString("span.copy.source.shorter");
+            void* sourceShorter = LLVM.LLVMBuildICmp(builder, LLVMIntPredicate.SignedLessThan,
+                sourceCount, destinationCount, shorterName.Pointer());
+            raii CString limitName = new CString("span.copy.limit");
+            void* limit = LLVM.LLVMBuildSelect(builder, sourceShorter, sourceCount, destinationCount, limitName.Pointer());
+            raii CString positiveName = new CString("span.copy.has.elements");
+            void* positive = LLVM.LLVMBuildICmp(builder, LLVMIntPredicate.SignedGreaterThan, limit,
+                LLVM.LLVMConstInt(int32Type, 0UL, 0), positiveName.Pointer());
+            raii CString bodyName = new CString("span.copy.body"); raii CString endName = new CString("span.copy.end");
+            void* body = LLVM.LLVMAppendBasicBlockInContext(context, function, bodyName.Pointer());
+            void* end = LLVM.LLVMAppendBasicBlockInContext(context, function, endName.Pointer());
+            if (sourceData == null || destinationData == null || sourceCount == null || destinationCount == null ||
+                sourceShorter == null || limit == null || positive == null || body == null || end == null ||
+                LLVM.LLVMBuildCondBr(builder, positive, body, end) == null) { return null; }
+            LLVM.LLVMPositionBuilderAtEnd(builder, body); raii CString wideName = new CString("span.copy.limit64");
+            void* wide = LLVM.LLVMBuildZExt(builder, limit, int64Type, wideName.Pointer());
+            raii CString bytesName = new CString("span.copy.bytes");
+            void* bytes = LLVM.LLVMBuildMul(builder, wide,
+                LLVM.LLVMConstInt(int64Type, (ulong)elementSize, 0), bytesName.Pointer());
+            void* copied = method == "CopyToOverlapping" ? MoveNativeBytes(module, builder,
+                destinationData, sourceData, bytes) : CopyNativeBytes(module, builder, destinationData, sourceData, bytes);
+            if (wide == null || bytes == null || copied == null || LLVM.LLVMBuildBr(builder, end) == null) { return null; }
+            LLVM.LLVMPositionBuilderAtEnd(builder, end); valid = true; return limit;
+        }
+
         private static void* CompareNativeStrings(void* module, void* builder, void* left, void* right)
         {
             void* context = LLVM.LLVMGetModuleContext(module);
@@ -1423,6 +1541,12 @@ namespace NativeSharp.Compiler.CodeGen
             SyntaxNode call = tree.Node(callId); int count = call.ChildCount();
             bool wrapperAtomic = owner == "AtomicInt32" || owner == "AtomicInt64" || owner == "AtomicPointer";
             bool interlocked = owner == "Interlocked";
+            if ((owner == "Span" || owner == "ReadOnlySpan") &&
+                (method == "CopyTo" || method == "CopyToOverlapping"))
+            {
+                handled = true; return EmitClosedSpanCopy(module, builder, int32Type, i1,
+                    tree, semantic, declarationId, function, state, call, method, out valid);
+            }
             if (owner == "AtomicFence" && (method == "Thread" || method == "Compiler"))
             {
                 handled = true; raii CString fenceName = new CString("");

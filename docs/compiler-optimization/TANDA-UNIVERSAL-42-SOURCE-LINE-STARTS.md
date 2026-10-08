@@ -11,8 +11,10 @@ SH04 line-column mismatch: line=4 column=220199317
 
 `SourceBuffer.BuildLineStarts` construía primero un `List<int>` genérico y después copiaba sus
 elementos a un `int[]`. Esa ruta atraviesa el ABI genérico bootstrap de punteros/valores antes de
-escribir el arreglo físico. En la segunda generación, el cuarto valor copiado era basura; por ello
-`GetLineColumn` recorría una línea inexistente y calculaba una columna corrupta.
+escribir el arreglo físico. La investigación posterior de la tanda 43 precisó que el arreglo no era
+la causa primaria: el backend emitía `Span<T>.CopyTo` con stride de puntero aun cuando el tipo cerrado
+era `Span<byte>` o `Span<char>`. El arreglo directo eliminó una intermediación innecesaria y expuso
+de forma reproducible ese defecto más profundo, que se corrige por separado.
 
 ## Cambio
 
