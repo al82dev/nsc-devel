@@ -3,11 +3,11 @@
 ## Resultado
 
 - Inventario histórico: **684**.
-- Con ruta ejecutable única: **390**.
+- Con ruta ejecutable única: **419**.
 - Registradas pero bloqueadas: **41**.
 - Con más de una ruta: **1**.
-- Sin ruta ejecutable: **252**.
-- Con destino final correcto y ejecutable: **132**.
+- Sin ruta ejecutable: **223**.
+- Con destino final correcto y ejecutable: **161**.
 - En capa transitoria incorrecta: **258**.
 - Gate de paridad: **FAILED**.
 
@@ -91,13 +91,10 @@
 | `nsc.cfg` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/CfgTests.cpp` |
 | `nsc.class-declarations` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/ClassDeclarationTests.cpp` |
 | `nsc.class-member-syntax` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/ClassMemberSyntaxTests.cpp` |
-| `nsc.compilation-artifact-cache` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/CompilationArtifactCacheTests.cpp` |
 | `nsc.compilation-artifact-cache-driver` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/CompilationArtifactCacheDriverTests.cpp` |
-| `nsc.compilation-graph-scheduler` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/CompilationGraphSchedulerTests.cpp` |
 | `nsc.compilation-model` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/CompilationModelTests.cpp` |
 | `nsc.compilation-profile` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/CompilationProfileTests.cpp` |
 | `nsc.compilation-telemetry` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/CompilationTelemetryTests.cpp` |
-| `nsc.compilation-worker-pool` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/CompilationWorkerPoolTests.cpp` |
 | `nsc.compilation.implicit-language-edition-semantics` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/ImplicitLanguageEditionSemanticsTests.cpp` |
 | `nsc.compilation.implicit-language-feature-recognition` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/ImplicitLanguageFeatureRecognitionTests.cpp` |
 | `nsc.compilation.language-edition-inference` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/LanguageEditionInferenceTests.cpp` |
@@ -177,7 +174,6 @@
 | `nsc.item360.rotate-byte-swap` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Item360RotateByteSwapTests.cpp` |
 | `nsc.item361.prefetch-pause` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Item361PrefetchPauseTests.cpp` |
 | `nsc.item362.cpu-timestamp` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Item362CpuTimestampTests.cpp` |
-| `nsc.item363.cpu-feature-selection` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/Item363CpuFeatureSelectionTests.cpp` |
 | `nsc.item364.floating-point-modes` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item364FloatingPointModeTests.cpp` |
 | `nsc.item365.fma-contract-policy` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item365FmaContractPolicyTests.cpp` |
 | `nsc.item366.rounding-control` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item366RoundingControlTests.cpp` |
@@ -190,7 +186,6 @@
 | `nsc.item374.per-worker-queues` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Item374PerWorkerQueuesTests.cpp` |
 | `nsc.item375.work-stealing` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Item375WorkStealingTests.cpp` |
 | `nsc.item385.comptime-core` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Item385ComptimeCoreTests.cpp` |
-| `nsc.item386.comptime-sandbox` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/Item386ComptimeSandboxTests.cpp` |
 | `nsc.item387.comptime-cache` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Item387ComptimeCacheTests.cpp` |
 | `nsc.item388.comptime-reproducibility` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Item388ComptimeReproducibilityTests.cpp` |
 | `nsc.item389-native-sanitizer` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Item389NativeSanitizerTests.cpp` |
@@ -205,15 +200,10 @@
 | `nsc.item399.llvm-backend-encapsulation` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item399LlvmBackendEncapsulationTests.cpp` |
 | `nsc.item401.independent-windows-runtime` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item401IndependentWindowsRuntimeTests.cpp` |
 | `nsc.item403.migration-guide` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item403MigrationGuideTests.cpp` |
-| `nsc.item404.release-candidate-freeze` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/Item404ReleaseCandidateFreezeTests.cpp` |
-| `nsc.item405.final-compatibility` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/Item405FinalCompatibilityCertificationTests.cpp` |
-| `nsc.item406.final-baseline-contract` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/Item406FinalBaselineContractTests.cpp` |
-| `nsc.item407.official-promotion` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/Item407OfficialPromotionTests.cpp` |
 | `nsc.language-service.advanced-queries` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/LanguageServiceAdvancedQueryTests.cpp` |
 | `nsc.language-service.code-actions` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/LanguageServiceCodeActionTests.cpp` |
 | `nsc.language-service.documents` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/LanguageServiceDocumentTests.cpp` |
 | `nsc.language-service.formatting` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/LanguageServiceFormattingTests.cpp` |
-| `nsc.language-service.identity` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/LanguageServiceIdentityTests.cpp` |
 | `nsc.language-service.protocol-types` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/LanguageServiceProtocolTypesTests.cpp` |
 | `nsc.language-service.snapshots` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/LanguageServiceSnapshotTests.cpp` |
 | `nsc.language-service.symbols` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/LanguageServiceSymbolTests.cpp` |
@@ -226,7 +216,6 @@
 | `nsc.language.generic-inference` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/GenericInferenceTests.cpp` |
 | `nsc.language.generic-inlining` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/GenericInliningTests.cpp` |
 | `nsc.language.inline-modifier` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/InliningModifierTests.cpp` |
-| `nsc.language.inlining-policy` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/InliningPolicyTests.cpp` |
 | `nsc.language.multidimensional-indexing` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/MultidimensionalIndexTests.cpp` |
 | `nsc.language.noinline-modifier` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/NoInlineModifierTests.cpp` |
 | `nsc.language.offsetof` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/OffsetofTests.cpp` |
@@ -281,7 +270,6 @@
 | `nsc.ns3.t03.exhaustive-match` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T03ExhaustiveMatchTests.cpp` |
 | `nsc.ns3.t03.fundamental-patterns` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T03FundamentalPatternTests.cpp` |
 | `nsc.ns3.t03.pattern-guards` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T03PatternGuardTests.cpp` |
-| `nsc.ns3.t03.sum-types` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T03SumTypeTests.cpp` |
 | `nsc.ns3.t03.tagged-variants` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T03TaggedVariantTests.cpp` |
 | `nsc.ns3.t04.bidirectional-inference` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T04BidirectionalInferenceTests.cpp` |
 | `nsc.ns3.t04.const-generics` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T04ConstGenericTests.cpp` |
@@ -351,24 +339,12 @@
 | `nsc.ns3.t13.representation` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T13RepresentationTests.cpp` |
 | `nsc.ns3.t13.unsafe-auditing` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T13UnsafeAuditingTests.cpp` |
 | `nsc.ns3.t14.floating-point-semantics` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T14FloatingPointSemanticsTests.cpp` |
-| `nsc.ns3.t14.numeric` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T14NumericTests.cpp` |
 | `nsc.ns3.t14.numeric-conversions` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T14NumericConversionTests.cpp` |
 | `nsc.ns3.t15.diagnostic-quality` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/NativeSharp3T15DiagnosticQualityTests.cpp` |
 | `nsc.ns3.t15.integration` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/NativeSharp3T15IntegrationTests.cpp` |
-| `nsc.ns3.t15.interaction-matrix` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T15InteractionMatrixTests.cpp` |
-| `nsc.ns3.t15.performance-budgets` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T15PerformanceBudgetTests.cpp` |
-| `nsc.ns3.t15.whole-program-corpus` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T15WholeProgramCorpusTests.cpp` |
 | `nsc.ns3.t15.zero-cost-audit` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/NativeSharp3T15ZeroCostAuditTests.cpp` |
-| `nsc.ns3.t16.compatibility` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T16CompatibilityTests.cpp` |
 | `nsc.ns3.t16.edition2-compat` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/NativeSharp3T16Edition2CompatTests.cpp` |
 | `nsc.ns3.t16.migration` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T16MigrationTests.cpp` |
-| `nsc.ns3.t17.bilingual-spec-audit` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T17BilingualSpecAuditTests.cpp` |
-| `nsc.ns3.t17.conformance-rc` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T17ConformanceRcTests.cpp` |
-| `nsc.ns3.t17.official-promotion` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T17OfficialPromotionTests.cpp` |
-| `nsc.ns3.t17.release-candidates` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T17ReleaseCandidatesTests.cpp` |
-| `nsc.ns3.t17.release-contract` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T17ReleaseTests.cpp` |
-| `nsc.ns3.t17.semantic-freeze` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T17SemanticFreezeTests.cpp` |
-| `nsc.ns3.t17.syntax-freeze` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/NativeSharp3T17SyntaxFreezeTests.cpp` |
 | `nsc.ns3.t17.win64-abi-freeze` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T17Win64AbiFreezeTests.cpp` |
 | `nsc.ns3.t29.procedural-ergonomics` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T29ProceduralErgonomicsTests.cpp` |
 | `nsc.ns3.t30.console-input` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/NativeSharp3T30ConsoleInputTests.cpp` |
@@ -383,12 +359,8 @@
 | `nsc.partial-class-aggregation` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/PartialClassAggregationTests.cpp` |
 | `nsc.pass-manager` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/PassManagerTests.cpp` |
 | `nsc.prestage56.utilities` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/PreStage56UtilitiesTests.cpp` |
-| `nsc.project-callable-analysis-result` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/ProjectCallableAnalysisResultTests.cpp` |
-| `nsc.project-callable-binding-index` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/ProjectCallableBindingIndexTests.cpp` |
 | `nsc.project-callable-result-merger-ordinals` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/ProjectCallableResultMergerOrdinalTests.cpp` |
 | `nsc.project-callable-wave-driver` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/ProjectCallableWaveDriverTests.cpp` |
-| `nsc.project-callable-wave-reducer` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/ProjectCallableWaveReducerTests.cpp` |
-| `nsc.project-callable-wave-scheduler` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/ProjectCallableWaveSchedulerTests.cpp` |
 | `nsc.project-commands` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/ProjectCommandsTests.cpp` |
 | `nsc.project-compilation` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/ProjectCompilationTests.cpp` |
 | `nsc.project-construction-model` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/ProjectConstructionModelTests.cpp` |
@@ -562,7 +534,6 @@
 | `nsc.stage66.e9-e10-release-contract` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage66E9E10ReleaseContractTests.cpp` |
 | `nsc.stage67.e11-lambda-execution` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/unit/Stage67E11LambdaExecutionTests.cpp` |
 | `nsc.stage68.simd` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage68SimdTests.cpp` |
-| `nsc.stage69.migration-baseline` | UNMAPPED | TARGET_UNMAPPED | unit | `tests/unit/Stage69MigrationBaselineTests.cpp` |
 | `nsc.target-data-layout` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/TargetDataLayoutTests.cpp` |
 | `nsc.verify-llvm-opt-o3` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/llvm_features.ns` |
 | `nsc.version` | UNMAPPED | TARGET_UNMAPPED | manifest | `A:\native-sharp-3.0-baseline\bin\nsc.exe` |

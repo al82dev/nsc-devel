@@ -2,7 +2,7 @@
   "catalog_counts": {
     "manifest": 76,
     "specialized": 69,
-    "unit": 289
+    "unit": 318
   },
   "schema": 1,
   "source_matrix": "A:/nsc-devel/docs/compiler-optimization/test-infrastructure/test-destination-matrix.json",
@@ -12,13 +12,13 @@
     "blocked": 41,
     "gate_passed": 0,
     "legacy_total": 684,
-    "runnable": 390,
+    "runnable": 419,
     "target_ambiguous": 1,
     "target_blocked": 41,
-    "target_runnable": 132,
-    "target_unmapped": 252,
+    "target_runnable": 161,
+    "target_unmapped": 223,
     "transitional_wrong_layer": 258,
-    "unmapped": 252
+    "unmapped": 223
   },
   "tests": [
     {
@@ -1612,15 +1612,22 @@
     {
       "ctest_id": "nsc.compilation-artifact-cache",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/CompilationArtifactCacheTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "compilation",
+          "identifier": "nsc.compilation-artifact-cache",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "compilation"
     },
     {
@@ -1640,15 +1647,22 @@
     {
       "ctest_id": "nsc.compilation-graph-scheduler",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/CompilationGraphSchedulerTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "compilation",
+          "identifier": "nsc.compilation-graph-scheduler",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "compilation"
     },
     {
@@ -1696,15 +1710,22 @@
     {
       "ctest_id": "nsc.compilation-worker-pool",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/CompilationWorkerPoolTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "compilation",
+          "identifier": "nsc.compilation-worker-pool",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "compilation"
     },
     {
@@ -3747,15 +3768,22 @@
     {
       "ctest_id": "nsc.item363.cpu-feature-selection",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/Item363CpuFeatureSelectionTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "llvm",
+          "identifier": "nsc.item363.cpu-feature-selection",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "llvm"
     },
     {
@@ -4013,15 +4041,22 @@
     {
       "ctest_id": "nsc.item386.comptime-sandbox",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/Item386ComptimeSandboxTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.item386.comptime-sandbox",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
@@ -4347,57 +4382,85 @@
     {
       "ctest_id": "nsc.item404.release-candidate-freeze",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/Item404ReleaseCandidateFreezeTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "driver",
+          "identifier": "nsc.item404.release-candidate-freeze",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "driver"
     },
     {
       "ctest_id": "nsc.item405.final-compatibility",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/Item405FinalCompatibilityCertificationTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "driver",
+          "identifier": "nsc.item405.final-compatibility",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "driver"
     },
     {
       "ctest_id": "nsc.item406.final-baseline-contract",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/Item406FinalBaselineContractTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "driver",
+          "identifier": "nsc.item406.final-baseline-contract",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "driver"
     },
     {
       "ctest_id": "nsc.item407.official-promotion",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/Item407OfficialPromotionTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "driver",
+          "identifier": "nsc.item407.official-promotion",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "driver"
     },
     {
@@ -4463,16 +4526,23 @@
     {
       "ctest_id": "nsc.language-service.identity",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation",
         "explicit-failure-exit"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/LanguageServiceIdentityTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "language-service",
+          "identifier": "nsc.language-service.identity",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "language-service"
     },
     {
@@ -4686,15 +4756,22 @@
     {
       "ctest_id": "nsc.language.inlining-policy",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/InliningPolicyTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.language.inlining-policy",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
@@ -5881,15 +5958,22 @@
     {
       "ctest_id": "nsc.ns3.t03.sum-types",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T03SumTypeTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.ns3.t03.sum-types",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
@@ -7451,15 +7535,22 @@
     {
       "ctest_id": "nsc.ns3.t14.numeric",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T14NumericTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.ns3.t14.numeric",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
@@ -7619,43 +7710,64 @@
     {
       "ctest_id": "nsc.ns3.t15.interaction-matrix",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T15InteractionMatrixTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "conformance",
+          "identifier": "nsc.ns3.t15.interaction-matrix",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "conformance"
     },
     {
       "ctest_id": "nsc.ns3.t15.performance-budgets",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T15PerformanceBudgetTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "performance",
+          "identifier": "nsc.ns3.t15.performance-budgets",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "performance"
     },
     {
       "ctest_id": "nsc.ns3.t15.whole-program-corpus",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T15WholeProgramCorpusTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "conformance",
+          "identifier": "nsc.ns3.t15.whole-program-corpus",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "conformance"
     },
     {
@@ -7675,15 +7787,22 @@
     {
       "ctest_id": "nsc.ns3.t16.compatibility",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T16CompatibilityTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.ns3.t16.compatibility",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
@@ -7724,99 +7843,148 @@
     {
       "ctest_id": "nsc.ns3.t17.bilingual-spec-audit",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "explicit-failure-exit"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T17BilingualSpecAuditTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "conformance",
+          "identifier": "nsc.ns3.t17.bilingual-spec-audit",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "conformance"
     },
     {
       "ctest_id": "nsc.ns3.t17.conformance-rc",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "explicit-failure-exit"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T17ConformanceRcTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "conformance",
+          "identifier": "nsc.ns3.t17.conformance-rc",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "conformance"
     },
     {
       "ctest_id": "nsc.ns3.t17.official-promotion",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "explicit-failure-exit"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T17OfficialPromotionTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "conformance",
+          "identifier": "nsc.ns3.t17.official-promotion",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "conformance"
     },
     {
       "ctest_id": "nsc.ns3.t17.release-candidates",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "explicit-failure-exit"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T17ReleaseCandidatesTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "conformance",
+          "identifier": "nsc.ns3.t17.release-candidates",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "conformance"
     },
     {
       "ctest_id": "nsc.ns3.t17.release-contract",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T17ReleaseTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.ns3.t17.release-contract",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
       "ctest_id": "nsc.ns3.t17.semantic-freeze",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "explicit-failure-exit"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T17SemanticFreezeTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "conformance",
+          "identifier": "nsc.ns3.t17.semantic-freeze",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "conformance"
     },
     {
       "ctest_id": "nsc.ns3.t17.syntax-freeze",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "explicit-failure-exit"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/NativeSharp3T17SyntaxFreezeTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "conformance",
+          "identifier": "nsc.ns3.t17.syntax-freeze",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "conformance"
     },
     {
@@ -8301,29 +8469,43 @@
     {
       "ctest_id": "nsc.project-callable-analysis-result",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/ProjectCallableAnalysisResultTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.project-callable-analysis-result",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
       "ctest_id": "nsc.project-callable-binding-index",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/ProjectCallableBindingIndexTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.project-callable-binding-index",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
@@ -8365,29 +8547,43 @@
     {
       "ctest_id": "nsc.project-callable-wave-reducer",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/ProjectCallableWaveReducerTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.project-callable-wave-reducer",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
       "ctest_id": "nsc.project-callable-wave-scheduler",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/ProjectCallableWaveSchedulerTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "frontend",
+          "identifier": "nsc.project-callable-wave-scheduler",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "frontend"
     },
     {
@@ -12354,15 +12550,22 @@
     {
       "ctest_id": "nsc.stage69.migration-baseline",
       "destination": "KEEP_CPP_UNIT",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "C++ owner evaluates assertions and returns an aggregate process result",
       "expectation_signals": [
         "structured-expectation"
       ],
       "expected_layer": "unit",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/unit/Stage69MigrationBaselineTests.cpp",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "driver",
+          "identifier": "nsc.stage69.migration-baseline",
+          "layer": "unit",
+          "runnable": true
+        }
+      ],
       "primary_component": "driver"
     },
     {
@@ -12693,5 +12896,5 @@
     }
   ],
   "unit_executable": "A:/nsc-devel/build-test-v2/tests/nsc_unit_tests.exe",
-  "unit_executable_sha256": "fa3294ed0979d918c0df6a7931d1e80bf86bc7b05a3a32eae424ef0d92defe47"
+  "unit_executable_sha256": "2db67bb9a028db20e6902d25f77b399190457e9e3ca3b14f90da994e6757aeb1"
 }

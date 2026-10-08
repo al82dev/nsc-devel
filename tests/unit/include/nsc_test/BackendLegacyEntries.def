@@ -27,3 +27,4 @@ NSC_BACKEND_ENTRY("nsc.stage45.typed-catch-rtti", "llvm", nscStage45TypedCatchRt
 NSC_BACKEND_ENTRY("nsc.stage61.compiler-hardening", "llvm", nscStage61CompilerHardeningLegacyEntry)
 NSC_BACKEND_ENTRY("nsc.language.struct-interface-inlining", "llvm", nscStructInterfaceInliningLegacyEntry)
 NSC_BACKEND_ENTRY("nsc.target-data-layout", "target", nscTargetDataLayoutLegacyEntry)
+NSC_BACKEND_ENTRY("nsc.item363.cpu-feature-selection", "llvm", nscItem363CpuFeatureSelectionLegacyEntry)

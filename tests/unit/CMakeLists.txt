@@ -13,6 +13,7 @@ add_executable(
     backend_adapters/IntegratedAssemblyGrammarAdapter.cpp
     backend_adapters/Item336SdkTargetSelectionAdapter.cpp
     backend_adapters/Item346ConsumerTargetAdapter.cpp
+    backend_adapters/Item363CpuFeatureSelectionAdapter.cpp
     backend_adapters/Item366RoundingControlAdapter.cpp
     backend_adapters/Item376WorkerFloatingPointInitializationAdapter.cpp
     backend_adapters/Item395MirLayoutAbiAdapter.cpp
@@ -45,6 +46,9 @@ add_executable(
     modules/ProjectDriverMetadataUnitTests.cpp
     project_driver_metadata_adapters/PrecompiledLanguageEditionInferenceAdapter.cpp
     project_driver_metadata_adapters/CompilerIdentityCommandAdapter.cpp
+    project_driver_metadata_adapters/CompilationArtifactCacheAdapter.cpp
+    project_driver_metadata_adapters/CompilationGraphSchedulerAdapter.cpp
+    project_driver_metadata_adapters/CompilationWorkerPoolAdapter.cpp
     project_driver_metadata_adapters/Item311InterlockedApiAdapter.cpp
     project_driver_metadata_adapters/Item312ReferenceLocalsAdapter.cpp
     project_driver_metadata_adapters/Item313ReferenceReturnsAdapter.cpp
@@ -63,6 +67,11 @@ add_executable(
     project_driver_metadata_adapters/Item393CompatibilityMatrixAdapter.cpp
     project_driver_metadata_adapters/Item402BreakingChangeLedgerAdapter.cpp
     project_driver_metadata_adapters/Item403MigrationGuideAdapter.cpp
+    project_driver_metadata_adapters/Item404ReleaseCandidateFreezeAdapter.cpp
+    project_driver_metadata_adapters/Item405FinalCompatibilityAdapter.cpp
+    project_driver_metadata_adapters/Item406FinalBaselineContractAdapter.cpp
+    project_driver_metadata_adapters/Item407OfficialPromotionAdapter.cpp
+    project_driver_metadata_adapters/LanguageServiceIdentityAdapter.cpp
     project_driver_metadata_adapters/LibraryMetadataMergerAdapter.cpp
     project_driver_metadata_adapters/LibraryMetadataVersionToleranceAdapter.cpp
     project_driver_metadata_adapters/NamespaceFunctionMetadataAdapter.cpp
@@ -100,7 +109,16 @@ add_executable(
     project_driver_metadata_adapters/NativeSharp3T12SemanticModuleAdapter.cpp
     project_driver_metadata_adapters/NativeSharp3T12VisibilityAdapter.cpp
     project_driver_metadata_adapters/NativeSharp3T14NumericContractAdapter.cpp
+    project_driver_metadata_adapters/NativeSharp3T15InteractionMatrixAdapter.cpp
+    project_driver_metadata_adapters/NativeSharp3T15PerformanceBudgetAdapter.cpp
+    project_driver_metadata_adapters/NativeSharp3T15WholeProgramCorpusAdapter.cpp
     project_driver_metadata_adapters/NativeSharp3T16MigrationAdapter.cpp
+    project_driver_metadata_adapters/NativeSharp3T17BilingualSpecAuditAdapter.cpp
+    project_driver_metadata_adapters/NativeSharp3T17ConformanceRcAdapter.cpp
+    project_driver_metadata_adapters/NativeSharp3T17OfficialPromotionAdapter.cpp
+    project_driver_metadata_adapters/NativeSharp3T17ReleaseCandidatesAdapter.cpp
+    project_driver_metadata_adapters/NativeSharp3T17SemanticFreezeAdapter.cpp
+    project_driver_metadata_adapters/NativeSharp3T17SyntaxFreezeAdapter.cpp
     project_driver_metadata_adapters/NativeSharp3T29ProceduralErgonomicsAdapter.cpp
     project_driver_metadata_adapters/NativeSharp3T33PackageCoherenceAdapter.cpp
     project_driver_metadata_adapters/NativeSharp3T34LongPathPublicationAdapter.cpp
@@ -118,6 +136,7 @@ add_executable(
     project_driver_metadata_adapters/Stage50_9MetadataHostCompatibilityAdapter.cpp
     project_driver_metadata_adapters/Stage66E9E10ReleaseContractAdapter.cpp
     project_driver_metadata_adapters/Stage68SimdAdapter.cpp
+    project_driver_metadata_adapters/Stage69MigrationBaselineAdapter.cpp
     modules/RuntimeLinkerInteropUnitTests.cpp
     runtime_linker_interop_adapters/Item309AtomicInt64Adapter.cpp
     runtime_linker_interop_adapters/Item310AtomicPointerAdapter.cpp
@@ -164,8 +183,11 @@ add_executable(
     semantic_adapters/GenericInliningAdapter.cpp
     semantic_adapters/Item316ReferenceLifetimeAnalysisAdapter.cpp
     semantic_adapters/Item320ObjectStorageOwnershipAdapter.cpp
+    semantic_adapters/Item386ComptimeSandboxAdapter.cpp
+    semantic_adapters/InliningPolicyAdapter.cpp
     semantic_adapters/NamespaceFunctionGenericAdapter.cpp
     semantic_adapters/NativeSharp3T00ConstitutionAdapter.cpp
+    semantic_adapters/NativeSharp3T03SumTypeAdapter.cpp
     semantic_adapters/NativeSharp3T04ConstGenericAdapter.cpp
     semantic_adapters/NativeSharp3T04GenericPackAdapter.cpp
     semantic_adapters/NativeSharp3T04GenericResourceLimitAdapter.cpp
@@ -194,11 +216,18 @@ add_executable(
     semantic_adapters/NativeSharp3T13PointerQualifierAdapter.cpp
     semantic_adapters/NativeSharp3T13UnsafeAuditingAdapter.cpp
     semantic_adapters/NativeSharp3T14ConstevalAdapter.cpp
+    semantic_adapters/NativeSharp3T14NumericAdapter.cpp
     semantic_adapters/NativeSharp3T14NumericConversionAdapter.cpp
     semantic_adapters/NativeSharp3T14OverflowPolicyAdapter.cpp
     semantic_adapters/NativeSharp3T14StrongNumericAdapter.cpp
+    semantic_adapters/NativeSharp3T16CompatibilityAdapter.cpp
+    semantic_adapters/NativeSharp3T17ReleaseAdapter.cpp
     semantic_adapters/NativeSharp3T31ArrayBorrowAdapter.cpp
     semantic_adapters/ProjectNameLookupAdapter.cpp
+    semantic_adapters/ProjectCallableAnalysisResultAdapter.cpp
+    semantic_adapters/ProjectCallableBindingIndexAdapter.cpp
+    semantic_adapters/ProjectCallableWaveReducerAdapter.cpp
+    semantic_adapters/ProjectCallableWaveSchedulerAdapter.cpp
     semantic_adapters/SemanticAdapter.cpp
     semantic_adapters/Stage45ExceptionSemaAdapter.cpp
     semantic_adapters/Stage49RaiiMoveSemanticsAdapter.cpp
@@ -266,7 +295,16 @@ target_compile_definitions(
         NSC_TOOLCHAIN_CONTRACT_PATH="${NSC_TEST_COMPILER_BUILD_DIR}/generated/NativeSharpToolchain.contract")
 target_link_libraries(
     nsc_unit_tests
-    PRIVATE nsc_basic nsc_compilation nsc_driver nsc_frontend nsc_target)
+    PRIVATE
+        nsc_basic
+        nsc_compilation
+        nsc_driver
+        nsc_frontend
+        nsc_language_service
+        nsc_linker
+        nsc_llvm
+        nsc_runtime
+        nsc_target)
 nsc_enable_warnings(nsc_unit_tests)
 
 add_test(NAME nsc.unit.consolidated COMMAND nsc_unit_tests --all)
