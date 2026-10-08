@@ -7,7 +7,6 @@
   "smoke_project": "selfhost/tests/runtime-2.0/RuntimeSmoke.nsproj",
   "profiles": ["O0", "O1", "O2", "O3"],
   "linkers": ["nslink"],
-  "expected_executions": 4,
   "forbidden_library_symbols": ["mainCRTStartup", "NativeSharpCompute"],
   "required_smoke_hooks": [
     "__nativesharp_clock_query_frequency",

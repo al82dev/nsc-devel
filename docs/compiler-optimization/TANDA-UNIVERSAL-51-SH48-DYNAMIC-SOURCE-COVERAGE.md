@@ -42,7 +42,9 @@ manual introduce tres inventarios que pueden divergir.
 4. Rechazar proyectos vacíos, errores de lectura y archivos cubiertos por más de un proyecto.
 5. Conservar cantidad, rutas y hashes en el manifiesto y reporte como evidencia, sin tratarlos
    como una expectativa rígida.
-6. Eliminar `library_roots` y `source_files` del contrato duplicado.
+6. Eliminar `library_roots`, `source_files` y `expected_executions` del contrato duplicado. El
+   tamaño de la matriz se calcula desde los perfiles realmente seleccionados y los linkers
+   declarados.
 
 ## Complejidad
 
