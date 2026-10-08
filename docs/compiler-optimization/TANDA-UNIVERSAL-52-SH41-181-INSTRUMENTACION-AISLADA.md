@@ -67,8 +67,8 @@ ejecutor fija el contrato existente `NSC_LINKER`; no cambia la selección del li
 
 ## Estado
 
-- Instrumentación actual: implementada, pendiente de build y ejecución.
-- Ejecución actual: pendiente.
-- Ejecución anterior: pendiente.
-- Causa raíz: pendiente de evidencia comparativa.
-- Solución final: pendiente.
+- Instrumentación actual: retirada completamente en la tanda 53.
+- Ejecución instrumentada: inválida como evidencia funcional. El volumen de `stderr` llenó el
+  pipe capturado por SH41 y bloqueó `nsc1` sin uso de CPU.
+- Infraestructura: sin cambios; ni CMake, ni el verificador, ni `nscbuilder.py` fueron modificados.
+- Continuación: la comparación válida y el resultado final están documentados en la tanda 53.

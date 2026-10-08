@@ -58,5 +58,87 @@ compilador ni modifican infraestructura.
 - Procesos residuales de SH41: no encontrados.
 - Comportamiento anterior: restaurado y comprobado estáticamente.
 - Instrumentación del compilador: eliminada.
-- Commit: pendiente.
-- Ejecución SH41/181: pendiente.
+- Commit funcional: `f6b7e7930`.
+- Ejecución SH41/181: aprobada.
+
+## Cotejo y diagnóstico final
+
+### Estado con la normalización global
+
+La evidencia histórica conservada en:
+
+```text
+A:\nsc-devel\_nscbuilder\history\universal-o0-t04-r2-20261007\stages\CTest_NSLink.log
+```
+
+registra el fallo primario de la 181 antes de todos sus cierres derivados:
+
+```text
+Test #181: nsc.selfhost.self-hosted-generation ***Failed
+SH41 verifier failed: nsc1.exe/O0 emission failed (1)
+nsc-next: error: bootstrap graph rejected: lex=0 parse=1726 semantic=0
+tokens=164489 first-error-token=680 kind=Identifier begin=12974 end=12980
+```
+
+La imagen `nsc1` existía y arrancaba; el defecto aparecía cuando ese compilador generado procesaba
+el grafo fuente para emitir `nsc2`. Por tanto, CMake, descubrimiento de la prueba y enlace inicial
+no eran la causa primaria.
+
+### Estado restaurado
+
+La ejecución exclusiva:
+
+```text
+python -B A:\nsc-devel\run_sh41_181.py --label previous --jobs 12
+```
+
+terminó con salida 0:
+
+```text
+SH41 passed: real nsc1->nsc2->nsc3 source compilation, O0, NSLink
+```
+
+Evidencia persistida:
+
+- log: `A:\nsc-devel\sh41-181-previous.log`;
+- build aislado: `A:\nsc-devel\sh41-181-previous-build.log`;
+- reporte: `A:\nsc-devel\build-sh41-181\previous\sh41-report.json`;
+- artefactos: `A:\nsc-devel\build-sh41-181\previous`.
+
+Resultados del reporte:
+
+| Campo | Resultado |
+|---|---|
+| Perfil | `O0` |
+| Linker | `NSLink` |
+| Estado | `passed` |
+| `nsc1 -> nsc2` | `120.389360 s` |
+| `nsc2 -> nsc3` | `108.361924 s` |
+| SHA-256 objeto `nsc2` | `e02e653bf55a9fe2be266af18f83abfb0d3fe4efbaf87a005710b05c0c1ca39a` |
+| SHA-256 objeto `nsc3` | `e02e653bf55a9fe2be266af18f83abfb0d3fe4efbaf87a005710b05c0c1ca39a` |
+| Punto fijo | objetos byte a byte idénticos |
+| Imágenes verificadas | `nsc2` y `nsc3` |
+
+### Causa confirmada
+
+La regresión de la 181 estaba en la normalización global de nombres calificados por ownership en
+el backend self-hosted. `f0fad42ef` extendió esa política desde la conversión genérica puntual a
+clasificadores compartidos de tipo, ABI, signedness y conversiones; `19ec3a57e` la propagó a
+constantes, bitfields, varargs, condiciones y strings. Así, el compilador generado dejó de conservar
+la representación anterior al ejecutar su propio lexer/parser y rechazó un grafo que el compilador
+semilla había aceptado.
+
+La prueba contrafactual es directa: manteniendo el árbol vigente, O0 y NSLink, restaurar
+`LlvmBackend.ns` exactamente a `f0fad42ef^` convirtió el fallo `nsc1 -> nsc2` en una cadena
+`nsc1 -> nsc2 -> nsc3` aprobada y estable. No fue necesario modificar proyectos, pruebas,
+verificadores, CMake, runtime ni NSLink.
+
+### Solución aplicada
+
+La solución para la 181 es el commit `f6b7e7930`: retira en el estado actual la política global de
+normalización y restaura la clasificación nominal previa. Los commits originales permanecen en la
+historia; no fueron borrados, reescritos ni revertidos mediante manipulación de Git.
+
+La 181 queda resuelta en O0 con NSLink. Cualquier futura corrección de un escalar genérico debe ser
+local al cruce concreto placeholder/cerrado y no volver a modificar clasificadores compartidos sin
+una prueba causal independiente.
