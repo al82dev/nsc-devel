@@ -3,10 +3,47 @@ set(
     "${CMAKE_BINARY_DIR}"
     CACHE PATH "Build tree containing the selected nsc.exe and generated runtime artifacts")
 
+set(
+    NSC_TRANSITIONAL_GENERATED_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/transitional-legacy")
+execute_process(
+    COMMAND
+        "${Python3_EXECUTABLE}" -B
+        "${CMAKE_SOURCE_DIR}/tools/generate_transitional_unit_adapters.py"
+        --registry "${CMAKE_CURRENT_SOURCE_DIR}/transitional_legacy_units.tsv"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --output-root "${NSC_TRANSITIONAL_GENERATED_DIR}"
+    RESULT_VARIABLE NSC_TRANSITIONAL_GENERATOR_RESULT
+    OUTPUT_VARIABLE NSC_TRANSITIONAL_GENERATOR_OUTPUT
+    ERROR_VARIABLE NSC_TRANSITIONAL_GENERATOR_ERROR)
+if(NOT NSC_TRANSITIONAL_GENERATOR_RESULT EQUAL 0)
+    message(FATAL_ERROR
+        "Failed to generate transitional legacy unit adapters:\n"
+        "${NSC_TRANSITIONAL_GENERATOR_OUTPUT}${NSC_TRANSITIONAL_GENERATOR_ERROR}")
+endif()
+include("${NSC_TRANSITIONAL_GENERATED_DIR}/TransitionalLegacySources.cmake")
+
+# Four historical host-interoperability owners launch GNU-style Clang drivers.
+# Preserve the exact definitions their former standalone targets received.
+if(NOT NSC_TEST_CLANG_EXECUTABLE)
+    find_program(NSC_TEST_CLANG_EXECUTABLE
+        NAMES clang clang.exe
+        HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
+        REQUIRED)
+endif()
+if(NOT NSC_TEST_CLANGXX_EXECUTABLE)
+    find_program(NSC_TEST_CLANGXX_EXECUTABLE
+        NAMES clang++ clang++.exe
+        HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
+        REQUIRED)
+endif()
+
 add_executable(
     nsc_unit_tests
     consolidated/main.cpp
     consolidated/TestRegistry.cpp
+    modules/TransitionalLegacyUnitTests.cpp
+    ${NSC_TRANSITIONAL_ADAPTER_SOURCES}
     modules/BackendUnitTests.cpp
     backend_adapters/ForceInlineModifierAdapter.cpp
     backend_adapters/InliningModifierAdapter.cpp
@@ -283,7 +320,9 @@ add_executable(
 
 target_include_directories(
     nsc_unit_tests
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${NSC_TRANSITIONAL_GENERATED_DIR}")
 target_compile_features(nsc_unit_tests PRIVATE cxx_std_20)
 target_compile_definitions(
     nsc_unit_tests
@@ -292,6 +331,8 @@ target_compile_definitions(
         NSC_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
         NSC_TEST_O0_ONLY=1
         NSC_TEST_CASES_DIR="${CMAKE_SOURCE_DIR}/tests/cases"
+        NSC_TEST_CLANG_EXECUTABLE="${NSC_TEST_CLANG_EXECUTABLE}"
+        NSC_TEST_CLANGXX_EXECUTABLE="${NSC_TEST_CLANGXX_EXECUTABLE}"
         NSC_TOOLCHAIN_CONTRACT_PATH="${NSC_TEST_COMPILER_BUILD_DIR}/generated/NativeSharpToolchain.contract")
 target_link_libraries(
     nsc_unit_tests

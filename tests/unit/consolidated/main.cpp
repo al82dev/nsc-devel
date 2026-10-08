@@ -153,6 +153,7 @@ int main(int argumentCount, char** arguments)
         nsc::test::registerRuntimeLinkerInteropUnitTests(registry);
         nsc::test::registerSemanticUnitTests(registry);
         nsc::test::registerSourceUnitTests(registry);
+        nsc::test::registerTransitionalLegacyUnitTests(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

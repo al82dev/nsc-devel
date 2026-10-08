@@ -89,7 +89,7 @@ Builder 2 tendrá fronteras separadas y ordenadas:
 | B2-057 | CMake/Ninja/compiladores resueltos por PATH o proyecto | IMPLEMENTADA en planes de herramientas |
 | B2-058 | NSC y herramientas conservan configuración Release/Debug elegida | IMPLEMENTADA en modelo |
 | B2-059 | Instalación conjunta sin leer artefactos desde C: | IMPLEMENTADA; no ejecutada en C: |
-| B2-060 | Paridad ejecutable uno a uno de los 684 IDs históricos | EN CURSO: 419 ejecutables, 41 bloqueados, 223 sin mapear y 1 ambiguo; 161 en destino final |
+| B2-060 | Paridad ejecutable uno a uno de los 684 IDs históricos | EN CURSO: 577 con ruta ejecutable, 41 bloqueados, 65 sin mapear y 1 ambiguo; 161 en destino final y 416 todavía transitorios |
 
 ## Gate de cierre corregido
 
