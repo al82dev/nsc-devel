@@ -60,6 +60,15 @@ por el modelo. No usa recursión.
 
 - Análisis estático: completado.
 - `git diff --check`: sin errores; sólo avisos de normalización LF/CRLF del checkout.
-- Compilación dirigida: pendiente hasta después del commit, conforme a la metodología vigente.
+- Compilación dirigida posterior al commit `72fc614ec`: los targets
+  `nsc_stage46_native_libraries_tests` y `nsc_item313_reference_returns_tests` enlazaron.
+- Primera invocación CTest: inválida como evidencia funcional porque se ejecutó fuera de NSC Builder
+  sin `NSC_LINKER`; ambos ejecutables se detuvieron antes del contrato NSMETA. No se modificó código
+  a partir de ese resultado.
+- Repetición dirigida con la selección persistida en `CMakeCache.txt`,
+  `A:\nslink-devel\bin\release\nslink.exe`, exportada como `NSC_LINKER` y `NSC_LLD_LINK`:
+  `2/2` pruebas aprobadas en `36.28 s`.
+- `nsc.stage46.native-libraries`: aprobada en `35.52 s` dentro de la validación dirigida.
+- `nsc.item313.reference-returns`: aprobada en `0.74 s` dentro de la validación dirigida.
 - Pruebas 449 y 497: abiertas hasta la corrida integral O0 con NSLink.
 - Inventario integral: 19 fallos abiertos; esta tanda no lo reduce por evidencia dirigida.
