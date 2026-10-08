@@ -113,6 +113,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"cases={len(selected)}")
         return 0
 
+    selected = tuple(
+        case for case in selected if case.supports_optimization(arguments.optimization)
+    )
+    if arguments.case is not None and not selected:
+        parser.error(
+            f"case {arguments.case} requires optimization "
+            f"{catalog.require(arguments.case).optimization}"
+        )
+    if arguments.component is not None and not selected:
+        parser.error(
+            f"component {arguments.component} has no cases for optimization "
+            f"{arguments.optimization}"
+        )
+
     builder = NscCommandBuilder(
         arguments.nsc,
         arguments.nslink,

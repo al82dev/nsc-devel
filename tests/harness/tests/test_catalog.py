@@ -13,6 +13,7 @@ if str(HARNESS_ROOT) not in sys.path:
     sys.path.insert(0, str(HARNESS_ROOT))
 
 from nsc_test.catalog import CatalogError, TestCatalog  # noqa: E402
+from nsc_test.model import ManifestError, TestCase  # noqa: E402
 
 
 class TestCatalogTests(unittest.TestCase):
@@ -91,15 +92,95 @@ class TestCatalogTests(unittest.TestCase):
             self.assertIn("nsc.test.list\tlexer\tcompile-only", completed.stdout)
             self.assertIn("cases=1", completed.stdout)
 
+    def test_all_optimization_profiles_are_valid_manifest_contracts(self) -> None:
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[3]) as directory:
+            root = Path(directory)
+            source = root / "Main.ns"
+            source.write_text("int Main() { return 0; }\n", encoding="utf-8")
+            for optimization in ("O0", "O1", "O2", "O3"):
+                manifest = root / f"{optimization}.case.json"
+                self.write_manifest(
+                    manifest,
+                    f"nsc.test.{optimization.lower()}",
+                    "llvm",
+                    source.name,
+                    optimization=optimization,
+                    tags=["fixed-profile"],
+                )
+                case = TestCase.from_manifest(manifest)
+                self.assertTrue(case.supports_optimization(optimization))
+                self.assertFalse(case.supports_optimization("O0" if optimization != "O0" else "O1"))
+
+    def test_unknown_optimization_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[3]) as directory:
+            root = Path(directory)
+            source = root / "Main.ns"
+            source.write_text("int Main() { return 0; }\n", encoding="utf-8")
+            manifest = root / "case.json"
+            self.write_manifest(
+                manifest,
+                "nsc.test.invalid-profile",
+                "llvm",
+                source.name,
+                optimization="Ofast",
+            )
+            with self.assertRaisesRegex(ManifestError, "invalid optimization"):
+                TestCase.from_manifest(manifest)
+
+    def test_cli_rejects_fixed_case_under_a_different_profile(self) -> None:
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[3]) as directory:
+            root = Path(directory)
+            fake_nsc = root / "nsc.exe"
+            fake_nsc.write_bytes(b"not executable and must not be started")
+            source = root / "Main.ns"
+            source.write_text("int Main() { return 0; }\n", encoding="utf-8")
+            self.write_manifest(
+                root / "case.json",
+                "nsc.test.fixed-o2",
+                "llvm",
+                source.name,
+                optimization="O2",
+                tags=["fixed-profile"],
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(HARNESS_ROOT / "run_nsc_tests.py"),
+                    "--nsc",
+                    str(fake_nsc),
+                    "--catalog",
+                    str(root),
+                    "--optimization",
+                    "O0",
+                    "--case",
+                    "nsc.test.fixed-o2",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(completed.returncode, 2)
+            self.assertIn("requires optimization O2", completed.stderr)
+
     @staticmethod
-    def write_manifest(path: Path, identifier: str, component: str, source: str) -> None:
+    def write_manifest(
+        path: Path,
+        identifier: str,
+        component: str,
+        source: str,
+        *,
+        optimization: str = "O0",
+        tags: list[str] | None = None,
+    ) -> None:
         payload = {
             "id": identifier,
             "component": component,
             "kind": "compile-only",
             "sources": [source],
-            "optimization": "O0",
+            "optimization": optimization,
             "expected": {"exit_code": 0},
+            "tags": tags or [],
         }
         path.write_text(json.dumps(payload), encoding="utf-8")
 

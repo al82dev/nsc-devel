@@ -35,6 +35,7 @@ EXPECTED_KEYS = {
     "run_exit_code",
 }
 TEXT_MODES = {"exact", "contains", "not-contains", "regex"}
+OPTIMIZATIONS = {"O0", "O1", "O2", "O3"}
 
 
 class ManifestError(ValueError):
@@ -87,6 +88,13 @@ class TestCase:
     requires: tuple[str, ...]
     working_files: tuple[Path, ...]
 
+    def supports_optimization(self, optimization: str) -> bool:
+        if optimization not in OPTIMIZATIONS:
+            raise ValueError(f"unsupported optimization: {optimization}")
+        if "fixed-profile" in self.tags or "o0-only" in self.tags:
+            return self.optimization == optimization
+        return True
+
     @staticmethod
     def from_manifest(path: Path) -> "TestCase":
         try:
@@ -119,8 +127,8 @@ class TestCase:
             raise ManifestError(f"case requires sources or project: {path}")
 
         optimization = str(payload.get("optimization", "O0"))
-        if optimization != "O0":
-            raise ManifestError(f"only O0 is authorized during migration: {path}")
+        if optimization not in OPTIMIZATIONS:
+            raise ManifestError(f"invalid optimization in {path}: {optimization}")
         arguments = tuple(string_list(payload, "arguments", path))
         stdin = optional_string(payload, "stdin", path)
         timeout = payload.get("timeout_seconds", 60.0)
