@@ -433,6 +433,23 @@
       "legacy_o0_wall_seconds": null,
       "legacy_o0_reason": "not executed because baseline and non-O0 operations are prohibited by scope",
       "evidence": "TANDA-TEST-INFRA-19-MEDICION-FINAL.md"
+    },
+    "tanda20-nscbuilder2": {
+      "state": "VERIFIED",
+      "entrypoint": "nscbuilder2.py",
+      "storage_root": "_nscbuilder2",
+      "old_builder_modified": false,
+      "unit_registry_passed": 289,
+      "manifest_cases_passed": 76,
+      "specialized_suites_passed": 28,
+      "full_o0_wall_seconds": 1283.295438,
+      "isolated_specialized_wall_seconds": 1142.505275,
+      "root_error_logs_after_isolation": 0,
+      "builder_unit_tests_passed": 36,
+      "gui_smoke_exit_code": 0,
+      "baseline_executed": false,
+      "deployed_to_c": false,
+      "evidence": "TANDA-TEST-INFRA-20-NSCBUILDER2.md"
     }
   }
 }

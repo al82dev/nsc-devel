@@ -192,9 +192,19 @@ class SuiteAdapter:
             "NSC_TEST_SUITE_ID": suite.identifier,
             "NSC_TEST_EVIDENCE_ROOT": str(self.evidence_root),
         }
+        # Legacy owners use absolute inputs, but nsc.exe writes automatic
+        # error*.log files relative to the process working directory.  Give
+        # every suite a private directory so a verification run cannot pollute
+        # the source checkout or consume another suite's diagnostics.
+        suite_working_directory = (
+            self.evidence_root / suite.identifier / "cwd"
+        ).resolve()
+        if not suite_working_directory.is_relative_to(self.evidence_root):
+            raise SuiteError(f"suite working directory escapes evidence root: {suite.identifier}")
+        suite_working_directory.mkdir(parents=True, exist_ok=True)
         return ProcessRequest(
             command=tuple(adapted),
-            working_directory=self.repo_root,
+            working_directory=suite_working_directory,
             timeout_seconds=suite.timeout_seconds,
             environment=environment,
         )

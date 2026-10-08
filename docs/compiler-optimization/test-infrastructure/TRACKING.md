@@ -21,6 +21,6 @@
 | 17 | TERMINADA |
 | 18 | TERMINADA |
 | 19 | TERMINADA |
-| 20 | PENDIENTE |
+| 20 | TERMINADA |
 
-**Avance:** 19/20 tandas terminadas.
+**Avance:** 20/20 tandas terminadas.

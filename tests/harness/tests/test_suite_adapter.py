@@ -67,6 +67,11 @@ class SuiteAdapterTests(unittest.TestCase):
             self.assertEqual(request.environment["NSC_TEST_SUITE_ID"], suite.identifier)
             self.assertEqual(Path(request.environment["NS_LIB_ROOT"]), prefix / "lib")
             self.assertEqual(request.environment["NSC_SELFHOST_PROFILES"], "O0")
+            self.assertEqual(
+                request.working_directory,
+                (evidence / suite.identifier / "cwd").resolve(),
+            )
+            self.assertTrue(request.working_directory.is_dir())
         finally:
             remove_tree_iterative(temporary)
 
