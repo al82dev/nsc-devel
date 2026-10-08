@@ -3,7 +3,7 @@
 | Tanda | Estado |
 |---:|---|
 | 1 | TERMINADA |
-| 2 | PENDIENTE |
+| 2 | TERMINADA |
 | 3 | PENDIENTE |
 | 4 | PENDIENTE |
 | 5 | PENDIENTE |
@@ -23,4 +23,4 @@
 | 19 | PENDIENTE |
 | 20 | PENDIENTE |
 
-**Avance:** 1/20 tandas terminadas.
+**Avance:** 2/20 tandas terminadas.
