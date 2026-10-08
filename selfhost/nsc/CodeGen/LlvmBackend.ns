@@ -902,6 +902,31 @@ namespace NativeSharp.Compiler.CodeGen
         private static bool FloatingScalar(string type)
         { return type == "float" || type == "double"; }
 
+        private static bool StringType(SemanticModel semantic, int typeId)
+        {
+            if (typeId < 0) { return false; }
+            SemanticType type = semantic.Types().Get(typeId);
+            raii string display = String.Copy(type.Display());
+            return type.Kind() == SemanticTypeKind.StringLiteral || display == "string" ||
+                display == "owned string" || display == "borrowed string";
+        }
+
+        private static bool StringExpression(SyntaxTree tree, SemanticModel semantic, int syntaxId)
+        {
+            if (syntaxId < 0) { return false; }
+            if (StringType(semantic, semantic.Fact(syntaxId).TypeId())) { return true; }
+            SyntaxNode expression = tree.Node(syntaxId); int symbol = semantic.Fact(syntaxId).SymbolId();
+            if (expression.Kind() == "CallExpression" && expression.First() >= 0)
+            { symbol = semantic.Fact(expression.First()).SymbolId(); }
+            if (symbol < 0) { return false; }
+            int declaredType = semantic.GetSymbol(symbol).TypeId();
+            if (declaredType < 0) { return false; }
+            SemanticType declared = semantic.Types().Get(declaredType);
+            if (declared.Kind() == SemanticTypeKind.Function)
+            { return StringType(semantic, declared.ReturnType()); }
+            return StringType(semantic, declaredType);
+        }
+
         private static bool GenericPlaceholder(string type)
         {
             if (String.StartsWith(type, "owned "))
@@ -2995,16 +3020,8 @@ namespace NativeSharp.Compiler.CodeGen
             void* right = EmitScalarExpression(module, builder, int32Type, i1, tree, semantic,
                 declarationId, function, state, node.Second(), out rightValid);
             if (!leftValid || !rightValid || left == null || right == null) { return null; }
-            int leftSemanticType = semantic.Fact(node.First()).TypeId();
-            int rightSemanticType = semantic.Fact(node.Second()).TypeId();
-            SemanticTypeKind leftKind = semantic.Types().Get(leftSemanticType).Kind();
-            SemanticTypeKind rightKind = semantic.Types().Get(rightSemanticType).Kind();
-            string leftName = semantic.Types().Get(leftSemanticType).Display();
-            string rightName = semantic.Types().Get(rightSemanticType).Display();
-            bool leftString = leftKind == SemanticTypeKind.StringLiteral || leftName == "string" ||
-                leftName == "owned string" || leftName == "borrowed string";
-            bool rightString = rightKind == SemanticTypeKind.StringLiteral || rightName == "string" ||
-                rightName == "owned string" || rightName == "borrowed string";
+            bool leftString = StringExpression(tree, semantic, node.First());
+            bool rightString = StringExpression(tree, semantic, node.Second());
             if (leftString && rightString &&
                 (node.OperatorKind() == TokenKind.EqualEqual || node.OperatorKind() == TokenKind.BangEqual))
             {
@@ -3117,16 +3134,8 @@ namespace NativeSharp.Compiler.CodeGen
                 void* right = EmitScalarExpression(module, builder, int32Type, i1, tree, semantic,
                     declarationId, function, state, node.Second(), out rightValid);
                 if (!leftValid || !rightValid || left == null || right == null) { return null; }
-                int leftType = semantic.Fact(node.First()).TypeId();
-                int rightType = semantic.Fact(node.Second()).TypeId();
-                SemanticTypeKind leftKind = semantic.Types().Get(leftType).Kind();
-                SemanticTypeKind rightKind = semantic.Types().Get(rightType).Kind();
-                string leftName = semantic.Types().Get(leftType).Display();
-                string rightName = semantic.Types().Get(rightType).Display();
-                bool leftString = leftKind == SemanticTypeKind.StringLiteral || leftName == "string" ||
-                    leftName == "owned string" || leftName == "borrowed string";
-                bool rightString = rightKind == SemanticTypeKind.StringLiteral || rightName == "string" ||
-                    rightName == "owned string" || rightName == "borrowed string";
+                bool leftString = StringExpression(tree, semantic, node.First());
+                bool rightString = StringExpression(tree, semantic, node.Second());
                 if (leftString && rightString &&
                     (node.OperatorKind() == TokenKind.EqualEqual || node.OperatorKind() == TokenKind.BangEqual))
                 {
