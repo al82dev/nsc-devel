@@ -27,6 +27,14 @@ from _nscbuilder2.model import (  # noqa: E402
 from _nscbuilder2.pipeline import PipelineRunner  # noqa: E402
 from _nscbuilder2.storage import BuilderStorage  # noqa: E402
 from _nscbuilder2.summary import condensed_errors  # noqa: E402
+from _nscbuilder2.toolchain import (  # noqa: E402
+    ToolBuildOptions,
+    ToolReceipt,
+    create_tool_build_plan,
+    create_tool_receipt,
+    stage_tool_receipts,
+    validate_tool_receipt,
+)
 from nsc_test.workspace import remove_tree_iterative  # noqa: E402
 
 
@@ -115,6 +123,78 @@ class NscBuilder2Tests(unittest.TestCase):
         history.mkdir()
         BuilderStorage.write_run(history, {"run_id": "x", "status": "running"})
         self.assertEqual(json.loads((history / "run.json").read_text(encoding="utf-8"))["status"], "running")
+
+    def test_tool_plans_publish_complete_release_and_debug_products(self) -> None:
+        expected = {
+            "nslink": ("nslink.exe",),
+            "nsasm": ("nsasm.exe", "nsdump.exe", "nsdis.exe"),
+            "nsdbg": ("nsdbg.exe",),
+        }
+        for name, products in expected.items():
+            source = self.temporary / name
+            source.mkdir()
+            (source / "CMakeLists.txt").write_text("# fixture\n", encoding="utf-8")
+            configuration = "Debug" if name == "nsdbg" else "Release"
+            plan = create_tool_build_plan(
+                ToolBuildOptions(
+                    name,
+                    source,
+                    source / f"build-{configuration.casefold()}",
+                    source / "bin" / configuration.casefold(),
+                    configuration,
+                    7,
+                ),
+                f"{name}-run",
+                self.temporary / f"{name}-history",
+                self.temporary / f"{name}-work",
+            )
+            self.assertEqual(tuple(path.name for path in plan.products), products)
+            commands = "\n".join(" ".join(step.command) for step in plan.steps)
+            self.assertIn("cmake --build", commands)
+            self.assertIn(f"CMAKE_BUILD_TYPE={configuration}", commands)
+            self.assertNotIn("C:\\", commands)
+
+    def test_tool_receipt_requires_all_products_and_detects_mutation(self) -> None:
+        source = self.temporary / "nsasm"
+        source.mkdir()
+        (source / "CMakeLists.txt").write_text("# fixture\n", encoding="utf-8")
+        output = source / "bin" / "release"
+        output.mkdir(parents=True)
+        plan = create_tool_build_plan(
+            ToolBuildOptions("nsasm", source, source / "build", output),
+            "nsasm-run",
+            self.temporary / "receipt-history",
+            self.temporary / "receipt-work",
+        )
+        for product in plan.products:
+            product.write_bytes(product.name.encode("ascii"))
+        receipt = create_tool_receipt(plan, "passed")
+        self.assertEqual(len(validate_tool_receipt(receipt)), 3)
+        plan.products[-1].write_bytes(b"changed")
+        with self.assertRaisesRegex(ValueError, "changed"):
+            validate_tool_receipt(receipt)
+
+    def test_staging_copies_only_receipted_products_and_writes_manifest(self) -> None:
+        source = self.temporary / "nslink-source"
+        source.mkdir()
+        (source / "CMakeLists.txt").write_text("# fixture\n", encoding="utf-8")
+        output = source / "bin" / "release"
+        output.mkdir(parents=True)
+        plan = create_tool_build_plan(
+            ToolBuildOptions("nslink", source, source / "build", output),
+            "nslink-run",
+            self.temporary / "stage-history",
+            self.temporary / "stage-work",
+        )
+        plan.products[0].write_bytes(b"verified-nslink")
+        receipt = create_tool_receipt(plan, "passed")
+        restored = ToolReceipt.from_dict(receipt.to_dict())
+        destination = self.temporary / "compiler" / "bin"
+        manifest_path = self.temporary / "stage" / "toolchain-manifest.json"
+        manifest = stage_tool_receipts((restored,), destination, manifest_path)
+        self.assertEqual((destination / "nslink.exe").read_bytes(), b"verified-nslink")
+        self.assertEqual(len(manifest["artifacts"]), 1)
+        self.assertTrue(manifest_path.is_file())
 
     @unittest.skipUnless(sys.platform == "win32", "Windows process-tree contract")
     def test_cancel_terminates_only_runner_descendants(self) -> None:

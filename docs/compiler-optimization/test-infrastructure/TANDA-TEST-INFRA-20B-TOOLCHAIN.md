@@ -66,4 +66,41 @@ por conveniencia.
 
 ## Estado
 
-`DISEÑO APROBADO POR AMPLIACIÓN EXPLÍCITA DEL USUARIO; IMPLEMENTACIÓN EN CURSO`.
+`NÚCLEO IMPLEMENTADO; GUI, AUTOGENERACIÓN Y DEPLOY EN CURSO`.
+
+## Implementación del núcleo
+
+### Archivos
+
+- `_nscbuilder2/toolchain.py`: catálogo, opciones, planes, evidencia,
+  recibos, validación y staging.
+- `_nscbuilder2/storage.py`: persistencia atómica de recibos por herramienta
+  y configuración.
+- `_nscbuilder2/__init__.py`: superficie interna consumible por la GUI y CLI.
+- `tests/harness/tests/test_nscbuilder2.py`: contratos dirigidos sin construir
+  productos reales.
+
+### Contratos cerrados
+
+- Release y Debug se conservan en el plan de cada productor.
+- CMake, Ninja, `clang-cl` y `lld-link` se nombran mediante el entorno, sin
+  imponer sus rutas de instalación.
+- El recibo contiene ruta, tamaño, `mtime_ns` y SHA-256 de cada producto.
+- Un producto ausente o modificado invalida el recibo antes del staging.
+- NSASM sólo genera recibo cuando existen sus tres ejecutables.
+- El staging copia una lista exacta; no recorre ni copia directorios.
+- Cada copia queda trazada en JSON con productor, configuración, origen,
+  destino y SHA-256.
+
+### Validación ejecutada
+
+```text
+python -m py_compile _nscbuilder2\toolchain.py _nscbuilder2\storage.py
+python -m unittest tests.harness.tests.test_nscbuilder2
+Ran 9 tests in 0.416s
+OK
+```
+
+No se compiló NSLink, NSASM, NSDBG ni NSC. No se escribió en `C:`. La
+validación de los comandos reales queda pendiente por restricción de ejecución,
+no por falta de implementación.

@@ -73,21 +73,21 @@ Builder 2 tendrá fronteras separadas y ordenadas:
 | B2-041 | Configuración versionada y variables de entorno | PENDIENTE |
 | B2-042 | Builder anterior completamente intacto | VERIFICADA |
 | B2-043 | Área Toolchain separada en la GUI | PENDIENTE |
-| B2-044 | Construcción NSLink Release/Debug | PENDIENTE |
-| B2-045 | Construcción NSASM Release/Debug | PENDIENTE |
-| B2-046 | Construcción NSDBG Release/Debug | PENDIENTE |
-| B2-047 | Rutas fuente, build y salida configurables por herramienta | PENDIENTE |
-| B2-048 | Recibo persistente y SHA-256 por herramienta | PENDIENTE |
-| B2-049 | Staging de `nslink.exe` junto al NSC construido en A: | PENDIENTE |
-| B2-050 | Staging de `nsasm.exe`, `nsdump.exe` y `nsdis.exe` en A: | PENDIENTE |
-| B2-051 | Staging de `nsdbg.exe` y PDB disponible en A: | PENDIENTE |
+| B2-044 | Construcción NSLink Release/Debug | IMPLEMENTADA; ejecución pendiente |
+| B2-045 | Construcción NSASM Release/Debug | IMPLEMENTADA; ejecución pendiente |
+| B2-046 | Construcción NSDBG Release/Debug | IMPLEMENTADA; ejecución pendiente |
+| B2-047 | Rutas fuente, build y salida configurables por herramienta | IMPLEMENTADA en modelo |
+| B2-048 | Recibo persistente y SHA-256 por herramienta | IMPLEMENTADA y verificada con fixtures |
+| B2-049 | Staging de `nslink.exe` junto al NSC construido en A: | IMPLEMENTADA y verificada con fixture |
+| B2-050 | Staging de `nsasm.exe`, `nsdump.exe` y `nsdis.exe` en A: | IMPLEMENTADA y verificada con fixture |
+| B2-051 | Staging de `nsdbg.exe` y PDB disponible en A: | IMPLEMENTADA; fixture GUI pendiente |
 | B2-052 | Selección de herramientas incluidas en deploy | PENDIENTE |
 | B2-053 | Autogeneración seleccionable antes del deploy | PENDIENTE |
 | B2-054 | Deploy exclusivamente mediante acción explícita | PENDIENTE; implementar sin ejecutar en C: |
-| B2-055 | Manifiesto de staging/deploy con procedencia y hash | PENDIENTE |
-| B2-056 | Fallo productor bloquea staging y deploy dependientes | PENDIENTE |
-| B2-057 | CMake/Ninja/compiladores resueltos por PATH o proyecto | PENDIENTE |
-| B2-058 | NSC y herramientas conservan configuración Release/Debug elegida | PENDIENTE |
+| B2-055 | Manifiesto de staging/deploy con procedencia y hash | PARCIAL; staging implementado |
+| B2-056 | Fallo productor bloquea staging y deploy dependientes | IMPLEMENTADA en recibos |
+| B2-057 | CMake/Ninja/compiladores resueltos por PATH o proyecto | IMPLEMENTADA en planes de herramientas |
+| B2-058 | NSC y herramientas conservan configuración Release/Debug elegida | IMPLEMENTADA en modelo |
 | B2-059 | Instalación conjunta sin leer artefactos desde C: | PENDIENTE; implementar sin ejecutar en C: |
 
 ## Gate de cierre corregido

@@ -19,10 +19,12 @@ class BuilderStorage:
         self.config_path = self.root / "config.json"
         self.history_root = self.root / "history"
         self.work_root = self.root / "work"
+        self.receipts_root = self.root / "receipts"
 
     def ensure(self) -> None:
         self.history_root.mkdir(parents=True, exist_ok=True)
         self.work_root.mkdir(parents=True, exist_ok=True)
+        self.receipts_root.mkdir(parents=True, exist_ok=True)
 
     def new_run(self) -> tuple[str, Path, Path]:
         self.ensure()
@@ -77,3 +79,29 @@ class BuilderStorage:
             if isinstance(value, dict):
                 rows.append(value)
         return rows
+
+    def save_tool_receipt(self, tool: str, configuration: str, value: dict[str, object]) -> Path:
+        """Atomically persist one producer receipt under Builder 2 storage."""
+
+        self.ensure()
+        target = self.receipts_root / f"{tool.casefold()}-{configuration.casefold()}.json"
+        temporary = target.with_suffix(".json.tmp")
+        temporary.write_text(
+            json.dumps(value, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        os.replace(temporary, target)
+        return target
+
+    def load_tool_receipt(self, tool: str, configuration: str) -> dict[str, object] | None:
+        """Load one receipt without treating missing evidence as a valid build."""
+
+        self.ensure()
+        target = self.receipts_root / f"{tool.casefold()}-{configuration.casefold()}.json"
+        if not target.is_file():
+            return None
+        value = json.loads(target.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError(f"invalid tool receipt: {target}")
+        return value
