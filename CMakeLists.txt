@@ -18,6 +18,7 @@ if(MSVC)
 endif()
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
+option(NSC_ENABLE_CONSOLIDATED_TESTS "Build the opt-in consolidated C++ test executable" OFF)
 option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 set(NSC_NSLINK_EXECUTABLE "C:/native-sharp/bin/nslink.exe" CACHE FILEPATH
     "NSLink executable used by generated NativeSharp build products")
@@ -3148,6 +3149,10 @@ if(NSC_BUILD_TESTS)
         nsc_enable_warnings(${target_name})
         add_test(NAME ${test_name} COMMAND ${target_name})
     endfunction()
+
+    if(NSC_ENABLE_CONSOLIDATED_TESTS)
+        add_subdirectory(tests/unit)
+    endif()
 
     add_executable(
         nsc_language_service_identity_tests
