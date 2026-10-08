@@ -1,0 +1,12 @@
+{
+  "id": "nsc.integration.cfg-features",
+  "component": "cfg",
+  "kind": "compile-only",
+  "sources": ["cfg_features.ns"],
+  "arguments": ["--check", "{source:0}"],
+  "optimization": "O0",
+  "expected": {"exit_code": 0},
+  "timeout_seconds": 30,
+  "tags": ["integration", "cfg"],
+  "requires": []
+}

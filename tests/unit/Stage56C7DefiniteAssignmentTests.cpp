@@ -79,17 +79,23 @@ std::filesystem::path writeProject(
     return directory / (std::string(name) + ".nsproj");
 }
 
+#if !defined(NSC_TEST_CONSOLIDATED_HOST) || !defined(_WIN32)
 bool commandAvailable(std::string_view command)
 {
     return std::system(("command -v " + std::string(command) + " >/dev/null 2>&1").c_str()) == 0;
 }
+#endif
 
 std::string wineCommand()
 {
+#if defined(NSC_TEST_CONSOLIDATED_HOST) && defined(_WIN32)
+    return {};
+#else
     if (std::filesystem::exists("/usr/lib/wine/wine64")) return "/usr/lib/wine/wine64";
     if (commandAvailable("wine64")) return "wine64";
     if (commandAvailable("wine")) return "wine";
     return {};
+#endif
 }
 
 int runUnderWine(const std::string& wine, const std::filesystem::path& exePath)
@@ -176,7 +182,9 @@ std::filesystem::path runBoth(
 {
     const auto projectPath = writeProject(root, name, source);
     compileAndRun(tests, projectPath, "-O0", std::string(name) + " [-O0]", expected);
+#if !defined(NSC_TEST_O0_ONLY)
     compileAndRun(tests, projectPath, "-O2", std::string(name) + " [-O2]", expected);
+#endif
     return projectPath;
 }
 
@@ -224,6 +232,7 @@ void accept(
 // single `mov eax, <n>; ret`? That is the strongest possible statement that the semantics are
 // what the source says AND that the defaulting stores cost nothing -- the optimizer could not
 // fold the program otherwise.
+#if !defined(NSC_TEST_O0_ONLY)
 bool foldsToConstantReturn(
     TestContext& tests,
     const std::filesystem::path& projectPath,
@@ -272,6 +281,7 @@ bool foldsToConstantReturn(
             std::to_string(expected));
     return folded;
 }
+#endif
 
 // --- half 1: defined default storage --------------------------------------------------------
 
@@ -305,7 +315,9 @@ namespace proj {
     const std::string ir = dumpIr(tests, projectPath, "DefaultStorage");
     // The declaration -- not the hoisted alloca -- is what carries the zeroing.
     expectContains(tests, ir, "zeroinitializer", "DefaultStorage");
+#if !defined(NSC_TEST_O0_ONLY)
     foldsToConstantReturn(tests, projectPath, "DefaultStorage", 42);
+#endif
 }
 
 void testDefaultingCostsNothingWhenTheProgramDoesNotNeedIt(
@@ -329,7 +341,9 @@ namespace proj {
 }
 )NS";
     const auto projectPath = runBoth(tests, root, "DefaultingIsFree", source, 42);
+#if !defined(NSC_TEST_O0_ONLY)
     foldsToConstantReturn(tests, projectPath, "DefaultingIsFree", 42);
+#endif
 }
 
 void testDefaultIsReestablishedOnEveryLoopIteration(
@@ -569,7 +583,9 @@ namespace proj {
 }
 )NS";
     const auto projectPath = runBoth(tests, root, "AggregateInitializer", source, 42);
+#if !defined(NSC_TEST_O0_ONLY)
     foldsToConstantReturn(tests, projectPath, "AggregateInitializer", 42);
+#endif
 }
 
 void testAggregateInitializerFillsFields(TestContext& tests, const std::filesystem::path& root)
@@ -685,7 +701,9 @@ namespace proj {
     const std::string ir = dumpIr(tests, projectPath, "IndirectStructValue");
     expectContains(tests, ir, "%struct.new.value = load [20 x i8]", "IndirectStructValue");
     expectLacks(tests, ir, "store ptr %struct.new,", "IndirectStructValue");
+#if !defined(NSC_TEST_O0_ONLY)
     foldsToConstantReturn(tests, projectPath, "IndirectStructValue", 42);
+#endif
 }
 
 // --- the shipped fixture and example ---------------------------------------------------------
@@ -704,8 +722,13 @@ void testFixtureAndExampleCompile(TestContext& tests)
         if (!std::filesystem::exists(project)) continue;
         const auto exePath = project.parent_path() / "c7_check.exe";
         const std::string exeText = exePath.string();
+#if defined(NSC_TEST_O0_ONLY)
+        constexpr std::string_view optimization = "-O0";
+#else
+        constexpr std::string_view optimization = "-O2";
+#endif
         const std::array<std::string_view, 5> args = {
-            "--emit-project-oop-exe", projectText, "-O2", "-o", exeText};
+            "--emit-project-oop-exe", projectText, optimization, "-o", exeText};
         Driver driver;
         std::ostringstream out;
         std::ostringstream err;

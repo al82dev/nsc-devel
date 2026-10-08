@@ -1,0 +1,15 @@
+{
+  "id": "nsc.dump-ssa",
+  "component": "ssa",
+  "kind": "dump",
+  "sources": ["ssa_features.ns"],
+  "arguments": ["--dump-ssa", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "phi @value"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "ssa", "dump"],
+  "requires": []
+}

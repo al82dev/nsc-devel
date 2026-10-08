@@ -1,0 +1,15 @@
+{
+  "id": "nsc.verify-dominance",
+  "component": "dominance",
+  "kind": "semantic",
+  "sources": ["dominance_features.ns"],
+  "arguments": ["--verify-dominance", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "Dominance verification: ok"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "dominance", "verification"],
+  "requires": []
+}

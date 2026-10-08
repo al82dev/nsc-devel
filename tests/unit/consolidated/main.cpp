@@ -143,6 +143,7 @@ int main(int argumentCount, char** arguments)
         nsc::test::TestRegistry registry;
         nsc::test::registerBasicUnitTests(registry);
         nsc::test::registerDiagnosticsUnitTests(registry);
+        nsc::test::registerFlowUnitTests(registry);
         nsc::test::registerLexerUnitTests(registry);
         nsc::test::registerNumericUnitTests(registry);
         nsc::test::registerParserUnitTests(registry);

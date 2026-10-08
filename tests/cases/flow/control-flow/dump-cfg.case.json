@@ -1,0 +1,15 @@
+{
+  "id": "nsc.dump-cfg",
+  "component": "cfg",
+  "kind": "dump",
+  "sources": ["control_flow.ns"],
+  "arguments": ["--dump-cfg", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "cfg.module"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "cfg", "dump"],
+  "requires": []
+}

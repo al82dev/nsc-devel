@@ -1,0 +1,15 @@
+{
+  "id": "nsc.dump-dominance",
+  "component": "dominance",
+  "kind": "dump",
+  "sources": ["dominance_features.ns"],
+  "arguments": ["--dump-dominance", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "dominance.module"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "dominance", "dump"],
+  "requires": []
+}

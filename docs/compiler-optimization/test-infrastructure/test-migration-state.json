@@ -211,6 +211,22 @@
         "nsc.stage56.c7-definite-assignment": 11
       },
       "evidence": "TANDA-TEST-INFRA-10-SEMANTICS-TYPES-COMPTIME.md"
+    },
+    "tanda11-flow-units": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "case_count": 20,
+      "membership": "tests/unit/include/nsc_test/FlowLegacyEntries.def",
+      "module": "tests/unit/modules/FlowUnitTests.cpp",
+      "adapter_root": "tests/unit/flow_adapters",
+      "evidence": "TANDA-TEST-INFRA-11-OWNERSHIP-FLOW.md"
+    },
+    "tanda11-flow-fixtures": {
+      "state": "DUAL_PARITY",
+      "case_count": 12,
+      "manifest_root": "tests/cases/flow",
+      "source_count": 4,
+      "components": ["cfg", "dominance", "ssa"],
+      "evidence": "TANDA-TEST-INFRA-11-OWNERSHIP-FLOW.md"
     }
   }
 }

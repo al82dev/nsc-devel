@@ -177,7 +177,9 @@ void run(
     writeProject(directory, name);
     writeFile(directory / "Main.ns", source);
     compileAndRun(tests, directory, "-O0", std::string(name) + " [-O0]", expected);
+#if !defined(NSC_TEST_O0_ONLY)
     compileAndRun(tests, directory, "-O2", std::string(name) + " [-O2]", expected);
+#endif
 }
 
 // A program that MUST be rejected, with a diagnostic that actually names the problem. Ownership
@@ -1409,7 +1411,9 @@ namespace OwnedStringRhsOrder
     writeProjectWithCoreReference(directory, "OwnedStringFieldReplacementRhsOrder");
     writeFile(directory / "Main.ns", source);
     compileAndRun(tests, directory, "-O0", "OwnedStringFieldReplacementRhsOrder [-O0]", 42);
+#if !defined(NSC_TEST_O0_ONLY)
     compileAndRun(tests, directory, "-O2", "OwnedStringFieldReplacementRhsOrder [-O2]", 42);
+#endif
 }
 
 void testMoveOutOfOwnedFieldTransfers(TestContext& tests, const std::filesystem::path& root)
@@ -1557,7 +1561,9 @@ namespace OwnedStringOverwrite
     writeProjectWithCoreReference(directory, "OwnedStringFieldOverwrite");
     writeFile(directory / "Main.ns", source);
     compileAndRun(tests, directory, "-O0", "OwnedStringFieldOverwrite [-O0]", 0);
+#if !defined(NSC_TEST_O0_ONLY)
     compileAndRun(tests, directory, "-O2", "OwnedStringFieldOverwrite [-O2]", 0);
+#endif
 }
 
 void testDestructionOrderContractInterleaves(TestContext& tests, const std::filesystem::path& root)

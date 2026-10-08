@@ -1,0 +1,15 @@
+{
+  "id": "nsc.verify-ssa",
+  "component": "ssa",
+  "kind": "semantic",
+  "sources": ["ssa_features.ns"],
+  "arguments": ["--verify-ssa", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "SSA verification: ok"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "ssa", "verification"],
+  "requires": []
+}

@@ -76,6 +76,21 @@ add_executable(
     semantic_adapters/Stage52_5ForeachSemanticGapsAdapter.cpp
     semantic_adapters/Stage58ViewLifetimesAdapter.cpp
     semantic_adapters/Stage59ClosedGenericMemberAdapter.cpp
+    modules/FlowUnitTests.cpp
+    flow_adapters/CfgAdapter.cpp
+    flow_adapters/CfgVerifierAdapter.cpp
+    flow_adapters/Stage45HirExceptionalCfgAdapter.cpp
+    flow_adapters/Stage45MirExceptionalCfgAdapter.cpp
+    flow_adapters/Stage50_6OwnershipControlFlowAdapter.cpp
+    flow_adapters/Stage56C7DefiniteAssignmentAdapter.cpp
+    flow_adapters/DominanceAdapter.cpp
+    flow_adapters/DominanceVerifierAdapter.cpp
+    flow_adapters/NativeSharp3T09IterationBorrowAdapter.cpp
+    flow_adapters/NativeSharp3T13CrossModuleLifetimeAdapter.cpp
+    flow_adapters/Stage50_11OwnershipExecutionAdapter.cpp
+    flow_adapters/PartialClassAggregationAdapter.cpp
+    flow_adapters/SsaAdapter.cpp
+    flow_adapters/SsaVerifierAdapter.cpp
     modules/SourceUnitTests.cpp)
 
 target_include_directories(
