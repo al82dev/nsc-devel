@@ -119,9 +119,30 @@ namespace NativeSharp.Compiler.Sema
             return String.Copy("");
         }
 
+        private bool ValueGenericArgument(int typeId)
+        {
+            if (typeId < 0) { return false; }
+            SemanticTypeKind kind = model.Types().Get(typeId).Kind();
+            if (kind != SemanticTypeKind.Named)
+            {
+                return kind != SemanticTypeKind.Error && kind != SemanticTypeKind.Void &&
+                    kind != SemanticTypeKind.Array && kind != SemanticTypeKind.Function &&
+                    kind != SemanticTypeKind.NullLiteral && kind != SemanticTypeKind.StringLiteral &&
+                    kind != SemanticTypeKind.TypeParameter;
+            }
+            int symbol = TypeSymbol(typeId); if (symbol < 0) { return false; }
+            SymbolKind symbolKind = model.GetSymbol(symbol).Kind();
+            return symbolKind == SymbolKind.Struct || symbolKind == SymbolKind.Union ||
+                symbolKind == SymbolKind.Enum;
+        }
+
         private int SubstituteMemberType(int receiverType, int owner, int memberType)
         {
-            string resultName = model.Types().Get(memberType).Display();
+            string resultName = model.Types().Get(memberType).Display(); int qualifierLength = 0;
+            if (String.StartsWith(resultName, "owned ")) { qualifierLength = 6; }
+            else if (String.StartsWith(resultName, "borrowed ")) { qualifierLength = 9; }
+            raii string placeholder = qualifierLength == 0 ? String.Copy(resultName) :
+                String.Substring(resultName, qualifierLength, resultName.Length - qualifierLength);
             string parameters = model.GetSymbol(owner).GenericText(); int parameterIndex = 0; int begin = 0;
             while (begin <= parameters.Length)
             {
@@ -130,10 +151,17 @@ namespace NativeSharp.Compiler.Sema
                 int end = comma < 0 ? parameters.Length : begin + comma;
                 raii string rawParameterName = String.Substring(parameters, begin, end - begin);
                 raii string parameterName = String.Trim(rawParameterName);
-                if (parameterName == resultName)
+                if (parameterName == placeholder)
                 {
                     raii string argument = GenericArgument(model.Types().Get(receiverType).Display(), parameterIndex);
-                    if (argument.Length != 0) { return model.Types().Intern(argument); }
+                    if (argument.Length != 0)
+                    {
+                        int argumentType = model.Types().Intern(argument);
+                        if (qualifierLength == 0 || ValueGenericArgument(argumentType)) { return argumentType; }
+                        raii string qualifier = String.Substring(resultName, 0, qualifierLength);
+                        raii string qualified = String.Concat(qualifier, argument);
+                        return model.Types().Intern(qualified);
+                    }
                 }
                 if (comma < 0) { break; }
                 parameterIndex = parameterIndex + 1; begin = end + 1;

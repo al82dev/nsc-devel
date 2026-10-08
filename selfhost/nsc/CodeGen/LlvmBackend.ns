@@ -1004,19 +1004,6 @@ namespace NativeSharp.Compiler.CodeGen
             return SemanticIntegerBits(semantic, type) != 0 || FloatingScalar(type);
         }
 
-        private static int ClosedGenericScalarResult(SemanticModel semantic, int receiverType,
-            int declaredResult, int fallbackResult)
-        {
-            if (receiverType < 0 || declaredResult < 0) { return fallbackResult; }
-            raii string declared = String.Copy(semantic.Types().Get(declaredResult).Display());
-            int position = GenericResultPosition(declared);
-            if (position < 0) { return fallbackResult; }
-            raii string receiver = String.Copy(semantic.Types().Get(receiverType).Display());
-            raii string closed = ClosedGenericArgument(receiver, position);
-            if (closed.Length == 0 || !PhysicalValueScalar(semantic, closed)) { return fallbackResult; }
-            return semantic.Types().Intern(closed);
-        }
-
         private static void* BoxGenericScalar(void* module, void* builder, void* value)
         {
             void* context = LLVM.LLVMGetModuleContext(module);
@@ -2294,14 +2281,6 @@ namespace NativeSharp.Compiler.CodeGen
                         accessorFunction, &arguments[0], 2u, resultName.Pointer());
                     int declaredResult = signature.ReturnType();
                     int closedResult = semantic.Fact(syntaxId).TypeId();
-                    void* pointerType = LLVM.LLVMPointerTypeInContext(
-                        LLVM.LLVMGetModuleContext(module), 0u);
-                    if (LLVM.LLVMTypeOf(result) == pointerType)
-                    {
-                        int receiverType = semantic.Fact(node.First()).TypeId();
-                        closedResult = ClosedGenericScalarResult(
-                            semantic, receiverType, declaredResult, closedResult);
-                    }
                     result = ConvertScalar(module, builder, semantic, result, declaredResult, closedResult);
                     valid = result != null; return result;
                 }
