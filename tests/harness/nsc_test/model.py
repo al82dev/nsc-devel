@@ -34,6 +34,7 @@ EXPECTED_KEYS = {
     "artifacts",
     "run_exit_code",
 }
+TEXT_MODES = {"exact", "contains", "not-contains"}
 
 
 class ManifestError(ValueError):
@@ -55,10 +56,16 @@ class CaseKind(str, Enum):
 
 
 @dataclass(frozen=True)
+class TextExpectation:
+    mode: str
+    text: str
+
+
+@dataclass(frozen=True)
 class ExpectedOutcome:
     exit_code: int
-    stdout: str | None = None
-    stderr: str | None = None
+    stdout: TextExpectation | None = None
+    stderr: TextExpectation | None = None
     artifacts: tuple[str, ...] = ()
     run_exit_code: int | None = None
 
@@ -188,13 +195,9 @@ def parse_expected(value: Any, path: Path) -> ExpectedOutcome:
     exit_code = value.get("exit_code")
     if not isinstance(exit_code, int) or isinstance(exit_code, bool):
         raise ManifestError(f"expected.exit_code must be an integer in {path}")
-    stdout = value.get("stdout")
-    stderr = value.get("stderr")
+    stdout = parse_text_expectation(value.get("stdout"), "stdout", path)
+    stderr = parse_text_expectation(value.get("stderr"), "stderr", path)
     run_exit_code = value.get("run_exit_code")
-    if stdout is not None and not isinstance(stdout, str):
-        raise ManifestError(f"expected.stdout must be a string in {path}")
-    if stderr is not None and not isinstance(stderr, str):
-        raise ManifestError(f"expected.stderr must be a string in {path}")
     if run_exit_code is not None and (
         not isinstance(run_exit_code, int) or isinstance(run_exit_code, bool)
     ):
@@ -211,3 +214,24 @@ def parse_expected(value: Any, path: Path) -> ExpectedOutcome:
         artifacts=tuple(artifacts),
         run_exit_code=run_exit_code,
     )
+
+
+def parse_text_expectation(value: Any, field: str, path: Path) -> TextExpectation | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return TextExpectation(mode="exact", text=value)
+    if not isinstance(value, dict):
+        raise ManifestError(f"expected.{field} must be a string or object in {path}")
+    unknown = sorted(set(value) - {"mode", "text"})
+    if unknown:
+        raise ManifestError(
+            f"unknown expected.{field} fields in {path}: {', '.join(unknown)}"
+        )
+    mode = value.get("mode", "exact")
+    text = value.get("text")
+    if mode not in TEXT_MODES:
+        raise ManifestError(f"invalid expected.{field} mode in {path}: {mode}")
+    if not isinstance(text, str):
+        raise ManifestError(f"expected.{field}.text must be a string in {path}")
+    return TextExpectation(mode=mode, text=text)
