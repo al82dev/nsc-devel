@@ -1,0 +1,13 @@
+{
+  "id": "nsc.stage44.hir-dump",
+  "component": "hir",
+  "kind": "project",
+  "project": "Stage44App.nsproj",
+  "working_files": ["Main.ns"],
+  "arguments": ["--dump-project-oop-hir", "{project}"],
+  "optimization": "O0",
+  "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "generic-specialization=.*Identity``1<int>"}},
+  "timeout_seconds": 60,
+  "tags": ["project", "legacy-parity", "hir"],
+  "requires": []
+}

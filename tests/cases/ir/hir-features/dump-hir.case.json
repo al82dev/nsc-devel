@@ -1,0 +1,15 @@
+{
+  "id": "nsc.dump-hir-features",
+  "component": "hir",
+  "kind": "dump",
+  "sources": ["hir_features.ns"],
+  "arguments": ["--dump-hir", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "regex", "text": "CompoundAssignment.*read-conversion=integral-promotion"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "legacy-parity", "hir"],
+  "requires": []
+}

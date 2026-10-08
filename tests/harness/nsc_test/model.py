@@ -34,7 +34,7 @@ EXPECTED_KEYS = {
     "artifacts",
     "run_exit_code",
 }
-TEXT_MODES = {"exact", "contains", "not-contains"}
+TEXT_MODES = {"exact", "contains", "not-contains", "regex"}
 
 
 class ManifestError(ValueError):

@@ -1,0 +1,15 @@
+{
+  "id": "nsc.verify-hir",
+  "component": "hir",
+  "kind": "dump",
+  "sources": ["hir_features.ns"],
+  "arguments": ["--verify-hir", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "HIR verification: ok"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "legacy-parity", "hir"],
+  "requires": []
+}

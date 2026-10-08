@@ -1,0 +1,13 @@
+{
+  "id": "nsc.stage42.hir-dump",
+  "component": "hir",
+  "kind": "project",
+  "project": "Stage42App.nsproj",
+  "working_files": ["Main.ns"],
+  "arguments": ["--dump-project-oop-hir", "{project}"],
+  "optimization": "O0",
+  "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "delegate-create.*event-invoke"}},
+  "timeout_seconds": 60,
+  "tags": ["project", "legacy-parity", "hir"],
+  "requires": []
+}

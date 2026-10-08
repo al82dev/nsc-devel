@@ -1,0 +1,123 @@
+namespace Stage38.Demo
+{
+    public interface IValue
+    {
+        int Value { get; set; }
+        int this[int index] { get; set; }
+    }
+
+    public abstract class BaseValue : IValue
+    {
+        public abstract int Value { get; set; }
+        public abstract int this[int index] { get; set; }
+    }
+
+    public class Number : BaseValue
+    {
+        private int Bias;
+
+        public Number(int value)
+        {
+            Value = value;
+            Bias = 1;
+        }
+
+        public override int Value { get; set; }
+
+        public override int this[int index]
+        {
+            get
+            {
+                return Value + index + Bias;
+            }
+            set
+            {
+                Value = value - index - Bias;
+            }
+        }
+
+        public int this[int row, int column]
+        {
+            get
+            {
+                return Value + row + column;
+            }
+            set
+            {
+                Value = value - row - column;
+            }
+        }
+
+        public static Number operator +(Number left, Number right)
+        {
+            return new Number(left.Value + right.Value);
+        }
+
+        public static Number operator -(Number value)
+        {
+            return new Number(-value.Value);
+        }
+
+        public static bool operator ==(Number left, Number right)
+        {
+            return left.Value == right.Value;
+        }
+
+        public static bool operator !=(Number left, Number right)
+        {
+            return left.Value != right.Value;
+        }
+
+        public static implicit operator int(Number value)
+        {
+            return value.Value;
+        }
+
+        public static explicit operator Number(int value)
+        {
+            return new Number(value);
+        }
+    }
+
+    public class Holder
+    {
+        private int Stored;
+
+        public Holder(int value)
+        {
+            Stored = value;
+        }
+
+        public int Read()
+        {
+            return Stored;
+        }
+    }
+
+    public class Harness
+    {
+        public static int Run()
+        {
+            Number first = new Number(10);
+            Number second = new Number(20);
+            Number sum = first + second;
+            Number negative = -sum;
+            bool same = first == second;
+            int primitive = sum;
+            Holder holder = new Holder(sum);
+            Number casted = (Number)primitive;
+            IValue interfaceValue = casted;
+            interfaceValue[2] = primitive;
+            int indexed = interfaceValue[2];
+            int multi = casted[1, 2];
+            int result = holder.Read() + indexed + multi + negative.Value;
+            delete first;
+            delete second;
+            delete sum;
+            delete negative;
+            delete holder;
+            delete casted;
+            return result;
+        }
+    }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "nsc.stage39.mir-dump",
+  "component": "mir",
+  "kind": "project",
+  "project": "Stage39App.nsproj",
+  "working_files": ["NativeRttiCasts.ns"],
+  "arguments": ["--dump-project-oop-mir", "{project}"],
+  "optimization": "O0",
+  "expected": {"exit_code": 0, "stdout": {"mode": "contains", "text": "checked-reference-cast"}},
+  "timeout_seconds": 60,
+  "tags": ["project", "legacy-parity", "mir"],
+  "requires": []
+}

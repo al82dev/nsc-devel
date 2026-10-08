@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+import re
 
 from .model import TestCase, TextExpectation
 from .process import ProcessResult
@@ -115,6 +116,8 @@ class ResultVerifier:
             matched = expected.text in actual
         elif expected.mode == "not-contains":
             matched = expected.text not in actual
+        elif expected.mode == "regex":
+            matched = re.search(expected.text, actual, flags=re.DOTALL) is not None
         if matched:
             return
         kind = FailureKind.STDOUT if stream == "stdout" else FailureKind.STDERR

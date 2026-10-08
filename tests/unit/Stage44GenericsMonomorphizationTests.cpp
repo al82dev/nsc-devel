@@ -196,14 +196,19 @@ namespace Demo
         "generic ODR definitions use their physical symbol as the COFF leader instead of a detached byte global");
 
     std::string targetError;
+#if defined(NSC_TEST_O0_ONLY)
+    constexpr auto optimizationLevel = nativesharp::llvm_backend::LlvmOptimizationLevel::O0;
+#else
+    constexpr auto optimizationLevel = nativesharp::llvm_backend::LlvmOptimizationLevel::O2;
+#endif
     auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(
-        nativesharp::llvm_backend::LlvmOptimizationLevel::O2, targetError);
+        optimizationLevel, targetError);
     tests.expect(target != nullptr && targetError.empty(), "Stage 44 obtains the Windows x64 target machine");
     if (target == nullptr) return;
     tests.expect(target->configureModuleForTarget(*module, targetError), "Stage 44 applies Win64 data layout");
     nativesharp::llvm_backend::LlvmOptimizer optimizer;
-    tests.expect(optimizer.optimize(*module, *target, nativesharp::llvm_backend::LlvmOptimizationLevel::O2, targetError),
-        "monomorphized LLVM survives O2");
+    tests.expect(optimizer.optimize(*module, *target, optimizationLevel, targetError),
+        "monomorphized LLVM survives the selected optimization level");
     tests.expect(module->verify(verifyError), "optimized Stage 44 LLVM remains verifier-clean");
     const auto object = directory / "stage44.obj";
     tests.expect(target->emit(*module, object, nativesharp::llvm_backend::LlvmCodeGenFileType::Object, targetError),

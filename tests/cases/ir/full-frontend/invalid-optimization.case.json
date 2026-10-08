@@ -1,0 +1,15 @@
+{
+  "id": "nsc.invalid.optimization-level",
+  "component": "passes",
+  "kind": "specialized",
+  "sources": ["full_frontend.ns"],
+  "arguments": ["--check", "{source:0}", "-O4"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 2,
+    "stderr": {"mode": "contains", "text": "unsupported LLVM optimization level '-O4'"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "legacy-parity", "negative"],
+  "requires": []
+}

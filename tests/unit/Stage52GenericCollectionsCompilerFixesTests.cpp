@@ -218,8 +218,13 @@ std::string compileAndEmitObject(
     const std::string llvm = module->text();
 
     std::string targetError;
+#if defined(NSC_TEST_O0_ONLY)
+    constexpr auto optimizationLevel = nativesharp::llvm_backend::LlvmOptimizationLevel::O0;
+#else
+    constexpr auto optimizationLevel = nativesharp::llvm_backend::LlvmOptimizationLevel::O2;
+#endif
     auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(
-        nativesharp::llvm_backend::LlvmOptimizationLevel::O2, targetError);
+        optimizationLevel, targetError);
     tests.expect(target != nullptr && targetError.empty(), std::string(label) + ": obtains Windows x64 target machine");
     if (target == nullptr) return llvm;
     tests.expect(target->configureModuleForTarget(*module, targetError), std::string(label) + ": applies Windows x64 data layout");

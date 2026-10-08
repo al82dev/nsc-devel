@@ -1,0 +1,58 @@
+extern C int puts(char* text);
+
+struct Point
+{
+    int X;
+    int Y;
+}
+
+enum Color
+{
+    Red,
+    Green = Red + 1,
+    Blue,
+}
+
+const int GlobalAnswer = 40 + 2;
+int Counter;
+
+int Add(int a, int b)
+{
+    return a + b;
+}
+
+int Main()
+{
+    Point p;
+    p.X = 20;
+    p.Y = 22;
+
+    Point* pp = &p;
+    pp->X += 1;
+
+    int[4] values;
+    values[0] = p.X;
+    values[1] = p.Y;
+
+    int* heap = new int[4];
+    if (heap == null)
+    {
+        return 1;
+    }
+
+    heap[0] = Add(values[0], values[1]);
+    int* temp = stackalloc int[4];
+    temp[0] = heap[0];
+
+    nuint pointSize = sizeof(Point);
+    if (pointSize == 0u)
+    {
+        delete[] heap;
+        return 2;
+    }
+
+    puts("NativeSharp frontend");
+    int result = temp[0];
+    delete[] heap;
+    return result;
+}

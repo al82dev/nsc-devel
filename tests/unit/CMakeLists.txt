@@ -91,6 +91,31 @@ add_executable(
     flow_adapters/PartialClassAggregationAdapter.cpp
     flow_adapters/SsaAdapter.cpp
     flow_adapters/SsaVerifierAdapter.cpp
+    modules/IrUnitTests.cpp
+    hir_mir_pass_adapters/ConstantFolderAdapter.cpp
+    hir_mir_pass_adapters/HirAdapter.cpp
+    hir_mir_pass_adapters/HirVerifierAdapter.cpp
+    hir_mir_pass_adapters/Item394StageBoundaryVerifierAdapter.cpp
+    hir_mir_pass_adapters/Item396MirOwnershipCleanupAdapter.cpp
+    hir_mir_pass_adapters/Item397MirExceptionFlowAdapter.cpp
+    hir_mir_pass_adapters/Item398MirGenericsInterfacesAdapter.cpp
+    hir_mir_pass_adapters/MirAdapter.cpp
+    hir_mir_pass_adapters/MirVerifierAdapter.cpp
+    hir_mir_pass_adapters/NamespaceFunctionHirAdapter.cpp
+    hir_mir_pass_adapters/NamespaceFunctionMirAdapter.cpp
+    hir_mir_pass_adapters/NativeSharp3T08TailCallAdapter.cpp
+    hir_mir_pass_adapters/NativeSharp3T09RangeEvaluationAdapter.cpp
+    hir_mir_pass_adapters/NativeSharp3T09SynchronousGeneratorAdapter.cpp
+    hir_mir_pass_adapters/NativeSharp3T10AsyncFunctionAdapter.cpp
+    hir_mir_pass_adapters/NativeSharp3T10AsyncGeneratorAdapter.cpp
+    hir_mir_pass_adapters/NativeSharp3T10CancellationAdapter.cpp
+    hir_mir_pass_adapters/NativeSharp3T10TaskScopeAdapter.cpp
+    hir_mir_pass_adapters/OptimizationPassesAdapter.cpp
+    hir_mir_pass_adapters/OptimizationVerifierAdapter.cpp
+    hir_mir_pass_adapters/PassManagerAdapter.cpp
+    hir_mir_pass_adapters/Stage44GenericsMonomorphizationAdapter.cpp
+    hir_mir_pass_adapters/Stage52_1GenericCollectionsAdditionsAdapter.cpp
+    hir_mir_pass_adapters/Stage52GenericCollectionsCompilerFixesAdapter.cpp
     modules/SourceUnitTests.cpp)
 
 target_include_directories(

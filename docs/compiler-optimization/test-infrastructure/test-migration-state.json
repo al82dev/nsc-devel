@@ -227,6 +227,23 @@
       "source_count": 4,
       "components": ["cfg", "dominance", "ssa"],
       "evidence": "TANDA-TEST-INFRA-11-OWNERSHIP-FLOW.md"
+    },
+    "tanda12-ir-units": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "case_count": 24,
+      "membership": "tests/unit/include/nsc_test/IrLegacyEntries.def",
+      "module": "tests/unit/modules/IrUnitTests.cpp",
+      "adapter_root": "tests/unit/hir_mir_pass_adapters",
+      "components": ["hir", "mir", "passes"],
+      "evidence": "TANDA-TEST-INFRA-12-HIR-MIR-PASSES.md"
+    },
+    "tanda12-ir-fixtures": {
+      "state": "DUAL_PARITY",
+      "case_count": 25,
+      "manifest_root": "tests/cases/ir",
+      "source_count": 22,
+      "components": ["hir", "mir", "passes"],
+      "evidence": "TANDA-TEST-INFRA-12-HIR-MIR-PASSES.md"
     }
   }
 }

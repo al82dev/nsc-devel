@@ -1,0 +1,16 @@
+{
+  "id": "nsc.stage36-recovery.mir-dump",
+  "component": "mir",
+  "kind": "project",
+  "project": "Stage36RecoveryApp.nsproj",
+  "working_files": ["InterfacesAndDispatch.ns"],
+  "arguments": ["--dump-project-oop-mir", "{project}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "interface-instance-call"}
+  },
+  "timeout_seconds": 60,
+  "tags": ["project", "legacy-parity", "mir"],
+  "requires": []
+}

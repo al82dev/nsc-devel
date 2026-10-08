@@ -1,0 +1,15 @@
+{
+  "id": "nsc.verify-opt",
+  "component": "passes",
+  "kind": "dump",
+  "sources": ["pass_features.ns"],
+  "arguments": ["--verify-opt", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "Optimization verification: ok"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "legacy-parity", "passes"],
+  "requires": []
+}

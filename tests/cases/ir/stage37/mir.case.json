@@ -1,0 +1,16 @@
+{
+  "id": "nsc.stage37.mir-dump",
+  "component": "mir",
+  "kind": "project",
+  "project": "Stage37App.nsproj",
+  "working_files": ["StaticInitialization.ns"],
+  "arguments": ["--dump-project-oop-mir", "{project}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "regex", "text": "abi=.*static,p0:builtin:int"}
+  },
+  "timeout_seconds": 60,
+  "tags": ["project", "legacy-parity", "mir"],
+  "requires": []
+}

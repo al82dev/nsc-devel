@@ -97,6 +97,45 @@ class CommandBuilderTests(unittest.TestCase):
 
 
 class ResultVerifierTests(unittest.TestCase):
+    def test_verifies_multiline_regular_expression(self) -> None:
+        repo = Path(__file__).resolve().parents[3]
+        with tempfile.TemporaryDirectory(dir=repo) as directory:
+            root = Path(directory)
+            source = root / "Main.ns"
+            source.write_text("int Main() { return 0; }\n", encoding="utf-8")
+            manifest = root / "case.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "id": "nsc.test.regex",
+                        "component": "hir",
+                        "kind": "dump",
+                        "sources": ["Main.ns"],
+                        "expected": {
+                            "exit_code": 0,
+                            "stdout": {"mode": "regex", "text": "first.*last"},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            case = TestCase.from_manifest(manifest)
+            work_root = repo / "_test-verifier-work"
+            with CaseWorkspace.create(case, work_root) as workspace:
+                process = ProcessResult(
+                    command=("nsc.exe",),
+                    working_directory=workspace.root,
+                    exit_code=0,
+                    stdout="first\nintermediate\nlast\n",
+                    stderr="",
+                    duration_seconds=0.1,
+                    timed_out=False,
+                )
+                result = ResultVerifier().verify(case, workspace, process)
+                self.assertTrue(result.passed)
+            if work_root.exists():
+                remove_tree_iterative(work_root)
+
     def test_verifies_exit_text_and_artifact(self) -> None:
         repo = Path(__file__).resolve().parents[3]
         with tempfile.TemporaryDirectory(dir=repo) as directory:

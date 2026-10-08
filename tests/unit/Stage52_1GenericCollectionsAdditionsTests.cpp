@@ -63,8 +63,13 @@ void testProjectStage52CompilesToVerifiedObject(TestContext& tests, const std::f
     tests.expect(module->verify(verifyError), "project_stage52: LLVM module verifies clean (" + verifyError + ")");
 
     std::string targetError;
+#if defined(NSC_TEST_O0_ONLY)
+    constexpr auto optimizationLevel = nativesharp::llvm_backend::LlvmOptimizationLevel::O0;
+#else
+    constexpr auto optimizationLevel = nativesharp::llvm_backend::LlvmOptimizationLevel::O2;
+#endif
     auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(
-        nativesharp::llvm_backend::LlvmOptimizationLevel::O2, targetError);
+        optimizationLevel, targetError);
     tests.expect(target != nullptr && targetError.empty(), "project_stage52: obtains Windows x64 target machine");
     if (target == nullptr) return;
     tests.expect(target->configureModuleForTarget(*module, targetError), "project_stage52: applies Windows x64 data layout");

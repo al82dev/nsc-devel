@@ -1,0 +1,16 @@
+{
+  "id": "nsc.stage35-recovery.mir-dump",
+  "component": "mir",
+  "kind": "project",
+  "project": "Stage35RecoveryApp.nsproj",
+  "working_files": ["AbstractSealedDestruction.ns"],
+  "arguments": ["--dump-project-oop-mir", "{project}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "destruction=dynamic-descriptor"}
+  },
+  "timeout_seconds": 60,
+  "tags": ["project", "legacy-parity", "mir"],
+  "requires": []
+}
