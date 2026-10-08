@@ -1,0 +1,22 @@
+{
+  "id": "nsc.linker-info",
+  "component": "linker",
+  "kind": "specialized",
+  "arguments": [
+    "--print-linker"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "flavor: Windows COFF/PE"
+    }
+  },
+  "timeout_seconds": 30,
+  "tags": [
+    "query",
+    "legacy-parity"
+  ],
+  "requires": []
+}

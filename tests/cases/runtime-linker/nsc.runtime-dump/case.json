@@ -1,0 +1,23 @@
+{
+  "id": "nsc.runtime-dump",
+  "component": "runtime",
+  "kind": "specialized",
+  "arguments": [
+    "--dump-runtime-llvm"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "define void @__nativesharp_start"
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": [
+    "dump",
+    "legacy-parity",
+    "o0-compatible"
+  ],
+  "requires": []
+}

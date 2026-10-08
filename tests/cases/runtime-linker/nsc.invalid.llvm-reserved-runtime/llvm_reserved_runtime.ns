@@ -1,0 +1,6 @@
+extern C void __nativesharp_trap(int code);
+
+int Main()
+{
+    return 0;
+}

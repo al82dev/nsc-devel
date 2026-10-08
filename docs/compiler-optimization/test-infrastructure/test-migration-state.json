@@ -319,6 +319,33 @@
       "case_count": 1,
       "cases": ["nsc.ns3.t44.metadata-closure"],
       "evidence": "TANDA-TEST-INFRA-14-METADATA-PROJECTS-DRIVER.md"
+    },
+    "tanda15-runtime-linker-interop-units": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "case_count": 27,
+      "membership": "tests/unit/include/nsc_test/RuntimeLinkerInteropLegacyEntries.def",
+      "module": "tests/unit/modules/RuntimeLinkerInteropUnitTests.cpp",
+      "adapter_root": "tests/unit/runtime_linker_interop_adapters",
+      "components": ["interop", "linker", "runtime"],
+      "evidence": "TANDA-TEST-INFRA-15-RUNTIME-LINKER-INTEROP.md"
+    },
+    "tanda15-runtime-linker-fixtures": {
+      "state": "DUAL_PARITY",
+      "case_count": 3,
+      "manifest_root": "tests/cases/runtime-linker",
+      "components": ["linker", "runtime"],
+      "evidence": "TANDA-TEST-INFRA-15-RUNTIME-LINKER-INTEROP.md"
+    },
+    "tanda15-non-o0": {
+      "state": "BLOCKED_BY_SCOPE_O0_ONLY",
+      "case_count": 39,
+      "evidence": "TANDA-TEST-INFRA-15-RUNTIME-LINKER-INTEROP.md"
+    },
+    "tanda15-specialized": {
+      "state": "ROUTED_TO_TANDA_16",
+      "case_count": 1,
+      "reason": "El verificador CMake multietapa requiere SuiteAdapter.",
+      "evidence": "TANDA-TEST-INFRA-15-RUNTIME-LINKER-INTEROP.md"
     }
   }
 }

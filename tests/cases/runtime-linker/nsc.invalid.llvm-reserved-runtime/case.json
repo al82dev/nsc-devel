@@ -1,0 +1,23 @@
+{
+  "id": "nsc.invalid.llvm-reserved-runtime",
+  "component": "runtime",
+  "kind": "semantic",
+  "sources": [
+    "llvm_reserved_runtime.ns"
+  ],
+  "arguments": [
+    "--check",
+    "{source:0}"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 1
+  },
+  "timeout_seconds": 30,
+  "tags": [
+    "negative",
+    "legacy-parity",
+    "o0-only"
+  ],
+  "requires": []
+}

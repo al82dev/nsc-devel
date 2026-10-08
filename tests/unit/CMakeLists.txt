@@ -118,6 +118,34 @@ add_executable(
     project_driver_metadata_adapters/Stage50_9MetadataHostCompatibilityAdapter.cpp
     project_driver_metadata_adapters/Stage66E9E10ReleaseContractAdapter.cpp
     project_driver_metadata_adapters/Stage68SimdAdapter.cpp
+    modules/RuntimeLinkerInteropUnitTests.cpp
+    runtime_linker_interop_adapters/Item309AtomicInt64Adapter.cpp
+    runtime_linker_interop_adapters/Item310AtomicPointerAdapter.cpp
+    runtime_linker_interop_adapters/Item315UnifiedEscapeAnalysisAdapter.cpp
+    runtime_linker_interop_adapters/Item323StackClassEscapeAnalysisAdapter.cpp
+    runtime_linker_interop_adapters/Item368ThreadFloatingPointStateAdapter.cpp
+    runtime_linker_interop_adapters/Item400RuntimeAbiContractAdapter.cpp
+    runtime_linker_interop_adapters/Item401IndependentWindowsRuntimeAdapter.cpp
+    runtime_linker_interop_adapters/NamespaceFunctionCAbiAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharp3E012E031LibrarySurfaceAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharp3E032E035CapabilityAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharp3E036E044ScientificSurfaceAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharp3T04TypeAliasAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharp3T06EscapeSummaryAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharp3T10MemoryModelAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharp3T10ReferenceCountAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharp3T12ModuleAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharp3T13FfiContractAdapter.cpp
+    runtime_linker_interop_adapters/NativeSharp3T30ConsoleInputAdapter.cpp
+    runtime_linker_interop_adapters/ProjectTypeConversionAdapter.cpp
+    runtime_linker_interop_adapters/Stage45NativeExceptionRuntimeAdapter.cpp
+    runtime_linker_interop_adapters/Stage48_2ExternalTemplateTypeQualificationAdapter.cpp
+    runtime_linker_interop_adapters/Stage50_2OwnershipTypeSystemAdapter.cpp
+    runtime_linker_interop_adapters/Stage50_7BorrowEscapeAnalysisAdapter.cpp
+    runtime_linker_interop_adapters/Stage52_4OwnedCleanupRuntimeAdapter.cpp
+    runtime_linker_interop_adapters/Stage62ToolchainContractAdapter.cpp
+    runtime_linker_interop_adapters/WindowsLinkerAdapter.cpp
+    runtime_linker_interop_adapters/WindowsRuntimeAdapter.cpp
     adapters/ClassDeclarationAdapter.cpp
     adapters/ClassMemberSyntaxAdapter.cpp
     adapters/ConstructorSyntaxAdapter.cpp
@@ -234,7 +262,8 @@ target_compile_definitions(
         NSC_BINARY_DIR="${NSC_TEST_COMPILER_BUILD_DIR}"
         NSC_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
         NSC_TEST_O0_ONLY=1
-        NSC_TEST_CASES_DIR="${CMAKE_SOURCE_DIR}/tests/cases")
+        NSC_TEST_CASES_DIR="${CMAKE_SOURCE_DIR}/tests/cases"
+        NSC_TOOLCHAIN_CONTRACT_PATH="${NSC_TEST_COMPILER_BUILD_DIR}/generated/NativeSharpToolchain.contract")
 target_link_libraries(
     nsc_unit_tests
     PRIVATE nsc_basic nsc_compilation nsc_driver nsc_frontend nsc_target)
