@@ -40,8 +40,15 @@ calificador de ownership o un placeholder genérico cambia la vista física. El 
 2. limpia únicamente `build-sh41-181/<variante>` después de validar su ruta;
 3. ejecuta directamente el mismo wrapper que define SH41 con `NSC_SELFHOST_PROFILES=O0`;
 4. usa el `nsc.exe` recién construido en `A:` y NSLink de `A:`;
-5. conserva `sh41-181-<variante>-build.log`, `sh41-181-<variante>.log` y artefactos;
-6. expande en el log la salida capturada de `nsc1 -> nsc2` y `nsc2 -> nsc3` cuando existe reporte.
+5. fija `NS_LIB_ROOT=A:\native-sharp-3.0-baseline\lib` para que el binario de build encuentre
+   el paquete precompilado exigido por los proyectos fuente, sin copiarlo ni modificarlo;
+6. conserva `sh41-181-<variante>-build.log`, `sh41-181-<variante>.log` y artefactos;
+7. expande en el log la salida capturada de `nsc1 -> nsc2` y `nsc2 -> nsc3` cuando existe reporte.
+
+El primer intento de `current` llegó al `nsc0 -> nsc1` y confirmó que el ejecutable recién
+construido no encontraba `NativeSharpCore.lib` al ejecutarse fuera de un prefijo instalado. La
+corrección del ejecutor usa el contrato existente `NS_LIB_ROOT`; no altera compilador, proyectos,
+CMake, verificadores ni archivos de biblioteca.
 
 ## Secuencia de evidencia
 

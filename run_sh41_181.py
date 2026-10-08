@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parent
 BUILD_DIR = ROOT / "build-clang"
 NSC = BUILD_DIR / "bin" / "nsc.exe"
 NSLINK = Path(r"A:\nslink-devel\bin\release\nslink.exe")
+LIB_ROOT = Path(r"A:\native-sharp-3.0-baseline\lib")
 RUNTIME = ROOT / "build-test-nslink" / "generated" / "NativeSharp.Runtime.Win32.lib"
 WRAPPER = ROOT / "cmake" / "VerifyNativeSharpSelfHostedGeneration.cmake"
 TRACE_TAG = "NSC_SH41_181_DIAGNOSTIC"
@@ -95,6 +96,8 @@ def main() -> int:
     require(cmake is not None, "cmake was not found on PATH")
     require(linker is not None, "lld-link was not found on PATH")
     require(NSLINK.is_file(), f"NSLink does not exist: {NSLINK}")
+    require((LIB_ROOT / "NativeSharpCore.lib").is_file(),
+            f"SH41 library root is incomplete: {LIB_ROOT}")
     require(RUNTIME.is_file(), f"SH41 runtime does not exist: {RUNTIME}")
     require(WRAPPER.is_file(), f"SH41 wrapper does not exist: {WRAPPER}")
 
@@ -108,6 +111,7 @@ def main() -> int:
 
     environment = os.environ.copy()
     environment["NSC_SELFHOST_PROFILES"] = "O0"
+    environment["NS_LIB_ROOT"] = str(LIB_ROOT)
     build_command = [cmake, "--build", str(BUILD_DIR), "--target", "nsc",
                      "--parallel", str(arguments.jobs), "--", "-k", "0"]
     print(f"[{TRACE_TAG}][BUILD] log={build_log}", flush=True)
