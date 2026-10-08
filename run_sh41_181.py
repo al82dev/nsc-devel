@@ -112,6 +112,7 @@ def main() -> int:
     environment = os.environ.copy()
     environment["NSC_SELFHOST_PROFILES"] = "O0"
     environment["NS_LIB_ROOT"] = str(LIB_ROOT)
+    environment["NSC_LINKER"] = str(NSLINK)
     build_command = [cmake, "--build", str(BUILD_DIR), "--target", "nsc",
                      "--parallel", str(arguments.jobs), "--", "-k", "0"]
     print(f"[{TRACE_TAG}][BUILD] log={build_log}", flush=True)

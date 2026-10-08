@@ -42,13 +42,19 @@ calificador de ownership o un placeholder genérico cambia la vista física. El 
 4. usa el `nsc.exe` recién construido en `A:` y NSLink de `A:`;
 5. fija `NS_LIB_ROOT=A:\native-sharp-3.0-baseline\lib` para que el binario de build encuentre
    el paquete precompilado exigido por los proyectos fuente, sin copiarlo ni modificarlo;
-6. conserva `sh41-181-<variante>-build.log`, `sh41-181-<variante>.log` y artefactos;
-7. expande en el log la salida capturada de `nsc1 -> nsc2` y `nsc2 -> nsc3` cuando existe reporte.
+6. fija `NSC_LINKER=A:\nslink-devel\bin\release\nslink.exe` para que `nsc0 -> nsc1` use el
+   mismo NSLink explícito que el resto de SH41;
+7. conserva `sh41-181-<variante>-build.log`, `sh41-181-<variante>.log` y artefactos;
+8. expande en el log la salida capturada de `nsc1 -> nsc2` y `nsc2 -> nsc3` cuando existe reporte.
 
 El primer intento de `current` llegó al `nsc0 -> nsc1` y confirmó que el ejecutable recién
 construido no encontraba `NativeSharpCore.lib` al ejecutarse fuera de un prefijo instalado. La
 corrección del ejecutor usa el contrato existente `NS_LIB_ROOT`; no altera compilador, proyectos,
 CMake, verificadores ni archivos de biblioteca.
+
+El segundo intento completó frontend, semántica y los 12 módulos LLVM de `nsc0 -> nsc1`; falló
+antes de crear la imagen porque el `nsc.exe` de build no tenía NSLink a su lado ni en `PATH`. El
+ejecutor fija el contrato existente `NSC_LINKER`; no cambia la selección del linker dentro de SH41.
 
 ## Secuencia de evidencia
 
