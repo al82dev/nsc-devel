@@ -87,6 +87,91 @@
       "legacy_source": "tests/integration/invalid/linker_unresolved_symbol.ns",
       "new_manifest": "tests/cases/diagnostics/nsc.invalid.unresolved-link/case.json",
       "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
+    },
+    "nsc.class-declarations": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "legacy_owner": "tests/unit/ClassDeclarationTests.cpp",
+      "new_adapter": "tests/unit/adapters/ClassDeclarationAdapter.cpp",
+      "new_module": "tests/unit/modules/ParserUnitTests.cpp",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.class-member-syntax": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "legacy_owner": "tests/unit/ClassMemberSyntaxTests.cpp",
+      "new_adapter": "tests/unit/adapters/ClassMemberSyntaxAdapter.cpp",
+      "new_module": "tests/unit/modules/ParserUnitTests.cpp",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.constructor-syntax": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "legacy_owner": "tests/unit/ConstructorSyntaxTests.cpp",
+      "new_adapter": "tests/unit/adapters/ConstructorSyntaxAdapter.cpp",
+      "new_module": "tests/unit/modules/ParserUnitTests.cpp",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.item317.placement-construction-syntax": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "legacy_owner": "tests/unit/Item317PlacementConstructionSyntaxTests.cpp",
+      "new_adapter": "tests/unit/adapters/Item317PlacementConstructionSyntaxAdapter.cpp",
+      "new_module": "tests/unit/modules/ParserUnitTests.cpp",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.item327.bitfield-syntax": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "legacy_owner": "tests/unit/Item327BitFieldSyntaxTests.cpp",
+      "new_adapter": "tests/unit/adapters/Item327BitFieldSyntaxAdapter.cpp",
+      "new_module": "tests/unit/modules/ParserUnitTests.cpp",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.namespace-syntax": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "legacy_owner": "tests/unit/NamespaceSyntaxTests.cpp",
+      "new_adapter": "tests/unit/adapters/NamespaceSyntaxAdapter.cpp",
+      "new_module": "tests/unit/modules/ParserUnitTests.cpp",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.ns3.t01.expressions": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "legacy_owner": "tests/unit/NativeSharp3T01ExpressionTests.cpp",
+      "new_adapter": "tests/unit/adapters/NativeSharp3T01ExpressionAdapter.cpp",
+      "new_module": "tests/unit/modules/ParserUnitTests.cpp",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.ns3.t02.aggregates": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "legacy_owner": "tests/unit/NativeSharp3T02AggregateTests.cpp",
+      "new_adapter": "tests/unit/adapters/NativeSharp3T02AggregateAdapter.cpp",
+      "new_module": "tests/unit/modules/ParserUnitTests.cpp",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.parser": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "legacy_owner": "tests/unit/ParserTests.cpp",
+      "new_adapter": "tests/unit/adapters/ParserAdapter.cpp",
+      "new_module": "tests/unit/modules/ParserUnitTests.cpp",
+      "new_manifest": "tests/cases/parser/nsc.parser/case.json",
+      "new_source": "tests/cases/parser/nsc.parser/full-grammar.ns",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.stage45.exceptions-syntax": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "legacy_owner": "tests/unit/Stage45ExceptionsSyntaxTests.cpp",
+      "new_adapter": "tests/unit/adapters/Stage45ExceptionsSyntaxAdapter.cpp",
+      "new_module": "tests/unit/modules/ParserUnitTests.cpp",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.stage50_1.ownership-syntax": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "legacy_owner": "tests/unit/Stage50_1OwnershipSyntaxTests.cpp",
+      "new_adapter": "tests/unit/adapters/Stage50_1OwnershipSyntaxAdapter.cpp",
+      "new_module": "tests/unit/modules/ParserUnitTests.cpp",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
+    },
+    "nsc.dump-ast": {
+      "state": "DUAL_PARITY",
+      "legacy_source": "tests/integration/valid/full_frontend.ns",
+      "new_manifest": "tests/cases/lexer/nsc.dump-tokens/dump-ast.case.json",
+      "evidence": "TANDA-TEST-INFRA-09-PARSER-FRONTEND.md"
     }
   }
 }

@@ -1,0 +1,16 @@
+{
+  "id": "nsc.dump-ast",
+  "component": "parser",
+  "kind": "parse",
+  "sources": ["full_frontend.ns"],
+  "arguments": ["--dump-ast", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "CompilationUnit"},
+    "stderr": ""
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "ast"],
+  "requires": []
+}

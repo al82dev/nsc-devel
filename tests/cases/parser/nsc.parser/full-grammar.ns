@@ -1,0 +1,60 @@
+struct Node
+{
+    int Value;
+    Node* Next;
+}
+
+enum Color
+{
+    Red,
+    Green = Red + 1,
+    Blue,
+}
+
+extern C
+{
+    int puts(char* text);
+}
+
+int Add(int a, int b);
+
+int Add(int a, int b)
+{
+    return a + b * 2;
+}
+
+int Main()
+{
+    static_assert(sizeof(int) == 4u, "int ABI");
+    static_assert(offsetof(Node, Next) == 8u, "Node.Next ABI");
+    int x = 1;
+    int* p = &x;
+    int[4] values;
+    values[0] = (int)sizeof(Node);
+    Node* nodes = new Node[2];
+    Node* local = stackalloc Node[1];
+    if (x < 4)
+    {
+        x++;
+    }
+    else if (x == 4)
+    {
+        --x;
+    }
+    while (x < 10)
+    {
+        x += 1;
+        if (x == 8)
+        {
+            continue;
+        }
+    }
+    for (int i = 0; i < 2; i++)
+    {
+        nodes[i].Value = i;
+    }
+    delete[] nodes;
+    local->Value = *p;
+    puts("ok");
+    return Add(x, values[0]);
+}

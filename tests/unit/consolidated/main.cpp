@@ -145,6 +145,7 @@ int main(int argumentCount, char** arguments)
         nsc::test::registerDiagnosticsUnitTests(registry);
         nsc::test::registerLexerUnitTests(registry);
         nsc::test::registerNumericUnitTests(registry);
+        nsc::test::registerParserUnitTests(registry);
         nsc::test::registerSourceUnitTests(registry);
         if (options.list)
         {

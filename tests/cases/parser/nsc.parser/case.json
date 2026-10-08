@@ -1,0 +1,16 @@
+{
+  "id": "nsc.parser",
+  "component": "parser",
+  "kind": "parse",
+  "sources": ["full-grammar.ns"],
+  "arguments": ["--dump-ast", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "FunctionDeclaration \"Main\""},
+    "stderr": ""
+  },
+  "timeout_seconds": 30,
+  "tags": ["migration", "grammar", "ast"],
+  "requires": []
+}
