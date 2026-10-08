@@ -1,0 +1,15 @@
+{
+  "id": "nsc.invalid.unresolved-link",
+  "component": "diagnostics",
+  "kind": "link-run",
+  "sources": ["linker_unresolved_symbol.ns"],
+  "arguments": ["--emit-exe", "{source:0}", "-o", "{workspace}/unresolved.exe"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 1,
+    "stderr": {"mode": "contains", "text": "unresolved external symbol: 'MissingNativeSymbol'"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "negative", "nslink"],
+  "requires": ["nslink"]
+}

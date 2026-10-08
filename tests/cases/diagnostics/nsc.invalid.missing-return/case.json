@@ -1,0 +1,15 @@
+{
+  "id": "nsc.invalid.missing-return",
+  "component": "diagnostics",
+  "kind": "semantic",
+  "sources": ["missing_return.ns"],
+  "arguments": ["--check", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 1,
+    "stderr": {"mode": "contains", "text": "not all reachable control paths return a value from function 'F'"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "negative"],
+  "requires": []
+}

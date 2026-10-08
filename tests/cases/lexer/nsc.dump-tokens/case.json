@@ -1,0 +1,19 @@
+{
+  "id": "nsc.dump-tokens",
+  "component": "lexer",
+  "kind": "lex",
+  "sources": ["full_frontend.ns"],
+  "arguments": ["--dump-tokens", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "Identifier \"C\""
+    },
+    "stderr": ""
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "tokens"],
+  "requires": []
+}

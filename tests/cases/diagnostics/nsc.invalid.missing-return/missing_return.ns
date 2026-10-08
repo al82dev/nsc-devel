@@ -1,0 +1,7 @@
+int F(bool condition)
+{
+    if (condition)
+    {
+        return 1;
+    }
+}

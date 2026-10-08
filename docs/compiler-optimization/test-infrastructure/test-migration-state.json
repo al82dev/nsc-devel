@@ -16,6 +16,77 @@
       "new_manifest": "tests/cases/frontend/nsc.item394.stage-boundary-source/case.json",
       "new_source": "tests/cases/frontend/nsc.item394.stage-boundary-source/Main.ns",
       "evidence": "TANDA-TEST-INFRA-07-NS-FIXTURE-PILOT.md"
+    },
+    "nsc.diagnostics": {
+      "state": "DUAL_PARITY",
+      "legacy_owner": "tests/unit/DiagnosticTests.cpp",
+      "new_module": "tests/unit/modules/DiagnosticsUnitTests.cpp",
+      "new_executable": "nsc_unit_tests.exe",
+      "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
+    },
+    "nsc.lexer": {
+      "state": "DUAL_PARITY",
+      "legacy_owner": "tests/unit/LexerTests.cpp",
+      "new_module": "tests/unit/modules/LexerUnitTests.cpp",
+      "new_executable": "nsc_unit_tests.exe",
+      "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
+    },
+    "nsc.ns3.t14.numeric-literals": {
+      "state": "DUAL_PARITY",
+      "legacy_owner": "tests/unit/NativeSharp3T14NumericLiteralTests.cpp",
+      "new_module": "tests/unit/modules/NumericUnitTests.cpp",
+      "new_executable": "nsc_unit_tests.exe",
+      "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
+    },
+    "nsc.source-manager": {
+      "state": "DUAL_PARITY",
+      "legacy_owner": "tests/unit/SourceManagerTests.cpp",
+      "new_module": "tests/unit/modules/SourceUnitTests.cpp",
+      "new_executable": "nsc_unit_tests.exe",
+      "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
+    },
+    "nsc.dump-tokens": {
+      "state": "DUAL_PARITY_EXPECTATION_DRIFT_RECORDED",
+      "legacy_source": "tests/integration/valid/full_frontend.ns",
+      "new_manifest": "tests/cases/lexer/nsc.dump-tokens/case.json",
+      "expectation_drift": "legacy CTest names KwC; current LexerTests and built nsc classify C as contextual Identifier",
+      "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
+    },
+    "nsc.invalid.program-missing-main": {
+      "state": "DUAL_PARITY",
+      "legacy_source": "tests/integration/valid/library_unit.ns",
+      "new_manifest": "tests/cases/diagnostics/nsc.invalid.program-missing-main/case.json",
+      "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
+    },
+    "nsc.invalid.unknown": {
+      "state": "DUAL_PARITY",
+      "legacy_source": "tests/integration/invalid/unknown_identifier.ns",
+      "new_manifest": "tests/cases/diagnostics/nsc.invalid.unknown/case.json",
+      "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
+    },
+    "nsc.invalid.bounds": {
+      "state": "DUAL_PARITY",
+      "legacy_source": "tests/integration/invalid/bounds.ns",
+      "new_manifest": "tests/cases/diagnostics/nsc.invalid.bounds/case.json",
+      "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
+    },
+    "nsc.invalid.bool-condition": {
+      "state": "DUAL_PARITY",
+      "legacy_source": "tests/integration/invalid/bool_condition.ns",
+      "new_manifest": "tests/cases/diagnostics/nsc.invalid.bool-condition/case.json",
+      "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
+    },
+    "nsc.invalid.missing-return": {
+      "state": "DUAL_PARITY",
+      "legacy_source": "tests/integration/invalid/missing_return.ns",
+      "new_manifest": "tests/cases/diagnostics/nsc.invalid.missing-return/case.json",
+      "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
+    },
+    "nsc.invalid.unresolved-link": {
+      "state": "DUAL_PARITY",
+      "legacy_source": "tests/integration/invalid/linker_unresolved_symbol.ns",
+      "new_manifest": "tests/cases/diagnostics/nsc.invalid.unresolved-link/case.json",
+      "evidence": "TANDA-TEST-INFRA-08-LEXER-SOURCE-DIAGNOSTICS.md"
     }
   }
 }

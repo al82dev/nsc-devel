@@ -37,7 +37,12 @@ class CommandBuilderTests(unittest.TestCase):
                     "component": "driver",
                     "kind": "link-run",
                     "sources": ["Main.ns"],
-                    "arguments": ["--emit-exe", "{source:0}"],
+                    "arguments": [
+                        "--emit-exe",
+                        "{source:0}",
+                        "-o",
+                        "{workspace}/Main.exe",
+                    ],
                     "expected": {"exit_code": 0},
                 },
             )
@@ -45,9 +50,17 @@ class CommandBuilderTests(unittest.TestCase):
             with CaseWorkspace.create(case, work_root) as workspace:
                 request = NscCommandBuilder(nsc, nslink).build(case, workspace)
                 self.assertEqual(request.command[0], str(nsc.resolve()))
-                self.assertEqual(request.environment, {"NSC_LINKER": str(nslink.resolve())})
+                self.assertEqual(
+                    request.environment,
+                    {
+                        "TEMP": str(workspace.root),
+                        "TMP": str(workspace.root),
+                        "NSC_LINKER": str(nslink.resolve()),
+                    },
+                )
                 self.assertIn("-O0", request.command)
                 self.assertEqual(request.command.count(str(workspace.mapped(source))), 1)
+                self.assertIn(str(workspace.root / "Main.exe"), request.command)
             if work_root.exists():
                 remove_tree_iterative(work_root)
 

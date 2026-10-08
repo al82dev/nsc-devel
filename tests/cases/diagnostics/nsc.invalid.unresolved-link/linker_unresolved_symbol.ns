@@ -1,0 +1,6 @@
+extern C int MissingNativeSymbol();
+
+int Main()
+{
+    return MissingNativeSymbol();
+}

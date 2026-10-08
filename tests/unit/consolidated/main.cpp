@@ -142,6 +142,10 @@ int main(int argumentCount, char** arguments)
         const Options options = parseOptions(argumentCount, arguments);
         nsc::test::TestRegistry registry;
         nsc::test::registerBasicUnitTests(registry);
+        nsc::test::registerDiagnosticsUnitTests(registry);
+        nsc::test::registerLexerUnitTests(registry);
+        nsc::test::registerNumericUnitTests(registry);
+        nsc::test::registerSourceUnitTests(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

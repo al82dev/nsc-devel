@@ -54,6 +54,8 @@ class NscCommandBuilder:
                     command.append(str(workspace.mapped(source)))
 
         environment: dict[str, str] = {}
+        environment["TEMP"] = str(workspace.root)
+        environment["TMP"] = str(workspace.root)
         if self.nslink is not None:
             environment["NSC_LINKER"] = str(self.nslink)
         return ProcessRequest(
@@ -72,6 +74,13 @@ class NscCommandBuilder:
     ) -> tuple[str, int | None, bool]:
         if argument == "{workspace}":
             return str(workspace.root), None, False
+        workspace_prefix = "{workspace}/"
+        if argument.startswith(workspace_prefix):
+            relative = Path(argument[len(workspace_prefix) :])
+            candidate = (workspace.root / relative).resolve()
+            if not candidate.is_relative_to(workspace.root.resolve()):
+                raise ValueError(f"workspace output escapes case sandbox: {argument}")
+            return str(candidate), None, False
         if argument == "{project}":
             if case.project is None:
                 raise ValueError(f"case has no project placeholder target: {case.identifier}")

@@ -1,0 +1,18 @@
+{
+  "id": "nsc.invalid.program-missing-main",
+  "component": "diagnostics",
+  "kind": "compile-only",
+  "sources": ["library_unit.ns"],
+  "arguments": ["{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 1,
+    "stderr": {
+      "mode": "contains",
+      "text": "executable compilation requires exactly one definition of int Main()"
+    }
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "negative"],
+  "requires": []
+}

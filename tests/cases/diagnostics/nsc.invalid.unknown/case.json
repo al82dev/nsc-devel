@@ -1,0 +1,15 @@
+{
+  "id": "nsc.invalid.unknown",
+  "component": "diagnostics",
+  "kind": "semantic",
+  "sources": ["unknown_identifier.ns"],
+  "arguments": ["--check", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 1,
+    "stderr": {"mode": "contains", "text": "unknown identifier 'Missing'"}
+  },
+  "timeout_seconds": 30,
+  "tags": ["integration", "negative"],
+  "requires": []
+}
