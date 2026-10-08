@@ -2294,9 +2294,14 @@ namespace NativeSharp.Compiler.CodeGen
                         accessorFunction, &arguments[0], 2u, resultName.Pointer());
                     int declaredResult = signature.ReturnType();
                     int closedResult = semantic.Fact(syntaxId).TypeId();
-                    int receiverType = semantic.Fact(node.First()).TypeId();
-                    closedResult = ClosedGenericScalarResult(
-                        semantic, receiverType, declaredResult, closedResult);
+                    void* pointerType = LLVM.LLVMPointerTypeInContext(
+                        LLVM.LLVMGetModuleContext(module), 0u);
+                    if (LLVM.LLVMTypeOf(result) == pointerType)
+                    {
+                        int receiverType = semantic.Fact(node.First()).TypeId();
+                        closedResult = ClosedGenericScalarResult(
+                            semantic, receiverType, declaredResult, closedResult);
+                    }
                     result = ConvertScalar(module, builder, semantic, result, declaredResult, closedResult);
                     valid = result != null; return result;
                 }
