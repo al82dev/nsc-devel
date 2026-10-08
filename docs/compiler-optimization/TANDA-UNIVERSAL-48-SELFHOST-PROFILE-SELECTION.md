@@ -37,6 +37,8 @@ distinguir un defecto O0 de un cierre perteneciente a otra matriz.
 - Modificado: `nscbuilder.py`.
 - Modificado: `tests/selfhost/test_bootstrap_infrastructure.py`.
 - Nuevo: `cmake/NativeSharpSelfHostProfiles.cmake`.
+- Nuevo: `cmake/NativeSharpSelfHostRuntime.cmake`.
+- Modificado: `CMakeLists.txt` para entregar explícitamente el runtime y el ABI generados.
 - Modificados los wrappers CMake SH40-SH44 para materializar únicamente los candidatos
   seleccionados.
 - Modificados los verificadores SH40-SH48, SH50 y SH52 para consumir y publicar el conjunto
@@ -64,6 +66,24 @@ distinguir un defecto O0 de un cierre perteneciente a otra matriz.
 8. Los reportes conservan el conjunto realmente ejecutado. Una corrida O0 no se presenta como
    certificación multiperfil.
 
+## Frontera de runtime del self-host
+
+La primera matriz dirigida posterior al commit de implementación se detuvo antes de invocar el
+compilador self-host. SH41, SH43, SH44 y SH48 deducían la biblioteca runtime desde la carpeta de
+`nslink.exe`; al seleccionar el NSLink de desarrollo terminaban buscando bajo
+`A:\nslink-devel\bin\lib`. Los diez resultados fueron de infraestructura: SH41 no encontró el
+runtime y los otros nueve no encontraron el `nsc2-o0` que SH41 debía producir.
+
+La resolución queda centralizada en `NativeSharpSelfHostRuntime.cmake` con esta precedencia:
+
+1. `RUNTIME_LIBRARY` y `RUNTIME_ABI` entregados por la configuración CMake;
+2. `NSC_WINDOWS_RUNTIME_LIBRARY` y `NS_LIB_ROOT` del entorno de ejecución;
+3. prefijo de NSLink únicamente como compatibilidad final.
+
+`CMakeLists.txt` entrega de forma explícita los artefactos generados por el build actual a SH41,
+SH43, SH44 y SH48. Cambiar el ejecutable NSLink ya no cambia silenciosamente el runtime que se
+está probando.
+
 ## Complejidad
 
 La selección recorre una vez el conjunto de perfiles, como máximo cuatro elementos. Tiempo y
@@ -78,4 +98,7 @@ memoria son `O(P)`; no existe recursión.
   `0.006 s`; cubren el valor completo predeterminado, la selección O0, el rechazo de O4 y la
   exportación desde NSC Builder.
 - Validación de la segunda parte: pendiente hasta conservar primero el commit de implementación.
+- Primera matriz dirigida de diez pruebas: `0/10` alcanzaron ejecución funcional; el bloqueo de
+  infraestructura se confirmó en `0.31 s` por la ruta runtime derivada de NSLink. No se presenta
+  como resultado funcional.
 - Inventario integral vigente: diez fallos self-host abiertos.

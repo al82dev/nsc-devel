@@ -2941,6 +2941,7 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.selfhost.self-hosted-generation COMMAND "${CMAKE_COMMAND}"
         "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}" "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
+        "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
         "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpSelfHostedGeneration.cmake")
     set_tests_properties(nsc.selfhost.self-hosted-generation PROPERTIES
@@ -2961,6 +2962,7 @@ if(NSC_BUILD_TESTS)
         "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh43"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
+        "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
         "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpRepeatedFixedPoint.cmake")
     set_tests_properties(nsc.selfhost.repeated-fixed-point PROPERTIES
@@ -2971,6 +2973,7 @@ if(NSC_BUILD_TESTS)
         "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh44"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
+        "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
         "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpCrossMachineDeterminism.cmake")
     set_tests_properties(nsc.selfhost.cross-machine-determinism PROPERTIES
@@ -3016,6 +3019,8 @@ if(NSC_BUILD_TESTS)
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh48"
         "-DSH41_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-sh41"
+        "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+        "-DRUNTIME_ABI=${NSC_RUNTIME_ABI_CONTRACT}"
         "-DLINKER_EXECUTABLE=${CMAKE_LINKER}" "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpRuntimeLibrary.cmake")
     set_tests_properties(nsc.selfhost.runtime-library PROPERTIES
