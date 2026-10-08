@@ -6,6 +6,7 @@ from .compiler import (
     CompilerReceipt,
     create_compiler_build_plan,
     create_compiler_receipt,
+    create_test_run_plan,
     validate_compiler_receipt,
 )
 from .pipeline import PipelineRunner, RunResult
@@ -30,6 +31,7 @@ __all__ = [
     "create_run_plan",
     "create_compiler_build_plan",
     "create_compiler_receipt",
+    "create_test_run_plan",
     "validate_compiler_receipt",
     "ToolBuildOptions",
     "ToolReceipt",

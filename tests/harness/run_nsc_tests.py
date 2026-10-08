@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=HARNESS_ROOT.parent / "cases",
     )
-    parser.add_argument("--optimization", choices=("O0",), default="O0")
+    parser.add_argument("--optimization", choices=("O0", "O1", "O2", "O3"), default="O0")
     parser.add_argument("--work-root", type=Path, default=HARNESS_ROOT.parent.parent / "_test-harness" / "work")
     parser.add_argument("--results-root", type=Path, default=HARNESS_ROOT.parent.parent / "_test-harness" / "results")
     parser.add_argument("--run-id")
@@ -118,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         arguments.nslink,
         arguments.library_root,
         arguments.runtime_library,
+        arguments.optimization,
     )
 
     def execute_case(case):

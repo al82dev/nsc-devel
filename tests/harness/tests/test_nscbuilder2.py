@@ -29,6 +29,7 @@ from _nscbuilder2.compiler import (  # noqa: E402
     CompilerReceipt,
     create_compiler_build_plan,
     create_compiler_receipt,
+    create_test_run_plan,
     validate_compiler_receipt,
 )
 from _nscbuilder2.pipeline import PipelineRunner  # noqa: E402
@@ -191,6 +192,23 @@ class NscBuilder2Tests(unittest.TestCase):
         receipt = create_compiler_receipt(plan, "passed")
         restored = CompilerReceipt.from_dict(receipt.to_dict())
         self.assertEqual(validate_compiler_receipt(restored), plan.compiler.resolve())
+
+        test_plan = create_test_run_plan(
+            restored,
+            RunSelection(False, "all", "", False, ("O0", "O1", "O2", "O3")),
+            "test-run",
+            self.temporary / "test-history",
+            self.temporary / "test-work",
+        )
+        self.assertEqual(
+            [step.identifier for step in test_plan.steps],
+            ["manifests-o0", "manifests-o1", "manifests-o2", "manifests-o3"],
+        )
+        test_commands = "\n".join(" ".join(step.command) for step in test_plan.steps)
+        self.assertNotIn("compiler-configure", test_commands)
+        self.assertNotIn("--target nsc ", test_commands)
+        for optimization in ("O0", "O1", "O2", "O3"):
+            self.assertIn(f"--optimization {optimization}", test_commands)
 
     def test_tool_receipt_requires_all_products_and_detects_mutation(self) -> None:
         source = self.temporary / "nsasm"

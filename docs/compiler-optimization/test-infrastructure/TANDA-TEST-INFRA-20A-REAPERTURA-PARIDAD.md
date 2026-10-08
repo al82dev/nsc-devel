@@ -43,23 +43,23 @@ Builder 2 tendrá fronteras separadas y ordenadas:
 | B2-011 | Recibo persistente del build | IMPLEMENTADA y verificada con fixture |
 | B2-012 | Instalar build válido | PENDIENTE; implementar sin ejecutar en C: |
 | B2-013 | Selección explícita de prefijo | IMPLEMENTADA en modelo |
-| B2-014 | Pruebas bloqueadas sin compilador construido válido | PENDIENTE |
+| B2-014 | Pruebas bloqueadas sin compilador construido válido | IMPLEMENTADA en modelo; GUI pendiente |
 | B2-015 | Selección O0 | VERIFICADA |
-| B2-016 | Selección O1 | PENDIENTE; implementar sin ejecutar |
-| B2-017 | Selección O2 | PENDIENTE; implementar sin ejecutar |
-| B2-018 | Selección O3 | PENDIENTE; implementar sin ejecutar |
-| B2-019 | Selección de todos los perfiles | PENDIENTE; implementar sin ejecutar |
+| B2-016 | Selección O1 | IMPLEMENTADA; validación funcional no ejecutada |
+| B2-017 | Selección O2 | IMPLEMENTADA; validación funcional no ejecutada |
+| B2-018 | Selección O3 | IMPLEMENTADA; validación funcional no ejecutada |
+| B2-019 | Selección de todos los perfiles | IMPLEMENTADA; validación funcional no ejecutada |
 | B2-020 | Caso NativeSharp individual | VERIFICADA O0 |
 | B2-021 | Categoría NativeSharp | VERIFICADA O0 |
 | B2-022 | Batería NativeSharp | VERIFICADA O0 |
 | B2-023 | Registro unitario consolidado | VERIFICADA |
 | B2-024 | Suites especializadas | VERIFICADA O0 |
 | B2-025 | NSLink explícito y configuración Release/Debug | PARCIAL |
-| B2-026 | Construcción única antes de ejecutar la matriz | VERIFICADA O0 |
+| B2-026 | Construcción única antes de ejecutar la matriz | IMPLEMENTADA con recibo; verificada O0 previa |
 | B2-027 | Progreso por etapa | VERIFICADA básica |
 | B2-028 | Salida completa | VERIFICADA |
 | B2-029 | Errores causales condensados | VERIFICADA básica |
-| B2-030 | Resultados por perfil y capa | PENDIENTE |
+| B2-030 | Resultados por perfil y capa | PARCIAL; pasos e IDs separados, GUI pendiente |
 | B2-031 | Historial persistente | VERIFICADA |
 | B2-032 | Repetir únicamente fallos | PENDIENTE |
 | B2-033 | Limpieza selectiva de historial | PENDIENTE |

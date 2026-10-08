@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .model import RunStep
+from .model import BuilderConfig, RunPlan, RunSelection, RunStep
 from .toolchain import ArtifactEvidence, sha256_file
 
 
@@ -233,3 +233,151 @@ def validate_compiler_receipt(receipt: CompilerReceipt) -> Path:
     if sha256_file(path) != artifact.sha256:
         raise ValueError(f"compiler receipt artifact hash changed: {path}")
     return path
+
+
+def create_test_run_plan(
+    receipt: CompilerReceipt,
+    selection: RunSelection,
+    run_id: str,
+    history_dir: Path,
+    work_dir: Path,
+) -> RunPlan:
+    """Plan tests against one frozen NSC without configuring or building it."""
+
+    compiler = validate_compiler_receipt(receipt)
+    chosen = selection.validated()
+    options = receipt.options.validated()
+    history = _a_path(history_dir, "test history directory")
+    work = _a_path(work_dir, "test work directory")
+    config = BuilderConfig(
+        options.source_root,
+        options.build_dir,
+        options.nslink,
+        options.suite_prefix,
+        options.jobs,
+        options.configuration,
+    ).validated()
+    runner = options.source_root / "tests" / "harness" / "run_nsc_tests.py"
+    runtime = options.build_dir / "generated" / "NativeSharp.Runtime.Win32.lib"
+    results = history / "harness-results"
+    steps: list[RunStep] = []
+    if chosen.unit:
+        steps.extend(
+            (
+                RunStep(
+                    "unit-build",
+                    "Build consolidated unit registry",
+                    (
+                        "cmake",
+                        "--build",
+                        str(options.build_dir),
+                        "--target",
+                        "nsc_unit_tests",
+                        "--parallel",
+                        str(options.jobs),
+                    ),
+                    options.source_root,
+                ),
+                RunStep(
+                    "unit",
+                    "Run consolidated unit registry",
+                    (
+                        "ctest",
+                        "--test-dir",
+                        str(options.build_dir),
+                        "--interactive-debug-mode",
+                        "0",
+                        "--output-on-failure",
+                        "-R",
+                        "^nsc\\.unit\\.consolidated$",
+                    ),
+                    options.source_root,
+                ),
+            )
+        )
+    selector = _manifest_selector(chosen)
+    for optimization in chosen.optimizations:
+        if selector is not None:
+            command = (
+                "python",
+                "-B",
+                str(runner),
+                "--nsc",
+                str(compiler),
+                "--nslink",
+                str(options.nslink),
+                "--library-root",
+                str(options.suite_prefix / "lib"),
+                "--runtime-library",
+                str(runtime),
+                "--optimization",
+                optimization,
+                "--jobs",
+                str(options.jobs),
+                "--work-root",
+                str(work / f"cases-{optimization.casefold()}"),
+                "--results-root",
+                str(results / optimization.casefold()),
+                "--run-id",
+                f"{run_id}-{optimization.casefold()}",
+                *selector,
+            )
+            steps.append(
+                RunStep(
+                    f"manifests-{optimization.casefold()}",
+                    f"Run NativeSharp manifests {optimization}",
+                    command,
+                    options.source_root,
+                )
+            )
+    if chosen.specialized and "O0" in chosen.optimizations:
+        steps.append(
+            RunStep(
+                "specialized-o0",
+                "Run specialized O0 suites",
+                (
+                    "python",
+                    "-B",
+                    str(runner),
+                    "--nsc",
+                    str(compiler),
+                    "--nslink",
+                    str(options.nslink),
+                    "--build-dir",
+                    str(options.build_dir),
+                    "--suite-prefix",
+                    str(options.suite_prefix),
+                    "--jobs",
+                    "1",
+                    "--work-root",
+                    str(work / "specialized-o0"),
+                    "--results-root",
+                    str(results / "specialized-o0"),
+                    "--all-suites",
+                ),
+                options.source_root,
+            )
+        )
+    if not steps:
+        raise ValueError("test selection produced no executable steps")
+    return RunPlan(
+        run_id,
+        config,
+        chosen,
+        history,
+        work,
+        compiler,
+        tuple(steps),
+        receipt.artifact.sha256,
+    )
+
+
+def _manifest_selector(selection: RunSelection) -> tuple[str, ...] | None:
+    """Translate the validated manifest scope into one harness selector."""
+
+    if selection.manifest_mode == "none":
+        return None
+    if selection.manifest_mode == "all":
+        return ("--all",)
+    option = "--component" if selection.manifest_mode == "category" else "--case"
+    return (option, selection.manifest_value)

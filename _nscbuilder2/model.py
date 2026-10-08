@@ -75,6 +75,7 @@ class RunSelection:
     manifest_mode: str = "all"
     manifest_value: str = ""
     specialized: bool = True
+    optimizations: tuple[str, ...] = ("O0",)
 
     def validated(self) -> "RunSelection":
         if self.manifest_mode not in {"none", "all", "category", "case"}:
@@ -84,7 +85,19 @@ class RunSelection:
             raise ValueError(f"manifest {self.manifest_mode} requires a value")
         if not self.unit and self.manifest_mode == "none" and not self.specialized:
             raise ValueError("select at least one test layer")
-        return RunSelection(self.unit, self.manifest_mode, value, self.specialized)
+        if not self.optimizations:
+            raise ValueError("select at least one optimization profile")
+        if any(value not in {"O0", "O1", "O2", "O3"} for value in self.optimizations):
+            raise ValueError(f"unsupported optimization selection: {self.optimizations}")
+        if len(set(self.optimizations)) != len(self.optimizations):
+            raise ValueError("optimization profiles must be unique")
+        return RunSelection(
+            self.unit,
+            self.manifest_mode,
+            value,
+            self.specialized,
+            self.optimizations,
+        )
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -117,6 +130,7 @@ class RunPlan:
     work_dir: Path
     compiler: Path
     steps: tuple[RunStep, ...]
+    expected_compiler_sha256: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -127,6 +141,7 @@ class RunPlan:
             "work_dir": str(self.work_dir),
             "compiler": str(self.compiler),
             "steps": [step.to_dict() for step in self.steps],
+            "expected_compiler_sha256": self.expected_compiler_sha256,
         }
 
 

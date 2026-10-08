@@ -61,6 +61,9 @@ class CommandBuilderTests(unittest.TestCase):
                 self.assertIn("-O0", request.command)
                 self.assertEqual(request.command.count(str(workspace.mapped(source))), 1)
                 self.assertIn(str(workspace.root / "Main.exe"), request.command)
+                optimized = NscCommandBuilder(nsc, nslink, optimization="O3").build(case, workspace)
+                self.assertIn("-O3", optimized.command)
+                self.assertNotIn("-O0", optimized.command)
             if work_root.exists():
                 remove_tree_iterative(work_root)
 

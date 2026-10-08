@@ -11,6 +11,7 @@ from .workspace import CaseWorkspace
 
 
 LINK_KINDS = {CaseKind.LINK_RUN, CaseKind.EMIT_LIBRARY}
+OPTIMIZATIONS = {"O0", "O1", "O2", "O3"}
 
 
 @dataclass(frozen=True)
@@ -19,8 +20,11 @@ class NscCommandBuilder:
     nslink: Path | None = None
     library_root: Path | None = None
     runtime_library: Path | None = None
+    optimization: str = "O0"
 
     def __post_init__(self) -> None:
+        if self.optimization not in OPTIMIZATIONS:
+            raise ValueError(f"unsupported optimization: {self.optimization}")
         resolved_nsc = self.nsc.resolve()
         if not resolved_nsc.is_file():
             raise ValueError(f"NSC does not exist: {resolved_nsc}")
@@ -47,7 +51,13 @@ class NscCommandBuilder:
         command = [str(self.nsc)]
         used_sources: set[int] = set()
         used_project = False
+        optimization_added = False
         for argument in case.arguments:
+            if argument in {f"-{value}" for value in OPTIMIZATIONS}:
+                if not optimization_added:
+                    command.append(f"-{self.optimization}")
+                    optimization_added = True
+                continue
             replacement, source_index, project_used = self._replace_argument(
                 argument, case, workspace
             )
@@ -57,8 +67,8 @@ class NscCommandBuilder:
             used_project = used_project or project_used
 
         if case.kind is not CaseKind.SPECIALIZED:
-            if "-O0" not in command:
-                command.append("-O0")
+            if not optimization_added:
+                command.append(f"-{self.optimization}")
             if case.project is not None and not used_project:
                 command.append(str(workspace.mapped(case.project)))
             for index, source in enumerate(case.sources):

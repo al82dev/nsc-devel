@@ -121,7 +121,7 @@ class PipelineRunner:
         started = time.perf_counter()
         combined_log = plan.history_dir / "output.log"
         step_results: list[StepResult] = []
-        compiler_digest: str | None = None
+        compiler_digest: str | None = getattr(plan, "expected_compiler_sha256", None)
         status = "passed"
         exit_code = 0
         record: dict[str, object] = {
@@ -133,8 +133,15 @@ class PipelineRunner:
         }
         BuilderStorage.write_run(plan.history_dir, record)
         with combined_log.open("w", encoding="utf-8", newline="\n") as combined:
+            if compiler_digest is not None:
+                if not plan.compiler.is_file() or _sha256(plan.compiler) != compiler_digest:
+                    status = "failed"
+                    exit_code = 4
+                    output("Builder 2 error: compiler receipt is stale before execution\n")
             total = len(plan.steps)
             for index, step in enumerate(plan.steps):
+                if status != "passed":
+                    break
                 if self._cancel.is_set():
                     status = "cancelled"
                     exit_code = 130
