@@ -1853,6 +1853,8 @@ class PipelineWorker(QObject):
         for name in sorted(selected, key=str.casefold):
             digest.update(name.encode("utf-8"))
             digest.update(b"\n")
+        digest.update(environment.get("NSC_SELFHOST_PROFILES", "ALL").encode("ascii"))
+        digest.update(b"\n")
         identity = digest.hexdigest()
         cache = Path(self.plan.test_work_root) / "_result-cache" / "ctest" / f"{identity}.json"
         return cache, identity
@@ -2090,6 +2092,7 @@ class PipelineWorker(QObject):
         env.pop("NSC_LLD_LINK", None)
         env.pop("NSC_LINKER", None)
         env.pop("NSC_LLVM_LIB", None)
+        env.pop("NSC_SELFHOST_PROFILES", None)
         prefix = Path(self.plan.prefix)
         temp_root = Path(self.plan.temp_root).resolve()
         temp_root.mkdir(parents=True, exist_ok=True)
@@ -2117,6 +2120,13 @@ class PipelineWorker(QObject):
         # corrida. Evita que cada invocación esperadamente fallida vuelva a escribir error.log,
         # error1.log, etc. El comportamiento normal de nsc fuera del builder no cambia.
         env["NSC_NO_ERROR_LOG"] = "1"
+        selfhost_profiles = list(dict.fromkeys(
+            optimization.lstrip("-").upper()
+            for optimization in self.plan.optimizations
+            if optimization.lstrip("-").upper() in {"O0", "O1", "O2", "O3"}
+        ))
+        if selfhost_profiles:
+            env["NSC_SELFHOST_PROFILES"] = ",".join(selfhost_profiles)
         if linker is not None:
             env["NSC_EXE"] = str(self._effective_test_compiler())
             env["NSC_LINKER"] = str(self._effective_test_nslink())

@@ -27,6 +27,7 @@ from selfhost.bootstrap import (
     verify_semantics,
     verify_ir,
 )
+from selfhost.bootstrap.profile_selection import selected_profiles
 
 
 TEST_TEMP_ROOT = ROOT / "_nscbuilder" / "temp" / "selfhost-unit-tests"
@@ -163,6 +164,30 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(plan.optimizations, ["-O0"])
         self.assertFalse(plan.certify_baseline)
         self.assertFalse(plan.lld_diagnostics)
+
+    def test_selfhost_profiles_default_to_the_complete_contract(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(
+                selected_profiles(["O0", "O1", "O2", "O3"]),
+                ["O0", "O1", "O2", "O3"],
+            )
+
+    def test_selfhost_profiles_preserve_the_outer_o0_selection(self) -> None:
+        self.assertEqual(
+            selected_profiles(["O0", "O1", "O2", "O3"], "O0"),
+            ["O0"],
+        )
+        with self.assertRaisesRegex(ValueError, "invalid self-host optimization"):
+            selected_profiles(["O0", "O1", "O2", "O3"], "O4")
+
+    def test_nscbuilder_exports_selected_profiles_to_ctest(self) -> None:
+        plan = nscbuilder.make_baseline_plan(
+            1,
+            optimizations=["-O0"],
+            temp_root=self.root / "temp",
+        )
+        worker = nscbuilder.PipelineWorker(plan, [])
+        self.assertEqual(worker._base_environment("NSLink")["NSC_SELFHOST_PROFILES"], "O0")
 
     def test_lld_diagnostics_are_rejected_for_nativesharp_programs(self) -> None:
         with self.assertRaisesRegex(ValueError, "not supported"):
