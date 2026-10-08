@@ -11,6 +11,7 @@ from .compiler import (
 )
 from .pipeline import PipelineRunner, RunResult
 from .storage import BuilderStorage
+from .deploy import DeployPlan, apply_manifest, create_deploy_plan
 from .toolchain import (
     ToolBuildOptions,
     ToolReceipt,
@@ -25,10 +26,13 @@ __all__ = [
     "CompilerBuildOptions",
     "CompilerReceipt",
     "BuilderStorage",
+    "DeployPlan",
     "PipelineRunner",
     "RunResult",
     "RunSelection",
     "create_run_plan",
+    "create_deploy_plan",
+    "apply_manifest",
     "create_compiler_build_plan",
     "create_compiler_receipt",
     "create_test_run_plan",

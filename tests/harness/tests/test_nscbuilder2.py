@@ -33,6 +33,7 @@ from _nscbuilder2.compiler import (  # noqa: E402
     validate_compiler_receipt,
 )
 from _nscbuilder2.pipeline import PipelineRunner  # noqa: E402
+from _nscbuilder2.deploy import apply_manifest, create_deploy_plan  # noqa: E402
 from _nscbuilder2.storage import BuilderStorage  # noqa: E402
 from _nscbuilder2.summary import condensed_errors  # noqa: E402
 from _nscbuilder2.toolchain import (  # noqa: E402
@@ -251,6 +252,53 @@ class NscBuilder2Tests(unittest.TestCase):
         self.assertEqual((destination / "nslink.exe").read_bytes(), b"verified-nslink")
         self.assertEqual(len(manifest["artifacts"]), 1)
         self.assertTrue(manifest_path.is_file())
+
+    def test_deploy_plan_is_explicit_and_manifest_copy_is_exact(self) -> None:
+        compiler_options = CompilerBuildOptions(
+            REPO_ROOT,
+            self.temporary / "deploy-build",
+            self.nslink,
+            self.prefix,
+        )
+        compiler_plan = create_compiler_build_plan(
+            compiler_options,
+            "deploy-compiler-run",
+            self.temporary / "deploy-compiler-history",
+            self.temporary / "deploy-compiler-work",
+        )
+        compiler_plan.compiler.parent.mkdir(parents=True)
+        compiler_plan.compiler.write_bytes(b"deploy-nsc")
+        compiler_receipt = create_compiler_receipt(compiler_plan, "passed")
+        tool_source = self.temporary / "deploy-nslink-source"
+        tool_source.mkdir()
+        (tool_source / "CMakeLists.txt").write_text("# fixture\n", encoding="utf-8")
+        tool_output = tool_source / "bin" / "release"
+        tool_output.mkdir(parents=True)
+        tool_plan = create_tool_build_plan(
+            ToolBuildOptions("nslink", tool_source, tool_source / "build", tool_output),
+            "deploy-nslink-run",
+            self.temporary / "deploy-nslink-history",
+            self.temporary / "deploy-nslink-work",
+        )
+        tool_plan.products[0].write_bytes(b"deploy-nslink")
+        tool_receipt = create_tool_receipt(tool_plan, "passed")
+        prefix = self.temporary / "deploy-prefix"
+        deploy_plan = create_deploy_plan(
+            compiler_receipt,
+            (tool_receipt,),
+            prefix,
+            "deploy-run",
+            self.temporary / "deploy-history",
+            self.temporary / "deploy-work",
+        )
+        self.assertEqual(
+            [step.identifier for step in deploy_plan.steps],
+            ["deploy-compiler", "deploy-tools"],
+        )
+        self.assertIn("cmake --install", " ".join(deploy_plan.steps[0].command))
+        self.assertFalse((prefix / "bin" / "nslink.exe").exists())
+        apply_manifest(deploy_plan.manifest)
+        self.assertEqual((prefix / "bin" / "nslink.exe").read_bytes(), b"deploy-nslink")
 
     @unittest.skipUnless(sys.platform == "win32", "Windows process-tree contract")
     def test_cancel_terminates_only_runner_descendants(self) -> None:

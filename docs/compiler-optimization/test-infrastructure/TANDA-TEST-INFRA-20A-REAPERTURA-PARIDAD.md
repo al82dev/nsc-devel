@@ -41,7 +41,7 @@ Builder 2 tendrá fronteras separadas y ordenadas:
 | B2-009 | Optimización host O0/O1/O2/O3 | IMPLEMENTADA en modelo |
 | B2-010 | Identidad, ruta y SHA-256 del compilador | IMPLEMENTADA y verificada con fixture |
 | B2-011 | Recibo persistente del build | IMPLEMENTADA y verificada con fixture |
-| B2-012 | Instalar build válido | PENDIENTE; implementar sin ejecutar en C: |
+| B2-012 | Instalar build válido | IMPLEMENTADA; no ejecutada en C: |
 | B2-013 | Selección explícita de prefijo | IMPLEMENTADA en modelo |
 | B2-014 | Pruebas bloqueadas sin compilador construido válido | IMPLEMENTADA en modelo; GUI pendiente |
 | B2-015 | Selección O0 | VERIFICADA |
@@ -81,14 +81,14 @@ Builder 2 tendrá fronteras separadas y ordenadas:
 | B2-049 | Staging de `nslink.exe` junto al NSC construido en A: | IMPLEMENTADA y verificada con fixture |
 | B2-050 | Staging de `nsasm.exe`, `nsdump.exe` y `nsdis.exe` en A: | IMPLEMENTADA y verificada con fixture |
 | B2-051 | Staging de `nsdbg.exe` y PDB disponible en A: | IMPLEMENTADA; fixture GUI pendiente |
-| B2-052 | Selección de herramientas incluidas en deploy | PENDIENTE |
+| B2-052 | Selección de herramientas incluidas en deploy | IMPLEMENTADA en plan; GUI pendiente |
 | B2-053 | Autogeneración seleccionable antes del deploy | PENDIENTE |
-| B2-054 | Deploy exclusivamente mediante acción explícita | PENDIENTE; implementar sin ejecutar en C: |
-| B2-055 | Manifiesto de staging/deploy con procedencia y hash | PARCIAL; staging implementado |
+| B2-054 | Deploy exclusivamente mediante acción explícita | IMPLEMENTADA; no ejecutada en C: |
+| B2-055 | Manifiesto de staging/deploy con procedencia y hash | IMPLEMENTADA y verificada en A: |
 | B2-056 | Fallo productor bloquea staging y deploy dependientes | IMPLEMENTADA en recibos |
 | B2-057 | CMake/Ninja/compiladores resueltos por PATH o proyecto | IMPLEMENTADA en planes de herramientas |
 | B2-058 | NSC y herramientas conservan configuración Release/Debug elegida | IMPLEMENTADA en modelo |
-| B2-059 | Instalación conjunta sin leer artefactos desde C: | PENDIENTE; implementar sin ejecutar en C: |
+| B2-059 | Instalación conjunta sin leer artefactos desde C: | IMPLEMENTADA; no ejecutada en C: |
 
 ## Gate de cierre corregido
 
