@@ -11,6 +11,10 @@ import sys
 import time
 from pathlib import Path
 
+try:
+    from .profile_selection import selected_profiles
+except ImportError:
+    from profile_selection import selected_profiles
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -83,7 +87,8 @@ def main() -> int:
 
     library_project = root / contract["library_project"]
     smoke_project = root / contract["smoke_project"]
-    for profile in contract["profiles"]:
+    profiles = selected_profiles(contract["profiles"])
+    for profile in profiles:
         lower = profile.lower()
         library_object = output / f"NativeSharp.StandardLibrary.{lower}.obj"
         repeated_object = output / f"NativeSharp.StandardLibrary.{lower}.repeat.obj"
@@ -137,13 +142,13 @@ def main() -> int:
                     cases.append({"profile": profile, "linker": linker, "status": "passed",
                                   "sha256": digest(executable)})
 
-    expected = int(contract["expected_executions"])
+    expected = len(profiles) * len(contract["linkers"])
     if len(cases) != expected:
         failures.append(f"execution matrix incomplete: {len(cases)}/{expected}")
     report = {
         "schema": "nativesharp-selfhost-runtime-library-report", "version": 1,
         "gate": "SH48", "tanda": 50, "status": "failed" if failures else "passed",
-        "source_files": len(sources), "profiles": contract["profiles"],
+        "source_files": len(sources), "profiles": profiles,
         "linkers": contract["linkers"], "passed_executions": len(cases),
         "expected_executions": expected, "deterministic_library_objects": not failures,
         "runtime_symbol_groups": sorted(contract["runtime_symbol_groups"]),
@@ -158,7 +163,8 @@ def main() -> int:
         for failure in failures:
             print("NSH4802: " + failure, file=sys.stderr)
         return 1
-    print(f"SH48 runtime/library verified: {len(sources)} sources, {len(cases)} O0-O3 executions")
+    print(f"SH48 runtime/library verified: {len(sources)} sources, "
+          f"{len(cases)} {'/'.join(profiles)} executions")
     return 0
 
 

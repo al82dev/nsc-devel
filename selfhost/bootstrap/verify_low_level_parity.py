@@ -10,6 +10,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from .profile_selection import selected_profiles
+except ImportError:
+    from profile_selection import selected_profiles
 
 def run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -58,7 +62,8 @@ def main() -> int:
             if fragment not in metadata.stdout:
                 failures.append(f"semantic metadata lost {fragment!r}")
 
-    for profile in contract["profiles"]:
+    profiles = selected_profiles(contract["profiles"])
+    for profile in profiles:
         profile_flag = "-" + profile
         for project_text in contract["positive_projects"]:
             project = root / project_text
@@ -131,10 +136,10 @@ def main() -> int:
         "compiler": str(args.compiler.resolve()),
         "compiler_sha256": sha256(args.compiler),
         "contract_sha256": sha256(args.contract),
-        "profiles": contract["profiles"],
+        "profiles": profiles,
         "linkers": contract["linkers"],
         "passed_executions": len(cases),
-        "expected_executions": len(contract["profiles"]) * len(contract["positive_projects"]) * len(contract["linkers"]),
+        "expected_executions": len(profiles) * len(contract["positive_projects"]) * len(contract["linkers"]),
         "cases": cases,
         "failures": failures,
     }
@@ -146,8 +151,8 @@ def main() -> int:
             print("NSH4502: " + failure, file=sys.stderr)
         return 1
     print(
-        f"SH45 low-level parity verified: {len(cases)} O0-O3 NSLink executions, "
-        f"{len(contract['negative_projects']) * len(contract['profiles'])} contractual rejections"
+        f"SH45 low-level parity verified: {len(cases)} {'/'.join(profiles)} NSLink executions, "
+        f"{len(contract['negative_projects']) * len(profiles)} contractual rejections"
     )
     return 0
 

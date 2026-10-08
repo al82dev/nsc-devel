@@ -14,6 +14,10 @@ import sys
 import time
 from pathlib import Path
 
+try:
+    from .profile_selection import selected_profiles
+except ImportError:
+    from profile_selection import selected_profiles
 
 CONTRACT_SCHEMA = "nativesharp-selfhost-cross-machine-determinism-contract"
 REPORT_SCHEMA = "nativesharp-selfhost-sh44-report"
@@ -181,7 +185,7 @@ def main() -> int:
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     for level in ("o0", "o1", "o2", "o3"):
-        parser.add_argument(f"--nsc2-{level}", type=Path, required=True)
+        parser.add_argument(f"--nsc2-{level}", type=Path)
     parser.add_argument("--nslink", type=Path, required=True)
     parser.add_argument("--runtime-library", type=Path, required=True)
     parser.add_argument("--llvm-library", type=Path, required=True)
@@ -203,8 +207,12 @@ def main() -> int:
         output = args.output_dir.resolve()
         require(not output.exists(), f"SH44 output root is not clean: {output}")
         output.mkdir(parents=True)
-        candidates = {profile: getattr(args, f"nsc2_{profile.lower()}").resolve()
-                      for profile in contract["optimizations"]}
+        profiles = selected_profiles(contract["optimizations"])
+        candidates: dict[str, Path] = {}
+        for profile in profiles:
+            candidate = getattr(args, f"nsc2_{profile.lower()}")
+            require(candidate is not None, f"missing selected nsc2 image argument: {profile}")
+            candidates[profile] = candidate.resolve()
         libraries = [args.runtime_library.resolve(), args.llvm_library.resolve(),
                      *(item.resolve() for item in args.import_library)]
         inputs = [*candidates.values(), args.nslink.resolve(), *libraries]
@@ -243,7 +251,7 @@ def main() -> int:
                 pending = [executor.submit(
                     execute_profile, profile, candidates[profile], project, case_root,
                     environment, args.nslink.resolve(), libraries,
-                    contract["expected_identity"]) for profile in contract["optimizations"]]
+                    contract["expected_identity"]) for profile in profiles]
                 for future in as_completed(pending):
                     completed.append(future.result())
             for profile, observed, observed_timings in sorted(completed):
@@ -284,7 +292,7 @@ def main() -> int:
             "snapshot_source_sha256": snapshot_sha256,
             "input_sha256": input_sha256, "artifact_sha256": reference,
             "local_matrix_passed": True, "normalization_applied": [],
-            "variants": len(records), "profiles": len(contract["optimizations"]),
+            "variants": len(records), "profiles": len(profiles),
             "linkers": len(contract["linkers"]),
         }
         args.attestation.parent.mkdir(parents=True, exist_ok=True)
@@ -309,9 +317,9 @@ def main() -> int:
             "peer_machine": peer.get("machine") if peer else None,
             "source_files": len(files), "source_sha256": source_sha256,
             "variants": records, "variant_count": len(records),
-            "profiles": contract["optimizations"], "linkers": contract["linkers"],
-            "object_comparisons": len(contract["optimizations"]) * (len(records) - 1),
-            "image_comparisons": len(contract["optimizations"]) * len(contract["linkers"]) *
+            "profiles": profiles, "linkers": contract["linkers"],
+            "object_comparisons": len(profiles) * (len(records) - 1),
+            "image_comparisons": len(profiles) * len(contract["linkers"]) *
                                  (len(records) - 1),
             "artifact_sha256": reference, "normalization_applied": [], "skipped": 0,
             "problems": [] if requirement_met else

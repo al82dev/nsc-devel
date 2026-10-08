@@ -1,6 +1,8 @@
 if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SOURCE_ROOT OR NOT DEFINED OUTPUT_DIR)
  message(FATAL_ERROR "SH40 requires compiler, Python and roots")
 endif()
+include("${CMAKE_CURRENT_LIST_DIR}/NativeSharpSelfHostProfiles.cmake")
+nsc_select_selfhost_profiles(selected_profiles)
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 set(project "${SOURCE_ROOT}/selfhost/nsc/NativeSharp.Compiler.nsproj")
 set(check_names core collections io llvm-c)
@@ -9,7 +11,7 @@ set(check_projects
  "${SOURCE_ROOT}/lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj"
  "${SOURCE_ROOT}/lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj"
  "${SOURCE_ROOT}/lib/NativeSharp.LLVM.C/NativeSharp.LLVM.C.nsproj")
-foreach(profile IN ITEMS O0 O1 O2 O3)
+foreach(profile IN LISTS selected_profiles)
  string(TOLOWER "${profile}" lower)
  set(candidate "${OUTPUT_DIR}/nsc-next-${lower}.exe")
  execute_process(COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-exe "${project}" "-${profile}" -g0 -o "${candidate}" RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)

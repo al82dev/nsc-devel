@@ -74,12 +74,12 @@ def canonical_ast(data: bytes) -> bytes:
 def verify(
     root: Path,
     nsc0: Path,
-    next_o0: Path,
-    next_o2: Path,
+    candidates: dict[str, Path],
     contract_path: Path,
     output_dir: Path,
 ) -> dict:
     contract = load_contract(contract_path)
+    require(bool(candidates), "frontend verifier requires at least one selected profile")
     output_dir.mkdir(parents=True, exist_ok=True)
     exclusions = set(contract["token_exclusions"])
     sources = source_corpus(root, contract["corpus_roots"], exclusions)
@@ -93,7 +93,7 @@ def verify(
     token_cases = 0
     ast_cases = 0
     recovery_cases = 0
-    for executable, optimization in ((next_o0, "O0"), (next_o2, "O2")):
+    for optimization, executable in candidates.items():
         for source in sources:
             relative = source.relative_to(root).as_posix()
             actual = run(executable, "--dump-tokens", str(source))
@@ -134,14 +134,14 @@ def verify(
         "schema": REPORT_SCHEMA,
         "version": VERSION,
         "status": "passed",
-        "optimizations": ["O0", "O2"],
+        "optimizations": list(candidates),
         "source_files": len(sources),
         "token_comparisons": token_cases,
         "ast_comparisons": ast_cases,
         "recovery_comparisons": recovery_cases,
         "ast_case_files": contract["ast_cases"],
         "excluded_token_files": contract["token_exclusions"],
-        "binary_sha256": {"O0": digest(next_o0), "O2": digest(next_o2)},
+        "binary_sha256": {profile: digest(path) for profile, path in candidates.items()},
     }
 
 
@@ -149,17 +149,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify the self-hosted SH05 frontend.")
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--nsc0", type=Path, required=True)
-    parser.add_argument("--nsc-next-o0", type=Path, required=True)
-    parser.add_argument("--nsc-next-o2", type=Path, required=True)
+    for level in ("o0", "o1", "o2", "o3"):
+        parser.add_argument(f"--nsc-next-{level}", type=Path)
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     arguments = parser.parse_args(argv)
+    candidates = {
+        level.upper(): value.resolve()
+        for level in ("o0", "o1", "o2", "o3")
+        if (value := getattr(arguments, f"nsc_next_{level}")) is not None
+    }
     try:
         report = verify(
             arguments.source_root.resolve(), arguments.nsc0.resolve(),
-            arguments.nsc_next_o0.resolve(), arguments.nsc_next_o2.resolve(),
-            arguments.contract.resolve(), arguments.output_dir.resolve(),
+            candidates, arguments.contract.resolve(), arguments.output_dir.resolve(),
         )
         arguments.report.resolve().write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"

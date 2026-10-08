@@ -3,6 +3,8 @@ if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR
    NOT DEFINED LINKER_EXECUTABLE OR NOT DEFINED NSLINK_EXECUTABLE)
     message(FATAL_ERROR "SH41 requires nsc0, Python, source/output roots, LLVM libraries and NSLink")
 endif()
+include("${CMAKE_CURRENT_LIST_DIR}/NativeSharpSelfHostProfiles.cmake")
+nsc_select_selfhost_profiles(selected_profiles)
 
 foreach(required IN ITEMS NSC_EXECUTABLE PYTHON_EXECUTABLE LINKER_EXECUTABLE NSLINK_EXECUTABLE)
     if(NOT EXISTS "${${required}}")

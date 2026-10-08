@@ -145,6 +145,10 @@ def verify(
     divergence_dir: Path | None = None,
 ) -> dict:
     contract = load_contract(contract_path)
+    selected = list(candidates)
+    require(bool(selected), "IR verifier requires at least one selected profile")
+    require(all(level in contract["optimizations"] for level in selected),
+            "IR verifier received a profile outside the contract")
     structural_comparisons = 0
     stability_comparisons = 0
     verifier_checks = 0
@@ -161,7 +165,7 @@ def verify(
         require(legacy_text.startswith(stage["legacy_header"]),
                 f"nsc0 {stage['dump']} header changed")
         reference: bytes | None = None
-        for level in contract["optimizations"]:
+        for level in selected:
             actual = run(candidates[level], stage["dump"], source)
             require(actual.returncode == 0, f"{level} rejected {stage['dump']} {stage['source']}")
             require(actual.stderr == b"", f"{level} wrote stderr for {stage['dump']}")
@@ -198,7 +202,7 @@ def verify(
         source = root / relative
         for action in actions:
             baseline: tuple[int, bytes, bytes] | None = None
-            for level in contract["optimizations"]:
+            for level in selected:
                 result = run(candidates[level], action, source)
                 observed = (result.returncode, canonical_lines(result.stdout), canonical_lines(result.stderr))
                 require(result.returncode in (0, 1), f"{level} crashed in {action} {relative}")
@@ -214,7 +218,7 @@ def verify(
     for source in sources:
         legacy = run(nsc0, "--verify-ssa", source)
         baseline: tuple[int, bytes, bytes] | None = None
-        for level in contract["optimizations"]:
+        for level in selected:
             actual = run(candidates[level], "--verify-ssa", source)
             require(actual.returncode in (0, 1),
                     f"{level} crashed while reaching SSA for {source.relative_to(root).as_posix()}")
@@ -233,7 +237,8 @@ def verify(
     require(oracle_ssa_sources >= int(contract["oracle_ssa_minimum_sources"]),
             f"standalone SSA oracle corpus unexpectedly small: {oracle_ssa_sources}")
 
-    pipeline = run(candidates["O0"], "--dump-pass-pipeline", root / contract["stages"][-1]["source"])
+    pipeline = run(candidates[selected[0]], "--dump-pass-pipeline",
+                   root / contract["stages"][-1]["source"])
     pipeline_text = canonical_lines(pipeline.stdout).decode("utf-8", errors="strict")
     for level, passes in contract["required_pass_order"].items():
         line = next((value for value in pipeline_text.splitlines() if value.startswith(level + ":")), "")
@@ -248,7 +253,7 @@ def verify(
         "schema": REPORT_SCHEMA,
         "version": VERSION,
         "status": "passed",
-        "optimizations": contract["optimizations"],
+        "optimizations": selected,
         "stage_count": len(contract["stages"]),
         "cross_stage_sources": len(contract["cross_stage_sources"]),
         "source_files": len(sources),
@@ -267,12 +272,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--nsc0", type=Path, required=True)
     for level in ("o0", "o1", "o2", "o3"):
-        parser.add_argument(f"--nsc-next-{level}", type=Path, required=True)
+        parser.add_argument(f"--nsc-next-{level}", type=Path)
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     arguments = parser.parse_args(argv)
-    candidates = {level.upper(): getattr(arguments, f"nsc_next_{level}").resolve()
-                  for level in ("o0", "o1", "o2", "o3")}
+    candidates = {
+        level.upper(): value.resolve()
+        for level in ("o0", "o1", "o2", "o3")
+        if (value := getattr(arguments, f"nsc_next_{level}")) is not None
+    }
     try:
         report_path = arguments.report.resolve()
         report = verify(arguments.source_root.resolve(), arguments.nsc0.resolve(), candidates,

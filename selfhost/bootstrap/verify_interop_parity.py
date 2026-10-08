@@ -10,6 +10,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from .profile_selection import selected_profiles
+except ImportError:
+    from profile_selection import selected_profiles
 
 def run(command: list[str], cwd: Path, timeout: int = 120) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, capture_output=True, text=True,
@@ -64,7 +68,8 @@ def main() -> int:
         require(run(command, root), label, failures)
 
     project = root / contract["project"]
-    for profile in contract["profiles"]:
+    profiles = selected_profiles(contract["profiles"])
+    for profile in profiles:
         lower = profile.lower()
         native_object = output / f"interop-{lower}.obj"
         emitted = run([str(args.compiler), "--emit-project-object", str(project),
@@ -116,12 +121,12 @@ def main() -> int:
                     cases.append({"profile": profile, "linker": linker, "product": "DLL",
                                   "sha256": digest(dll), "status": "passed"})
 
-    expected = len(contract["profiles"]) * int(contract["expected_executions_per_profile"])
+    expected = len(profiles) * int(contract["expected_executions_per_profile"])
     if len(cases) != expected:
         failures.append(f"execution matrix incomplete: {len(cases)}/{expected}")
     report = {
         "schema": "nativesharp-selfhost-interop-parity-report", "version": 1,
-        "status": "failed" if failures else "passed", "profiles": contract["profiles"],
+        "status": "failed" if failures else "passed", "profiles": profiles,
         "linkers": contract["linkers"], "boundaries": contract["boundaries"],
         "passed_executions": len(cases), "expected_executions": expected,
         "compiler_sha256": digest(args.compiler), "contract_sha256": digest(args.contract),
@@ -133,7 +138,7 @@ def main() -> int:
         for failure in failures:
             print("NSH4602: " + failure, file=sys.stderr)
         return 1
-    print(f"SH46 interop parity verified: {len(cases)} O0-O3 EXE/DLL executions")
+    print(f"SH46 interop parity verified: {len(cases)} {'/'.join(profiles)} EXE/DLL executions")
     return 0
 
 

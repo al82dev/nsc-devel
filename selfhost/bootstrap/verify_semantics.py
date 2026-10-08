@@ -61,10 +61,11 @@ def source_corpus(root: Path, corpus_roots: Sequence[str]) -> list[Path]:
 
 
 def verify(
-    root: Path, nsc0: Path, next_o0: Path, next_o2: Path,
+    root: Path, nsc0: Path, candidates: dict[str, Path],
     contract_path: Path,
 ) -> dict:
     contract = load_contract(contract_path)
+    require(bool(candidates), "semantic verifier requires at least one selected profile")
     actions = contract["actions"]
     differential_comparisons = 0
     for relative in contract["differential_cases"]:
@@ -73,7 +74,7 @@ def verify(
             legacy = run(nsc0, action, source)
             require(legacy.returncode == 0,
                     f"nsc0 did not produce a semantic oracle: {action} {relative}")
-            for executable, optimization in ((next_o0, "O0"), (next_o2, "O2")):
+            for optimization, executable in candidates.items():
                 actual = run(executable, action, source)
                 require(actual.returncode == 0,
                         f"{optimization} rejected semantic oracle case: {action} {relative}")
@@ -90,22 +91,27 @@ def verify(
     for source in sources:
         relative = source.relative_to(root).as_posix()
         for action in actions:
-            o0 = run(next_o0, action, source)
-            o2 = run(next_o2, action, source)
-            require(o0.returncode in (0, 1) and o2.returncode in (0, 1),
-                    f"semantic process crashed: {action} {relative}")
-            require(o0.returncode == o2.returncode,
-                    f"O0/O2 semantic exit differs: {action} {relative}")
-            require(canonical_lines(o0.stdout) == canonical_lines(o2.stdout),
-                    f"O0/O2 semantic stdout differs: {action} {relative}")
-            require(canonical_lines(o0.stderr) == canonical_lines(o2.stderr),
-                    f"O0/O2 semantic stderr differs: {action} {relative}")
-            stability_comparisons += 1
+            baseline: tuple[int, bytes, bytes] | None = None
+            for optimization, executable in candidates.items():
+                result = run(executable, action, source)
+                require(result.returncode in (0, 1),
+                        f"{optimization} semantic process crashed: {action} {relative}")
+                observed = (
+                    result.returncode,
+                    canonical_lines(result.stdout),
+                    canonical_lines(result.stderr),
+                )
+                if baseline is None:
+                    baseline = observed
+                else:
+                    require(observed == baseline,
+                            f"semantic output differs across selected profiles: {action} {relative}")
+                    stability_comparisons += 1
 
     invariant_checks = 0
     for invariant in contract["invariants"]:
         source = root / invariant["source"]
-        for executable, optimization in ((next_o0, "O0"), (next_o2, "O2")):
+        for optimization, executable in candidates.items():
             actual = run(executable, invariant["action"], source)
             require(actual.returncode == 0,
                     f"{optimization} rejected invariant source: {invariant['source']}")
@@ -119,13 +125,13 @@ def verify(
         "schema": REPORT_SCHEMA,
         "version": VERSION,
         "status": "passed",
-        "optimizations": ["O0", "O2"],
+        "optimizations": list(candidates),
         "source_files": len(sources),
         "differential_case_files": contract["differential_cases"],
         "differential_comparisons": differential_comparisons,
         "stability_comparisons": stability_comparisons,
         "invariant_checks": invariant_checks,
-        "binary_sha256": {"O0": digest(next_o0), "O2": digest(next_o2)},
+        "binary_sha256": {profile: digest(path) for profile, path in candidates.items()},
     }
 
 
@@ -133,16 +139,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify the self-hosted SH06 semantic model.")
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--nsc0", type=Path, required=True)
-    parser.add_argument("--nsc-next-o0", type=Path, required=True)
-    parser.add_argument("--nsc-next-o2", type=Path, required=True)
+    for level in ("o0", "o1", "o2", "o3"):
+        parser.add_argument(f"--nsc-next-{level}", type=Path)
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     arguments = parser.parse_args(argv)
+    candidates = {
+        level.upper(): value.resolve()
+        for level in ("o0", "o1", "o2", "o3")
+        if (value := getattr(arguments, f"nsc_next_{level}")) is not None
+    }
     try:
         report = verify(
             arguments.source_root.resolve(), arguments.nsc0.resolve(),
-            arguments.nsc_next_o0.resolve(), arguments.nsc_next_o2.resolve(),
-            arguments.contract.resolve(),
+            candidates, arguments.contract.resolve(),
         )
         arguments.report.resolve().write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"

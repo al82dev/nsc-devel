@@ -36,7 +36,33 @@ distinguir un defecto O0 de un cierre perteneciente a otra matriz.
 - Nuevo: `selfhost/bootstrap/profile_selection.py`.
 - Modificado: `nscbuilder.py`.
 - Modificado: `tests/selfhost/test_bootstrap_infrastructure.py`.
+- Nuevo: `cmake/NativeSharpSelfHostProfiles.cmake`.
+- Modificados los wrappers CMake SH40-SH44 para materializar únicamente los candidatos
+  seleccionados.
+- Modificados los verificadores SH40-SH48, SH50 y SH52 para consumir y publicar el conjunto
+  seleccionado.
+- Modificados los verificadores anidados SH05-SH07 para aceptar los candidatos explícitos que
+  les entrega SH42, sin exigir O2 durante una corrida O0.
 - Nuevo: este documento.
+
+## Segunda parte
+
+1. SH40 y SH41 recorren la selección del entorno en vez de las cuatro optimizaciones del
+   contrato.
+2. SH42, SH43 y SH44 reciben únicamente los ejecutables producidos por SH41 para los perfiles
+   seleccionados; sus argumentos ya no exigen imágenes ausentes de O1, O2 u O3.
+3. SH05 y SH06 conservan la comparación histórica O0/O2 cuando no existe filtro. Cuando el
+   ejecutor declara una selección, comparan exactamente sus candidatos y no inventan perfiles.
+4. SH07 conserva y valida el contrato completo de pipelines, pero ejecuta la matriz estructural,
+   de estabilidad y SSA sólo con los candidatos seleccionados.
+5. SH45, SH46 y SH48 calculan sus conteos esperados desde la selección real; no reutilizan el
+   total contractual de cuatro perfiles para una corrida O0.
+6. SH50 mantiene el presupuesto absoluto de O0. La razón O0/O2 y la distinción entre objetos
+   sólo se exigen cuando esos perfiles forman parte de la misma ejecución.
+7. SH52 conserva su comportamiento histórico sin filtro. En una selección O0, cancelación,
+   publicación atómica y reproducibilidad se ejercitan con O0 y no invocan O2.
+8. Los reportes conservan el conjunto realmente ejecutado. Una corrida O0 no se presenta como
+   certificación multiperfil.
 
 ## Complejidad
 
@@ -46,8 +72,10 @@ memoria son `O(P)`; no existe recursión.
 ## Estado
 
 - Selector y propagación: implementados.
-- Consumo por los verificadores SH40–SH52: pendiente dentro de esta misma tanda.
+- Consumo por los verificadores SH40–SH52: implementado; SH49 y SH52 heredan además la selección
+  en sus invocaciones CTest anidadas.
 - Validación dirigida posterior al commit `31378cec1`: `3/3` pruebas unitarias aprobaron en
   `0.006 s`; cubren el valor completo predeterminado, la selección O0, el rechazo de O4 y la
   exportación desde NSC Builder.
+- Validación de la segunda parte: pendiente hasta conservar primero el commit de implementación.
 - Inventario integral vigente: diez fallos self-host abiertos.

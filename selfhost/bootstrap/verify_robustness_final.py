@@ -14,6 +14,10 @@ import sys
 import time
 from pathlib import Path
 
+try:
+    from .profile_selection import selected_profiles
+except ImportError:
+    from profile_selection import selected_profiles
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -45,6 +49,9 @@ def main() -> int:
             contract.get("gate") != "SH52"):
         print("NSH5201: unsupported SH52 contract", file=sys.stderr)
         return 1
+    profiles = selected_profiles(("O0", "O1", "O2", "O3"))
+    cancellation_profile = "O2" if len(profiles) == 4 else profiles[0]
+    reproducibility_profile = "O0" if len(profiles) == 4 else profiles[0]
 
     rng = random.Random(0x53483532)
     alphabet = "{}[]();,+-*/<>!= abcdefghijklmnopqrstuvwxyz0123456789\n\t\"'@#$%^&|"
@@ -71,14 +78,16 @@ def main() -> int:
 
     runtime_project = root / "selfhost/tests/runtime-2.0/RuntimeLibraries.nsproj"
     timed = output / "cancelled.obj"
-    cancelled = run([str(args.compiler), "--emit-project-oop-obj", str(runtime_project), "-O2",
+    cancelled = run([str(args.compiler), "--emit-project-oop-obj", str(runtime_project),
+                     f"-{cancellation_profile}",
                      f"--timeout-ms={contract['timeout_ms']}", "-o", str(timed)], root)
     if cancelled.returncode == 0 or "cancel" not in cancelled.stderr.lower() or timed.exists():
         failures.append("cooperative timeout did not cancel atomically")
 
     occupied = output / "occupied.obj"
     occupied.mkdir(exist_ok=True)
-    atomic = run([str(args.compiler), "--emit-project-oop-obj", str(runtime_project), "-O0",
+    atomic = run([str(args.compiler), "--emit-project-oop-obj", str(runtime_project),
+                  f"-{reproducibility_profile}",
                   "-o", str(occupied)], root)
     if atomic.returncode == 0 or not occupied.is_dir() or any(occupied.iterdir()):
         failures.append("failed output publication was not atomic")
@@ -90,7 +99,8 @@ def main() -> int:
     first = output / "repeat-a.obj"
     second = output / "repeat-b.obj"
     for destination in (first, second):
-        compiled = run([str(args.compiler), "--emit-project-oop-obj", str(runtime_project), "-O0",
+        compiled = run([str(args.compiler), "--emit-project-oop-obj", str(runtime_project),
+                        f"-{reproducibility_profile}",
                         "-o", str(destination)], root)
         if compiled.returncode != 0:
             failures.append(f"reproducibility compilation failed for {destination.name}")
@@ -152,6 +162,9 @@ def main() -> int:
         "compiler_sha256": digest(args.compiler),
         "selfhost_compiler_sha256": digest(args.selfhost_compiler),
         "contract_sha256": digest(args.contract),
+        "selected_profiles": profiles,
+        "cancellation_profile": cancellation_profile,
+        "reproducibility_profile": reproducibility_profile,
         "fuzz": {"host": len(fuzz_results), "selfhost": contract["selfhost_fuzz_cases"]},
         "corrupt_metadata_rejected": metadata.returncode != 0,
         "cooperative_timeout": cancelled.returncode != 0 and not timed.exists(),

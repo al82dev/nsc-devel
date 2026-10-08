@@ -6,8 +6,12 @@ import re
 import sys
 from pathlib import Path
 
+try:
+    from .profile_selection import selected_profiles
+except ImportError:
+    from profile_selection import selected_profiles
 
-PROFILES = ("o0", "o1", "o2", "o3")
+PROFILES = ("O0", "O1", "O2", "O3")
 CHECK_NAMES = ("core", "collections", "io", "llvm-c")
 DEPENDENCY_OWNERS = (
     "NativeSharpCore ",
@@ -84,7 +88,8 @@ def read_profile(output_dir: Path, profile: str) -> tuple[tuple[str, ...], dict[
     return (report, graph, modules, *check_texts), metrics, parsed_units
 
 
-def write_report(path: Path, metrics: dict[str, int], parsed_units: int) -> None:
+def write_report(path: Path, metrics: dict[str, int], parsed_units: int,
+                 profiles: list[str]) -> None:
     payload = {
         "schema": "nativesharp-selfhost-sh40-report",
         "version": 3,
@@ -96,6 +101,7 @@ def write_report(path: Path, metrics: dict[str, int], parsed_units: int) -> None
         "external_projects": metrics["external-projects"],
         "parsed_dependency_units": parsed_units,
         "external_resolutions": metrics["external-resolutions"],
+        "profiles": profiles,
         "problems": [],
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -107,8 +113,10 @@ def main() -> int:
         canonical_content: tuple[str, ...] | None = None
         canonical_metrics: dict[str, int] | None = None
         canonical_parsed_units = 0
-        for profile in PROFILES:
-            content, metrics, parsed_units = read_profile(arguments.output_dir, profile)
+        profiles = selected_profiles(PROFILES)
+        for profile in profiles:
+            lower = profile.lower()
+            content, metrics, parsed_units = read_profile(arguments.output_dir, lower)
             if canonical_content is None:
                 canonical_content = content
                 canonical_metrics = metrics
@@ -117,11 +125,11 @@ def main() -> int:
                 raise ValueError(f"{profile} dependency graph differs")
         if canonical_metrics is None:
             raise ValueError("no dependency profiles were inspected")
-        write_report(arguments.report, canonical_metrics, canonical_parsed_units)
+        write_report(arguments.report, canonical_metrics, canonical_parsed_units, profiles)
     except (OSError, ValueError) as error:
         print(f"verify_bootstrap_dependencies: error: {error}", file=sys.stderr)
         return 1
-    print("SH40 source-only bootstrap dependency graph verified across O0-O3")
+    print("SH40 source-only bootstrap dependency graph verified across " + ",".join(profiles))
     return 0
 
 

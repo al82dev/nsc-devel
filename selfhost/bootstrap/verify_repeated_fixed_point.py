@@ -13,6 +13,10 @@ import sys
 import time
 from pathlib import Path
 
+try:
+    from .profile_selection import selected_profiles
+except ImportError:
+    from profile_selection import selected_profiles
 
 SCHEMA = "nativesharp-selfhost-repeated-fixed-point-contract"
 REPORT_SCHEMA = "nativesharp-selfhost-sh43-report"
@@ -147,7 +151,7 @@ def main() -> int:
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     for level in ("o0", "o1", "o2", "o3"):
-        parser.add_argument(f"--nsc2-{level}", type=Path, required=True)
+        parser.add_argument(f"--nsc2-{level}", type=Path)
     parser.add_argument("--nslink", type=Path, required=True)
     parser.add_argument("--runtime-library", type=Path, required=True)
     parser.add_argument("--llvm-library", type=Path, required=True)
@@ -178,8 +182,12 @@ def main() -> int:
         require(snapshot_sha256 == source_sha256 and snapshot_records == source_records,
                 "source tree changed while SH43 snapshot was created")
         project = snapshot_root / contract["compiler_project"]
-        candidates = {profile: getattr(args, f"nsc2_{profile.lower()}").resolve()
-                      for profile in contract["optimizations"]}
+        profiles = selected_profiles(contract["optimizations"])
+        candidates: dict[str, Path] = {}
+        for profile in profiles:
+            candidate = getattr(args, f"nsc2_{profile.lower()}")
+            require(candidate is not None, f"missing selected nsc2 image argument: {profile}")
+            candidates[profile] = candidate.resolve()
         libraries = [args.runtime_library.resolve(), args.llvm_library.resolve(),
                      *(path.resolve() for path in args.import_library)]
         require(all(path.is_file() for path in [*candidates.values(), args.nslink,
@@ -188,7 +196,7 @@ def main() -> int:
         environment.update({"LANG": "C", "LC_ALL": "C", "TZ": "UTC"})
 
         jobs = [(repetition, profile) for repetition in range(1, 4)
-                for profile in contract["optimizations"]]
+                for profile in profiles]
         records: list[dict[str, object]] = []
         with ThreadPoolExecutor(max_workers=args.workers) as executor:
             pending = [executor.submit(
@@ -199,7 +207,7 @@ def main() -> int:
                 records.append(future.result())
         records.sort(key=lambda item: (int(item["repetition"]), str(item["profile"])))
 
-        for profile in contract["optimizations"]:
+        for profile in profiles:
             selected = [item for item in records if item["profile"] == profile]
             require(len({str(item["object_sha256"]) for item in selected}) == 1,
                     f"{profile} object differs across clean repetitions")
@@ -215,7 +223,7 @@ def main() -> int:
         report = {
             "schema": REPORT_SCHEMA, "version": 1, "status": "passed",
             "gate": "SH43", "tanda": 45,
-            "repetitions": 3, "profiles": contract["optimizations"],
+            "repetitions": 3, "profiles": profiles,
             "linkers": contract["linkers"], "cases": records, "case_count": len(records),
             "object_comparisons": len(records) * 2,
             "image_comparisons": len(records) * len(contract["linkers"]) * 2,
@@ -232,7 +240,8 @@ def main() -> int:
             subprocess.SubprocessError, VerificationError) as error:
         print(f"verify_repeated_fixed_point: error: {error}", file=sys.stderr)
         return 1
-    print("SH43 passed: three clean nsc2->nsc3->nsc4 raw-byte fixed points, O0-O3, NSLink")
+    print("SH43 passed: three clean nsc2->nsc3->nsc4 raw-byte fixed points, " +
+          ",".join(profiles) + ", NSLink")
     return 0
 
 

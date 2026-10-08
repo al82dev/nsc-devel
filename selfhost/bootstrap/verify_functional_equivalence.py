@@ -5,12 +5,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import struct
 import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from .profile_selection import ENVIRONMENT_VARIABLE, selected_profiles
+except ImportError:
+    from profile_selection import ENVIRONMENT_VARIABLE, selected_profiles
 
 SCHEMA = "nativesharp-selfhost-functional-equivalence-contract"
 REPORT_SCHEMA = "nativesharp-selfhost-sh42-report"
@@ -166,7 +171,7 @@ def main() -> int:
     parser.add_argument("--python", type=Path, required=True)
     parser.add_argument("--nsc0", type=Path, required=True)
     for level in ("o0", "o1", "o2", "o3"):
-        parser.add_argument(f"--nsc2-{level}", type=Path, required=True)
+        parser.add_argument(f"--nsc2-{level}", type=Path)
     parser.add_argument("--nslink", type=Path, required=True)
     parser.add_argument("--import-library", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -176,11 +181,15 @@ def main() -> int:
         contract = json.loads(args.contract.read_text(encoding="utf-8"))
         require(contract.get("schema") == SCHEMA and contract.get("version") == 1,
                 "unsupported SH42 contract")
+        selected = selected_profiles(contract["optimizations"])
         root = args.source_root.resolve()
         out = args.output_dir.resolve()
         out.mkdir(parents=True, exist_ok=True)
-        candidates = {level: getattr(args, f"nsc2_{level.lower()}").resolve()
-                      for level in contract["optimizations"]}
+        candidates: dict[str, Path] = {}
+        for level in selected:
+            candidate = getattr(args, f"nsc2_{level.lower()}")
+            require(candidate is not None, f"missing selected nsc2 image argument: {level}")
+            candidates[level] = candidate.resolve()
         require(args.nsc0.is_file() and all(path.is_file() for path in candidates.values()),
                 "missing nsc0 or nsc2 image")
 
@@ -198,14 +207,19 @@ def main() -> int:
                                 "stderr_sha256": hashlib.sha256(canonical(oracle.stderr)).hexdigest()})
 
         bootstrap = root / "selfhost/bootstrap"
+        nested_profiles = selected
+        if not os.environ.get(ENVIRONMENT_VARIABLE, "").strip():
+            nested_profiles = [profile for profile in ("O0", "O2") if profile in candidates]
+        nested_arguments = ["--source-root", str(root), "--nsc0", str(args.nsc0)]
+        for profile in nested_profiles:
+            nested_arguments.extend(
+                [f"--nsc-next-{profile.lower()}", str(candidates[profile])])
         frontend_report = call_verifier(args.python, bootstrap / "verify_frontend.py", [
-            "--source-root", str(root), "--nsc0", str(args.nsc0),
-            "--nsc-next-o0", str(candidates["O0"]), "--nsc-next-o2", str(candidates["O2"]),
+            *nested_arguments,
             "--contract", str(root / contract["frontend_contract"]),
             "--output-dir", str(out / "frontend")], out / "frontend-report.json")
         semantic_report = call_verifier(args.python, bootstrap / "verify_semantics.py", [
-            "--source-root", str(root), "--nsc0", str(args.nsc0),
-            "--nsc-next-o0", str(candidates["O0"]), "--nsc-next-o2", str(candidates["O2"]),
+            *nested_arguments,
             "--contract", str(root / contract["semantic_contract"])], out / "semantic-report.json")
         ir_arguments = ["--source-root", str(root), "--nsc0", str(args.nsc0)]
         for profile, candidate in candidates.items():
@@ -285,9 +299,11 @@ def main() -> int:
         checked([str(args.nsc0), "--emit-project-library-metadata", str(library_project),
                  "-o", str(legacy_meta)], "nsc0 metadata", 600)
         checked([str(args.nsc0), "--verify-library-metadata", str(legacy_meta)], "nsc0 metadata read")
-        checked([str(candidates["O0"]), "--emit-nsmeta", str(library_project), str(modern_meta)],
+        metadata_candidate = candidates.get("O0", next(iter(candidates.values())))
+        checked([str(metadata_candidate), "--emit-nsmeta", str(library_project), str(modern_meta)],
                 "nsc2 metadata")
-        checked([str(candidates["O0"]), "--verify-nsmeta", str(modern_meta)], "nsc2 metadata read")
+        checked([str(metadata_candidate), "--verify-nsmeta", str(modern_meta)],
+                "nsc2 metadata read")
         legacy_metadata = parse_legacy_metadata(legacy_meta)
         modern_metadata = parse_modern_metadata(modern_meta)
         require(legacy_metadata["name"] == modern_metadata["name"] and
@@ -300,6 +316,7 @@ def main() -> int:
             "schema": REPORT_SCHEMA, "version": 1, "status": "passed", "gate": "SH42", "tanda": 44,
             "layers": contract["required_layers"], "normalization_policy": contract["normalization_policy"],
             "diagnostics": diagnostics,
+            "selected_profiles": selected,
             "frontend": frontend_report, "semantics": semantic_report, "ir": ir_report,
             "objects": object_records, "object_cases": len(object_records),
             "projects": project_records, "project_cases": len(project_records),

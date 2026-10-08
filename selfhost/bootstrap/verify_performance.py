@@ -13,6 +13,10 @@ import sys
 import time
 from pathlib import Path
 
+try:
+    from .profile_selection import selected_profiles
+except ImportError:
+    from profile_selection import selected_profiles
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -46,8 +50,9 @@ def main() -> int:
         return 1
 
     project = root / contract["project"]
+    selected = selected_profiles(contract["profiles"])
     profiles: dict[str, dict[str, object]] = {}
-    for profile in contract["profiles"]:
+    for profile in selected:
         elapsed_values: list[float] = []
         hashes: list[str] = []
         sizes: list[int] = []
@@ -71,15 +76,19 @@ def main() -> int:
             "deterministic": bool(hashes) and len(set(hashes)) == 1,
         }
 
-    o0 = profiles["O0"]["median_seconds"]
-    o2 = profiles["O2"]["median_seconds"]
-    if not isinstance(o0, float) or o0 > float(contract["o0_max_median_seconds"]):
+    o0 = profiles.get("O0", {}).get("median_seconds")
+    o2 = profiles.get("O2", {}).get("median_seconds")
+    o0_within_budget = "O0" not in profiles or (
+        isinstance(o0, float) and o0 <= float(contract["o0_max_median_seconds"]))
+    if not o0_within_budget:
         failures.append(f"O0 median {o0} exceeds {contract['o0_max_median_seconds']} seconds")
-    if isinstance(o0, float) and isinstance(o2, float) and o0 > o2 * float(contract["o0_max_ratio_to_o2"]):
+    ratio_verified = isinstance(o0, float) and isinstance(o2, float)
+    if ratio_verified and o0 > o2 * float(contract["o0_max_ratio_to_o2"]):
         failures.append(f"O0 median {o0} is not the required fast path relative to O2 {o2}")
-    profile_hashes = [profiles[name]["sha256"] for name in contract["profiles"]]
-    if contract["require_distinct_profile_objects"] and len(set(profile_hashes)) != len(profile_hashes):
-        failures.append("O0/O1/O2/O3 did not produce four distinct object contracts")
+    profile_hashes = [profiles[name]["sha256"] for name in selected]
+    if (contract["require_distinct_profile_objects"] and len(selected) > 1 and
+            len(set(profile_hashes)) != len(profile_hashes)):
+        failures.append("selected optimization profiles did not produce distinct object contracts")
 
     names = contract["ctests"]
     expression = "^(" + "|".join(re.escape(name) for name in names) + ")$"
@@ -97,7 +106,11 @@ def main() -> int:
         "compiler_sha256": digest(args.compiler),
         "contract_sha256": digest(args.contract),
         "profiles": profiles,
-        "o0_fast_path": not failures and isinstance(o0, float) and isinstance(o2, float),
+        "selected_profiles": selected,
+        "o0_within_absolute_budget": o0_within_budget,
+        "o0_to_o2_ratio_verified": ratio_verified,
+        "o0_fast_path": not failures and o0_within_budget and
+                        (not ratio_verified or o0 <= o2 * float(contract["o0_max_ratio_to_o2"])),
         "ctests": {"expected": len(names), "passed": len(names) if result.returncode == 0 else 0,
                     "seconds": round(ctest_seconds, 6), "names": names},
         "failures": failures,
@@ -108,7 +121,12 @@ def main() -> int:
         for failure in failures:
             print(f"NSH5002: {failure}", file=sys.stderr)
         return 1
-    print(f"SH50 performance passed: O0 median={o0:.3f}s, O2 median={o2:.3f}s; {len(names)}/{len(names)} build tests")
+    medians = ", ".join(
+        f"{profile} median={profiles[profile]['median_seconds']:.3f}s"
+        for profile in selected
+        if isinstance(profiles[profile]["median_seconds"], float)
+    )
+    print(f"SH50 performance passed: {medians}; {len(names)}/{len(names)} build tests")
     return 0
 
 

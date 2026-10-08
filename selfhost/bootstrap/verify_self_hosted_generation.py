@@ -13,6 +13,10 @@ import sys
 import time
 from pathlib import Path
 
+try:
+    from .profile_selection import selected_profiles
+except ImportError:
+    from profile_selection import selected_profiles
 
 SCHEMA = "nativesharp-selfhost-generation-contract"
 REPORT_SCHEMA = "nativesharp-selfhost-sh41-report"
@@ -228,10 +232,11 @@ def main() -> int:
         environment = os.environ.copy()
         environment.update({"LANG": "C", "LC_ALL": "C", "TZ": "UTC"})
 
+        selected = selected_profiles(contract["optimizations"])
         profiles: dict[str, object] = {}
         hashes: dict[str, str] = {"nsc0": digest(arguments.nsc0), "nsc1": digest(arguments.nsc1)}
         total_executions = 0
-        for profile in contract["optimizations"]:
+        for profile in selected:
             lower = profile.lower()
             nsc2_object = arguments.output_dir / f"nsc2-{lower}.obj"
             nsc2_audit, _ = audited_emit(
@@ -282,7 +287,8 @@ def main() -> int:
             "source_derived_codegen": True, "image_replay": False,
             "nsc0_invocations_during_generation": 0,
             "source_files": source_count, "source_sha256": source_sha256,
-            "profiles": profiles, "profile_count": len(profiles),
+            "profiles": profiles, "selected_profiles": selected,
+            "profile_count": len(profiles),
             "linkers": ["NSLink"], "executions": total_executions,
             "object_fixed_point_per_profile": True,
             "hashes": dict(sorted(hashes.items())),
@@ -294,7 +300,8 @@ def main() -> int:
     except (OSError, UnicodeError, json.JSONDecodeError, VerificationError) as error:
         print(f"verify_self_hosted_generation: error: {error}", file=sys.stderr)
         return 1
-    print("SH41 passed: real nsc1->nsc2->nsc3 source compilation, O0-O3, NSLink")
+    print("SH41 passed: real nsc1->nsc2->nsc3 source compilation, " +
+          ",".join(selected) + ", NSLink")
     return 0
 
 

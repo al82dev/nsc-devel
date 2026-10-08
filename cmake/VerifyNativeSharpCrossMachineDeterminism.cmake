@@ -2,6 +2,8 @@ if(NOT DEFINED PYTHON_EXECUTABLE OR NOT DEFINED SOURCE_ROOT OR NOT DEFINED OUTPU
    NOT DEFINED SH41_OUTPUT_DIR OR NOT DEFINED LINKER_EXECUTABLE OR NOT DEFINED NSLINK_EXECUTABLE)
     message(FATAL_ERROR "SH44 requires Python, roots, SH41 products, LLVM tools and NSLink")
 endif()
+include("${CMAKE_CURRENT_LIST_DIR}/NativeSharpSelfHostProfiles.cmake")
+nsc_select_selfhost_profiles(selected_profiles)
 
 get_filename_component(nslink_bin "${NSLINK_EXECUTABLE}" DIRECTORY)
 get_filename_component(prefix "${nslink_bin}" DIRECTORY)
@@ -28,7 +30,7 @@ file(REMOVE_RECURSE "${OUTPUT_DIR}" "${input_dir}")
 file(MAKE_DIRECTORY "${input_dir}")
 
 set(candidate_arguments)
-foreach(profile IN ITEMS O0 O1 O2 O3)
+foreach(profile IN LISTS selected_profiles)
     string(TOLOWER "${profile}" lower)
     set(candidate "${SH41_OUTPUT_DIR}/nsc2-${lower}-nslink.exe")
     if(NOT EXISTS "${candidate}")

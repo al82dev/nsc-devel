@@ -3,6 +3,8 @@ if(NOT DEFINED NSC_EXECUTABLE OR NOT DEFINED PYTHON_EXECUTABLE OR
    NOT DEFINED NSLINK_EXECUTABLE)
     message(FATAL_ERROR "SH42 requires nsc0, Python, roots, SH41 products and NSLink")
 endif()
+include("${CMAKE_CURRENT_LIST_DIR}/NativeSharpSelfHostProfiles.cmake")
+nsc_select_selfhost_profiles(selected_profiles)
 
 foreach(required IN ITEMS NSC_EXECUTABLE PYTHON_EXECUTABLE NSLINK_EXECUTABLE)
     if(NOT EXISTS "${${required}}")
@@ -12,7 +14,7 @@ endforeach()
 
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 set(candidate_arguments)
-foreach(profile IN ITEMS O0 O1 O2 O3)
+foreach(profile IN LISTS selected_profiles)
     string(TOLOWER "${profile}" lower)
     set(candidate "${SH41_OUTPUT_DIR}/nsc2-${lower}-nslink.exe")
     if(NOT EXISTS "${candidate}")
