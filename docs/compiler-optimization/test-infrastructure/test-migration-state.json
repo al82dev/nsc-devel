@@ -8,6 +8,14 @@
       "new_module": "tests/unit/modules/BasicUnitTests.cpp",
       "new_executable": "nsc_unit_tests.exe",
       "evidence": "TANDA-TEST-INFRA-06-CPP-PILOT.md"
+    },
+    "nsc.item394.stage-boundary-source": {
+      "state": "DUAL_PARITY",
+      "legacy_owner": "tests/unit/Item394StageBoundaryVerifierTests.cpp",
+      "legacy_literal": "int answer() { return 42; }",
+      "new_manifest": "tests/cases/frontend/nsc.item394.stage-boundary-source/case.json",
+      "new_source": "tests/cases/frontend/nsc.item394.stage-boundary-source/Main.ns",
+      "evidence": "TANDA-TEST-INFRA-07-NS-FIXTURE-PILOT.md"
     }
   }
 }

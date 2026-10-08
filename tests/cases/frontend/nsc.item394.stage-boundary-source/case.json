@@ -1,0 +1,27 @@
+{
+  "id": "nsc.item394.stage-boundary-source",
+  "component": "frontend",
+  "kind": "semantic",
+  "sources": [
+    "Main.ns"
+  ],
+  "arguments": [
+    "--dump-sema",
+    "{source:0}"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stderr": {
+      "mode": "exact",
+      "text": ""
+    }
+  },
+  "timeout_seconds": 30,
+  "tags": [
+    "migration-pilot",
+    "embedded-source",
+    "item394"
+  ],
+  "requires": []
+}
