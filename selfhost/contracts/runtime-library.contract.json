@@ -5,14 +5,6 @@
   "target": "x86_64-pc-windows-msvc",
   "library_project": "selfhost/tests/runtime-2.0/RuntimeLibraries.nsproj",
   "smoke_project": "selfhost/tests/runtime-2.0/RuntimeSmoke.nsproj",
-  "library_roots": [
-    "lib/NativeSharp.Core",
-    "lib/NativeSharp.Core.Collections.Generic",
-    "lib/NativeSharp.Core.IO",
-    "lib/NativeSharp.Core.Diagnostics",
-    "lib/NativeSharp.Core.Threading"
-  ],
-  "source_files": 82,
   "profiles": ["O0", "O1", "O2", "O3"],
   "linkers": ["nslink"],
   "expected_executions": 4,

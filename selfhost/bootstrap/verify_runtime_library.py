@@ -9,6 +9,7 @@ import json
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 try:
@@ -32,6 +33,75 @@ def require(result: subprocess.CompletedProcess[str], label: str, failures: list
         return True
     failures.append(f"{label}: exit={result.returncode}: {result.stdout}{result.stderr}")
     return False
+
+
+def referenced_library_projects(project: Path, source_root: Path,
+                                failures: list[str]) -> list[Path]:
+    try:
+        document = ET.parse(project)
+    except (OSError, ET.ParseError) as error:
+        failures.append(f"library project cannot be read: {project}: {error}")
+        return []
+    projects: list[Path] = []
+    seen: set[Path] = set()
+    for element in document.getroot().iter():
+        if element.tag.rsplit("}", 1)[-1] != "ProjectReference":
+            continue
+        include = element.attrib.get("Include", "").strip()
+        if not include:
+            failures.append(f"library project has an empty ProjectReference: {project}")
+            continue
+        referenced = (project.parent / include).resolve()
+        try:
+            referenced.relative_to(source_root)
+        except ValueError:
+            failures.append(f"library project reference escapes source root: {referenced}")
+            continue
+        if referenced in seen:
+            failures.append(f"duplicate library project reference: {referenced}")
+            continue
+        seen.add(referenced)
+        if not referenced.is_file():
+            failures.append(f"referenced library project does not exist: {referenced}")
+            continue
+        projects.append(referenced)
+    if not projects:
+        failures.append(f"library project has no valid ProjectReference entries: {project}")
+    return sorted(projects, key=lambda path: path.relative_to(source_root).as_posix())
+
+
+def collect_library_sources(projects: list[Path], source_root: Path,
+                            failures: list[str]) -> list[Path]:
+    sources: dict[Path, Path] = {}
+    for project in projects:
+        pending = [project.parent]
+        visited: set[Path] = set()
+        project_sources: list[Path] = []
+        while pending:
+            directory = pending.pop()
+            resolved_directory = directory.resolve()
+            if resolved_directory in visited:
+                continue
+            visited.add(resolved_directory)
+            try:
+                children = sorted(directory.iterdir(), key=lambda path: path.name.casefold())
+            except OSError as error:
+                failures.append(f"library source directory cannot be read: {directory}: {error}")
+                continue
+            for child in children:
+                if child.is_dir():
+                    pending.append(child)
+                elif child.is_file() and child.suffix.casefold() == ".ns":
+                    project_sources.append(child.resolve())
+        if not project_sources:
+            failures.append(f"referenced library project has no NativeSharp sources: {project}")
+        for source in project_sources:
+            owner = sources.get(source)
+            if owner is not None:
+                failures.append(f"library source belongs to multiple projects: {source}: {owner}, {project}")
+                continue
+            sources[source] = project
+    return sorted(sources, key=lambda path: path.relative_to(source_root).as_posix())
 
 
 def main() -> int:
@@ -62,12 +132,9 @@ def main() -> int:
     hashes: dict[str, str] = {}
     cases: list[dict[str, object]] = []
 
-    sources = sorted(
-        (path for relative in contract["library_roots"] for path in (root / relative).glob("*.ns")),
-        key=lambda path: path.relative_to(root).as_posix(),
-    )
-    if len(sources) != int(contract["source_files"]):
-        failures.append(f"standard-library source coverage: {len(sources)}/{contract['source_files']}")
+    library_project = (root / contract["library_project"]).resolve()
+    library_projects = referenced_library_projects(library_project, root, failures)
+    sources = collect_library_sources(library_projects, root, failures)
     source_rows = [f"{digest(path)}  {path.relative_to(root).as_posix()}\n" for path in sources]
     source_manifest = output / "runtime-library-sources.manifest"
     source_manifest.write_text("".join(source_rows), encoding="utf-8", newline="\n")
@@ -85,7 +152,6 @@ def main() -> int:
     hashes["runtime_library"] = digest(args.runtime_library)
     hashes["runtime_abi"] = digest(args.runtime_abi)
 
-    library_project = root / contract["library_project"]
     smoke_project = root / contract["smoke_project"]
     profiles = selected_profiles(contract["profiles"])
     for profile in profiles:
@@ -148,7 +214,9 @@ def main() -> int:
     report = {
         "schema": "nativesharp-selfhost-runtime-library-report", "version": 1,
         "gate": "SH48", "tanda": 50, "status": "failed" if failures else "passed",
-        "source_files": len(sources), "profiles": profiles,
+        "source_files": len(sources),
+        "library_projects": [path.relative_to(root).as_posix() for path in library_projects],
+        "profiles": profiles,
         "linkers": contract["linkers"], "passed_executions": len(cases),
         "expected_executions": expected, "deterministic_library_objects": not failures,
         "runtime_symbol_groups": sorted(contract["runtime_symbol_groups"]),
