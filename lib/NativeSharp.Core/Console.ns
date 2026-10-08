@@ -46,5 +46,76 @@ namespace NativeSharp.Core
         public static void ErrorWriteLine(string value)
         {
         }
+
+        public static void Write() { Write(""); }
+        public static void WriteLine() { WriteLine(""); }
+        public static void ErrorWrite() { ErrorWrite(""); }
+        public static void ErrorWriteLine() { ErrorWriteLine(""); }
+
+        public static void Write(bool value) { Write(String.ToString(value)); }
+        public static void Write(char value) { Write(String.ToString(value)); }
+        public static void Write(int value) { Write(String.ToString(value)); }
+        public static void Write(uint value) { Write(String.ToString((ulong)value)); }
+        public static void Write(long value) { Write(String.ToString(value)); }
+        public static void Write(ulong value) { Write(String.ToString(value)); }
+        public static void Write(float value) { Write(String.ToString(value)); }
+        public static void Write(double value) { Write(String.ToString(value)); }
+
+        public static void WriteLine(bool value) { WriteLine(String.ToString(value)); }
+        public static void WriteLine(char value) { WriteLine(String.ToString(value)); }
+        public static void WriteLine(int value) { WriteLine(String.ToString(value)); }
+        public static void WriteLine(uint value) { WriteLine(String.ToString((ulong)value)); }
+        public static void WriteLine(long value) { WriteLine(String.ToString(value)); }
+        public static void WriteLine(ulong value) { WriteLine(String.ToString(value)); }
+        public static void WriteLine(float value) { WriteLine(String.ToString(value)); }
+        public static void WriteLine(double value) { WriteLine(String.ToString(value)); }
+
+        public static void ErrorWrite(bool value) { ErrorWrite(String.ToString(value)); }
+        public static void ErrorWrite(char value) { ErrorWrite(String.ToString(value)); }
+        public static void ErrorWrite(int value) { ErrorWrite(String.ToString(value)); }
+        public static void ErrorWrite(uint value) { ErrorWrite(String.ToString((ulong)value)); }
+        public static void ErrorWrite(long value) { ErrorWrite(String.ToString(value)); }
+        public static void ErrorWrite(ulong value) { ErrorWrite(String.ToString(value)); }
+        public static void ErrorWrite(float value) { ErrorWrite(String.ToString(value)); }
+        public static void ErrorWrite(double value) { ErrorWrite(String.ToString(value)); }
+
+        public static void ErrorWriteLine(bool value) { ErrorWriteLine(String.ToString(value)); }
+        public static void ErrorWriteLine(char value) { ErrorWriteLine(String.ToString(value)); }
+        public static void ErrorWriteLine(int value) { ErrorWriteLine(String.ToString(value)); }
+        public static void ErrorWriteLine(uint value) { ErrorWriteLine(String.ToString((ulong)value)); }
+        public static void ErrorWriteLine(long value) { ErrorWriteLine(String.ToString(value)); }
+        public static void ErrorWriteLine(ulong value) { ErrorWriteLine(String.ToString(value)); }
+        public static void ErrorWriteLine(float value) { ErrorWriteLine(String.ToString(value)); }
+        public static void ErrorWriteLine(double value) { ErrorWriteLine(String.ToString(value)); }
+
+        // Status: 0 = line read (including an empty line), -1 = EOF, -3 = I/O/allocation error.
+        // The compiler replaces this exact overload with the Windows stdin runtime hook.
+        public static owned string ReadLine(out int status)
+        {
+            status = -3;
+            return null;
+        }
+
+        public static owned string ReadLine()
+        {
+            int status = 0;
+            return ReadLine(out status);
+        }
+
+        // Returns character count, -1 for EOF, -2 when destination is too small, or -3 on error.
+        public static int ReadLine(char[] destination)
+        {
+            int status = 0;
+            raii string line = ReadLine(out status);
+            if (status != 0) { return status; }
+            if (destination.Length < line.Length) { return -2; }
+            int index = 0;
+            while (index < line.Length)
+            {
+                destination[index] = line[index];
+                index = index + 1;
+            }
+            return line.Length;
+        }
     }
 }
