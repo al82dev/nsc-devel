@@ -52,7 +52,10 @@ def source_corpus(root: Path, corpus_roots: Sequence[str], exclusions: set[str])
         require(corpus_root.is_dir(), f"frontend corpus root is missing: {relative_root}")
         for path in corpus_root.rglob("*.ns"):
             relative = path.relative_to(root).as_posix()
-            if relative not in exclusions:
+            # tests/cases belongs to the replacement harness.  It did not form
+            # part of the frozen self-host corpus and must not mutate that
+            # oracle merely by being materialized next to the legacy tests.
+            if not relative.startswith("tests/cases/") and relative not in exclusions:
                 result.append(path)
     return sorted(result)
 

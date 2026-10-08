@@ -346,6 +346,37 @@
       "case_count": 1,
       "reason": "El verificador CMake multietapa requiere SuiteAdapter.",
       "evidence": "TANDA-TEST-INFRA-15-RUNTIME-LINKER-INTEROP.md"
+    },
+    "tanda16-specialized-o0": {
+      "state": "DUAL_PARITY_SUITE_ADAPTER",
+      "case_count": 28,
+      "adapter": "tests/harness/nsc_test/suites.py",
+      "profile": "O0",
+      "initial_passes": 27,
+      "focused_repair_passes": 1,
+      "evidence": "TANDA-TEST-INFRA-16-SELFHOST-SPECIALIZED.md"
+    },
+    "tanda16-specialized-blocked": {
+      "state": "BLOCKED_BY_SCOPE",
+      "case_count": 41,
+      "reasons": {
+        "owner_o1_o2_o3": 34,
+        "legacy_ctest_delegation": 3,
+        "prohibited_operation": 3,
+        "performance_o0_o1_o2_o3_matrix": 1
+      },
+      "evidence": "TANDA-TEST-INFRA-16-SELFHOST-SPECIALIZED.md"
+    },
+    "tanda16-selfhost-corpus-boundary": {
+      "state": "VERIFIED",
+      "case_count": 3,
+      "owners": [
+        "selfhost/bootstrap/verify_frontend.py",
+        "selfhost/bootstrap/verify_semantics.py",
+        "selfhost/bootstrap/verify_ir.py"
+      ],
+      "excluded_new_root": "tests/cases",
+      "evidence": "TANDA-TEST-INFRA-16-SELFHOST-SPECIALIZED.md"
     }
   }
 }

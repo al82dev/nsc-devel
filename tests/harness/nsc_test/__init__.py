@@ -5,6 +5,7 @@ from .command import NscCommandBuilder
 from .model import CaseKind, ExpectedOutcome, ManifestError, TestCase, TextExpectation
 from .process import ProcessExecutor, ProcessRequest, ProcessResult
 from .report import ReportWriter, TestRunRecord
+from .suites import SuiteAdapter, SuiteCatalog, SuiteDefinition, SuiteError
 from .workspace import CaseWorkspace
 from .verify import FailureKind, ResultVerifier, TestResult, VerificationFailure
 
@@ -19,6 +20,10 @@ __all__ = [
     "ProcessRequest",
     "ProcessResult",
     "ReportWriter",
+    "SuiteAdapter",
+    "SuiteCatalog",
+    "SuiteDefinition",
+    "SuiteError",
     "TestRunRecord",
     "ResultVerifier",
     "TestCase",

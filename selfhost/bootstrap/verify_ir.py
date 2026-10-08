@@ -37,7 +37,10 @@ def source_corpus(root: Path, corpus_roots: Sequence[str]) -> list[Path]:
     for relative_root in corpus_roots:
         corpus_root = root / relative_root
         require(corpus_root.is_dir(), f"IR corpus root is missing: {relative_root}")
-        result.extend(corpus_root.rglob("*.ns"))
+        for path in corpus_root.rglob("*.ns"):
+            relative = path.relative_to(root).as_posix()
+            if not relative.startswith("tests/cases/"):
+                result.append(path)
     return sorted(result)
 
 
