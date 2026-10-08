@@ -28,3 +28,11 @@ Se restaura `dependencies_` como `IJob[]`:
 1. Ejecutar `nsc.item373.job-dependencies-cancellation` en O0 con NSLink.
 2. Incluir el cambio en la siguiente reconstrucción y batería CTest completa.
 
+## Evidencia dirigida posterior al commit
+
+- Una primera invocación directa de CTest no exportó `NS_LIB_ROOT` y se detuvo al resolver
+  `NativeSharp.Core.Threading`; no alcanzó el contrato de ownership.
+- Con `NSC_LINKER`/`NSC_LLD_LINK` en `A:\nslink-devel\bin\release\nslink.exe` y
+  `NS_LIB_ROOT=A:\native-sharp-3.0-baseline\lib`,
+  `nsc.item373.job-dependencies-cancellation` aprobó en `0.67 s`.
+- El fallo 292 permanece abierto en el inventario integral hasta la batería completa O0 con NSLink.

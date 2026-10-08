@@ -33,3 +33,11 @@ del compilador y tooling; no sustituye al `Sort` general.
 2. Reconstruir el árbol de pruebas si CMake detecta el cambio de fuente.
 3. Ejecutar la batería CTest completa existente en O0 con NSLink.
 
+## Evidencia dirigida posterior al commit
+
+- Una primera invocación directa de CTest no exportó `NS_LIB_ROOT` y se detuvo antes de compilar
+  el workload; no constituye evidencia funcional.
+- Con `NSC_LINKER`/`NSC_LLD_LINK` en `A:\nslink-devel\bin\release\nslink.exe` y
+  `NS_LIB_ROOT=A:\native-sharp-3.0-baseline\lib`,
+  `nsc.selfhost.compiler-host-workload` aprobó en `0.61 s`.
+- El fallo 150 permanece abierto en el inventario integral hasta la batería completa O0 con NSLink.
