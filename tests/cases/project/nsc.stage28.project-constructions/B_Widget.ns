@@ -1,0 +1,27 @@
+namespace Demo;
+
+public partial class Widget
+{
+    public Widget(float value)
+    {
+        this.Value = 0;
+    }
+
+    public Widget MakeInt()
+    {
+        Widget result = new Widget(1);
+        return result;
+    }
+
+    public Widget MakeFloat()
+    {
+        Widget result = new Widget(1.0f);
+        return result;
+    }
+
+    public Empty MakeEmpty()
+    {
+        Empty result = new Empty();
+        return result;
+    }
+}

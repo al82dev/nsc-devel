@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <Name>App</Name>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../Core/Core.nsproj" />
+  </ItemGroup>
+</Project>

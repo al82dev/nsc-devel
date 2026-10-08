@@ -12,6 +12,7 @@ void registerIrUnitTests(TestRegistry& registry);
 void registerLexerUnitTests(TestRegistry& registry);
 void registerNumericUnitTests(TestRegistry& registry);
 void registerParserUnitTests(TestRegistry& registry);
+void registerProjectDriverMetadataUnitTests(TestRegistry& registry);
 void registerSemanticUnitTests(TestRegistry& registry);
 void registerSourceUnitTests(TestRegistry& registry);
 }

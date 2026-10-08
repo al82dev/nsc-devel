@@ -1,0 +1,29 @@
+{
+  "id": "nsc.stage29.project-layouts",
+  "component": "project",
+  "kind": "project",
+  "project": "Stage29App.nsproj",
+  "working_files": [
+    "A_Layout.ns",
+    "B_Layout.ns"
+  ],
+  "arguments": [
+    "--check-project-layouts",
+    "{project}"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "project object layout check: ok"
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": [
+    "project",
+    "legacy-parity",
+    "o0-only"
+  ],
+  "requires": []
+}

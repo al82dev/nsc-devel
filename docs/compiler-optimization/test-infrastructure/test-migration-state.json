@@ -284,6 +284,41 @@
       ],
       "reason": "El propietario historico reproduce el mismo fallo por artefacto de biblioteca ausente.",
       "evidence": "TANDA-TEST-INFRA-13-BACKEND-ABI-DEBUG.md"
+    },
+    "tanda14-project-driver-metadata-units": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "case_count": 75,
+      "membership": "tests/unit/include/nsc_test/ProjectDriverMetadataLegacyEntries.def",
+      "module": "tests/unit/modules/ProjectDriverMetadataUnitTests.cpp",
+      "adapter_root": "tests/unit/project_driver_metadata_adapters",
+      "components": ["driver", "metadata", "project"],
+      "evidence": "TANDA-TEST-INFRA-14-METADATA-PROJECTS-DRIVER.md"
+    },
+    "tanda14-project-fixtures": {
+      "state": "DUAL_PARITY",
+      "case_count": 5,
+      "manifest_root": "tests/cases/project",
+      "components": ["project"],
+      "evidence": "TANDA-TEST-INFRA-14-METADATA-PROJECTS-DRIVER.md"
+    },
+    "tanda14-non-o0": {
+      "state": "BLOCKED_BY_SCOPE_O0_ONLY",
+      "case_count": 35,
+      "cpp_case_count": 34,
+      "direct_case_count": 1,
+      "evidence": "TANDA-TEST-INFRA-14-METADATA-PROJECTS-DRIVER.md"
+    },
+    "tanda14-prohibited-operations": {
+      "state": "BLOCKED_BY_SCOPE_OPERATION",
+      "case_count": 7,
+      "reason": "Baseline, certificacion, promocion e instalacion estan prohibidos durante la migracion.",
+      "evidence": "TANDA-TEST-INFRA-14-METADATA-PROJECTS-DRIVER.md"
+    },
+    "tanda14-specialized": {
+      "state": "ROUTED_TO_TANDA_16",
+      "case_count": 1,
+      "cases": ["nsc.ns3.t44.metadata-closure"],
+      "evidence": "TANDA-TEST-INFRA-14-METADATA-PROJECTS-DRIVER.md"
     }
   }
 }

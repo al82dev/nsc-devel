@@ -1,0 +1,29 @@
+{
+  "id": "nsc.stage27.project-method-bodies",
+  "component": "project",
+  "kind": "project",
+  "project": "Stage27App.nsproj",
+  "working_files": [
+    "A_StateAndOverloads.ns",
+    "B_Run.ns"
+  ],
+  "arguments": [
+    "--check-project-method-bodies",
+    "{project}"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "project method-body semantic check: ok"
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": [
+    "project",
+    "legacy-parity",
+    "o0-only"
+  ],
+  "requires": []
+}

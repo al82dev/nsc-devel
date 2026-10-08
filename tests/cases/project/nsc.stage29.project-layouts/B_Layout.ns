@@ -1,0 +1,11 @@
+namespace Demo;
+
+public partial class Payload
+{
+    double Weight;
+
+    public Empty MakeEmpty()
+    {
+        return new Empty();
+    }
+}

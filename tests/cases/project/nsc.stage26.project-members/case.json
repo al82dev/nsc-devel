@@ -1,0 +1,29 @@
+{
+  "id": "nsc.stage26.project-members",
+  "component": "project",
+  "kind": "project",
+  "project": "App.nsproj",
+  "working_files": [
+    "A_State.ns",
+    "B_Operations.ns"
+  ],
+  "arguments": [
+    "--check-project-members",
+    "{project}"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "project member binding check: ok"
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": [
+    "project",
+    "legacy-parity",
+    "o0-only"
+  ],
+  "requires": []
+}

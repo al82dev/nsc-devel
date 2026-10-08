@@ -149,6 +149,7 @@ int main(int argumentCount, char** arguments)
         nsc::test::registerLexerUnitTests(registry);
         nsc::test::registerNumericUnitTests(registry);
         nsc::test::registerParserUnitTests(registry);
+        nsc::test::registerProjectDriverMetadataUnitTests(registry);
         nsc::test::registerSemanticUnitTests(registry);
         nsc::test::registerSourceUnitTests(registry);
         if (options.list)

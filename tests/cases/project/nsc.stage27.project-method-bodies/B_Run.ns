@@ -1,0 +1,15 @@
+namespace Demo;
+
+public partial class Counter
+{
+    public int Run(int Value)
+    {
+        int total = Add(Value);
+        {
+            int Value = 1;
+            total = this.Add(Value);
+        }
+        int answer = Add(total);
+        return answer;
+    }
+}

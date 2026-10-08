@@ -1,0 +1,29 @@
+{
+  "id": "nsc.stage28.project-constructions",
+  "component": "project",
+  "kind": "project",
+  "project": "Stage28App.nsproj",
+  "working_files": [
+    "A_Widget.ns",
+    "B_Widget.ns"
+  ],
+  "arguments": [
+    "--check-project-constructions",
+    "{project}"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "project construction semantic check: ok"
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": [
+    "project",
+    "legacy-parity",
+    "o0-only"
+  ],
+  "requires": []
+}
