@@ -1,0 +1,59 @@
+extern C int puts(char* text);
+
+int IntegerOps(int left, int right)
+{
+    int quotient = left / right;
+    int remainder = left % right;
+    int shiftedLeft = left << right;
+    int shiftedRight = left >> right;
+    return quotient + remainder + shiftedLeft + shiftedRight;
+}
+
+uint UnsignedOps(uint left, uint right)
+{
+    uint quotient = left / right;
+    uint remainder = left % right;
+    uint shiftedRight = left >> right;
+    return quotient + remainder + shiftedRight;
+}
+
+uint FloatToUInt(double value)
+{
+    return (uint)value;
+}
+
+int Float32ToInt(float value)
+{
+    return (int)value;
+}
+
+double FloatingDivide(double left, double right)
+{
+    return left / right;
+}
+
+int FloatToInt(double value)
+{
+    return (int)value;
+}
+
+int MemoryOps(int count, int index)
+{
+    int[4] fixedValues;
+    fixedValues[index] = 7;
+    int* heap = new int[count];
+    int* temporary = stackalloc int[count];
+    temporary[0] = fixedValues[index];
+    delete[] heap;
+    return temporary[0];
+}
+
+int StringWithNul()
+{
+    return puts("A\0B");
+}
+
+int Main()
+{
+    return IntegerOps(20, 3);
+}

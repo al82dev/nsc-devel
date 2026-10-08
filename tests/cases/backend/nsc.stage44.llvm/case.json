@@ -1,0 +1,28 @@
+{
+  "id": "nsc.stage44.llvm",
+  "component": "llvm",
+  "kind": "project",
+  "project": "Stage44App.nsproj",
+  "working_files": [
+    "Main.ns"
+  ],
+  "arguments": [
+    "--verify-project-oop-llvm",
+    "{project}"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "project OOP LLVM verification: ok"
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": [
+    "project",
+    "legacy-parity",
+    "o0-only"
+  ],
+  "requires": []
+}

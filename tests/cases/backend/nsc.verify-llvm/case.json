@@ -1,0 +1,27 @@
+{
+  "id": "nsc.verify-llvm",
+  "component": "llvm",
+  "kind": "dump",
+  "sources": [
+    "full_frontend.ns"
+  ],
+  "arguments": [
+    "--verify-llvm",
+    "{source:0}"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "LLVM verification: ok"
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": [
+    "integration",
+    "legacy-parity",
+    "o0-only"
+  ],
+  "requires": []
+}

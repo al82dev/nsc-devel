@@ -1,0 +1,27 @@
+{
+  "id": "nsc.dump-llvm-phi",
+  "component": "llvm",
+  "kind": "dump",
+  "sources": [
+    "ssa_features.ns"
+  ],
+  "arguments": [
+    "--dump-llvm",
+    "{source:0}"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "phi i32"
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": [
+    "integration",
+    "legacy-parity",
+    "o0-only"
+  ],
+  "requires": []
+}

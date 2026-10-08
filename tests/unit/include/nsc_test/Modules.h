@@ -4,6 +4,7 @@ namespace nsc::test
 {
 class TestRegistry;
 
+void registerBackendUnitTests(TestRegistry& registry);
 void registerBasicUnitTests(TestRegistry& registry);
 void registerDiagnosticsUnitTests(TestRegistry& registry);
 void registerFlowUnitTests(TestRegistry& registry);

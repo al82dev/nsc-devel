@@ -1,0 +1,23 @@
+{
+  "id": "nsc.target",
+  "component": "target",
+  "kind": "specialized",
+  "arguments": [
+    "--print-target"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "x86_64-pc-windows-msvc"
+    }
+  },
+  "timeout_seconds": 30,
+  "tags": [
+    "query",
+    "legacy-parity",
+    "o0-compatible"
+  ],
+  "requires": []
+}

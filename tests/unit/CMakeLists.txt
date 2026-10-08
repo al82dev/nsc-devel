@@ -7,6 +7,36 @@ add_executable(
     nsc_unit_tests
     consolidated/main.cpp
     consolidated/TestRegistry.cpp
+    modules/BackendUnitTests.cpp
+    backend_adapters/ForceInlineModifierAdapter.cpp
+    backend_adapters/InliningModifierAdapter.cpp
+    backend_adapters/IntegratedAssemblyGrammarAdapter.cpp
+    backend_adapters/Item336SdkTargetSelectionAdapter.cpp
+    backend_adapters/Item346ConsumerTargetAdapter.cpp
+    backend_adapters/Item366RoundingControlAdapter.cpp
+    backend_adapters/Item376WorkerFloatingPointInitializationAdapter.cpp
+    backend_adapters/Item395MirLayoutAbiAdapter.cpp
+    backend_adapters/Item399LlvmBackendEncapsulationAdapter.cpp
+    backend_adapters/LlvmCodeGenerationAdapter.cpp
+    backend_adapters/LlvmLoweringAdapter.cpp
+    backend_adapters/NamespaceFunctionLlvmAdapter.cpp
+    backend_adapters/NamespaceStateModelAdapter.cpp
+    backend_adapters/NativeSharp3P08P10ExplainAdapter.cpp
+    backend_adapters/NativeSharp3T13AbiAdapter.cpp
+    backend_adapters/NativeSharp3T13BitFieldIntegerAdapter.cpp
+    backend_adapters/NativeSharp3T13CallingConventionAdapter.cpp
+    backend_adapters/NativeSharp3T13PortableSimdAdapter.cpp
+    backend_adapters/NativeSharp3T13RepresentationAdapter.cpp
+    backend_adapters/NativeSharp3T14FloatingPointSemanticsAdapter.cpp
+    backend_adapters/NativeSharp3T15DebugSemanticsAdapter.cpp
+    backend_adapters/NativeSharp3T17Win64AbiFreezeAdapter.cpp
+    backend_adapters/Stage45CleanupScopeAdapter.cpp
+    backend_adapters/Stage45LlvmCleanupFuncletAdapter.cpp
+    backend_adapters/Stage45LlvmWin64EhBasicAdapter.cpp
+    backend_adapters/Stage45TypedCatchRttiAdapter.cpp
+    backend_adapters/Stage61CompilerHardeningAdapter.cpp
+    backend_adapters/StructInterfaceInliningAdapter.cpp
+    backend_adapters/TargetDataLayoutAdapter.cpp
     modules/BasicUnitTests.cpp
     modules/DiagnosticsUnitTests.cpp
     modules/LexerUnitTests.cpp

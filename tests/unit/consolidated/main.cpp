@@ -141,6 +141,7 @@ int main(int argumentCount, char** arguments)
     {
         const Options options = parseOptions(argumentCount, arguments);
         nsc::test::TestRegistry registry;
+        nsc::test::registerBackendUnitTests(registry);
         nsc::test::registerBasicUnitTests(registry);
         nsc::test::registerDiagnosticsUnitTests(registry);
         nsc::test::registerFlowUnitTests(registry);

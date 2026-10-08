@@ -1,0 +1,67 @@
+namespace Stage40.Sample
+{
+    public struct Word
+    {
+        public short Lo;
+        public short Hi;
+
+        public int Sum()
+        {
+            return Lo + Hi;
+        }
+    }
+
+    public struct Pair
+    {
+        public int A;
+        public int B;
+
+        public void SetA(int value)
+        {
+            A = value;
+        }
+
+        public int Sum()
+        {
+            return A + B;
+        }
+
+        public static Pair Echo(Pair value)
+        {
+            return value;
+        }
+    }
+
+    public struct Nested
+    {
+        public Word Left;
+        public Word Right;
+
+        public int ReadLeft()
+        {
+            return Left.Lo;
+        }
+    }
+
+    public class Harness
+    {
+        public static int Run()
+        {
+            Pair original;
+            original.A = 2;
+            original.B = 3;
+
+            Pair copy = original;
+            copy.SetA(7);
+            Pair roundTrip = Pair.Echo(copy);
+
+            Nested nested;
+            nested.Left.Lo = 11;
+            nested.Left.Hi = 13;
+            nested.Right.Lo = 17;
+            nested.Right.Hi = 19;
+
+            return original.A + roundTrip.Sum() + nested.ReadLeft();
+        }
+    }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "nsc.dump-llvm",
+  "component": "llvm",
+  "kind": "dump",
+  "sources": [
+    "full_frontend.ns"
+  ],
+  "arguments": [
+    "--dump-llvm",
+    "{source:0}"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "target triple = \"x86_64-pc-windows-msvc\""
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": [
+    "integration",
+    "legacy-parity",
+    "o0-only"
+  ],
+  "requires": []
+}

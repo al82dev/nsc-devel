@@ -1,0 +1,60 @@
+namespace Demo;
+
+public class Animal
+{
+    protected int Age;
+
+    public Animal(int age)
+    {
+        Age = age;
+    }
+
+    public int GetAge()
+    {
+        return Age;
+    }
+}
+
+public class Dog : Animal
+{
+    private int Weight;
+
+    public Dog(int age, int weight) : base(age)
+    {
+        Weight = weight;
+    }
+
+    public Dog(int weight) : this(0, weight)
+    {
+    }
+
+    public Animal AsAnimal()
+    {
+        return this;
+    }
+
+    public int Sum()
+    {
+        return Age + Weight;
+    }
+
+    public int BaseAge()
+    {
+        return base.GetAge();
+    }
+}
+
+public class Kennel
+{
+    public int Use(Dog dog)
+    {
+        Animal animal = dog;
+        return animal.GetAge();
+    }
+
+    public int Construct()
+    {
+        Dog dog = new Dog(5, 20);
+        return dog.Sum();
+    }
+}

@@ -244,6 +244,46 @@
       "source_count": 22,
       "components": ["hir", "mir", "passes"],
       "evidence": "TANDA-TEST-INFRA-12-HIR-MIR-PASSES.md"
+    },
+    "tanda13-backend-units-o0": {
+      "state": "DUAL_PARITY_TRANSITIONAL_ADAPTER",
+      "case_count": 29,
+      "membership": "tests/unit/include/nsc_test/BackendLegacyEntries.def",
+      "module": "tests/unit/modules/BackendUnitTests.cpp",
+      "adapter_root": "tests/unit/backend_adapters",
+      "components": ["assembly", "debug-info", "llvm", "target"],
+      "evidence": "TANDA-TEST-INFRA-13-BACKEND-ABI-DEBUG.md"
+    },
+    "tanda13-backend-fixtures-o0": {
+      "state": "DUAL_PARITY",
+      "case_count": 20,
+      "manifest_root": "tests/cases/backend",
+      "components": ["llvm", "target"],
+      "evidence": "TANDA-TEST-INFRA-13-BACKEND-ABI-DEBUG.md"
+    },
+    "tanda13-non-o0": {
+      "state": "BLOCKED_BY_SCOPE_O0_ONLY",
+      "case_count": 34,
+      "cpp_case_count": 29,
+      "direct_case_count": 5,
+      "reason": "Los contratos contienen rutas O1/O2/O3 y no fueron ejecutados ni debilitados.",
+      "evidence": "TANDA-TEST-INFRA-13-BACKEND-ABI-DEBUG.md"
+    },
+    "tanda13-specialized": {
+      "state": "ROUTED_TO_TANDA_16",
+      "case_count": 8,
+      "reason": "Los verificadores CMake multietapa requieren SuiteAdapter.",
+      "evidence": "TANDA-TEST-INFRA-13-BACKEND-ABI-DEBUG.md"
+    },
+    "tanda13-external-preconditions": {
+      "state": "DUAL_PARITY_BLOCKED_BY_EXISTING_PRECONDITION",
+      "case_count": 2,
+      "cases": [
+        "nsc.item308.volatile-mmio",
+        "nsc.stage52-6.foreach-collections-enumerators"
+      ],
+      "reason": "El propietario historico reproduce el mismo fallo por artefacto de biblioteca ausente.",
+      "evidence": "TANDA-TEST-INFRA-13-BACKEND-ABI-DEBUG.md"
     }
   }
 }

@@ -1,0 +1,39 @@
+namespace Demo;
+
+public class Counter
+{
+    public const int Seed = 2 + 3;
+    public const int TwiceSeed = Seed * 2;
+    public const bool Enabled = (Seed < TwiceSeed) && true;
+    public static int Count = TwiceSeed;
+    public static readonly int Limit = 20;
+
+    public int BaseValue = 4;
+    public readonly int Id;
+
+    public Counter(int id)
+    {
+        Id = id;
+    }
+
+    public static int Add(int value)
+    {
+        Count = Count + value;
+        return Count;
+    }
+
+    public int Read()
+    {
+        return BaseValue + Id + Counter.Count + Counter.Limit + Counter.Seed;
+    }
+}
+
+public class Harness
+{
+    public static int Run()
+    {
+        Counter c = new Counter(7);
+        Counter.Add(3);
+        return c.Read();
+    }
+}

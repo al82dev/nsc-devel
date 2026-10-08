@@ -1,0 +1,31 @@
+namespace Demo;
+
+public partial class Counter
+{
+    public int AddTwice(int delta)
+    {
+        return Add(delta) + Add(delta);
+    }
+
+    public Counter Make(int start)
+    {
+        return new Counter(start);
+    }
+
+    public void Release(Counter value)
+    {
+        delete value;
+    }
+}
+
+public class Empty
+{
+}
+
+public class Factory
+{
+    public Empty MakeEmpty()
+    {
+        return new Empty();
+    }
+}

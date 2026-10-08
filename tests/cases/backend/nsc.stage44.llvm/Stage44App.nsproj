@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>Stage44App</Name>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

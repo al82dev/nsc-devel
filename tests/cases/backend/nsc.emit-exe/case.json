@@ -1,0 +1,32 @@
+{
+  "id": "nsc.emit-exe",
+  "component": "llvm",
+  "kind": "link-run",
+  "sources": [
+    "full_frontend.ns"
+  ],
+  "arguments": [
+    "--emit-exe",
+    "{source:0}",
+    "-o",
+    "{workspace}/out.exe"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "PE executable emission: ok"
+    },
+    "artifacts": [
+      "out.exe"
+    ]
+  },
+  "timeout_seconds": 60,
+  "tags": [
+    "integration",
+    "legacy-parity",
+    "o0-only"
+  ],
+  "requires": []
+}

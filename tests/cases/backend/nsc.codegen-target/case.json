@@ -1,0 +1,23 @@
+{
+  "id": "nsc.codegen-target",
+  "component": "llvm",
+  "kind": "specialized",
+  "arguments": [
+    "--print-codegen"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "contains",
+      "text": "0x8664"
+    }
+  },
+  "timeout_seconds": 30,
+  "tags": [
+    "query",
+    "legacy-parity",
+    "o0-compatible"
+  ],
+  "requires": []
+}

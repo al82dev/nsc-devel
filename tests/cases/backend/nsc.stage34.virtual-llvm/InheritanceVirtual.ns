@@ -1,0 +1,65 @@
+namespace Demo;
+
+public class Animal
+{
+    protected int Age;
+
+    public Animal(int age)
+    {
+        Age = age;
+    }
+
+    public virtual int Speak()
+    {
+        return Age;
+    }
+
+    public int NonVirtual()
+    {
+        return 1;
+    }
+}
+
+public class Dog : Animal
+{
+    private int Weight;
+
+    public Dog(int age, int weight) : base(age)
+    {
+        Weight = weight;
+    }
+
+    public override int Speak()
+    {
+        return Age + Weight;
+    }
+
+    public int CallBase()
+    {
+        return base.Speak();
+    }
+}
+
+public class Harness
+{
+    public Animal Make()
+    {
+        return new Dog(5, 20);
+    }
+
+    public int Dispatch(Animal a)
+    {
+        return a.Speak();
+    }
+
+    public int Run()
+    {
+        Animal a = new Dog(5, 20);
+        return a.Speak();
+    }
+
+    public int StaticDog(Dog d)
+    {
+        return d.Speak();
+    }
+}
