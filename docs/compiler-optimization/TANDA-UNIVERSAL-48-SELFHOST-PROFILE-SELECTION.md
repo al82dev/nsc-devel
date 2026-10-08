@@ -47,5 +47,7 @@ memoria son `O(P)`; no existe recursión.
 
 - Selector y propagación: implementados.
 - Consumo por los verificadores SH40–SH52: pendiente dentro de esta misma tanda.
-- Validación dirigida: pendiente hasta el commit de esta primera parte.
+- Validación dirigida posterior al commit `31378cec1`: `3/3` pruebas unitarias aprobaron en
+  `0.006 s`; cubren el valor completo predeterminado, la selección O0, el rechazo de O4 y la
+  exportación desde NSC Builder.
 - Inventario integral vigente: diez fallos self-host abiertos.
