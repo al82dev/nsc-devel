@@ -377,6 +377,17 @@
       ],
       "excluded_new_root": "tests/cases",
       "evidence": "TANDA-TEST-INFRA-16-SELFHOST-SPECIALIZED.md"
+    },
+    "tanda17-controlled-parallelism": {
+      "state": "VERIFIED",
+      "scheduler": "tests/harness/nsc_test/scheduler.py",
+      "serial_cases": 6,
+      "parallel_cases": 6,
+      "serial_passed": 6,
+      "parallel_passed": 6,
+      "normalized_results_identical": true,
+      "exclusive_policy": "barrier",
+      "evidence": "TANDA-TEST-INFRA-17-PARALELISMO-CONTROLADO.md"
     }
   }
 }

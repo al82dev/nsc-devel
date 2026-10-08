@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from functools import partial
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,7 @@ from nsc_test.command import NscCommandBuilder  # noqa: E402
 from nsc_test.process import ProcessExecutor  # noqa: E402
 from nsc_test.report import ReportWriter  # noqa: E402
 from nsc_test.report import TestRunRecord  # noqa: E402
+from nsc_test.scheduler import CaseScheduler, ScheduledItem  # noqa: E402
 from nsc_test.suites import SuiteAdapter, SuiteCatalog, SuiteError  # noqa: E402
 from nsc_test.verify import ResultVerifier  # noqa: E402
 from nsc_test.workspace import CaseWorkspace  # noqa: E402
@@ -43,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--work-root", type=Path, default=HARNESS_ROOT.parent.parent / "_test-harness" / "work")
     parser.add_argument("--results-root", type=Path, default=HARNESS_ROOT.parent.parent / "_test-harness" / "results")
     parser.add_argument("--run-id")
+    parser.add_argument("--jobs", type=positive_integer, default=1)
     parser.add_argument(
         "--matrix",
         type=Path,
@@ -61,6 +64,16 @@ def build_parser() -> argparse.ArgumentParser:
     selection.add_argument("--suite-component")
     selection.add_argument("--all-suites", action="store_true")
     return parser
+
+
+def positive_integer(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("jobs must be an integer") from error
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("jobs must be at least one")
+    return parsed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -99,19 +112,27 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     builder = NscCommandBuilder(arguments.nsc, arguments.nslink)
-    executor = ProcessExecutor()
-    verifier = ResultVerifier()
-    results = []
-    for case in selected:
+
+    def execute_case(case):
         workspace = CaseWorkspace.create(case, arguments.work_root)
         try:
             request = builder.build(case, workspace)
-            process = executor.execute(request)
-            result = verifier.verify(case, workspace, process)
+            process = ProcessExecutor().execute(request)
+            result = ResultVerifier().verify(case, workspace, process)
             workspace.keep = not result.passed
-            results.append(result)
+            return result
         finally:
             workspace.cleanup()
+
+    scheduled = tuple(
+        ScheduledItem(
+            identifier=case.identifier,
+            exclusive="exclusive" in case.tags,
+            action=partial(execute_case, case),
+        )
+        for case in selected
+    )
+    results = list(CaseScheduler(arguments.jobs).run(scheduled))
     run_id = arguments.run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     output = ReportWriter(arguments.results_root).write_verified(
         run_id,
@@ -124,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.nslink is not None:
         print(f"nslink={arguments.nslink}")
     print(f"optimization={arguments.optimization}")
+    print(f"jobs={arguments.jobs}")
     print(f"selected={len(results)}")
     print(f"passed={passed}")
     print(f"failed={failed}")
@@ -185,17 +207,24 @@ def run_suites(arguments: argparse.Namespace, parser: argparse.ArgumentParser) -
             prefix=prefix,
             evidence_root=evidence_root,
         )
-        executor = ProcessExecutor()
-        records = []
-        for suite in selected:
-            process = executor.execute(adapter.build(suite))
-            records.append(
+        def execute_suite(suite):
+            process = ProcessExecutor().execute(adapter.build(suite))
+            return (
                 TestRunRecord(
                     case_id=suite.identifier,
                     component=suite.component,
                     process=process,
                 )
             )
+        scheduled = tuple(
+            ScheduledItem(
+                identifier=suite.identifier,
+                exclusive=True,
+                action=partial(execute_suite, suite),
+            )
+            for suite in selected
+        )
+        records = list(CaseScheduler(arguments.jobs).run(scheduled))
         output = ReportWriter(arguments.results_root).write(
             run_id,
             arguments.nsc,
@@ -211,6 +240,7 @@ def run_suites(arguments: argparse.Namespace, parser: argparse.ArgumentParser) -
     if arguments.nslink is not None:
         print(f"nslink={arguments.nslink}")
     print("optimization=O0")
+    print(f"jobs={arguments.jobs}")
     print(f"selected={len(records)}")
     print(f"passed={passed}")
     print(f"failed={failed}")
