@@ -118,7 +118,9 @@ poseen una ola de implementación o una disposición externa explícita. Los doc
 **Estado:** `LISTA PARA REVISIÓN DEL USUARIO`. La reenumeración independiente verificó 974/974 archivos,
 8,418 símbolos únicos, 1,309 contratos con fuente resoluble y 10,193 casos asignados exactamente una vez. La
 segunda ejecución cerró con cero hallazgos abiertos. El dictamen y sus límites están en
-`audits/TANDA-13-INDEPENDENT-PHASE-1-AUDIT.md`; no se implementaron ni ejecutaron pruebas.
+`audits/TANDA-13-INDEPENDENT-PHASE-1-AUDIT.md`. La puerta final reprodujo `22/22 PASS` y queda documentada en
+`audits/PHASE-1-COMPLETION-AUDIT.md`; el cierre de la Fase 1 sigue requiriendo una orden explícita del usuario.
+No se implementaron ni ejecutaron pruebas.
 
 ## Enmienda de integridad previa a Tanda 12
 

@@ -31,24 +31,28 @@ Estas contradicciones se registran sin corregirlas porque la Fase 1 es exclusiva
 <!-- BEGIN TANDA-12B-CONTRADICTIONS -->
 ## CON-0014 — Ediciones 2.0/3.0 persisten en bootstrap y proyectos distribuidos
 
+- **Estado:** `ABIERTA`.
 - **Evidencia:** `bootstrap-profile.json`, `bootstrap.lock`, contratos self-host y tres `.nsproj` aún nombran Language/SDK 2.0 o 3.0.
 - **Impacto:** son residuos históricos o metadata de la revisión, no autorización para rechazar fuente por edición.
 - **Tratamiento:** casos futuros prueban reconocimiento sintáctico/semántico y registran el residuo; no lo convierten en precondición universal.
 
 ## CON-0015 — Documentación de enlace dual frente a matrices actuales de una sola ruta
 
+- **Estado:** `ABIERTA`.
 - **Evidencia:** `selfhost/contracts/README.md` describe LLD/NSLink, mientras los JSON vigentes publican arreglos `linkers`/`routes` con una sola entrada.
 - **Impacto:** una prueba nueva no puede inferir una segunda ruta inexistente ni borrar la afirmación histórica.
 - **Tratamiento:** conservar la contradicción hasta decidir el contrato vigente en Fase 2.
 
 ## CON-0016 — Bootstrap lock congela herramientas incidentales por hash y texto de versión
 
+- **Estado:** `ABIERTA`.
 - **Evidencia:** `selfhost/bootstrap/bootstrap.lock` fija Python, CMake y Ninja además de productores binarios.
 - **Impacto:** esos hashes pueden fallar sin que el compilador esté incorrecto.
 - **Tratamiento:** el plan nuevo separa identidad semántica del productor de versiones incidentales del orquestador.
 
 ## CON-0017 — Stubs de biblioteca representan intrínsecos, no algoritmos ejecutables
 
+- **Estado:** `ABIERTA`.
 - **Evidencia:** SIMD, atomics, bit operations e intrinsics contienen retornos placeholder que dependen del lowering de NSC.
 - **Impacto:** una unitaria sobre el cuerpo fuente aceptaría resultados falsos.
 - **Tratamiento:** validar IR/objeto y ejecución del programa `.ns`, nunca el stub como oráculo.

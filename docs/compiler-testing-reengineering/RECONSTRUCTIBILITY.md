@@ -102,6 +102,8 @@ La arquitectura ya permite reconstruir la implementación futura sin redescubrir
 - la construcción, configuración, ejecución y reporte son fases separadas;
 - la futura selección se deriva del manifiesto y no de conteos rígidos.
 
-Esto demuestra suficiencia documental, no implementación ni resultado de pruebas. La segunda auditoría de Tanda 13
-debe reproducir todavía el universo completo antes de autorizar la Fase 2.
+Esto demuestra suficiencia documental, no implementación ni resultado de pruebas. La segunda auditoría de
+Tanda 13 reprodujo el universo completo y terminó con cero hallazgos abiertos; su dictamen está en
+`audits/TANDA-13-INDEPENDENT-PHASE-1-AUDIT.md`. Los cuatro componentes externos conservan una disposición
+explícita de no aplicabilidad y no se presentan como reconstrucciones internas de NSC.
 <!-- END TANDA-12C-SUITE-ARCHITECTURE -->

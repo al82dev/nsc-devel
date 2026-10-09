@@ -86,3 +86,6 @@ excepción.
 No quedan omitidos, duplicados, desconocidos ni referencias sin tratamiento dentro del alcance autorizado. La
 matriz documental permite pasar a revisión del usuario y, sólo después de su decisión, usar las 11 olas como
 orden de implementación de la suite nueva.
+
+El cotejo requisito por requisito del objetivo completo se conserva en
+`audits/PHASE-1-COMPLETION-AUDIT.md` y `inventory/phase-1-completion-gate.json`.

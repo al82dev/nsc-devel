@@ -17,10 +17,13 @@
 ## Dictamen de Fase 1
 
 - [Segunda auditoría independiente y preparación para Fase 2](audits/TANDA-13-INDEPENDENT-PHASE-1-AUDIT.md)
+- [Auditoría final de cumplimiento del objetivo](audits/PHASE-1-COMPLETION-AUDIT.md)
 - `inventory/independent-file-reenumeration.csv`: universo de 974 archivos reenumerado desde Git.
 - `inventory/independent-audit-summary.json`: resultado reproducible `PASS`, con cero hallazgos abiertos.
 - `evidence/TANDA-13-INVENTORY-INTEGRITY-REPAIR.ps1`: reparación documental idempotente.
 - `evidence/TANDA-13-INDEPENDENT-AUDIT.ps1`: verificador independiente de cierre técnico.
+- `evidence/TANDA-13-PHASE-1-COMPLETION-GATE.ps1`: gate final de los requisitos del objetivo.
+- `inventory/phase-1-completion-gate.json`: resultado reproducible de los 22 requisitos de cierre.
 
 ## Arquitectura de la suite nueva
 

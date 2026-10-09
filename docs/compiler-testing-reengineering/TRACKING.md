@@ -19,3 +19,6 @@
 | 13 | Segunda auditoría independiente y cierre técnico | LISTA | 974 | 974 | 0 |
 
 Estados permitidos: `PENDIENTE`, `EN CURSO`, `LISTA`, `BLOQUEADA`.
+
+`LISTA` en Tanda 13 significa `lista para revisión y cierre explícito del usuario`; no desactiva la tarea ni
+autoriza comenzar la Fase 2. El gate final obtuvo 22/22 comprobaciones estáticas aprobadas.

@@ -1,0 +1,171 @@
+{
+  "gate": "NativeSharp-NSC-Phase-1-completion",
+  "repository": "A:\\nsc-devel",
+  "branch": "development",
+  "frozen_product_revision": "3bb175443a18b2049c20d75443dd6743e2993903",
+  "checks_total": 22,
+  "checks_passed": 22,
+  "checks_failed": 0,
+  "result": "READY_FOR_USER_REVIEW",
+  "user_closure_required": true,
+  "static_only": true,
+  "build_executed": false,
+  "tests_executed": false,
+  "checks": [
+    {
+      "id": "P1-SCOPE-LOCK",
+      "status": "PASS",
+      "expected": "present",
+      "actual": "present",
+      "evidence": "SCOPE-LOCK.md"
+    },
+    {
+      "id": "P1-INDEPENDENT-AUDIT",
+      "status": "PASS",
+      "expected": "PASS;0 issues",
+      "actual": "PASS;0 issues",
+      "evidence": "inventory/independent-audit-summary.json"
+    },
+    {
+      "id": "P1-PRODUCTION-UNIVERSE",
+      "status": "PASS",
+      "expected": "974 unique AUDITADO files",
+      "actual": "974 rows;974 paths;0 non-audited",
+      "evidence": "inventory/production-files.csv"
+    },
+    {
+      "id": "P1-DOCUMENT-COVERAGE",
+      "status": "PASS",
+      "expected": "974 audited and traced file IDs",
+      "actual": "974 audited/traced IDs",
+      "evidence": "inventory/document-coverage.csv"
+    },
+    {
+      "id": "P1-COMPONENTS",
+      "status": "PASS",
+      "expected": "57 audited;53 reconstructible;4 explicit external dispositions",
+      "actual": "57 total;53 reconstructible;0 external disposition errors",
+      "evidence": "inventory/components.csv;RECONSTRUCTIBILITY.md"
+    },
+    {
+      "id": "P1-COMPONENT-TEST-PLANS",
+      "status": "PASS",
+      "expected": "57 plans and audits; valid/invalid/boundary for 53 owned components;4 explicit N/A",
+      "actual": "57 waves;0 missing plans;0 missing audits;0 class/disposition errors",
+      "evidence": "inventory/implementation-waves.csv;test-plans/**;audits/**"
+    },
+    {
+      "id": "P1-SYMBOL-INVENTORY",
+      "status": "PASS",
+      "expected": "8418 unique complete symbols;all uncontracted symbols explicitly upstream/excluded",
+      "actual": "8418 rows;0 duplicates;0 empty required fields;0 unjustified",
+      "evidence": "inventory/symbols.csv;inventory/remaining-surface-file-audit.csv"
+    },
+    {
+      "id": "P1-CONTRACT-INVENTORY",
+      "status": "PASS",
+      "expected": "1309 unique complete contracts;every contract has designed cases",
+      "actual": "1309 rows;0 duplicates;0 empty required fields;0 without cases",
+      "evidence": "inventory/contracts.csv;inventory/test-case-design.csv"
+    },
+    {
+      "id": "P1-CASE-DESIGN",
+      "status": "PASS",
+      "expected": "10193 unique fully specified logical cases",
+      "actual": "10193 rows;0 duplicates;0 empty required fields",
+      "evidence": "inventory/test-case-design.csv"
+    },
+    {
+      "id": "P1-SUITE-ALLOCATION",
+      "status": "PASS",
+      "expected": "10193 cases allocated exactly once",
+      "actual": "10193 rows;10193 unique;0 set differences",
+      "evidence": "inventory/suite-case-allocation.csv"
+    },
+    {
+      "id": "P1-STATES-AND-TRANSVERSALS",
+      "status": "PASS",
+      "expected": "1309 transversal classifications;12 state machines;all mappings resolvable",
+      "actual": "1309 transversal;0 missing;12 machines;0 bad mappings",
+      "evidence": "inventory/transversal-contracts.csv;inventory/state-machines.csv;inventory/state-machine-contract-map.csv"
+    },
+    {
+      "id": "P1-DEPENDENCY-GRAPHS",
+      "status": "PASS",
+      "expected": "zero build/include gaps and all Host components ordered",
+      "actual": "build missing=0;extra=0;mapped=242/242;include unclassified=0;ordered=24/24",
+      "evidence": "inventory/build-graph-summary.json;inventory/include-graph-summary.json;inventory/host-component-order.csv"
+    },
+    {
+      "id": "P1-CLAIMS-PROVENANCE",
+      "status": "PASS",
+      "expected": "273 unique audited claims with provenance",
+      "actual": "273 rows;0 empty required fields",
+      "evidence": "inventory/claims.csv"
+    },
+    {
+      "id": "P1-CONTRADICTIONS",
+      "status": "PASS",
+      "expected": "17 registered contradictions with explicit ABIERTA state",
+      "actual": "17 IDs;17 ABIERTA states",
+      "evidence": "CONTRADICTIONS.md"
+    },
+    {
+      "id": "P1-BLOCKERS",
+      "status": "PASS",
+      "expected": "0 open documentary blockers",
+      "actual": "0 blocker IDs",
+      "evidence": "BLOCKERS.md"
+    },
+    {
+      "id": "P1-HISTORICAL-TEST-SET",
+      "status": "PASS",
+      "expected": "684 unique frozen CTest IDs",
+      "actual": "684 rows;684 unique",
+      "evidence": "protected test-execution-parity.csv"
+    },
+    {
+      "id": "P1-HISTORICAL-FILES",
+      "status": "PASS",
+      "expected": "1658 unique frozen files byte-identical",
+      "actual": "1658 rows;0 hash/missing errors",
+      "evidence": "inventory/historical-tests-freeze.csv"
+    },
+    {
+      "id": "P1-PROTECTED-PREEXISTING",
+      "status": "PASS",
+      "expected": "6 pre-existing files byte-identical",
+      "actual": "0 mismatches",
+      "evidence": "SCOPE-LOCK.md;SHA-256"
+    },
+    {
+      "id": "P1-COMMIT-SCOPE",
+      "status": "PASS",
+      "expected": "all Phase 1 commits restricted to the authorized documentation root",
+      "actual": "0 outside paths",
+      "evidence": "git history b0bf949be..HEAD"
+    },
+    {
+      "id": "P1-WORKTREE-SCOPE",
+      "status": "PASS",
+      "expected": "only the 6 protected pre-existing paths outside Phase 1 docs",
+      "actual": "6 outside paths;0 unexpected",
+      "evidence": "git status;SCOPE-LOCK.md"
+    },
+    {
+      "id": "P1-NO-IMPLEMENTATION-OR-EXECUTION",
+      "status": "PASS",
+      "expected": "implemented=0;executed=0;new_tests=0;document-only commits",
+      "actual": "implemented=0;executed=0;new_tests=0;outside_paths=0",
+      "evidence": "CURSOR.json;git history;SCOPE-LOCK.md"
+    },
+    {
+      "id": "P1-REQUIRED-ARTIFACTS",
+      "status": "PASS",
+      "expected": "all normative, architecture, state and audit artifacts present",
+      "actual": "0 missing",
+      "evidence": "SCOPE-LOCK.md;PHASE-1-MASTER-PLAN.md;TRACKING.md;CURSOR.json;INDEX.md;RECONSTRUCTIBILITY.md;CONTRADICTIONS.md;BLOCKERS.md;architecture/COMPONENT-GRAPH.md;architecture/NEW-SUITE-ARCHITECTURE.md;architecture/EXECUTION-PROFILES.md;architecture/IMPLEMENTATION-WAVES.md;audits/TANDA-13-INDEPENDENT-PHASE-1-AUDIT.md;audits/PHASE-1-COMPLETION-AUDIT.md"
+    }
+  ],
+  "issues": []
+}
