@@ -132,6 +132,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetUnionBitFieldModule(registry);
         nsc::suite::registerTargetAggregateFinalizationModule(registry);
         nsc::suite::registerTargetIdentityFactoriesModule(registry);
+        nsc::suite::registerTargetCpuFeatureSelectionModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
