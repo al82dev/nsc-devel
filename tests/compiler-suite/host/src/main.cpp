@@ -109,6 +109,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerSourceLineTextModule(registry);
         nsc::suite::registerSourceFileReadModule(registry);
         nsc::suite::registerSourceManagerRegistryModule(registry);
+        nsc::suite::registerSourceManagerQueryModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

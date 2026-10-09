@@ -65,4 +65,5 @@ void registerSourceOffsetPositionModule(TestRegistry& registry);
 void registerSourceLineTextModule(TestRegistry& registry);
 void registerSourceFileReadModule(TestRegistry& registry);
 void registerSourceManagerRegistryModule(TestRegistry& registry);
+void registerSourceManagerQueryModule(TestRegistry& registry);
 }
