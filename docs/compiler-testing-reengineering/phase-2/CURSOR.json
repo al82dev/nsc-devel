@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "ac33e4f8c",
+  "last_completed_commit": "78d2396b8",
   "current_wave": 1,
   "current_component": "Host.Basic",
-  "next_contract": "CB-BAS-006",
-  "next_action": "Implement the Host.Basic build identity boundary for TB-BAS-020..023 through the controller-owned process executor declared by the canonical allocation.",
+  "next_contract": "CB-BAS-007",
+  "next_action": "Implement Host.Basic SHA-256 memory, file, and hexadecimal contracts TB-BAS-024..040 with independent published digests and isolated filesystem fixtures.",
   "wave_status": {
     "0": {
       "status": "LISTA",
@@ -18,8 +18,8 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 19,
-      "product_cases_verified": 19
+      "product_cases_implemented": 23,
+      "product_cases_verified": 23
     }
   },
   "validation": {
