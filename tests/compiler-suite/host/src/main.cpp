@@ -1,0 +1,154 @@
+#include "nsc_suite/TestRegistry.h"
+
+#include <iostream>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace
+{
+struct Options
+{
+    bool list = false;
+    bool all = false;
+    std::optional<std::string> caseId;
+    std::optional<std::string> component;
+};
+
+Options parseOptions(int argumentCount, char** arguments)
+{
+    Options options;
+    for (int index = 1; index < argumentCount; ++index)
+    {
+        const std::string_view argument(arguments[index]);
+        if (argument == "--list")
+        {
+            options.list = true;
+        }
+        else if (argument == "--all")
+        {
+            options.all = true;
+        }
+        else if (argument == "--case" && index + 1 < argumentCount)
+        {
+            options.caseId = arguments[++index];
+        }
+        else if (argument == "--component" && index + 1 < argumentCount)
+        {
+            options.component = arguments[++index];
+        }
+        else
+        {
+            throw std::invalid_argument("unknown or incomplete argument: " + std::string(argument));
+        }
+    }
+    const int selectors = static_cast<int>(options.list) + static_cast<int>(options.all) +
+                          static_cast<int>(options.caseId.has_value()) +
+                          static_cast<int>(options.component.has_value());
+    if (selectors != 1)
+    {
+        throw std::invalid_argument("select exactly one of --list, --all, --case, or --component");
+    }
+    return options;
+}
+
+std::string escapeJson(std::string_view value)
+{
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (const char character : value)
+    {
+        switch (character)
+        {
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '"':
+            escaped += "\\\"";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        default:
+            escaped += character;
+            break;
+        }
+    }
+    return escaped;
+}
+}
+
+int main(int argumentCount, char** arguments)
+{
+    try
+    {
+        const Options options = parseOptions(argumentCount, arguments);
+        nsc::suite::TestRegistry registry;
+        nsc::suite::registerInfrastructureModule(registry);
+        if (options.list)
+        {
+            for (const auto& testCase : registry.cases())
+            {
+                std::cout << testCase.id << '\t' << testCase.contractId << '\t'
+                          << testCase.component << '\n';
+            }
+            return 0;
+        }
+
+        std::vector<const nsc::suite::TestCase*> selected;
+        if (options.caseId)
+        {
+            const auto* testCase = registry.find(*options.caseId);
+            if (testCase == nullptr)
+            {
+                throw std::invalid_argument("unknown test case: " + *options.caseId);
+            }
+            selected.push_back(testCase);
+        }
+        else if (options.component)
+        {
+            selected = registry.byComponent(*options.component);
+            if (selected.empty())
+            {
+                throw std::invalid_argument("component has no test cases: " + *options.component);
+            }
+        }
+        else
+        {
+            selected = registry.all();
+        }
+
+        const auto results = registry.run(selected);
+        std::size_t passed = 0;
+        for (const auto& result : results)
+        {
+            passed += static_cast<std::size_t>(result.passed);
+            std::cout << "{\"case_id\":\"" << escapeJson(result.id)
+                      << "\",\"component\":\"" << escapeJson(result.component)
+                      << "\",\"contract_id\":\"" << escapeJson(result.contractId)
+                      << "\",\"duration_us\":" << result.duration.count()
+                      << ",\"status\":\"" << (result.passed ? "PASS" : "FAIL")
+                      << "\",\"failures\":[";
+            for (std::size_t index = 0; index < result.failures.size(); ++index)
+            {
+                std::cout << (index == 0 ? "" : ",") << '"'
+                          << escapeJson(result.failures[index]) << '"';
+            }
+            std::cout << "]}\n";
+        }
+        return passed == results.size() ? 0 : 1;
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr << "nsc_component_tests: error: " << error.what() << '\n';
+        return 2;
+    }
+}
