@@ -34,11 +34,11 @@ def main() -> int:
         if code != 0:
             raise RuntimeError(f"controller returned {code}")
         payload = json.loads((root / "host-language-coroutine" / "results.json").read_text(encoding="utf-8"))
-        expected_ids = [f"TL-LANG-{number:03d}" for number in range(50, 57)]
+        expected_ids = [f"TL-LANG-{number:03d}" for number in range(50, 63)]
         if [result["case_id"] for result in payload["results"]] != expected_ids:
             raise RuntimeError("controller did not execute the implemented TL-LANG-050..056 set")
         counts = payload["counts"]
-        if counts["PASS"] != 7 or any(v for k, v in counts.items() if k != "PASS"):
+        if counts["PASS"] != 13 or any(v for k, v in counts.items() if k != "PASS"):
             raise RuntimeError(f"unexpected coroutine planning result counts: {counts}")
     return 0
 

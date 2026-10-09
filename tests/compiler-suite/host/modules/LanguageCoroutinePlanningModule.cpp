@@ -181,6 +181,272 @@ void registerAwaitContextCase(TestRegistry& registry)
             "TL-LANG-056 no-suspend cleanup must use the exact error");
     });
 }
+
+enum class FutureFixture
+{
+    Created,
+    Pending,
+    ReadyValue,
+    ReadyError,
+    Cancelled,
+    Consumed
+};
+
+FutureState makeFutureState(FutureFixture fixture)
+{
+    FutureState future;
+    std::string error;
+    switch (fixture)
+    {
+        case FutureFixture::Created: break;
+        case FutureFixture::Pending: future.poll(PollOutcome::Pending, error); break;
+        case FutureFixture::ReadyValue: future.poll(PollOutcome::ReadyValue, error); break;
+        case FutureFixture::ReadyError: future.poll(PollOutcome::ReadyError, error); break;
+        case FutureFixture::Cancelled: future.cancel(error); break;
+        case FutureFixture::Consumed:
+            future.poll(PollOutcome::ReadyValue, error);
+            future.consume(error);
+            break;
+    }
+    return future;
+}
+
+struct FutureFixtureExpectation final
+{
+    FutureFixture fixture;
+    PollState state;
+    FutureCompletion completion;
+    bool resumable;
+};
+
+constexpr std::array kFutureFixtures{
+    FutureFixtureExpectation{FutureFixture::Created, PollState::Created, FutureCompletion::None, true},
+    FutureFixtureExpectation{FutureFixture::Pending, PollState::Pending, FutureCompletion::None, true},
+    FutureFixtureExpectation{FutureFixture::ReadyValue, PollState::Ready, FutureCompletion::Value, false},
+    FutureFixtureExpectation{FutureFixture::ReadyError, PollState::Ready, FutureCompletion::Error, false},
+    FutureFixtureExpectation{FutureFixture::Cancelled, PollState::Cancelled, FutureCompletion::None, false},
+    FutureFixtureExpectation{FutureFixture::Consumed, PollState::Consumed, FutureCompletion::Value, false}};
+
+void registerFuturePollStateCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-057", [](TestContext& context) {
+        const std::array outcomes{
+            std::pair{PollOutcome::Pending, std::pair{PollState::Pending, FutureCompletion::None}},
+            std::pair{PollOutcome::ReadyValue, std::pair{PollState::Ready, FutureCompletion::Value}},
+            std::pair{PollOutcome::ReadyError, std::pair{PollState::Ready, FutureCompletion::Error}}};
+        for (const FutureFixtureExpectation& initial : kFutureFixtures)
+        {
+            for (const auto& [outcome, expected] : outcomes)
+            {
+                FutureState future = makeFutureState(initial.fixture);
+                std::string error = "stale";
+                const bool accepted = future.poll(outcome, error);
+                if (initial.resumable)
+                {
+                    context.expect(accepted && error.empty() && future.state() == expected.first &&
+                            future.completion() == expected.second,
+                        "TL-LANG-057 Created and Pending must accept every poll outcome exactly");
+                }
+                else
+                {
+                    context.expect(!accepted &&
+                            error == "future cannot be resumed after completion, cancellation, or consumption" &&
+                            future.state() == initial.state && future.completion() == initial.completion,
+                        "TL-LANG-057 terminal states must reject polling without mutation");
+                }
+            }
+        }
+    });
+}
+
+void registerFutureConsumeStateCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-058", [](TestContext& context) {
+        for (const FutureFixtureExpectation& initial : kFutureFixtures)
+        {
+            FutureState future = makeFutureState(initial.fixture);
+            std::string error = "stale";
+            const bool accepted = future.consume(error);
+            const bool ready = initial.state == PollState::Ready;
+            if (ready)
+            {
+                context.expect(accepted && error.empty() && future.state() == PollState::Consumed &&
+                        future.completion() == initial.completion,
+                    "TL-LANG-058 each Ready completion must be consumable exactly once");
+                context.expect(!future.consume(error) && error == "future result is not ready" &&
+                        future.state() == PollState::Consumed && future.completion() == initial.completion,
+                    "TL-LANG-058 a consumed result must reject a second consume without mutation");
+            }
+            else
+            {
+                context.expect(!accepted && error == "future result is not ready" &&
+                        future.state() == initial.state && future.completion() == initial.completion,
+                    "TL-LANG-058 every non-Ready state must reject consume without mutation");
+            }
+        }
+    });
+}
+
+void registerFutureCancelStateCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-059", [](TestContext& context) {
+        for (const FutureFixtureExpectation& initial : kFutureFixtures)
+        {
+            FutureState future = makeFutureState(initial.fixture);
+            std::string error = "stale";
+            const bool accepted = future.cancel(error);
+            const bool cancellable = initial.state == PollState::Created || initial.state == PollState::Pending;
+            if (cancellable)
+            {
+                context.expect(accepted && error.empty() && future.state() == PollState::Cancelled &&
+                        future.completion() == FutureCompletion::None,
+                    "TL-LANG-059 Created and Pending must transition to Cancelled exactly");
+            }
+            else
+            {
+                context.expect(!accepted && error == "completed future cannot be cancelled" &&
+                        future.state() == initial.state && future.completion() == initial.completion,
+                    "TL-LANG-059 terminal states must reject cancellation without mutation");
+            }
+        }
+    });
+}
+
+void registerCancellationCleanupOrderCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-060", [](TestContext& context) {
+        const std::vector<std::string> none;
+        const std::array locals{std::string("local0"), std::string("local1"), std::string("local2")};
+        const std::array defers{std::string("defer0"), std::string("defer1")};
+        context.expect(cancellationCleanup(none, none).empty(),
+            "TL-LANG-060 empty locals and defers must produce empty cleanup");
+        context.expect(cancellationCleanup(locals, none) ==
+                std::vector<std::string>{"local2", "local1", "local0"},
+            "TL-LANG-060 locals must be cleaned in reverse declaration order");
+        context.expect(cancellationCleanup(none, defers) ==
+                std::vector<std::string>{"defer1", "defer0"},
+            "TL-LANG-060 defers must be cleaned in reverse registration order");
+        context.expect(cancellationCleanup(locals, defers) ==
+                std::vector<std::string>{"defer1", "defer0", "local2", "local1", "local0"},
+            "TL-LANG-060 all defers must precede all locals in the exact contractual order");
+    });
+}
+
+AsyncFunctionPlan makeCancellationFixture(TestContext& context)
+{
+    const std::array locals{
+        GeneratorLocal{4, 4, true, true, false, false, 1, 3},
+        GeneratorLocal{4, 4, true, true, false, false, 1, 1},
+        GeneratorLocal{4, 4, true, false, false, false, 1, 3},
+        GeneratorLocal{4, 4, true, true, false, false, 2, 3}};
+    const std::array awaits{
+        AwaitSuspension{1, 1, false, false, false},
+        AwaitSuspension{2, 2, false, false, false},
+        AwaitSuspension{3, 3, false, false, false}};
+    std::string error;
+    auto plan = buildAsyncFunctionPlan(
+        "i32", locals, awaits, FrameStorage::CallerArena, false, error);
+    context.expect(plan.has_value() && error.empty() && plan->stateMachine.slots.size() == 4,
+        "CL-LANG-005 cancellation fixture must remain constructible");
+    return plan.value_or(AsyncFunctionPlan{});
+}
+
+bool actionMatches(
+    const AsyncCleanupAction& action,
+    AsyncCleanupKind kind,
+    std::string_view name,
+    std::optional<std::size_t> frameSlot)
+{
+    return action.kind == kind && action.name == name && action.frameSlot == frameSlot;
+}
+
+void registerAsyncCancellationPlanCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-061", [](TestContext& context) {
+        const AsyncFunctionPlan function = makeCancellationFixture(context);
+        const std::array names{
+            std::string("local0"), std::string("local1"), std::string("local2"), std::string("local3")};
+        const std::array reasons{
+            CancellationReason::Requested,
+            CancellationReason::FutureDropped,
+            CancellationReason::ParentScopeExited};
+        for (std::size_t state = 1; state <= 3; ++state)
+        {
+            std::vector<ActiveAsyncDefer> defers{{"outer", 1}};
+            if (state >= 2)
+            {
+                defers.push_back({"inner-a", 2});
+                defers.push_back({"inner-b", 2});
+            }
+            if (state == 3) defers.push_back({"deepest", 3});
+            for (const CancellationReason reason : reasons)
+            {
+                std::string error = "stale";
+                const auto plan = buildAsyncCancellationPlan(
+                    function, state, names, defers, reason, error);
+                context.expect(plan.has_value() && error.empty() && plan->reason == reason &&
+                        plan->suspendedState == state && plan->cooperative && !plan->usesThreadAbort,
+                    "TL-LANG-061 every state and reason must preserve the cancellation contract");
+                if (!plan.has_value()) continue;
+                const std::size_t deferCount = state == 1 ? 1 : (state == 2 ? 3 : 4);
+                context.expect(plan->actions.size() == deferCount + 2,
+                    "TL-LANG-061 each state must contain all active defers and live droppable slots");
+                if (plan->actions.size() != deferCount + 2) continue;
+                if (state == 3)
+                    context.expect(actionMatches(plan->actions[0], AsyncCleanupKind::Defer, "deepest", std::nullopt),
+                        "TL-LANG-061 the deepest defer must run first");
+                const std::size_t levelTwo = state == 3 ? 1 : 0;
+                if (state >= 2)
+                {
+                    context.expect(
+                        actionMatches(plan->actions[levelTwo], AsyncCleanupKind::Defer, "inner-a", std::nullopt) &&
+                            actionMatches(
+                                plan->actions[levelTwo + 1], AsyncCleanupKind::Defer, "inner-b", std::nullopt),
+                        "TL-LANG-061 equal-depth defers must preserve stable registration order");
+                }
+                context.expect(actionMatches(
+                        plan->actions[deferCount - 1], AsyncCleanupKind::Defer, "outer", std::nullopt),
+                    "TL-LANG-061 the outer defer must be the final defer action");
+                const std::size_t expectedFirstSlot = state == 1 ? 1 : 3;
+                context.expect(actionMatches(plan->actions[deferCount], AsyncCleanupKind::LocalDrop,
+                                   state == 1 ? "local1" : "local3", expectedFirstSlot) &&
+                        actionMatches(plan->actions[deferCount + 1], AsyncCleanupKind::LocalDrop, "local0", 0),
+                    "TL-LANG-061 live droppable slots must follow defers in reverse slot order");
+            }
+        }
+    });
+}
+
+void registerInvalidAsyncCancellationPlanCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-062", [](TestContext& context) {
+        const AsyncFunctionPlan function = makeCancellationFixture(context);
+        const std::array names{
+            std::string("local0"), std::string("local1"), std::string("local2"), std::string("local3")};
+        const std::array shortNames{std::string("local0"), std::string("local1"), std::string("local2")};
+        const std::array invalidStateDefer{ActiveAsyncDefer{"", 0}};
+        std::string error = "stale";
+        context.expect(!buildAsyncCancellationPlan(
+                function, 99, shortNames, invalidStateDefer,
+                CancellationReason::Requested, error).has_value() &&
+                error == "cancellation requires a currently suspended async state",
+            "TL-LANG-062 invalid suspended state must have first rejection priority");
+        context.expect(!buildAsyncCancellationPlan(
+                function, 1, shortNames, {}, CancellationReason::Requested, error).has_value() &&
+                error == "async cancellation requires one diagnostic name per frame slot",
+            "TL-LANG-062 mismatched slot names must reject without a partial plan");
+        const std::array invalidDefers{
+            ActiveAsyncDefer{"", 1}, ActiveAsyncDefer{"zero", 0}, ActiveAsyncDefer{"deep", 2}};
+        for (const ActiveAsyncDefer& defer : invalidDefers)
+        {
+            const std::array active{defer};
+            context.expect(!buildAsyncCancellationPlan(
+                    function, 1, names, active, CancellationReason::Requested, error).has_value() &&
+                    error == "active async defer must have a name and fit the suspended cleanup depth",
+                "TL-LANG-062 each invalid defer must reject without a partial plan");
+        }
+    });
+}
 }
 
 void registerLanguageCoroutinePlanningModule(TestRegistry& registry)
@@ -192,5 +458,11 @@ void registerLanguageCoroutinePlanningModule(TestRegistry& registry)
     registerAsyncPlanBoundaryCase(registry);
     registerFutureProtocolCase(registry);
     registerAwaitContextCase(registry);
+    registerFuturePollStateCase(registry);
+    registerFutureConsumeStateCase(registry);
+    registerFutureCancelStateCase(registry);
+    registerCancellationCleanupOrderCase(registry);
+    registerAsyncCancellationPlanCase(registry);
+    registerInvalidAsyncCancellationPlanCase(registry);
 }
 }
