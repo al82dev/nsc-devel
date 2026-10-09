@@ -56,6 +56,7 @@ void registerBasicOutputFailureModule(TestRegistry& registry);
 void registerBasicArtifactStagingModule(TestRegistry& registry);
 void registerBasicArtifactPreflightModule(TestRegistry& registry);
 void registerBasicArtifactControlledPreflightModule(TestRegistry& registry);
+void registerBasicArtifactCommitModule(TestRegistry& registry);
 void registerBasicTransactionalWriterModule(TestRegistry& registry);
 void registerBasicArtifactSeedModule(TestRegistry& registry);
 void registerSourcePositionModule(TestRegistry& registry);

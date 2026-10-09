@@ -23,13 +23,14 @@ def main() -> int:
     options = parser.parse_args()
     options.work_parent.mkdir(parents=True, exist_ok=True)
     inventory = options.repository_root / "docs" / "compiler-testing-reengineering" / "inventory"
+    manifest = options.source_root / "manifest" / "cases.jsonl"
     with tempfile.TemporaryDirectory(
         prefix="host-basic-values-", dir=options.work_parent
     ) as temporary:
         root = Path(temporary)
         code = run(
             [
-                "--manifest", str(options.source_root / "manifest" / "cases.jsonl"),
+                "--manifest", str(manifest),
                 "--components", str(inventory / "components.csv"),
                 "--contracts", str(inventory / "contracts.csv"),
                 "--host-executable", str(options.host_executable),
@@ -47,17 +48,12 @@ def main() -> int:
             (root / "host-basic-values" / "results.json").read_text(encoding="utf-8")
         )
         results = payload["results"]
-        expected_ids = [f"TB-BAS-{index:03d}" for index in range(1, 20)]
-        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(24, 31))
-        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(32, 35))
-        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(35, 38))
-        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(41, 49))
-        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(49, 52))
-        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(55, 57))
-        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(60, 64))
-        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(78, 81))
-        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(83, 86))
-        expected_ids.append("TB-BAS-087")
+        expected_ids = []
+        for line in manifest.read_text(encoding="utf-8").splitlines():
+            case = json.loads(line)
+            if case["component"] == "Host.Basic" and case["profile"] == "PR":
+                expected_ids.append(case["case_id"])
+        expected_ids.sort()
         if [result["case_id"] for result in results] != expected_ids:
             raise RuntimeError("controller did not execute the canonical Host.Basic PR set")
         counts = payload["counts"]

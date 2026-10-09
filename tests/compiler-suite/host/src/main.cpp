@@ -100,6 +100,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerBasicArtifactStagingModule(registry);
         nsc::suite::registerBasicArtifactPreflightModule(registry);
         nsc::suite::registerBasicArtifactControlledPreflightModule(registry);
+        nsc::suite::registerBasicArtifactCommitModule(registry);
         nsc::suite::registerBasicTransactionalWriterModule(registry);
         nsc::suite::registerBasicArtifactSeedModule(registry);
         nsc::suite::registerSourcePositionModule(registry);

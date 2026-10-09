@@ -27,6 +27,7 @@ add_executable(
     host/modules/BasicArtifactStagingModule.cpp
     host/modules/BasicArtifactPreflightModule.cpp
     host/modules/BasicArtifactControlledPreflightModule.cpp
+    host/modules/BasicArtifactCommitModule.cpp
     host/modules/BasicTransactionalWriterModule.cpp
     host/modules/BasicArtifactSeedModule.cpp
     host/modules/SourcePositionModule.cpp
@@ -199,6 +200,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-basic-artifact-preflight-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-basic-artifact-commit-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_basic_artifact_commit_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-basic-artifact-commit-gate"
         --build-mode "$<CONFIG>")
 add_test(
     NAME nsc.compiler-suite.host-basic-transactional-writer-controller
