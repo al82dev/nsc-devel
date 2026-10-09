@@ -1,12 +1,16 @@
 {
-  "generated_at": "2026-10-08T18:44:08-06:00",
+  "generated_at": "2026-10-08T19:07:30-06:00",
   "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
   "production_files": 974,
   "production_lines": 311814,
   "components": 57,
   "historical_test_files": 1658,
-  "production_csv_sha256": "811bac91779025810f71a5b872618b2c9b57206b0e8bfbf507cdfa1cda52f94f",
-  "production_json_sha256": "e35a9804ae68a1642dbf1137c4852a4038d35bdd45080859665946ed1db0938c",
-  "components_csv_sha256": "48a1c67ed8897d1af34c2ab4cc1692d80f5b2994ee082b7e6cdb334fa27da754",
-  "historical_tests_csv_sha256": "fba06c64f0b3d83b517edd43756ebbebeb8227699adaf55eb07c870f03686267"
+  "production_csv_sha256": "d84ca1bf0123c438bf360536b2505d4c3b35301f129fa5c2cb978740b3266757",
+  "production_json_sha256": "df4249cc0ecd24594219817213202d9dc6754c2389644583ea5010e81e218ade",
+  "components_csv_sha256": "407c2c5f0b97244ff61595058f9094c5291167fe1ba13bd19e6347b3f038e959",
+  "document_coverage_csv_sha256": "64b8f0446501617bd8f7c0bb6f51f335c4c4a3c37f2086792fc7c1a57f8a6975",
+  "symbols_csv_sha256": "ad6eca0e089538b711ae3b1e8b63cf236e7abebd851f8f7c7dddc05cc769cf27",
+  "contracts_csv_sha256": "15cadafdbebe328314a7e2a65c0e9676f5b767d8bb2c6770a27ea35f7ba65afb",
+  "test_case_design_csv_sha256": "7ab89eaa46b4373819459ad5990d9aed01e8194796dfdff88ebc423fc2fe9efc",
+  "historical_tests_csv_sha256": "fba06c64f0b3d83b517edd43756ebbeb8227699adaf55eb07c870f03686267"
 }

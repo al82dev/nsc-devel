@@ -11,12 +11,21 @@
 7. Planes de prueba en `test-plans/`
 8. Informes de auditoría independiente en `audits/`
 
+## Componentes consolidados
+
+- [Host.Basic](components/HOST-BASIC.md)
+  - [Test plan](test-plans/HOST-BASIC-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-03-HOST-BASIC-AUDIT.md)
+
 ## Artefactos mecánicos
 
 - `inventory/production-files.csv` y `.json`: manifiesto canónico de producción y soporte.
 - `inventory/components.csv`: agregación de 57 componentes documentales.
 - `inventory/historical-tests-freeze.csv`: batería histórica protegida por huellas.
 - `inventory/document-coverage.csv`: trazabilidad entre archivo, símbolo, contrato y sección.
+- `inventory/symbols.csv`: símbolos, responsabilidades, contratos y capa futura de prueba.
+- `inventory/contracts.csv`: contratos estables derivados de la implementación vigente.
+- `inventory/test-case-design.csv`: casos lógicos diseñados, sin implementación ejecutable.
 - `inventory/claims.csv`: catálogo de afirmaciones y procedencia.
 - `CURSOR.json`: punto exacto de reanudación.
 

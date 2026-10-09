@@ -1254,9 +1254,9 @@
     "lines": "74",
     "sha256": "f5c613fe5a77921d8f0e7275c812388cc11ba1adda451e36deeaf8ec19e9a61d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 6",
     "notes": ""
   },
   {
@@ -1269,9 +1269,9 @@
     "lines": "21",
     "sha256": "610239939c48a43dab3b2f378a15f4c9f4b70b62364984f01a5bd095d1db215c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 4",
     "notes": ""
   },
   {
@@ -1284,9 +1284,9 @@
     "lines": "46",
     "sha256": "448b6cae81b85b102cf127ca5f3eec672ff4b9ae97e3c0311cac27f326894e34",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 3.4",
     "notes": ""
   },
   {
@@ -1299,9 +1299,9 @@
     "lines": "12",
     "sha256": "98471fbec78b181e139c6806aa6f4765af8382a989f07ca7216e0aa75c5f0384",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 3.5",
     "notes": ""
   },
   {
@@ -1314,9 +1314,9 @@
     "lines": "31",
     "sha256": "69048e31557b534504ac1244ee26ce27b2c968449bb7fb5fc8de5ffc688360d4",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 3.1",
     "notes": ""
   },
   {
@@ -1329,9 +1329,9 @@
     "lines": "18",
     "sha256": "240b8a689a0eb2c2c21051bd35f584a6aa5e9f7d479250870d53e054fcf2e055",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 5",
     "notes": ""
   },
   {
@@ -1344,9 +1344,9 @@
     "lines": "41",
     "sha256": "2da57abb09f00d53bbed81a7d410ad4ee46b7320a8d20a574b8055fce68ca448",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 3.2",
     "notes": ""
   },
   {
@@ -1359,9 +1359,9 @@
     "lines": "38",
     "sha256": "7cacafcaa69f281ee586522e993a3447026e39cfc8e736994af87d9396d6ff28",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 3.3",
     "notes": ""
   },
   {
@@ -1374,9 +1374,9 @@
     "lines": "16",
     "sha256": "20c9807b9593f1c97f05b36da024df460fafab184284df61b9503b49e4e0bbca",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 4",
     "notes": ""
   },
   {
@@ -9384,9 +9384,9 @@
     "lines": "492",
     "sha256": "2e7eefab1cf7ff6d0d25d84c6f9a6a414505c104578339d480c517bc47a1a825",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 6",
     "notes": ""
   },
   {
@@ -9399,9 +9399,9 @@
     "lines": "141",
     "sha256": "33383dcd591dcd5c03eb3bd1ea31a46845b7b99acaccc66cf94403186f544f07",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 5",
     "notes": ""
   },
   {
@@ -9414,9 +9414,9 @@
     "lines": "9",
     "sha256": "fd63b67f941224504e51d213ffacc78b7c6a4f8bf995da94728114e6cfe95053",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-BASIC-AUDIT.md",
+    "section": "Host.Basic 4",
     "notes": ""
   },
   {

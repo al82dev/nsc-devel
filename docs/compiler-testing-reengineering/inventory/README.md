@@ -9,6 +9,9 @@ determinista desde la revisión congelada y no sustituyen la lectura semántica 
 - `production-files.json`: la misma información en formato legible por máquina.
 - `historical-tests-freeze.csv`: huellas de la batería histórica protegida; no es una migración ni un test plan.
 - `components.csv`: agregación por rol y componente derivada del manifiesto de archivos.
+- `symbols.csv`: inventario semántico de tipos, funciones, constantes y helpers relevantes.
+- `contracts.csv`: contratos observables con invariantes, errores, dependencias y oráculos.
+- `test-case-design.csv`: casos de prueba diseñados; no contiene ni genera pruebas ejecutables.
 
 Los estados documentales válidos son los de la sección 18 de los lineamientos. El estado inicial es
 `NO LEÍDO`; abrir un archivo no permite promoverlo directamente a `AUDITADO`.
