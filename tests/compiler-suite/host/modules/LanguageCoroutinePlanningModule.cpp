@@ -447,6 +447,278 @@ void registerInvalidAsyncCancellationPlanCase(TestRegistry& registry)
         }
     });
 }
+
+void registerAsyncGeneratorProductionCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-063", [](TestContext& context) {
+        const std::array states{
+            AsyncGeneratorState::Pending,
+            AsyncGeneratorState::ItemReady,
+            AsyncGeneratorState::Completed,
+            AsyncGeneratorState::Error,
+            AsyncGeneratorState::Cancelled};
+        for (const AsyncGeneratorState state : states)
+        {
+            for (const bool demand : std::array{false, true})
+            {
+                const bool expected = demand &&
+                    (state == AsyncGeneratorState::Pending || state == AsyncGeneratorState::ItemReady);
+                context.expect(asyncGeneratorMayProduce(state, demand) == expected,
+                    "TL-LANG-063 production must require demand and a productive state");
+            }
+        }
+    });
+}
+
+void registerValidAsyncGeneratorPlanCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-064", [](TestContext& context) {
+        const std::array locals{GeneratorLocal{8, 8, true, true, true, false, 1, 2}};
+        const std::array suspensions{
+            AsyncGeneratorSuspension{1, AsyncGeneratorSuspensionKind::Await, 1, false, false, false},
+            AsyncGeneratorSuspension{2, AsyncGeneratorSuspensionKind::Yield, 2, true, true, true}};
+        const std::array mappings{
+            std::pair{FrameStorage::CallerStack, GeneratorStorage::Stack},
+            std::pair{FrameStorage::CallerArena, GeneratorStorage::Arena},
+            std::pair{FrameStorage::ExplicitHeap, GeneratorStorage::ExplicitHeap}};
+        for (const auto& [storage, expectedStorage] : mappings)
+        {
+            for (const bool moveOnly : std::array{false, true})
+            {
+                std::string error = "stale";
+                const auto plan = buildAsyncGeneratorPlan(
+                    "Item", "Error", "Cancelled", locals, suspensions, storage, true, moveOnly, error);
+                context.expect(plan.has_value() && error.empty() && plan->itemType == "Item" &&
+                        plan->errorType == "Error" && plan->cancellationType == "Cancelled" &&
+                        plan->storage == storage && plan->stateMachine.storage == expectedStorage &&
+                        plan->stateMachine.frame.requiresPin && plan->stateMachine.slots.size() == 1 &&
+                        plan->stateMachine.states.size() == 2 && plan->stateMachine.completedState == 3 &&
+                        plan->stateMachine.yieldsBorrowedItems && !plan->stateMachine.hasImplicitHeapAllocation &&
+                        plan->explicitBackpressure && plan->moveOnlyItems == moveOnly,
+                    "TL-LANG-064 a valid plan must preserve types, storage, state ABI, and flags exactly");
+                if (!plan.has_value() || plan->stateMachine.states.size() != 2) continue;
+                context.expect(plan->stateMachine.states[0].state == 1 &&
+                        plan->stateMachine.states[0].cleanupDepth == 1 &&
+                        plan->stateMachine.states[1].state == 2 &&
+                        plan->stateMachine.states[1].cleanupDepth == 2,
+                    "TL-LANG-064 await and yield states must retain their exact order and cleanup depth");
+            }
+        }
+    });
+}
+
+void registerInvalidAsyncGeneratorPlanCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-065", [](TestContext& context) {
+        std::string error = "stale";
+        const std::array oneYield{
+            AsyncGeneratorSuspension{1, AsyncGeneratorSuspensionKind::Yield, 0, false, false, false}};
+        context.expect(!buildAsyncGeneratorPlan(
+                "", "", "", {}, oneYield, FrameStorage::CallerStack, false, false, error).has_value() &&
+                error == "async generator item, error, and cancellation types must be explicit",
+            "TL-LANG-065 unresolved types must have first rejection priority");
+        context.expect(!buildAsyncGeneratorPlan(
+                "Item", "Error", "Cancelled", {}, {}, FrameStorage::CallerStack, false, false, error).has_value() &&
+                error == "async generator requires at least one await or yield suspension",
+            "TL-LANG-065 an empty suspension list must use the exact error");
+        const std::array onlyAwait{
+            AsyncGeneratorSuspension{1, AsyncGeneratorSuspensionKind::Await, 0, false, false, false}};
+        context.expect(!buildAsyncGeneratorPlan(
+                "Item", "Error", "Cancelled", {}, onlyAwait,
+                FrameStorage::CallerStack, false, false, error).has_value() &&
+                error == "async generator requires at least one yield state",
+            "TL-LANG-065 an await-only plan must reject the absence of yield");
+        const std::array hole{
+            AsyncGeneratorSuspension{2, AsyncGeneratorSuspensionKind::Yield, 0, false, false, false}};
+        context.expect(!buildAsyncGeneratorPlan(
+                "Item", "Error", "Cancelled", {}, hole,
+                FrameStorage::CallerStack, false, false, error).has_value() &&
+                error == "async generator states must be contiguous and start at one",
+            "TL-LANG-065 a state hole must use the exact contiguity error");
+        const std::array duplicate{
+            AsyncGeneratorSuspension{1, AsyncGeneratorSuspensionKind::Yield, 0, false, false, false},
+            AsyncGeneratorSuspension{1, AsyncGeneratorSuspensionKind::Yield, 0, false, false, false}};
+        context.expect(!buildAsyncGeneratorPlan(
+                "Item", "Error", "Cancelled", {}, duplicate,
+                FrameStorage::CallerStack, false, false, error).has_value() &&
+                error == "async generator states must be contiguous and start at one",
+            "TL-LANG-065 a duplicate state must use the exact contiguity error");
+        for (const auto& [outlives, stable] : std::array{
+                 std::pair{false, false}, std::pair{false, true}, std::pair{true, false}})
+        {
+            const std::array borrowed{
+                AsyncGeneratorSuspension{1, AsyncGeneratorSuspensionKind::Yield, 0, true, outlives, stable}};
+            context.expect(!buildAsyncGeneratorPlan(
+                    "Item", "Error", "Cancelled", {}, borrowed,
+                    FrameStorage::CallerStack, false, false, error).has_value() &&
+                    error == "borrowed async generator state requires source lifetime and stable address proofs",
+                "TL-LANG-065 each missing borrow proof must use the exact error");
+        }
+    });
+}
+
+AsyncGeneratorProtocolState makeAsyncGeneratorState(AsyncGeneratorState target)
+{
+    AsyncGeneratorProtocolState state;
+    std::string error;
+    if (target == AsyncGeneratorState::Pending) return state;
+    if (target == AsyncGeneratorState::Cancelled)
+    {
+        state.stopEarly(error);
+        return state;
+    }
+    state.requestNext(error);
+    switch (target)
+    {
+        case AsyncGeneratorState::ItemReady:
+            state.resume(AsyncGeneratorPollOutcome::ItemReady, error);
+            break;
+        case AsyncGeneratorState::Completed:
+            state.resume(AsyncGeneratorPollOutcome::Completed, error);
+            break;
+        case AsyncGeneratorState::Error:
+            state.resume(AsyncGeneratorPollOutcome::ReadyError, error);
+            break;
+        case AsyncGeneratorState::Pending:
+        case AsyncGeneratorState::Cancelled:
+            break;
+    }
+    return state;
+}
+
+void registerAsyncGeneratorDemandCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-066", [](TestContext& context) {
+        std::string error = "stale";
+        AsyncGeneratorProtocolState pending;
+        context.expect(pending.requestNext(error) && error.empty() && pending.demandOutstanding() &&
+                !pending.itemOutstanding() && pending.state() == AsyncGeneratorState::Pending,
+            "TL-LANG-066 Pending without demand must accept exactly one demand");
+        context.expect(!pending.requestNext(error) &&
+                error == "async generator allows one outstanding demand and one borrowed item" &&
+                pending.demandOutstanding() && !pending.itemOutstanding(),
+            "TL-LANG-066 a second outstanding demand must be rejected without mutation");
+        AsyncGeneratorProtocolState item = makeAsyncGeneratorState(AsyncGeneratorState::ItemReady);
+        context.expect(!item.requestNext(error) &&
+                error == "async generator allows one outstanding demand and one borrowed item" &&
+                item.state() == AsyncGeneratorState::ItemReady && item.itemOutstanding(),
+            "TL-LANG-066 an outstanding borrowed item must block new demand");
+        for (const AsyncGeneratorState terminal : std::array{
+                 AsyncGeneratorState::Completed, AsyncGeneratorState::Error, AsyncGeneratorState::Cancelled})
+        {
+            AsyncGeneratorProtocolState state = makeAsyncGeneratorState(terminal);
+            context.expect(!state.requestNext(error) &&
+                    error == "async generator cannot accept demand after a terminal state" &&
+                    state.state() == terminal && !state.demandOutstanding() && !state.itemOutstanding(),
+                "TL-LANG-066 every terminal state must reject demand without mutation");
+        }
+    });
+}
+
+void registerAsyncGeneratorResumeCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-067", [](TestContext& context) {
+        const std::array outcomes{
+            AsyncGeneratorPollOutcome::Pending,
+            AsyncGeneratorPollOutcome::ItemReady,
+            AsyncGeneratorPollOutcome::ReadyError,
+            AsyncGeneratorPollOutcome::Completed};
+        for (const AsyncGeneratorPollOutcome outcome : outcomes)
+        {
+            AsyncGeneratorProtocolState state;
+            std::string error = "stale";
+            state.requestNext(error);
+            context.expect(state.resume(outcome, error) && error.empty(),
+                "TL-LANG-067 every outcome must be accepted when demand is outstanding");
+            const AsyncGeneratorState expected = outcome == AsyncGeneratorPollOutcome::ItemReady
+                ? AsyncGeneratorState::ItemReady
+                : outcome == AsyncGeneratorPollOutcome::ReadyError
+                    ? AsyncGeneratorState::Error
+                    : outcome == AsyncGeneratorPollOutcome::Completed
+                        ? AsyncGeneratorState::Completed
+                        : AsyncGeneratorState::Pending;
+            context.expect(state.state() == expected &&
+                    state.demandOutstanding() == (outcome == AsyncGeneratorPollOutcome::Pending) &&
+                    state.itemOutstanding() == (outcome == AsyncGeneratorPollOutcome::ItemReady),
+                "TL-LANG-067 each outcome must set the exact state and outstanding flags");
+        }
+        for (const AsyncGeneratorPollOutcome outcome : outcomes)
+        {
+            AsyncGeneratorProtocolState state;
+            std::string error;
+            context.expect(!state.resume(outcome, error) &&
+                    error == "async generator resume requires explicit consumer demand" &&
+                    state.state() == AsyncGeneratorState::Pending && !state.demandOutstanding(),
+                "TL-LANG-067 every outcome without demand must reject without mutation");
+        }
+        for (const AsyncGeneratorState terminal : std::array{
+                 AsyncGeneratorState::Completed, AsyncGeneratorState::Error, AsyncGeneratorState::Cancelled})
+        {
+            AsyncGeneratorProtocolState state = makeAsyncGeneratorState(terminal);
+            std::string error;
+            context.expect(!state.resume(AsyncGeneratorPollOutcome::Pending, error) &&
+                    error == "async generator cannot resume after a terminal state" &&
+                    state.state() == terminal,
+                "TL-LANG-067 terminal state rejection must precede missing-demand rejection");
+        }
+    });
+}
+
+void registerAsyncGeneratorConsumeAndStopCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-068", [](TestContext& context) {
+        const std::array states{
+            AsyncGeneratorState::Pending,
+            AsyncGeneratorState::ItemReady,
+            AsyncGeneratorState::Completed,
+            AsyncGeneratorState::Error,
+            AsyncGeneratorState::Cancelled};
+        for (const AsyncGeneratorState initial : states)
+        {
+            AsyncGeneratorProtocolState state = makeAsyncGeneratorState(initial);
+            std::string error = "stale";
+            const bool accepted = state.takeItem(error);
+            if (initial == AsyncGeneratorState::ItemReady)
+            {
+                context.expect(accepted && error.empty() && state.state() == AsyncGeneratorState::Pending &&
+                        !state.demandOutstanding() && !state.itemOutstanding(),
+                    "TL-LANG-068 one yielded item must be consumed exactly once");
+                context.expect(!state.takeItem(error) &&
+                        error == "async generator has no yielded item to consume",
+                    "TL-LANG-068 a consumed item must reject a second take");
+            }
+            else
+            {
+                context.expect(!accepted && error == "async generator has no yielded item to consume" &&
+                        state.state() == initial,
+                    "TL-LANG-068 states without an item must reject take without mutation");
+            }
+        }
+        AsyncGeneratorProtocolState demanded;
+        std::string error;
+        demanded.requestNext(error);
+        context.expect(demanded.stopEarly(error) && error.empty() &&
+                demanded.state() == AsyncGeneratorState::Cancelled && !demanded.demandOutstanding() &&
+                !demanded.itemOutstanding(),
+            "TL-LANG-068 early stop must clear outstanding demand");
+        AsyncGeneratorProtocolState item = makeAsyncGeneratorState(AsyncGeneratorState::ItemReady);
+        context.expect(item.stopEarly(error) && error.empty() &&
+                item.state() == AsyncGeneratorState::Cancelled && !item.itemOutstanding(),
+            "TL-LANG-068 early stop must clear an outstanding item");
+        AsyncGeneratorProtocolState pending;
+        context.expect(pending.stopEarly(error) && error.empty() &&
+                pending.state() == AsyncGeneratorState::Cancelled,
+            "TL-LANG-068 an idle generator must support stable early cancellation");
+        for (const AsyncGeneratorState terminal : std::array{
+                 AsyncGeneratorState::Completed, AsyncGeneratorState::Error, AsyncGeneratorState::Cancelled})
+        {
+            AsyncGeneratorProtocolState state = makeAsyncGeneratorState(terminal);
+            context.expect(!state.stopEarly(error) &&
+                    error == "terminal async generator cannot be cancelled again" && state.state() == terminal,
+                "TL-LANG-068 terminal generators must reject repeated cancellation without mutation");
+        }
+    });
+}
 }
 
 void registerLanguageCoroutinePlanningModule(TestRegistry& registry)
@@ -464,5 +736,11 @@ void registerLanguageCoroutinePlanningModule(TestRegistry& registry)
     registerCancellationCleanupOrderCase(registry);
     registerAsyncCancellationPlanCase(registry);
     registerInvalidAsyncCancellationPlanCase(registry);
+    registerAsyncGeneratorProductionCase(registry);
+    registerValidAsyncGeneratorPlanCase(registry);
+    registerInvalidAsyncGeneratorPlanCase(registry);
+    registerAsyncGeneratorDemandCase(registry);
+    registerAsyncGeneratorResumeCase(registry);
+    registerAsyncGeneratorConsumeAndStopCase(registry);
 }
 }
