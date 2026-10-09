@@ -3,16 +3,26 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "d2c442aaa",
+  "last_completed_commit": "7f58b8680",
   "current_wave": 1,
   "current_component": "Host.Source",
   "next_contract": "CS-SRC-002",
-  "next_action": "Keep CS-SRC-002 open for the explicit TS-SRC-008 memory-bound blocker. Continue only contracts proven independent of saturation; audit CS-SRC-006 and its deterministic filesystem mutation requirements next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_action": "Keep CS-SRC-002 open for the explicit TS-SRC-008 memory-bound blocker. Keep CS-SRC-006 partial: TS-SRC-040..041 require a deterministic mutation point that the protected product API does not expose. Continue only proven-independent work by auditing CS-SRC-007 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
     "CS-SRC-005"
   ],
+  "independent_partial_contracts": {
+    "CS-SRC-006": {
+      "implemented_cases": 9,
+      "verified_cases": 9,
+      "blocked_cases": [
+        "TS-SRC-040",
+        "TS-SRC-041"
+      ]
+    }
+  },
   "wave_status": {
     "0": {
       "status": "LISTA",
@@ -23,16 +33,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 108,
-      "product_cases_verified": 108
+      "product_cases_implemented": 117,
+      "product_cases_verified": 117
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 15,
-    "debug_ctest_total": 15,
-    "release_ctest_passed": 15,
-    "release_ctest_total": 15,
+    "debug_ctest_passed": 16,
+    "debug_ctest_total": 16,
+    "release_ctest_passed": 16,
+    "release_ctest_total": 16,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
