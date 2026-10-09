@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "55b6b7a17",
+  "last_completed_commit": "55beb8b95",
   "current_wave": 1,
   "current_component": "Host.Basic",
-  "next_contract": "CB-BAS-012",
-  "next_action": "Implement the controlled Windows preflight block TB-BAS-064..067; TB-BAS-058..059 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_contract": "CB-BAS-013",
+  "next_action": "Implement the canonical host-owned commit-success block TB-BAS-068..072; TB-BAS-058..059 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "wave_status": {
     "0": {
       "status": "LISTA",
@@ -18,16 +18,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 61,
-      "product_cases_verified": 61
+      "product_cases_implemented": 65,
+      "product_cases_verified": 65
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 7,
-    "debug_ctest_total": 7,
-    "release_ctest_passed": 7,
-    "release_ctest_total": 7,
+    "debug_ctest_passed": 8,
+    "debug_ctest_total": 8,
+    "release_ctest_passed": 8,
+    "release_ctest_total": 8,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
