@@ -8,7 +8,7 @@ Fecha: 2026-10-09
 |---|---|
 | Componente | `Host.Language` |
 | Contrato | `CL-LANG-011` |
-| Casos implementados | 12: `TL-LANG-142..153` |
+| Casos implementados | 13: `TL-LANG-142..154` |
 | Producto modificado | No |
 | Suite histórica modificada | No |
 | Estado del contrato | COMPLETO |
@@ -34,6 +34,7 @@ exactos; no se infieren resultados a partir de texto incidental.
 | `TL-LANG-151` | Drop order de todos los estados productivos y estados entry/completed/inválidos. |
 | `TL-LANG-152` | Resume desde entry y yields; completed, inválido y plan vacío devuelven `nullopt`. |
 | `TL-LANG-153` | Fusión válida y seis rechazos superpuestos en la prioridad contractual exacta. |
+| `TL-LANG-154` | `mayFuse` coincide con el análisis causal para pares compatibles e incompatibles. |
 
 ## Propiedades adicionales verificadas
 
@@ -48,11 +49,11 @@ exactos; no se infieren resultados a partir de texto incidental.
 ## Evidencia reproducible
 
 - Build dirigido `nsc_component_tests`: Debug y Release correctos, con warnings como errores.
-- Gate dirigido final: Debug 12/12 en 6.24 s; Release 12/12 en 0.65 s.
-- Suite nueva completa final: Debug 71/71 en 318.89 s; Release 71/71 en 34.89 s.
+- Gate dirigido final: Debug 13/13 en 6.85 s; Release 13/13 en 0.70 s.
+- Suite nueva completa final: Debug 71/71 en 311.76 s; Release 71/71 en 34.59 s.
 - Controlador Python: 51/51 en 0.639 s.
 - Fuentes Python de la suite: 92/92 compiladas en memoria.
-- Manifiesto: 592 casos, 0 duplicados y 12 casos de `CL-LANG-011` en orden canónico.
+- Manifiesto: 593 casos, 0 duplicados y 13 casos de `CL-LANG-011` en orden canónico.
 - `clang-tidy` (`clang-analyzer-*`, `bugprone-*`): 0 hallazgos en código de usuario.
 - Dependencias PE Debug y Release: únicamente `KERNEL32.dll`; CRT dinámico: 0.
 - `git diff --check`: correcto; C++ y Python añadidos con máximo de 120 columnas.
@@ -62,5 +63,5 @@ exactos; no se infieren resultados a partir de texto incidental.
 
 ## Estado
 
-`CL-LANG-011` queda completo con 12/12 casos implementados y verificados, sin bloqueos de
+`CL-LANG-011` queda completo con 13/13 casos implementados y verificados, sin bloqueos de
 producto. La continuación de Ola 1 debe tomar `CL-LANG-012`.

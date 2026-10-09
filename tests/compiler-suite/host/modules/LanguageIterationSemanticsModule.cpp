@@ -419,6 +419,54 @@ void registerFusionAnalysisCase(TestRegistry& registry)
             "TL-LANG-153 removing the final rejection cause must permit fusion");
     });
 }
+
+void registerFusionCompatibilityCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-154", [](TestContext& context) {
+        const EvaluationContract single{TraversalCategory::SinglePass, true, true};
+        const EvaluationContract multi{TraversalCategory::MultiPass, true, true};
+        EvaluationContract eager = single;
+        eager.lazy = false;
+        EvaluationContract reordered = single;
+        reordered.preservesLeftToRightEffects = false;
+        EvaluationContract repeating = single;
+        repeating.repeatsElements = true;
+        EvaluationContract shortCircuit = single;
+        shortCircuit.mayShortCircuit = true;
+        EvaluationContract borrowed = single;
+        borrowed.yieldsBorrowedItems = true;
+        EvaluationContract buffering = single;
+        buffering.buffersElements = true;
+
+        struct CompatibilityCase final
+        {
+            EvaluationContract source;
+            EvaluationContract adapter;
+            bool expected;
+        };
+        const std::array cases = {
+            CompatibilityCase{single, single, true},
+            CompatibilityCase{multi, multi, true},
+            CompatibilityCase{eager, single, false},
+            CompatibilityCase{single, eager, false},
+            CompatibilityCase{reordered, single, false},
+            CompatibilityCase{single, reordered, false},
+            CompatibilityCase{single, multi, false},
+            CompatibilityCase{single, repeating, true},
+            CompatibilityCase{single, shortCircuit, true},
+            CompatibilityCase{borrowed, buffering, false},
+            CompatibilityCase{single, buffering, true},
+        };
+        for (const CompatibilityCase& candidate : cases)
+        {
+            const bool analyzed = analyzeFusion(
+                FusionRequest{candidate.source, candidate.adapter}).allowed;
+            context.expect(mayFuse(candidate.source, candidate.adapter) == analyzed &&
+                    analyzed == candidate.expected,
+                "TL-LANG-154 mayFuse must equal causal analysis for every contract pairing");
+        }
+    });
+}
 }
 
 void registerLanguageIterationSemanticsModule(TestRegistry& registry)
@@ -435,5 +483,6 @@ void registerLanguageIterationSemanticsModule(TestRegistry& registry)
     registerGeneratorCancellationCase(registry);
     registerGeneratorResumeCase(registry);
     registerFusionAnalysisCase(registry);
+    registerFusionCompatibilityCase(registry);
 }
 }

@@ -44,7 +44,7 @@ def main() -> int:
                 encoding="utf-8"
             )
         )
-        expected_ids = [f"TL-LANG-{number:03d}" for number in range(142, 154)]
+        expected_ids = [f"TL-LANG-{number:03d}" for number in range(142, 155)]
         if [result["case_id"] for result in payload["results"]] != expected_ids:
             raise RuntimeError("controller did not execute the complete CL-LANG-011 case set")
         counts = payload["counts"]
