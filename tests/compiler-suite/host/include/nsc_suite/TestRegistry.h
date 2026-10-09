@@ -135,4 +135,7 @@ void registerLanguageSmartPointerOperationsModule(TestRegistry& registry);
 void registerLanguageSmartPointerContractModule(TestRegistry& registry);
 void registerLanguageSumTypeLayoutModule(TestRegistry& registry);
 void registerLanguagePatternSemanticsModule(TestRegistry& registry);
+void registerLanguageTraitValidationModule(TestRegistry& registry);
+void registerLanguageTraitDispatchModule(TestRegistry& registry);
+void registerLanguageTraitOperatorModule(TestRegistry& registry);
 }
