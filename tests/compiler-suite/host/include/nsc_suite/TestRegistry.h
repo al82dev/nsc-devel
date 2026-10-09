@@ -79,4 +79,5 @@ void registerTargetPlainStructLayoutModule(TestRegistry& registry);
 void registerTargetAggregateOptionsModule(TestRegistry& registry);
 void registerTargetPackedFieldPlacementModule(TestRegistry& registry);
 void registerTargetMinimumAlignmentModule(TestRegistry& registry);
+void registerTargetExplicitOffsetModule(TestRegistry& registry);
 }
