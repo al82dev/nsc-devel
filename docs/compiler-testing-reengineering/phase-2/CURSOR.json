@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "cc928930f",
+  "last_completed_commit": "dd08d9834",
   "current_wave": 1,
   "current_component": "Host.Language",
-  "next_contract": "CL-LANG-003",
-  "next_action": "Keep CS-SRC-002 open for the explicit TS-SRC-008 memory-bound blocker. Keep CS-SRC-006 partial because TS-SRC-040..041 lack a deterministic product-side mutation point. Keep CS-SRC-007 partial because TS-SRC-049 requires a versioned sanitizer misuse-probe profile. Keep CL-LANG-002 partial because TL-LANG-019 proves unchecked aggregate-layout overflow returns a wrapped layout instead of nullopt; Phase 2 cannot modify product. Host.Target CF-TGT-001..030 and Host.Diagnostics CD-DIA-001..012 are complete. Continue proven-independent Wave 1 work by auditing Host.Language CL-LANG-003 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_contract": "CL-LANG-004",
+  "next_action": "Keep CS-SRC-002 open for the explicit TS-SRC-008 memory-bound blocker. Keep CS-SRC-006 partial because TS-SRC-040..041 lack a deterministic product-side mutation point. Keep CS-SRC-007 partial because TS-SRC-049 requires a versioned sanitizer misuse-probe profile. Keep CL-LANG-002 partial because TL-LANG-019 proves unchecked aggregate-layout overflow returns a wrapped layout instead of nullopt. Keep CL-LANG-003 partial because TL-LANG-034 requests offsets absent from ClosureLayout and TL-LANG-035 proves unchecked closure-layout overflow is accepted. Phase 2 cannot modify product. Continue proven-independent Wave 1 work by auditing Host.Language CL-LANG-004 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
@@ -79,6 +79,14 @@
       "blocked_cases": [
         "TL-LANG-019"
       ]
+    },
+    "CL-LANG-003": {
+      "implemented_cases": 13,
+      "verified_cases": 13,
+      "blocked_cases": [
+        "TL-LANG-034",
+        "TL-LANG-035"
+      ]
     }
   },
   "wave_status": {
@@ -91,16 +99,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 468,
-      "product_cases_verified": 468
+      "product_cases_implemented": 481,
+      "product_cases_verified": 481
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 62,
-    "debug_ctest_total": 62,
-    "release_ctest_passed": 62,
-    "release_ctest_total": 62,
+    "debug_ctest_passed": 63,
+    "debug_ctest_total": 63,
+    "release_ctest_passed": 63,
+    "release_ctest_total": 63,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
