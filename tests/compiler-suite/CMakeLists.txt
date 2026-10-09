@@ -65,6 +65,7 @@ add_executable(
     host/modules/TargetMachineStringsModule.cpp
     host/modules/TargetCpuFeatureSupportModule.cpp
     host/modules/TargetX64AssemblyRegisterModule.cpp
+    host/modules/TargetArm64AssemblyRegisterModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp"
@@ -473,6 +474,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-target-x64-assembly-register-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-target-arm64-assembly-register-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_target_arm64_assembly_register_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-target-arm64-assembly-register-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND

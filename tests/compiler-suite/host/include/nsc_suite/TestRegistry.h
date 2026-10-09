@@ -94,4 +94,5 @@ void registerTargetLlvmIdentityModule(TestRegistry& registry);
 void registerTargetMachineStringsModule(TestRegistry& registry);
 void registerTargetCpuFeatureSupportModule(TestRegistry& registry);
 void registerTargetX64AssemblyRegisterModule(TestRegistry& registry);
+void registerTargetArm64AssemblyRegisterModule(TestRegistry& registry);
 }
