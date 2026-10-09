@@ -119,4 +119,5 @@ void registerLanguageErrorSemanticsModule(TestRegistry& registry);
 void registerLanguageExpressionSemanticsModule(TestRegistry& registry);
 void registerLanguageGenericSemanticsModule(TestRegistry& registry);
 void registerLanguageIntegrationQualityModule(TestRegistry& registry);
+void registerLanguageIterationSemanticsModule(TestRegistry& registry);
 }
