@@ -48,10 +48,12 @@ def main() -> int:
         )
         results = payload["results"]
         expected_ids = [f"TB-BAS-{index:03d}" for index in range(1, 20)]
+        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(24, 31))
+        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(32, 35))
         if [result["case_id"] for result in results] != expected_ids:
-            raise RuntimeError("controller did not execute the canonical TB-BAS-001..019 set")
+            raise RuntimeError("controller did not execute the canonical Host.Basic PR set")
         counts = payload["counts"]
-        if counts["PASS"] != 19 or any(
+        if counts["PASS"] != len(expected_ids) or any(
             count != 0 for status, count in counts.items() if status != "PASS"
         ):
             raise RuntimeError(f"unexpected Host.Basic result counts: {counts}")

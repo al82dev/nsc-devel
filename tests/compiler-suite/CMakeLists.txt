@@ -20,7 +20,9 @@ add_executable(
     host/src/main.cpp
     host/src/TestRegistry.cpp
     host/modules/InfrastructureModule.cpp
-    host/modules/BasicValuesModule.cpp)
+    host/modules/BasicValuesModule.cpp
+    host/modules/BasicSha256Module.cpp
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp")
 
 target_include_directories(
     nsc_component_tests
