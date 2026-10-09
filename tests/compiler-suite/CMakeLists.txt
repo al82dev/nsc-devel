@@ -70,6 +70,15 @@ add_test(
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-basic-sha256-file-gate"
         --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-basic-artifact-staging-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_basic_artifact_staging_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-basic-artifact-staging-gate"
+        --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND
    NSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE AND

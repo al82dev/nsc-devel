@@ -223,5 +223,83 @@ void registerBasicArtifactStagingModule(TestRegistry& registry)
         context.expect(stagingRootFrom(stage) != collision, "retried staging must not reuse the occupied root");
         context.expect(stagingRootFrom(stage).filename().string().ends_with("-1"), "retry must advance the attempt suffix");
     });
+    addCase(registry, "TB-BAS-054", "WEEKLY", [](TestContext& context) {
+        const ADriveTemporaryEnvironment temporary;
+        nativesharp::basic::ArtifactTransaction probe;
+        std::filesystem::path probeStage;
+        std::string error;
+        if (!probe.add(temporary.root() / "probe-exhaustion.lib", probeStage, error))
+        {
+            context.expect(false, "probe transaction must reveal the ordinal before exhaustion");
+            return;
+        }
+        const unsigned long long firstBlockedOrdinal = stagingOrdinal(stagingRootFrom(probeStage)) + 1ULL;
+        ExplicitPaths fixtures;
+        for (unsigned attempt = 0; attempt < 100; ++attempt)
+        {
+            const std::filesystem::path collision = temporary.root() /
+                ("nsc-artifacts-" + std::to_string(GetCurrentProcessId()) + "-" +
+                 std::to_string(firstBlockedOrdinal + attempt) + "-" + std::to_string(attempt));
+            fixtures.createFile(collision);
+        }
+
+        nativesharp::basic::ArtifactTransaction transaction;
+        std::filesystem::path stage;
+        error.clear();
+        const bool added = transaction.add(temporary.root() / "exhausted.lib", stage, error);
+        context.expect(!added, "staging must fail after all one hundred candidates are occupied");
+        context.expect(stage.empty(), "exhausted staging must not publish a stage path");
+        context.expect(
+            error.starts_with("cannot create NativeSharp artifact staging directory:"),
+            "exhausted staging must report directory creation failure");
+    });
+    addCase(registry, "TB-BAS-055", "PR", [](TestContext& context) {
+        nativesharp::basic::ArtifactTransaction transaction;
+        std::string error;
+        const bool emptyDestination = transaction.addStaged({}, L"stage.lib", error);
+        context.expect(!emptyDestination, "addStaged must reject an empty destination");
+        context.expect(
+            error == "artifact transaction destination or stage is empty",
+            "empty destination error must be exact");
+        error.clear();
+        const bool emptyStage = transaction.addStaged(L"destination.lib", {}, error);
+        context.expect(!emptyStage, "addStaged must reject an empty stage");
+        context.expect(
+            error == "artifact transaction destination or stage is empty",
+            "empty stage error must be exact");
+    });
+    addCase(registry, "TB-BAS-056", "PR", [](TestContext& context) {
+        const ADriveTemporaryEnvironment temporary;
+        const std::filesystem::path destination = temporary.root() / "deferred-destination.lib";
+        const std::filesystem::path stage = temporary.root() / "deferred-stage.lib";
+        nativesharp::basic::ArtifactTransaction transaction;
+        std::string error = "stale error";
+        const bool added = transaction.addStaged(destination, stage, error);
+        context.expect(added, "addStaged must register non-empty paths without immediate existence checks");
+        context.expect(error.empty(), "successful addStaged must clear stale errors");
+        context.expect(!std::filesystem::exists(destination), "addStaged must not create the destination");
+        context.expect(!std::filesystem::exists(stage), "addStaged must not create the stage");
+    });
+    addCase(registry, "TB-BAS-057", "NIGHTLY", [](TestContext& context) {
+        const ADriveTemporaryEnvironment temporary;
+        std::filesystem::path stagingRoot;
+        {
+            nativesharp::basic::ArtifactTransaction transaction;
+            std::filesystem::path stage;
+            std::string error;
+            if (!transaction.add(temporary.root() / "abandoned.lib", stage, error))
+            {
+                context.expect(false, "abandoned transaction must create its stage");
+                return;
+            }
+            stagingRoot = stagingRootFrom(stage);
+            std::ofstream stream(stage, std::ios::binary | std::ios::trunc);
+            stream.write("partial", 7);
+            stream.close();
+            context.expect(static_cast<bool>(stream), "abandoned stage fixture must be written");
+            context.expect(std::filesystem::is_regular_file(stage), "abandoned stage must exist before destruction");
+        }
+        context.expect(!std::filesystem::exists(stagingRoot), "transaction destructor must remove uncommitted staging");
+    });
 }
 }
