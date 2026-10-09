@@ -133,4 +133,6 @@ void registerLanguageReleaseConformanceModule(TestRegistry& registry);
 void registerLanguageReleasePromotionModule(TestRegistry& registry);
 void registerLanguageSmartPointerOperationsModule(TestRegistry& registry);
 void registerLanguageSmartPointerContractModule(TestRegistry& registry);
+void registerLanguageSumTypeLayoutModule(TestRegistry& registry);
+void registerLanguagePatternSemanticsModule(TestRegistry& registry);
 }

@@ -177,6 +177,8 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerLanguageReleasePromotionModule(registry);
         nsc::suite::registerLanguageSmartPointerOperationsModule(registry);
         nsc::suite::registerLanguageSmartPointerContractModule(registry);
+        nsc::suite::registerLanguageSumTypeLayoutModule(registry);
+        nsc::suite::registerLanguagePatternSemanticsModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
