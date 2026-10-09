@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "a6df61a80",
+  "last_completed_commit": "e773d3434",
   "current_wave": 1,
   "current_component": "Host.Basic",
-  "next_contract": "CB-BAS-010",
-  "next_action": "Implement Host.Basic Windows output-failure classification contracts TB-BAS-041..048 without modifying product behavior.",
+  "next_contract": "CB-BAS-011",
+  "next_action": "Implement Host.Basic artifact-staging lifecycle contracts TB-BAS-049..057 with isolated A-drive fixtures and no product changes.",
   "wave_status": {
     "0": {
       "status": "LISTA",
@@ -18,8 +18,8 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 40,
-      "product_cases_verified": 40
+      "product_cases_implemented": 48,
+      "product_cases_verified": 48
     }
   },
   "validation": {
