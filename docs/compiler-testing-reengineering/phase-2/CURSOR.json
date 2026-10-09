@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "15240c91a",
+  "last_completed_commit": "bd33f9ffb",
   "current_wave": 1,
   "current_component": "Host.Language",
-  "next_contract": "CL-LANG-019",
-  "next_action": "Keep the documented product blockers open; Phase 2 cannot modify product. CL-LANG-018 is complete with TL-LANG-231..248 implemented and verified. Audit CL-LANG-019 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_contract": "CL-LANG-020",
+  "next_action": "Keep the documented product blockers open; Phase 2 cannot modify product. CL-LANG-019 has 11 verified cases and TL-LANG-250 remains blocked by unchecked external-enum indexing. Audit CL-LANG-020 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
@@ -127,6 +127,13 @@
       "blocked_cases": [
         "TL-LANG-230"
       ]
+    },
+    "CL-LANG-019": {
+      "implemented_cases": 11,
+      "verified_cases": 11,
+      "blocked_cases": [
+        "TL-LANG-250"
+      ]
     }
   },
   "wave_status": {
@@ -139,16 +146,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 685,
-      "product_cases_verified": 685
+      "product_cases_implemented": 696,
+      "product_cases_verified": 696
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 78,
-    "debug_ctest_total": 78,
-    "release_ctest_passed": 78,
-    "release_ctest_total": 78,
+    "debug_ctest_passed": 79,
+    "debug_ctest_total": 79,
+    "release_ctest_passed": 79,
+    "release_ctest_total": 79,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
