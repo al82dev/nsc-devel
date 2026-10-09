@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "6b9a92027",
+  "last_completed_commit": "55b6b7a17",
   "current_wave": 1,
   "current_component": "Host.Basic",
   "next_contract": "CB-BAS-012",
-  "next_action": "Implement the next canonical host-owned block TB-BAS-060..067 for ArtifactTransaction preflight; TB-BAS-058..059 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_action": "Implement the controlled Windows preflight block TB-BAS-064..067; TB-BAS-058..059 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "wave_status": {
     "0": {
       "status": "LISTA",
@@ -18,8 +18,8 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 57,
-      "product_cases_verified": 57
+      "product_cases_implemented": 61,
+      "product_cases_verified": 61
     }
   },
   "validation": {
