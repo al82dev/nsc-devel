@@ -154,6 +154,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerDiagnosticRendererEngineModule(registry);
         nsc::suite::registerLanguageAbiSemanticsModule(registry);
         nsc::suite::registerLanguageAggregateSemanticsModule(registry);
+        nsc::suite::registerLanguageCallableSemanticsModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

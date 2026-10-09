@@ -110,4 +110,5 @@ void registerDiagnosticRendererSecondaryModule(TestRegistry& registry);
 void registerDiagnosticRendererEngineModule(TestRegistry& registry);
 void registerLanguageAbiSemanticsModule(TestRegistry& registry);
 void registerLanguageAggregateSemanticsModule(TestRegistry& registry);
+void registerLanguageCallableSemanticsModule(TestRegistry& registry);
 }
