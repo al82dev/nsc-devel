@@ -82,4 +82,5 @@ void registerTargetMinimumAlignmentModule(TestRegistry& registry);
 void registerTargetExplicitOffsetModule(TestRegistry& registry);
 void registerTargetUnionLayoutModule(TestRegistry& registry);
 void registerTargetFlexibleArrayLayoutModule(TestRegistry& registry);
+void registerTargetBitFieldValidationModule(TestRegistry& registry);
 }

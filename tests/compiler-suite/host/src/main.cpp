@@ -126,6 +126,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetExplicitOffsetModule(registry);
         nsc::suite::registerTargetUnionLayoutModule(registry);
         nsc::suite::registerTargetFlexibleArrayLayoutModule(registry);
+        nsc::suite::registerTargetBitFieldValidationModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
