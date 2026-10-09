@@ -102,4 +102,5 @@ void registerDiagnosticRecordModule(TestRegistry& registry);
 void registerDiagnosticEngineReportModule(TestRegistry& registry);
 void registerDiagnosticEngineBudgetModule(TestRegistry& registry);
 void registerDiagnosticEngineAppendModule(TestRegistry& registry);
+void registerDiagnosticEngineMergeModule(TestRegistry& registry);
 }
