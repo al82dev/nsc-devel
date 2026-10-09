@@ -175,6 +175,8 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerLanguageReleaseFreezeModule(registry);
         nsc::suite::registerLanguageReleaseConformanceModule(registry);
         nsc::suite::registerLanguageReleasePromotionModule(registry);
+        nsc::suite::registerLanguageSmartPointerOperationsModule(registry);
+        nsc::suite::registerLanguageSmartPointerContractModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

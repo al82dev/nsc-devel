@@ -131,4 +131,6 @@ void registerLanguageOwnershipLifetimeModule(TestRegistry& registry);
 void registerLanguageReleaseFreezeModule(TestRegistry& registry);
 void registerLanguageReleaseConformanceModule(TestRegistry& registry);
 void registerLanguageReleasePromotionModule(TestRegistry& registry);
+void registerLanguageSmartPointerOperationsModule(TestRegistry& registry);
+void registerLanguageSmartPointerContractModule(TestRegistry& registry);
 }
