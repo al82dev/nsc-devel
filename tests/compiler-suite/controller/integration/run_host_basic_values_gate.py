@@ -56,6 +56,8 @@ def main() -> int:
         expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(55, 57))
         expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(60, 64))
         expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(78, 81))
+        expected_ids.extend(f"TB-BAS-{index:03d}" for index in range(83, 86))
+        expected_ids.append("TB-BAS-087")
         if [result["case_id"] for result in results] != expected_ids:
             raise RuntimeError("controller did not execute the canonical Host.Basic PR set")
         counts = payload["counts"]

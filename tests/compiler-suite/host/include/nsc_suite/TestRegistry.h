@@ -57,4 +57,5 @@ void registerBasicArtifactStagingModule(TestRegistry& registry);
 void registerBasicArtifactPreflightModule(TestRegistry& registry);
 void registerBasicArtifactControlledPreflightModule(TestRegistry& registry);
 void registerBasicTransactionalWriterModule(TestRegistry& registry);
+void registerBasicArtifactSeedModule(TestRegistry& registry);
 }
