@@ -124,6 +124,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetPackedFieldPlacementModule(registry);
         nsc::suite::registerTargetMinimumAlignmentModule(registry);
         nsc::suite::registerTargetExplicitOffsetModule(registry);
+        nsc::suite::registerTargetUnionLayoutModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
