@@ -152,6 +152,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerDiagnosticRendererMarkerModule(registry);
         nsc::suite::registerDiagnosticRendererSecondaryModule(registry);
         nsc::suite::registerDiagnosticRendererEngineModule(registry);
+        nsc::suite::registerLanguageAbiSemanticsModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

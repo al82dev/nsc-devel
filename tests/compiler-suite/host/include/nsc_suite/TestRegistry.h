@@ -108,4 +108,5 @@ void registerDiagnosticRendererHeaderModule(TestRegistry& registry);
 void registerDiagnosticRendererMarkerModule(TestRegistry& registry);
 void registerDiagnosticRendererSecondaryModule(TestRegistry& registry);
 void registerDiagnosticRendererEngineModule(TestRegistry& registry);
+void registerLanguageAbiSemanticsModule(TestRegistry& registry);
 }
