@@ -55,6 +55,9 @@
 - [Host.Dominance](components/HOST-DOMINANCE.md)
   - [Test plan](test-plans/HOST-DOMINANCE-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-07-HOST-DOMINANCE-AUDIT.md)
+- [Host.Passes](components/HOST-PASSES.md)
+  - [Test plan](test-plans/HOST-PASSES-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-07-HOST-PASSES-AUDIT.md)
 
 ## Artefactos mecánicos
 

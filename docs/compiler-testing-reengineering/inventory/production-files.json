@@ -4554,10 +4554,10 @@
     "lines": "12",
     "sha256": "daaa671849a95114821bea57ee7c6ef29cf8629744e651df2efba5ea2f721df3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000305",
@@ -4569,10 +4569,10 @@
     "lines": "50",
     "sha256": "5d0675596d4428dcfe2e3796f52ff7fa428dc1ee425f51aff48652a926a7ddb5",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000306",
@@ -4584,10 +4584,10 @@
     "lines": "27",
     "sha256": "46c6c0d111985a6f01b1f315599d7138af47b825e8fe0b8273fec8fc4a54dc96",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000307",
@@ -4599,10 +4599,10 @@
     "lines": "15",
     "sha256": "11017e5c1c7b0354e7e011270ff74b7bd1eb33dc534b8ea7a0a7f788526809a5",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000308",
@@ -4614,10 +4614,10 @@
     "lines": "15",
     "sha256": "55a715ebedd75b15573cdcd729365e6def8423c7a7bf0e158b62537f5b934264",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000309",
@@ -4629,10 +4629,10 @@
     "lines": "15",
     "sha256": "48e12e341afb93ae855746b7aec155331819040726f912ff2f1390c69f34a350",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000310",
@@ -4644,10 +4644,10 @@
     "lines": "25",
     "sha256": "ad4b4d78d5039a6cc765c569fd16b38279c11f9db91f089907775f302b637a50",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000311",
@@ -4659,10 +4659,10 @@
     "lines": "27",
     "sha256": "b436d42dd1737cc19d13277dc93d7cb0c10e24d858815dd60aba1b515fb1d16c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000312",
@@ -4674,10 +4674,10 @@
     "lines": "25",
     "sha256": "06a799dd6133dbbed3594fc43e25a9351d1efcbe1c68a2b76b0bead2fb214956",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000313",
@@ -4689,10 +4689,10 @@
     "lines": "45",
     "sha256": "dfa4949d68a49ae32d7470f3860a5b7a215ee8beacfdca99d0d8856030d77f12",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000314",
@@ -4704,10 +4704,10 @@
     "lines": "48",
     "sha256": "28fdf3624762cbe3b965951452e3f218a96f0d0ef333c71900f604f57e10dcdf",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000315",
@@ -4719,10 +4719,10 @@
     "lines": "40",
     "sha256": "6b314745c859bef7585e816c2a3200ce5e72271ba25f3b77863deceefa44a1bf",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000316",
@@ -4734,10 +4734,10 @@
     "lines": "72",
     "sha256": "2f00633ecdd613e633df8076cf8b26bb6f523d97aff3bf29d64aa15463e50aee",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000317",
@@ -4749,10 +4749,10 @@
     "lines": "87",
     "sha256": "79f6e93ffa812ef51ff3af4495a20ea2b07cb039be2ba24e1d523680d24b3aeb",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000318",
@@ -4764,10 +4764,10 @@
     "lines": "30",
     "sha256": "63892e7233e2a62dc39b3710a0c965e82de30f196d42080f7633498f5d5cdcf6",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000319",
@@ -4779,10 +4779,10 @@
     "lines": "36",
     "sha256": "1ba84ba6967403cd376c6404ac89aff0333e6d3c34f70a2e889857bf3b719e72",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000320",
@@ -4794,10 +4794,10 @@
     "lines": "16",
     "sha256": "6b3985978a0ad4193d51dd3432ddf1b1902222a88ac83e292baf8fe66ffaa26c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000321",
@@ -4809,10 +4809,10 @@
     "lines": "23",
     "sha256": "687da33dd40cfab0605208d9c47f5756b29c1c55e9f7e3d665b9608c3af224d4",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000322",
@@ -4824,10 +4824,10 @@
     "lines": "21",
     "sha256": "f549a6d7b2a64b941da51883130354220052ff22559b8d5b6d0610d1fc12a027",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000323",
@@ -4839,10 +4839,10 @@
     "lines": "12",
     "sha256": "a5c064261cd4270ffb86def4b1aa764ff8e8161be005a61b0e135656f0accff7",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000324",
@@ -4854,10 +4854,10 @@
     "lines": "15",
     "sha256": "e0ce55df02ea338dfccf3f4708c090cf30fdf623bfb1456f4ad3c31452cb8c8c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000325",
@@ -4869,10 +4869,10 @@
     "lines": "22",
     "sha256": "effdf16b8ea7c43f85be556ad537d042ff6f5ff981d27adfe650b73d42ddce90",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000326",
@@ -4884,10 +4884,10 @@
     "lines": "15",
     "sha256": "7fc57dbfebe5be05db22e403a8ea0b931260f3d62d13008e2526b9efcb774de2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000327",
@@ -12279,10 +12279,10 @@
     "lines": "116",
     "sha256": "1874f003a2d17393f3a8a4d737b8cf708934e2c440a5224babddef20b146bf72",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000820",
@@ -12294,10 +12294,10 @@
     "lines": "730",
     "sha256": "1180e500b2242dc193afd44e2ebefe0ed16393c548b8e0c477eaca29010a6e41",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000821",
@@ -12309,10 +12309,10 @@
     "lines": "139",
     "sha256": "c3f52de789a5a7d3553e3370bf7d42c8b0bcf8f6db9ae9172624bbbd7824650c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000822",
@@ -12324,10 +12324,10 @@
     "lines": "139",
     "sha256": "d2f5d353f68826d0e8489999d82b833e7781cf25705389ee8c8cf5a9bbf20a57",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000823",
@@ -12339,10 +12339,10 @@
     "lines": "110",
     "sha256": "302ef8689d5c034202f123f834fe7e1c87f437c599b217c9dd65743811b79031",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000824",
@@ -12354,10 +12354,10 @@
     "lines": "156",
     "sha256": "058dacf1b1bc97f7c10b6e634c46ea36507d33998e443a15d9d0d64f0de83521",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000825",
@@ -12369,10 +12369,10 @@
     "lines": "101",
     "sha256": "1576ffd806054d4b6cb457a45c7463b6ef7878eac22573c042c8ec46ff1e2646",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000826",
@@ -12384,10 +12384,10 @@
     "lines": "31",
     "sha256": "e53861d8358991917736b99b27651daf97dd1abdc082df839597bf76ee48f0ba",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000827",
@@ -12399,10 +12399,10 @@
     "lines": "240",
     "sha256": "8d4834246a2b497d8946c2a9a8e3fdd478cb773f4e0591aa968887d026807cad",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000828",
@@ -12414,10 +12414,10 @@
     "lines": "269",
     "sha256": "fc8bac23bf4689bb85503e3a0e7d0af3128f159c1deb220817e32d7e5abc9283",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000829",
@@ -12429,10 +12429,10 @@
     "lines": "57",
     "sha256": "40a16d84c89fbb337f6571b855a2f5d2a7c23ee1df598195fa02efda96e446d2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000830",
@@ -12444,10 +12444,10 @@
     "lines": "360",
     "sha256": "ba8367a5d39d56559093194ddfea7e65bb43dafa815a4ba921fedf6b623286da",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000831",
@@ -12459,10 +12459,10 @@
     "lines": "18",
     "sha256": "8934cd7982b8e25d56ce95a3b968a8d8088a4c7b07d0fb9546760e85ceb7f5ed",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000832",
@@ -12474,10 +12474,10 @@
     "lines": "199",
     "sha256": "6676f2572bb72fa124f7dfc1a64b17faefdc7bd8968b35f828f51d2785ba01dd",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000833",
@@ -12489,10 +12489,10 @@
     "lines": "56",
     "sha256": "5518a47f2ef2768031226134045819b83b9f1809cdeaacc36dcab70d36854fdf",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000834",
@@ -12504,10 +12504,10 @@
     "lines": "28",
     "sha256": "76aaca95be86dcb9388918502c92b44a100c086d85ddc3432dbb20c005a1e47d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000835",
@@ -12519,10 +12519,10 @@
     "lines": "186",
     "sha256": "3a4b96eaad5bb55a0b9a31f9502c3e31ee2a7f66c7be02d7bc0c5c2a72508d5d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000836",
@@ -12534,10 +12534,10 @@
     "lines": "37",
     "sha256": "08e6d503decb8cd63e1a28f2cd10143a995cf71893ec4c5115eb30127b29325a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000837",
@@ -12549,10 +12549,10 @@
     "lines": "291",
     "sha256": "77fe24f90dffc550be504dc3786901e78bb08a8c8174418c825e71b8e5770d97",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-PASSES-METHOD.md;audits/TANDA-07-HOST-PASSES-AUDIT.md",
+    "section": "components/HOST-PASSES.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000838",
