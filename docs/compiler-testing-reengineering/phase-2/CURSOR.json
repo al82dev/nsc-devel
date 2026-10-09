@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "phase": 2,
+  "task_status": "ACTIVE",
+  "last_completed_wave": 0,
+  "last_completed_commit": "54cba303c",
+  "current_wave": 1,
+  "current_component": "Host.Basic",
+  "next_contract": "CB-BAS-001",
+  "next_action": "Materialize the 88 canonical Host.Basic cases in the consolidated host executable, beginning with CB-BAS-001 and preserving contract-to-case traceability.",
+  "wave_status": {
+    "0": {
+      "status": "LISTA",
+      "product_cases_expected": 0,
+      "synthetic_cases_implemented": 3,
+      "synthetic_cases_verified": 3
+    },
+    "1": {
+      "status": "PENDIENTE",
+      "product_cases_expected": 747,
+      "product_cases_implemented": 0,
+      "product_cases_verified": 0
+    }
+  },
+  "validation": {
+    "python_controller_tests": 46,
+    "debug_ctest_passed": 2,
+    "debug_ctest_total": 2,
+    "release_ctest_passed": 2,
+    "release_ctest_total": 2,
+    "debug_dynamic_crt_imports": 0,
+    "release_dynamic_crt_imports": 0
+  },
+  "protected_files": {
+    "docs/compiler-optimization/test-infrastructure/test-execution-parity.csv": "96c6e1564f973b36f4ab8cdd2b5df515e5128ee1345dd622024d15e9799f606d",
+    "docs/compiler-optimization/test-infrastructure/test-execution-parity.json": "2dac516432a277fd4c0c2cd3a4868d348a6f626732f01243047919e32faa727a",
+    "docs/compiler-optimization/test-infrastructure/test-execution-parity.md": "27802a8867f752fb6efd5b063264626d837e43cbea0a5362f5aa166ac4feaa4a",
+    "tests/harness/nsc_test/suites.py": "407b534d216270b052aa35416d01d690219feba2b8c6d6438fec3634c5418b38",
+    "tests/harness/run_nsc_tests.py": "e5ecf33859092b134b83f2665c659bc5691def40e3e31def39de9a4cf9946151",
+    "tests/harness/tests/test_suite_adapter.py": "fef8fe5d953b0d2d3dbbf747d97719b8fc12f829d2cef0334a5025389db68dc0"
+  }
+}

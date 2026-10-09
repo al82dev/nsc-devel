@@ -2,7 +2,7 @@
 
 | Ola | Alcance | Estado | Casos previstos | Implementados | Verificados |
 |---:|---|---|---:|---:|---:|
-| 0 | Infraestructura mínima | EN CURSO | 0 de producto | 0 | 0 |
+| 0 | Infraestructura mínima | LISTA | 0 de producto / 3 sintéticos | 3 | 3 |
 | 1 | Fundaciones host | PENDIENTE | 747 | 0 | 0 |
 | 2 | Sintaxis y semántica frontal | PENDIENTE | 1,197 | 0 | 0 |
 | 3 | IR y optimización | PENDIENTE | 1,784 | 0 | 0 |
