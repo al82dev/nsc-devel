@@ -46,6 +46,9 @@
 - [Host.MIR](components/HOST-MIR.md)
   - [Test plan](test-plans/HOST-MIR-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-07-HOST-MIR-AUDIT.md)
+- [Host.CFG](components/HOST-CFG.md)
+  - [Test plan](test-plans/HOST-CFG-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-07-HOST-CFG-AUDIT.md)
 
 ## Artefactos mecánicos
 
