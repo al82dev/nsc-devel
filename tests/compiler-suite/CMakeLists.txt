@@ -37,10 +37,13 @@ add_executable(
     host/modules/SourceFileReadModule.cpp
     host/modules/SourceManagerRegistryModule.cpp
     host/modules/SourceManagerQueryModule.cpp
+    host/modules/TargetDomainEnumsModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceManager.cpp")
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceManager.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetDataLayout.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetInfo.cpp")
 
 target_include_directories(
     nsc_component_tests
@@ -191,6 +194,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-source-manager-query-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-target-domain-enums-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_target_domain_enums_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-target-domain-enums-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND
