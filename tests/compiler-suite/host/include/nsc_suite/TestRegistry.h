@@ -87,4 +87,5 @@ void registerTargetSequentialBitFieldModule(TestRegistry& registry);
 void registerTargetZeroWidthBitFieldModule(TestRegistry& registry);
 void registerTargetUnionBitFieldModule(TestRegistry& registry);
 void registerTargetAggregateFinalizationModule(TestRegistry& registry);
+void registerTargetIdentityFactoriesModule(TestRegistry& registry);
 }
