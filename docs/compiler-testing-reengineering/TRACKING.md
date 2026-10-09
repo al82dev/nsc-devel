@@ -10,8 +10,8 @@
 | 06 | Frontend, proyectos, construcción, genéricos y ownership | LISTA | 121 | 121 | 0 |
 | 07 | HIR, MIR, CFG, SSA, Dominance y Passes | LISTA | 128 | 128 | 0 |
 | 08 | LLVM, Target, ABI, depuración y codegen | LISTA | 44 | 44 | 0 |
-| 09 | Interop, Linker y Runtime | EN CURSO | 34 | 28 | 6 |
-| 10 | Compilation, Driver, CLI y LanguageService | PENDIENTE | 0 | 0 | Por determinar |
+| 09 | Interop, Linker y Runtime | LISTA | 34 | 34 | 0 |
+| 10 | Compilation, Driver, CLI y LanguageService | EN CURSO | 80 | 0 | 80 |
 | 11 | Contratos transversales, errores y máquinas de estado | PENDIENTE | 0 | 0 | Por determinar |
 | 12 | Arquitectura de suite nueva y test plans por componente | PENDIENTE | 0 | 0 | Por determinar |
 | 13 | Segunda auditoría independiente y cierre técnico | PENDIENTE | 0 | 0 | Por determinar |

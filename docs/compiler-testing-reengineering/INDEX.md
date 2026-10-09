@@ -70,6 +70,9 @@
 - [Host.Linker](components/HOST-LINKER.md)
   - [Test plan](test-plans/HOST-LINKER-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-09-HOST-LINKER-AUDIT.md)
+- [Host.Runtime](components/HOST-RUNTIME.md)
+  - [Test plan](test-plans/HOST-RUNTIME-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-09-HOST-RUNTIME-AUDIT.md)
 
 ## Artefactos mecánicos
 
