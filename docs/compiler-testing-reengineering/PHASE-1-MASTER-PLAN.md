@@ -102,6 +102,12 @@ ejecutaron pruebas.
 - Separar ejecución rápida, integración, nocturna y semanal.
 - Derivar el conteo real de casos sólo después de cerrar las matrices host, self-host y de producto.
 
+**Estado:** `LISTA`. Los 10,193 casos quedaron asignados exactamente una vez: 6,118 al único ejecutable host,
+3,655 al compilador real conducido por manifiestos y 420 a la batería histórica congelada. Los 57 componentes
+poseen una ola de implementación o una disposición externa explícita. Los documentos normativos son
+`architecture/NEW-SUITE-ARCHITECTURE.md`, `architecture/EXECUTION-PROFILES.md` y
+`architecture/IMPLEMENTATION-WAVES.md`. No se implementó ni ejecutó ninguna prueba.
+
 ### Tanda 13 — Segunda auditoría
 
 - Reenumerar desde cero el universo de archivos y símbolos.

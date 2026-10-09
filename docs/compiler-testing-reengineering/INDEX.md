@@ -14,6 +14,13 @@
 10. [STATE-MACHINES.md](STATE-MACHINES.md)
 11. Informes de auditoría independiente en `audits/`
 
+## Arquitectura de la suite nueva
+
+- [Arquitectura completa](architecture/NEW-SUITE-ARCHITECTURE.md)
+- [Perfiles de ejecución](architecture/EXECUTION-PROFILES.md)
+- [Olas de implementación](architecture/IMPLEMENTATION-WAVES.md)
+- [Método de consolidación de Tanda 12C](evidence/TANDA-12C-SUITE-ARCHITECTURE-METHOD.md)
+
 ## Gate de integridad previo a la arquitectura
 
 - [Hallazgo de cobertura antes de Tanda 12](audits/TANDA-12-SCOPE-COMPLETENESS-GATE.md): distingue la matriz
@@ -109,6 +116,9 @@
 - `inventory/state-machine-contract-map.csv`: relación completa contrato-máquina; conserva los contratos stateless
   en la matriz transversal.
 - `inventory/claims.csv`: catálogo de afirmaciones y procedencia.
+- `inventory/suite-case-allocation.csv`: asignación 1:1 de los 10,193 casos a ejecutor, perfil y configuración.
+- `inventory/implementation-waves.csv`: orden de implementación de los 57 componentes.
+- `inventory/suite-architecture-summary.json`: conteos reproducibles de la arquitectura consolidada.
 - `CURSOR.json`: punto exacto de reanudación.
 
 ## Registros transversales

@@ -1,0 +1,29 @@
+{
+  "components": 57,
+  "contracts": 1309,
+  "cases": 10193,
+  "executors": {
+    "legacy_historical_suite": 420,
+    "nsc_component_tests": 6118,
+    "nsc_suite_controller+nsc": 3655
+  },
+  "profiles": {
+    "NIGHTLY": 1821,
+    "PR": 7943,
+    "WEEKLY": 429
+  },
+  "layers": {
+    "build-contract": 74,
+    "component": 2750,
+    "historical-weekly": 420,
+    "integration": 1827,
+    "packaging": 24,
+    "process": 159,
+    "robustness": 26,
+    "self-host": 726,
+    "unit": 4187
+  },
+  "implementation_waves": 11,
+  "new_suite_cases": 9773,
+  "frozen_reference_cases": 420
+}

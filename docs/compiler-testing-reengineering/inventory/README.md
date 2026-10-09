@@ -42,3 +42,13 @@ representa código de prueba creado o ejecutado.
 - Los upstream y excluidos no generan pruebas ficticias; su frontera queda en los documentos de componente.
 - Regeneración: `evidence/TANDA-12B-REMAINING-SURFACE-GENERATOR.ps1`.
 <!-- END TANDA-12B-REMAINING-SURFACE-INVENTORY -->
+
+<!-- BEGIN TANDA-12C-SUITE-ARCHITECTURE-INVENTORY -->
+## Tanda 12C — arquitectura de la suite
+
+- `suite-case-allocation.csv`: 10,193 casos asignados exactamente una vez a ejecutor, familia, perfil, modos,
+  optimizaciones, aislamiento y autoridad.
+- `implementation-waves.csv`: los 57 componentes ordenados en 11 olas o disposición externa.
+- `suite-architecture-summary.json`: resumen reproducible de ejecutores, perfiles y capas.
+- Regeneración: `evidence/TANDA-12C-SUITE-ARCHITECTURE-GENERATOR.ps1`.
+<!-- END TANDA-12C-SUITE-ARCHITECTURE-INVENTORY -->

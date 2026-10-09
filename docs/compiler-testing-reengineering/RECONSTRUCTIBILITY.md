@@ -89,3 +89,19 @@ El dictamen es exclusivamente documental para la revisión auditada; no demuestr
 
 `RECONSTRUIBLE` sigue siendo suficiencia documental. `TRATADO` cierra una disposición explícita sin atribuir propiedad interna a NSC.
 <!-- END TANDA-12B-RECONSTRUCTIBILITY -->
+
+<!-- BEGIN TANDA-12C-SUITE-ARCHITECTURE -->
+## Reconstructibilidad de la suite nueva
+
+La arquitectura ya permite reconstruir la implementación futura sin redescubrir propiedad ni frecuencia:
+
+- 10,193 casos poseen contrato, componente, ejecutor, familia, perfil, configuración, aislamiento y autoridad;
+- 9,773 pertenecen a la suite nueva;
+- 420 conservan autoridad histórica congelada;
+- 57 componentes poseen una ola de implementación o una disposición externa;
+- la construcción, configuración, ejecución y reporte son fases separadas;
+- la futura selección se deriva del manifiesto y no de conteos rígidos.
+
+Esto demuestra suficiencia documental, no implementación ni resultado de pruebas. La segunda auditoría de Tanda 13
+debe reproducir todavía el universo completo antes de autorizar la Fase 2.
+<!-- END TANDA-12C-SUITE-ARCHITECTURE -->
