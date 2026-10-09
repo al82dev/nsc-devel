@@ -3,7 +3,7 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "301996b06",
+  "last_completed_commit": "5c02dfedf",
   "current_wave": 1,
   "current_component": "Host.Language",
   "next_contract": "CL-LANG-012",
@@ -120,8 +120,8 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 592,
-      "product_cases_verified": 592
+      "product_cases_implemented": 593,
+      "product_cases_verified": 593
     }
   },
   "validation": {
