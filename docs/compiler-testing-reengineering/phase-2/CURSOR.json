@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "7f58b8680",
+  "last_completed_commit": "5bb04c823",
   "current_wave": 1,
   "current_component": "Host.Source",
   "next_contract": "CS-SRC-002",
-  "next_action": "Keep CS-SRC-002 open for the explicit TS-SRC-008 memory-bound blocker. Keep CS-SRC-006 partial: TS-SRC-040..041 require a deterministic mutation point that the protected product API does not expose. Continue only proven-independent work by auditing CS-SRC-007 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_action": "Keep CS-SRC-002 open for the explicit TS-SRC-008 memory-bound blocker. Keep CS-SRC-006 partial because TS-SRC-040..041 lack a deterministic product-side mutation point. Keep CS-SRC-007 partial because TS-SRC-049 requires a versioned sanitizer misuse-probe profile. Continue only proven-independent work by auditing CS-SRC-008 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
@@ -21,6 +21,13 @@
         "TS-SRC-040",
         "TS-SRC-041"
       ]
+    },
+    "CS-SRC-007": {
+      "implemented_cases": 4,
+      "verified_cases": 4,
+      "blocked_cases": [
+        "TS-SRC-049"
+      ]
     }
   },
   "wave_status": {
@@ -33,16 +40,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 117,
-      "product_cases_verified": 117
+      "product_cases_implemented": 121,
+      "product_cases_verified": 121
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 16,
-    "debug_ctest_total": 16,
-    "release_ctest_passed": 16,
-    "release_ctest_total": 16,
+    "debug_ctest_passed": 17,
+    "debug_ctest_total": 17,
+    "release_ctest_passed": 17,
+    "release_ctest_total": 17,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
