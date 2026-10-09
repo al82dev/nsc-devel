@@ -1,0 +1,33 @@
+namespace NativeSharp.Core.Numerics
+{
+    public copy struct Float32x3
+    {
+        public float X;
+        public float Y;
+        public float Z;
+
+        public static Float32x3 Add(Float32x3 left, Float32x3 right)
+        {
+            return default(Float32x3);
+        }
+
+        public static Float32x3 Subtract(Float32x3 left, Float32x3 right)
+        {
+            return default(Float32x3);
+        }
+
+        public static Float32x3 Multiply(Float32x3 left, Float32x3 right)
+        {
+            return default(Float32x3);
+        }
+
+        public static Float32x3 Cross(Float32x3 left, Float32x3 right)
+        {
+            Float32x3 result;
+            result.X = left.Y * right.Z - left.Z * right.Y;
+            result.Y = left.Z * right.X - left.X * right.Z;
+            result.Z = left.X * right.Y - left.Y * right.X;
+            return result;
+        }
+    }
+}

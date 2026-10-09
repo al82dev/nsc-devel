@@ -1,0 +1,12 @@
+{
+  "id": "nsc.integration.memory-types",
+  "component": "sema",
+  "kind": "compile-only",
+  "sources": ["memory_types.ns"],
+  "arguments": ["--check", "{source:0}"],
+  "optimization": "O0",
+  "expected": {"exit_code": 0},
+  "timeout_seconds": 60,
+  "tags": ["legacy-parity", "o0-only"],
+  "requires": []
+}

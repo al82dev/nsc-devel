@@ -1,0 +1,7 @@
+{
+  "id": "nsc.stage36-recovery.interface-dump", "component": "projects", "kind": "project",
+  "project": "Stage36RecoveryApp.nsproj", "working_files": ["InterfacesAndDispatch.ns"],
+  "arguments": ["--dump-project-interfaces", "{project}"], "optimization": "O0",
+  "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "interface type:Stage36RecoveryApp::Stage36.Demo.IAdvanced"}},
+  "timeout_seconds": 60, "tags": ["project", "legacy-parity", "o0-only"], "requires": []
+}

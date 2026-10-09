@@ -1,0 +1,16 @@
+{
+  "id": "nsc.stage31.generalized-receivers",
+  "component": "projects",
+  "kind": "project",
+  "project": "Stage31App.nsproj",
+  "working_files": ["Receivers.ns"],
+  "arguments": ["--verify-project-oop-llvm", "{project}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "regex", "text": "project OOP LLVM verification: ok"}
+  },
+  "timeout_seconds": 60,
+  "tags": ["project", "legacy-parity", "o0-only"],
+  "requires": []
+}

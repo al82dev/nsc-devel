@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <Name>NativeSharpCore</Name>
+    <Language>3</Language>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <!-- A copy of the installed C:\native-sharp-3.0\lib\NativeSharp.Core sources, with the one thing
+       the installed project does not declare: an OutputType. Without it nsc refuses to emit a
+       static library, so the stdlib can only ever be consumed by recompiling it into whoever
+       names it. This project exists so the runtime libraries can LINK against Core instead of
+       compiling it again, once per library. Nothing is written to C:. -->
+  <ItemGroup><Compile Include="**/*.ns" /></ItemGroup>
+</Project>

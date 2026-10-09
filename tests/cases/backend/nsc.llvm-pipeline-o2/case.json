@@ -1,0 +1,14 @@
+{
+  "id": "nsc.llvm-pipeline-o2",
+  "component": "llvm",
+  "kind": "specialized",
+  "arguments": ["--print-llvm-pipeline", "-O2"],
+  "optimization": "O2",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "regex", "text": "default<O2>"}
+  },
+  "timeout_seconds": 60,
+  "tags": ["legacy-parity", "fixed-profile"],
+  "requires": []
+}

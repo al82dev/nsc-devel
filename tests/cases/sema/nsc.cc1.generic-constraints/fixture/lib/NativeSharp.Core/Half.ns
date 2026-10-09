@@ -1,0 +1,18 @@
+namespace NativeSharp.Core.Numerics
+{
+    // IEEE 754 binary16. Bits is public so packed GPU and wire formats can preserve payloads.
+    public copy struct Half
+    {
+        public ushort Bits;
+
+        public static Half FromFloat(float value)
+        {
+            return default(Half);
+        }
+
+        public static float ToFloat(Half value)
+        {
+            return (float)0;
+        }
+    }
+}

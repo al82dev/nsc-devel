@@ -1,0 +1,7 @@
+{
+  "id": "nsc.stage39.method-bodies", "component": "projects", "kind": "project",
+  "project": "Stage39App.nsproj", "working_files": ["NativeRttiCasts.ns"],
+  "arguments": ["--dump-project-method-bodies", "{project}"], "optimization": "O0",
+  "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "runtime-type-bindings="}},
+  "timeout_seconds": 60, "tags": ["project", "legacy-parity", "o0-only"], "requires": []
+}

@@ -1,0 +1,22 @@
+namespace NativeSharp.Core.Numerics
+{
+    public copy struct Int64x4
+    {
+        public long X; public long Y; public long Z; public long W;
+
+        public static Int64x4 Add(Int64x4 left, Int64x4 right)
+        {
+            return default(Int64x4);
+        }
+
+        public static Int64x4 Subtract(Int64x4 left, Int64x4 right)
+        {
+            return default(Int64x4);
+        }
+
+        public static Int64x4 Multiply(Int64x4 left, Int64x4 right)
+        {
+            return default(Int64x4);
+        }
+    }
+}

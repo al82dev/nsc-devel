@@ -1,0 +1,73 @@
+{
+  "id": "nsc.cc1.generic-constraints",
+  "component": "sema",
+  "kind": "project",
+  "project": "fixture/tests/cc1/c44_constraints_genericos/c44_constraints_genericos.nsproj",
+  "working_files": [
+    "fixture/tests/cc1/c44_constraints_genericos/Main.ns",
+    "fixture/lib/NativeSharp.Core/Allocator.ns",
+    "fixture/lib/NativeSharp.Core/ArenaAllocator.ns",
+    "fixture/lib/NativeSharp.Core/Assertions.ns",
+    "fixture/lib/NativeSharp.Core/BinaryReader.ns",
+    "fixture/lib/NativeSharp.Core/BinaryWriter.ns",
+    "fixture/lib/NativeSharp.Core/BitOperations.ns",
+    "fixture/lib/NativeSharp.Core/BorrowedReference.ns",
+    "fixture/lib/NativeSharp.Core/ByteBuffer.ns",
+    "fixture/lib/NativeSharp.Core/Console.ns",
+    "fixture/lib/NativeSharp.Core/CString.ns",
+    "fixture/lib/NativeSharp.Core/DateTime.ns",
+    "fixture/lib/NativeSharp.Core/DeterministicMath.ns",
+    "fixture/lib/NativeSharp.Core/Environment.ns",
+    "fixture/lib/NativeSharp.Core/Exception.ns",
+    "fixture/lib/NativeSharp.Core/Float32x2.ns",
+    "fixture/lib/NativeSharp.Core/Float32x3.ns",
+    "fixture/lib/NativeSharp.Core/Float32x3x3.ns",
+    "fixture/lib/NativeSharp.Core/Float32x4.ns",
+    "fixture/lib/NativeSharp.Core/Float32x4x4.ns",
+    "fixture/lib/NativeSharp.Core/Float32x8.ns",
+    "fixture/lib/NativeSharp.Core/Float64x4.ns",
+    "fixture/lib/NativeSharp.Core/Half.ns",
+    "fixture/lib/NativeSharp.Core/HardwareIntrinsics.ns",
+    "fixture/lib/NativeSharp.Core/Int32x4.ns",
+    "fixture/lib/NativeSharp.Core/Int32x8.ns",
+    "fixture/lib/NativeSharp.Core/Int64x2.ns",
+    "fixture/lib/NativeSharp.Core/Int64x4.ns",
+    "fixture/lib/NativeSharp.Core/Lazy.ns",
+    "fixture/lib/NativeSharp.Core/MathUtil.ns",
+    "fixture/lib/NativeSharp.Core/NativeClock.ns",
+    "fixture/lib/NativeSharp.Core/NativeSharp.Core.nsproj",
+    "fixture/lib/NativeSharp.Core/Number.ns",
+    "fixture/lib/NativeSharp.Core/NumericLimits.ns",
+    "fixture/lib/NativeSharp.Core/Object.ns",
+    "fixture/lib/NativeSharp.Core/Optional.ns",
+    "fixture/lib/NativeSharp.Core/Random.ns",
+    "fixture/lib/NativeSharp.Core/Rgb10A2Unorm.ns",
+    "fixture/lib/NativeSharp.Core/Rgba8Unorm.ns",
+    "fixture/lib/NativeSharp.Core/Span.ns",
+    "fixture/lib/NativeSharp.Core/String.ns",
+    "fixture/lib/NativeSharp.Core/StringBuilder.ns",
+    "fixture/lib/NativeSharp.Core/StringView.ns",
+    "fixture/lib/NativeSharp.Core/TimeSpan.ns",
+    "fixture/lib/NativeSharp.Core/Utf8.ns"
+  ],
+  "arguments": [
+    "--check-project-generic-constraints",
+    "{project}"
+  ],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "regex",
+      "text": "project generic constraint check: ok \\(0 violations\\)"
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": [
+    "project",
+    "legacy-parity",
+    "o0-only",
+    "hermetic-closure"
+  ],
+  "requires": []
+}

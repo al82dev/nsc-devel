@@ -1,0 +1,25 @@
+{
+  "id": "nsc.stage30.project-oop-object",
+  "component": "llvm",
+  "kind": "project",
+  "project": "Stage30App.nsproj",
+  "working_files": ["A_Counter.ns", "B_Counter.ns"],
+  "arguments": [
+    "--emit-project-oop-obj",
+    "{project}",
+    "-O2",
+    "-o",
+    "{workspace}/stage30_example.obj"
+  ],
+  "optimization": "O2",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "regex",
+      "text": "project OOP object emission: ok.*machine=0x8664"
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": ["project", "legacy-parity", "fixed-profile"],
+  "requires": []
+}

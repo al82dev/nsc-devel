@@ -1,0 +1,7 @@
+{
+  "id": "nsc.stage33.inheritance-layout", "component": "projects", "kind": "project",
+  "project": "Stage33App.nsproj", "working_files": ["Inheritance.ns"],
+  "arguments": ["--check-project-layouts", "{project}"], "optimization": "O0",
+  "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "project object layout check: ok"}},
+  "timeout_seconds": 60, "tags": ["project", "legacy-parity", "o0-only"], "requires": []
+}

@@ -1,0 +1,23 @@
+namespace NativeSharp.Core.Numerics
+{
+    public copy struct Float32x2
+    {
+        public float X;
+        public float Y;
+
+        public static Float32x2 Add(Float32x2 left, Float32x2 right)
+        {
+            return default(Float32x2);
+        }
+
+        public static Float32x2 Subtract(Float32x2 left, Float32x2 right)
+        {
+            return default(Float32x2);
+        }
+
+        public static Float32x2 Multiply(Float32x2 left, Float32x2 right)
+        {
+            return default(Float32x2);
+        }
+    }
+}

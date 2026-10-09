@@ -1,0 +1,21 @@
+{
+  "id": "nsc.emit-exe-o2",
+  "component": "llvm",
+  "kind": "link-run",
+  "sources": ["llvm_optimization_features.ns"],
+  "arguments": [
+    "--emit-exe",
+    "{source:0}",
+    "-O2",
+    "-o",
+    "{workspace}/nativesharp_stage20_o2.exe"
+  ],
+  "optimization": "O2",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "regex", "text": "optimization: O2"}
+  },
+  "timeout_seconds": 60,
+  "tags": ["legacy-parity", "fixed-profile"],
+  "requires": ["nslink"]
+}

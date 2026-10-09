@@ -1,0 +1,30 @@
+namespace NativeSharp.Core.Numerics
+{
+    // Eight single-precision lanes in a stable sequential 32-byte carrier.
+    public copy struct Float32x8
+    {
+        public float X;
+        public float Y;
+        public float Z;
+        public float W;
+        public float A;
+        public float B;
+        public float C;
+        public float D;
+
+        public static Float32x8 Add(Float32x8 left, Float32x8 right)
+        {
+            return default(Float32x8);
+        }
+
+        public static Float32x8 Subtract(Float32x8 left, Float32x8 right)
+        {
+            return default(Float32x8);
+        }
+
+        public static Float32x8 Multiply(Float32x8 left, Float32x8 right)
+        {
+            return default(Float32x8);
+        }
+    }
+}

@@ -1,0 +1,380 @@
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.Span<T> / ReadOnlySpan<T> -- SHR-011 y SHR-012, Bloque 3.
+    //
+    // POR QUE EXISTEN. `<span>` aparece 25 veces en el compilador actual (doc 80 seccion 2). Es
+    // la tercera ausencia mas usada, detras de `string_view` y `optional`, y las tres son el
+    // mismo problema: referirse a un tramo de memoria de otro sin copiarlo y sin poseerlo.
+    //
+    // ------------------------------------------------------------------------------------------
+    // SON EL MISMO TIPO DOS VECES, Y ESO ES DELIBERADO.
+    //
+    // `Span<T>` y `ReadOnlySpan<T>` tienen exactamente los mismos dos campos y la misma
+    // aritmetica. La unica diferencia es que el indexador de uno tiene `set` y el del otro no.
+    // La alternativa era un solo tipo con un booleano `readOnly` comprobado en ejecucion, y es
+    // peor por dos razones que no son de gusto:
+    //
+    //   * el booleano cuesta un byte y una comparacion POR ESCRITURA, en el tipo cuyo proposito
+    //     entero es no costar nada;
+    //   * y sobre todo, mueve a EJECUCION una comprobacion que el sistema de tipos hace GRATIS
+    //     en compilacion. Un `ReadOnlySpan<T>` que no se puede escribir no falla al escribirse:
+    //     no compila.
+    //
+    // El precio es duplicar unas cuantas lineas. Se paga.
+    //
+    // ------------------------------------------------------------------------------------------
+    // AMBOS SON `borrowed struct` -- ver StringView.ns para la explicacion larga. En corto: el
+    // compilador rechaza devolver uno enraizado en un local, guardarlo en un campo, o capturarlo
+    // en un lambda. Sin esa marca los tres serian usos-despues-de-liberar silenciosos.
+    //
+    // LO QUE NO PROMETEN:
+    //   * NO comprueban que `T` case con lo que hay en la memoria apuntada. Un `Span<int>` sobre
+    //     bytes de otra cosa es exactamente igual de erroneo que un `int*` sobre lo mismo, y esta
+    //     capa no anade proteccion que el nivel crudo no tenga.
+    //   * NO liberan nada. Nunca. Ni siquiera el `Span` que envuelve un arreglo que alguien
+    //     olvido liberar.
+    //   * `CopyTo` NO se solapa con seguridad. Es una copia hacia delante; si el destino cae
+    //     dentro del origen y por detras, los datos se pisan. Para eso esta `CopyToOverlapping`.
+    public copy borrowed struct Span<T>
+    {
+        private T* start;
+        private int count;
+
+        public Span(T* data, int length)
+        {
+            start = data;
+            count = length;
+        }
+
+        public int Length()
+        {
+            return count;
+        }
+
+        public bool IsEmpty()
+        {
+            return count == 0;
+        }
+
+        public T* Data()
+        {
+            return start;
+        }
+
+        // El indexador es total para conservar compatibilidad con compiladores Language 3 que no
+        // publican contratos `throws` en accesores. Una lectura fuera de rango devuelve el valor
+        // por omision; una escritura fuera de rango no modifica memoria.
+        public T this[int index]
+        {
+            get
+            {
+                if (index < 0 || index >= count)
+                {
+                    return default(T);
+                }
+                return start[index];
+            }
+            set
+            {
+                if (index < 0 || index >= count)
+                {
+                    return;
+                }
+                start[index] = value;
+            }
+        }
+
+        public T UncheckedAt(int index)
+        {
+            return start[index];
+        }
+
+        public void UncheckedSet(int index, T value)
+        {
+            start[index] = value;
+        }
+
+        public Span<T> Slice(int start)
+        {
+            return Slice(start, count - start);
+        }
+
+        public Span<T> Slice(int start, int length)
+        {
+            int begin = start;
+            if (begin < 0) { begin = 0; }
+            if (begin > count) { begin = count; }
+            int available = count - begin;
+            int take = length;
+            if (take < 0) { take = 0; }
+            if (take > available) { take = available; }
+            if (take == 0)
+            {
+                return new Span<T>(null, 0);
+            }
+            return new Span<T>(this.start + begin, take);
+        }
+
+        public void Fill(T value)
+        {
+            int index = 0;
+            while (index < count)
+            {
+                start[index] = value;
+                index = index + 1;
+            }
+        }
+
+        // Devuelve cuantos elementos copio: el minimo de las dos longitudes. Devolver el conteo
+        // en vez de fallar cuando el destino es mas corto es lo que permite escribir un bucle de
+        // "vaciar en trozos" sin calcular el trozo dos veces.
+        public int CopyTo(Span<T> destination)
+        {
+            int limit = count;
+            if (destination.Length() < limit) { limit = destination.Length(); }
+            int index = 0;
+            while (index < limit)
+            {
+                destination.UncheckedSet(index, start[index]);
+                index = index + 1;
+            }
+            return limit;
+        }
+
+        // Para cuando origen y destino SI se solapan. Copia hacia atras si el destino va por
+        // delante del origen, que es el unico caso en que la copia hacia delante se pisa.
+        public int CopyToOverlapping(Span<T> destination)
+        {
+            int limit = count;
+            if (destination.Length() < limit) { limit = destination.Length(); }
+            if (destination.Data() > start)
+            {
+                int index = limit - 1;
+                while (index >= 0)
+                {
+                    destination.UncheckedSet(index, start[index]);
+                    index = index - 1;
+                }
+                return limit;
+            }
+            int forward = 0;
+            while (forward < limit)
+            {
+                destination.UncheckedSet(forward, start[forward]);
+                forward = forward + 1;
+            }
+            return limit;
+        }
+
+        // La conversion barata en la direccion segura: de escribible a solo lectura. La contraria
+        // no existe a proposito -- seria devolver permiso de escritura que nadie dio.
+        public ReadOnlySpan<T> AsReadOnly()
+        {
+            return new ReadOnlySpan<T>(start, count);
+        }
+    }
+
+    // La mitad de solo lectura. Todo lo que no escribe, escrito igual; nada de lo que escribe.
+    public copy borrowed struct ReadOnlySpan<T>
+    {
+        private T* start;
+        private int count;
+
+        public ReadOnlySpan(T* data, int length)
+        {
+            start = data;
+            count = length;
+        }
+
+        public int Length()
+        {
+            return count;
+        }
+
+        public bool IsEmpty()
+        {
+            return count == 0;
+        }
+
+        public T* Data()
+        {
+            return start;
+        }
+
+        public T this[int index]
+        {
+            get
+            {
+                if (index < 0 || index >= count)
+                {
+                    return default(T);
+                }
+                return start[index];
+            }
+        }
+
+        public T UncheckedAt(int index)
+        {
+            return start[index];
+        }
+
+        public ReadOnlySpan<T> Slice(int start)
+        {
+            return Slice(start, count - start);
+        }
+
+        public ReadOnlySpan<T> Slice(int start, int length)
+        {
+            int begin = start;
+            if (begin < 0) { begin = 0; }
+            if (begin > count) { begin = count; }
+            int available = count - begin;
+            int take = length;
+            if (take < 0) { take = 0; }
+            if (take > available) { take = available; }
+            if (take == 0)
+            {
+                return new ReadOnlySpan<T>(null, 0);
+            }
+            return new ReadOnlySpan<T>(this.start + begin, take);
+        }
+
+        public int CopyTo(Span<T> destination)
+        {
+            int limit = count;
+            if (destination.Length() < limit) { limit = destination.Length(); }
+            int index = 0;
+            while (index < limit)
+            {
+                destination.UncheckedSet(index, start[index]);
+                index = index + 1;
+            }
+            return limit;
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------
+    // LAS FABRICAS VIVEN AQUI, Y NO DENTRO DE Span<T>, POR UN HUECO DEL LENGUAJE. NO ES ESTILO.
+    //
+    // MEDIDO, con el frontend real: `Span<int>.Of(items)` NO PARSEA. Un miembro estatico de un
+    // tipo generico cerrado no se puede nombrar en una expresion; el parser lee `Span<int>` y
+    // se atraganta con el punto. La forma que SI funciona es un METODO generico sobre una clase
+    // no generica -- `Spans.Of<int>(items)` -- porque los argumentos de tipo de una LLAMADA si
+    // se parsean (el arbol ya los usa: `Identity<T>(value)`).
+    //
+    //     class Box<T> { public static Box<T> Make(T v) {...} }
+    //     Box<int> a = Box<int>.Make(1);      // "expected expression" / "expected ';'"
+    //     Box<int> b = Helper.Wrap<int>(1);   // compila
+    //
+    // Queda anotado como ID 131. NO se arregla aqui: cerrarlo pide que el modelo de nombres
+    // resuelva una instanciacion generica en posicion de EXPRESION y que el modelo generico la
+    // monomorfice desde ahi, que es trabajo del compilador y de otro bloque. Meterlo dentro del
+    // Bloque 3 seria arrastrar un cambio profundo del frontend detras de un tipo de biblioteca.
+    //
+    // Cuando ese ID se cierre, estas fabricas pueden mudarse a los structs sin tocar nada mas.
+    //
+    // Y UN SEGUNDO HUECO, encontrado al escribir esto y medido igual (ID 132): DOS METODOS
+    // GENERICOS CON EL MISMO NOMBRE Y LA MISMA ARIDAD DE TIPOS NO SE PODIAN SOBRECARGAR, aunque
+    // sus parametros fueran distintos. La identidad de una plantilla generica era nombre + numero
+    // de parametros de tipo, sin la lista de parametros:
+    //
+    //     duplicate generic template identity 'NativeSharp.Core.Spans.Of``1'
+    //
+    // ESE ID SE CERRO EL 2026-09-03: la identidad incluye ahora la cuenta de parametros de valor,
+    // asi que `Of<T>(T[])` y un `Of<T>(T[], int, int)` podrian convivir. El sitio donde el rodeo
+    // SI se deshizo es Algorithm.SortWith, que paso a ser una sobrecarga de Sort.
+    //
+    // AQUI EL NOMBRE SE QUEDA, y no por inercia: `OfRange` describe lo que hace mejor que un `Of`
+    // sobrecargado, y son 51 llamadas repartidas por la biblioteca y las fixtures. Renombrar
+    // seria mover cincuenta y una lineas para empeorar el nombre. Lo que si cambia es este
+    // comentario: decir que es un rodeo obligado, cuando ya no lo es, seria una deuda inventada.
+    public class Spans
+    {
+        public static Span<T> Empty<T>()
+        {
+            return new Span<T>(null, 0);
+        }
+
+        // Sobre un arreglo nativo. `&items[0]` es legal para un arreglo (no lo es para una
+        // cadena, y por eso StringView necesito una operacion nucleo y esto no).
+        //
+        // El arreglo vacio se atiende antes: `&items[0]` de un arreglo de longitud cero pide la
+        // direccion de un elemento que no existe, y la comprobacion de rango del lenguaje lo
+        // atrapa. Correctamente.
+        public static Span<T> Of<T>(T[] items)
+        {
+            if (items == null || items.Length == 0)
+            {
+                return new Span<T>(null, 0);
+            }
+            return new Span<T>(&items[0], items.Length);
+        }
+
+        public static Span<T> OfRange<T>(T[] items, int start, int length)
+        {
+            if (items == null)
+            {
+                return new Span<T>(null, 0);
+            }
+            int begin = start;
+            if (begin < 0) { begin = 0; }
+            if (begin > items.Length) { begin = items.Length; }
+            int available = items.Length - begin;
+            int take = length;
+            if (take < 0) { take = 0; }
+            if (take > available) { take = available; }
+            if (take == 0)
+            {
+                return new Span<T>(null, 0);
+            }
+            return new Span<T>(&items[begin], take);
+        }
+
+        // Sobre un bloque crudo -- `stackalloc`, `RawAlloc`, un puntero que vino de C. Es el
+        // constructor con nombre: no comprueba nada porque no hay nada que comprobar, la
+        // longitud es una afirmacion del que llama.
+        public static Span<T> OfRaw<T>(T* data, int length)
+        {
+            return new Span<T>(data, length);
+        }
+
+        public static ReadOnlySpan<T> ReadOnlyEmpty<T>()
+        {
+            return new ReadOnlySpan<T>(null, 0);
+        }
+
+        public static ReadOnlySpan<T> ReadOnlyOf<T>(T[] items)
+        {
+            if (items == null || items.Length == 0)
+            {
+                return new ReadOnlySpan<T>(null, 0);
+            }
+            return new ReadOnlySpan<T>(&items[0], items.Length);
+        }
+
+        public static ReadOnlySpan<T> ReadOnlyOfRange<T>(T[] items, int start, int length)
+        {
+            if (items == null)
+            {
+                return new ReadOnlySpan<T>(null, 0);
+            }
+            int begin = start;
+            if (begin < 0) { begin = 0; }
+            if (begin > items.Length) { begin = items.Length; }
+            int available = items.Length - begin;
+            int take = length;
+            if (take < 0) { take = 0; }
+            if (take > available) { take = available; }
+            if (take == 0)
+            {
+                return new ReadOnlySpan<T>(null, 0);
+            }
+            return new ReadOnlySpan<T>(&items[begin], take);
+        }
+
+        public static ReadOnlySpan<T> ReadOnlyOfRaw<T>(T* data, int length)
+        {
+            return new ReadOnlySpan<T>(data, length);
+        }
+    }
+}

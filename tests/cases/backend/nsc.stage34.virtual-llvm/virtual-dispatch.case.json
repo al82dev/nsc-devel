@@ -1,0 +1,7 @@
+{
+  "id": "nsc.stage34.virtual-dispatch", "component": "projects", "kind": "project",
+  "project": "Stage34App.nsproj", "working_files": ["InheritanceVirtual.ns"],
+  "arguments": ["--check-project-virtual-dispatch", "{project}"], "optimization": "O0",
+  "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "project virtual dispatch check: ok.*2 virtual methods"}},
+  "timeout_seconds": 60, "tags": ["project", "legacy-parity", "o0-only"], "requires": []
+}

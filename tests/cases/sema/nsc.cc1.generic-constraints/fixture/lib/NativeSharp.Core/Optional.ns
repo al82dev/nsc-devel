@@ -1,0 +1,146 @@
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.Optional<T> -- SHR-017, Bloque 3.
+    //
+    // POR QUE EXISTE. `<optional>` aparece 26 veces en el compilador actual (doc 80 seccion 2),
+    // la segunda ausencia mas usada de toda la biblioteca estandar de C++ en este arbol. Y el
+    // motivo es siempre el mismo: una funcion que puede no tener respuesta y cuyo tipo de
+    // respuesta no tiene ningun valor libre para significar "no hay".
+    //
+    // ------------------------------------------------------------------------------------------
+    // QUE PROBLEMA RESUELVE DE VERDAD, porque "es como el de C++" no es una razon.
+    //
+    // Hoy este arbol tiene tres formas de decir "no hay", y las tres mienten un poco:
+    //
+    //   * DEVOLVER UN CENTINELA -- `-1` de un IndexOf, `null` de un buscador. Funciona hasta que
+    //     el centinela es un valor legitimo. `Number.TryParseInt64` no puede devolver -1 para
+    //     "no es un numero" porque -1 ES un numero.
+    //   * DEVOLVER bool Y ESCRIBIR POR `out` -- lo que hace `Number`. Correcto, y es la forma que
+    //     `Number` seguira teniendo, pero obliga a declarar la variable antes, no compone (no se
+    //     puede pasar el resultado directo a otra llamada) y no se puede devolver.
+    //   * LANZAR -- caro, y convierte "no encontrado", que es un resultado normal, en un fallo.
+    //
+    // `Optional<T>` es la cuarta: el "no hay" viaja DENTRO del valor, con su tipo, sin reservar
+    // ningun valor de T, y se puede devolver, pasar y componer como cualquier otro valor.
+    //
+    // ------------------------------------------------------------------------------------------
+    // NO ES UNA VISTA, y por eso NO es `borrowed struct`. Guarda T por valor: dos campos, el
+    // payload y un booleano. Un T copy puede observarse con Value/ValueOr/UncheckedValue; un T
+    // move-only se extrae una sola vez con Take/TakeOr/UncheckedTake.
+    //
+    // LO QUE SI HEREDA de T: si T es una REFERENCIA a clase, el `Optional<T>` guarda esa
+    // referencia sin poseerla -- exactamente como la guardaria un campo normal. No alarga la vida
+    // de nada, no libera nada, y no hay destructor. Es el mismo contrato que un `T` suelto.
+    //
+    // Y UNA CONSECUENCIA MEDIDA, que conviene saber antes de tropezar: `Optional<StringView>` NO
+    // COMPILA, y esta bien que no lo haga. Al monomorfizar, el campo `value` pasa a tener tipo
+    // vista dentro de un agregado que no es una vista, y la regla del SHR-013 lo rechaza ahi
+    // mismo. Es el mismo motivo por el que C# prohibe un `ref struct` como argumento generico: el
+    // contenedor puede sobrevivir a lo prestado. Si hace falta "una vista o ninguna", una vista
+    // vacia (puntero nulo, longitud cero) ya lo dice.
+    public struct Optional<T>
+    {
+        private T value;
+        private bool present;
+
+        // El constructor de UN argumento es el caso "hay valor". El caso "no hay" es el
+        // constructor por defecto -- `new Optional<T>()` deja los dos campos a cero, y cero en
+        // `present` es exactamente `false`. No hay dos formas de estar vacio.
+        public Optional(T item)
+        {
+            value = move(item);
+            present = true;
+        }
+
+        public bool HasValue()
+        {
+            return present;
+        }
+
+        public bool IsEmpty()
+        {
+            return !present;
+        }
+
+        // LANZA si esta vacio, y eso es deliberado: leer el valor de un `Optional` vacio es un
+        // error del programa, no un resultado. La alternativa --devolver el T a cero-- convierte
+        // un error en un dato plausible, que es la clase de defecto que este tipo existe para
+        // eliminar. Quien no quiera la excepcion tiene `ValueOr`.
+        public T Value() throws InvalidOperationException
+        {
+            if (!present)
+            {
+                throw new InvalidOperationException();
+            }
+            return value;
+        }
+
+        // El valor, o el que se pase. Es la forma normal de consumirlo cuando hay un valor por
+        // defecto sensato, y no lanza nunca.
+        public T ValueOr(T fallback)
+        {
+            if (!present)
+            {
+                return fallback;
+            }
+            return value;
+        }
+
+        // SIN COMPROBAR, y con el nombre diciendolo -- misma disciplina que `UncheckedAt` en
+        // StringView/Span. Para el bucle que acaba de comprobar `HasValue()` y no quiere pagar
+        // la segunda comparacion. Si esta vacio, devuelve el T a cero: es basura con forma de
+        // dato, que es justo lo que `Value()` evita.
+        public T UncheckedValue()
+        {
+            return value;
+        }
+
+        // Extrae el payload, deja el Optional vacio y preserva el contrato move-only de T.
+        public T Take() throws InvalidOperationException
+        {
+            if (!present)
+            {
+                throw new InvalidOperationException();
+            }
+            present = false;
+            return move(value);
+        }
+
+        // Extrae el payload o consume el fallback. En ambos caminos el resultado tiene un solo
+        // propietario y el Optional queda vacio.
+        public T TakeOr(T fallback)
+        {
+            if (!present)
+            {
+                return move(fallback);
+            }
+            present = false;
+            return move(value);
+        }
+
+        // Variante sin comprobacion para quien ya verifico HasValue().
+        public T UncheckedTake()
+        {
+            present = false;
+            return move(value);
+        }
+    }
+
+    // Las fabricas, fuera del struct POR EL MISMO HUECO DEL LENGUAJE que documenta `Spans` en
+    // Span.ns: `Optional<int>.None()` no parsea (ID 131), `Optionals.None<int>()` si. Y los
+    // nombres no se repiten con aridad de tipos igual (ID 132).
+    public class Optionals
+    {
+        // La fabrica de conveniencia conserva semantica de copia. Los payloads move-only usan
+        // directamente el constructor y se consumen mediante Take.
+        public static Optional<T> Some<T>(T value) where T : copy
+        {
+            return new Optional<T>(value);
+        }
+
+        public static Optional<T> None<T>()
+        {
+            return new Optional<T>();
+        }
+    }
+}

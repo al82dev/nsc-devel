@@ -1,0 +1,189 @@
+// NSC-LIMIT-007 -- `where T : class, IComponente`.
+//
+// LO QUE FALLABA. El parser rechazaba `where` en CINCO sitios con «generic constraints are
+// deferred beyond Stage 44». No era una limitacion del modelo: era que no habia nada escrito. Y
+// cuatro de esos cinco rechazos estaban ademas en la POSICION GRAMATICAL EQUIVOCADA -- delante de
+// la lista de bases de una clase, delante de la lista de parametros de un metodo, de una funcion
+// y de un delegado-- asi que `class C<T> : Base where T : class` ni siquiera llegaba a leerse
+// como una clausula.
+//
+// CUATRO POSICIONES SE ADMITEN Y UNA SE RECHAZA. Clase, struct, metodo y delegado se materializan,
+// y por tanto su clausula se comprueba. Una FUNCION GLOBAL generica no: `isGenericMethodTemplateNode`
+// reconoce MethodDeclaration y nada mas, de modo que una `F<T>()` de namespace nunca produce una
+// especializacion. Aceptar alli la clausula habria dejado un `where` que NADIE comprueba --y el
+// autor lo lee como una garantia-- asi que el parser lo rechaza. Ese rechazo, con su mensaje,
+// vive en la suite de negativos.
+//
+// QUE HACE UN CONSTRAINT EN ESTE COMPILADOR, dicho sin adornos: NO habilita nada. Con
+// monomorfizacion, cuando el cuerpo se comprueba `T` ya es un tipo concreto y sus miembros se
+// resuelven solos -- `pieza.Peso()` de abajo compilaria igual sin la clausula. Lo que cambia es
+// DONDE falla el error: con constraint, en el sitio de instanciacion y nombrando el argumento;
+// sin el, dentro del cuerpo sustituido, apuntando a las tripas de la biblioteca.
+//
+// Esta fixture mide la mitad POSITIVA. La otra --que un argumento invalido se rechace, y con que
+// mensaje-- no cabe aqui: una fixture tiene que compilar entera. Vive en la suite de rechazos.
+//
+// LO QUE SE MIDE:
+//
+//   10   una clase generica con `class` + interfaz, con lista de bases delante. Es la posicion
+//        que estaba mal: la clausula va DESPUES de `: Base`.
+//   11   el cuerpo generico llama a un miembro de la INTERFAZ declarada en el constraint.
+//   12   un metodo generico con constraint, que es otra de las posiciones.
+//   13   constraint de CLASE BASE, que se satisface por derivacion.
+//   14   la IDENTIDAD cuenta: `where T : Base` lo satisface `Base` misma, no solo sus derivadas.
+//   15   una interfaz que EXTIENDE otra satisface el constraint de la extendida.
+//   16   un struct generico con `where`, que es la tercera posicion.
+//   17   un DELEGADO generico con `where`, que es la cuarta y la que faltaba por medir.
+//   18   `where T : class` satisfecho por un DELEGADO. Es tipo referencia, y la primera version
+//        de la comprobacion lo rechazaba por aceptar solo clase e interfaz.
+//   19   `where T : class` satisfecho por `string`.
+//   20   `where T : class` satisfecho por un ARREGLO.
+//   21   SOBRECARGAS: dos plantillas con el mismo nombre y la misma aridad GENERICA, una de las
+//        cuales no cumple su constraint para este argumento. Aqui las dos se distinguen por la
+//        CUENTA DE PARAMETROS --una y dos--, y la llamada trae un argumento, asi que la que
+//        incumple ni se materializa: su clausula no llega a comprobarse y su cuerpo no llega a
+//        analizarse. Medido en el volcado de genericos de este mismo programa: hay UNA
+//        especializacion de `Elegir`, no dos. La primera version del compilador si materializaba
+//        las dos y rechazaba el programa por una candidata que nadie eligio.
+//
+//        El caso HERMANO --dos candidatas con la MISMA cuenta de argumentos, que la cuenta no
+//        puede separar y que por tanto se materializan las dos-- no cabe aqui y vive en c46,
+//        codigo 16.
+//   42   todo correcto.
+using NativeSharp.Core;
+
+namespace c44constraintsgenericos
+{
+    public interface IComponente
+    {
+        int Peso();
+    }
+
+    public interface IPesado : IComponente
+    {
+        int Extra();
+    }
+
+    public class Base
+    {
+        public int Marca() { return 3; }
+    }
+
+    public class Pieza : Base, IComponente
+    {
+        public int Peso() { return 7; }
+    }
+
+    public class Bloque : Base, IPesado
+    {
+        public int Peso() { return 11; }
+        public int Extra() { return 1; }
+    }
+
+    // La posicion que estaba mal: DESPUES de `: Base`, antes del cuerpo.
+    public class Caja<T> : Base where T : class, IComponente
+    {
+        // El cuerpo llama a un miembro de la interfaz del constraint. Con monomorfizacion esto
+        // resuelve sobre el tipo concreto, no sobre la interfaz -- la clausula no lo habilita,
+        // lo documenta y lo verifica antes.
+        public int Medir(T pieza) { return pieza.Peso(); }
+    }
+
+    public class Derivada<T> where T : Base
+    {
+        public int Marcar(T valor) { return valor.Marca(); }
+    }
+
+    // Constraint sobre una interfaz que otra extiende.
+    public class Almacen<T> where T : IComponente
+    {
+        public int Pesar(T valor) { return valor.Peso(); }
+    }
+
+    // La tercera posicion: un struct generico.
+    public struct Envase<T> where T : class
+    {
+        public int Cero() { return 0; }
+    }
+
+    // La cuarta: un DELEGADO generico. Su clausula va despues de la lista de parametros, igual
+    // que la de un metodo, y su plantilla SI se materializa --GenericTemplateKind::Delegate--
+    // asi que la comprobacion la alcanza.
+    public delegate int Transformar<T>(T valor) where T : class, IComponente;
+
+    // `where T : class` sobre tipos referencia que NO son clase ni interfaz. Los tres existen en
+    // el lenguaje y los tres son referencias; que la comprobacion los admita es lo que hace que
+    // la clausula signifique lo que dice.
+    public class SoloReferencia<T> where T : class
+    {
+        public int Uno() { return 1; }
+    }
+
+    public class Program
+    {
+        // Metodo generico con constraint: despues de la lista de parametros.
+        private static int Sumar<T>(T pieza) where T : class, IComponente
+        {
+            return pieza.Peso();
+        }
+
+        private static int Aplicar(Pieza p) { return p.Peso(); }
+
+        // DOS PLANTILLAS, MISMO NOMBRE, MISMA ARIDAD GENERICA, DISTINTA CUENTA DE PARAMETROS.
+        // La segunda exige `IPesado`, que `Pieza` no implementa, y no pasa nada: la llamada de
+        // abajo trae UN argumento y el filtro de cuenta de argumentos deja fuera a la de dos. No
+        // se materializa, de modo que su clausula ni se comprueba. La primera version del
+        // compilador si la materializaba y rechazaba el programa por ella.
+        //
+        // Que aqui se materializa UNA sola no es una suposicion: el volcado de genericos de este
+        // programa tiene una unica especializacion de `Elegir`. Las que SI se materializan las
+        // dos --misma cuenta, tipos distintos-- estan en c46.
+        private static int Elegir<T>(T unica) where T : IComponente { return unica.Peso(); }
+        private static int Elegir<T>(T primera, T segunda) where T : IPesado { return 2; }
+
+        public static int Main()
+        {
+            Pieza p = new Pieza();
+            Bloque b = new Bloque();
+
+            Caja<Pieza> caja = new Caja<Pieza>();
+            if (caja.Marca() != 3) { return 10; }
+            if (caja.Medir(p) != 7) { return 11; }
+
+            if (Sumar<Pieza>(p) != 7) { return 12; }
+
+            Derivada<Pieza> derivada = new Derivada<Pieza>();
+            if (derivada.Marcar(p) != 3) { return 13; }
+
+            // `where T : Base` lo satisface `Base` misma.
+            Base raiz = new Base();
+            Derivada<Base> identidad = new Derivada<Base>();
+            if (identidad.Marcar(raiz) != 3) { return 14; }
+
+            // `IPesado` extiende `IComponente`, asi que `Bloque` satisface `where T : IComponente`.
+            Almacen<Bloque> almacen = new Almacen<Bloque>();
+            if (almacen.Pesar(b) != 11) { return 15; }
+
+            Envase<Pieza> envase;
+            if (envase.Cero() != 0) { return 16; }
+
+            Transformar<Pieza> transformar = Aplicar;
+            if (transformar(p) != 7) { return 17; }
+
+            // Un delegado ES un tipo referencia.
+            SoloReferencia<Transformar<Pieza>> porDelegado =
+                new SoloReferencia<Transformar<Pieza>>();
+            if (porDelegado.Uno() != 1) { return 18; }
+
+            SoloReferencia<string> porCadena = new SoloReferencia<string>();
+            if (porCadena.Uno() != 1) { return 19; }
+
+            SoloReferencia<int[]> porArreglo = new SoloReferencia<int[]>();
+            if (porArreglo.Uno() != 1) { return 20; }
+
+            if (Elegir<Pieza>(p) != 7) { return 21; }
+
+            return 42;
+        }
+    }
+}

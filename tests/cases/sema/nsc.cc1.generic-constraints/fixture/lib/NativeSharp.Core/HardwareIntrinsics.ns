@@ -1,0 +1,9 @@
+namespace NativeSharp.Core.Runtime.CompilerServices
+{
+    public class HardwareIntrinsics
+    {
+        public static void PrefetchRead(void* address) { }
+        public static void Pause() { }
+        public static ulong ReadTimestamp() { return 0ul; }
+    }
+}

@@ -1,0 +1,8 @@
+{
+  "id": "nsc.stage39.object", "component": "llvm", "kind": "project",
+  "project": "Stage39App.nsproj", "working_files": ["NativeRttiCasts.ns"],
+  "arguments": ["--emit-project-oop-obj", "{project}", "-O2", "-o", "{workspace}/stage39_example.obj"],
+  "optimization": "O2",
+  "expected": {"exit_code": 0, "stdout": {"mode": "regex", "text": "project OOP object emission: ok.*machine=0x8664"}},
+  "timeout_seconds": 60, "tags": ["project", "legacy-parity", "fixed-profile"], "requires": []
+}

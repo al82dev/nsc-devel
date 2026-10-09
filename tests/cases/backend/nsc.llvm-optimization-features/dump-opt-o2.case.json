@@ -1,0 +1,15 @@
+{
+  "id": "nsc.dump-llvm-opt-o2",
+  "component": "llvm",
+  "kind": "dump",
+  "sources": ["llvm_optimization_features.ns"],
+  "arguments": ["--dump-llvm-opt", "{source:0}", "-O2"],
+  "optimization": "O2",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "regex", "text": "ret i32 40"}
+  },
+  "timeout_seconds": 60,
+  "tags": ["legacy-parity", "fixed-profile"],
+  "requires": []
+}

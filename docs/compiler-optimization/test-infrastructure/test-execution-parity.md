@@ -3,11 +3,11 @@
 ## Resultado
 
 - Inventario histórico: **684**.
-- Con ruta ejecutable única: **599**.
+- Con ruta ejecutable única: **642**.
 - Registradas pero bloqueadas: **41**.
 - Con más de una ruta: **1**.
-- Sin ruta ejecutable: **43**.
-- Con destino final correcto y ejecutable: **161**.
+- Sin ruta ejecutable: **0**.
+- Con destino final correcto y ejecutable: **204**.
 - En capa transitoria incorrecta: **438**.
 - Gate de paridad: **FAILED**.
 
@@ -86,7 +86,6 @@
 | `nsc.cc1.correctness.cc1-c70-ns3-operator-traits` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c8-loop-catch-switch` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
 | `nsc.cc1.correctness.cc1-c9-sizeof` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1CorrectnessTests.cpp` |
-| `nsc.cc1.generic-constraints` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/cc1/c44_constraints_genericos/c44_constraints_genericos.nsproj` |
 | `nsc.cc1.integer-evaluator` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Cc1IntegerEvaluatorTests.cpp` |
 | `nsc.cfg` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/CfgTests.cpp` |
 | `nsc.class-declarations` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/ClassDeclarationTests.cpp` |
@@ -105,20 +104,10 @@
 | `nsc.dominance` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/DominanceTests.cpp` |
 | `nsc.dominance-verifier` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/DominanceVerifierTests.cpp` |
 | `nsc.driver` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/DriverTests.cpp` |
-| `nsc.dump-llvm-opt-o2` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/llvm_optimization_features.ns` |
-| `nsc.dump-llvm-raw-with-o2` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/llvm_optimization_features.ns` |
-| `nsc.dump-opt` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/pass_features.ns` |
-| `nsc.dump-pass-pipeline` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/pass_features.ns` |
-| `nsc.dump-symbols` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/full_frontend.ns` |
-| `nsc.emit-exe-o2` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/llvm_optimization_features.ns` |
 | `nsc.frontend-robustness` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/FrontendRobustnessTests.cpp` |
 | `nsc.hir` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/HirTests.cpp` |
 | `nsc.integrated-assembly.grammar` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/IntegratedAssemblyGrammarTests.cpp` |
 | `nsc.integrated-assembly.mir` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/IntegratedAssemblyMirTests.cpp` |
-| `nsc.integration.full` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/full_frontend.ns` |
-| `nsc.integration.library-check` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/library_unit.ns` |
-| `nsc.integration.memory-types` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/memory_types.ns` |
-| `nsc.integration.pass-features` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/pass_features.ns` |
 | `nsc.item308.volatile-mmio` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item308VolatileMmioTests.cpp` |
 | `nsc.item309.atomic-int64` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item309AtomicInt64Tests.cpp` |
 | `nsc.item310.atomic-pointer` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Item310AtomicPointerTests.cpp` |
@@ -230,7 +219,6 @@
 | `nsc.llvm-codegen` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/LlvmCodeGenerationTests.cpp` |
 | `nsc.llvm-lowering` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/LlvmLoweringTests.cpp` |
 | `nsc.llvm-optimization` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/LlvmOptimizationTests.cpp` |
-| `nsc.llvm-pipeline-o2` | UNMAPPED | TARGET_UNMAPPED | manifest | `A:\native-sharp-3.0-baseline\bin\nsc.exe` |
 | `nsc.macro-a-oop` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/MacroAOopTests.cpp` |
 | `nsc.mir` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/MirTests.cpp` |
 | `nsc.mir-verifier` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/MirVerifierTests.cpp` |
@@ -418,46 +406,17 @@
 | `nsc.source-manager` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/SourceManagerTests.cpp` |
 | `nsc.ssa` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/SsaTests.cpp` |
 | `nsc.ssa-verifier` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/SsaVerifierTests.cpp` |
-| `nsc.stage30.project-oop-object` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage30/App/Stage30App.nsproj` |
-| `nsc.stage31.generalized-receivers` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage31/App/Stage31App.nsproj` |
-| `nsc.stage31.receiver-dump` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage31/App/Stage31App.nsproj` |
-| `nsc.stage32.inheritance-graph` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage32/App/Stage32App.nsproj` |
-| `nsc.stage33.constructor-chaining` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage33/App/Stage33App.nsproj` |
-| `nsc.stage33.inheritance-layout` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage33/App/Stage33App.nsproj` |
-| `nsc.stage34.virtual-dispatch` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage34/App/Stage34App.nsproj` |
-| `nsc.stage34.virtual-object` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage34/App/Stage34App.nsproj` |
-| `nsc.stage35-recovery.destruction` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage35_recovery/App/Stage35RecoveryApp.nsproj` |
-| `nsc.stage35-recovery.object` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage35_recovery/App/Stage35RecoveryApp.nsproj` |
 | `nsc.stage35.recovery` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage35RecoveryTests.cpp` |
-| `nsc.stage36-recovery.interface-dump` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj` |
-| `nsc.stage36-recovery.interfaces` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj` |
-| `nsc.stage36-recovery.object` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj` |
 | `nsc.stage36.recovery` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage36RecoveryTests.cpp` |
-| `nsc.stage37.method-bodies` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage37/App/Stage37App.nsproj` |
-| `nsc.stage37.object` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage37/App/Stage37App.nsproj` |
 | `nsc.stage37.static-initialization` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage37StaticInitializationTests.cpp` |
-| `nsc.stage38.interface-dispatch` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage38/App/Stage38App.nsproj` |
-| `nsc.stage38.method-bodies` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage38/App/Stage38App.nsproj` |
-| `nsc.stage38.object` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage38/App/Stage38App.nsproj` |
 | `nsc.stage38.properties-indexers-operators` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage38PropertiesIndexersOperatorsTests.cpp` |
-| `nsc.stage39.method-bodies` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage39/App/Stage39App.nsproj` |
-| `nsc.stage39.object` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage39/App/Stage39App.nsproj` |
 | `nsc.stage39.rtti-casts` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage39RttiCastsTests.cpp` |
 | `nsc.stage40-2.aggregate-abi-execution` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage40_2AggregateAbiExecutionTests.cpp` |
-| `nsc.stage40.layouts` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage40/App/Stage40App.nsproj` |
-| `nsc.stage40.members` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage40/App/Stage40App.nsproj` |
-| `nsc.stage40.object` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage40/App/Stage40App.nsproj` |
 | `nsc.stage40.struct-value-abi` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage40StructValueAbiTests.cpp` |
 | `nsc.stage41.arrays-strings-core` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage41ArraysStringsCoreTests.cpp` |
 | `nsc.stage42.delegates-events` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage42DelegatesEventsTests.cpp` |
-| `nsc.stage42.method-bodies` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage42/App/Stage42App.nsproj` |
-| `nsc.stage42.object` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage42/App/Stage42App.nsproj` |
 | `nsc.stage43.lambdas-closures` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage43LambdasClosuresTests.cpp` |
-| `nsc.stage43.method-bodies` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage43/App/Stage43App.nsproj` |
-| `nsc.stage43.object` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage43/App/Stage43App.nsproj` |
-| `nsc.stage44.generics` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage44/App/Stage44App.nsproj` |
 | `nsc.stage44.generics-monomorphization` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage44GenericsMonomorphizationTests.cpp` |
-| `nsc.stage44.object` | UNMAPPED | TARGET_UNMAPPED | manifest | `examples/project_stage44/App/Stage44App.nsproj` |
 | `nsc.stage45-10.eh-raii-reuse-after-catch` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage45_10EhRaiiReuseAfterCatchTests.cpp` |
 | `nsc.stage45-11.eh-cleanup-execution` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage45_11EhCleanupExecutionTests.cpp` |
 | `nsc.stage45.cleanup-scopes` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage45CleanupScopeTests.cpp` |
@@ -535,6 +494,4 @@
 | `nsc.stage67.e11-lambda-execution` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage67E11LambdaExecutionTests.cpp` |
 | `nsc.stage68.simd` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/Stage68SimdTests.cpp` |
 | `nsc.target-data-layout` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/TargetDataLayoutTests.cpp` |
-| `nsc.verify-llvm-opt-o3` | UNMAPPED | TARGET_UNMAPPED | manifest | `tests/integration/valid/llvm_features.ns` |
-| `nsc.version` | UNMAPPED | TARGET_UNMAPPED | manifest | `A:\native-sharp-3.0-baseline\bin\nsc.exe` |
 | `nsc.windows-linker` | RUNNABLE | TRANSITIONAL_WRONG_LAYER | manifest | `tests/unit/WindowsLinkerTests.cpp` |

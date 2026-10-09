@@ -1,0 +1,15 @@
+{
+  "id": "nsc.dump-symbols",
+  "component": "sema",
+  "kind": "dump",
+  "sources": ["full_frontend.ns"],
+  "arguments": ["--dump-symbols", "{source:0}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "regex", "text": "Function Main.*defined"}
+  },
+  "timeout_seconds": 60,
+  "tags": ["legacy-parity", "o0-only"],
+  "requires": []
+}

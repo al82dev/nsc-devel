@@ -1,0 +1,19 @@
+{
+  "id": "nsc.stage32.inheritance-graph",
+  "component": "projects",
+  "kind": "project",
+  "project": "Stage32App.nsproj",
+  "working_files": ["InheritanceGraph.ns"],
+  "arguments": ["--check-project-inheritance", "{project}"],
+  "optimization": "O0",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {
+      "mode": "regex",
+      "text": "project inheritance check: ok.*4 classes.*3 base edges"
+    }
+  },
+  "timeout_seconds": 60,
+  "tags": ["project", "legacy-parity", "o0-only"],
+  "requires": []
+}

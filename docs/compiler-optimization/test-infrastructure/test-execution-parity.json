@@ -1,6 +1,6 @@
 {
   "catalog_counts": {
-    "manifest": 76,
+    "manifest": 119,
     "specialized": 69,
     "unit": 498
   },
@@ -12,13 +12,13 @@
     "blocked": 41,
     "gate_passed": 0,
     "legacy_total": 684,
-    "runnable": 599,
+    "runnable": 642,
     "target_ambiguous": 1,
     "target_blocked": 41,
-    "target_runnable": 161,
-    "target_unmapped": 43,
+    "target_runnable": 204,
+    "target_unmapped": 0,
     "transitional_wrong_layer": 438,
-    "unmapped": 43
+    "unmapped": 0
   },
   "tests": [
     {
@@ -1607,13 +1607,20 @@
     {
       "ctest_id": "nsc.cc1.generic-constraints",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/cc1/c44_constraints_genericos/c44_constraints_genericos.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/sema/nsc.cc1.generic-constraints/case.json",
+          "identifier": "nsc.cc1.generic-constraints",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "sema"
     },
     {
@@ -2353,13 +2360,20 @@
     {
       "ctest_id": "nsc.dump-llvm-opt-o2",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/integration/valid/llvm_optimization_features.ns",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.llvm-optimization-features/dump-opt-o2.case.json",
+          "identifier": "nsc.dump-llvm-opt-o2",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "llvm"
     },
     {
@@ -2386,13 +2400,20 @@
     {
       "ctest_id": "nsc.dump-llvm-raw-with-o2",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/integration/valid/llvm_optimization_features.ns",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.llvm-optimization-features/dump-raw-o2.case.json",
+          "identifier": "nsc.dump-llvm-raw-with-o2",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "llvm"
     },
     {
@@ -2457,29 +2478,43 @@
     {
       "ctest_id": "nsc.dump-opt",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/integration/valid/pass_features.ns",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/ir/pass-features/dump-opt.case.json",
+          "identifier": "nsc.dump-opt",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
       "ctest_id": "nsc.dump-pass-pipeline",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/integration/valid/pass_features.ns",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/ir/pass-features/dump-pass-pipeline.case.json",
+          "identifier": "nsc.dump-pass-pipeline",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -2527,15 +2562,22 @@
     {
       "ctest_id": "nsc.dump-symbols",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/integration/valid/full_frontend.ns",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/ir/full-frontend/dump-symbols.case.json",
+          "identifier": "nsc.dump-symbols",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -2583,13 +2625,20 @@
     {
       "ctest_id": "nsc.emit-exe-o2",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/integration/valid/llvm_optimization_features.ns",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.llvm-optimization-features/emit-exe-o2.case.json",
+          "identifier": "nsc.emit-exe-o2",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "llvm"
     },
     {
@@ -2760,15 +2809,22 @@
     {
       "ctest_id": "nsc.integration.full",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/integration/valid/full_frontend.ns",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/ir/full-frontend/integration-full.case.json",
+          "identifier": "nsc.integration.full",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -2793,25 +2849,39 @@
     {
       "ctest_id": "nsc.integration.library-check",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/integration/valid/library_unit.ns",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/diagnostics/nsc.invalid.program-missing-main/integration-library-check.case.json",
+          "identifier": "nsc.integration.library-check",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
       "ctest_id": "nsc.integration.memory-types",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/integration/valid/memory_types.ns",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/sema/nsc.integration.memory-types/case.json",
+          "identifier": "nsc.integration.memory-types",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -2838,15 +2908,22 @@
     {
       "ctest_id": "nsc.integration.pass-features",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [
         "explicit-failure-exit"
       ],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/integration/valid/pass_features.ns",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/ir/pass-features/integration.case.json",
+          "identifier": "nsc.integration.pass-features",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -5697,13 +5774,20 @@
     {
       "ctest_id": "nsc.llvm-pipeline-o2",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "A:\\native-sharp-3.0-baseline\\bin\\nsc.exe",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.llvm-pipeline-o2/case.json",
+          "identifier": "nsc.llvm-pipeline-o2",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "llvm"
     },
     {
@@ -11077,73 +11161,115 @@
     {
       "ctest_id": "nsc.stage30.project-oop-object",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage30/App/Stage30App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage30.project-oop-llvm/project-oop-object.case.json",
+          "identifier": "nsc.stage30.project-oop-object",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "project"
     },
     {
       "ctest_id": "nsc.stage31.generalized-receivers",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage31/App/Stage31App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/projects/nsc.stage31.receivers/generalized-receivers.case.json",
+          "identifier": "nsc.stage31.generalized-receivers",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
       "ctest_id": "nsc.stage31.receiver-dump",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage31/App/Stage31App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/projects/nsc.stage31.receivers/receiver-dump.case.json",
+          "identifier": "nsc.stage31.receiver-dump",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
       "ctest_id": "nsc.stage32.inheritance-graph",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage32/App/Stage32App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/projects/nsc.stage32.inheritance/case.json",
+          "identifier": "nsc.stage32.inheritance-graph",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
       "ctest_id": "nsc.stage33.constructor-chaining",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage33/App/Stage33App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage33.inheritance-llvm/constructor-chaining.case.json",
+          "identifier": "nsc.stage33.constructor-chaining",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "parser"
     },
     {
       "ctest_id": "nsc.stage33.inheritance-layout",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage33/App/Stage33App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage33.inheritance-llvm/inheritance-layout.case.json",
+          "identifier": "nsc.stage33.inheritance-layout",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11168,13 +11294,20 @@
     {
       "ctest_id": "nsc.stage34.virtual-dispatch",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage34/App/Stage34App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage34.virtual-llvm/virtual-dispatch.case.json",
+          "identifier": "nsc.stage34.virtual-dispatch",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11199,25 +11332,39 @@
     {
       "ctest_id": "nsc.stage34.virtual-object",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage34/App/Stage34App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage34.virtual-llvm/virtual-object.case.json",
+          "identifier": "nsc.stage34.virtual-object",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
       "ctest_id": "nsc.stage35-recovery.destruction",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage35_recovery/App/Stage35RecoveryApp.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage35-recovery.llvm/destruction.case.json",
+          "identifier": "nsc.stage35-recovery.destruction",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "diagnostics"
     },
     {
@@ -11261,13 +11408,20 @@
     {
       "ctest_id": "nsc.stage35-recovery.object",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage35_recovery/App/Stage35RecoveryApp.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage35-recovery.llvm/object.case.json",
+          "identifier": "nsc.stage35-recovery.object",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "diagnostics"
     },
     {
@@ -11295,25 +11449,39 @@
     {
       "ctest_id": "nsc.stage36-recovery.interface-dump",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage36-recovery.llvm/interface-dump.case.json",
+          "identifier": "nsc.stage36-recovery.interface-dump",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "diagnostics"
     },
     {
       "ctest_id": "nsc.stage36-recovery.interfaces",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage36-recovery.llvm/interfaces.case.json",
+          "identifier": "nsc.stage36-recovery.interfaces",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "diagnostics"
     },
     {
@@ -11357,13 +11525,20 @@
     {
       "ctest_id": "nsc.stage36-recovery.object",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage36-recovery.llvm/object.case.json",
+          "identifier": "nsc.stage36-recovery.object",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "diagnostics"
     },
     {
@@ -11410,13 +11585,20 @@
     {
       "ctest_id": "nsc.stage37.method-bodies",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage37/App/Stage37App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage37.llvm/method-bodies.case.json",
+          "identifier": "nsc.stage37.method-bodies",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11441,13 +11623,20 @@
     {
       "ctest_id": "nsc.stage37.object",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage37/App/Stage37App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage37.llvm/object.case.json",
+          "identifier": "nsc.stage37.object",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11475,13 +11664,20 @@
     {
       "ctest_id": "nsc.stage38.interface-dispatch",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage38/App/Stage38App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage38.llvm/interface-dispatch.case.json",
+          "identifier": "nsc.stage38.interface-dispatch",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11506,13 +11702,20 @@
     {
       "ctest_id": "nsc.stage38.method-bodies",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage38/App/Stage38App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage38.llvm/method-bodies.case.json",
+          "identifier": "nsc.stage38.method-bodies",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11537,13 +11740,20 @@
     {
       "ctest_id": "nsc.stage38.object",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage38/App/Stage38App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage38.llvm/object.case.json",
+          "identifier": "nsc.stage38.object",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11609,13 +11819,20 @@
     {
       "ctest_id": "nsc.stage39.method-bodies",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage39/App/Stage39App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage39.llvm/method-bodies.case.json",
+          "identifier": "nsc.stage39.method-bodies",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11640,13 +11857,20 @@
     {
       "ctest_id": "nsc.stage39.object",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage39/App/Stage39App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage39.llvm/object.case.json",
+          "identifier": "nsc.stage39.object",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11715,13 +11939,20 @@
     {
       "ctest_id": "nsc.stage40.layouts",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage40/App/Stage40App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage40.llvm/layouts.case.json",
+          "identifier": "nsc.stage40.layouts",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11746,13 +11977,20 @@
     {
       "ctest_id": "nsc.stage40.members",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage40/App/Stage40App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage40.llvm/members.case.json",
+          "identifier": "nsc.stage40.members",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11777,13 +12015,20 @@
     {
       "ctest_id": "nsc.stage40.object",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage40/App/Stage40App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage40.llvm/object.case.json",
+          "identifier": "nsc.stage40.object",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11890,13 +12135,20 @@
     {
       "ctest_id": "nsc.stage42.method-bodies",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage42/App/Stage42App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage42.llvm/method-bodies.case.json",
+          "identifier": "nsc.stage42.method-bodies",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11921,13 +12173,20 @@
     {
       "ctest_id": "nsc.stage42.object",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage42/App/Stage42App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage42.llvm/object.case.json",
+          "identifier": "nsc.stage42.object",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -11993,13 +12252,20 @@
     {
       "ctest_id": "nsc.stage43.method-bodies",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage43/App/Stage43App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage43.llvm/method-bodies.case.json",
+          "identifier": "nsc.stage43.method-bodies",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -12024,25 +12290,39 @@
     {
       "ctest_id": "nsc.stage43.object",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage43/App/Stage43App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage43.llvm/object.case.json",
+          "identifier": "nsc.stage43.object",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
       "ctest_id": "nsc.stage44.generics",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage44/App/Stage44App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage44.llvm/generics.case.json",
+          "identifier": "nsc.stage44.generics",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "sema"
     },
     {
@@ -12127,13 +12407,20 @@
     {
       "ctest_id": "nsc.stage44.object",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "examples/project_stage44/App/Stage44App.nsproj",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.stage44.llvm/object.case.json",
+          "identifier": "nsc.stage44.object",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -13988,13 +14275,20 @@
     {
       "ctest_id": "nsc.verify-llvm-opt-o3",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "tests/integration/valid/llvm_features.ns",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/backend/nsc.verify-llvm-features/verify-opt-o3.case.json",
+          "identifier": "nsc.verify-llvm-opt-o3",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "llvm"
     },
     {
@@ -14082,13 +14376,20 @@
     {
       "ctest_id": "nsc.version",
       "destination": "MIGRATE_NS_FIXTURE",
-      "execution_state": "UNMAPPED",
+      "execution_state": "RUNNABLE",
       "expectation_contract": "CTest observes the NSC process exit contract and configured properties",
       "expectation_signals": [],
       "expected_layer": "manifest",
-      "migration_state": "TARGET_UNMAPPED",
+      "migration_state": "TARGET_RUNNABLE",
       "owner_path": "A:\\native-sharp-3.0-baseline\\bin\\nsc.exe",
-      "paths": [],
+      "paths": [
+        {
+          "detail": "A:/nsc-devel/tests/cases/driver/nsc.version/case.json",
+          "identifier": "nsc.version",
+          "layer": "manifest",
+          "runnable": true
+        }
+      ],
       "primary_component": "infrastructure"
     },
     {
@@ -14156,5 +14457,5 @@
     }
   ],
   "unit_executable": "A:/nsc-devel/build-test-v2/tests/nsc_unit_tests.exe",
-  "unit_executable_sha256": "102a2379236fc31e7c3d0f235666c6961a854ffb17666a0ca1cd23eba886d9af"
+  "unit_executable_sha256": "7b7bfff56eb83ae6c5fa5310cad2407464bdc7d5e9957f58ba4337a63df687c9"
 }

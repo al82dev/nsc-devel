@@ -1,0 +1,15 @@
+{
+  "id": "nsc.verify-llvm-opt-o3",
+  "component": "llvm",
+  "kind": "dump",
+  "sources": ["llvm_features.ns"],
+  "arguments": ["--verify-llvm-opt", "{source:0}", "-O3"],
+  "optimization": "O3",
+  "expected": {
+    "exit_code": 0,
+    "stdout": {"mode": "regex", "text": "LLVM optimization verification: ok"}
+  },
+  "timeout_seconds": 60,
+  "tags": ["legacy-parity", "fixed-profile"],
+  "requires": []
+}

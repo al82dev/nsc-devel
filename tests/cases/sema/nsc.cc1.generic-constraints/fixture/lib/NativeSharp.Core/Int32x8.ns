@@ -1,0 +1,23 @@
+namespace NativeSharp.Core.Numerics
+{
+    public copy struct Int32x8
+    {
+        public int X; public int Y; public int Z; public int W;
+        public int A; public int B; public int C; public int D;
+
+        public static Int32x8 Add(Int32x8 left, Int32x8 right)
+        {
+            return default(Int32x8);
+        }
+
+        public static Int32x8 Subtract(Int32x8 left, Int32x8 right)
+        {
+            return default(Int32x8);
+        }
+
+        public static Int32x8 Multiply(Int32x8 left, Int32x8 right)
+        {
+            return default(Int32x8);
+        }
+    }
+}

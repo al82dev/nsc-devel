@@ -1,0 +1,12 @@
+{
+  "id": "nsc.integration.full",
+  "component": "frontend",
+  "kind": "compile-only",
+  "sources": ["full_frontend.ns"],
+  "arguments": ["--check", "{source:0}"],
+  "optimization": "O0",
+  "expected": {"exit_code": 0},
+  "timeout_seconds": 60,
+  "tags": ["legacy-parity", "o0-only"],
+  "requires": []
+}
