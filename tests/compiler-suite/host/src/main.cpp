@@ -159,6 +159,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerLanguageCoroutinePlanningModule(registry);
         nsc::suite::registerLanguageConcurrencyModule(registry);
         nsc::suite::registerLanguageLifetimeModule(registry);
+        nsc::suite::registerLanguageErrorSemanticsModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

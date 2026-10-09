@@ -115,4 +115,5 @@ void registerLanguageCompatibilitySemanticsModule(TestRegistry& registry);
 void registerLanguageCoroutinePlanningModule(TestRegistry& registry);
 void registerLanguageConcurrencyModule(TestRegistry& registry);
 void registerLanguageLifetimeModule(TestRegistry& registry);
+void registerLanguageErrorSemanticsModule(TestRegistry& registry);
 }
