@@ -4539,9 +4539,9 @@
     "lines": "396",
     "sha256": "450cfb7b519b45da82c859c987ee28c1cd197aa8076768a7db7e1fd62530a7d8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-PARSER-AUDIT.md",
+    "section": "Host.Parser",
     "notes": ""
   },
   {
@@ -12264,9 +12264,9 @@
     "lines": "14066",
     "sha256": "1fba329ad197b95c397a369894ef400ad259f5252e762bc19ddeb9052d6043f7",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-PARSER-AUDIT.md",
+    "section": "Host.Parser",
     "notes": ""
   },
   {

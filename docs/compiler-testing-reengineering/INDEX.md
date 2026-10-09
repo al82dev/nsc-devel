@@ -25,6 +25,9 @@
 - [Host.Lexer](components/HOST-LEXER.md)
   - [Test plan](test-plans/HOST-LEXER-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-04-HOST-LEXER-AUDIT.md)
+- [Host.Parser](components/HOST-PARSER.md)
+  - [Test plan](test-plans/HOST-PARSER-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-04-HOST-PARSER-AUDIT.md)
 
 ## Artefactos mecánicos
 

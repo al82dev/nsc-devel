@@ -4,30 +4,30 @@
   "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
   "batch": 4,
   "status": "in_progress",
-  "last_completed_artifact": "audits/TANDA-04-HOST-LEXER-AUDIT.md",
-  "last_completed_item": "TL-LEX-110",
-  "next_item": "PF-000303",
-  "next_action": "consolidate_and_independently_audit_host_parser",
+  "last_completed_artifact": "audits/TANDA-04-HOST-PARSER-AUDIT.md",
+  "last_completed_item": "TP-PAR-536",
+  "next_item": "PF-000079",
+  "next_action": "read_consolidate_and_independently_audit_host_ast",
   "production_files": {
     "inventoried": 974,
     "inventory_verified": 974,
-    "semantically_read": 33,
-    "classified": 33,
-    "consolidated": 33,
-    "contrasted": 33,
-    "audited": 33,
+    "semantically_read": 35,
+    "classified": 35,
+    "consolidated": 35,
+    "contrasted": 35,
+    "audited": 35,
     "omitted": 0,
     "unknown": 0
   },
   "components": {
     "inventoried": 57,
-    "reviewed": 4,
-    "reconstructible": 4,
+    "reviewed": 5,
+    "reconstructible": 5,
     "blocked": 0
   },
   "symbols": {
-    "inventoried": 177,
-    "reviewed": 177,
+    "inventoried": 351,
+    "reviewed": 351,
     "untreated": 0
   },
   "tests": {
@@ -37,12 +37,12 @@
     "tests_executed": 0
   },
   "manifests": {
-    "production_files_sha256": "d591bcafd4570e0f428b0c478c325b27c5d34be3f7040660bd1fa0baece56f78",
-    "historical_tests_sha256": "fba06c64f0b3d83b517edd43756ebbeb8227699adaf55eb07c870f03686267",
-    "document_coverage_sha256": "641ffed757e7848e62cdd35acf6146e87d42f7f971a443e60c0c2c01b48ea57d",
-    "symbols_sha256": "730d2011840c4bf88362a8fb598525a62c7c37ec4ea8836b522eb1fa52a44ac3",
-    "contracts_sha256": "55848a540e419c71875a9d250d3fabee3583e9c2897108ca6ad175d4cefb4b75",
-    "test_case_design_sha256": "a279f374192ded92fc4218716aacc30ee7de97bee8938a5772c843b2f91af80e"
+    "production_files_sha256": "a7c9240de951d71fb91b869049d1f004f44af65f79f6ad02aef9c9c31b12120b",
+    "historical_tests_sha256": "fba06c64f0b3d83b517edd43756ebbebeb8227699adaf55eb07c870f03686267",
+    "document_coverage_sha256": "6272113b44c1a4f01b39abbf8831a8fac7884fcd22b832025d679e224954eb3f",
+    "symbols_sha256": "3944adf485d42e6ea79696436ec489e7c610da8eb479cb8ea2886f224e28ae9c",
+    "contracts_sha256": "99003529212ef4ec25412f3377df431d015115478849a8d2f81aabceffc1f69e",
+    "test_case_design_sha256": "a0a924f81c5ee5b42013bc7c1dd8e32e2488524436544fe4894e37929506ae39"
   },
   "protected_preexisting_changes": 6,
   "constraints": {
