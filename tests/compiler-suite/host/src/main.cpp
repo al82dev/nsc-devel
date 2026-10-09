@@ -168,6 +168,8 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerLanguageMemoryModelModule(registry);
         nsc::suite::registerLanguageMetaprogrammingModule(registry);
         nsc::suite::registerLanguageModuleSemanticsModule(registry);
+        nsc::suite::registerLanguageNumericCoreModule(registry);
+        nsc::suite::registerLanguageNumericAdvancedModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

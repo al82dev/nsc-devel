@@ -95,6 +95,8 @@ add_executable(
     host/modules/LanguageMemoryModelModule.cpp
     host/modules/LanguageMetaprogrammingModule.cpp
     host/modules/LanguageModuleSemanticsModule.cpp
+    host/modules/LanguageNumericCoreModule.cpp
+    host/modules/LanguageNumericAdvancedModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp"
@@ -118,7 +120,8 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/Language3Surface.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/MemoryModel.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/MetaprogrammingSemantics.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/ModuleSemantics.cpp")
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/ModuleSemantics.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/NumericSemantics.cpp")
 
 target_include_directories(
     nsc_component_tests
@@ -782,6 +785,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-language-module-semantics-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-language-numeric-semantics-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_language_numeric_semantics_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-language-numeric-semantics-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND
