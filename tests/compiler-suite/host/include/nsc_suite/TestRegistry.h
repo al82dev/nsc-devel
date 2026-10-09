@@ -55,4 +55,5 @@ void registerBasicSha256FileModule(TestRegistry& registry);
 void registerBasicOutputFailureModule(TestRegistry& registry);
 void registerBasicArtifactStagingModule(TestRegistry& registry);
 void registerBasicArtifactPreflightModule(TestRegistry& registry);
+void registerBasicArtifactControlledPreflightModule(TestRegistry& registry);
 }

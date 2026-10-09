@@ -99,6 +99,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerBasicOutputFailureModule(registry);
         nsc::suite::registerBasicArtifactStagingModule(registry);
         nsc::suite::registerBasicArtifactPreflightModule(registry);
+        nsc::suite::registerBasicArtifactControlledPreflightModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
