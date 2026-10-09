@@ -35,7 +35,9 @@ def valid_case(case_id: str = "TB-BAS-001", dependencies: list[str] | None = Non
 
 class ManifestTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
+        self.temporary = tempfile.TemporaryDirectory(
+            prefix="nsc-suite-manifest-", dir=Path.cwd()
+        )
         self.root = Path(self.temporary.name)
         self.components = self.root / "components.csv"
         self.contracts = self.root / "contracts.csv"

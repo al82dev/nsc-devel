@@ -24,7 +24,8 @@ No existe un conteo esperado de pruebas. El universo se descubre desde todas las
 ## Evidencia enfocada
 
 `tests/compiler-suite/controller/tests/test_manifest.py` cubre un manifiesto válido y rechazos estructurales,
-referenciales y de grafo. Son fixtures sintéticos del framework; todavía no implementan contratos del compilador.
+referenciales y de grafo. Su directorio temporal se crea bajo el checkout actual en `A:` y se elimina al cerrar
+cada prueba. Son fixtures sintéticos del framework; todavía no implementan contratos del compilador.
 
 ## Frontera
 
