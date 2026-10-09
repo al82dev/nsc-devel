@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-10-08T18:44:08-06:00",
+  "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
+  "production_files": 974,
+  "production_lines": 311814,
+  "components": 57,
+  "historical_test_files": 1658,
+  "production_csv_sha256": "811bac91779025810f71a5b872618b2c9b57206b0e8bfbf507cdfa1cda52f94f",
+  "production_json_sha256": "e35a9804ae68a1642dbf1137c4852a4038d35bdd45080859665946ed1db0938c",
+  "components_csv_sha256": "48a1c67ed8897d1af34c2ab4cc1692d80f5b2994ee082b7e6cdb334fa27da754",
+  "historical_tests_csv_sha256": "fba06c64f0b3d83b517edd43756ebbebeb8227699adaf55eb07c870f03686267"
+}

@@ -1,0 +1,54 @@
+{
+  "phase": 1,
+  "scope": "compiler-test-inventory-and-plans-only",
+  "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
+  "batch": 2,
+  "status": "in_progress",
+  "last_completed_artifact": "audits/TANDA-01-INDEPENDENT-AUDIT.md",
+  "last_completed_item": "PF-000974",
+  "next_item": "DG-000001",
+  "next_action": "derive_build_targets_and_component_dependency_graph",
+  "production_files": {
+    "inventoried": 974,
+    "inventory_verified": 974,
+    "semantically_read": 0,
+    "classified": 0,
+    "consolidated": 0,
+    "contrasted": 0,
+    "audited": 0,
+    "omitted": 0,
+    "unknown": 0
+  },
+  "components": {
+    "inventoried": 57,
+    "reviewed": 0,
+    "reconstructible": 0,
+    "blocked": 0
+  },
+  "symbols": {
+    "inventoried": 0,
+    "reviewed": 0,
+    "untreated": 0
+  },
+  "tests": {
+    "historical_suite_frozen": true,
+    "historical_files_hashed": 1658,
+    "new_tests_created": 0,
+    "tests_executed": 0
+  },
+  "manifests": {
+    "production_files_sha256": "811bac91779025810f71a5b872618b2c9b57206b0e8bfbf507cdfa1cda52f94f",
+    "historical_tests_sha256": "fba06c64f0b3d83b517edd43756ebbeb8227699adaf55eb07c870f03686267",
+    "document_coverage_sha256": "b8e7a3bc1d057c5c2e146d04291b26ef33dd2f7f26bcce431b2199f5a9e66cc1"
+  },
+  "protected_preexisting_changes": 6,
+  "constraints": {
+    "source_code_changes": false,
+    "test_code_changes": false,
+    "builds": false,
+    "test_execution": false,
+    "coverage": false,
+    "drive_c_changes": false,
+    "remote_changes": false
+  }
+}
