@@ -125,6 +125,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetMinimumAlignmentModule(registry);
         nsc::suite::registerTargetExplicitOffsetModule(registry);
         nsc::suite::registerTargetUnionLayoutModule(registry);
+        nsc::suite::registerTargetFlexibleArrayLayoutModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
