@@ -49,4 +49,5 @@ private:
 };
 
 void registerInfrastructureModule(TestRegistry& registry);
+void registerBasicValuesModule(TestRegistry& registry);
 }

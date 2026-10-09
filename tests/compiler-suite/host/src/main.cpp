@@ -93,6 +93,7 @@ int main(int argumentCount, char** arguments)
         const Options options = parseOptions(argumentCount, arguments);
         nsc::suite::TestRegistry registry;
         nsc::suite::registerInfrastructureModule(registry);
+        nsc::suite::registerBasicValuesModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
