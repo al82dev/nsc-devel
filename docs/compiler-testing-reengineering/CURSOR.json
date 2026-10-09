@@ -42,7 +42,7 @@
     "document_coverage_sha256": "1fc4421c152dbf5173b42053f6a440d190a21887376fd3b997051a1e2bc63344",
     "symbols_sha256": "3dc1a8ac611236a75b5f29c05e84dfca0cdbdff03dadc0e85cc9b8ae5c627700",
     "contracts_sha256": "1190a1462216ddd5154b393bb335beee4ec34a02338ac9e4e7106d0b5b2b12e0",
-    "test_case_design_sha256": "df477d333fcabf908d30469967220765c90fa53c7e6e6baed9d63fc1eec90835"
+    "test_case_design_sha256": "e370b97d71a8e40038e1c11309b6c3370c2b243ce95a482ccc28285ff5784638"
   },
   "protected_preexisting_changes": 6,
   "constraints": {
