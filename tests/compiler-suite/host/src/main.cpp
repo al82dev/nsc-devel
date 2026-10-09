@@ -148,6 +148,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerDiagnosticEngineAppendModule(registry);
         nsc::suite::registerDiagnosticEngineMergeModule(registry);
         nsc::suite::registerDiagnosticEngineStateModule(registry);
+        nsc::suite::registerDiagnosticRendererHeaderModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
