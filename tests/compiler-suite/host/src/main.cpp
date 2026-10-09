@@ -140,6 +140,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetX64AssemblyRegisterModule(registry);
         nsc::suite::registerTargetArm64AssemblyRegisterModule(registry);
         nsc::suite::registerTargetAssemblyFeatureRequirementModule(registry);
+        nsc::suite::registerDiagnosticSeverityModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
