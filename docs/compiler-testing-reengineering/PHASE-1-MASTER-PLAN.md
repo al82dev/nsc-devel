@@ -75,12 +75,28 @@ Para cada archivo y símbolo:
 - Cancelación, concurrencia y ordenamiento.
 - Opciones, modos y matrices de configuración.
 
-### Tanda 12 — Plan de implementación de la suite nueva
+### Tanda 12A — Compilador self-host
 
-- Consolidar los test plans por componente.
+- Leer semánticamente los 29 archivos de `selfhost/nsc/**`.
+- Inventariar símbolos y contratos de sus 16 componentes documentales.
+- Diseñar casos contractuales sin reutilizar como oráculo la implementación host.
+- Separar pruebas directas del compilador NativeSharp de las propiedades de generación self-host.
+
+### Tanda 12B — Superficies restantes y disposición explícita
+
+- Tratar los 421 archivos restantes de build, empaquetado, contratos self-host, dependencias distribuidas,
+  herramientas de soporte y terceros vendorizados.
+- Derivar contratos directos sólo para superficies que pertenecen al producto NSC.
+- Registrar una justificación verificable de prueba indirecta, integración, upstream o exclusión para cada
+  elemento que no deba producir una prueba directa de NSC.
+- Impedir que `NO LEÍDO` o `NO VERIFICADO` se conviertan silenciosamente en cobertura de la suite.
+
+### Tanda 12C — Plan de implementación de la suite nueva
+
+- Consolidar los test plans de los 57 componentes documentales.
 - Definir ejecutores futuros sin implementar ninguno.
 - Separar ejecución rápida, integración, nocturna y semanal.
-- Derivar el conteo real de casos desde la matriz cerrada.
+- Derivar el conteo real de casos sólo después de cerrar las matrices host, self-host y de producto.
 
 ### Tanda 13 — Segunda auditoría
 
@@ -88,6 +104,14 @@ Para cada archivo y símbolo:
 - Comparar inventario contra universo real.
 - Rechazar el cierre si existe algún omitido, desconocido o no tratado.
 - Emitir el informe de preparación para la Fase 2.
+
+## Enmienda de integridad previa a Tanda 12
+
+La matriz host cerrada en Tanda 11 contiene 24 componentes, 5,294 símbolos, 870 contratos y 7,360 casos. Esos
+conteos no representan por sí solos todo el universo canónico: `components.csv` conserva además 16 componentes
+del compilador self-host y 17 componentes de build, contratos, dependencias y soporte. Las Tandas 12A y 12B
+existen para tratar ese universo antes de consolidar la arquitectura. Esta enmienda no amplía el alcance: corrige
+una partición incompleta del alcance original fijado en `SCOPE-LOCK.md`.
 
 ## Reglas para diseñar casos
 

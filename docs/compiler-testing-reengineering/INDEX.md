@@ -14,6 +14,11 @@
 10. [STATE-MACHINES.md](STATE-MACHINES.md)
 11. Informes de auditoría independiente en `audits/`
 
+## Gate de integridad previo a la arquitectura
+
+- [Hallazgo de cobertura antes de Tanda 12](audits/TANDA-12-SCOPE-COMPLETENESS-GATE.md): distingue la matriz
+  host ya cerrada de los componentes self-host y superficies restantes que todavía requieren tratamiento.
+
 ## Componentes consolidados
 
 - [Host.Basic](components/HOST-BASIC.md)
