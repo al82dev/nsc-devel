@@ -57,3 +57,19 @@ Estas contradicciones se registran sin corregirlas porque la Fase 1 es exclusiva
 - **Impacto:** una unitaria sobre el cuerpo fuente aceptaría resultados falsos.
 - **Tratamiento:** validar IR/objeto y ejecución del programa `.ns`, nunca el stub como oráculo.
 <!-- END TANDA-12B-CONTRADICTIONS -->
+
+<!-- BEGIN PHASE-2-CONTRADICTIONS -->
+## CON-0018 — Conteo incorrecto en el diseño de TS-SRC-017
+
+- **Estado:** `RESUELTA EN LA SUITE; FUENTE CONSERVADA`.
+- **Fuente A:** `test-plans/HOST-SOURCE-TEST-PLAN.md` afirma que `\n\r\r\n` produce cuatro saltos lógicos y cinco
+  líneas.
+- **Fuente B:** `SourceFile::buildLineStarts`, `components/HOST-SOURCE.md` y `CS-SRC-003` establecen que un par
+  `CRLF` es un solo terminador lógico.
+- **Discrepancia:** la secuencia contiene `LF`, `CR` y `CRLF`: tres terminadores lógicos y los comienzos
+  `[0,1,2,4]`, por lo que produce cuatro líneas.
+- **Impacto:** copiar literalmente el oráculo de Fase 1 congelaría una expectativa contraria al producto y al
+  contrato consolidado.
+- **Tratamiento:** no se reescribe la fuente histórica; `TS-SRC-017` usa el oráculo contractual de cuatro líneas
+  y la Tanda 01.14 conserva la derivación byte por byte.
+<!-- END PHASE-2-CONTRADICTIONS -->

@@ -104,6 +104,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerBasicArtifactSeedModule(registry);
         nsc::suite::registerSourcePositionModule(registry);
         nsc::suite::registerSourceFileOwnershipModule(registry);
+        nsc::suite::registerSourceLineIndexModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

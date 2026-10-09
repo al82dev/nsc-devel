@@ -60,4 +60,5 @@ void registerBasicTransactionalWriterModule(TestRegistry& registry);
 void registerBasicArtifactSeedModule(TestRegistry& registry);
 void registerSourcePositionModule(TestRegistry& registry);
 void registerSourceFileOwnershipModule(TestRegistry& registry);
+void registerSourceLineIndexModule(TestRegistry& registry);
 }
