@@ -1,9 +1,11 @@
 """Infrastructure for the NativeSharp compiler suite controller."""
 
+from .dispatch import ExecutorRouter
 from .events import CancellationToken, EventKind, EventWriter, SuiteEvent
 from .host import HostExecutor
 from .manifest import CaseManifest, InventoryIndex, ManifestError, load_manifest
 from .oracle import ComparisonFailure, compare_structured
+from .process import CompilerIdentityExecutor
 from .report import ReportError, ReportWriter, RunMetadata, ToolIdentity
 from .runner import RunnerError, SuiteRunner
 from .result import CaseResult, CaseStatus, DependencyDecision, ResultLedger
@@ -20,7 +22,9 @@ __all__ = [
     "DependencyDecision",
     "EventKind",
     "EventWriter",
+    "ExecutorRouter",
     "HostExecutor",
+    "CompilerIdentityExecutor",
     "InventoryIndex",
     "ManifestError",
     "ReportError",

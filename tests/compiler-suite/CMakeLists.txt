@@ -11,6 +11,10 @@ endif()
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+set(NSC_COMPILER_SUITE_NSC_EXECUTABLE "" CACHE FILEPATH "Explicit A:-drive NSC for process-owned suite cases")
+set(NSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE "" CACHE FILEPATH "Second explicit NSC for build-identity comparison")
+set(NSC_COMPILER_SUITE_BUILD_ID_HEADER "" CACHE FILEPATH "Generated BuildId.h owned by the selected NSC")
+
 add_executable(
     nsc_component_tests
     host/src/main.cpp
@@ -51,3 +55,19 @@ add_test(
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-basic-values-gate"
         --build-mode "$<CONFIG>")
+
+if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND
+   NSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE AND
+   NSC_COMPILER_SUITE_BUILD_ID_HEADER)
+    add_test(
+        NAME nsc.compiler-suite.host-basic-build-identity
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_build_identity_gate.py"
+            --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+            --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-basic-build-identity-gate"
+            --build-mode "$<CONFIG>"
+            --nsc-executable "${NSC_COMPILER_SUITE_NSC_EXECUTABLE}"
+            --comparison-nsc-executable "${NSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE}"
+            --build-id-header "${NSC_COMPILER_SUITE_BUILD_ID_HEADER}")
+endif()

@@ -98,6 +98,20 @@ class ManifestTests(unittest.TestCase):
         wrong_optimization["optimizations"] = ["O0"]
         self.assert_manifest_error([wrong_optimization], "requires optimizations")
 
+    def test_accepts_non_compilation_nsc_build_contract(self) -> None:
+        build_contract = valid_case()
+        build_contract.update(
+            {
+                "executor": "nsc_suite_controller+nsc",
+                "layer": "build-contract",
+                "isolation": "temporary-directory",
+                "optimizations": ["NA"],
+            }
+        )
+        loaded = load_manifest(self.write_manifest([build_contract]), self.inventory)
+        self.assertEqual(loaded[0].layer, "build-contract")
+        self.assertEqual(loaded[0].optimizations, ("NA",))
+
     def test_rejects_unknown_self_and_cyclic_dependencies(self) -> None:
         self.assert_manifest_error(
             [valid_case(dependencies=["TB-BAS-999"])], "unknown dependencies"

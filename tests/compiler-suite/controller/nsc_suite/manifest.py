@@ -38,7 +38,17 @@ EXECUTORS = frozenset(
     {"nsc_component_tests", "nsc_suite_controller+nsc", "historical-weekly"}
 )
 LAYERS = frozenset(
-    {"unit", "component", "integration", "process", "self-host", "build", "packaging", "historical"}
+    {
+        "unit",
+        "component",
+        "integration",
+        "process",
+        "self-host",
+        "build-contract",
+        "build",
+        "packaging",
+        "historical",
+    }
 )
 PROFILES = frozenset({"PR", "NIGHTLY", "WEEKLY"})
 BUILD_MODES = frozenset({"Debug", "Release"})
@@ -186,8 +196,6 @@ def _parse_case(
     elif executor == "nsc_suite_controller+nsc":
         if isolation != "temporary-directory":
             raise ManifestError(f"compiler-driven case requires temporary-directory at {location}")
-        if "NA" in optimizations:
-            raise ManifestError(f"compiler-driven case cannot use NA optimization at {location}")
     elif profile != "WEEKLY" or layer != "historical":
         raise ManifestError(f"historical case requires WEEKLY/historical at {location}")
 
