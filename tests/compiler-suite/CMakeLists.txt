@@ -77,6 +77,7 @@ add_executable(
     host/modules/DiagnosticEngineStateModule.cpp
     host/modules/DiagnosticRendererHeaderModule.cpp
     host/modules/DiagnosticRendererMarkerModule.cpp
+    host/modules/DiagnosticRendererSecondaryModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp"
@@ -596,6 +597,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-diagnostics-renderer-marker-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-diagnostics-renderer-secondary-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_diagnostics_renderer_secondary_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-diagnostics-renderer-secondary-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND
