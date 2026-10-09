@@ -3,19 +3,19 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "9207224bc",
+  "last_completed_commit": "a4318f2fb",
   "current_wave": 1,
   "current_component": null,
-  "next_contract": null,
-  "next_action": "Wave 1 is causally audited at 733/747. The 14 remaining cases require an explicit decision: four need additional deterministic test infrastructure, seven expose product defects, two need product surface or an approved test-plan correction, and one needs a format-contract decision. Do not advance to Wave 2 or alter product without authorization.",
+  "next_contract": "CL-LANG-009",
+  "next_action": "Implement corrected TL-LANG-116 without changing product, then materialize the seven defect-revealing cases with their real oracles. Keep four special-infrastructure cases and two absent-feature cases pending, and continue causally independent work without reducing the 747-case denominator.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
-    "revision": "446411765",
+    "revision": "a4318f2fb",
     "total": 14,
-    "test_feasibility": 4,
-    "product_defects": 7,
-    "product_surface_gaps": 2,
-    "contract_decisions": 1,
+    "special_infrastructure_pending": 4,
+    "product_defect_tests_to_implement": 7,
+    "product_features_pending": 2,
+    "test_plan_corrections_resolved": 1,
     "unclassified": 0
   },
   "independent_completed_contracts": [
@@ -129,8 +129,10 @@
     "CL-LANG-009": {
       "implemented_cases": 10,
       "verified_cases": 10,
+      "next_cases": [
+        "TL-LANG-116"
+      ],
       "blocked_cases": [
-        "TL-LANG-116",
         "TL-LANG-121"
       ]
     },
@@ -171,10 +173,14 @@
       "synthetic_cases_verified": 3
     },
     "1": {
-      "status": "BLOQUEADA",
+      "status": "EN CURSO",
       "product_cases_expected": 747,
       "product_cases_implemented": 733,
-      "product_cases_verified": 733
+      "product_cases_verified": 733,
+      "defect_tests_pending_implementation": 7,
+      "special_infrastructure_pending": 4,
+      "product_features_pending": 2,
+      "corrected_test_plan_cases_pending_implementation": 1
     }
   },
   "validation": {
