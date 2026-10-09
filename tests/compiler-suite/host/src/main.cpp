@@ -103,6 +103,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerBasicTransactionalWriterModule(registry);
         nsc::suite::registerBasicArtifactSeedModule(registry);
         nsc::suite::registerSourcePositionModule(registry);
+        nsc::suite::registerSourceFileOwnershipModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
