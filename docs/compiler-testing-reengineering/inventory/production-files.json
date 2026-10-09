@@ -3864,10 +3864,10 @@
     "lines": "132",
     "sha256": "e21ff29ca6b00a9a89537952bea08b3fd53005bd2e6c39ce615c8d07af8763eb",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE-SERVICE.md;audits/TANDA-10-HOST-LANGUAGE-SERVICE-AUDIT.md",
+    "section": "2-18",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000259",
@@ -3879,10 +3879,10 @@
     "lines": "152",
     "sha256": "d65ab738b1e89e289bf7a1d193298cf65df7011ae65a7db72adba7665a6906a8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE-SERVICE.md;audits/TANDA-10-HOST-LANGUAGE-SERVICE-AUDIT.md",
+    "section": "2-18",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000260",
@@ -11574,10 +11574,10 @@
     "lines": "1162",
     "sha256": "d225f4c2459f3410529dde9689f8e5953ca803787977a649dfae6db7fcdfb75d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE-SERVICE.md;audits/TANDA-10-HOST-LANGUAGE-SERVICE-AUDIT.md",
+    "section": "2-18",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000773",
@@ -11589,10 +11589,10 @@
     "lines": "168",
     "sha256": "091b069aac1985cb58ff051d110995d62f857f0fdf145c9f76c05455405b3232",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE-SERVICE.md;audits/TANDA-10-HOST-LANGUAGE-SERVICE-AUDIT.md",
+    "section": "2-18",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000774",

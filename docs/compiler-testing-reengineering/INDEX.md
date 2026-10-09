@@ -79,6 +79,9 @@
 - [Host.Driver](components/HOST-DRIVER.md)
   - [Test plan](test-plans/HOST-DRIVER-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-10-HOST-DRIVER-AUDIT.md)
+- [Host.LanguageService](components/HOST-LANGUAGE-SERVICE.md)
+  - [Test plan](test-plans/HOST-LANGUAGE-SERVICE-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-10-HOST-LANGUAGE-SERVICE-AUDIT.md)
 
 ## Artefactos mecánicos
 
