@@ -67,6 +67,9 @@
 - [Host.Interop](components/HOST-INTEROP.md)
   - [Test plan](test-plans/HOST-INTEROP-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-09-HOST-INTEROP-AUDIT.md)
+- [Host.Linker](components/HOST-LINKER.md)
+  - [Test plan](test-plans/HOST-LINKER-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-09-HOST-LINKER-AUDIT.md)
 
 ## Artefactos mecánicos
 
