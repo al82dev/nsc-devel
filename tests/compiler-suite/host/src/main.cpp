@@ -108,6 +108,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerSourceOffsetPositionModule(registry);
         nsc::suite::registerSourceLineTextModule(registry);
         nsc::suite::registerSourceFileReadModule(registry);
+        nsc::suite::registerSourceManagerRegistryModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
