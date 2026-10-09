@@ -34,6 +34,7 @@ tabla; registra el criterio y enlazará los informes individuales conforme se pr
 | `Host.Compilation` | `RECONSTRUIBLE` | 160 | 52 | 416 | `audits/TANDA-10-HOST-COMPILATION-AUDIT.md` |
 | `Host.Driver` | `RECONSTRUIBLE` | 387 | 77 | 616 | `audits/TANDA-10-HOST-DRIVER-AUDIT.md` |
 | `Host.LanguageService` | `RECONSTRUIBLE` | 126 | 42 | 336 | `audits/TANDA-10-HOST-LANGUAGE-SERVICE-AUDIT.md` |
+| `Host.nsc` | `RECONSTRUIBLE` | 18 | 20 | 160 | `audits/TANDA-10-HOST-NSC-AUDIT.md` |
 
 `RECONSTRUIBLE` describe suficiencia documental para la revisión congelada. No significa que la suite nueva
 esté implementada ni que se haya ejecutado validación.

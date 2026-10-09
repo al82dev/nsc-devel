@@ -12249,10 +12249,10 @@
     "lines": "551",
     "sha256": "397b92c38d06353d51a3d8b9ff51e4af184d99707236e2c587f06bdf18cd59b2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-NSC.md;audits/TANDA-10-HOST-NSC-AUDIT.md",
+    "section": "2-15",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000818",

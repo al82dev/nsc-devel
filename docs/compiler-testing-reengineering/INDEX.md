@@ -82,6 +82,9 @@
 - [Host.LanguageService](components/HOST-LANGUAGE-SERVICE.md)
   - [Test plan](test-plans/HOST-LANGUAGE-SERVICE-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-10-HOST-LANGUAGE-SERVICE-AUDIT.md)
+- [Host.nsc](components/HOST-NSC.md)
+  - [Test plan](test-plans/HOST-NSC-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-10-HOST-NSC-AUDIT.md)
 
 ## Artefactos mecánicos
 
