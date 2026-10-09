@@ -72,4 +72,5 @@ void registerTargetAggregateRequestModule(TestRegistry& registry);
 void registerTargetWindowsFactoriesModule(TestRegistry& registry);
 void registerTargetBuiltinLayoutModule(TestRegistry& registry);
 void registerTargetCheckedArithmeticModule(TestRegistry& registry);
+void registerTargetPowerOfTwoAlignmentModule(TestRegistry& registry);
 }
