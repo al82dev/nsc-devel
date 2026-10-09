@@ -115,6 +115,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetAggregateRequestModule(registry);
         nsc::suite::registerTargetWindowsFactoriesModule(registry);
         nsc::suite::registerTargetBuiltinLayoutModule(registry);
+        nsc::suite::registerTargetCheckedArithmeticModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
