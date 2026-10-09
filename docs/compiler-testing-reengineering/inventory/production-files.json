@@ -3894,9 +3894,9 @@
     "lines": "64",
     "sha256": "fd441a062b56d177c8f241c62c0c6831b4ca44b62191eb1b03fa5832ced9347d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-LEXER-AUDIT.md",
+    "section": "Host.Lexer",
     "notes": ""
   },
   {
@@ -3909,9 +3909,9 @@
     "lines": "31",
     "sha256": "e4f04515515ab77c7aaa3c6b7a05be77fda76156bb2473b8b2fe692544118811",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-LEXER-AUDIT.md",
+    "section": "Host.Lexer",
     "notes": ""
   },
   {
@@ -3924,9 +3924,9 @@
     "lines": "15",
     "sha256": "a471aa30cb5d9e70e05c3f8c1ac2a85ea89a7f9e09e90539a2558fdea4de2e14",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-LEXER-AUDIT.md",
+    "section": "Host.Lexer",
     "notes": ""
   },
   {
@@ -3939,9 +3939,9 @@
     "lines": "190",
     "sha256": "69de243051d47c905f4df8cfdc7cfd2b361caab58157c101c650be94aefbf1b4",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-LEXER-AUDIT.md",
+    "section": "Host.Lexer",
     "notes": ""
   },
   {
@@ -11604,9 +11604,9 @@
     "lines": "1110",
     "sha256": "32913ba0f77ac9056747b8b6c019a4c286d8efa3b00b61694d0074c41b3ba0eb",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-LEXER-AUDIT.md",
+    "section": "Host.Lexer",
     "notes": ""
   },
   {
@@ -11619,9 +11619,9 @@
     "lines": "34",
     "sha256": "0be7e8d95ed105be662ad2d92b0a0af66014a69447b33ec7f1b0600e4cc8d1a8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-LEXER-AUDIT.md",
+    "section": "Host.Lexer",
     "notes": ""
   },
   {
@@ -11634,9 +11634,9 @@
     "lines": "51",
     "sha256": "7107b3cc43f9841f2af4eef3bda36d53b100baf5895cb637982227d91ca5f12a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-LEXER-AUDIT.md",
+    "section": "Host.Lexer",
     "notes": ""
   },
   {
@@ -11649,9 +11649,9 @@
     "lines": "204",
     "sha256": "d308a6892f05d5fc21fcdfc7ae4b1ac41f1db130f8d8d864259056ca195a2727",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-LEXER-AUDIT.md",
+    "section": "Host.Lexer",
     "notes": ""
   },
   {

@@ -22,6 +22,9 @@
 - [Host.Diagnostics](components/HOST-DIAGNOSTICS.md)
   - [Test plan](test-plans/HOST-DIAGNOSTICS-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-03-HOST-DIAGNOSTICS-AUDIT.md)
+- [Host.Lexer](components/HOST-LEXER.md)
+  - [Test plan](test-plans/HOST-LEXER-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-04-HOST-LEXER-AUDIT.md)
 
 ## Artefactos mecánicos
 

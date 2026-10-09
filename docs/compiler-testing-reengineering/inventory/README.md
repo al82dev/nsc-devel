@@ -19,3 +19,5 @@ Los estados documentales válidos son los de la sección 18 de los lineamientos.
 Al cierre de Tanda 03, `Host.Basic`, `Host.Source` y `Host.Diagnostics` tienen inventario semántico, contratos,
 casos diseñados y segunda auditoría independiente. Ninguna fila `DESIGNED` representa código de prueba creado
 o ejecutado.
+
+Tanda 04 inició con `Host.Lexer`: 8 archivos, 51 símbolos, 14 contratos y 110 casos diseñados.
