@@ -1,7 +1,7 @@
 {
   "phase": 1,
   "scope": "compiler-test-inventory-and-plans-only",
-  "revision": "93094d49210999de5018765df1c7551e942f43f4",
+  "revision": "65d4dcf44143c7a945a786c8f1e6ba78d225ad02",
   "batch": "12C",
   "status": "in_progress",
   "last_completed_artifact": "audits/TANDA-12B-REMAINING-SURFACE-AUDIT.md",
@@ -49,20 +49,20 @@
     "tests_executed": 0
   },
   "manifests": {
-    "production_files_sha256": "05505129110dce66974af831c497dcf5ac9bd65dd71829f454891a753d746827",
+    "production_files_sha256": "e44577614bc17108f5308348ec2abcf57c09e71b7e7e7fc48ae927721c049d2b",
     "historical_tests_sha256": "fba06c64f0b3d83b517edd43756ebbebeb8227699adaf55eb07c870f03686267",
     "document_coverage_sha256": "8cad5dde8d099a213c0904c8dafbf50c1e7bbacca3b0ccdd258934dd88c370e9",
-    "symbols_sha256": "d424a1259207029f439d6fb446550ac8e37ff19ec224fc5b4279990620368d74",
-    "contracts_sha256": "3e1498ae76c27f0a8da3ef51424f392a365e538294bc70556d47cd2255259fa0",
-    "test_case_design_sha256": "32afbaa0e1a6ace83f48d8f8360652c7b11f8c0de982e1392ea9cab9e0190205",
-    "transversal_contracts_sha256": "9c4f858279a4d7804c5acf33d4eab43fc15b6c6e9650499b420226a5cdf39cd5",
-    "error_taxonomy_sha256": "c337d5099e8eb6643d1bdc0f9835f3bcce9edd15dbcc642dd87063cb82aef599",
+    "symbols_sha256": "64aa11799a3b964f11ad49db4b7921c7a46bf251314f95df72e8053a9052167c",
+    "contracts_sha256": "2dc705407e0c7a41e00208f7cf95813e58ab70db25a880ae8a44503727e38fb5",
+    "test_case_design_sha256": "8e83c9641339299173f392fe55befbb1cec0ca0d1af817ed53efbcba78285597",
+    "transversal_contracts_sha256": "3786cd9887292a5b1dd66b2b7a92d0d973bd6e63f5081f2685db2c63d05687ef",
+    "error_taxonomy_sha256": "18d2e6345aed42b9391a828fadee90e6ec41fe7640a31db7ab3e090e4e79c87a",
     "state_machines_sha256": "a0456bea25b080ab37a120bb54724981631df8725937ecd87c923b26f0e29f27",
-    "state_machine_contract_map_sha256": "c2aa12d540d077fe93708da7e95ca14fb4400a46e41ea558838bfc860c9c713f",
+    "state_machine_contract_map_sha256": "a706fdd504944c660242cd3f8af4e570918a9d314c7eedea387d9f9fa625eb70",
     "selfhost_file_audit_sha256": "1f17f1e85875f388ff0c36c14b32fee86574e36d6f425d160c9b6fc7ab629cdc",
     "selfhost_audit_summary_sha256": "f8734952a0839db340caca67fdbcde5e6793cd2281a129c1dc5f4a3314c0c53a",
-    "remaining_surface_file_audit_sha256": "5c8c570b6829e0df49645daa9e9be24e3e9137c638feb203512261da41a319dd",
-    "remaining_surface_audit_summary_sha256": "6d89c74b77c3b7bc55ae97ea3e54da1dcbc3e82a8c97b31e6fcd51c822003497"
+    "remaining_surface_file_audit_sha256": "92990ddb113103ca96a6038a44b95fba98f8ed587f4cd8a9a06db1262557f425",
+    "remaining_surface_audit_summary_sha256": "c3aa84e6ebd514a89d515cddc9ea765e1bdfc4ec7cf8b0527a7a516a8f30d821"
   },
   "protected_preexisting_changes": 6,
   "constraints": {

@@ -1,8 +1,8 @@
-# SelfHost.Bootstrap — disposición y contrato reconstructivo
+# SelfHost.Bootstrap.Infrastructure — disposición y contrato reconstructivo
 
 ## 1. Estado y procedencia
 
-- **Revisión:** `93094d49210999de5018765df1c7551e942f43f4`.
+- **Revisión:** `65d4dcf44143c7a945a786c8f1e6ba78d225ad02`.
 - **Universo:** 74 archivos, 7556 líneas, 281 declaraciones/artefactos.
 - **Disposición:** EXCLUIDA=1, INDIRECTA=73.
 - **Diseño futuro:** 73 contratos y 438 casos; ninguna prueba fue creada o ejecutada.

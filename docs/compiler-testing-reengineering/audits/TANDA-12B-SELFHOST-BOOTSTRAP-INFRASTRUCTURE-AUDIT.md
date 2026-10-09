@@ -1,4 +1,4 @@
-# Auditoría independiente — Tanda 12B, SelfHost.Bootstrap
+# Auditoría independiente — Tanda 12B, SelfHost.Bootstrap.Infrastructure
 
 | Gate | Resultado |
 |---|---:|

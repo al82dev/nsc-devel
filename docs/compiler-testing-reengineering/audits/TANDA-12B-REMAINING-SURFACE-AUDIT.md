@@ -13,7 +13,7 @@
 | `Library.Provenance` | 1 | 0 | 1 | 0 | 0 | 1 | 6 |
 | `Packaging` | 3 | 2 | 1 | 0 | 0 | 3 | 18 |
 | `SDK` | 1 | 0 | 1 | 0 | 0 | 1 | 6 |
-| `SelfHost.Bootstrap` | 74 | 0 | 73 | 0 | 1 | 73 | 438 |
+| `SelfHost.Bootstrap.Infrastructure` | 74 | 0 | 73 | 0 | 1 | 73 | 438 |
 | `SelfHost.Contracts` | 48 | 0 | 48 | 0 | 0 | 48 | 288 |
 | `ThirdParty.Documentation` | 1 | 0 | 0 | 1 | 0 | 0 | 0 |
 | `ThirdParty.zlib` | 28 | 0 | 0 | 28 | 0 | 0 | 0 |

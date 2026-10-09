@@ -2,7 +2,7 @@
 
 ## 1. Estado y procedencia
 
-- **Revisión:** `93094d49210999de5018765df1c7551e942f43f4`.
+- **Revisión:** `65d4dcf44143c7a945a786c8f1e6ba78d225ad02`.
 - **Universo:** 30 archivos, 4485 líneas, 330 declaraciones/artefactos.
 - **Disposición:** EXCLUIDA=4, INDIRECTA=26.
 - **Diseño futuro:** 26 contratos y 156 casos; ninguna prueba fue creada o ejecutada.

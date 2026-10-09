@@ -13,6 +13,11 @@ $production = @(Import-Csv -LiteralPath $productionPath)
 $surfaceRoles = @('BUILD_CONTRACT','SELFHOST_CONTRACT','SHIPPED_DEPENDENCY','SUPPORT_TOOL','VENDORED_DEPENDENCY')
 $surface = @($production | Where-Object { $_.role -in $surfaceRoles } | Sort-Object path)
 if ($surface.Count -ne 421) { throw "Expected 421 Tanda 12B files, found $($surface.Count)" }
+foreach ($row in $surface) {
+    if ($row.role -eq 'SELFHOST_CONTRACT' -and $row.component -eq 'SelfHost.Bootstrap') {
+        $row.component = 'SelfHost.Bootstrap.Infrastructure'
+    }
+}
 
 $protectedHashes = [ordered]@{
     'docs/compiler-optimization/test-infrastructure/test-execution-parity.csv'='96c6e1564f973b36f4ab8cdd2b5df515e5128ee1345dd622024d15e9799f606d'
@@ -40,7 +45,7 @@ function Humanize([string]$Name) {
     return $value.Trim()
 }
 function Document-Slug([string]$Component) {
-    if ($Component -eq 'SelfHost.Bootstrap') { return 'SELFHOST-BOOTSTRAP-INFRASTRUCTURE' }
+    if ($Component -eq 'SelfHost.Bootstrap.Infrastructure') { return 'SELFHOST-BOOTSTRAP-INFRASTRUCTURE' }
     if ($Component -eq 'BuildSystem') { return 'BUILD-SYSTEM' }
     return Slug $Component
 }
@@ -57,8 +62,8 @@ function Set-MarkerBlock([string]$Path,[string]$Begin,[string]$End,[string[]]$Li
 $componentMeta = @{
     'BuildSystem'=@{code='BLD';purpose='Definir la construcción reproducible del compilador, su grafo de blancos, instalación y adaptadores de certificación histórica.';deps='CMake;clang-cl;LLVM 23;NSLink;Python para gates históricos'}
     'Packaging'=@{code='PKG';purpose='Instalar y empaquetar una distribución NativeSharp identificada, verificable y sin sobrescrituras implícitas.';deps='CMake install;7-Zip;nsc --version;filesystem'}
-    'SelfHost.Bootstrap'=@{code='BSI';purpose='Conservar perfiles, locks, schemas y verificadores que demuestran las generaciones self-host sin aceptar fallbacks.';deps='nsc0;nsc1;nsc2;NSLink;LLVM;Python;contratos self-host'}
-    'SelfHost.Contracts'=@{code='SHC';purpose='Declarar oráculos versionados de frontend, semántica, IR, backend, runtime, determinismo y promoción self-host.';deps='SelfHost.Bootstrap;fixtures selfhost;productos SH41'}
+    'SelfHost.Bootstrap.Infrastructure'=@{code='BSI';purpose='Conservar perfiles, locks, schemas y verificadores que demuestran las generaciones self-host sin aceptar fallbacks.';deps='nsc0;nsc1;nsc2;NSLink;LLVM;Python;contratos self-host'}
+    'SelfHost.Contracts'=@{code='SHC';purpose='Declarar oráculos versionados de frontend, semántica, IR, backend, runtime, determinismo y promoción self-host.';deps='SelfHost.Bootstrap.Infrastructure;fixtures selfhost;productos SH41'}
     'Library.NativeSharp.Core'=@{code='COR';purpose='Proveer la biblioteca base distribuida: memoria, texto, números, tiempo, ownership, vectores e intrínsecos.';deps='runtime Win64;lowering intrínseco de NSC'}
     'Library.NativeSharp.Core.Collections.Generic'=@{code='COL';purpose='Proveer algoritmos, comparadores y colecciones genéricas con ownership y enumeración observables.';deps='NativeSharp.Core;genéricos y metadata NSMETA'}
     'Library.NativeSharp.Core.Diagnostics'=@{code='DIA';purpose='Exponer depuración, procesos, cronómetros e información del sistema sobre la frontera runtime Win32.';deps='NativeSharp.Core;runtime Win32'}
@@ -99,7 +104,7 @@ function Get-Category($Row) {
     }
     if ($Row.component -eq 'Packaging') { return 'PACKAGING' }
     if ($Row.component -eq 'SelfHost.Contracts') { return 'SELFHOST_ORACLE' }
-    if ($Row.component -eq 'SelfHost.Bootstrap') {
+    if ($Row.component -eq 'SelfHost.Bootstrap.Infrastructure') {
         if ($Row.path -like '*.py') { return 'BOOTSTRAP_VERIFIER' }
         return 'BOOTSTRAP_DATA'
     }
@@ -301,7 +306,7 @@ foreach($row in $coverage){if($surfaceIds.ContainsKey($row.file_id)){$a=$auditRo
 $coverage|Export-Csv -LiteralPath $coveragePath -NoTypeInformation -Encoding utf8
 
 $componentsPath=Join-Path $inventoryRoot 'components.csv';$components=@(Import-Csv -LiteralPath $componentsPath)
-foreach($row in $components){if($row.role -in $surfaceRoles){$slug=Document-Slug $row.component;$row.state='AUDITADO';$row.reconstructibility=if($row.role -eq 'VENDORED_DEPENDENCY'){'NO APLICA - UPSTREAM'}elseif($row.role -eq 'SUPPORT_TOOL'){'NO APLICA - FUERA DE SUITE NSC'}else{'RECONSTRUIBLE'};$row.document="components/$slug.md";$row.audit_report="audits/TANDA-12B-$slug-AUDIT.md"}}
+foreach($row in $components){if($row.role -in $surfaceRoles){if($row.role -eq 'SELFHOST_CONTRACT' -and $row.component -eq 'SelfHost.Bootstrap'){$row.component='SelfHost.Bootstrap.Infrastructure'};$slug=Document-Slug $row.component;$row.state='AUDITADO';$row.reconstructibility=if($row.role -eq 'VENDORED_DEPENDENCY'){'NO APLICA - UPSTREAM'}elseif($row.role -eq 'SUPPORT_TOOL'){'NO APLICA - FUERA DE SUITE NSC'}else{'RECONSTRUIBLE'};$row.document="components/$slug.md";$row.audit_report="audits/TANDA-12B-$slug-AUDIT.md"}}
 $components|Export-Csv -LiteralPath $componentsPath -NoTypeInformation -Encoding utf8
 
 # Documents, plans and independent component gates.

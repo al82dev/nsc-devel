@@ -1,4 +1,4 @@
-# Plan de pruebas — SelfHost.Bootstrap
+# Plan de pruebas — SelfHost.Bootstrap.Infrastructure
 
 ## Alcance
 

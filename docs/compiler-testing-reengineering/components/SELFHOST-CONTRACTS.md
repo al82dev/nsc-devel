@@ -2,7 +2,7 @@
 
 ## 1. Estado y procedencia
 
-- **Revisión:** `93094d49210999de5018765df1c7551e942f43f4`.
+- **Revisión:** `65d4dcf44143c7a945a786c8f1e6ba78d225ad02`.
 - **Universo:** 48 archivos, 1500 líneas, 48 declaraciones/artefactos.
 - **Disposición:** INDIRECTA=48.
 - **Diseño futuro:** 48 contratos y 288 casos; ninguna prueba fue creada o ejecutada.
@@ -11,7 +11,7 @@
 
 Declarar oráculos versionados de frontend, semántica, IR, backend, runtime, determinismo y promoción self-host.
 
-**Dependencias:** SelfHost.Bootstrap;fixtures selfhost;productos SH41.
+**Dependencias:** SelfHost.Bootstrap.Infrastructure;fixtures selfhost;productos SH41.
 
 `DIRECTA` significa comportamiento propio aislable; `INDIRECTA`, comportamiento observable mediante integración o gate; `UPSTREAM`, responsabilidad del proveedor más smoke de integración; `EXCLUIDA`, fuera de la suite NSC con razón persistida.
 

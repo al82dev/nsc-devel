@@ -80,7 +80,7 @@ El dictamen es exclusivamente documental para la revisión auditada; no demuestr
 | `Library.Provenance` | `RECONSTRUIBLE` | 1 | 1 | 6 | `audits/TANDA-12B-LIBRARY-PROVENANCE-AUDIT.md` |
 | `Packaging` | `RECONSTRUIBLE` | 3 | 3 | 18 | `audits/TANDA-12B-PACKAGING-AUDIT.md` |
 | `SDK` | `RECONSTRUIBLE` | 1 | 1 | 6 | `audits/TANDA-12B-SDK-AUDIT.md` |
-| `SelfHost.Bootstrap` | `RECONSTRUIBLE` | 74 | 73 | 438 | `audits/TANDA-12B-SELFHOST-BOOTSTRAP-INFRASTRUCTURE-AUDIT.md` |
+| `SelfHost.Bootstrap.Infrastructure` | `RECONSTRUIBLE` | 74 | 73 | 438 | `audits/TANDA-12B-SELFHOST-BOOTSTRAP-INFRASTRUCTURE-AUDIT.md` |
 | `SelfHost.Contracts` | `RECONSTRUIBLE` | 48 | 48 | 288 | `audits/TANDA-12B-SELFHOST-CONTRACTS-AUDIT.md` |
 | `ThirdParty.Documentation` | `TRATADO — UPSTREAM` | 1 | 0 | 0 | `audits/TANDA-12B-THIRDPARTY-DOCUMENTATION-AUDIT.md` |
 | `ThirdParty.zlib` | `TRATADO — UPSTREAM` | 28 | 0 | 0 | `audits/TANDA-12B-THIRDPARTY-ZLIB-AUDIT.md` |
