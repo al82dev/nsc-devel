@@ -1539,10 +1539,10 @@
     "lines": "30",
     "sha256": "7db403cf3bfcadbc7c54dd965e2c3fbff491f250e9b4702c483ffb9ad82393b1",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000104",
@@ -1554,10 +1554,10 @@
     "lines": "72",
     "sha256": "c21825bf3c10c7a22375606702dadea7546046bf3d4839a8d975ee76b0c8769e",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000105",
@@ -1569,10 +1569,10 @@
     "lines": "73",
     "sha256": "f934c5928b5461996275711833bc3cdd5d005cdd4b9c4b3e940e862f50ea6f1d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000106",
@@ -1584,10 +1584,10 @@
     "lines": "14",
     "sha256": "0df7f52986bf7d110b722fd1b1eba67b238edbe8955996077445f01658ed0263",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000107",
@@ -1599,10 +1599,10 @@
     "lines": "61",
     "sha256": "5458dd49d8c3faa17b2f8b663c38b3cef4b3a164130327bf5979269c61b627cf",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000108",
@@ -1614,10 +1614,10 @@
     "lines": "14",
     "sha256": "19cebb25738bc19f2bbcf63d30d09cbf717125645b6d078bd69c065f487583b1",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000109",
@@ -1629,10 +1629,10 @@
     "lines": "30",
     "sha256": "0ffc0696317611541b20209c956cf52ddbfc42eb69ba13cbe9511b6487a8d39b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000110",
@@ -1644,10 +1644,10 @@
     "lines": "73",
     "sha256": "de34c3e1055c56ece0271f535d011593e63ad1f508ac14ef4e3544e2afe1accf",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000111",
@@ -1659,10 +1659,10 @@
     "lines": "37",
     "sha256": "5a5990cad0afe77c78f8145ecff6bc91d0380e4c6a97335929c18e61aec96186",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000112",
@@ -1674,10 +1674,10 @@
     "lines": "82",
     "sha256": "e0cc9dbde4e3889263443850fe0f64fb03cafbb1f10f61b9c5f53131c9c4e43b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000113",
@@ -1689,10 +1689,10 @@
     "lines": "43",
     "sha256": "6611d0b4705b82a6dc8ceb573827f012fabe10c42c3abe31280f5d882d5f90b8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000114",
@@ -1704,10 +1704,10 @@
     "lines": "129",
     "sha256": "8b47d82bfc8451f63556262549a867d4bf99a4b879460382b383e810922b0dd7",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000115",
@@ -9579,10 +9579,10 @@
     "lines": "160",
     "sha256": "4a68c7072042502528aff2a750183b5e4e72b07476ca7ada38073455e283efcd",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000640",
@@ -9594,10 +9594,10 @@
     "lines": "198",
     "sha256": "48e5de5bdaa7e2f52f68e1ac6a169f385cb7c2a9dd7514263ac3b0287261fec5",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000641",
@@ -9609,10 +9609,10 @@
     "lines": "87",
     "sha256": "ecc4229398b85715bc9bf4e797b52908c0aacdf409212a915383136482c613e3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000642",
@@ -9624,10 +9624,10 @@
     "lines": "44",
     "sha256": "39201bc322146e37dd72e748d95008fa7c99018ebd4b33431fbf348d828aa5dd",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000643",
@@ -9639,10 +9639,10 @@
     "lines": "379",
     "sha256": "4bb1827094098364b4e398d7f15c01308fcaa1afdb4219bbf04ee3b55c86a587",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000644",
@@ -9654,10 +9654,10 @@
     "lines": "30",
     "sha256": "63b016b4f5b154fa8c61dd28b839fe64a2e7e956bbc6e9b0053fa27dba3cb94c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000645",
@@ -9669,10 +9669,10 @@
     "lines": "376",
     "sha256": "8b680ab79b2fe9f0a4a9d676258afc5d11aea0b7d26f3a684e07a578f1568a23",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000646",
@@ -9684,10 +9684,10 @@
     "lines": "1084",
     "sha256": "7d5e4e4814bdc84cece6d0a628cbcdf3c94b2f95764800d84961c61735b5ea93",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000647",
@@ -9699,10 +9699,10 @@
     "lines": "142",
     "sha256": "c278185e601af1a1a506b85921b916ec6b2f4a44d3918a87b81ff3d6bf8e0a76",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000648",
@@ -9714,10 +9714,10 @@
     "lines": "475",
     "sha256": "a830bd7502ff7153b9a4400093c7faa11d5e573280ef544db3970258c1c1aa14",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000649",
@@ -9729,10 +9729,10 @@
     "lines": "386",
     "sha256": "49ba1b5533a2bfa5d96bffea109c66c56f06175dcbeec11d83b526c846cf1fd8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000650",
@@ -9744,10 +9744,10 @@
     "lines": "236",
     "sha256": "3d8df14bff4590148a6c7e4eb32c212464e0069563fde4a81c24a191e5f4cd8f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-10-HOST-COMPILATION-METHOD.md",
+    "section": "complete file",
+    "notes": "complete static reading, AST index, contract consolidation and independent audit"
   },
   {
     "id": "PF-000651",

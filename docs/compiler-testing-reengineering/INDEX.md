@@ -73,6 +73,9 @@
 - [Host.Runtime](components/HOST-RUNTIME.md)
   - [Test plan](test-plans/HOST-RUNTIME-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-09-HOST-RUNTIME-AUDIT.md)
+- [Host.Compilation](components/HOST-COMPILATION.md)
+  - [Test plan](test-plans/HOST-COMPILATION-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-10-HOST-COMPILATION-AUDIT.md)
 
 ## Artefactos mecánicos
 
