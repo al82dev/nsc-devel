@@ -102,6 +102,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerBasicArtifactControlledPreflightModule(registry);
         nsc::suite::registerBasicTransactionalWriterModule(registry);
         nsc::suite::registerBasicArtifactSeedModule(registry);
+        nsc::suite::registerSourcePositionModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
