@@ -9,7 +9,10 @@
 5. [architecture/COMPONENT-GRAPH.md](architecture/COMPONENT-GRAPH.md)
 6. Documentos de componentes en `components/`
 7. Planes de prueba en `test-plans/`
-8. Informes de auditoría independiente en `audits/`
+8. [TRANSVERSAL-CONTRACTS.md](TRANSVERSAL-CONTRACTS.md)
+9. [ERROR-TAXONOMY.md](ERROR-TAXONOMY.md)
+10. [STATE-MACHINES.md](STATE-MACHINES.md)
+11. Informes de auditoría independiente en `audits/`
 
 ## Componentes consolidados
 
@@ -95,6 +98,11 @@
 - `inventory/symbols.csv`: símbolos, responsabilidades, contratos y capa futura de prueba.
 - `inventory/contracts.csv`: contratos estables derivados de la implementación vigente.
 - `inventory/test-case-design.csv`: casos lógicos diseñados, sin implementación ejecutable.
+- `inventory/transversal-contracts.csv`: clasificación 1:1 de los 870 contratos en seis ejes transversales.
+- `inventory/error-taxonomy.csv`: error, recuperación y oráculo por cada contrato.
+- `inventory/state-machines.csv`: doce máquinas contractuales normalizadas.
+- `inventory/state-machine-contract-map.csv`: relación completa contrato-máquina; conserva los contratos stateless
+  en la matriz transversal.
 - `inventory/claims.csv`: catálogo de afirmaciones y procedencia.
 - `CURSOR.json`: punto exacto de reanudación.
 
@@ -103,6 +111,8 @@
 - [CONTRADICTIONS.md](CONTRADICTIONS.md)
 - [BLOCKERS.md](BLOCKERS.md)
 - [RECONSTRUCTIBILITY.md](RECONSTRUCTIBILITY.md)
+- [Método de clasificación transversal](evidence/TANDA-11-TRANSVERSAL-METHOD.md)
+- [Segunda auditoría de Tanda 11](audits/TANDA-11-TRANSVERSAL-AUDIT.md)
 
 ## Leyenda de afirmaciones
 

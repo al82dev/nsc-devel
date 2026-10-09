@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-10-09T01:08:42-06:00",
-  "revision": "3ad942836b8a8703e2f48d162cbc283cdc116497",
+  "generated_at": "2026-10-09T01:30:48.5615765-06:00",
+  "revision": "70fcd77067daa7c60e6061a37521f9e8c6938793",
   "production_files": 974,
   "production_lines": 311814,
   "components": 57,
@@ -10,7 +10,17 @@
   "components_csv_sha256": "149e05848675da6ffcbf13c2355a7805868bef8a8b8f3a29e6cd81dc25628332",
   "document_coverage_csv_sha256": "7117eda58faafb56b8e89c5cdd7e22b8935581bf0e464f102ffdba4824359246",
   "symbols_csv_sha256": "ca42622c644b5f7f4091bd3534ebfa9ead46e40e3236828b140e7964e335f1f3",
-  "contracts_csv_sha256": "3e7fe1a83cfea4c37b9f9dc786e2bad2e287b52fc4e71c01c5b64300496c1ef7",
+  "contracts_csv_sha256": "0aa9b0e0129e1bf6acab22b5dbfdb6828acfe9ff0533a08802130240c8633055",
   "test_case_design_csv_sha256": "11764eabec181f1572142735dcb84af90ce9856382c9590a73dc6a128257c508",
-  "historical_tests_csv_sha256": "fba06c64f0b3d83b517edd43756ebbebeb8227699adaf55eb07c870f03686267"
+  "historical_tests_csv_sha256": "fba06c64f0b3d83b517edd43756ebbebeb8227699adaf55eb07c870f03686267",
+  "transversal_contracts": 870,
+  "error_taxonomy_rows": 870,
+  "state_machines": 12,
+  "state_machine_contract_mappings": 515,
+  "stateless_or_value_contracts": 466,
+  "transversal_contracts_csv_sha256": "02a875c63c7e3dbed93ff6f06a67f92fa0eb0271491a9b658abd719a70195e83",
+  "error_taxonomy_csv_sha256": "db584dbdc3a421a7683eacd9183d5e86390fec842433afa71d3458f70fca0e3e",
+  "state_machines_csv_sha256": "a0456bea25b080ab37a120bb54724981631df8725937ecd87c923b26f0e29f27",
+  "state_machine_contract_map_csv_sha256": "9071b28b286da2a42979e4fdf506f4b34f345bce64353072faf4894fc7e5c614",
+  "tanda11_generator_sha256": "ec9fc6c316041f41b7d1231856529ea6bb1d16072363e75330199e6b0402197d"
 }

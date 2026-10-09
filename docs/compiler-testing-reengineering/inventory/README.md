@@ -12,10 +12,14 @@ determinista desde la revisión congelada y no sustituyen la lectura semántica 
 - `symbols.csv`: inventario semántico de tipos, funciones, constantes y helpers relevantes.
 - `contracts.csv`: contratos observables con invariantes, errores, dependencias y oráculos.
 - `test-case-design.csv`: casos de prueba diseñados; no contiene ni genera pruebas ejecutables.
+- `transversal-contracts.csv`: una fila por contrato con tratamiento explícito de los seis ejes de Tanda 11.
+- `error-taxonomy.csv`: clasificación no exclusiva de errores y políticas de recuperación.
+- `state-machines.csv`: estados, transiciones, invariantes, fallos y oráculos de doce ciclos estables.
+- `state-machine-contract-map.csv`: relaciones auditadas entre los contratos y esas máquinas.
 
 Los estados documentales válidos son los de la sección 18 de los lineamientos. El estado inicial es
 `NO LEÍDO`; abrir un archivo no permite promoverlo directamente a `AUDITADO`.
 
-Al cierre de Tanda 05, `Host.Basic`, `Host.Source`, `Host.Diagnostics`, `Host.Lexer`, `Host.Parser`, `Host.AST`,
-`Host.Language` y `Host.Sema` tienen inventario semántico, contratos, casos diseñados y segunda auditoría
-independiente. Ninguna fila `DESIGNED` representa código de prueba creado o ejecutado.
+Al cierre de Tanda 11, los 24 componentes host poseen inventario semántico, contratos, casos diseñados y segunda
+auditoría independiente; los 870 contratos están además clasificados transversalmente. Ninguna fila `DESIGNED`
+representa código de prueba creado o ejecutado.

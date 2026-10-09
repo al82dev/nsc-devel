@@ -12,7 +12,7 @@
 | 08 | LLVM, Target, ABI, depuración y codegen | LISTA | 44 | 44 | 0 |
 | 09 | Interop, Linker y Runtime | LISTA | 34 | 34 | 0 |
 | 10 | Compilation, Driver, CLI y LanguageService | LISTA | 80 | 80 | 0 |
-| 11 | Contratos transversales, errores y máquinas de estado | PENDIENTE | 0 | 0 | Por determinar |
+| 11 | Contratos transversales, errores y máquinas de estado | LISTA | 870 | 870 | 0 |
 | 12 | Arquitectura de suite nueva y test plans por componente | PENDIENTE | 0 | 0 | Por determinar |
 | 13 | Segunda auditoría independiente y cierre técnico | PENDIENTE | 0 | 0 | Por determinar |
 
