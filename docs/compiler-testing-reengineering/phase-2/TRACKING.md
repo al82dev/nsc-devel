@@ -14,3 +14,7 @@
 | 9 | Build, instalación y paquete de NSC | PENDIENTE | 474 | 0 | 0 |
 
 Estados permitidos: `PENDIENTE`, `EN CURSO`, `LISTA`, `BLOQUEADA`.
+
+| Último corte | Commit | Siguiente caso |
+|---|---|---|
+| Tanda 01.89 — `TL-LANG-034` verificado | `92e1b6019` | `TL-LANG-201` |

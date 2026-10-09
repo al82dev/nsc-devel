@@ -36,3 +36,5 @@ en esta infraestructura. Sus inventarios de Fase 1 conservan valor documental,
 pero cualquier suite futura les pertenece a sus repositorios respectivos.
 
 Cada cambio incluye implementación, pruebas nuevas enfocadas, evidencia Markdown y un commit pequeño.
+El mismo commit que cierra una tanda actualiza `TRACKING.md` y `CURSOR.json`; queda prohibido diferir el estado
+persistente a una tanda posterior.

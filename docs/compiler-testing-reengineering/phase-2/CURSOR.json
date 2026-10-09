@@ -3,19 +3,20 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "a4318f2fb",
+  "last_completed_commit": "92e1b6019",
   "current_wave": 1,
   "current_component": null,
-  "next_contract": "CL-LANG-009",
-  "next_action": "Implement corrected TL-LANG-116 without changing product, then materialize the seven defect-revealing cases with their real oracles. Keep four special-infrastructure cases and two absent-feature cases pending, and continue causally independent work without reducing the 747-case denominator.",
+  "next_contract": "CL-LANG-016",
+  "next_action": "Implement corrected TL-LANG-201 against the existing Divide operation, then materialize the seven defect-revealing cases with their real oracles. Keep the four special-infrastructure cases pending and continue causally independent work without reducing the 747-case denominator.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
-    "revision": "a4318f2fb",
+    "revision": "92e1b6019",
     "total": 14,
     "special_infrastructure_pending": 4,
     "product_defect_tests_to_implement": 7,
-    "product_features_pending": 2,
-    "test_plan_corrections_resolved": 1,
+    "test_plan_corrections_total": 3,
+    "test_plan_corrections_implemented": 2,
+    "test_plan_corrections_pending": 1,
     "unclassified": 0
   },
   "independent_completed_contracts": [
@@ -112,10 +113,9 @@
       ]
     },
     "CL-LANG-003": {
-      "implemented_cases": 13,
-      "verified_cases": 13,
+      "implemented_cases": 14,
+      "verified_cases": 14,
       "blocked_cases": [
-        "TL-LANG-034",
         "TL-LANG-035"
       ]
     },
@@ -127,11 +127,8 @@
       ]
     },
     "CL-LANG-009": {
-      "implemented_cases": 10,
-      "verified_cases": 10,
-      "next_cases": [
-        "TL-LANG-116"
-      ],
+      "implemented_cases": 11,
+      "verified_cases": 11,
       "blocked_cases": [
         "TL-LANG-121"
       ]
@@ -139,7 +136,7 @@
     "CL-LANG-016": {
       "implemented_cases": 24,
       "verified_cases": 24,
-      "blocked_cases": [
+      "next_cases": [
         "TL-LANG-201"
       ]
     },
@@ -175,11 +172,11 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 733,
-      "product_cases_verified": 733,
+      "product_cases_implemented": 735,
+      "product_cases_verified": 735,
       "defect_tests_pending_implementation": 7,
       "special_infrastructure_pending": 4,
-      "product_features_pending": 2,
+      "product_features_pending": 0,
       "corrected_test_plan_cases_pending_implementation": 1
     }
   },
