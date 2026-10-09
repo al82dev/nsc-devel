@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "f8626f7a7",
+  "last_completed_commit": "29a5b897f",
   "current_wave": 1,
-  "current_component": "Host.Basic",
-  "next_contract": "CB-BAS-016",
-  "next_action": "Implement the next canonical host-owned block TB-BAS-083..088. TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "current_component": "Host.Source",
+  "next_contract": "CS-SRC-001",
+  "next_action": "Implement the next canonical host-owned block TS-SRC-001..002. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "wave_status": {
     "0": {
       "status": "LISTA",
@@ -18,16 +18,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 70,
-      "product_cases_verified": 70
+      "product_cases_implemented": 76,
+      "product_cases_verified": 76
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 9,
-    "debug_ctest_total": 9,
-    "release_ctest_passed": 9,
-    "release_ctest_total": 9,
+    "debug_ctest_passed": 10,
+    "debug_ctest_total": 10,
+    "release_ctest_passed": 10,
+    "release_ctest_total": 10,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
