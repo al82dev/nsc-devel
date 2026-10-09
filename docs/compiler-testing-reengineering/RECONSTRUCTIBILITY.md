@@ -28,6 +28,7 @@ tabla; registra el criterio y enlazará los informes individuales conforme se pr
 | `Host.Passes` | `RECONSTRUIBLE` | 158 | 56 | 448 | `audits/TANDA-07-HOST-PASSES-AUDIT.md` |
 | `Host.Target` | `RECONSTRUIBLE` | 46 | 30 | 240 | `audits/TANDA-08-HOST-TARGET-AUDIT.md` |
 | `Host.LLVM` | `RECONSTRUIBLE` | 802 | 64 | 512 | `audits/TANDA-08-HOST-LLVM-AUDIT.md` |
+| `Host.Interop` | `RECONSTRUIBLE` | 178 | 48 | 384 | `audits/TANDA-09-HOST-INTEROP-AUDIT.md` |
 
 `RECONSTRUIBLE` describe suficiencia documental para la revisión congelada. No significa que la suite nueva
 esté implementada ni que se haya ejecutado validación.

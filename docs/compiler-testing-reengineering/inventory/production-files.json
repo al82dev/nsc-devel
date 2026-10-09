@@ -3459,10 +3459,10 @@
     "lines": "21",
     "sha256": "47aca0e4a3ad49c0c5af0f081a3e996f7b9edbd104965762d1f7dca38b601086",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000232",
@@ -3474,10 +3474,10 @@
     "lines": "14",
     "sha256": "8f893489255386a1e00bef9dca599ce844ff190ab9f2e7e647fc7e7510965a7d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000233",
@@ -3489,10 +3489,10 @@
     "lines": "52",
     "sha256": "fabc4d753f856c49f4ff28a31a471111acead3e8e9d228842273fec881ff1e2b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000234",
@@ -3504,10 +3504,10 @@
     "lines": "27",
     "sha256": "c1eeceba96d09bcc06d46bcded8804e4299e03246a1021acab93924855d1aae2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000235",
@@ -3519,10 +3519,10 @@
     "lines": "624",
     "sha256": "e5d2b8b9fdf5f6c2697e000f53b2677b64387049ce54fed3af46aa2d124a7dd0",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000236",
@@ -3534,10 +3534,10 @@
     "lines": "21",
     "sha256": "00e34143cb576ad0361be74b9fa378f55e372f5f99d58beb63892671e6091bcb",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000237",
@@ -11169,10 +11169,10 @@
     "lines": "931",
     "sha256": "f58e77fb3e78a41d348a3069af4cb34058f206b6d144b9a5ff12da228d78c546",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000746",
@@ -11184,10 +11184,10 @@
     "lines": "310",
     "sha256": "3d18d0f2d1e0e1e70f72b3c63135bf8122deca03c9d5e09116a3ab6e4d592bc6",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000747",
@@ -11199,10 +11199,10 @@
     "lines": "637",
     "sha256": "727fe57950c284b3036ffff6ae56315f58b964be6e652ab6df57cfd43852142c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000748",
@@ -11214,10 +11214,10 @@
     "lines": "167",
     "sha256": "e19678cafcc2278680a5995e0389d701c0bdc8cd27f19da5207e639b8df73c06",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000749",
@@ -11229,10 +11229,10 @@
     "lines": "5181",
     "sha256": "d654c3189e6254d57515c364347c1e581a603eecb42b61192596fe6d9c51ce83",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000750",
@@ -11244,10 +11244,10 @@
     "lines": "438",
     "sha256": "4c16b9bc6e62d8a886a660c5ab2d8c423ee9f282eab94b1e0c6ef7d769f001b8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-09-HOST-INTEROP-METHOD.md",
+    "section": "universe and extraction",
+    "notes": "complete static audit; source hash preserved"
   },
   {
     "id": "PF-000751",
