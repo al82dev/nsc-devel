@@ -7,7 +7,7 @@
   "current_wave": 1,
   "current_component": "Host.Source",
   "next_contract": "CS-SRC-002",
-  "next_action": "Keep CS-SRC-002 open for the explicit TS-SRC-008 memory-bound blocker. Keep CS-SRC-006 partial because TS-SRC-040..041 lack a deterministic product-side mutation point. Keep CS-SRC-007 partial because TS-SRC-049 requires a versioned sanitizer misuse-probe profile. Host.Target CF-TGT-001..030 are complete. Continue only proven-independent work by auditing Host.Target CF-TGT-031 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_action": "Keep CS-SRC-002 open for the explicit TS-SRC-008 memory-bound blocker. Keep CS-SRC-006 partial because TS-SRC-040..041 lack a deterministic product-side mutation point. Keep CS-SRC-007 partial because TS-SRC-049 requires a versioned sanitizer misuse-probe profile. Host.Target CF-TGT-001..030 are complete and the canonical inventory contains no CF-TGT-031. Continue only proven-independent work by auditing Host.Diagnostics CD-DIA-001 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
