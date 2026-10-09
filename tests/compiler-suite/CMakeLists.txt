@@ -23,7 +23,9 @@ add_executable(
     host/modules/BasicValuesModule.cpp
     host/modules/BasicSha256Module.cpp
     host/modules/BasicSha256FileModule.cpp
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp")
+    host/modules/BasicOutputFailureModule.cpp
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp")
 
 target_include_directories(
     nsc_component_tests
