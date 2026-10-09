@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "17932cbf3",
+  "last_completed_commit": "31e91b7e4",
   "current_wave": 1,
   "current_component": "Host.Language",
-  "next_contract": "CL-LANG-017",
-  "next_action": "Keep the documented product blockers open; Phase 2 cannot modify product. CL-LANG-016 has 24 realizable cases implemented and verified; TL-LANG-201 remains blocked because IntegerArithmeticOperation exposes no Remainder operation. Audit CL-LANG-017 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_contract": "CL-LANG-018",
+  "next_action": "Keep the documented product blockers open; Phase 2 cannot modify product. CL-LANG-017 has 13 realizable cases implemented and verified; TL-LANG-230 remains blocked because decodeEscapeSummary accepts partial numeric tokens and retains partial output on later failure. Audit CL-LANG-018 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
@@ -119,6 +119,13 @@
       "blocked_cases": [
         "TL-LANG-201"
       ]
+    },
+    "CL-LANG-017": {
+      "implemented_cases": 13,
+      "verified_cases": 13,
+      "blocked_cases": [
+        "TL-LANG-230"
+      ]
     }
   },
   "wave_status": {
@@ -131,16 +138,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 654,
-      "product_cases_verified": 654
+      "product_cases_implemented": 667,
+      "product_cases_verified": 667
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 76,
-    "debug_ctest_total": 76,
-    "release_ctest_passed": 76,
-    "release_ctest_total": 76,
+    "debug_ctest_passed": 77,
+    "debug_ctest_total": 77,
+    "release_ctest_passed": 77,
+    "release_ctest_total": 77,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
