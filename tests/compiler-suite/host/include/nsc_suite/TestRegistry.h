@@ -123,4 +123,5 @@ void registerLanguageIterationSemanticsModule(TestRegistry& registry);
 void registerLanguageSurfaceModule(TestRegistry& registry);
 void registerLanguageMemoryModelModule(TestRegistry& registry);
 void registerLanguageMetaprogrammingModule(TestRegistry& registry);
+void registerLanguageModuleSemanticsModule(TestRegistry& registry);
 }

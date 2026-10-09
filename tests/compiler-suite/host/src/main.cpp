@@ -167,6 +167,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerLanguageSurfaceModule(registry);
         nsc::suite::registerLanguageMemoryModelModule(registry);
         nsc::suite::registerLanguageMetaprogrammingModule(registry);
+        nsc::suite::registerLanguageModuleSemanticsModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
