@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "799fa5c37",
+  "last_completed_commit": "b81d5c13e",
   "current_wave": 1,
   "current_component": "Host.Language",
   "next_contract": "CL-LANG-005",
-  "next_action": "Keep CS-SRC-002 open for the explicit TS-SRC-008 memory-bound blocker. Keep CS-SRC-006 partial because TS-SRC-040..041 lack a deterministic product-side mutation point. Keep CS-SRC-007 partial because TS-SRC-049 requires a versioned sanitizer misuse-probe profile. Keep CL-LANG-002 partial because TL-LANG-019 proves unchecked aggregate-layout overflow returns a wrapped layout instead of nullopt. Keep CL-LANG-003 partial because TL-LANG-034 requests offsets absent from ClosureLayout and TL-LANG-035 proves unchecked closure-layout overflow is accepted. Phase 2 cannot modify product. CL-LANG-004 is complete. Continue proven-independent Wave 1 work by auditing Host.Language CL-LANG-005 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_action": "Keep the documented product blockers open; Phase 2 cannot modify product. CL-LANG-005 has TL-LANG-050..056 implemented and verified. Continue the same contract with TL-LANG-057..062 for future state and cancellation, then TL-LANG-063..068 for async generators and TL-LANG-069..077 for concurrency. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
@@ -88,6 +88,13 @@
         "TL-LANG-034",
         "TL-LANG-035"
       ]
+    },
+    "CL-LANG-005": {
+      "implemented_cases": 7,
+      "verified_cases": 7,
+      "pending_cases": [
+        "TL-LANG-057..077"
+      ]
     }
   },
   "wave_status": {
@@ -100,16 +107,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 491,
-      "product_cases_verified": 491
+      "product_cases_implemented": 498,
+      "product_cases_verified": 498
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 64,
-    "debug_ctest_total": 64,
-    "release_ctest_passed": 64,
-    "release_ctest_total": 64,
+    "debug_ctest_passed": 65,
+    "debug_ctest_total": 65,
+    "release_ctest_passed": 65,
+    "release_ctest_total": 65,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
