@@ -12,6 +12,8 @@ from .manifest import CaseManifest
 class CaseStatus(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"
+    KNOWN_FAILURE = "KNOWN_FAILURE"
+    UNEXPECTED_PASS = "UNEXPECTED_PASS"
     BLOCKED = "BLOCKED"
     SKIPPED = "SKIPPED"
     CANCELLED = "CANCELLED"
@@ -37,7 +39,12 @@ class CaseResult:
             raise ValueError("BLOCKED requires at least one producer")
         if self.status is not CaseStatus.BLOCKED and self.blocked_by:
             raise ValueError("only BLOCKED can contain blocked_by")
-        if self.status in {CaseStatus.FAIL, CaseStatus.INFRASTRUCTURE_ERROR} and not self.failures:
+        if self.status in {
+            CaseStatus.FAIL,
+            CaseStatus.KNOWN_FAILURE,
+            CaseStatus.UNEXPECTED_PASS,
+            CaseStatus.INFRASTRUCTURE_ERROR,
+        } and not self.failures:
             raise ValueError(f"{self.status.value} requires failure evidence")
 
 

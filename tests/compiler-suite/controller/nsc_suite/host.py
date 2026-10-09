@@ -62,6 +62,16 @@ class HostExecutor:
         _write_logs(workspace, completed.stdout, completed.stderr)
         lines = tuple(line for line in completed.stdout.splitlines() if line.strip())
         if len(lines) != 1:
+            if case.expected_outcome == "KNOWN_FAILURE" and completed.returncode != 0 and not lines:
+                return CaseResult(
+                    case.case_id,
+                    CaseStatus.KNOWN_FAILURE,
+                    duration_seconds=duration,
+                    failures=(
+                        "known product defect terminated the isolated host process with "
+                        f"exit code {completed.returncode}",
+                    ),
+                )
             return _infrastructure_error(
                 case.case_id,
                 f"host executable emitted {len(lines)} non-empty result lines; expected 1",
@@ -105,6 +115,20 @@ class HostExecutor:
         if status_text == "FAIL" and not failures:
             return _infrastructure_error(
                 case.case_id, "host FAIL result lacks failure evidence", duration
+            )
+        if case.expected_outcome == "KNOWN_FAILURE":
+            if status_text == "FAIL":
+                return CaseResult(
+                    case.case_id,
+                    CaseStatus.KNOWN_FAILURE,
+                    duration_seconds=duration,
+                    failures=tuple(failures),
+                )
+            return CaseResult(
+                case.case_id,
+                CaseStatus.UNEXPECTED_PASS,
+                duration_seconds=duration,
+                failures=("known product defect passed; remove its quarantine and update tracking",),
             )
         return CaseResult(
             case.case_id,

@@ -118,7 +118,8 @@ def run(arguments: list[str]) -> int:
         tools=tuple(tools),
     )
     ReportWriter(work_root / options.run_id).write(metadata, results)
-    return 0 if all(result.status.value == "PASS" for result in results) else 1
+    non_blocking = {"PASS", "KNOWN_FAILURE"}
+    return 0 if all(result.status.value in non_blocking for result in results) else 1
 
 
 def _sha256(path: Path) -> str:

@@ -16,7 +16,9 @@ from nsc_suite.result import CaseStatus
 from nsc_suite.workspace import WorkspaceManager
 
 
-def case(*, executor: str = "nsc_component_tests") -> CaseManifest:
+def case(
+    *, executor: str = "nsc_component_tests", expected_outcome: str = "PASS"
+) -> CaseManifest:
     return CaseManifest(
         case_id="TB-BAS-001",
         contract_id="CB-BAS-001",
@@ -33,6 +35,7 @@ def case(*, executor: str = "nsc_component_tests") -> CaseManifest:
         isolation="in-process-reset",
         timeout_class="tiny",
         tags=(),
+        expected_outcome=expected_outcome,
     )
 
 
@@ -84,6 +87,57 @@ class HostExecutorTests(unittest.TestCase):
         )
         self.assertIs(result.status, CaseStatus.FAIL)
         self.assertEqual(result.failures, ("synthetic contract failure",))
+
+    def test_classifies_an_expected_failure_without_converting_it_to_pass(self) -> None:
+        self.next_run += 1
+        script = self.root / f"fake-host-{self.next_run}.py"
+        payload = self.valid_payload("FAIL", ["known product defect"])
+        script.write_text(
+            "import json\n"
+            f"print({json.dumps(json.dumps(payload, sort_keys=True))})\n"
+            "raise SystemExit(1)\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        workspace = WorkspaceManager(self.root).prepare(
+            f"run-{self.next_run:03d}", "TB-BAS-001"
+        )
+        result = HostExecutor((sys.executable, str(script)))(
+            case(expected_outcome="KNOWN_FAILURE"), workspace
+        )
+        self.assertIs(result.status, CaseStatus.KNOWN_FAILURE)
+        self.assertEqual(result.failures, ("known product defect",))
+
+    def test_flags_an_unexpected_pass_of_a_known_defect(self) -> None:
+        self.next_run += 1
+        script = self.root / f"fake-host-{self.next_run}.py"
+        payload = self.valid_payload("PASS", [])
+        script.write_text(
+            "import json\n"
+            f"print({json.dumps(json.dumps(payload, sort_keys=True))})\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        workspace = WorkspaceManager(self.root).prepare(
+            f"run-{self.next_run:03d}", "TB-BAS-001"
+        )
+        result = HostExecutor((sys.executable, str(script)))(
+            case(expected_outcome="KNOWN_FAILURE"), workspace
+        )
+        self.assertIs(result.status, CaseStatus.UNEXPECTED_PASS)
+
+    def test_classifies_an_isolated_known_defect_crash(self) -> None:
+        self.next_run += 1
+        script = self.root / f"fake-host-{self.next_run}.py"
+        script.write_text("raise SystemExit(9)\n", encoding="utf-8", newline="\n")
+        workspace = WorkspaceManager(self.root).prepare(
+            f"run-{self.next_run:03d}", "TB-BAS-001"
+        )
+        result = HostExecutor((sys.executable, str(script)))(
+            case(expected_outcome="KNOWN_FAILURE"), workspace
+        )
+        self.assertIs(result.status, CaseStatus.KNOWN_FAILURE)
+        self.assertIn("exit code 9", result.failures[0])
 
     def test_rejects_wrong_contract_identity(self) -> None:
         payload = self.valid_payload("PASS", [])

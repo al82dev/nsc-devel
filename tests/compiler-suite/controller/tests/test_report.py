@@ -50,17 +50,24 @@ class ReportTests(unittest.TestCase):
                 CaseStatus.BLOCKED,
                 blocked_by=("TB-BAS-002",),
             ),
+            CaseResult(
+                "TB-BAS-004",
+                CaseStatus.KNOWN_FAILURE,
+                failures=("known product defect",),
+            ),
         )
         ReportWriter(self.root).write(
-            metadata("TB-BAS-001", "TB-BAS-002", "TB-BAS-003"), reversed(results)
+            metadata("TB-BAS-001", "TB-BAS-002", "TB-BAS-003", "TB-BAS-004"),
+            reversed(results),
         )
         payload = json.loads((self.root / "results.json").read_text(encoding="utf-8"))
         self.assertEqual(payload["counts"]["PASS"], 1)
         self.assertEqual(payload["counts"]["FAIL"], 1)
         self.assertEqual(payload["counts"]["BLOCKED"], 1)
+        self.assertEqual(payload["counts"]["KNOWN_FAILURE"], 1)
         self.assertEqual(
             [result["case_id"] for result in payload["results"]],
-            ["TB-BAS-001", "TB-BAS-002", "TB-BAS-003"],
+            ["TB-BAS-001", "TB-BAS-002", "TB-BAS-003", "TB-BAS-004"],
         )
         summary = (self.root / "summary.md").read_text(encoding="utf-8")
         self.assertIn("| PASS | 1 |", summary)
@@ -68,6 +75,7 @@ class ReportTests(unittest.TestCase):
         self.assertNotIn("TB-BAS-001", failures)
         self.assertIn("failure=$.value: expected 1, actual 2", failures)
         self.assertIn("blocked_by=TB-BAS-002", failures)
+        self.assertIn("status=KNOWN_FAILURE", failures)
 
     def test_rejects_incomplete_or_unexpected_results(self) -> None:
         with self.assertRaisesRegex(ReportError, "coverage mismatch"):

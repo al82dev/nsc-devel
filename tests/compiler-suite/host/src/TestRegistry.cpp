@@ -42,7 +42,10 @@ std::vector<const TestCase*> TestRegistry::all() const
     selected.reserve(cases_.size());
     for (const TestCase& testCase : cases_)
     {
-        selected.push_back(&testCase);
+        if (testCase.disposition == TestDisposition::Required)
+        {
+            selected.push_back(&testCase);
+        }
     }
     return selected;
 }
@@ -52,7 +55,8 @@ std::vector<const TestCase*> TestRegistry::byComponent(std::string_view componen
     std::vector<const TestCase*> selected;
     for (const TestCase& testCase : cases_)
     {
-        if (testCase.component == component)
+        if (testCase.component == component &&
+            testCase.disposition == TestDisposition::Required)
         {
             selected.push_back(&testCase);
         }

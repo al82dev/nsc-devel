@@ -31,6 +31,7 @@ REQUIRED_FIELDS = frozenset(
         "tags",
     }
 )
+OPTIONAL_FIELDS = frozenset({"expected_outcome"})
 CASE_CLASSES = frozenset(
     {"nominal", "valid-variant", "invalid", "boundary", "recovery", "determinism"}
 )
@@ -55,6 +56,7 @@ BUILD_MODES = frozenset({"Debug", "Release"})
 OPTIMIZATIONS = frozenset({"NA", "O0", "O1", "O2", "O3"})
 ISOLATIONS = frozenset({"in-process-reset", "temporary-directory"})
 TIMEOUT_CLASSES = frozenset({"tiny", "normal", "extended", "self-host", "packaging"})
+EXPECTED_OUTCOMES = frozenset({"PASS", "KNOWN_FAILURE"})
 
 
 class ManifestError(ValueError):
@@ -106,6 +108,7 @@ class CaseManifest:
     isolation: str
     timeout_class: str
     tags: tuple[str, ...]
+    expected_outcome: str = "PASS"
 
 
 def load_manifest(
@@ -150,7 +153,7 @@ def _parse_case(
         raise ManifestError(f"case must be a JSON object at {location}")
     fields = set(payload)
     missing = sorted(REQUIRED_FIELDS - fields)
-    unknown = sorted(fields - REQUIRED_FIELDS)
+    unknown = sorted(fields - REQUIRED_FIELDS - OPTIONAL_FIELDS)
     if missing:
         raise ManifestError(f"missing fields at {location}: {', '.join(missing)}")
     if unknown:
@@ -185,6 +188,9 @@ def _parse_case(
     build_modes = _enum_array(payload, "build_modes", BUILD_MODES, location)
     optimizations = _enum_array(payload, "optimizations", OPTIMIZATIONS, location)
     tags = _string_array(payload, "tags", location, allow_empty=True)
+    expected_outcome = payload.get("expected_outcome", "PASS")
+    if not isinstance(expected_outcome, str) or expected_outcome not in EXPECTED_OUTCOMES:
+        raise ManifestError(f"invalid expected_outcome at {location}: {expected_outcome}")
 
     if executor == "nsc_component_tests":
         if isolation != "in-process-reset":
@@ -215,6 +221,7 @@ def _parse_case(
         isolation=isolation,
         timeout_class=timeout_class,
         tags=tags,
+        expected_outcome=expected_outcome,
     )
 
 

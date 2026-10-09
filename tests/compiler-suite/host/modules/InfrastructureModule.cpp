@@ -36,9 +36,15 @@ void registerOrderingCase(TestRegistry& registry)
             const auto noOperation = [](TestContext&) {};
             local.add(TestCase{"Z-CASE-001", "Z-CONTRACT", "Z", "unit", "PR", {}, noOperation});
             local.add(TestCase{"A-CASE-001", "A-CONTRACT", "A", "unit", "PR", {}, noOperation});
-            context.expect(local.cases().size() == 2, "registry must preserve both cases");
+            local.add(TestCase{"K-CASE-001", "K-CONTRACT", "A", "unit", "PR", {}, noOperation,
+                TestDisposition::KnownProductDefect});
+            context.expect(local.cases().size() == 3, "registry must preserve every registered case");
             context.expect(local.cases().front().id == "A-CASE-001", "registry must sort by stable ID");
             context.expect(local.find("Z-CASE-001") != nullptr, "registry lookup must find an existing ID");
+            context.expect(local.find("K-CASE-001") != nullptr,
+                "registry lookup must expose a known product defect for explicit execution");
+            context.expect(local.all().size() == 2 && local.byComponent("A").size() == 1,
+                "ordinary aggregate selectors must exclude known product defects");
             context.expect(local.find("MISSING") == nullptr, "registry lookup must reject an absent ID");
         },
     });

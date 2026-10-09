@@ -67,6 +67,16 @@ class ManifestTests(unittest.TestCase):
         loaded = load_manifest(self.write_manifest([second, valid_case()]), self.inventory)
         self.assertEqual([case.case_id for case in loaded], ["TB-BAS-001", "TB-BAS-002"])
         self.assertEqual(loaded[1].dependencies, ("TB-BAS-001",))
+        self.assertEqual(loaded[0].expected_outcome, "PASS")
+
+    def test_accepts_only_explicit_known_failure_outcomes(self) -> None:
+        known = valid_case()
+        known["expected_outcome"] = "KNOWN_FAILURE"
+        loaded = load_manifest(self.write_manifest([known]), self.inventory)
+        self.assertEqual(loaded[0].expected_outcome, "KNOWN_FAILURE")
+        invalid = valid_case()
+        invalid["expected_outcome"] = "SKIP"
+        self.assert_manifest_error([invalid], "invalid expected_outcome")
 
     def test_rejects_unknown_and_missing_fields(self) -> None:
         unknown = valid_case()

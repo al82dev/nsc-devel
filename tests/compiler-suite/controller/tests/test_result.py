@@ -40,6 +40,10 @@ class ResultTests(unittest.TestCase):
             CaseResult("TB-BAS-001", CaseStatus.BLOCKED)
         with self.assertRaisesRegex(ValueError, "requires failure evidence"):
             CaseResult("TB-BAS-001", CaseStatus.FAIL)
+        with self.assertRaisesRegex(ValueError, "requires failure evidence"):
+            CaseResult("TB-BAS-001", CaseStatus.KNOWN_FAILURE)
+        with self.assertRaisesRegex(ValueError, "requires failure evidence"):
+            CaseResult("TB-BAS-001", CaseStatus.UNEXPECTED_PASS)
 
     def test_ledger_is_append_only(self) -> None:
         ledger = ResultLedger((case("TB-BAS-001"),))

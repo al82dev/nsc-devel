@@ -12,6 +12,12 @@ namespace nsc::suite
 {
 using TestFunction = std::function<void(TestContext&)>;
 
+enum class TestDisposition
+{
+    Required,
+    KnownProductDefect,
+};
+
 struct TestCase
 {
     std::string id;
@@ -21,6 +27,7 @@ struct TestCase
     std::string profile;
     std::vector<std::string> tags;
     TestFunction function;
+    TestDisposition disposition = TestDisposition::Required;
 };
 
 struct TestResult
