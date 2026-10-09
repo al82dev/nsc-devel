@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(CONTROLLER_ROOT))
+
+from nsc_suite.manifest import InventoryIndex, ManifestError, load_manifest
+
+
+def valid_case(case_id: str = "TB-BAS-001", dependencies: list[str] | None = None) -> dict:
+    return {
+        "case_id": case_id,
+        "contract_id": "CB-BAS-001",
+        "component": "Host.Basic",
+        "class": "nominal",
+        "executor": "nsc_component_tests",
+        "layer": "unit",
+        "inputs": {"value": 1},
+        "oracle": {"valid": True, "value": 1},
+        "dependencies": dependencies or [],
+        "profile": "PR",
+        "build_modes": ["Debug", "Release"],
+        "optimizations": ["NA"],
+        "isolation": "in-process-reset",
+        "timeout_class": "tiny",
+        "tags": ["foundation"],
+    }
+
+
+class ManifestTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.components = self.root / "components.csv"
+        self.contracts = self.root / "contracts.csv"
+        self.components.write_text("component\nHost.Basic\n", encoding="utf-8")
+        self.contracts.write_text(
+            "contract_id,component\nCB-BAS-001,Host.Basic\n", encoding="utf-8"
+        )
+        self.inventory = InventoryIndex.from_csv(self.components, self.contracts)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def write_manifest(self, cases: list[dict]) -> Path:
+        path = self.root / "cases.jsonl"
+        path.write_text(
+            "".join(json.dumps(case, sort_keys=True) + "\n" for case in cases),
+            encoding="utf-8",
+        )
+        return path
+
+    def assert_manifest_error(self, cases: list[dict], text: str) -> None:
+        with self.assertRaisesRegex(ManifestError, text):
+            load_manifest(self.write_manifest(cases), self.inventory)
+
+    def test_loads_and_orders_valid_cases(self) -> None:
+        second = valid_case("TB-BAS-002", ["TB-BAS-001"])
+        loaded = load_manifest(self.write_manifest([second, valid_case()]), self.inventory)
+        self.assertEqual([case.case_id for case in loaded], ["TB-BAS-001", "TB-BAS-002"])
+        self.assertEqual(loaded[1].dependencies, ("TB-BAS-001",))
+
+    def test_rejects_unknown_and_missing_fields(self) -> None:
+        unknown = valid_case()
+        unknown["surprise"] = True
+        self.assert_manifest_error([unknown], "unknown fields")
+        missing = valid_case()
+        del missing["oracle"]
+        self.assert_manifest_error([missing], "missing fields")
+
+    def test_rejects_duplicate_case_ids(self) -> None:
+        self.assert_manifest_error([valid_case(), valid_case()], "duplicate case id")
+
+    def test_rejects_unknown_contract_and_owner_mismatch(self) -> None:
+        unknown = valid_case()
+        unknown["contract_id"] = "CB-BAS-999"
+        self.assert_manifest_error([unknown], "unknown contract")
+        self.components.write_text("component\nHost.Basic\nHost.Source\n", encoding="utf-8")
+        mismatched = valid_case()
+        mismatched["component"] = "Host.Source"
+        inventory = InventoryIndex.from_csv(self.components, self.contracts)
+        with self.assertRaisesRegex(ManifestError, "contract owner mismatch"):
+            load_manifest(self.write_manifest([mismatched]), inventory)
+
+    def test_rejects_executor_specific_invalid_combinations(self) -> None:
+        wrong_isolation = valid_case()
+        wrong_isolation["isolation"] = "temporary-directory"
+        self.assert_manifest_error([wrong_isolation], "requires in-process-reset")
+        wrong_optimization = valid_case()
+        wrong_optimization["optimizations"] = ["O0"]
+        self.assert_manifest_error([wrong_optimization], "requires optimizations")
+
+    def test_rejects_unknown_self_and_cyclic_dependencies(self) -> None:
+        self.assert_manifest_error(
+            [valid_case(dependencies=["TB-BAS-999"])], "unknown dependencies"
+        )
+        self.assert_manifest_error(
+            [valid_case(dependencies=["TB-BAS-001"])], "depends on itself"
+        )
+        first = valid_case("TB-BAS-001", ["TB-BAS-002"])
+        second = valid_case("TB-BAS-002", ["TB-BAS-001"])
+        self.assert_manifest_error([first, second], "dependency cycle")
+
+    def test_empty_manifest_is_explicitly_configurable(self) -> None:
+        path = self.write_manifest([])
+        with self.assertRaisesRegex(ManifestError, "contains no cases"):
+            load_manifest(path, self.inventory)
+        self.assertEqual(load_manifest(path, self.inventory, require_cases=False), ())
+
+
+if __name__ == "__main__":
+    unittest.main()

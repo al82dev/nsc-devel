@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nativesharp.dev/schemas/compiler-suite-case-v1.json",
+  "title": "NativeSharp compiler suite case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "contract_id",
+    "component",
+    "class",
+    "executor",
+    "layer",
+    "inputs",
+    "oracle",
+    "dependencies",
+    "profile",
+    "build_modes",
+    "optimizations",
+    "isolation",
+    "timeout_class",
+    "tags"
+  ],
+  "properties": {
+    "case_id": { "type": "string", "pattern": "^[A-Z][A-Z0-9-]*-[0-9]{3,}$" },
+    "contract_id": { "type": "string", "pattern": "^[A-Z][A-Z0-9-]*-[0-9]{3,}$" },
+    "component": { "type": "string", "minLength": 1 },
+    "class": {
+      "enum": ["nominal", "valid-variant", "invalid", "boundary", "recovery", "determinism"]
+    },
+    "executor": {
+      "enum": ["nsc_component_tests", "nsc_suite_controller+nsc", "historical-weekly"]
+    },
+    "layer": {
+      "enum": ["unit", "component", "integration", "process", "self-host", "build", "packaging", "historical"]
+    },
+    "inputs": { "type": "object" },
+    "oracle": { "type": "object", "minProperties": 1 },
+    "dependencies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "profile": { "enum": ["PR", "NIGHTLY", "WEEKLY"] },
+    "build_modes": {
+      "type": "array",
+      "items": { "enum": ["Debug", "Release"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "optimizations": {
+      "type": "array",
+      "items": { "enum": ["NA", "O0", "O1", "O2", "O3"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "isolation": { "enum": ["in-process-reset", "temporary-directory"] },
+    "timeout_class": { "enum": ["tiny", "normal", "extended", "self-host", "packaging"] },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}
