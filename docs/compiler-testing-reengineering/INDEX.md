@@ -31,6 +31,9 @@
 - [Host.AST](components/HOST-AST.md)
   - [Test plan](test-plans/HOST-AST-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-04-HOST-AST-AUDIT.md)
+- [Host.Language](components/HOST-LANGUAGE.md)
+  - [Test plan](test-plans/HOST-LANGUAGE-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-05-HOST-LANGUAGE-AUDIT.md)
 
 ## Artefactos mecánicos
 

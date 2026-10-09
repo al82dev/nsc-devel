@@ -3549,9 +3549,9 @@
     "lines": "90",
     "sha256": "8c4717936352776f341e55a1a33470ae205d48290fc6916546961117ab66778b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "3",
     "notes": ""
   },
   {
@@ -3564,9 +3564,9 @@
     "lines": "108",
     "sha256": "485cf17f6a1ec160cfef2c35b634a25d5a60e65af635f1505c9a71b0ef5ff863",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "4",
     "notes": ""
   },
   {
@@ -3579,9 +3579,9 @@
     "lines": "82",
     "sha256": "05770f6f1709a3dc8955d9f7bb7b5a31ad723a4f5e7a8f114542d0958a44a1c8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "5",
     "notes": ""
   },
   {
@@ -3594,9 +3594,9 @@
     "lines": "84",
     "sha256": "de30042e9213ab132c6bbb45832590d89bd378329ed40443c79412b2f451e38b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "6",
     "notes": ""
   },
   {
@@ -3609,9 +3609,9 @@
     "lines": "317",
     "sha256": "f7192eb1d0d97aeff20b5c894e2d46ffadaf579d0d5965e264228431df90ba3b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "7",
     "notes": ""
   },
   {
@@ -3624,9 +3624,9 @@
     "lines": "62",
     "sha256": "ff7975513e6379fb7f2bd4438505e0fa1e9af6aa02e2d67131dfdd9df273f865",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "8",
     "notes": ""
   },
   {
@@ -3639,9 +3639,9 @@
     "lines": "52",
     "sha256": "fb853d7d6331f134d26b23fc1add2de490b20c6089378d0377ae27ead77d98ef",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "9",
     "notes": ""
   },
   {
@@ -3654,9 +3654,9 @@
     "lines": "115",
     "sha256": "8edf8114b3c5e6349708b282db6fd3f2b6598092a0fb918daa94ebc1710198b4",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "10",
     "notes": ""
   },
   {
@@ -3669,9 +3669,9 @@
     "lines": "84",
     "sha256": "3e4d9bfb2011909471bc2440345c45a0e35d457ea3f0b6626a84d5d48ebbe724",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "11",
     "notes": ""
   },
   {
@@ -3684,9 +3684,9 @@
     "lines": "221",
     "sha256": "607e80b6f1e2a8162b7d480c7b6532955310bc799d74e3341df06b6d0808953b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "12",
     "notes": ""
   },
   {
@@ -3699,9 +3699,9 @@
     "lines": "176",
     "sha256": "edaa21919d516c0f628d4a829747c00cbd1f20e568bdd710fec2a05d3f290eba",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "13",
     "notes": ""
   },
   {
@@ -3714,9 +3714,9 @@
     "lines": "48",
     "sha256": "b4806e28054c22b8635a75d6336defead78ed450281481949405a1d01208066b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "14",
     "notes": ""
   },
   {
@@ -3729,9 +3729,9 @@
     "lines": "45",
     "sha256": "e0185af88076cebcce19810cdf9dadab57f96118a6a9593535006084ba33a07a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "15",
     "notes": ""
   },
   {
@@ -3744,9 +3744,9 @@
     "lines": "57",
     "sha256": "bee0e3202f416c93405f008f694177417a71adb2e91b240697954cc07456d44d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "16",
     "notes": ""
   },
   {
@@ -3759,9 +3759,9 @@
     "lines": "49",
     "sha256": "19383a3850ef3455810ed5ad4d19fc3c11517cbeaec715ab1501d249d9313a02",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "17",
     "notes": ""
   },
   {
@@ -3774,9 +3774,9 @@
     "lines": "249",
     "sha256": "0755e55d8729504dc8b6a23d83b6cfd8993063ac498d34cdddbc7c522a1bc6f1",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "18",
     "notes": ""
   },
   {
@@ -3789,9 +3789,9 @@
     "lines": "53",
     "sha256": "ca7b2c5c74fac6d200ad6073330332707bf0d3e817821e9b2831d1b12a332c10",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "19",
     "notes": ""
   },
   {
@@ -3804,9 +3804,9 @@
     "lines": "161",
     "sha256": "042eff65ec2b051fca592438e23714a2614daf8768c771421dc3953334bca1ba",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "20",
     "notes": ""
   },
   {
@@ -3819,9 +3819,9 @@
     "lines": "83",
     "sha256": "885b6bf0dd9b3a9b30713173ef36e3800db0f4886d6b4fcfa1a63d9feee94871",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "21",
     "notes": ""
   },
   {
@@ -3834,9 +3834,9 @@
     "lines": "82",
     "sha256": "ede2b278574036d960a019473bc27a812e84f09f2c0084553ee9744fac1f2686",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "22",
     "notes": ""
   },
   {
@@ -3849,9 +3849,9 @@
     "lines": "95",
     "sha256": "a45d0f1a20c94b52302d104ef4a11bec2a5badfb2348cd5665c3a2234b87ea3d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "23",
     "notes": ""
   },
   {
@@ -11259,9 +11259,9 @@
     "lines": "174",
     "sha256": "6af1e8238946f760b0b62b41bfe773f567d97b956e8d913eeb2e7300c7e83b47",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "3",
     "notes": ""
   },
   {
@@ -11274,9 +11274,9 @@
     "lines": "138",
     "sha256": "59b69bd28332c92571f912abc93fd1de0b1a4c25b79c31d83120ff7eab1f6fd8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "4",
     "notes": ""
   },
   {
@@ -11289,9 +11289,9 @@
     "lines": "313",
     "sha256": "1039d7aba9f1613d74e3b3e8ed805c6b82544ec6d6ccfa837065f1d8c2bf7f8c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "5",
     "notes": ""
   },
   {
@@ -11304,9 +11304,9 @@
     "lines": "153",
     "sha256": "8e2dbedc830812a2defa28029325a9ade3c8cdb58c2ce3e4b6adbea1ca608b3f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "6",
     "notes": ""
   },
   {
@@ -11319,9 +11319,9 @@
     "lines": "754",
     "sha256": "53688f47fd49a26e1c7082cc6fa980c2b29125de8cdf36c939b78fb9ba8ef196",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "7",
     "notes": ""
   },
   {
@@ -11334,9 +11334,9 @@
     "lines": "125",
     "sha256": "b30268f552793dbbff0c0e283e96cc87ac1f53e3256ff5cd2b87490870f987b4",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "8",
     "notes": ""
   },
   {
@@ -11349,9 +11349,9 @@
     "lines": "79",
     "sha256": "404d52502061e4ff04cfac8c7e6a3c625e3085fbce3f3c36002f37e86389423a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "9",
     "notes": ""
   },
   {
@@ -11364,9 +11364,9 @@
     "lines": "367",
     "sha256": "c5416394d336c95b5ef1e24dae642e143c85456206cbfc847a6a3530de731405",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "10",
     "notes": ""
   },
   {
@@ -11379,9 +11379,9 @@
     "lines": "203",
     "sha256": "a1315629118437a67738bf398b42c4d23d65f236c09897fffdcd22e515d2af24",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "11",
     "notes": ""
   },
   {
@@ -11394,9 +11394,9 @@
     "lines": "466",
     "sha256": "6456a91f5cbdccdcec7851c20ca448516823e504b8e1dd3c1cd8224061717bd3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "12",
     "notes": ""
   },
   {
@@ -11409,9 +11409,9 @@
     "lines": "301",
     "sha256": "5adcd16182953b90b7aabd0cec69a10be42d07fa0a6929d8fe420aa0642aa1a0",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "13",
     "notes": ""
   },
   {
@@ -11424,9 +11424,9 @@
     "lines": "97",
     "sha256": "723b6047c8e8dc0285d08f2d72973b0dbc73fd26b3ede201af0e85cbe69f4cc3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "14",
     "notes": ""
   },
   {
@@ -11439,9 +11439,9 @@
     "lines": "89",
     "sha256": "4900e4dbe013c55d2627a8c120ba6b34b84348215c641ec4c060c8276f150c88",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "15",
     "notes": ""
   },
   {
@@ -11454,9 +11454,9 @@
     "lines": "91",
     "sha256": "566e6e67f43889a0ed6342a2000d06f65075afdd10cf8c353ab6a1220161ac92",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "16",
     "notes": ""
   },
   {
@@ -11469,9 +11469,9 @@
     "lines": "146",
     "sha256": "13979582e03ee4fb9ed55cbdac062331dd0770e7d90cbdcb3ce61ab8f4dcfab9",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "17",
     "notes": ""
   },
   {
@@ -11484,9 +11484,9 @@
     "lines": "651",
     "sha256": "4554daf683ee7fa55f6f3157f4d20912c459bba9a64faef4e094a86f6ca1d0e6",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "18",
     "notes": ""
   },
   {
@@ -11499,9 +11499,9 @@
     "lines": "121",
     "sha256": "919a216c253bd16f6b2aecb7932e14bf24478379d5c0ed8a7ee9cfef874ae3c0",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "19",
     "notes": ""
   },
   {
@@ -11514,9 +11514,9 @@
     "lines": "214",
     "sha256": "10f80f7ad908a9ead09fb9fac32cd1b077476734ce6b1f48cf52be66691a7244",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "20",
     "notes": ""
   },
   {
@@ -11529,9 +11529,9 @@
     "lines": "231",
     "sha256": "31e34330559395e5c9b5bcdd7c4c73e614a53a8277f4b521fec51d1f4b05f1d7",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "21",
     "notes": ""
   },
   {
@@ -11544,9 +11544,9 @@
     "lines": "120",
     "sha256": "54bff54be0fe6fa1d8175bade48e8faaf7d41c37531c5df9d5ac18e49f974761",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "22",
     "notes": ""
   },
   {
@@ -11559,9 +11559,9 @@
     "lines": "177",
     "sha256": "8ba7e0cbc0c1a3c05f0492969bd7b4a9a3e74f692dfd27759e582a269668aced",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-LANGUAGE.md;audits/TANDA-05-HOST-LANGUAGE-AUDIT.md",
+    "section": "23",
     "notes": ""
   },
   {

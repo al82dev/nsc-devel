@@ -17,6 +17,7 @@ tabla; registra el criterio y enlazará los informes individuales conforme se pr
 | `Host.Lexer` | `RECONSTRUIBLE` | 51 | 14 | 110 | `audits/TANDA-04-HOST-LEXER-AUDIT.md` |
 | `Host.Parser` | `RECONSTRUIBLE` | 174 | 42 | 536 | `audits/TANDA-04-HOST-PARSER-AUDIT.md` |
 | `Host.AST` | `RECONSTRUIBLE` | 155 | 20 | 230 | `audits/TANDA-04-HOST-AST-AUDIT.md` |
+| `Host.Language` | `RECONSTRUIBLE` | 546 | 21 | 286 | `audits/TANDA-05-HOST-LANGUAGE-AUDIT.md` |
 
 `RECONSTRUIBLE` describe suficiencia documental para la revisión congelada. No significa que la suite nueva
 esté implementada ni que se haya ejecutado validación.
