@@ -114,4 +114,5 @@ void registerLanguageCallableSemanticsModule(TestRegistry& registry);
 void registerLanguageCompatibilitySemanticsModule(TestRegistry& registry);
 void registerLanguageCoroutinePlanningModule(TestRegistry& registry);
 void registerLanguageConcurrencyModule(TestRegistry& registry);
+void registerLanguageLifetimeModule(TestRegistry& registry);
 }
