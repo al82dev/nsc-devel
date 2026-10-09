@@ -4374,10 +4374,10 @@
     "lines": "52",
     "sha256": "1a425fd7ff78de1ebf85b374c3a264a7fe9c9fa913e0986d9549f7d96b2d686c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000293",
@@ -4389,10 +4389,10 @@
     "lines": "28",
     "sha256": "ac58195921c3cec3dbe202f0b5bf69650e95ee2d5098966401b855004fd30ad6",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000294",
@@ -4404,10 +4404,10 @@
     "lines": "103",
     "sha256": "bb7d295da1de29e693e6fe320b1e9e4adf6a4f33b1c1642d6962bc5e02ed44ad",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000295",
@@ -4419,10 +4419,10 @@
     "lines": "33",
     "sha256": "f4c8de9b93912cc3b570485e86b52d8ca627950541f9ff2e74c6067fdbb27d1a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000296",
@@ -4434,10 +4434,10 @@
     "lines": "42",
     "sha256": "02a6d4eafa70f2421913b7718a42325759db2f46e0fcb69ead1add413c4c9d67",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000297",
@@ -4449,10 +4449,10 @@
     "lines": "27",
     "sha256": "50d0c508d0d58f5ff02c8df5b9c0d8b489f35612c28bdaa91b89e65e239df5f7",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000298",
@@ -4464,10 +4464,10 @@
     "lines": "97",
     "sha256": "9595cc00aec6dc02fce7443e4cda200dac3de31cd475e59d937a93dd7259731c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000299",
@@ -4479,10 +4479,10 @@
     "lines": "29",
     "sha256": "962163923b6f9f756651696f1356c273f975c5513681ad664a3e85e4e37358be",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000300",
@@ -4494,10 +4494,10 @@
     "lines": "60",
     "sha256": "3e5e047ad02b512b6c5fb5cf99f67d026b89a1f1174f332f09cdd94c2f53d1a9",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000301",
@@ -4509,10 +4509,10 @@
     "lines": "24",
     "sha256": "075422e6a142061c54e1bc9d477d8f7bf0cf76c2ab6944ff51df1140a6f11e8a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000302",
@@ -4524,10 +4524,10 @@
     "lines": "45",
     "sha256": "b114b20f678297667813d1b280ddac5a18aef36f76474f577b0c2c25aaf5d900",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000303",
@@ -12084,10 +12084,10 @@
     "lines": "67",
     "sha256": "fcd2782d5730554b1393e48a98192bcad048932d8fe8d279e4ae442a76750e3e",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000807",
@@ -12099,10 +12099,10 @@
     "lines": "26",
     "sha256": "22017954fb75c7c130095f2fc922176b74ac8b627946ed41b87b3dc68f92cd4a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000808",
@@ -12114,10 +12114,10 @@
     "lines": "1149",
     "sha256": "35c1ff1d1c210e8eebfe4c5f0fac68bc8aef490acc7c9c74ad7004c8052ac980",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000809",
@@ -12129,10 +12129,10 @@
     "lines": "220",
     "sha256": "55fa7ccbec6afea129b1439696556feda5945c5a954b8ec6bbbc71aef38f265f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000810",
@@ -12144,10 +12144,10 @@
     "lines": "23",
     "sha256": "5f7d378c6aadcfe65f38b8be0f71fc7a2390ddc4e9fde42c9b2125a0987daee3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000811",
@@ -12159,10 +12159,10 @@
     "lines": "16",
     "sha256": "04239222da5777309399006a4a74c8d60014a7c9f41b45f91f1b88314340b3e4",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000812",
@@ -12174,10 +12174,10 @@
     "lines": "104",
     "sha256": "c8e4e2f63d6d54c0a6e90561e0b66136ba38a9051aa76c4be6288a75c420c271",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000813",
@@ -12189,10 +12189,10 @@
     "lines": "22",
     "sha256": "690852722ebdef4062a8ffb752be93af9288063d72aa02f9d44736d2c55c6536",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000814",
@@ -12204,10 +12204,10 @@
     "lines": "67",
     "sha256": "4eb747660ccee44e2a7718ca4418891c825f5d38164a254f802dd6ba93be5156",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000815",
@@ -12219,10 +12219,10 @@
     "lines": "8",
     "sha256": "1143f469d27d108e955129fd963caad467a872c5f3a584ff3ec62f0a511f3a1d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000816",
@@ -12234,10 +12234,10 @@
     "lines": "812",
     "sha256": "a169c9a93adafe9588006af3d7d583b09e0d281b5b3cf1d5f93e4d20397b7904",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-MIR-METHOD.md",
+    "section": "Universo leido",
+    "notes": "lectura completa y contraste independiente; sin ejecucion"
   },
   {
     "id": "PF-000817",
