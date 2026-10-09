@@ -61,6 +61,9 @@
 - [Host.Target](components/HOST-TARGET.md)
   - [Test plan](test-plans/HOST-TARGET-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-08-HOST-TARGET-AUDIT.md)
+- [Host.LLVM](components/HOST-LLVM.md)
+  - [Test plan](test-plans/HOST-LLVM-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-08-HOST-LLVM-AUDIT.md)
 
 ## Artefactos mecánicos
 

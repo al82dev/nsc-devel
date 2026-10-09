@@ -4074,10 +4074,10 @@
     "lines": "27",
     "sha256": "505662fe8ebd29a80768894e7899ba48039b654a9ffecbda98efe973f0b047ce",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000273",
@@ -4089,10 +4089,10 @@
     "lines": "76",
     "sha256": "df86330f9987e48ebd8b63189d1dc988264f33ba847c2008916facc3474de21a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000274",
@@ -4104,10 +4104,10 @@
     "lines": "15",
     "sha256": "956ded021bd9c388b5ea82a2cacd6a1624d0098ee08e602b523e33d029ffce54",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000275",
@@ -4119,10 +4119,10 @@
     "lines": "12",
     "sha256": "950aa6b80d9b62072e6acad7fd4f1b8bf41c57277634dc554ccd43fcbdd20a3d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000276",
@@ -4134,10 +4134,10 @@
     "lines": "87",
     "sha256": "f6726913d313cea9c709d7c957febc239005edae4524273fbac9bb15ca498b31",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000277",
@@ -4149,10 +4149,10 @@
     "lines": "15",
     "sha256": "ef2fa66dac517b148addfb2095f39dd3a948c48fc715b51c524d760bc1849aeb",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000278",
@@ -4164,10 +4164,10 @@
     "lines": "37",
     "sha256": "254d88ad757bc55594eeb3ee98d5d25b6bb96bea73e8e639aff4cccd5d0a39bc",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000279",
@@ -4179,10 +4179,10 @@
     "lines": "41",
     "sha256": "a4d1c9b0f9f9275e90fbf3d75a8291720c661ce039bba0a1f646ace50ba640e2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000280",
@@ -4194,10 +4194,10 @@
     "lines": "29",
     "sha256": "41d7774c1015b79ec3b03a0a901f7ed7b9acce7960215bc525ed2e5881422937",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000281",
@@ -4209,10 +4209,10 @@
     "lines": "21",
     "sha256": "1056c64ff1836d43fdabb461383451dc2d0090d8c2f343ba0c4e4fb27d086a31",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000282",
@@ -4224,10 +4224,10 @@
     "lines": "196",
     "sha256": "1b0d61ae8d64960937dee1a8ff8c9ef6753e9f310839c904f1389be4c389f38e",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000283",
@@ -4239,10 +4239,10 @@
     "lines": "91",
     "sha256": "ce762ba4ff9309e7096bdbe6a9edbfe638e7c43d136c059f4b02c8b3c7d34290",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000284",
@@ -4254,10 +4254,10 @@
     "lines": "37",
     "sha256": "38997f2e473f439d5b5789620658614bbbc809629a95a53b539c28417eb4ff3e",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000285",
@@ -4269,10 +4269,10 @@
     "lines": "104",
     "sha256": "5c53c036c3ea330f80f029f4348c3305e6ff403cf79b1023e68a2761770fe9f7",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000286",
@@ -4284,10 +4284,10 @@
     "lines": "45",
     "sha256": "d7d37d7947880d070d9ce9735efb7215645a7c09a83f92dac4bb7a8be026c222",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000287",
@@ -4299,10 +4299,10 @@
     "lines": "20",
     "sha256": "50c76f295fa83c1ed2cdc5f6cb112757b740fb33aa0d9f0fae31cd9f1b3512ce",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000288",
@@ -4314,10 +4314,10 @@
     "lines": "51",
     "sha256": "97a34992efdbc6cb2cb729d0c8357454ce374a6de7b8e2bbb2ff79e6e7c2a599",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000289",
@@ -4329,10 +4329,10 @@
     "lines": "114",
     "sha256": "b5b2e1d24589cb9e7319629bf31309164a0478181bc62adf894acbeef8cf246d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000290",
@@ -4344,10 +4344,10 @@
     "lines": "18",
     "sha256": "ec46e8608a4275601caecead1305455fed6f7ff07858b9ebff918ab4599ac4e9",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000291",
@@ -4359,10 +4359,10 @@
     "lines": "93",
     "sha256": "391504d78fedc2a155b79b4de6a5a20f03efd8793c98da329e0183a588664f78",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000292",
@@ -11784,10 +11784,10 @@
     "lines": "71",
     "sha256": "e14790dae9e4f02d648437863ad4181d3a58d3bcf3e93bf6d12380af4bdbd8cc",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000787",
@@ -11799,10 +11799,10 @@
     "lines": "559",
     "sha256": "75f52ca0431d7e3dc2bc9cc9b2d6975a2ff82be9f2ed51bbb473ac77dd04d920",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000788",
@@ -11814,10 +11814,10 @@
     "lines": "18",
     "sha256": "480cd59ed0dcdc12f21d5ccb1edc78d26d80336387e11e4bf62fd24264916057",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000789",
@@ -11829,10 +11829,10 @@
     "lines": "171",
     "sha256": "0a850449a07c7922c29d2e797c70749492624436458eae19b12ebf542ae387bb",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000790",
@@ -11844,10 +11844,10 @@
     "lines": "15",
     "sha256": "367b9ad4c6aaf4a199875fa4c2ac3877b201b2d7f877e44473fa782e89db7f3e",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000791",
@@ -11859,10 +11859,10 @@
     "lines": "1206",
     "sha256": "ebcc77f847d06c877448a9dae313206a03d2b2f5760355cb78328a476b74f71a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000792",
@@ -11874,10 +11874,10 @@
     "lines": "1961",
     "sha256": "faa88a726e63537add6dbd093807132cd5a37fd8e5e2ae3937e9e8b6f123e589",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000793",
@@ -11889,10 +11889,10 @@
     "lines": "71",
     "sha256": "1133da01206fa7b3ef193cb09ed21f5408ac908e9d1a4c4908ab57888326fb87",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000794",
@@ -11904,10 +11904,10 @@
     "lines": "114",
     "sha256": "6691e3ff856c207599813352deb417c5beda751d271d395faaf87ad75f30cb35",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000795",
@@ -11919,10 +11919,10 @@
     "lines": "71",
     "sha256": "b9ce1fa23d2f259cab807f1be3ac8ae95fd1d71496f2883c7076080db7d0a5ef",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000796",
@@ -11934,10 +11934,10 @@
     "lines": "251",
     "sha256": "86102fa49820083013b837ad48140afa6d264e9b158c3f5720aadc4fe13b19cf",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000797",
@@ -11949,10 +11949,10 @@
     "lines": "530",
     "sha256": "9435d58e59c94eec19934853f99e41fe580855221cf624fbee793111ff405126",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000798",
@@ -11964,10 +11964,10 @@
     "lines": "235",
     "sha256": "fe53b96a21776b67866038c1a5810559f6a396ddc1b5b958bfa26b5945518929",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000799",
@@ -11979,10 +11979,10 @@
     "lines": "349",
     "sha256": "c7eafda2433d706555747546d13a7a37d82edc472938373c4f9cfdef37be8c5e",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000800",
@@ -11994,10 +11994,10 @@
     "lines": "38",
     "sha256": "d3bd097e431a13a46cbc0ed78150891aab7128f7f35b27d2440f251d7762e30c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000801",
@@ -12009,10 +12009,10 @@
     "lines": "291",
     "sha256": "7d2f73093b2e87764302a1c53f4ee7c8a59eb1388b4b9cf378f8fcf0a357a57b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000802",
@@ -12024,10 +12024,10 @@
     "lines": "17079",
     "sha256": "cae0a0030efc06c50aa3e4a17665d132d6aeb5cf44f6f9d18f8056e37158bc7d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000803",
@@ -12039,10 +12039,10 @@
     "lines": "372",
     "sha256": "e1d006c60f33eef2487ec6bdb614e0c33c4dd5be84df82a6f7572328796d4e8d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000804",
@@ -12054,10 +12054,10 @@
     "lines": "485",
     "sha256": "8187bc523cc7e868167f870237cd9e41e4fe85ba1a644ef615faab4a8be33e00",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000805",
@@ -12069,10 +12069,10 @@
     "lines": "99",
     "sha256": "07273f3dd4d73191f3661d7ef3c009bfa47949a41a4c6eb40068070dc45688f2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-LLVM-METHOD.md;audits/TANDA-08-HOST-LLVM-AUDIT.md",
+    "section": "components/HOST-LLVM.md",
+    "notes": "complete static audit and AST index; no build or execution"
   },
   {
     "id": "PF-000806",
