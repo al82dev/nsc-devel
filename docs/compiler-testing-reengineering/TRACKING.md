@@ -13,8 +13,8 @@
 | 09 | Interop, Linker y Runtime | LISTA | 34 | 34 | 0 |
 | 10 | Compilation, Driver, CLI y LanguageService | LISTA | 80 | 80 | 0 |
 | 11 | Contratos transversales, errores y máquinas de estado | LISTA | 870 | 870 | 0 |
-| 12A | Compilador self-host: símbolos, contratos y test plans | EN CURSO | 29 | 0 | 29 |
-| 12B | Build, contratos, dependencias y disposición explícita | PENDIENTE | 421 | 0 | 421 |
+| 12A | Compilador self-host: símbolos, contratos y test plans | LISTA | 29 | 29 | 0 |
+| 12B | Build, contratos, dependencias y disposición explícita | EN CURSO | 421 | 0 | 421 |
 | 12C | Arquitectura de suite nueva y consolidación final | PENDIENTE | 0 | 0 | Por determinar |
 | 13 | Segunda auditoría independiente y cierre técnico | PENDIENTE | 0 | 0 | Por determinar |
 

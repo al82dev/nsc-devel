@@ -123,3 +123,27 @@
 
 Los documentos distinguen `HECHO COMPROBADO`, `INFERENCIA`, `DISEÑO PROPUESTO`, `IMPLEMENTACIÓN VIGENTE` y
 `NO VERIFICADO`. Los planes futuros no se presentan como pruebas implementadas.
+
+<!-- BEGIN TANDA-12A-SELFHOST-INDEX -->
+## Compilador self-host
+
+- Método y universo: `evidence/TANDA-12A-SELFHOST-METHOD.md`.
+- Inventario por archivo: `inventory/selfhost-file-audit.csv`.
+- Auditoría consolidada: `audits/TANDA-12A-SELFHOST-AUDIT.md`.
+- `SelfHost.Basic`: `components/SELFHOST-BASIC.md`; plan: `test-plans/SELFHOST-BASIC-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-BASIC-AUDIT.md`.
+- `SelfHost.Bootstrap`: `components/SELFHOST-BOOTSTRAP.md`; plan: `test-plans/SELFHOST-BOOTSTRAP-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-BOOTSTRAP-AUDIT.md`.
+- `SelfHost.CodeGen`: `components/SELFHOST-CODEGEN.md`; plan: `test-plans/SELFHOST-CODEGEN-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-CODEGEN-AUDIT.md`.
+- `SelfHost.Diagnostics`: `components/SELFHOST-DIAGNOSTICS.md`; plan: `test-plans/SELFHOST-DIAGNOSTICS-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-DIAGNOSTICS-AUDIT.md`.
+- `SelfHost.Documentation`: `components/SELFHOST-DOCUMENTATION.md`; plan: `test-plans/SELFHOST-DOCUMENTATION-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-DOCUMENTATION-AUDIT.md`.
+- `SelfHost.Driver`: `components/SELFHOST-DRIVER.md`; plan: `test-plans/SELFHOST-DRIVER-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-DRIVER-AUDIT.md`.
+- `SelfHost.IR`: `components/SELFHOST-IR.md`; plan: `test-plans/SELFHOST-IR-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-IR-AUDIT.md`.
+- `SelfHost.Lexer`: `components/SELFHOST-LEXER.md`; plan: `test-plans/SELFHOST-LEXER-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-LEXER-AUDIT.md`.
+- `SelfHost.Parser`: `components/SELFHOST-PARSER.md`; plan: `test-plans/SELFHOST-PARSER-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-PARSER-AUDIT.md`.
+- `SelfHost.Project`: `components/SELFHOST-PROJECT.md`; plan: `test-plans/SELFHOST-PROJECT-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-PROJECT-AUDIT.md`.
+- `SelfHost.Projects`: `components/SELFHOST-PROJECTS.md`; plan: `test-plans/SELFHOST-PROJECTS-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-PROJECTS-AUDIT.md`.
+- `SelfHost.Sema`: `components/SELFHOST-SEMA.md`; plan: `test-plans/SELFHOST-SEMA-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-SEMA-AUDIT.md`.
+- `SelfHost.Source`: `components/SELFHOST-SOURCE.md`; plan: `test-plans/SELFHOST-SOURCE-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-SOURCE-AUDIT.md`.
+- `SelfHost.Symbols`: `components/SELFHOST-SYMBOLS.md`; plan: `test-plans/SELFHOST-SYMBOLS-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-SYMBOLS-AUDIT.md`.
+- `SelfHost.Syntax`: `components/SELFHOST-SYNTAX.md`; plan: `test-plans/SELFHOST-SYNTAX-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-SYNTAX-AUDIT.md`.
+- `SelfHost.Types`: `components/SELFHOST-TYPES.md`; plan: `test-plans/SELFHOST-TYPES-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-TYPES-AUDIT.md`.
+<!-- END TANDA-12A-SELFHOST-INDEX -->

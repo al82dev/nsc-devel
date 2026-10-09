@@ -82,6 +82,10 @@ Para cada archivo y símbolo:
 - Diseñar casos contractuales sin reutilizar como oráculo la implementación host.
 - Separar pruebas directas del compilador NativeSharp de las propiedades de generación self-host.
 
+**Estado:** `LISTA`. La auditoría cerró 29 archivos, 16 componentes, 874 declaraciones, 138 contratos y 1,027
+casos diseñados. La evidencia consolidada vive en `audits/TANDA-12A-SELFHOST-AUDIT.md`; no se implementaron ni
+ejecutaron pruebas.
+
 ### Tanda 12B — Superficies restantes y disposición explícita
 
 - Tratar los 421 archivos restantes de build, empaquetado, contratos self-host, dependencias distribuidas,

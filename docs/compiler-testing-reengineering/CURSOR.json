@@ -1,34 +1,46 @@
 {
   "phase": 1,
   "scope": "compiler-test-inventory-and-plans-only",
-  "revision": "b6a6187af",
-  "batch": "12A",
+  "revision": "65835716712f0d04537aa92591f766fb65ff641b",
+  "batch": "12B",
   "status": "in_progress",
-  "last_completed_artifact": "audits/TANDA-12-SCOPE-COMPLETENESS-GATE.md",
-  "last_completed_item": "TANDA-12-SCOPE-COMPLETENESS-GATE",
-  "next_item": "SELFHOST-PRIMARY-COMPILER-0001",
-  "next_action": "semantically_read_all_29_selfhost_nsc_files_then_inventory_symbols_contracts_and_test_cases_by_16_components",
+  "last_completed_artifact": "audits/TANDA-12A-SELFHOST-AUDIT.md",
+  "last_completed_item": "SELFHOST-PRIMARY-COMPILER-0029",
+  "next_item": "REMAINING-SURFACE-0001",
+  "next_action": "audit_all_421_build_contract_dependency_support_and_vendored_files_then_assign_direct_indirect_upstream_or_excluded_disposition",
   "production_files": {
     "inventoried": 974,
     "inventory_verified": 974,
-    "semantically_read": 524,
-    "classified": 524,
-    "consolidated": 524,
-    "contrasted": 524,
-    "audited": 524,
+    "semantically_read": 553,
+    "classified": 553,
+    "consolidated": 553,
+    "contrasted": 553,
+    "audited": 553,
     "omitted": 0,
     "unknown": 0
   },
   "components": {
     "inventoried": 57,
-    "reviewed": 24,
-    "reconstructible": 24,
+    "reviewed": 40,
+    "reconstructible": 40,
     "blocked": 0
   },
   "symbols": {
-    "inventoried": 5294,
-    "reviewed": 5294,
+    "inventoried": 6168,
+    "reviewed": 6168,
+    "untreated": 0,
+    "historical_duplicate_ids_pending_final_audit": 1
+  },
+  "contracts": {
+    "inventoried": 1008,
+    "classified": 1008,
     "untreated": 0
+  },
+  "test_case_design": {
+    "inventoried": 8387,
+    "designed": 8387,
+    "implemented": 0,
+    "executed": 0
   },
   "tests": {
     "historical_suite_frozen": true,
@@ -37,16 +49,18 @@
     "tests_executed": 0
   },
   "manifests": {
-    "production_files_sha256": "65b405ae3ee76fb11c743deda88a7184eed3b77d9771d71ee6b0803c87312f97",
+    "production_files_sha256": "b47aa58caa2dd86fde1c353339d5293559f15c9b808ec77c9b49e44898e1d68b",
     "historical_tests_sha256": "fba06c64f0b3d83b517edd43756ebbebeb8227699adaf55eb07c870f03686267",
-    "document_coverage_sha256": "7117eda58faafb56b8e89c5cdd7e22b8935581bf0e464f102ffdba4824359246",
-    "symbols_sha256": "ca42622c644b5f7f4091bd3534ebfa9ead46e40e3236828b140e7964e335f1f3",
-    "contracts_sha256": "0aa9b0e0129e1bf6acab22b5dbfdb6828acfe9ff0533a08802130240c8633055",
-    "test_case_design_sha256": "11764eabec181f1572142735dcb84af90ce9856382c9590a73dc6a128257c508",
-    "transversal_contracts_sha256": "02a875c63c7e3dbed93ff6f06a67f92fa0eb0271491a9b658abd719a70195e83",
-    "error_taxonomy_sha256": "db584dbdc3a421a7683eacd9183d5e86390fec842433afa71d3458f70fca0e3e",
+    "document_coverage_sha256": "89c9c9df413201c2754829f3cbef7c4219ac1fea7d8ae6bb5409c6ce9de57d0d",
+    "symbols_sha256": "c06775f14c17b94c923bb57ce2754e08d6d7c941bf91f39ada8e140caa4350ad",
+    "contracts_sha256": "a79c52bf2fbc4a3e5ce5b63d34e61fdd81b0bcbbd35cb14d32be41a4eb6d0cd6",
+    "test_case_design_sha256": "d0d3327316415475ccec80edc107dcda3ae14fceb8eebd133207b8174f761826",
+    "transversal_contracts_sha256": "2e9c658976bf8f32f8a0bd095a455d0eba96f2d293bbfa69c5cbfe1730959ea9",
+    "error_taxonomy_sha256": "addc323a68744c68c686d24f1f45f1fb7a72c1af8be86fd1c0ece90f62fcfef1",
     "state_machines_sha256": "a0456bea25b080ab37a120bb54724981631df8725937ecd87c923b26f0e29f27",
-    "state_machine_contract_map_sha256": "9071b28b286da2a42979e4fdf506f4b34f345bce64353072faf4894fc7e5c614"
+    "state_machine_contract_map_sha256": "146532b60bfe9244d0b61ee22da12d2311f1675459779fb5a7d929191e8845eb",
+    "selfhost_file_audit_sha256": "1f17f1e85875f388ff0c36c14b32fee86574e36d6f425d160c9b6fc7ab629cdc",
+    "selfhost_audit_summary_sha256": "f8734952a0839db340caca67fdbcde5e6793cd2281a129c1dc5f4a3314c0c53a"
   },
   "protected_preexisting_changes": 6,
   "constraints": {

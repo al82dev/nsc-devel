@@ -23,3 +23,13 @@ Los estados documentales válidos son los de la sección 18 de los lineamientos.
 Al cierre de Tanda 11, los 24 componentes host poseen inventario semántico, contratos, casos diseñados y segunda
 auditoría independiente; los 870 contratos están además clasificados transversalmente. Ninguna fila `DESIGNED`
 representa código de prueba creado o ejecutado.
+
+<!-- BEGIN TANDA-12A-SELFHOST-INVENTORY -->
+## Tanda 12A — self-host
+
+- `selfhost-file-audit.csv`: cierre de los 29 archivos de `selfhost/nsc/**`.
+- `symbols.csv`: 874 declaraciones físicas self-host añadidas con contrato primario.
+- `contracts.csv`: 138 contratos self-host.
+- `test-case-design.csv`: 1027 casos futuros self-host.
+- Los conteos se recalculan con `evidence/TANDA-12A-SELFHOST-GENERATOR.ps1`.
+<!-- END TANDA-12A-SELFHOST-INVENTORY -->

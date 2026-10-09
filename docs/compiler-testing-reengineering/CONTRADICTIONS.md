@@ -17,3 +17,13 @@
 | `CON-0010` | ABIERTA | `validRenameIdentifier` mantiene una tabla privada de keywords en `Host.LanguageService` | Lexer y parser son la autoridad de la superficie léxica del compilador | La lista editorial puede aceptar una keyword nueva o rechazar un identificador retirado aunque el compilador decida lo contrario | Rename puede divergir del lenguaje sin que falle el análisis semántico principal | Diseñar un gate contractual contra la autoridad léxica; eliminar la duplicación requiere SCOPE LOCK funcional posterior |
 
 Estas contradicciones se registran sin corregirlas porque la Fase 1 es exclusivamente documental.
+
+<!-- BEGIN TANDA-12A-SELFHOST-CONTRADICTIONS -->
+## Contradicciones self-host de la Tanda 12A
+
+| ID | Estado | Fuente A | Fuente B | Discrepancia | Impacto | Acción necesaria |
+|---|---|---|---|---|---|---|
+| `CON-0011` | ABIERTA | `README.md`, `ProjectSystem.ns`, `ModuleSet.ns`, `Program.ns` | Decisión posterior del usuario: neutralidad universal frente a ediciones internas | El self-host conserva `BootstrapProfile/2.0`, `NativeSharp/2.0`, NSMETA/1/2, `language=2.0` y texto `nsc-next 2.0.0` | Una suite nueva podría congelar residuos históricos como política futura | Caracterizar el comportamiento vigente sin convertirlo en requisito futuro; corrección funcional fuera de Fase 1 |
+| `CON-0012` | ABIERTA | Recorridos en Parser, Sema, IR, SourceGraph, SyntaxDumper y LlvmBackend | Lineamiento general que prohíbe recursión salvo necesidad demostrada | Existen descensos y clausuras recursivas, algunas sin cota explícita | Profundidad hostil puede agotar stack; cambiar algoritmo alteraría producto | Diseñar casos NIGHTLY de profundidad; cualquier reescritura iterativa exige otra fase y SCOPE LOCK |
+| `CON-0013` | ABIERTA | Comentario de `LlvmBackend.ns:139` | Toolchain actual exige componentes LLVM estáticos y no depender de `LLVM-C.dll` monolítico | El comentario histórico afirma que toda dependencia cruza `LLVM-C.dll` | Puede confundir documentación de bootstrap con el contrato de distribución vigente | Contrastar en fase funcional/toolchain; en esta fase conservar ambos hechos y no editar fuente |
+<!-- END TANDA-12A-SELFHOST-CONTRADICTIONS -->

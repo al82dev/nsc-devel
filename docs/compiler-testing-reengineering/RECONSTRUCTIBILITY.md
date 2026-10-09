@@ -38,3 +38,28 @@ tabla; registra el criterio y enlazará los informes individuales conforme se pr
 
 `RECONSTRUIBLE` describe suficiencia documental para la revisión congelada. No significa que la suite nueva
 esté implementada ni que se haya ejecutado validación.
+
+<!-- BEGIN TANDA-12A-SELFHOST-RECONSTRUCTIBILITY -->
+## Componentes self-host auditados en Tanda 12A
+
+| Componente | Resultado | Archivos | Declaraciones | Contratos | Casos diseñados | Evidencia |
+|---|---|---:|---:|---:|---:|---|
+| `SelfHost.Basic` | `RECONSTRUIBLE` | 3 | 38 | 4 | 28 | `audits/TANDA-12A-SELFHOST-BASIC-AUDIT.md` |
+| `SelfHost.Bootstrap` | `RECONSTRUIBLE` | 1 | 4 | 3 | 23 | `audits/TANDA-12A-SELFHOST-BOOTSTRAP-AUDIT.md` |
+| `SelfHost.CodeGen` | `RECONSTRUIBLE` | 1 | 122 | 19 | 136 | `audits/TANDA-12A-SELFHOST-CODEGEN-AUDIT.md` |
+| `SelfHost.Diagnostics` | `RECONSTRUIBLE` | 1 | 15 | 4 | 28 | `audits/TANDA-12A-SELFHOST-DIAGNOSTICS-AUDIT.md` |
+| `SelfHost.Documentation` | `RECONSTRUIBLE` | 1 | 0 | 2 | 12 | `audits/TANDA-12A-SELFHOST-DOCUMENTATION-AUDIT.md` |
+| `SelfHost.Driver` | `RECONSTRUIBLE` | 1 | 26 | 10 | 79 | `audits/TANDA-12A-SELFHOST-DRIVER-AUDIT.md` |
+| `SelfHost.IR` | `RECONSTRUIBLE` | 1 | 110 | 12 | 92 | `audits/TANDA-12A-SELFHOST-IR-AUDIT.md` |
+| `SelfHost.Lexer` | `RECONSTRUIBLE` | 4 | 43 | 8 | 53 | `audits/TANDA-12A-SELFHOST-LEXER-AUDIT.md` |
+| `SelfHost.Parser` | `RECONSTRUIBLE` | 1 | 97 | 16 | 127 | `audits/TANDA-12A-SELFHOST-PARSER-AUDIT.md` |
+| `SelfHost.Project` | `RECONSTRUIBLE` | 1 | 0 | 3 | 22 | `audits/TANDA-12A-SELFHOST-PROJECT-AUDIT.md` |
+| `SelfHost.Projects` | `RECONSTRUIBLE` | 2 | 79 | 12 | 95 | `audits/TANDA-12A-SELFHOST-PROJECTS-AUDIT.md` |
+| `SelfHost.Sema` | `RECONSTRUIBLE` | 7 | 163 | 20 | 153 | `audits/TANDA-12A-SELFHOST-SEMA-AUDIT.md` |
+| `SelfHost.Source` | `RECONSTRUIBLE` | 2 | 39 | 8 | 61 | `audits/TANDA-12A-SELFHOST-SOURCE-AUDIT.md` |
+| `SelfHost.Symbols` | `RECONSTRUIBLE` | 1 | 56 | 5 | 35 | `audits/TANDA-12A-SELFHOST-SYMBOLS-AUDIT.md` |
+| `SelfHost.Syntax` | `RECONSTRUIBLE` | 1 | 50 | 5 | 36 | `audits/TANDA-12A-SELFHOST-SYNTAX-AUDIT.md` |
+| `SelfHost.Types` | `RECONSTRUIBLE` | 1 | 32 | 7 | 47 | `audits/TANDA-12A-SELFHOST-TYPES-AUDIT.md` |
+
+El dictamen es exclusivamente documental para la revisión auditada; no demuestra ejecución, cobertura ni equivalencia con la batería histórica.
+<!-- END TANDA-12A-SELFHOST-RECONSTRUCTIBILITY -->

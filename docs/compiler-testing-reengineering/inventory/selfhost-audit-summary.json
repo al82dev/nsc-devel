@@ -1,0 +1,124 @@
+{
+  "revision": "65835716712f0d04537aa92591f766fb65ff641b",
+  "files": 29,
+  "source_files": 27,
+  "declarations": 874,
+  "contracts": 138,
+  "cases": 1027,
+  "pr_cases": 900,
+  "nightly_cases": 127,
+  "components": [
+    {
+      "component": "SelfHost.Basic",
+      "files": 3,
+      "declarations": 38,
+      "contracts": 4,
+      "cases": 28
+    },
+    {
+      "component": "SelfHost.Bootstrap",
+      "files": 1,
+      "declarations": 4,
+      "contracts": 3,
+      "cases": 23
+    },
+    {
+      "component": "SelfHost.CodeGen",
+      "files": 1,
+      "declarations": 122,
+      "contracts": 19,
+      "cases": 136
+    },
+    {
+      "component": "SelfHost.Diagnostics",
+      "files": 1,
+      "declarations": 15,
+      "contracts": 4,
+      "cases": 28
+    },
+    {
+      "component": "SelfHost.Documentation",
+      "files": 1,
+      "declarations": 0,
+      "contracts": 2,
+      "cases": 12
+    },
+    {
+      "component": "SelfHost.Driver",
+      "files": 1,
+      "declarations": 26,
+      "contracts": 10,
+      "cases": 79
+    },
+    {
+      "component": "SelfHost.IR",
+      "files": 1,
+      "declarations": 110,
+      "contracts": 12,
+      "cases": 92
+    },
+    {
+      "component": "SelfHost.Lexer",
+      "files": 4,
+      "declarations": 43,
+      "contracts": 8,
+      "cases": 53
+    },
+    {
+      "component": "SelfHost.Parser",
+      "files": 1,
+      "declarations": 97,
+      "contracts": 16,
+      "cases": 127
+    },
+    {
+      "component": "SelfHost.Project",
+      "files": 1,
+      "declarations": 0,
+      "contracts": 3,
+      "cases": 22
+    },
+    {
+      "component": "SelfHost.Projects",
+      "files": 2,
+      "declarations": 79,
+      "contracts": 12,
+      "cases": 95
+    },
+    {
+      "component": "SelfHost.Sema",
+      "files": 7,
+      "declarations": 163,
+      "contracts": 20,
+      "cases": 153
+    },
+    {
+      "component": "SelfHost.Source",
+      "files": 2,
+      "declarations": 39,
+      "contracts": 8,
+      "cases": 61
+    },
+    {
+      "component": "SelfHost.Symbols",
+      "files": 1,
+      "declarations": 56,
+      "contracts": 5,
+      "cases": 35
+    },
+    {
+      "component": "SelfHost.Syntax",
+      "files": 1,
+      "declarations": 50,
+      "contracts": 5,
+      "cases": 36
+    },
+    {
+      "component": "SelfHost.Types",
+      "files": 1,
+      "declarations": 32,
+      "contracts": 7,
+      "cases": 47
+    }
+  ]
+}
