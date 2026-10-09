@@ -90,4 +90,5 @@ void registerTargetAggregateFinalizationModule(TestRegistry& registry);
 void registerTargetIdentityFactoriesModule(TestRegistry& registry);
 void registerTargetCpuFeatureSelectionModule(TestRegistry& registry);
 void registerTargetDisplayNamesModule(TestRegistry& registry);
+void registerTargetLlvmIdentityModule(TestRegistry& registry);
 }
