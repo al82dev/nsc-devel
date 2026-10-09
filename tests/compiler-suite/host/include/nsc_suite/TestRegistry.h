@@ -92,4 +92,5 @@ void registerTargetCpuFeatureSelectionModule(TestRegistry& registry);
 void registerTargetDisplayNamesModule(TestRegistry& registry);
 void registerTargetLlvmIdentityModule(TestRegistry& registry);
 void registerTargetMachineStringsModule(TestRegistry& registry);
+void registerTargetCpuFeatureSupportModule(TestRegistry& registry);
 }
