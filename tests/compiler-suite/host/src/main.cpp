@@ -111,6 +111,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerSourceManagerRegistryModule(registry);
         nsc::suite::registerSourceManagerQueryModule(registry);
         nsc::suite::registerTargetDomainEnumsModule(registry);
+        nsc::suite::registerTargetLayoutValuesModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
