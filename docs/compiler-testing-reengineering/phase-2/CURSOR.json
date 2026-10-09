@@ -3,11 +3,21 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "e1fcc260c",
+  "last_completed_commit": "9207224bc",
   "current_wave": 1,
   "current_component": null,
   "next_contract": null,
-  "next_action": "Wave 1 has no remaining executable contracts: 733/747 cases are verified. Reconcile the 14 explicit product or feasibility blockers without modifying product; do not advance to Wave 2 while they remain pending.",
+  "next_action": "Wave 1 is causally audited at 733/747. The 14 remaining cases require an explicit decision: four need additional deterministic test infrastructure, seven expose product defects, two need product surface or an approved test-plan correction, and one needs a format-contract decision. Do not advance to Wave 2 or alter product without authorization.",
+  "blocker_audit": {
+    "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
+    "revision": "446411765",
+    "total": 14,
+    "test_feasibility": 4,
+    "product_defects": 7,
+    "product_surface_gaps": 2,
+    "contract_decisions": 1,
+    "unclassified": 0
+  },
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
