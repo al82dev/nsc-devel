@@ -162,6 +162,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerLanguageErrorSemanticsModule(registry);
         nsc::suite::registerLanguageExpressionSemanticsModule(registry);
         nsc::suite::registerLanguageGenericSemanticsModule(registry);
+        nsc::suite::registerLanguageIntegrationQualityModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
