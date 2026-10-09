@@ -4,8 +4,8 @@
 |---:|---|---|---:|---:|---:|
 | 01 | Alcance, reglas, inventario canónico de archivos y cursor | LISTA | 974 | 974 | 0 |
 | 02 | Grafo de componentes, dependencias y fronteras | LISTA | 57 | 57 | 0 |
-| 03 | Basic, Source y Diagnostics | EN CURSO | 25 | 17 | 8 |
-| 04 | Lexer, Parser y AST | PENDIENTE | 0 | 0 | Por determinar |
+| 03 | Basic, Source y Diagnostics | LISTA | 25 | 25 | 0 |
+| 04 | Lexer, Parser y AST | EN CURSO | 20 | 0 | 20 |
 | 05 | Language, tipos y Sema | PENDIENTE | 0 | 0 | Por determinar |
 | 06 | Frontend, proyectos, construcción, genéricos y ownership | PENDIENTE | 0 | 0 | Por determinar |
 | 07 | HIR, MIR, CFG, SSA, Dominance y Passes | PENDIENTE | 0 | 0 | Por determinar |

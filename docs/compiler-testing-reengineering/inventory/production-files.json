@@ -1719,9 +1719,9 @@
     "lines": "49",
     "sha256": "2dc4438c5daab7cce793342ca3d1a7be6be54dce6826cd17a9d98413de2a75db",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-DIAGNOSTICS-AUDIT.md",
+    "section": "Host.Diagnostics",
     "notes": ""
   },
   {
@@ -1734,9 +1734,9 @@
     "lines": "71",
     "sha256": "d48684bea2f5187d03f286bc41c9cfebffb61903ced030778c6bf27b84ac2845",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-DIAGNOSTICS-AUDIT.md",
+    "section": "Host.Diagnostics",
     "notes": ""
   },
   {
@@ -1749,9 +1749,9 @@
     "lines": "189",
     "sha256": "08444a4b8005d0b1273182259510d69ae01a36c190b2ad1c8d6fcb95a22ea5a5",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-DIAGNOSTICS-AUDIT.md",
+    "section": "Host.Diagnostics",
     "notes": ""
   },
   {
@@ -1764,9 +1764,9 @@
     "lines": "23",
     "sha256": "1458811a6ad481ae567fb7026d0b982d743b8b3bbaf998ce808450b054f13054",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-DIAGNOSTICS-AUDIT.md",
+    "section": "Host.Diagnostics",
     "notes": ""
   },
   {
@@ -1779,9 +1779,9 @@
     "lines": "31",
     "sha256": "b349b338e8adc36cca6e8423efb2a80f2813effd3b90ce949aa128daeba56c9a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-DIAGNOSTICS-AUDIT.md",
+    "section": "Host.Diagnostics",
     "notes": ""
   },
   {
@@ -9759,9 +9759,9 @@
     "lines": "59",
     "sha256": "70d82f326729d8800595163b9c13fb77d2c627dba6fbcf38c21361772e75fbe1",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-DIAGNOSTICS-AUDIT.md",
+    "section": "Host.Diagnostics",
     "notes": ""
   },
   {
@@ -9774,9 +9774,9 @@
     "lines": "254",
     "sha256": "bc20fb5cdbe291fb19df0f6d02095f16069a6e2b59f031488723b84ea5c01918",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-DIAGNOSTICS-AUDIT.md",
+    "section": "Host.Diagnostics",
     "notes": ""
   },
   {
@@ -9789,9 +9789,9 @@
     "lines": "88",
     "sha256": "d97b87f43afa8c63dfbae5a7c05dc91f6fa460e137c5566b5ca395246a2af451",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-03-HOST-DIAGNOSTICS-AUDIT.md",
+    "section": "Host.Diagnostics",
     "notes": ""
   },
   {

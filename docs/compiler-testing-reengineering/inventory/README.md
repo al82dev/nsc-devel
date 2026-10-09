@@ -16,5 +16,6 @@ determinista desde la revisión congelada y no sustituyen la lectura semántica 
 Los estados documentales válidos son los de la sección 18 de los lineamientos. El estado inicial es
 `NO LEÍDO`; abrir un archivo no permite promoverlo directamente a `AUDITADO`.
 
-Al corte de Tanda 03, `Host.Basic` y `Host.Source` tienen inventario semántico, contratos, casos diseñados y
-segunda auditoría independiente. Ninguna fila `DESIGNED` representa código de prueba creado o ejecutado.
+Al cierre de Tanda 03, `Host.Basic`, `Host.Source` y `Host.Diagnostics` tienen inventario semántico, contratos,
+casos diseñados y segunda auditoría independiente. Ninguna fila `DESIGNED` representa código de prueba creado
+o ejecutado.

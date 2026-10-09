@@ -13,6 +13,7 @@ tabla; registra el criterio y enlazará los informes individuales conforme se pr
 |---|---|---:|---:|---:|---|
 | `Host.Basic` | `RECONSTRUIBLE` | 60 | 16 | 88 | `audits/TANDA-03-HOST-BASIC-AUDIT.md` |
 | `Host.Source` | `RECONSTRUIBLE` | 23 | 8 | 58 | `audits/TANDA-03-HOST-SOURCE-AUDIT.md` |
+| `Host.Diagnostics` | `RECONSTRUIBLE` | 43 | 12 | 75 | `audits/TANDA-03-HOST-DIAGNOSTICS-AUDIT.md` |
 
 `RECONSTRUIBLE` describe suficiencia documental para la revisión congelada. No significa que la suite nueva
 esté implementada ni que se haya ejecutado validación.

@@ -19,6 +19,9 @@
 - [Host.Source](components/HOST-SOURCE.md)
   - [Test plan](test-plans/HOST-SOURCE-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-03-HOST-SOURCE-AUDIT.md)
+- [Host.Diagnostics](components/HOST-DIAGNOSTICS.md)
+  - [Test plan](test-plans/HOST-DIAGNOSTICS-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-03-HOST-DIAGNOSTICS-AUDIT.md)
 
 ## Artefactos mecánicos
 
