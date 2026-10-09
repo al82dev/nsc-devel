@@ -250,6 +250,34 @@ void registerLambdaGeneratedNameCase(TestRegistry& registry)
     });
 }
 
+void registerClosureLayoutCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-034", [](TestContext& context) {
+        ClosureLayout layout{99, 99};
+        std::string error = "stale";
+        const std::array<Capture, 0> empty{};
+        context.expect(computeClosureLayout(empty, layout, error) &&
+                layout.size == 0 && layout.alignment == 1 && error.empty(),
+            "TL-LANG-034 an empty closure must expose its exact public size and alignment");
+
+        const std::array captures{
+            Capture{"byte", 1, 1, CaptureMode::Copy, true},
+            Capture{"wide", 8, 8, CaptureMode::Move, true},
+            Capture{"word", 4, 4, CaptureMode::Reference, true}};
+        context.expect(computeClosureLayout(captures, layout, error) &&
+                layout.size == 24 && layout.alignment == 8 && error.empty(),
+            "TL-LANG-034 mixed capture alignment must produce exact public size and alignment");
+
+        const std::array reordered{
+            Capture{"wide", 8, 8, CaptureMode::Move, true},
+            Capture{"byte", 1, 1, CaptureMode::Copy, true},
+            Capture{"word", 4, 4, CaptureMode::Reference, true}};
+        context.expect(computeClosureLayout(reordered, layout, error) &&
+                layout.size == 16 && layout.alignment == 8 && error.empty(),
+            "TL-LANG-034 capture order must affect size while preserving maximum alignment");
+    });
+}
+
 void registerClosureEscapeCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-036", [](TestContext& context) {
@@ -351,6 +379,7 @@ void registerLanguageCallableSemanticsModule(TestRegistry& registry)
     registerLambdaRoundTripCase(registry);
     registerInvalidLambdaIdentityCase(registry);
     registerLambdaGeneratedNameCase(registry);
+    registerClosureLayoutCase(registry);
     registerClosureEscapeCase(registry);
     registerCallableTraitCase(registry);
     registerLambdaConversionCase(registry);

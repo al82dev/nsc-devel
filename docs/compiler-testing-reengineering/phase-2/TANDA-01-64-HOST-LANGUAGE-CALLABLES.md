@@ -82,3 +82,7 @@ del compilador y se retiró. El caso conserva la capacidad real
 `computeClosureLayout` y comprobará únicamente `size` y `alignment`. La
 clasificación `BLOQUEADO_POR_PRODUCTO` de la tabla histórica queda sustituida por
 `PLAN CORREGIDO — IMPLEMENTABLE`; no se modifica el producto.
+
+El caso fue implementado posteriormente y pasó su ejecución exclusiva. El
+contrato queda en 14/15 casos implementados y verificados; `TL-LANG-035`
+permanece como prueba por materializar para revelar el defecto de overflow.
