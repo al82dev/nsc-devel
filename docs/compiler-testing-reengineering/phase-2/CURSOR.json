@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "b81d5c13e",
+  "last_completed_commit": "0fcc4eff8",
   "current_wave": 1,
   "current_component": "Host.Language",
   "next_contract": "CL-LANG-005",
-  "next_action": "Keep the documented product blockers open; Phase 2 cannot modify product. CL-LANG-005 has TL-LANG-050..056 implemented and verified. Continue the same contract with TL-LANG-057..062 for future state and cancellation, then TL-LANG-063..068 for async generators and TL-LANG-069..077 for concurrency. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_action": "Keep the documented product blockers open; Phase 2 cannot modify product. CL-LANG-005 has TL-LANG-050..062 implemented and verified. Continue the same contract with TL-LANG-063..068 for async generators, then TL-LANG-069..077 for concurrency. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
@@ -90,10 +90,10 @@
       ]
     },
     "CL-LANG-005": {
-      "implemented_cases": 7,
-      "verified_cases": 7,
+      "implemented_cases": 13,
+      "verified_cases": 13,
       "pending_cases": [
-        "TL-LANG-057..077"
+        "TL-LANG-063..077"
       ]
     }
   },
@@ -107,8 +107,8 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 498,
-      "product_cases_verified": 498
+      "product_cases_implemented": 504,
+      "product_cases_verified": 504
     }
   },
   "validation": {
