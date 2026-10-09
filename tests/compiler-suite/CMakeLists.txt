@@ -9,6 +9,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     enable_testing()
 endif()
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
 add_executable(
     nsc_component_tests
     host/src/main.cpp
@@ -29,3 +31,10 @@ else()
 endif()
 
 add_test(NAME nsc.compiler-suite.infrastructure COMMAND nsc_component_tests --all)
+add_test(
+    NAME nsc.compiler-suite.controller-infrastructure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_infrastructure_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/controller-gate")

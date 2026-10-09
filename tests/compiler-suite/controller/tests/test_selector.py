@@ -65,7 +65,7 @@ class SelectorTests(unittest.TestCase):
     def test_requires_explicit_all_or_filter(self) -> None:
         with self.assertRaisesRegex(SelectionError, "requires --all"):
             select_cases(self.cases, Selection())
-        with self.assertRaisesRegex(SelectionError, "cannot be combined"):
+        with self.assertRaisesRegex(SelectionError, "identity or profile"):
             select_cases(self.cases, Selection(all_cases=True, profile="PR"))
 
     def test_all_is_deterministic(self) -> None:
@@ -73,6 +73,16 @@ class SelectorTests(unittest.TestCase):
         self.assertEqual(
             [item.case_id for item in selected],
             ["TB-BAS-001", "TB-BAS-002", "TB-SRC-001"],
+        )
+
+    def test_all_accepts_orthogonal_build_configuration(self) -> None:
+        selected = select_cases(
+            self.cases,
+            Selection(all_cases=True, build_mode="Debug", optimization="NA"),
+        )
+        self.assertEqual(
+            [item.case_id for item in selected],
+            ["TB-BAS-001", "TB-BAS-002"],
         )
 
     def test_filters_intersect(self) -> None:

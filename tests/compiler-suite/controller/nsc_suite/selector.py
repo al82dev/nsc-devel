@@ -29,21 +29,22 @@ class Selection:
     include_dependencies: bool = True
 
     def validate(self) -> None:
-        has_filter = any(
+        has_identity_filter = any(
             (
                 self.case_ids,
                 self.contract_ids,
                 self.components,
                 self.layers,
                 self.profile,
-                self.build_mode,
-                self.optimization,
                 self.tags,
             )
         )
-        if self.all_cases and has_filter:
-            raise SelectionError("all_cases cannot be combined with filters")
-        if not self.all_cases and not has_filter:
+        has_configuration_filter = any((self.build_mode, self.optimization))
+        if self.all_cases and has_identity_filter:
+            raise SelectionError(
+                "all_cases cannot be combined with identity or profile filters"
+            )
+        if not self.all_cases and not has_identity_filter and not has_configuration_filter:
             raise SelectionError("selection requires --all or at least one explicit filter")
         if self.profile is not None and self.profile not in PROFILES:
             raise SelectionError(f"unknown profile: {self.profile}")
@@ -64,14 +65,11 @@ def select_cases(
     if len(by_id) != len(ordered):
         raise SelectionError("case collection contains duplicate IDs")
 
-    if selection.all_cases:
-        matched = set(by_id)
-    else:
-        matched = {
-            case.case_id
-            for case in ordered
-            if _matches(case, selection)
-        }
+    matched = {
+        case.case_id
+        for case in ordered
+        if _matches(case, selection)
+    }
     if not matched:
         raise SelectionError("selection matched no cases")
 

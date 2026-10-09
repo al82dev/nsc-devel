@@ -10,7 +10,7 @@ void registerContextCase(TestRegistry& registry)
 {
     registry.add(TestCase{
         "INFRA-CONTEXT-001",
-        "INFRA-CONTEXT",
+        "INFRA-CONTEXT-001",
         "Infrastructure",
         "unit",
         "PR",
@@ -26,7 +26,7 @@ void registerOrderingCase(TestRegistry& registry)
 {
     registry.add(TestCase{
         "INFRA-REGISTRY-001",
-        "INFRA-REGISTRY",
+        "INFRA-REGISTRY-001",
         "Infrastructure",
         "unit",
         "PR",
@@ -48,7 +48,7 @@ void registerDuplicateCase(TestRegistry& registry)
 {
     registry.add(TestCase{
         "INFRA-REGISTRY-002",
-        "INFRA-REGISTRY",
+        "INFRA-REGISTRY-001",
         "Infrastructure",
         "unit",
         "PR",
