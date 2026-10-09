@@ -89,4 +89,5 @@ void registerTargetUnionBitFieldModule(TestRegistry& registry);
 void registerTargetAggregateFinalizationModule(TestRegistry& registry);
 void registerTargetIdentityFactoriesModule(TestRegistry& registry);
 void registerTargetCpuFeatureSelectionModule(TestRegistry& registry);
+void registerTargetDisplayNamesModule(TestRegistry& registry);
 }

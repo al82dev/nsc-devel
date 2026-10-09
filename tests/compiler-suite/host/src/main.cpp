@@ -133,6 +133,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetAggregateFinalizationModule(registry);
         nsc::suite::registerTargetIdentityFactoriesModule(registry);
         nsc::suite::registerTargetCpuFeatureSelectionModule(registry);
+        nsc::suite::registerTargetDisplayNamesModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
