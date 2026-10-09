@@ -13,16 +13,18 @@ Fecha: 2026-10-09
 | Componentes externos | Excluidos: bibliotecas, SDK, bindings y otros repositorios |
 | Infraestructura prohibida ahora | Baseline, cobertura, despliegue y `C:` |
 
-## Capacidades de producto pendientes
+## Expectativas retiradas del plan activo
 
-| Caso | Capacidad ausente | Estado | Condición para retomarlo |
-|---|---|---|---|
-| `TL-LANG-034` | `ClosureLayout` no publica los offsets exactos exigidos por el contrato. | `FEATURE PENDIENTE` | Definir y exponer los offsets como superficie estable, o aprobar un contrato distinto. |
-| `TL-LANG-201` | `IntegerArithmeticOperation` no representa remainder. | `FEATURE PENDIENTE` | Incorporar `Remainder` al modelo y a su semántica antes de implementar la prueba. |
+La suite no define el producto futuro. Dos expectativas fueron retiradas porque
+no forman parte de la superficie vigente:
 
-Estos casos no se eliminan del inventario ni reducen el denominador. Tampoco se
-implementan parcialmente: tamaño/alineación sin offsets no cerraría
-`TL-LANG-034`, y probar división no sustituiría remainder en `TL-LANG-201`.
+| Caso | Expectativa inventada | Caso corregido contra el producto real |
+|---|---|---|
+| `TL-LANG-034` | Offsets individuales que `ClosureLayout` no expone. | Tamaño y alineación públicos para closure vacío y captures de alineación mixta. |
+| `TL-LANG-201` | Operación remainder ausente de `IntegerArithmeticOperation`. | División, división por cero y `signed min / -1` bajo las cuatro políticas vigentes. |
+
+Los IDs se conservan porque ambos tienen capacidad real que probar. No se añade
+una feature pendiente, no se amplía el compilador y no se reduce el denominador.
 
 ## Infraestructura especial pendiente
 
@@ -113,7 +115,9 @@ un marker válido consume el sufijo completo. No cambia el compilador.
 
 ## Efecto sobre la secuencia de trabajo
 
-Los seis pendientes especiales permanecen visibles y los siete defectos no se
-ocultan. La Fase 2 puede continuar por contratos y olas independientes, pero no
-puede declarar completa la ola 1 ni verificar los casos rojos o pendientes hasta
-que sus condiciones reales se resuelvan.
+Los cuatro pendientes de infraestructura permanecen visibles y los siete
+defectos no se ocultan. `TL-LANG-034`, `TL-LANG-116` y `TL-LANG-201` se corrigen
+como casos del plan contra capacidades reales. La Fase 2 puede continuar por
+contratos y olas independientes, pero no puede declarar completa la ola 1 ni
+verificar los casos rojos o pendientes hasta que sus condiciones reales se
+resuelvan.

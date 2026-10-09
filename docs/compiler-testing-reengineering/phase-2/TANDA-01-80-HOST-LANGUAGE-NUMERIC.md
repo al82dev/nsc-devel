@@ -65,3 +65,10 @@ puede ejercitarse completo desde la API pública.
 `CL-LANG-016` queda con 24 casos implementados y verificados y un bloqueo de producto
 documentado. La Fase 2 puede continuar con `CL-LANG-017`, pero no declarar esta ola
 completa mientras `TL-LANG-201` siga bloqueado.
+
+## Adenda de test plan — 2026-10-09
+
+Remainder no forma parte de `IntegerArithmeticOperation`; exigirlo fue un error
+del plan, no un hueco del compilador. `TL-LANG-201` conserva las capacidades
+vigentes de división, división por cero y `signed min / -1` bajo las políticas
+actuales. El caso queda `PLAN CORREGIDO — IMPLEMENTABLE` sin cambios de producto.

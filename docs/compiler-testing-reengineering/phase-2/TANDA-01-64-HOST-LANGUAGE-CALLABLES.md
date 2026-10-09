@@ -74,3 +74,11 @@ parcial que ocultara el vector de overflow.
 | `TL-LANG-036..039` | VERIFICADOS | escape, traits, conversión, bound method y `must_tail` |
 
 Diagramas: no aplica; el contrato consiste en valores, parsers y matrices tabulares.
+
+## Adenda de test plan — 2026-10-09
+
+La expectativa de offsets de `TL-LANG-034` no pertenece a la superficie pública
+del compilador y se retiró. El caso conserva la capacidad real
+`computeClosureLayout` y comprobará únicamente `size` y `alignment`. La
+clasificación `BLOQUEADO_POR_PRODUCTO` de la tabla histórica queda sustituida por
+`PLAN CORREGIDO — IMPLEMENTABLE`; no se modifica el producto.

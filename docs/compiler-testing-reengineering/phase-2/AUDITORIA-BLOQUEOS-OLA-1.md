@@ -106,7 +106,8 @@ alterar el denominador de 747 casos:
 1. Los siete defectos observables conservarán pruebas reales. Esas pruebas pueden
    permanecer rojas hasta que el producto sea corregido en una tarea distinta;
    no se convierten en éxitos ni en exclusiones.
-2. `TL-LANG-034` y `TL-LANG-201` quedan como capacidades de producto pendientes.
+2. `TL-LANG-034` y `TL-LANG-201` se clasificaron inicialmente como capacidades
+   de producto pendientes.
 3. `TS-SRC-008`, `TS-SRC-040`, `TS-SRC-041` y `TS-SRC-049` quedan pendientes de
    infraestructura especial, con sus alternativas documentadas en
    `PENDIENTES-TESTING-Y-FEATURES.md`.
@@ -118,3 +119,16 @@ Esta adenda reemplaza sólo la decisión operativa final de la auditoría origin
 La evidencia y clasificación histórica anteriores se conservan. La ola vuelve a
 `EN CURSO`; sus pendientes siguen visibles y no se permite declararla completa
 mientras haya casos sin verificar.
+
+### Segunda adenda — contrato real de producto
+
+La autoridad aclaró que la suite debe probar sólo capacidades que ya existen en
+el compilador. Por ello, la clasificación del punto 2 anterior queda sustituida:
+
+- `TL-LANG-034` conserva `computeClosureLayout`, pero limita su oráculo a los
+  campos públicos `size` y `alignment`; no exige offsets inexistentes.
+- `TL-LANG-201` conserva la división, división por cero y `signed min / -1` con
+  las cuatro políticas; retira remainder porque el enum público no lo contiene.
+
+Ambos fueron errores del test plan y vuelven a ser casos implementables. No se
+agrega superficie al compilador y no se altera ningún contrato de producto.

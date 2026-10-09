@@ -58,7 +58,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-031 | CL-LANG-003 | anonymousLambdaTypeIdentity y parse para ordinals 0/max y signatures complejas | round-trip exacto | PR |
 | TL-LANG-032 | CL-LANG-003 | anonymous lambda identity/parse con grammar invalida | nullopt sin aceptar trailing | PR |
 | TL-LANG-033 | CL-LANG-003 | anonymousLambdaGeneratedName para ordinals de borde | `__nsc_lambda_O_L` exacto | PR |
-| TL-LANG-034 | CL-LANG-003 | computeClosureLayout con vacio y captures de alignment mixto | offsets, size y alignment exactos | PR |
+| TL-LANG-034 | CL-LANG-003 | computeClosureLayout con vacio y captures de alignment mixto | size y alignment publicos exactos | PR |
 | TL-LANG-035 | CL-LANG-003 | computeClosureLayout con nombre vacio, size cero, alignment invalido y overflow | falla con error exacto sin layout utilizable | PR |
 | TL-LANG-036 | CL-LANG-003 | validateClosureEscape con no escape, by-value y referencias outlive/no-outlive | aceptacion o rechazo exacto | PR |
 | TL-LANG-037 | CL-LANG-003 | callableTrait sobre ninguna, move, mutable-ref y combinaciones | prioridad FnOnce, luego FnMut, luego Fn | PR |
@@ -290,7 +290,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-198 | CL-LANG-016 | resolve literal fuera de rango y unsigned negativo | nullopt y diagnostico exacto | PR |
 | TL-LANG-199 | CL-LANG-016 | addInteger sobre min/max y policies checked/wrapping/saturating/unchecked | optional y bits exactos | PR |
 | TL-LANG-200 | CL-LANG-016 | evaluateIntegerArithmetic add/sub/mul sobre widths 1,8,16,32,64 | result/overflow/UB exactos | PR |
-| TL-LANG-201 | CL-LANG-016 | evaluate arithmetic div/rem por cero y signed min/-1 | fallo, overflow y UB segun policy | PR |
+| TL-LANG-201 | CL-LANG-016 | evaluate arithmetic divide por cero y signed min/-1 | fallo, bits, overflow y UB segun policy | PR |
 | TL-LANG-202 | CL-LANG-016 | evaluate shifts por 0,width-1,width,width+1 con policies | resultado o rechazo exacto | PR |
 | TL-LANG-203 | CL-LANG-016 | integerResultAsSigned para sign bit y widths de borde | extension de signo exacta | PR |
 | TL-LANG-204 | CL-LANG-016 | implicitNumericConversionIsLossless sobre matriz NumericType | matriz completa exacta | PR |

@@ -14,9 +14,11 @@ trabajo es el contrato observable y cada caso conserva trazabilidad `case_id -> 
 - No se implementa cobertura instrumental en esta fase.
 - Un defecto observable conserva una prueba real con oráculo correcto aunque permanezca roja hasta corregir el
   producto; queda prohibido convertirlo en `SKIP`, `XFAIL`, éxito esperado u oráculo vacío.
-- Una capacidad de producto todavía inexistente o una prueba que requiere infraestructura especial se registra
-  como pendiente explícito. No se declara verificada, pero tampoco bloquea contratos u olas causalmente
-  independientes.
+- Una expectativa de prueba que no corresponde a una capacidad vigente del compilador es un defecto del test
+  plan: se elimina o se reescribe contra el contrato real. No se conserva como feature pendiente dentro de la
+  suite activa ni autoriza ampliar el producto.
+- Una prueba válida que requiere infraestructura especial se registra como pendiente explícito. No se declara
+  verificada, pero tampoco bloquea contratos u olas causalmente independientes.
 - Avanzar trabajo independiente no reduce denominadores, no oculta pendientes y no autoriza declarar completa
   una ola que aún contenga casos sin verificar.
 - Un productor fallido bloquea a sus consumidores; no se usan artefactos viejos como fallback.
