@@ -336,6 +336,367 @@ void registerPerformanceAssessmentCase(TestRegistry& registry)
             "TL-LANG-133 all five language budget violations must be reported in exact order");
     });
 }
+
+DiagnosticQuality makeDiagnostic(std::string code, DiagnosticArea area)
+{
+    DiagnosticQuality result;
+    result.code = std::move(code);
+    result.english = "the source construct violates its semantic contract";
+    result.spanish = "la construccion fuente viola su contrato semantico";
+    result.precisePrimarySpan = true;
+    result.fixItPreservesSemantics = true;
+    result.cascadeCount = 1;
+    result.area = area;
+    result.primarySpan = {"Main.ns", 4, 9, 4, 17};
+    result.fixIt = DiagnosticFixIt{"safe_replacement", true, true};
+    result.macroBacktrace = {"outer! at Main.ns:2", "inner! at Main.ns:4"};
+    return result;
+}
+
+std::array<DiagnosticQuality, 5> diagnosticCatalog()
+{
+    return {
+        makeDiagnostic("NS3B001", DiagnosticArea::Borrow),
+        makeDiagnostic("NS3T001", DiagnosticArea::Trait),
+        makeDiagnostic("NS3M001", DiagnosticArea::Match),
+        makeDiagnostic("NS3A001", DiagnosticArea::Async),
+        makeDiagnostic("NS3D001", DiagnosticArea::Module),
+    };
+}
+
+void registerDiagnosticQualityGateCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-134", [](TestContext& context) {
+        constexpr std::string_view general =
+            "diagnostic quality gate requires stable code, localization, precise span, safe fix-it, and "
+            "bounded cascades";
+        const DiagnosticQuality valid = makeDiagnostic("NS3B001", DiagnosticArea::Borrow);
+        std::string error = "stale";
+        context.expect(diagnosticPassesQualityGate(valid, error) && error.empty(),
+            "TL-LANG-134 a complete localized diagnostic must pass the quality gate");
+
+        for (std::size_t mutation = 0; mutation < 6; ++mutation)
+        {
+            DiagnosticQuality diagnostic = valid;
+            if (mutation == 0) diagnostic.code = "XX3B001";
+            if (mutation == 1) diagnostic.english.clear();
+            if (mutation == 2) diagnostic.spanish.clear();
+            if (mutation == 3) diagnostic.precisePrimarySpan = false;
+            if (mutation == 4) diagnostic.fixItPreservesSemantics = false;
+            if (mutation == 5) diagnostic.cascadeCount = 3;
+            context.expect(!diagnosticPassesQualityGate(diagnostic, error) && error == general,
+                "TL-LANG-134 every top-level quality invariant must return the shared exact error");
+        }
+
+        for (std::size_t mutation = 0; mutation < 4; ++mutation)
+        {
+            DiagnosticQuality diagnostic = valid;
+            if (mutation == 0) diagnostic.primarySpan.line = 0;
+            if (mutation == 1) diagnostic.primarySpan.column = 0;
+            if (mutation == 2) diagnostic.primarySpan.endLine = 3;
+            if (mutation == 3) diagnostic.primarySpan.endColumn = 8;
+            context.expect(!diagnosticPassesQualityGate(diagnostic, error) &&
+                    error == "diagnostic primary span is invalid",
+                "TL-LANG-134 each invalid physical span boundary must return the exact span error");
+        }
+
+        for (std::size_t mutation = 0; mutation < 3; ++mutation)
+        {
+            DiagnosticQuality diagnostic = valid;
+            if (mutation == 0) diagnostic.fixIt->replacement.clear();
+            if (mutation == 1) diagnostic.fixIt->preservesSemantics = false;
+            if (mutation == 2) diagnostic.fixIt->compiles = false;
+            context.expect(!diagnosticPassesQualityGate(diagnostic, error) &&
+                    error == "diagnostic fix-it must be nonempty, semantics-preserving, and compilable",
+                "TL-LANG-134 every invalid fix-it field must return the exact fix-it error");
+        }
+
+        DiagnosticQuality verbose = valid;
+        verbose.macroBacktrace.resize(5, "frame");
+        context.expect(!diagnosticPassesQualityGate(verbose, error) &&
+                error == "diagnostic macro backtrace is not compact",
+            "TL-LANG-134 a fifth macro frame must return the exact compactness error");
+    });
+}
+
+void registerDiagnosticCatalogCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-135", [](TestContext& context) {
+        const auto valid = diagnosticCatalog();
+        std::string error = "stale";
+        context.expect(validateDiagnosticQualityCatalog(valid, 80, error) && error.empty(),
+            "TL-LANG-135 five distinct diagnostic areas must pass at a readable width");
+        context.expect(!validateDiagnosticQualityCatalog(valid, 39, error) &&
+                error == "diagnostic terminal width must be at least 40 columns",
+            "TL-LANG-135 width 39 must fail before catalog traversal");
+
+        auto noPhysicalSpan = valid;
+        noPhysicalSpan[0].primarySpan.file.clear();
+        context.expect(!validateDiagnosticQualityCatalog(noPhysicalSpan, 80, error) &&
+                error == "diagnostic catalog entries require a physical primary span",
+            "TL-LANG-135 catalog entries must require a physical primary span");
+
+        auto duplicate = valid;
+        duplicate[4].code = duplicate[0].code;
+        context.expect(!validateDiagnosticQualityCatalog(duplicate, 80, error) &&
+                error == "diagnostic catalog contains a duplicate stable code",
+            "TL-LANG-135 duplicate stable codes must fail exactly");
+
+        auto missingArea = valid;
+        missingArea[4].area = DiagnosticArea::Borrow;
+        context.expect(!validateDiagnosticQualityCatalog(missingArea, 80, error) &&
+                error == "diagnostic catalog must cover borrow, trait, match, async, and module errors",
+            "TL-LANG-135 a missing diagnostic area must fail the final coverage check");
+    });
+}
+
+void registerDiagnosticRenderingCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-136", [](TestContext& context) {
+        DiagnosticQuality diagnostic = makeDiagnostic("NS3Q001", DiagnosticArea::Module);
+        diagnostic.english = "abcdef";
+        diagnostic.spanish = "uvwxyz";
+        context.expect(renderDiagnosticForTerminal(diagnostic, false, 100) == "NS3Q001: abcdef" &&
+                renderDiagnosticForTerminal(diagnostic, true, 100) == "NS3Q001: uvwxyz",
+            "TL-LANG-136 English and Spanish full renderings must preserve exact bytes");
+        context.expect(renderDiagnosticForTerminal(diagnostic, false, 0).empty() &&
+                renderDiagnosticForTerminal(diagnostic, false, 1) == "N" &&
+                renderDiagnosticForTerminal(diagnostic, false, 3) == "NS3",
+            "TL-LANG-136 widths zero through three must use exact prefix truncation without ellipsis");
+        context.expect(renderDiagnosticForTerminal(diagnostic, false, 12) == "NS3Q001: ..." &&
+                renderDiagnosticForTerminal(diagnostic, true, 12) == "NS3Q001: ...",
+            "TL-LANG-136 wider truncation must reserve exactly three bytes for an ellipsis");
+    });
+}
+
+void registerSemanticDebugNameCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-137", [](TestContext& context) {
+        context.expect(semanticDebugName("Owner.Type", "async state#1", 42) ==
+                "Owner.Type$async_state_1$42",
+            "TL-LANG-137 role punctuation must normalize to underscores while owner remains exact");
+        context.expect(semanticDebugName("", "", 0) == "$$0" &&
+                semanticDebugName("A", "Az09_-", 7) == "A$Az09__$7",
+            "TL-LANG-137 empty, alphanumeric, and punctuation boundaries must be stable");
+    });
+}
+
+SemanticDebugEntry makeDebugEntry(
+    std::string role,
+    DebugEntityKind kind,
+    DebugOptimization optimization)
+{
+    SemanticDebugEntry result;
+    result.stableName = semanticDebugName("Main", role, static_cast<std::size_t>(kind));
+    result.typeName = kind == DebugEntityKind::VariantPayload ? "Result::Ok(i32)" : "i32";
+    result.kind = kind;
+    result.optimization = optimization;
+    result.scopeBeginLine = 10;
+    result.scopeEndLine = 20;
+    result.sequencePointLines = {10, 15, 20};
+    result.sourceGenerated = kind == DebugEntityKind::CoroutineState || kind == DebugEntityKind::Temporary;
+    result.hasInlineSite = kind == DebugEntityKind::InlineSite;
+    return result;
+}
+
+std::array<SemanticDebugEntry, 8> completeDebugEvidence()
+{
+    return {
+        makeDebugEntry("local", DebugEntityKind::Local, DebugOptimization::O0),
+        makeDebugEntry("inline", DebugEntityKind::InlineSite, DebugOptimization::O0),
+        makeDebugEntry("capture", DebugEntityKind::ClosureCapture, DebugOptimization::O0),
+        makeDebugEntry("variant", DebugEntityKind::VariantPayload, DebugOptimization::O0),
+        makeDebugEntry("owner", DebugEntityKind::OwnershipState, DebugOptimization::O0),
+        makeDebugEntry("exception", DebugEntityKind::ExceptionValue, DebugOptimization::O0),
+        makeDebugEntry("coroutine", DebugEntityKind::CoroutineState, DebugOptimization::O0),
+        makeDebugEntry("temporary", DebugEntityKind::Temporary, DebugOptimization::O2),
+    };
+}
+
+void registerSemanticDebugEvidenceCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-138", [](TestContext& context) {
+        const auto valid = completeDebugEvidence();
+        std::string error = "stale";
+        context.expect(validateSemanticDebugEvidence(valid, error) && error.empty(),
+            "TL-LANG-138 complete O0/O2 evidence for all eight kinds must pass");
+
+        for (std::size_t mutation = 0; mutation < 3; ++mutation)
+        {
+            auto evidence = valid;
+            if (mutation == 0) evidence[0].stableName.clear();
+            if (mutation == 1) evidence[0].typeName.clear();
+            if (mutation == 2) evidence[1].stableName = evidence[0].stableName;
+            context.expect(!validateSemanticDebugEvidence(evidence, error) &&
+                    error == "semantic debug evidence requires stable unique names and concrete types",
+                "TL-LANG-138 empty identity/type and duplicate identity per optimization must fail exactly");
+        }
+
+        auto invalidLifetime = valid;
+        invalidLifetime[0].scopeBeginLine = 0;
+        context.expect(!validateSemanticDebugEvidence(invalidLifetime, error) &&
+                error == "semantic debug evidence contains an invalid source lifetime",
+            "TL-LANG-138 a zero source lifetime must fail exactly");
+        auto invented = valid;
+        invented[7].valueInvented = true;
+        context.expect(!validateSemanticDebugEvidence(invented, error) &&
+                error == "optimized debug evidence must never invent a value",
+            "TL-LANG-138 invented optimized values must fail exactly");
+
+        for (std::size_t mutation = 0; mutation < 2; ++mutation)
+        {
+            auto evidence = valid;
+            if (mutation == 0) evidence[0].availability = DebugAvailability::OptimizedOut;
+            if (mutation == 1) evidence[0].sequencePointLines.clear();
+            context.expect(!validateSemanticDebugEvidence(evidence, error) &&
+                    error == "O0 debug evidence requires source fidelity and sequence points",
+                "TL-LANG-138 optimized-out or point-free O0 evidence must fail exactly");
+        }
+
+        auto outside = valid;
+        outside[2].sequencePointLines = {9};
+        context.expect(!validateSemanticDebugEvidence(outside, error) &&
+                error == "semantic debug sequence point lies outside its source lifetime",
+            "TL-LANG-138 sequence points outside the lifetime must fail exactly");
+        auto noInline = valid;
+        noInline[1].hasInlineSite = false;
+        context.expect(!validateSemanticDebugEvidence(noInline, error) &&
+                error == "inline debug evidence requires an inline-site record",
+            "TL-LANG-138 inline entities without inline-site records must fail exactly");
+        auto generatedLocal = valid;
+        generatedLocal[0].sourceGenerated = true;
+        context.expect(!validateSemanticDebugEvidence(generatedLocal, error) &&
+                error == "generated compiler state must not be presented as a source local",
+            "TL-LANG-138 generated compiler state must not masquerade as a local");
+
+        auto noO2 = valid;
+        noO2[7].optimization = DebugOptimization::O0;
+        auto noO0 = valid;
+        for (auto& entry : noO0) entry.optimization = DebugOptimization::O2;
+        std::vector<SemanticDebugEntry> missingKind(valid.begin() + 1, valid.end());
+        for (const auto& evidence : {std::vector<SemanticDebugEntry>(noO2.begin(), noO2.end()),
+                 std::vector<SemanticDebugEntry>(noO0.begin(), noO0.end()), missingKind})
+        {
+            context.expect(!validateSemanticDebugEvidence(evidence, error) &&
+                    error == "semantic debug audit requires O0/O2 and every observable entity category",
+                "TL-LANG-138 missing optimization modes or entity kinds must fail the final audit");
+        }
+    });
+}
+
+void registerHiddenCostAuditCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-139", [](TestContext& context) {
+        const std::array<CostEvent, 0> empty{};
+        const std::array explicitCosts = {
+            CostEvent{GeneratedCost::Copy, "copy", true},
+            CostEvent{GeneratedCost::Drop, "drop", true},
+        };
+        std::string error = "stale";
+        context.expect(hiddenCostAuditPasses(empty, error) && error.empty() &&
+                hiddenCostAuditPasses(explicitCosts, error) && error.empty(),
+            "TL-LANG-139 empty and fully explicit cost sets must pass and clear stale errors");
+        const std::array hidden = {
+            CostEvent{GeneratedCost::Allocation, "implicit-box", false},
+            CostEvent{GeneratedCost::Copy, "later-copy", false},
+        };
+        context.expect(!hiddenCostAuditPasses(hidden, error) &&
+                error == "hidden generated cost in implicit-box",
+            "TL-LANG-139 the first hidden cost must fail with its exact source construct");
+    });
+}
+
+CostAuditRecord costRecord(
+    GeneratedCost kind,
+    std::string construct,
+    CostOptimization optimization)
+{
+    return {{kind, std::move(construct), true}, optimization, true, 1, 1, {}};
+}
+
+std::array<CostAuditRecord, 6> completeCostAudit()
+{
+    return {
+        costRecord(GeneratedCost::Allocation, "owned-array", CostOptimization::Off),
+        costRecord(GeneratedCost::Copy, "copy-value", CostOptimization::Off),
+        costRecord(GeneratedCost::Drop, "owned-scope", CostOptimization::Off),
+        costRecord(GeneratedCost::DynamicDispatch, "dyn-trait-call", CostOptimization::On),
+        costRecord(GeneratedCost::UnwindEdge, "typed-throws", CostOptimization::On),
+        costRecord(GeneratedCost::AtomicFence, "atomic-release", CostOptimization::On),
+    };
+}
+
+void registerZeroCostAuditCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-140", [](TestContext& context) {
+        const auto valid = completeCostAudit();
+        std::string error = "stale";
+        context.expect(validateZeroCostAudit(valid, error) && error.empty(),
+            "TL-LANG-140 six costs across Off/On with MIR and assembly evidence must pass");
+
+        auto unnamed = valid;
+        unnamed[0].event.sourceConstruct.clear();
+        context.expect(!validateZeroCostAudit(unnamed, error) &&
+                error == "zero-cost audit requires named library-free source fixtures",
+            "TL-LANG-140 unnamed fixtures must fail the first exact invariant");
+        auto linked = valid;
+        linked[0].libraryFree = false;
+        context.expect(!validateZeroCostAudit(linked, error) &&
+                error == "zero-cost audit requires named library-free source fixtures",
+            "TL-LANG-140 library-dependent fixtures must fail the first exact invariant");
+
+        auto duplicate = valid;
+        duplicate[1].event.sourceConstruct = duplicate[0].event.sourceConstruct;
+        context.expect(!validateZeroCostAudit(duplicate, error) &&
+                error == "zero-cost audit contains duplicate construct/optimization evidence",
+            "TL-LANG-140 duplicate construct/optimization evidence must fail exactly");
+
+        for (std::size_t mutation = 0; mutation < 2; ++mutation)
+        {
+            auto records = valid;
+            if (mutation == 0) records[0].mirOccurrences = 0;
+            if (mutation == 1) records[0].assemblyOccurrences = 0;
+            context.expect(!validateZeroCostAudit(records, error) &&
+                    error == "zero-cost audit requires MIR and assembly evidence",
+                "TL-LANG-140 absent MIR or assembly occurrences must fail exactly");
+        }
+
+        auto hidden = valid;
+        hidden[0].event.explicitlyRequested = false;
+        context.expect(!validateZeroCostAudit(hidden, error) &&
+                error == "generated cost is hidden and has no approved exception",
+            "TL-LANG-140 hidden costs without an exception must fail exactly");
+        hidden[0].approvedException = "ABI-mandated ownership box";
+        context.expect(validateZeroCostAudit(hidden, error) && error.empty(),
+            "TL-LANG-140 a documented exception must permit an otherwise complete hidden cost");
+        auto mislabeled = valid;
+        mislabeled[0].approvedException = "not required";
+        context.expect(!validateZeroCostAudit(mislabeled, error) &&
+                error == "explicit costs must not be mislabeled as exceptions",
+            "TL-LANG-140 explicit costs with exceptions must fail exactly");
+
+        std::vector<CostAuditRecord> missingKind(valid.begin() + 1, valid.end());
+        context.expect(!validateZeroCostAudit(missingKind, error) &&
+                error == "zero-cost audit requires all six cost kinds with optimization off and on",
+            "TL-LANG-140 a missing cost kind must fail final coverage");
+        auto oneMode = valid;
+        for (auto& record : oneMode) record.optimization = CostOptimization::Off;
+        context.expect(!validateZeroCostAudit(oneMode, error) &&
+                error == "zero-cost audit requires all six cost kinds with optimization off and on",
+            "TL-LANG-140 a missing optimization mode must fail final coverage");
+    });
+}
+
+void registerSemanticToolingSchemaCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-141", [](TestContext& context) {
+        const std::string_view first = semanticToolingSchemaVersion();
+        const std::string_view second = semanticToolingSchemaVersion();
+        context.expect(first == "nsc-semantic-tooling-v1" && second == first &&
+                first.data() == second.data(),
+            "TL-LANG-141 the semantic tooling schema bytes and stable storage must remain exact");
+    });
+}
 }
 
 void registerLanguageIntegrationQualityModule(TestRegistry& registry)
@@ -350,5 +711,13 @@ void registerLanguageIntegrationQualityModule(TestRegistry& registry)
     registerCanonicalWholeProgramCorpusCase(registry);
     registerPerformanceBudgetComparisonCase(registry);
     registerPerformanceAssessmentCase(registry);
+    registerDiagnosticQualityGateCase(registry);
+    registerDiagnosticCatalogCase(registry);
+    registerDiagnosticRenderingCase(registry);
+    registerSemanticDebugNameCase(registry);
+    registerSemanticDebugEvidenceCase(registry);
+    registerHiddenCostAuditCase(registry);
+    registerZeroCostAuditCase(registry);
+    registerSemanticToolingSchemaCase(registry);
 }
 }
