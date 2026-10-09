@@ -114,6 +114,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetLayoutValuesModule(registry);
         nsc::suite::registerTargetAggregateRequestModule(registry);
         nsc::suite::registerTargetWindowsFactoriesModule(registry);
+        nsc::suite::registerTargetBuiltinLayoutModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

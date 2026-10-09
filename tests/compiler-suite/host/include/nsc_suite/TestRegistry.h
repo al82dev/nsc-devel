@@ -70,4 +70,5 @@ void registerTargetDomainEnumsModule(TestRegistry& registry);
 void registerTargetLayoutValuesModule(TestRegistry& registry);
 void registerTargetAggregateRequestModule(TestRegistry& registry);
 void registerTargetWindowsFactoriesModule(TestRegistry& registry);
+void registerTargetBuiltinLayoutModule(TestRegistry& registry);
 }
