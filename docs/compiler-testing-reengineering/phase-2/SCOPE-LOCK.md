@@ -19,9 +19,12 @@ trabajo es el contrato observable y cada caso conserva trazabilidad `case_id -> 
 
 1. Ola 0: infraestructura mínima y fixtures sintéticos del framework.
 2. Olas 1 a 6: compilador host por dependencias.
-3. Ola 7: bibliotecas y SDK mediante el compilador real.
-4. Olas 8 y 9: self-host y bootstrap.
-5. Ola 10: construcción y paquete.
-6. Ola 11: disposición externa sin casos propios de NSC.
+3. Olas 7 y 8: self-host y bootstrap.
+4. Ola 9: construcción y paquete del compilador.
+
+La Fase 2 es exclusivamente la suite de NSC. Las bibliotecas `Library.*`, el SDK
+y los componentes de otros repositorios no se implementan, registran ni ejecutan
+en esta infraestructura. Sus inventarios de Fase 1 conservan valor documental,
+pero cualquier suite futura les pertenece a sus repositorios respectivos.
 
 Cada cambio incluye implementación, pruebas nuevas enfocadas, evidencia Markdown y un commit pequeño.

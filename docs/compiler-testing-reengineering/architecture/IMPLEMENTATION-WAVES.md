@@ -19,11 +19,9 @@ declara diagnosticado un consumidor que no recibió una entrada válida.
 | 4 | Sesión, frontend y method bodies | 2 | 145 | 115 | 920 |
 | 5 | Backend, ABI, runtime y enlace | 4 | 74 | 200 | 1,600 |
 | 6 | Producto, driver y servicio | 3 | 56 | 139 | 1,112 |
-| 7 | Bibliotecas y SDK | 9 | 110 | 101 | 606 |
-| 8 | Compilador self-host | 16 | 29 | 138 | 1,027 |
-| 9 | Infraestructura y oráculos self-host | 2 | 122 | 121 | 726 |
-| 10 | Build, instalación y paquete | 2 | 79 | 79 | 474 |
-| 11 | Disposición externa | 4 | 110 | 0 | 0 |
+| 7 | Compilador self-host | 16 | 29 | 138 | 1,027 |
+| 8 | Infraestructura y oráculos self-host | 2 | 122 | 121 | 726 |
+| 9 | Build, instalación y paquete de NSC | 2 | 79 | 79 | 474 |
 
 La asignación fila por fila vive en `inventory/implementation-waves.csv`.
 
@@ -86,14 +84,7 @@ Componentes: `Host.Driver`, `Host.LanguageService`, `Host.nsc`.
 Prueba parsing de comandos, selección de acciones, proyectos, artefactos, servidor de lenguaje y códigos de salida.
 No compara banners o strings incidentales salvo que sean parte de la interfaz pública declarada.
 
-## Ola 7 — Bibliotecas y SDK
-
-Componentes: las siete bibliotecas NativeSharp, procedencia y SDK Win64.
-
-Se prueban con programas `.ns` mínimos compilados por el producto de las olas anteriores. Los stubs intrínsecos se
-validan por lowering y resultado, nunca ejecutando su cuerpo fuente como falso oráculo.
-
-## Ola 8 — Compilador self-host
+## Ola 7 — Compilador self-host
 
 Componentes: los 16 módulos `SelfHost.*` escritos en NativeSharp.
 
@@ -101,14 +92,14 @@ Primero valida sus contratos como código NativeSharp normal; no inicia todavía
 Los casos de lexer, parser, semántica e IR self-host deben tener oráculos independientes del host cuando la
 equivalencia sea precisamente lo que se intenta demostrar.
 
-## Ola 9 — Bootstrap self-host
+## Ola 8 — Bootstrap self-host
 
 Componentes: `SelfHost.Bootstrap.Infrastructure` y `SelfHost.Contracts`.
 
 Implementa generaciones, equivalencia, fixed point, determinismo y promoción sólo después de que el compilador
 self-host individual ya está probado. Los contratos no congelan hashes o versiones de herramientas incidentales.
 
-## Ola 10 — Construcción y paquete
+## Ola 9 — Construcción y paquete
 
 Componentes: `BuildSystem` y `Packaging`.
 
@@ -116,12 +107,13 @@ Valida configuración, instalación, paquete y cierre de artefactos. Los adaptad
 prueba del compilador no depende de una versión exacta de Python, CMake o Ninja cuando la conducta observable es la
 misma.
 
-## Ola 11 — Disposición externa
+## Límite de repositorio
 
-Componentes: `Tooling`, `ThirdParty.Documentation`, `ThirdParty.zlib`, `ThirdParty.zstd`.
-
-No genera casos propios de NSC. Tooling tendrá su suite si se mantiene; zlib y zstd conservan autoridad upstream y
-reciben únicamente smoke de integración a través del build que los consume.
+Esta implementación cubre únicamente NSC: compilador host, compilador
+self-host, bootstrap y construcción/paquete del propio compilador. Las
+bibliotecas `Library.*`, SDK, tooling y dependencias externas quedan fuera de la
+suite. Los inventarios de Fase 1 pueden conservarse como material documental,
+pero no asignan casos ni ejecutores en la Fase 2 de NSC.
 
 ## Gate de cada ola
 

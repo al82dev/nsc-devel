@@ -9,10 +9,8 @@
 | 4 | Sesión, frontend y method bodies | PENDIENTE | 920 | 0 | 0 |
 | 5 | Backend, ABI, runtime y enlace | PENDIENTE | 1,600 | 0 | 0 |
 | 6 | Producto, driver y servicio | PENDIENTE | 1,112 | 0 | 0 |
-| 7 | Bibliotecas y SDK | PENDIENTE | 606 | 0 | 0 |
-| 8 | Compilador self-host | PENDIENTE | 1,027 | 0 | 0 |
-| 9 | Infraestructura y oráculos self-host | PENDIENTE | 726 | 0 | 0 |
-| 10 | Build, instalación y paquete | PENDIENTE | 474 | 0 | 0 |
-| 11 | Disposición externa | PENDIENTE | 0 | 0 | 0 |
+| 7 | Compilador self-host | PENDIENTE | 1,027 | 0 | 0 |
+| 8 | Infraestructura y oráculos self-host | PENDIENTE | 726 | 0 | 0 |
+| 9 | Build, instalación y paquete de NSC | PENDIENTE | 474 | 0 | 0 |
 
 Estados permitidos: `PENDIENTE`, `EN CURSO`, `LISTA`, `BLOQUEADA`.
