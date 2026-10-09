@@ -43,3 +43,15 @@ La primera validación reveló que el gate de `CL-LANG-009` todavía omitía
 `TL-LANG-116`, aunque ese caso ya había sido corregido e implementado. La lista
 se cambió a la secuencia canónica `TL-LANG-112..123`; no se modificó ningún caso
 ni se redujo el contrato para hacer pasar el gate.
+
+Validación Release posterior a los commits:
+
+- `nsc_component_tests` compiló y enlazó sin errores.
+- Controlador: 55/55 pruebas unitarias aprobadas.
+- Flujo ordinario del ejecutor host: 735/735 `PASS`, cero resultados no verdes.
+  Esa cifra incluye tres casos sintéticos de infraestructura; los cuatro casos
+  de identidad de build usan el ejecutor externo documentado en la tanda 01.02.
+- Gates dirigidos de los siete contratos: 7/7 aprobados.
+- Cada gate exigió exactamente un `KNOWN_FAILURE`; ningún defecto fue omitido,
+  convertido a `PASS` ni aceptado como comportamiento correcto.
+- Manifiesto: 743 casos de producto, siete con `expected_outcome=KNOWN_FAILURE`.

@@ -3,13 +3,13 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "0b455b0f7",
+  "last_completed_commit": "7784e12b6",
   "last_completed_batch": "TANDA-01-91",
   "last_completed_case": "TL-LANG-262",
   "current_wave": 1,
   "current_component": null,
   "next_contract": "CS-SRC-002",
-  "next_action": "Validate the seven newly materialized KNOWN_FAILURE cases as an integrated batch. Then address the four special-infrastructure cases without changing product, hiding failures, or reducing the 747-case denominator.",
+  "next_action": "Address the four special-infrastructure cases without changing product, hiding failures, or reducing the 747-case denominator. Preserve the seven validated KNOWN_FAILURE cases as implemented defect evidence.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
     "revision": "11d2ae852",
@@ -181,7 +181,11 @@
     }
   },
   "validation": {
-    "python_controller_tests": 51,
+    "python_controller_tests": 55,
+    "release_host_ordinary_passed": 735,
+    "release_host_ordinary_total": 735,
+    "release_known_failure_gates_passed": 7,
+    "release_known_failure_gates_total": 7,
     "debug_ctest_passed": 83,
     "debug_ctest_total": 83,
     "release_ctest_passed": 83,
