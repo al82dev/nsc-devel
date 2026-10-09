@@ -99,6 +99,9 @@ add_executable(
     host/modules/LanguageNumericAdvancedModule.cpp
     host/modules/LanguageOwnershipStateModule.cpp
     host/modules/LanguageOwnershipLifetimeModule.cpp
+    host/modules/LanguageReleaseFreezeModule.cpp
+    host/modules/LanguageReleaseConformanceModule.cpp
+    host/modules/LanguageReleasePromotionModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp"
@@ -124,7 +127,8 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/MetaprogrammingSemantics.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/ModuleSemantics.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/NumericSemantics.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/OwnershipSemantics.cpp")
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/OwnershipSemantics.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/ReleaseSemantics.cpp")
 
 target_include_directories(
     nsc_component_tests
@@ -806,6 +810,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-language-ownership-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-language-release-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_language_release_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-language-release-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND

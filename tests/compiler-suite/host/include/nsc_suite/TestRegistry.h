@@ -128,4 +128,7 @@ void registerLanguageNumericCoreModule(TestRegistry& registry);
 void registerLanguageNumericAdvancedModule(TestRegistry& registry);
 void registerLanguageOwnershipStateModule(TestRegistry& registry);
 void registerLanguageOwnershipLifetimeModule(TestRegistry& registry);
+void registerLanguageReleaseFreezeModule(TestRegistry& registry);
+void registerLanguageReleaseConformanceModule(TestRegistry& registry);
+void registerLanguageReleasePromotionModule(TestRegistry& registry);
 }

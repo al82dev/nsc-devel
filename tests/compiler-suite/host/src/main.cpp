@@ -172,6 +172,9 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerLanguageNumericAdvancedModule(registry);
         nsc::suite::registerLanguageOwnershipStateModule(registry);
         nsc::suite::registerLanguageOwnershipLifetimeModule(registry);
+        nsc::suite::registerLanguageReleaseFreezeModule(registry);
+        nsc::suite::registerLanguageReleaseConformanceModule(registry);
+        nsc::suite::registerLanguageReleasePromotionModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
