@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -59,6 +60,39 @@ void registerTagBoundaryCase(TestRegistry& registry)
     });
 }
 
+void registerOverflowRejectionCase(TestRegistry& registry)
+{
+    registry.add(TestCase{
+        "TL-LANG-262",
+        "CL-LANG-020",
+        "Host.Language",
+        "unit",
+        "PR",
+        {"language", "sum-type", "layout", "known-product-defect"},
+        [](TestContext& context) {
+            constexpr std::size_t maximum = std::numeric_limits<std::size_t>::max();
+            const std::array<std::array<VariantCase, 1>, 5> structurallyInvalid = {{
+                {{{"", 1, 1}}},
+                {{{"ZeroAlignment", 1, 0}}},
+                {{{"NonPowerOfTwoAlignment", 1, 3}}},
+                {{{"ExcessiveAlignment", 1, 32}}},
+                {{{"PayloadAdditionOverflow", maximum, 16}}},
+            }};
+            for (const auto& input : structurallyInvalid)
+            {
+                context.expect(!computeWindowsX64VariantLayout(input).has_value(),
+                    "TL-LANG-262 every invalid name, alignment, or payload sum must be rejected");
+            }
+
+            const std::array<VariantCase, 1> finalAlignmentOverflow = {
+                {{{"FinalAlignmentOverflow", maximum - 16U, 16}}}};
+            context.expect(!computeWindowsX64VariantLayout(finalAlignmentOverflow).has_value(),
+                "TL-LANG-262 final layout alignment must reject overflow instead of publishing a wrapped size");
+        },
+        TestDisposition::KnownProductDefect,
+    });
+}
+
 void registerMixedPayloadCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-263", [](TestContext& context) {
@@ -100,6 +134,7 @@ void registerMetadataIdentityCase(TestRegistry& registry)
 void registerLanguageSumTypeLayoutModule(TestRegistry& registry)
 {
     registerTagBoundaryCase(registry);
+    registerOverflowRejectionCase(registry);
     registerMixedPayloadCase(registry);
     registerMetadataIdentityCase(registry);
 }

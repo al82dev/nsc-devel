@@ -3,7 +3,7 @@
 | Ola | Alcance | Estado | Casos previstos | Implementados | Verificados |
 |---:|---|---|---:|---:|---:|
 | 0 | Infraestructura mínima | LISTA | 0 de producto / 3 sintéticos | 3 | 3 |
-| 1 | Fundaciones host | EN CURSO | 747 | 736 | 736 |
+| 1 | Fundaciones host | EN CURSO | 747 | 743 | 736 |
 | 2 | Sintaxis y semántica frontal | PENDIENTE | 1,197 | 0 | 0 |
 | 3 | IR y optimización | PENDIENTE | 1,784 | 0 | 0 |
 | 4 | Sesión, frontend y method bodies | PENDIENTE | 920 | 0 | 0 |
@@ -23,4 +23,8 @@ cuentan como implementados.
 
 | Último corte | Estado acumulado | Siguiente caso |
 |---|---:|---|
-| Tanda 00.11 — soporte no bloqueante de `KNOWN_FAILURE` | 736/747 | `TL-LANG-019` |
+| Tanda 01.91 — siete defectos de producto materializados | 743/747 | infraestructura especial (4 casos) |
+
+Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
+de forma individual, y `4` casos pendientes de infraestructura especial. Los
+siete defectos permanecen rojos sin interferir con el flujo ordinario.

@@ -69,6 +69,27 @@ void registerFamilyCase(TestRegistry& registry)
     });
 }
 
+void registerInvalidFamilyCase(TestRegistry& registry)
+{
+    registry.add(TestCase{
+        "TL-LANG-250",
+        "CL-LANG-019",
+        "Host.Language",
+        "component",
+        "NIGHTLY",
+        {"language", "smart-pointer", "operation", "known-product-defect"},
+        [](TestContext& context) {
+            constexpr SmartPointerFamily invalid = static_cast<SmartPointerFamily>(5);
+            const SmartPointerFamilyContract& observed = smartPointerFamilyContract(invalid);
+            context.expect(false,
+                "TL-LANG-250 an external SmartPointerFamily must be rejected before table indexing; "
+                "the current product returned family " +
+                    std::to_string(static_cast<unsigned int>(observed.family)));
+        },
+        TestDisposition::KnownProductDefect,
+    });
+}
+
 void registerMoveCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-251", [](TestContext& context) {
@@ -229,6 +250,7 @@ void registerCrossThreadCase(TestRegistry& registry)
 void registerLanguageSmartPointerOperationsModule(TestRegistry& registry)
 {
     registerFamilyCase(registry);
+    registerInvalidFamilyCase(registry);
     registerMoveCase(registry);
     registerImplicitCopyCase(registry);
     registerCloneDowngradeUpgradeCase(registry);

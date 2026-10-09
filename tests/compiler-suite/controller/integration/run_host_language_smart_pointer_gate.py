@@ -40,12 +40,13 @@ def main() -> int:
         payload = json.loads(
             (root / "host-language-smart-pointer" / "results.json").read_text(encoding="utf-8")
         )
-        expected_ids = ["TL-LANG-249", *[f"TL-LANG-{number:03d}" for number in range(251, 261)]]
+        expected_ids = [f"TL-LANG-{number:03d}" for number in range(249, 261)]
         if [result["case_id"] for result in payload["results"]] != expected_ids:
             raise RuntimeError("controller did not execute the complete realizable CL-LANG-019 case set")
         counts = payload["counts"]
-        unexpected = any(count != 0 for status, count in counts.items() if status != "PASS")
-        if counts["PASS"] != len(expected_ids) or unexpected:
+        allowed = {"PASS", "KNOWN_FAILURE"}
+        unexpected = any(count != 0 for status, count in counts.items() if status not in allowed)
+        if counts["PASS"] != len(expected_ids) - 1 or counts["KNOWN_FAILURE"] != 1 or unexpected:
             raise RuntimeError(f"unexpected smart-pointer result counts: {counts}")
     return 0
 

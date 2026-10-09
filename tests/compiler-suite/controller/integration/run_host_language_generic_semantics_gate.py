@@ -42,13 +42,14 @@ def main() -> int:
         expected_ids = [
             "TL-LANG-112", "TL-LANG-113", "TL-LANG-114", "TL-LANG-115",
             "TL-LANG-117", "TL-LANG-118", "TL-LANG-119", "TL-LANG-120",
-            "TL-LANG-122", "TL-LANG-123",
+            "TL-LANG-121", "TL-LANG-122", "TL-LANG-123",
         ]
         if [result["case_id"] for result in payload["results"]] != expected_ids:
             raise RuntimeError("controller did not execute the implemented CL-LANG-009 case set")
         counts = payload["counts"]
-        unexpected = any(count != 0 for status, count in counts.items() if status != "PASS")
-        if counts["PASS"] != len(expected_ids) or unexpected:
+        allowed = {"PASS", "KNOWN_FAILURE"}
+        unexpected = any(count != 0 for status, count in counts.items() if status not in allowed)
+        if counts["PASS"] != len(expected_ids) - 1 or counts["KNOWN_FAILURE"] != 1 or unexpected:
             raise RuntimeError(f"unexpected language generic-semantics result counts: {counts}")
     return 0
 

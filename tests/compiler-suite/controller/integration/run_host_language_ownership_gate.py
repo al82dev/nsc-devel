@@ -40,12 +40,13 @@ def main() -> int:
         payload = json.loads(
             (root / "host-language-ownership" / "results.json").read_text(encoding="utf-8")
         )
-        expected_ids = [f"TL-LANG-{number:03d}" for number in range(217, 230)]
+        expected_ids = [f"TL-LANG-{number:03d}" for number in range(217, 231)]
         if [result["case_id"] for result in payload["results"]] != expected_ids:
             raise RuntimeError("controller did not execute the complete realizable CL-LANG-017 case set")
         counts = payload["counts"]
-        unexpected = any(count != 0 for status, count in counts.items() if status != "PASS")
-        if counts["PASS"] != len(expected_ids) or unexpected:
+        allowed = {"PASS", "KNOWN_FAILURE"}
+        unexpected = any(count != 0 for status, count in counts.items() if status not in allowed)
+        if counts["PASS"] != len(expected_ids) - 1 or counts["KNOWN_FAILURE"] != 1 or unexpected:
             raise RuntimeError(f"unexpected ownership result counts: {counts}")
     return 0
 

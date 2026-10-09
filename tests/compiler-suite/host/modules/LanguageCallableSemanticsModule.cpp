@@ -278,6 +278,67 @@ void registerClosureLayoutCase(TestRegistry& registry)
     });
 }
 
+void registerInvalidClosureLayoutCase(TestRegistry& registry)
+{
+    registry.add(TestCase{
+        "TL-LANG-035",
+        "CL-LANG-003",
+        "Host.Language",
+        "unit",
+        "PR",
+        {"language", "callable"},
+        [](TestContext& context) {
+            const std::string invalidError = "closure capture has invalid name, size, or alignment";
+            const auto expectInvalid = [&](std::span<const Capture> captures, std::string_view description) {
+                ClosureLayout layout{99, 99};
+                std::string error = "stale";
+                const bool accepted = computeClosureLayout(captures, layout, error);
+                context.expect(!accepted && layout.size == 0 && layout.alignment == 1 &&
+                        error == invalidError,
+                    "TL-LANG-035 " + std::string(description) +
+                        " must fail with the exact error and no usable layout");
+            };
+
+            const std::array missingName{Capture{"", 1, 1, CaptureMode::Copy, true}};
+            expectInvalid(missingName, "an empty capture name");
+            const std::array zeroSize{Capture{"value", 0, 1, CaptureMode::Copy, true}};
+            expectInvalid(zeroSize, "a zero-size capture");
+            const std::array zeroAlignment{Capture{"value", 1, 0, CaptureMode::Copy, true}};
+            expectInvalid(zeroAlignment, "a zero capture alignment");
+            const std::array nonPowerOfTwoAlignment{
+                Capture{"value", 1, 3, CaptureMode::Copy, true}};
+            expectInvalid(nonPowerOfTwoAlignment, "a non-power-of-two capture alignment");
+            const std::array excessiveAlignment{
+                Capture{"value", 1, 32, CaptureMode::Copy, true}};
+            expectInvalid(excessiveAlignment, "an alignment above the Windows x64 limit");
+
+            const std::size_t maximum = std::numeric_limits<std::size_t>::max();
+            const auto expectOverflow = [&](std::span<const Capture> captures,
+                                            std::string_view description) {
+                ClosureLayout layout{99, 99};
+                std::string error = "stale";
+                const bool accepted = computeClosureLayout(captures, layout, error);
+                context.expect(!accepted && layout.size == 0 && layout.alignment == 1 &&
+                        error == "closure layout overflows size_t",
+                    "TL-LANG-035 " + std::string(description) +
+                        " must fail transactionally with the exact overflow error");
+            };
+            const std::array captureEndOverflow{
+                Capture{"maximum", maximum, 1, CaptureMode::Copy, true},
+                Capture{"tail", 1, 1, CaptureMode::Copy, true}};
+            expectOverflow(captureEndOverflow, "capture-end overflow");
+            const std::array alignedOffsetOverflow{
+                Capture{"nearMaximum", maximum - 7U, 1, CaptureMode::Copy, true},
+                Capture{"aligned", 1, 16, CaptureMode::Copy, true}};
+            expectOverflow(alignedOffsetOverflow, "aligned-offset overflow");
+            const std::array finalPaddingOverflow{
+                Capture{"nearMaximum", maximum - 7U, 16, CaptureMode::Copy, true}};
+            expectOverflow(finalPaddingOverflow, "final-padding overflow");
+        },
+        TestDisposition::KnownProductDefect,
+    });
+}
+
 void registerClosureEscapeCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-036", [](TestContext& context) {
@@ -380,6 +441,7 @@ void registerLanguageCallableSemanticsModule(TestRegistry& registry)
     registerInvalidLambdaIdentityCase(registry);
     registerLambdaGeneratedNameCase(registry);
     registerClosureLayoutCase(registry);
+    registerInvalidClosureLayoutCase(registry);
     registerClosureEscapeCase(registry);
     registerCallableTraitCase(registry);
     registerLambdaConversionCase(registry);

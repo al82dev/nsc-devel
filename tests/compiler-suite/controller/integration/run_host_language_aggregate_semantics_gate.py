@@ -40,14 +40,16 @@ def main() -> int:
         results_path = root / "host-language-aggregate" / "results.json"
         payload = json.loads(results_path.read_text(encoding="utf-8"))
         expected_ids = [
-            "TL-LANG-015", "TL-LANG-016", "TL-LANG-017", "TL-LANG-018", "TL-LANG-020",
+            "TL-LANG-015", "TL-LANG-016", "TL-LANG-017", "TL-LANG-018", "TL-LANG-019",
+            "TL-LANG-020",
             "TL-LANG-021", "TL-LANG-022", "TL-LANG-023", "TL-LANG-024",
         ]
         if [result["case_id"] for result in payload["results"]] != expected_ids:
             raise RuntimeError("controller did not execute the implemented CL-LANG-002 case set")
         counts = payload["counts"]
-        unexpected = any(count != 0 for status, count in counts.items() if status != "PASS")
-        if counts["PASS"] != len(expected_ids) or unexpected:
+        allowed = {"PASS", "KNOWN_FAILURE"}
+        unexpected = any(count != 0 for status, count in counts.items() if status not in allowed)
+        if counts["PASS"] != len(expected_ids) - 1 or counts["KNOWN_FAILURE"] != 1 or unexpected:
             raise RuntimeError(f"unexpected language aggregate result counts: {counts}")
     return 0
 

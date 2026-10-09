@@ -33,18 +33,19 @@ def main() -> int:
             "--revision", "phase-2-host-language-expressions",
             "--build-mode", options.build_mode,
             "--contract", "CL-LANG-008",
-            "--profile", "PR",
+            "--profile", "NIGHTLY",
         ])
         if code != 0:
             raise RuntimeError(f"controller returned {code}")
         payload = json.loads(
             (root / "host-language-expressions" / "results.json").read_text(encoding="utf-8"))
-        expected_ids = ["TL-LANG-098"] + [f"TL-LANG-{number:03d}" for number in range(100, 112)]
+        expected_ids = [f"TL-LANG-{number:03d}" for number in range(98, 112)]
         if [result["case_id"] for result in payload["results"]] != expected_ids:
             raise RuntimeError("controller did not execute the implemented CL-LANG-008 case set")
         counts = payload["counts"]
-        unexpected = any(count != 0 for status, count in counts.items() if status != "PASS")
-        if counts["PASS"] != len(expected_ids) or unexpected:
+        allowed = {"PASS", "KNOWN_FAILURE"}
+        unexpected = any(count != 0 for status, count in counts.items() if status not in allowed)
+        if counts["PASS"] != len(expected_ids) - 1 or counts["KNOWN_FAILURE"] != 1 or unexpected:
             raise RuntimeError(f"unexpected language expression-semantics result counts: {counts}")
     return 0
 

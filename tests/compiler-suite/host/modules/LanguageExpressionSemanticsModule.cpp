@@ -56,6 +56,27 @@ void registerLoweringContractCase(TestRegistry& registry)
     });
 }
 
+void registerInvalidFeatureCase(TestRegistry& registry)
+{
+    registry.add(TestCase{
+        "TL-LANG-099",
+        "CL-LANG-008",
+        "Host.Language",
+        "unit",
+        "NIGHTLY",
+        {"language", "expressions", "known-product-defect"},
+        [](TestContext& context) {
+            constexpr ExpressionFeature invalid = static_cast<ExpressionFeature>(7);
+            const ExpressionLoweringContract& observed = expressionLoweringContract(invalid);
+            context.expect(false,
+                "TL-LANG-099 an external ExpressionFeature must be rejected before table indexing; "
+                "the current product returned feature " +
+                    std::to_string(static_cast<unsigned int>(observed.feature)));
+        },
+        TestDisposition::KnownProductDefect,
+    });
+}
+
 void registerFeatureAvailabilityCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-100", [](TestContext& context) {
@@ -384,6 +405,7 @@ void registerBuiltinRenderingFailureCase(TestRegistry& registry)
 void registerLanguageExpressionSemanticsModule(TestRegistry& registry)
 {
     registerLoweringContractCase(registry);
+    registerInvalidFeatureCase(registry);
     registerFeatureAvailabilityCase(registry);
     registerTypedPackClassificationCase(registry);
     registerNullAwareClassificationCase(registry);

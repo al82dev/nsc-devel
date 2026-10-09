@@ -4,18 +4,18 @@
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
   "last_completed_commit": "0b455b0f7",
-  "last_completed_batch": "TANDA-00-11",
-  "last_completed_case": null,
+  "last_completed_batch": "TANDA-01-91",
+  "last_completed_case": "TL-LANG-262",
   "current_wave": 1,
   "current_component": null,
-  "next_contract": "CL-LANG-002",
-  "next_action": "Materialize TL-LANG-019 as a real defect-revealing test with the correct aggregate-overflow oracle and expected_outcome KNOWN_FAILURE. Continue the remaining six product-defect cases the same way without changing product, hiding failures, or reducing the 747-case denominator. Keep four special-infrastructure cases pending.",
+  "next_contract": "CS-SRC-002",
+  "next_action": "Validate the seven newly materialized KNOWN_FAILURE cases as an integrated batch. Then address the four special-infrastructure cases without changing product, hiding failures, or reducing the 747-case denominator.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
     "revision": "11d2ae852",
     "total": 14,
     "special_infrastructure_pending": 4,
-    "product_defect_tests_to_implement": 7,
+    "product_defect_tests_to_implement": 0,
     "test_plan_corrections_total": 3,
     "test_plan_corrections_implemented": 3,
     "test_plan_corrections_pending": 0,
@@ -108,30 +108,30 @@
       ]
     },
     "CL-LANG-002": {
-      "implemented_cases": 9,
+      "implemented_cases": 10,
       "verified_cases": 9,
-      "blocked_cases": [
+      "known_failure_cases": [
         "TL-LANG-019"
       ]
     },
     "CL-LANG-003": {
-      "implemented_cases": 14,
+      "implemented_cases": 15,
       "verified_cases": 14,
-      "blocked_cases": [
+      "known_failure_cases": [
         "TL-LANG-035"
       ]
     },
     "CL-LANG-008": {
-      "implemented_cases": 13,
+      "implemented_cases": 14,
       "verified_cases": 13,
-      "blocked_cases": [
+      "known_failure_cases": [
         "TL-LANG-099"
       ]
     },
     "CL-LANG-009": {
-      "implemented_cases": 11,
+      "implemented_cases": 12,
       "verified_cases": 11,
-      "blocked_cases": [
+      "known_failure_cases": [
         "TL-LANG-121"
       ]
     },
@@ -140,23 +140,23 @@
       "verified_cases": 25
     },
     "CL-LANG-017": {
-      "implemented_cases": 13,
+      "implemented_cases": 14,
       "verified_cases": 13,
-      "blocked_cases": [
+      "known_failure_cases": [
         "TL-LANG-230"
       ]
     },
     "CL-LANG-019": {
-      "implemented_cases": 11,
+      "implemented_cases": 12,
       "verified_cases": 11,
-      "blocked_cases": [
+      "known_failure_cases": [
         "TL-LANG-250"
       ]
     },
     "CL-LANG-020": {
-      "implemented_cases": 9,
+      "implemented_cases": 10,
       "verified_cases": 9,
-      "blocked_cases": [
+      "known_failure_cases": [
         "TL-LANG-262"
       ]
     }
@@ -171,10 +171,10 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 736,
+      "product_cases_implemented": 743,
       "product_cases_verified": 736,
-      "known_failure_cases_implemented": 0,
-      "defect_tests_pending_implementation": 7,
+      "known_failure_cases_implemented": 7,
+      "defect_tests_pending_implementation": 0,
       "special_infrastructure_pending": 4,
       "product_features_pending": 0,
       "corrected_test_plan_cases_pending_implementation": 0

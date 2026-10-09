@@ -95,8 +95,10 @@ correcto aunque inicialmente fallen:
 | `TL-LANG-250` | Enum externo fuera de rango en smart pointer. |
 | `TL-LANG-262` | Overflow en alineación final de variant. |
 
-Su estado será `PRUEBA IMPLEMENTADA — DEFECTO ABIERTO` hasta que una tarea de
-producto corrija la causa. Está prohibido marcarlos `SKIP`, `XFAIL`, invertir la
+Los siete casos ya están materializados con estado
+`PRUEBA IMPLEMENTADA — DEFECTO ABIERTO`. Se ejecutan individualmente y reportan
+`KNOWN_FAILURE`; no forman parte del flujo ordinario hasta que una tarea de
+producto corrija la causa. Está prohibido marcarlos `SKIP`, invertir la
 expectativa o aceptar el comportamiento defectuoso.
 
 ## Corrección del caso mal definido

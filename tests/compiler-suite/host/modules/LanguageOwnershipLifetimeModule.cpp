@@ -19,6 +19,12 @@ void addCase(TestRegistry& registry, std::string id, TestFunction function)
         {"language", "ownership"}, std::move(function)});
 }
 
+void addKnownDefectCase(TestRegistry& registry, std::string id, TestFunction function)
+{
+    registry.add(TestCase{std::move(id), "CL-LANG-017", "Host.Language", "unit", "PR",
+        {"language", "ownership"}, std::move(function), TestDisposition::KnownProductDefect});
+}
+
 void registerLifetimeElisionCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-225", [](TestContext& context) {
@@ -102,6 +108,37 @@ void registerEscapeRoundTripCase(TestRegistry& registry)
         }
     });
 }
+
+void registerEscapeRejectionCase(TestRegistry& registry)
+{
+    addKnownDefectCase(registry, "TL-LANG-230", [](TestContext& context) {
+        struct Vector final
+        {
+            std::string encoded;
+            std::string error;
+        };
+        const std::array vectors = {
+            Vector{"escape-v2|0:|", "unsupported escape summary version"},
+            Vector{"escape-v1|0|", "corrupt escape summary identity"},
+            Vector{"escape-v1|1x:A|", "corrupt escape summary length"},
+            Vector{"escape-v1|999999999999999999999999:A|", "corrupt escape summary length"},
+            Vector{"escape-v1|1:A/", "corrupt escape summary length"},
+            Vector{"escape-v1|1:A|0x,", "invalid escape class"},
+            Vector{"escape-v1|1:A|5,", "invalid escape class"},
+            Vector{"escape-v1|1:A|,", "invalid escape class"},
+            Vector{"escape-v1|1:A|0", "corrupt escape class list"},
+            Vector{"escape-v1|1:A|0,tail", "corrupt escape class list"},
+        };
+        for (const Vector& vector : vectors)
+        {
+            EscapeSummary output{"stale", {EscapeClass::Unknown}};
+            std::string error = "stale";
+            context.expect(!decodeEscapeSummary(vector.encoded, output, error) &&
+                    error == vector.error && output.functionIdentity.empty() && output.parameters.empty(),
+                "TL-LANG-230 malformed summaries must fail with exact error and reset output state");
+        }
+    });
+}
 }
 
 void registerLanguageOwnershipLifetimeModule(TestRegistry& registry)
@@ -111,5 +148,6 @@ void registerLanguageOwnershipLifetimeModule(TestRegistry& registry)
     registerCleanupOrderCase(registry);
     registerPinPreservationCase(registry);
     registerEscapeRoundTripCase(registry);
+    registerEscapeRejectionCase(registry);
 }
 }

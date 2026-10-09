@@ -103,6 +103,52 @@ void registerAggregateLayoutCase(TestRegistry& registry)
     });
 }
 
+void registerInvalidAggregateLayoutCase(TestRegistry& registry)
+{
+    registry.add(TestCase{
+        "TL-LANG-019",
+        "CL-LANG-002",
+        "Host.Language",
+        "unit",
+        "PR",
+        {"language", "aggregate"},
+        [](TestContext& context) {
+            const std::array zeroSize{AggregateFieldLayout{0, 1}};
+            context.expect(!computeWindowsX64AggregateLayout(zeroSize).has_value(),
+                "TL-LANG-019 a zero-size field must return nullopt");
+
+            const std::array zeroAlignment{AggregateFieldLayout{1, 0}};
+            context.expect(!computeWindowsX64AggregateLayout(zeroAlignment).has_value(),
+                "TL-LANG-019 a zero field alignment must return nullopt");
+
+            const std::array nonPowerOfTwoAlignment{AggregateFieldLayout{1, 3}};
+            context.expect(!computeWindowsX64AggregateLayout(nonPowerOfTwoAlignment).has_value(),
+                "TL-LANG-019 a non-power-of-two field alignment must return nullopt");
+
+            const std::array excessiveAlignment{AggregateFieldLayout{1, 32}};
+            context.expect(!computeWindowsX64AggregateLayout(excessiveAlignment).has_value(),
+                "TL-LANG-019 an alignment above the Windows x64 limit must return nullopt");
+
+            const std::size_t maximum = std::numeric_limits<std::size_t>::max();
+            const std::array fieldEndOverflow{
+                AggregateFieldLayout{maximum, 1}, AggregateFieldLayout{1, 1}};
+            context.expect(!computeWindowsX64AggregateLayout(fieldEndOverflow).has_value(),
+                "TL-LANG-019 field-end overflow must return nullopt instead of a wrapped layout");
+
+            const std::array alignedOffsetOverflow{
+                AggregateFieldLayout{maximum - 7U, 1}, AggregateFieldLayout{1, 16}};
+            context.expect(!computeWindowsX64AggregateLayout(alignedOffsetOverflow).has_value(),
+                "TL-LANG-019 aligned-offset overflow must return nullopt instead of a partial layout");
+
+            const std::array finalPaddingOverflow{
+                AggregateFieldLayout{maximum - 7U, 16}};
+            context.expect(!computeWindowsX64AggregateLayout(finalPaddingOverflow).has_value(),
+                "TL-LANG-019 final-padding overflow must return nullopt instead of a wrapped size");
+        },
+        TestDisposition::KnownProductDefect,
+    });
+}
+
 void registerAggregateReturnCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-020", [](TestContext& context) {
@@ -241,6 +287,7 @@ void registerLanguageAggregateSemanticsModule(TestRegistry& registry)
     registerTupleNamePolicyCase(registry);
     registerTupleConversionCase(registry);
     registerAggregateLayoutCase(registry);
+    registerInvalidAggregateLayoutCase(registry);
     registerAggregateReturnCase(registry);
     registerDeconstructionCase(registry);
     registerRecordDeriveSetCase(registry);

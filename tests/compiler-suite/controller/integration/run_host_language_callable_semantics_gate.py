@@ -40,14 +40,15 @@ def main() -> int:
         payload = json.loads(
             (root / "host-language-callable" / "results.json").read_text(encoding="utf-8"))
         expected_ids = [
-            *(f"TL-LANG-{number:03d}" for number in range(25, 34)),
+            *(f"TL-LANG-{number:03d}" for number in range(25, 36)),
             *(f"TL-LANG-{number:03d}" for number in range(36, 40)),
         ]
         if [result["case_id"] for result in payload["results"]] != expected_ids:
             raise RuntimeError("controller did not execute the implemented CL-LANG-003 case set")
         counts = payload["counts"]
-        unexpected = any(count != 0 for status, count in counts.items() if status != "PASS")
-        if counts["PASS"] != len(expected_ids) or unexpected:
+        allowed = {"PASS", "KNOWN_FAILURE"}
+        unexpected = any(count != 0 for status, count in counts.items() if status not in allowed)
+        if counts["PASS"] != len(expected_ids) - 1 or counts["KNOWN_FAILURE"] != 1 or unexpected:
             raise RuntimeError(f"unexpected language callable result counts: {counts}")
     return 0
 
