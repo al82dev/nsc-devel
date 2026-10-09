@@ -6,8 +6,8 @@
   "last_completed_commit": "55beb8b95",
   "current_wave": 1,
   "current_component": "Host.Basic",
-  "next_contract": "CB-BAS-013",
-  "next_action": "Implement the canonical host-owned commit-success block TB-BAS-068..072; TB-BAS-058..059 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_contract": "CB-BAS-015",
+  "next_action": "Implement the next canonical host-owned block TB-BAS-078..082. TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "wave_status": {
     "0": {
       "status": "LISTA",
