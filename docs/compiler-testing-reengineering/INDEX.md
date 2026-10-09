@@ -14,6 +14,14 @@
 10. [STATE-MACHINES.md](STATE-MACHINES.md)
 11. Informes de auditoría independiente en `audits/`
 
+## Dictamen de Fase 1
+
+- [Segunda auditoría independiente y preparación para Fase 2](audits/TANDA-13-INDEPENDENT-PHASE-1-AUDIT.md)
+- `inventory/independent-file-reenumeration.csv`: universo de 974 archivos reenumerado desde Git.
+- `inventory/independent-audit-summary.json`: resultado reproducible `PASS`, con cero hallazgos abiertos.
+- `evidence/TANDA-13-INVENTORY-INTEGRITY-REPAIR.ps1`: reparación documental idempotente.
+- `evidence/TANDA-13-INDEPENDENT-AUDIT.ps1`: verificador independiente de cierre técnico.
+
 ## Arquitectura de la suite nueva
 
 - [Arquitectura completa](architecture/NEW-SUITE-ARCHITECTURE.md)

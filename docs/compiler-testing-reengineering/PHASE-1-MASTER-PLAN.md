@@ -115,6 +115,11 @@ poseen una ola de implementación o una disposición externa explícita. Los doc
 - Rechazar el cierre si existe algún omitido, desconocido o no tratado.
 - Emitir el informe de preparación para la Fase 2.
 
+**Estado:** `LISTA PARA REVISIÓN DEL USUARIO`. La reenumeración independiente verificó 974/974 archivos,
+8,418 símbolos únicos, 1,309 contratos con fuente resoluble y 10,193 casos asignados exactamente una vez. La
+segunda ejecución cerró con cero hallazgos abiertos. El dictamen y sus límites están en
+`audits/TANDA-13-INDEPENDENT-PHASE-1-AUDIT.md`; no se implementaron ni ejecutaron pruebas.
+
 ## Enmienda de integridad previa a Tanda 12
 
 La matriz host cerrada en Tanda 11 contiene 24 componentes, 5,294 símbolos, 870 contratos y 7,360 casos. Esos

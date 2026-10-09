@@ -16,6 +16,6 @@
 | 12A | Compilador self-host: símbolos, contratos y test plans | LISTA | 29 | 29 | 0 |
 | 12B | Build, contratos, dependencias y disposición explícita | LISTA | 421 | 421 | 0 |
 | 12C | Arquitectura de suite nueva y consolidación final | LISTA | 10193 | 10193 | 0 |
-| 13 | Segunda auditoría independiente y cierre técnico | EN CURSO | 0 | 0 | Por determinar |
+| 13 | Segunda auditoría independiente y cierre técnico | LISTA | 974 | 974 | 0 |
 
 Estados permitidos: `PENDIENTE`, `EN CURSO`, `LISTA`, `BLOQUEADA`.

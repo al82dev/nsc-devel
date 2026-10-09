@@ -1,13 +1,13 @@
 {
   "phase": 1,
   "scope": "compiler-test-inventory-and-plans-only",
-  "revision": "b78398179faa41bedeecf466ac9c30c64b656e31",
+  "revision": "1005ee0193e6ed5569aba6a1d909d08a78b5a7d5",
   "batch": "13",
-  "status": "in_progress",
-  "last_completed_artifact": "architecture/NEW-SUITE-ARCHITECTURE.md",
-  "last_completed_item": "SUITE-ARCHITECTURE-10193",
-  "next_item": "INDEPENDENT-AUDIT-0001",
-  "next_action": "reenumerate_the_complete_universe_from_source_and_reject_phase_1_closure_on_any_omission_duplicate_unknown_or_untreated_reference",
+  "status": "ready_for_user_review",
+  "last_completed_artifact": "audits/TANDA-13-INDEPENDENT-PHASE-1-AUDIT.md",
+  "last_completed_item": "INDEPENDENT-AUDIT-PASS-0-ISSUES",
+  "next_item": "USER-PHASE-1-REVIEW",
+  "next_action": "preserve_phase_1_artifacts_without_implementation_until_the_user_reviews_and_explicitly_authorizes_phase_2",
   "production_files": {
     "inventoried": 974,
     "inventory_verified": 974,
@@ -26,10 +26,10 @@
     "blocked": 0
   },
   "symbols": {
-    "inventoried": 8401,
-    "reviewed": 8401,
+    "inventoried": 8418,
+    "reviewed": 8418,
     "untreated": 0,
-    "historical_duplicate_ids_pending_final_audit": 1
+    "duplicate_ids": 0
   },
   "contracts": {
     "inventoried": 1309,
@@ -65,9 +65,11 @@
   "manifests": {
     "production_files_sha256": "e44577614bc17108f5308348ec2abcf57c09e71b7e7e7fc48ae927721c049d2b",
     "historical_tests_sha256": "fba06c64f0b3d83b517edd43756ebbebeb8227699adaf55eb07c870f03686267",
-    "document_coverage_sha256": "8cad5dde8d099a213c0904c8dafbf50c1e7bbacca3b0ccdd258934dd88c370e9",
-    "symbols_sha256": "64aa11799a3b964f11ad49db4b7921c7a46bf251314f95df72e8053a9052167c",
-    "contracts_sha256": "2dc705407e0c7a41e00208f7cf95813e58ab70db25a880ae8a44503727e38fb5",
+    "production_json_sha256": "748357312d7ac52d8d305da679da90eead466f6613a973c74e1dd50b75eca81d",
+    "components_sha256": "807b620655e662a0e3a5d76ad4cbae6b178e5dc5f034841358b70d2e30219410",
+    "document_coverage_sha256": "16ddeffbb62aaf27d81931b19cb18b65d8645f6d10d5bff755e9bb986b528fbe",
+    "symbols_sha256": "41314ed3c7b087381ad879ea8fceff5b36b515d002f20a581178e872d8b3962a",
+    "contracts_sha256": "26be6b07a97e399482a576079ded6671987060381047d1362cc8ce5f6af0a48f",
     "test_case_design_sha256": "8e83c9641339299173f392fe55befbb1cec0ca0d1af817ed53efbcba78285597",
     "transversal_contracts_sha256": "3786cd9887292a5b1dd66b2b7a92d0d973bd6e63f5081f2685db2c63d05687ef",
     "error_taxonomy_sha256": "18d2e6345aed42b9391a828fadee90e6ec41fe7640a31db7ab3e090e4e79c87a",
@@ -79,7 +81,9 @@
     "remaining_surface_audit_summary_sha256": "c3aa84e6ebd514a89d515cddc9ea765e1bdfc4ec7cf8b0527a7a516a8f30d821",
     "suite_case_allocation_sha256": "6ac0262d07ef151313a4c9c515604935e865595ffe175f3d4f017e20caf79a45",
     "implementation_waves_sha256": "18a57664e1ef1a8614816b79e9e56f66519092080bd427464734edab6b179aca",
-    "suite_architecture_summary_sha256": "f2887b8df366652dc457de5069c6dee6c1ece45ebd8da19833ea32633c469c24"
+    "suite_architecture_summary_sha256": "f2887b8df366652dc457de5069c6dee6c1ece45ebd8da19833ea32633c469c24",
+    "independent_file_reenumeration_sha256": "d8404c5f8464558d525d3499640d19c119957036a901b6cb6e2fdc91352681ad",
+    "independent_audit_summary_sha256": "330cfb7a3a61d4e6e1c242c9616cdd8eb3a5b45785255fde8ab5f432781a8f60"
   },
   "protected_preexisting_changes": 6,
   "constraints": {

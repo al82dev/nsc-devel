@@ -1,0 +1,22 @@
+{
+  "audit": "TANDA-13-independent-phase-1-audit",
+  "timestamp_utc": "2026-10-09T09:05:02.2732077Z",
+  "repository": "A:\\nsc-devel",
+  "branch": "development",
+  "frozen_revision": "3bb175443a18b2049c20d75443dd6743e2993903",
+  "production_reenumerated": 974,
+  "production_inventory": 974,
+  "components": 57,
+  "symbols": 8418,
+  "contracts": 1309,
+  "designed_cases": 10193,
+  "allocated_cases": 10193,
+  "implementation_waves": 11,
+  "historical_files": 1658,
+  "selfhost_files": 29,
+  "remaining_surface_files": 421,
+  "protected_files": 6,
+  "issue_count": 0,
+  "result": "PASS",
+  "issues": []
+}
