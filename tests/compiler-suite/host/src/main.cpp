@@ -118,6 +118,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetCheckedArithmeticModule(registry);
         nsc::suite::registerTargetPowerOfTwoAlignmentModule(registry);
         nsc::suite::registerTargetElementStrideModule(registry);
+        nsc::suite::registerTargetArrayLayoutModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
