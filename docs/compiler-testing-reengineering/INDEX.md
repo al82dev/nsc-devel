@@ -49,6 +49,9 @@
 - [Host.CFG](components/HOST-CFG.md)
   - [Test plan](test-plans/HOST-CFG-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-07-HOST-CFG-AUDIT.md)
+- [Host.SSA](components/HOST-SSA.md)
+  - [Test plan](test-plans/HOST-SSA-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-07-HOST-SSA-AUDIT.md)
 
 ## Artefactos mecánicos
 

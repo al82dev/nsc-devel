@@ -8,7 +8,7 @@
 | 04 | Lexer, Parser y AST | LISTA | 20 | 20 | 0 |
 | 05 | Language, tipos y Sema | LISTA | 72 | 72 | 0 |
 | 06 | Frontend, proyectos, construcción, genéricos y ownership | LISTA | 121 | 121 | 0 |
-| 07 | HIR, MIR, CFG, SSA, Dominance y Passes | EN CURSO | 128 | 54 | 74 |
+| 07 | HIR, MIR, CFG, SSA, Dominance y Passes | EN CURSO | 128 | 68 | 60 |
 | 08 | LLVM, Target, ABI, depuración y codegen | PENDIENTE | 0 | 0 | Por determinar |
 | 09 | Interop, Linker y Runtime | PENDIENTE | 0 | 0 | Por determinar |
 | 10 | Compilation, Driver, CLI y LanguageService | PENDIENTE | 0 | 0 | Por determinar |

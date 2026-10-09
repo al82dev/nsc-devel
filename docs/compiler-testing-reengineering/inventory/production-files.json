@@ -5244,10 +5244,10 @@
     "lines": "50",
     "sha256": "ebdb6cf4043b0480f2c4d024645138ae80121fbadcb35fe7d795804c10495cff",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000351",
@@ -5259,10 +5259,10 @@
     "lines": "152",
     "sha256": "1d90d79df6facfac290962c88e43598ca7461a593093750fc1c8198471413974",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000352",
@@ -5274,10 +5274,10 @@
     "lines": "44",
     "sha256": "fb4db7f45e8ccd5e5f9297fd7f8f0ca45292c9eb0e3e41a09143db1ab060b8ab",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000353",
@@ -5289,10 +5289,10 @@
     "lines": "65",
     "sha256": "22e093b85b657e3d5d7e4b72cbd48061c3777f5b50666cd15d8e22685736e338",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000354",
@@ -5304,10 +5304,10 @@
     "lines": "34",
     "sha256": "9fb8f5d9c96f38a6fc93cdd67fa6736643d5bec5583298b7fe8ddfbe507a2b9a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000355",
@@ -5319,10 +5319,10 @@
     "lines": "23",
     "sha256": "a5d1f25b266df4c35ef3551907591418da71dd2dddba388b72c143d74bd20596",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000356",
@@ -5334,10 +5334,10 @@
     "lines": "89",
     "sha256": "cd79bbe45f940620b6f6f16f30b23d15fd3101737ff286d6e106ee4cad92a697",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000357",
@@ -12834,10 +12834,10 @@
     "lines": "43",
     "sha256": "78fafe973a3487f0d8c8a1a68c307edfec231f6951ec23e0009fe6054a999f26",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000857",
@@ -12849,10 +12849,10 @@
     "lines": "973",
     "sha256": "7525777f7ce70611dda69acd13e6ae2bea0dd4e8f9c97ea63dfcbc496f683e5c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000858",
@@ -12864,10 +12864,10 @@
     "lines": "264",
     "sha256": "63df928e68c5be6c5325ccbc8fe17214299df4b40a0f2b9f3c29b3067d5178c0",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000859",
@@ -12879,10 +12879,10 @@
     "lines": "76",
     "sha256": "ca131cf808617a5ecf3320d40ae4b3b818a7125e038d44620002de59f3f4b5ab",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000860",
@@ -12894,10 +12894,10 @@
     "lines": "31",
     "sha256": "16fe888fe617a60496f5ad8d114e00d46ff1668afd027ed6dc8ab6d0fd1acbce",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000861",
@@ -12909,10 +12909,10 @@
     "lines": "87",
     "sha256": "ca602bf4ff1c5bdbca6f6ef7bde82660bcdd30c6ef95a3b1fa4166c0f9c32f2b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000862",
@@ -12924,10 +12924,10 @@
     "lines": "714",
     "sha256": "1119d52ad38014ed0bfca594e811c8b98972019cb456f7fb2c2d7cfb1e651e9a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-07-HOST-SSA-METHOD.md;audits/TANDA-07-HOST-SSA-AUDIT.md",
+    "section": "components/HOST-SSA.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000863",
