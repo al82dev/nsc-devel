@@ -98,6 +98,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerBasicSha256FileModule(registry);
         nsc::suite::registerBasicOutputFailureModule(registry);
         nsc::suite::registerBasicArtifactStagingModule(registry);
+        nsc::suite::registerBasicArtifactPreflightModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

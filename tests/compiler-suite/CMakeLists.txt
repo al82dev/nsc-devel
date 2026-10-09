@@ -25,6 +25,7 @@ add_executable(
     host/modules/BasicSha256FileModule.cpp
     host/modules/BasicOutputFailureModule.cpp
     host/modules/BasicArtifactStagingModule.cpp
+    host/modules/BasicArtifactPreflightModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp")
 
