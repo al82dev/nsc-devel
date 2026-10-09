@@ -82,6 +82,7 @@ add_executable(
     host/modules/LanguageAbiSemanticsModule.cpp
     host/modules/LanguageAggregateSemanticsModule.cpp
     host/modules/LanguageCallableSemanticsModule.cpp
+    host/modules/LanguageCompatibilitySemanticsModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp"
@@ -93,7 +94,8 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Diagnostics/DiagnosticRenderer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/AbiSemantics.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/AggregateSemantics.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/CallableSemantics.cpp")
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/CallableSemantics.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/CompatibilitySemantics.cpp")
 
 target_include_directories(
     nsc_component_tests
@@ -649,6 +651,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-language-callable-semantics-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-language-compatibility-semantics-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_language_compatibility_semantics_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-language-compatibility-semantics-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND
