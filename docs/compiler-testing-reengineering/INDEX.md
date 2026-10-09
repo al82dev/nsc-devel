@@ -52,6 +52,9 @@
 - [Host.SSA](components/HOST-SSA.md)
   - [Test plan](test-plans/HOST-SSA-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-07-HOST-SSA-AUDIT.md)
+- [Host.Dominance](components/HOST-DOMINANCE.md)
+  - [Test plan](test-plans/HOST-DOMINANCE-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-07-HOST-DOMINANCE-AUDIT.md)
 
 ## Artefactos mecánicos
 
