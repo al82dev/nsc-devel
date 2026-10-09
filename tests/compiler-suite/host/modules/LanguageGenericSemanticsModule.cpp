@@ -128,6 +128,41 @@ void registerConstGenericMarkerRoundTripCase(TestRegistry& registry)
     });
 }
 
+void registerConstGenericMarkerRejectionCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-116", [](TestContext& context) {
+        struct InvalidVector final
+        {
+            std::string marker;
+            std::string expectedType;
+            std::string expectedValue;
+        };
+        const std::array vectors = {
+            InvalidVector{"nsc_const$3:i32:1", "", ""},
+            InvalidVector{"$nsc_const$3i32:1", "", ""},
+            InvalidVector{"$nsc_const$x:i32:1", "", ""},
+            InvalidVector{"$nsc_const$999999999999999999999999999999999999:i32:1", "", ""},
+            InvalidVector{"$nsc_const$4:i32:1", "", ""},
+            InvalidVector{"$nsc_const$3:i32", "", ""},
+            InvalidVector{"$nsc_const$3:i32:", "i32", ""},
+        };
+        for (const InvalidVector& vector : vectors)
+        {
+            std::string type = "stale-type";
+            std::string value = "stale-value";
+            context.expect(!parseConstGenericArgumentMarker(vector.marker, type, value) &&
+                    type == vector.expectedType && value == vector.expectedValue,
+                "TL-LANG-116 malformed markers must fail with exact defined output state");
+        }
+
+        std::string type = "stale-type";
+        std::string value = "stale-value";
+        context.expect(parseConstGenericArgumentMarker("$nsc_const$3:i32:1:tail", type, value) &&
+                type == "i32" && value == "1:tail",
+            "TL-LANG-116 a valid marker must consume the complete suffix as normalized value");
+    });
+}
+
 void registerInstantiationIdentityCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-117", [](TestContext& context) {
@@ -287,6 +322,7 @@ void registerLanguageGenericSemanticsModule(TestRegistry& registry)
     registerConstraintFailureCase(registry);
     registerConstGenericValidationCase(registry);
     registerConstGenericMarkerRoundTripCase(registry);
+    registerConstGenericMarkerRejectionCase(registry);
     registerInstantiationIdentityCase(registry);
     registerPackExpansionCase(registry);
     registerBidirectionalInferenceCase(registry);

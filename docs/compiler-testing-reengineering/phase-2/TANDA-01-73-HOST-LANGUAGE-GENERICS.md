@@ -96,3 +96,7 @@ sufijo del marker. Por tanto, `TL-LANG-116` no es un bloqueo de producto: la
 expectativa de `trailing` inválido era irrepresentable y fue corregida en el test
 plan. `TL-LANG-121` conserva su clasificación como defecto observable y tendrá
 una prueba real, sin invertir ni relajar el oráculo.
+
+`TL-LANG-116` fue implementado posteriormente y pasó su ejecución dirigida. El
+contrato queda en 11/12 casos implementados y verificados; sólo
+`TL-LANG-121` conserva un defecto abierto.
