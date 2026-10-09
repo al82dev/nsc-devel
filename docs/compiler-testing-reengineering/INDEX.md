@@ -76,6 +76,9 @@
 - [Host.Compilation](components/HOST-COMPILATION.md)
   - [Test plan](test-plans/HOST-COMPILATION-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-10-HOST-COMPILATION-AUDIT.md)
+- [Host.Driver](components/HOST-DRIVER.md)
+  - [Test plan](test-plans/HOST-DRIVER-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-10-HOST-DRIVER-AUDIT.md)
 
 ## Artefactos mecánicos
 

@@ -1929,10 +1929,10 @@
     "lines": "17",
     "sha256": "62ca370a582bac9ffa0d135eed3b79490037ff96f9b67d12b604e074afec74ac",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000130",
@@ -1944,10 +1944,10 @@
     "lines": "27",
     "sha256": "91e2131ab9cdf24fb602f5854292e8d11544f4fe07453b3ce7ef11ca86d6fc49",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000131",
@@ -1959,10 +1959,10 @@
     "lines": "37",
     "sha256": "4cb13ad445c81752bb1897c5d0171193f0553680bf4282801c4c0f35e8e0a772",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000132",
@@ -1974,10 +1974,10 @@
     "lines": "45",
     "sha256": "e5b1f3c5220212c13aec1fbbd746f338dc48b948bba073e83411cdea716ecbf9",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000133",
@@ -1989,10 +1989,10 @@
     "lines": "31",
     "sha256": "a77c097e6459f242985c5de5a7dcf6b4a5c221738cc1aedb0bf5089552def267",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000134",
@@ -2004,10 +2004,10 @@
     "lines": "25",
     "sha256": "906d36af7367186d566cb38d11948af704f2c25e286a689d6f51104857c0c1b0",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000135",
@@ -2019,10 +2019,10 @@
     "lines": "66",
     "sha256": "3e09d9b781c8d73d2bf70f6d2b0adde1a19bb864f4db5c950e42e2047569d49f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000136",
@@ -2034,10 +2034,10 @@
     "lines": "46",
     "sha256": "0fcf6a42dd33a2e338f965fe3ba037ad1d62e66e69c123bbd572652fe6c1e9d3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000137",
@@ -2049,10 +2049,10 @@
     "lines": "36",
     "sha256": "56d8ddcc42bd5db5c8d28670d188276a95ad1bed80b13c8f7234091b8f6fba6b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000138",
@@ -2064,10 +2064,10 @@
     "lines": "55",
     "sha256": "31984e50628a7a8b5ef798f0fec6935cdc1ed4aa584318137b6659b1529f39b9",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000139",
@@ -2079,10 +2079,10 @@
     "lines": "22",
     "sha256": "2016975c1e394a76e81e286791fe13d642e13669ccb34424b2f6dfd15c5eb1d1",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000140",
@@ -2094,10 +2094,10 @@
     "lines": "141",
     "sha256": "b4f3284c3b5c8c9f33532bf266390264567890f47500625031220c2f12618006",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000141",
@@ -2109,10 +2109,10 @@
     "lines": "48",
     "sha256": "bcd8cc617ffe68db68961bca65b0c414caad656420801237c75382b7e8d2e748",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000142",
@@ -2124,10 +2124,10 @@
     "lines": "13",
     "sha256": "17a95bd12bd36f5857cb4808f1b2f7f12cbd03cbb59c70fab44cff0bf1e93460",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000143",
@@ -2139,10 +2139,10 @@
     "lines": "18",
     "sha256": "e6608a141c8db0f71ca6d539728372105d8fae6fce85ea0a1d43a4cb9b17b2b3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000144",
@@ -2154,10 +2154,10 @@
     "lines": "13",
     "sha256": "adccdfed593a3f08aa5d12eb72ea35644b9fcbe34ce699926fbb9eb4ac15fba2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000145",
@@ -2169,10 +2169,10 @@
     "lines": "64",
     "sha256": "379295566966c8e2eb9c980be9963ef077ea682e5ffbe3a88a7d02ee2e381707",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000146",
@@ -2184,10 +2184,10 @@
     "lines": "17",
     "sha256": "89825dddc6d46c505cd55d5248c920ce34f06042eacc9585c9027e0a2a0dcdf1",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000147",
@@ -2199,10 +2199,10 @@
     "lines": "40",
     "sha256": "8542e681952a8b2f467852607fe503e4243667ae72a39ed47fc5d431f330c862",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000148",
@@ -2214,10 +2214,10 @@
     "lines": "13",
     "sha256": "31402e3e317cbd7fe53ea14c6f5ac7b056c97431b12fd98935083c931c86e98a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000149",
@@ -2229,10 +2229,10 @@
     "lines": "20",
     "sha256": "4fc090a2391c4a851925a4f51e26dbf80851ddb88164476f00f69fb076df5822",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000150",
@@ -2244,10 +2244,10 @@
     "lines": "39",
     "sha256": "0e3cf7aef271f23b8ea8760dab4716a07ad1134b61d4964187fa7d8209f22186",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000151",
@@ -2259,10 +2259,10 @@
     "lines": "22",
     "sha256": "f0d9fc0a6f36997f4cedb98b35db41c4d8d0aedf66c0ee6eb71cb86e07a0c09d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000152",
@@ -2274,10 +2274,10 @@
     "lines": "13",
     "sha256": "604ca28fe9b1b1eb82ef89963ac7e08dcec793f1ad2d43b992398fa7176733d7",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000153",
@@ -2289,10 +2289,10 @@
     "lines": "13",
     "sha256": "4ab008b83af6acb274484686cd58c5d126755092c14880d5763d05011e440024",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000154",
@@ -2304,10 +2304,10 @@
     "lines": "20",
     "sha256": "428474a2d754a19dcf6e48e97e9ac659e36830b1701b8ae9e99545c2863493ff",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000155",
@@ -9939,10 +9939,10 @@
     "lines": "82",
     "sha256": "de18633508722f419086c239a9e086cf5f698bcd570d0d38a318d2105fd8f410",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000664",
@@ -9954,10 +9954,10 @@
     "lines": "269",
     "sha256": "ab2b549eadd0089ea9e682b3790a07c1f00c3e4729fd01292778a8a100bdd514",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000665",
@@ -9969,10 +9969,10 @@
     "lines": "105",
     "sha256": "81b39ec108a7a14e3c7050377088ba7ed698088ed9924695f95f6f3d8e4f5440",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000666",
@@ -9984,10 +9984,10 @@
     "lines": "81",
     "sha256": "a2d91ef764c214d76a7e86848ab863da9e472a2d36e0dd55ec94293fbcd7e05f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000667",
@@ -9999,10 +9999,10 @@
     "lines": "47",
     "sha256": "34cf538c8224e93c486122dabd324dd698b47313614d326cb57711cc57e96855",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000668",
@@ -10014,10 +10014,10 @@
     "lines": "242",
     "sha256": "8a33809699ea61b97f33afb6dc200938373706ce6705b68d3b109097ad9469d4",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000669",
@@ -10029,10 +10029,10 @@
     "lines": "171",
     "sha256": "c854732a47d950ea82f2541f414a6bd5ff1e4fd784a350d6246e79b50f61262c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000670",
@@ -10044,10 +10044,10 @@
     "lines": "196",
     "sha256": "c0b0ceec8f5a29816a8707c8fef418679a90b22e2a39e549dab6ee95c8714e67",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000671",
@@ -10059,10 +10059,10 @@
     "lines": "120",
     "sha256": "09c601b1348d244ed8e06113f7b92c2a73ff3cfedee84bd288e34b8e8d0dedd3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000672",
@@ -10074,10 +10074,10 @@
     "lines": "131",
     "sha256": "cebd6448b2b299bd1723ed0b435e9365b68888f4ce4eed41cdfa76ccfb2db5fc",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000673",
@@ -10089,10 +10089,10 @@
     "lines": "8248",
     "sha256": "acdd799f078952aa325bb59a7dbe96b1c348cec8eb9448bc3de4eae25119bff3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000674",
@@ -10104,10 +10104,10 @@
     "lines": "195",
     "sha256": "2ba2d321212bc3ce6e1563bdff6b3b04a5f0e50a2e70e2d659f107f47446d967",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000675",
@@ -10119,10 +10119,10 @@
     "lines": "88",
     "sha256": "fa2e49ce0f1e6ff39b5f50da29593d8e37da9b80d4aad9e9e8014246c9eb9440",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000676",
@@ -10134,10 +10134,10 @@
     "lines": "432",
     "sha256": "b54dfa8ff3083a5035afba82c4b7b218d36b3d8768ccde1d34d41f88e9ed8d59",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000677",
@@ -10149,10 +10149,10 @@
     "lines": "202",
     "sha256": "17206c51c2f1a2eb4e3ecf7f18a9bda88122fe43afc66d4481ca2163ec6541b2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000678",
@@ -10164,10 +10164,10 @@
     "lines": "494",
     "sha256": "59b63dde92caa21edc8e97b8fb4d4c240e1f745267bd505db4e973572be12c61",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000679",
@@ -10179,10 +10179,10 @@
     "lines": "152",
     "sha256": "a019a42b46648ada25c7af48d63f029ed7831f9a2c7be09596445c044dbda3d7",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000680",
@@ -10194,10 +10194,10 @@
     "lines": "75",
     "sha256": "3e745312216bc54350040a1b38cc2644c5892203c38226e402fd3102ba2e75b2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000681",
@@ -10209,10 +10209,10 @@
     "lines": "86",
     "sha256": "69dd3e20cedce01af74c794a26ab63130e37da038d857d064affd0aa33d0094a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000682",
@@ -10224,10 +10224,10 @@
     "lines": "106",
     "sha256": "3a6b3df7df6e054d57a0a14f79aa8c998a4f7a4649d571d82e3d0e3ba351807f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000683",
@@ -10239,10 +10239,10 @@
     "lines": "763",
     "sha256": "584e80e25286c99401932d6457e37af8d89911d2e556c491dec5115585b5559a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000684",
@@ -10254,10 +10254,10 @@
     "lines": "1764",
     "sha256": "0b584fa9175298491afbd786021ed03d8d625f6d25af921df7dd3ded3ec52901",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000685",
@@ -10269,10 +10269,10 @@
     "lines": "82",
     "sha256": "dbbae0f3ff5b73149147643443ea288dd0c1e59cdf9986b76a7539dec49ef5ef",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000686",
@@ -10284,10 +10284,10 @@
     "lines": "85",
     "sha256": "4961cacc89706dbe2fadffe89a1c373783a6b0863c3314551ee980a92ffd5dfe",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000687",
@@ -10299,10 +10299,10 @@
     "lines": "206",
     "sha256": "f753138cf9f30b2413f0cb6ffb1d89cd8aa01611f36b788c3ed414fd08233064",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "components/HOST-DRIVER.md;audits/TANDA-10-HOST-DRIVER-AUDIT.md",
+    "section": "3-26",
+    "notes": "complete static audit; future tests designed but not implemented"
   },
   {
     "id": "PF-000688",
