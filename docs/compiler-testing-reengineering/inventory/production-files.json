@@ -2319,10 +2319,10 @@
     "lines": "100",
     "sha256": "def0bbdc01bdcdfcbc8f837e51d4aaedfa05495789940365ba512f9a46c1f4c1",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000156",
@@ -2334,10 +2334,10 @@
     "lines": "72",
     "sha256": "5b4a94d0a624e79dd5a3465d2e396f361b11882573ee0a7f36bec4e4834c8745",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000157",
@@ -2349,10 +2349,10 @@
     "lines": "151",
     "sha256": "35985d7c514e77b9bfe652434d8891141e68b21f273a2837d23d4d7a2eaf1bf8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000158",
@@ -2364,10 +2364,10 @@
     "lines": "86",
     "sha256": "81887d46cc5230ba75b130b6f648e5f70ef6053c563528e4feef0370d7af9804",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000159",
@@ -2379,10 +2379,10 @@
     "lines": "95",
     "sha256": "6c11690ae18bfdb07f9766804bc1f6a0d5eacfc370df392a83463c984e663d94",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000160",
@@ -2394,10 +2394,10 @@
     "lines": "63",
     "sha256": "bcca9dbf01635519e6a5a76187e90d4d78ac136081e45905cd45b6b09fddd8ec",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000161",
@@ -2409,10 +2409,10 @@
     "lines": "98",
     "sha256": "806cfa9909adaf02698a129ab953043286e01ebc3fe250b545e0a3b7a6316874",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000162",
@@ -2424,10 +2424,10 @@
     "lines": "38",
     "sha256": "79de6e27c3e63ab0241482c00deb1ada5d7c390827895bf519e9a5ed6fd93f07",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000163",
@@ -2439,10 +2439,10 @@
     "lines": "21",
     "sha256": "51a1affdcaf1e42bb1bf8dd9e4f7e50acf150219a46955a245ebd93bf0e1e85e",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000164",
@@ -2454,10 +2454,10 @@
     "lines": "13",
     "sha256": "70211704eab922c20a8952d9720b8175efae79de340ec174e6e201b8717bcdc8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000165",
@@ -2469,10 +2469,10 @@
     "lines": "49",
     "sha256": "385b9ac80c6ae3411b1d12b4088aa4dd4982d220094d9b70f4a4277e2a065536",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000166",
@@ -2484,10 +2484,10 @@
     "lines": "56",
     "sha256": "36e877c1fd26e5fcf0427a788779ce5f4bc66203b750431e79aae0efed992d25",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000167",
@@ -2499,10 +2499,10 @@
     "lines": "14",
     "sha256": "e10ca3b74ad7b9c61bd6e59c4c40f60da03841d62fe93d439adaa78db3fb33ce",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000168",
@@ -2514,10 +2514,10 @@
     "lines": "27",
     "sha256": "ec3137656db67da4039c7e6178ee76924d26ae650cbf4a2b32db12a500baa74e",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000169",
@@ -2529,10 +2529,10 @@
     "lines": "19",
     "sha256": "27a073927a343a20236714a8275b2aaa665e3e13a2af796b5c38cd18dc6ae687",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000170",
@@ -2544,10 +2544,10 @@
     "lines": "55",
     "sha256": "dbac4004cf2e6c0832dde4b92368033142b239eb288b6dd7f9f0d6478d11869c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000171",
@@ -2559,10 +2559,10 @@
     "lines": "50",
     "sha256": "0393fd682f5fca8f94b944be72ca626dea11ab29442c1df762dce3ef5071b4f2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000172",
@@ -2574,10 +2574,10 @@
     "lines": "46",
     "sha256": "2d4d9746e419d2d732dc4ea72bc491df2fc1e875d400751eba4da3339fa0b103",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000173",
@@ -2589,10 +2589,10 @@
     "lines": "23",
     "sha256": "e9f8f0bed6f6d967b43c1df10653b48e6d5292ee01a774a34613d0ec1da2d6ff",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000174",
@@ -2604,10 +2604,10 @@
     "lines": "44",
     "sha256": "4d5cca6b988db32f530c3eeeed18748e2c9d0088ca4011b362aa0500fa228df9",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000175",
@@ -2619,10 +2619,10 @@
     "lines": "15",
     "sha256": "d66ce1b0f7e49db3514dea6c195c40da16412ae0f3071efee6307a6a05077801",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000176",
@@ -2634,10 +2634,10 @@
     "lines": "24",
     "sha256": "0641ffd00503a989bfa20b86a6cd77bb753237e96b35e1ba30a9e9f0ec62ce68",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000177",
@@ -2649,10 +2649,10 @@
     "lines": "69",
     "sha256": "4f332d913141801964e5fbc0308350d10d331efcb36c97d4fe250e66cdbd3b44",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000178",
@@ -2664,10 +2664,10 @@
     "lines": "160",
     "sha256": "aad600b2e6c1e8a21b8ea6a6d3ab191944f9dfed40f0cf3882dd7d0f975d8928",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000179",
@@ -2679,10 +2679,10 @@
     "lines": "15",
     "sha256": "f42026175d369a60a3fc3e64df930dae57c46ed8a85d641c5f7e5a773fb33521",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000180",
@@ -2694,10 +2694,10 @@
     "lines": "280",
     "sha256": "e7142e8f08991cbe0289ac4aec7939a5f3655d2e1e3436bc49237d286735978c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000181",
@@ -2709,10 +2709,10 @@
     "lines": "20",
     "sha256": "2d4d5e76382715d8904063103cf749dd5bd97fcb7196e22949d282b1f9227985",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000182",
@@ -2724,10 +2724,10 @@
     "lines": "28",
     "sha256": "c4f3fa99c9d641e5353b4f9e8b68d6809e0080c91f5e4c7d0c87990f42dac9f2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000183",
@@ -2739,10 +2739,10 @@
     "lines": "12",
     "sha256": "d278e03f00000a761f414c507c0a93f9948b03fe55059d0bf689639a3bc7fad6",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000184",
@@ -2754,10 +2754,10 @@
     "lines": "16",
     "sha256": "035278929632a5a8332d270dbb4401a7c604415b6d64ee56170c2d959fc5d1b7",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000185",
@@ -2769,10 +2769,10 @@
     "lines": "43",
     "sha256": "8feb8238b9aedf4999896a3f4c9cadc6b6cea1dcf297d4e4f229881bd3b72629",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000186",
@@ -2784,10 +2784,10 @@
     "lines": "37",
     "sha256": "b50871771a3565ec96572bd1ce37b2f1f7af0cee4e12ebd11e4fd739ad5613e9",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000187",
@@ -2799,10 +2799,10 @@
     "lines": "60",
     "sha256": "3cc66f1d968fcf97562dfa2e32cc74ced2c785e7784fb2d408ba0c69d3761c5f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000188",
@@ -2814,10 +2814,10 @@
     "lines": "20",
     "sha256": "f82d10b8ce57ac3997dd5306fcbad51f2eb976d4a1b185aca576b2786ee9c8cf",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000189",
@@ -2829,10 +2829,10 @@
     "lines": "22",
     "sha256": "fa85c57812d675c92856ce18566dd3b1e548ddc6635be8252bebf2b83d8409ed",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000190",
@@ -2844,10 +2844,10 @@
     "lines": "202",
     "sha256": "e1698b36f39abe7c35caeda8f88103c98ab48889d6fb67817ed9587877053e11",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000191",
@@ -2859,10 +2859,10 @@
     "lines": "572",
     "sha256": "1d77e042ed60eb52938542df210e485664455d4b884de1ea013946f8acdfa16f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000192",
@@ -2874,10 +2874,10 @@
     "lines": "14",
     "sha256": "bdc521e4cf4b9a80b63e2d7792b01b20a0352266ea6cca509c99bd0424f7f6fe",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000193",
@@ -2889,10 +2889,10 @@
     "lines": "80",
     "sha256": "c075fe6e58a6a619e6175630d7e58ba4de3a76a1042f5b0d031ae770131e0418",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000194",
@@ -2904,10 +2904,10 @@
     "lines": "18",
     "sha256": "80f4d6e07c210bbce6f53bd1a8066e4c7c3d6a374100bdb1490c596ff3b22130",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000195",
@@ -2919,10 +2919,10 @@
     "lines": "142",
     "sha256": "232a4792c450de2ef78a3d4f059e478e3a406487aa0a7d38cbd7cd66d15cb914",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000196",
@@ -2934,10 +2934,10 @@
     "lines": "136",
     "sha256": "a800a0b1369ab2a3bf7aba4e6d936eee54e6d6f2e796363b1ed57c10b2961e61",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000197",
@@ -2949,10 +2949,10 @@
     "lines": "14",
     "sha256": "fc0dbb0cbedb2c499b2f42a996032c6b2dc792a5075bb14411a8becb6c1c9f4e",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000198",
@@ -2964,10 +2964,10 @@
     "lines": "28",
     "sha256": "6e96453755962d11efa2165a3c7ea5572411502eef6af2ad3882d528c0b9c9b7",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000199",
@@ -2979,10 +2979,10 @@
     "lines": "450",
     "sha256": "d61a0a493462084cc5d029e4cdc2e1add7fad6debc694da22826b5d8c313e8cb",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000200",
@@ -2994,10 +2994,10 @@
     "lines": "18",
     "sha256": "76867669ae651e4de6c95833d9e0c8bc1f8ae25dadf781621e721103626bea2b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000201",
@@ -3009,10 +3009,10 @@
     "lines": "117",
     "sha256": "63feda6dd52bc0be82a1548bcae9b2f38f77c2b936b9212e9a4a78c93dd1ae21",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000202",
@@ -3024,10 +3024,10 @@
     "lines": "20",
     "sha256": "f133d5cccf76f52388fa5e8642111bf80b277805081ca46ea6622c312d8e2445",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000203",
@@ -3039,10 +3039,10 @@
     "lines": "2538",
     "sha256": "9f66478e2ec55dc065a5a8d7b50697365bd74b66322a6892e2291c794c827a50",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000204",
@@ -3054,10 +3054,10 @@
     "lines": "20",
     "sha256": "c020c3fd7ee130c81249e523ee70a32c607df7413a147f169116a899fec5c189",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000205",
@@ -3069,10 +3069,10 @@
     "lines": "361",
     "sha256": "df0ff82974c4e84724d253a0d97e0d8e44e95856b3a66ca686c24d04b6084d6f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000206",
@@ -3084,10 +3084,10 @@
     "lines": "22",
     "sha256": "caf9b1bb7b85b427afaf5af93932464d2ee4110e1cad59d6b41f1818f67a5f68",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000207",
@@ -3099,10 +3099,10 @@
     "lines": "187",
     "sha256": "c33719fa20137e08bb29f0d0847e7180307fdc24eedfdc842ddb975c86785dd2",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000208",
@@ -3114,10 +3114,10 @@
     "lines": "181",
     "sha256": "7ab5d25e27219dcb66e61ed70a4128872a2496e983ef7106a3733e9d46538f02",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000209",
@@ -3129,10 +3129,10 @@
     "lines": "20",
     "sha256": "a069e691b3925799ab6c7fcc1b59bdf845d189997fbbe85a2a4319a11119d06a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000210",
@@ -3144,10 +3144,10 @@
     "lines": "924",
     "sha256": "16974ccc3bed7aadad3b677739a41c442a409f4df152794ff3f5f5ce8379f7da",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000211",
@@ -3159,10 +3159,10 @@
     "lines": "14",
     "sha256": "0ae3c6a56255076cc7fc8f49abe7d44ac6ac864bbd74cb109298457980a25663",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000212",
@@ -3174,10 +3174,10 @@
     "lines": "899",
     "sha256": "4c0eeaf7ade74db47f1bfe7d73e963d18399c594214999e3371711aaeb48c8df",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000213",
@@ -3189,10 +3189,10 @@
     "lines": "14",
     "sha256": "f3c5374281add15c2d3593a8e7cee4e39acedfb95c69494c1001ae5518c69690",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000214",
@@ -3204,10 +3204,10 @@
     "lines": "23",
     "sha256": "065644923ab30a331a72777c4741fe7a201743918ca714db1f2c6ae99cf70f14",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000215",
@@ -3219,10 +3219,10 @@
     "lines": "19",
     "sha256": "536b3d99f694a5d9e1d74b405e4f852570db5164a7863e373e4c74e16bab78b8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000216",
@@ -3234,10 +3234,10 @@
     "lines": "81",
     "sha256": "37e5fb3fa17a42e3852633a5b767a3c6964196f62523d16dac87a2099ce573fe",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000217",
@@ -3249,10 +3249,10 @@
     "lines": "66",
     "sha256": "9eb34e7630a1bea193e9bc6a84d47e281d6d993bb969a7717e1c0d5f9c9bcfc9",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000218",
@@ -3264,10 +3264,10 @@
     "lines": "88",
     "sha256": "28dc2338790c08ea4c32fb02bf6f4e3339a408b4aee06ff3939fc9807b3c2ed3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000219",
@@ -3279,10 +3279,10 @@
     "lines": "70",
     "sha256": "c5ebf56d76b5695ca7e39b764c8a77fcd6a1c09fe0928c31d7989db1a97d3c2d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000220",
@@ -3294,10 +3294,10 @@
     "lines": "20",
     "sha256": "366f05fad91730762c7f9ce99f22168c81753fecf05fcc6ac0da5b62b6d4862c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000221",
@@ -3309,10 +3309,10 @@
     "lines": "86",
     "sha256": "d17d217b61190ccfaab3657fc73a95f89c00e9e74c5ccb33b09950de05cc32c0",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000222",
@@ -3324,10 +3324,10 @@
     "lines": "11",
     "sha256": "cb81853ba08bbf1328462de4916e57af002c02407d4c8562e5bec94da0607f23",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000223",
@@ -3339,10 +3339,10 @@
     "lines": "23",
     "sha256": "08d72dd503f44aaeb7c0193c1f93ebcf505b8589bd4b024cafc36d20a173a2ec",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000224",
@@ -3354,10 +3354,10 @@
     "lines": "49",
     "sha256": "09edc93a62da54d02061edcea394127fc66d091d9c957a69ab15c8b2a68a26ac",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000225",
@@ -10314,10 +10314,10 @@
     "lines": "89",
     "sha256": "dfa234b072aef0b3d6f2b2eab563a9c314a3729d778ea37efd8dcd6a7473e5b9",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000689",
@@ -10329,10 +10329,10 @@
     "lines": "951",
     "sha256": "041de82b8624290b9939d0997cae5c7c22b3d2d71f4f57755f10311b14a6e9a5",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000690",
@@ -10344,10 +10344,10 @@
     "lines": "249",
     "sha256": "248aa91e8dcca84b23f03ecf38c99290f02d7f4b0f3baf24099d85c261702b44",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000691",
@@ -10359,10 +10359,10 @@
     "lines": "248",
     "sha256": "192f8df8dc83155eee2d7b013a2169a282c1fd380b68e8faf1fcf346ff199a19",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000692",
@@ -10374,10 +10374,10 @@
     "lines": "151",
     "sha256": "7595af51236cd1420ac7070103ccbdbb5540c76345d5db020bc5592010a9d043",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000693",
@@ -10389,10 +10389,10 @@
     "lines": "78",
     "sha256": "5a413d406e83425c51c280c6c211cff74b9f2ff5dbdde97202de86751336ff2d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000694",
@@ -10404,10 +10404,10 @@
     "lines": "74",
     "sha256": "0ce8352f365eb0f90fcf7031c3cde79d0bc05115be00c49cc4d29ae0c2e203f4",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000695",
@@ -10419,10 +10419,10 @@
     "lines": "75",
     "sha256": "33aab9d8abc6c09a281e2192523a8626cb97b0fd92e310e9e08fe25561b2f6aa",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000696",
@@ -10434,10 +10434,10 @@
     "lines": "54",
     "sha256": "2d3729aa57e0fc24b980fba7a8b60ee513a8fffe2f47e899c89a55475927d8e3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000697",
@@ -10449,10 +10449,10 @@
     "lines": "324",
     "sha256": "270c5a68bd193cf9cf4f3c5b8c6dd37dbf9e69ee8524c9a6177db5e7cf1c7e4c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000698",
@@ -10464,10 +10464,10 @@
     "lines": "45",
     "sha256": "f0bc53d5ff8593f06b732592f81dd814e3ba5bbb7c1317adee69decf5906c8ea",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000699",
@@ -10479,10 +10479,10 @@
     "lines": "324",
     "sha256": "a432d5711c6c64f1038ea01bc9539df51bc9f6159ece3006d97bb25b35bae5dc",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000700",
@@ -10494,10 +10494,10 @@
     "lines": "1351",
     "sha256": "afb4d7408ea3e682cee7c38394227c4b198c8be698c261e2f48ebeecd378cf7d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000701",
@@ -10509,10 +10509,10 @@
     "lines": "83",
     "sha256": "72fea8f3513b865ec49d6ede4a8100f73cc0c1a1b811489d2db1cecc40e098ef",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000702",
@@ -10524,10 +10524,10 @@
     "lines": "1683",
     "sha256": "cc51494ad76008516cadfacbb55f51da9b52697f68acc8285ffdb19741a09cc8",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000703",
@@ -10539,10 +10539,10 @@
     "lines": "92",
     "sha256": "d159ce504cc70ad4b88206032b58989bc64d86cfeef8c5a381417d26008d5a9b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000704",
@@ -10554,10 +10554,10 @@
     "lines": "212",
     "sha256": "01b126868da3bbdf1492e876b4beacb538111da0f73fbe15d03441447fc7f563",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000705",
@@ -10569,10 +10569,10 @@
     "lines": "280",
     "sha256": "9ff3fb8071b6a14bd4b36a6202512fabbc6e2e84e23389a31b97af213911cf54",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000706",
@@ -10584,10 +10584,10 @@
     "lines": "174",
     "sha256": "224b7eeb59562afb81e2dc617f8c9e0e2c9e3e67fd3737728af25871e5f68200",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000707",
@@ -10599,10 +10599,10 @@
     "lines": "64",
     "sha256": "ec731ced2465860070a6fba910fa7b4cdc9aa70287ec75c54515dc40cc1db43d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000708",
@@ -10614,10 +10614,10 @@
     "lines": "978",
     "sha256": "caa2b7f39490b1277f6ff11efc2f6da24765f1bd92e2f483e581a5907b76d892",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000709",
@@ -10629,10 +10629,10 @@
     "lines": "5489",
     "sha256": "3c2a9a2107914c5325adf30c476b00b434a56ce4063dcdacff7ff39aa5a81a01",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000710",
@@ -10644,10 +10644,10 @@
     "lines": "43",
     "sha256": "e593a7310850a96bb59fca21a73c8a5bfc942b7047b531e565ccb2412dfd2bbb",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000711",
@@ -10659,10 +10659,10 @@
     "lines": "526",
     "sha256": "4b781902092edafba28da45175a0498c48dcde21e757634099b23f8540932234",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000712",
@@ -10674,10 +10674,10 @@
     "lines": "43",
     "sha256": "4e2f6fa43fb5cf9478915068b9609794351d6e7ce870ac9840e9a7c49d7889a4",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000713",
@@ -10689,10 +10689,10 @@
     "lines": "435",
     "sha256": "83dbbb2fd1010bd2dcba9d4b2bd0f5ee27e49ddb0dba43eb3a3fc05ae91ac982",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000714",
@@ -10704,10 +10704,10 @@
     "lines": "1096",
     "sha256": "15ecb5371742998b15a6c48a7167359f97d95425cb518db664969d8e5874a29b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000715",
@@ -10719,10 +10719,10 @@
     "lines": "55",
     "sha256": "59c0f139f67bb90ef11f44e7b7bf26f0cba587af5eb366f31e030b92f42b9ab0",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000716",
@@ -10734,10 +10734,10 @@
     "lines": "78",
     "sha256": "f2078cb51e3417a545723362ba59f7518ca4785a50befe6047a7c54aa9ea8c41",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000717",
@@ -10749,10 +10749,10 @@
     "lines": "3631",
     "sha256": "446ca524621bba034aa33d83dffb372ee161891c6e2e7bec24ce8f4b5f7a5e75",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000718",
@@ -10764,10 +10764,10 @@
     "lines": "170",
     "sha256": "18de65bebb95b27c6e79de5088a381e02cc1324a1491520a8ca6dfec20153e70",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000719",
@@ -10779,10 +10779,10 @@
     "lines": "422",
     "sha256": "e6ae8bd9a39a9349fad6f0f730d3a17bc0d1b0d2fd3f6eabbc9223b5dbcb3b1f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000720",
@@ -10794,10 +10794,10 @@
     "lines": "24420",
     "sha256": "0017d71ac93733f9c5320f0f696b088ff1ad0a67d41d62dab72724886613cc30",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000721",
@@ -10809,10 +10809,10 @@
     "lines": "530",
     "sha256": "9cb9af1b5f335c11c6e14185539f1e68a16fb8387839ad4341adc3d67f3d6617",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000722",
@@ -10824,10 +10824,10 @@
     "lines": "2354",
     "sha256": "20ed8707019bc03afc5e6db91dec570adbc2b89f4ea13877de2002fa337b5da1",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000723",
@@ -10839,10 +10839,10 @@
     "lines": "110",
     "sha256": "a91228be6d72d8a68ed1ed09add9f342d9c93f29c33407a792c2c4c31cb33d40",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000724",
@@ -10854,10 +10854,10 @@
     "lines": "1282",
     "sha256": "2bc3895eb2d07cf9a32c1b6c65b27e38a238b918ab9d606b852cf0c4e39fa598",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000725",
@@ -10869,10 +10869,10 @@
     "lines": "1273",
     "sha256": "d8c6a4628b0a5ff40f48110987f3a6eef07f0d6a9c8fe2a3dd25be0fe63612d4",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000726",
@@ -10884,10 +10884,10 @@
     "lines": "101",
     "sha256": "92b1000dac8a78f83cbc9f0513b1fcde9dc9739c47be7d0d669768c957e9b50c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000727",
@@ -10899,10 +10899,10 @@
     "lines": "8667",
     "sha256": "e1595fb39ec3eb6e5a53a4befdcfd82566eb0b79f5b9b027cb78142c029bf880",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000728",
@@ -10914,10 +10914,10 @@
     "lines": "200",
     "sha256": "2938e48cf0ec52006e92896d78a60e58d26b235270305c1040a92275b6802b94",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000729",
@@ -10929,10 +10929,10 @@
     "lines": "3328",
     "sha256": "7fe693b92314cbd5b69e2aa075c4ff34915d610f167ea10c698e7e632082b67d",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000730",
@@ -10944,10 +10944,10 @@
     "lines": "463",
     "sha256": "dde23dcc77d11747cd2dae07dc06c25a02303ba1325687b12f2d709bc0b88cc6",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000731",
@@ -10959,10 +10959,10 @@
     "lines": "906",
     "sha256": "f78fd993520206267b01a28a602741535eb21136a2ad8abab895842cad5fe263",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000732",
@@ -10974,10 +10974,10 @@
     "lines": "404",
     "sha256": "7f2d3b0b5bd05932df445c897cfb0f9524b5b4b707654cde5c0037eb06aeca43",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000733",
@@ -10989,10 +10989,10 @@
     "lines": "120",
     "sha256": "33927bce8f61630d1974e4168e12f7d05fef0ee28e11d686c5860486b2a3771a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000734",
@@ -11004,10 +11004,10 @@
     "lines": "784",
     "sha256": "0e0ee5f6f40e66951953623d5e4843ddb2e73e9b525bb0763ea5c2de05f3371f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000735",
@@ -11019,10 +11019,10 @@
     "lines": "417",
     "sha256": "a28a4cb18addfb3dfb5a439a417b321c84cc3c585e8a103b7f5bf65cdac497d3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000736",
@@ -11034,10 +11034,10 @@
     "lines": "69",
     "sha256": "e7da419d122f9d0712ba0b0be17578fb9348612d6e3ab543a6ef464616d4dafe",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000737",
@@ -11049,10 +11049,10 @@
     "lines": "144",
     "sha256": "f4d62986d1694ed5502a92edb320d0a23f14b4590bf2cc158e2d73478f08ecbb",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000738",
@@ -11064,10 +11064,10 @@
     "lines": "81",
     "sha256": "1677167cb007ca14361fce64c8baca275aa70f0310f0fafeb651267d4d164298",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-06-HOST-FRONTEND-METHOD.md",
+    "section": "Universo leído",
+    "notes": "lectura completa y contraste independiente; sin ejecución"
   },
   {
     "id": "PF-000739",

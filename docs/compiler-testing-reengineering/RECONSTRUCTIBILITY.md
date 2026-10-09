@@ -19,6 +19,7 @@ tabla; registra el criterio y enlazará los informes individuales conforme se pr
 | `Host.AST` | `RECONSTRUIBLE` | 155 | 20 | 230 | `audits/TANDA-04-HOST-AST-AUDIT.md` |
 | `Host.Language` | `RECONSTRUIBLE` | 546 | 21 | 286 | `audits/TANDA-05-HOST-LANGUAGE-AUDIT.md` |
 | `Host.Sema` | `RECONSTRUIBLE` | 214 | 30 | 321 | `audits/TANDA-05-HOST-SEMA-AUDIT.md` |
+| `Host.Frontend` | `RECONSTRUIBLE` | 1,392 | 63 | 504 | `audits/TANDA-06-HOST-FRONTEND-AUDIT.md` |
 
 `RECONSTRUIBLE` describe suficiencia documental para la revisión congelada. No significa que la suite nueva
 esté implementada ni que se haya ejecutado validación.

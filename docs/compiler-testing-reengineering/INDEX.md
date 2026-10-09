@@ -37,6 +37,9 @@
 - [Host.Sema](components/HOST-SEMA.md)
   - [Test plan](test-plans/HOST-SEMA-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-05-HOST-SEMA-AUDIT.md)
+- [Host.Frontend](components/HOST-FRONTEND.md)
+  - [Test plan](test-plans/HOST-FRONTEND-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-06-HOST-FRONTEND-AUDIT.md)
 
 ## Artefactos mecánicos
 
