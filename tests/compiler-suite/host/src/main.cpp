@@ -139,6 +139,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetCpuFeatureSupportModule(registry);
         nsc::suite::registerTargetX64AssemblyRegisterModule(registry);
         nsc::suite::registerTargetArm64AssemblyRegisterModule(registry);
+        nsc::suite::registerTargetAssemblyFeatureRequirementModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
