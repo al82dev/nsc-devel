@@ -129,6 +129,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetBitFieldValidationModule(registry);
         nsc::suite::registerTargetSequentialBitFieldModule(registry);
         nsc::suite::registerTargetZeroWidthBitFieldModule(registry);
+        nsc::suite::registerTargetUnionBitFieldModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
