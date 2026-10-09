@@ -99,4 +99,5 @@ void registerTargetAssemblyFeatureRequirementModule(TestRegistry& registry);
 void registerDiagnosticSeverityModule(TestRegistry& registry);
 void registerDiagnosticIdentityModule(TestRegistry& registry);
 void registerDiagnosticRecordModule(TestRegistry& registry);
+void registerDiagnosticEngineReportModule(TestRegistry& registry);
 }
