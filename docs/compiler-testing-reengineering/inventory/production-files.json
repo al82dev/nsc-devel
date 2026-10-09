@@ -5349,10 +5349,10 @@
     "lines": "129",
     "sha256": "128e71def540979e6ec43c4ed445ee3b8fffeb7f30067d83d3f1ccf177c55e1b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-TARGET-METHOD.md;audits/TANDA-08-HOST-TARGET-AUDIT.md",
+    "section": "components/HOST-TARGET.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000358",
@@ -5364,10 +5364,10 @@
     "lines": "71",
     "sha256": "fe04a01e4ca7fccbf5fce9a2456ca7bbf9ae64ee3429fcf6e1aae21e4e958b93",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-TARGET-METHOD.md;audits/TANDA-08-HOST-TARGET-AUDIT.md",
+    "section": "components/HOST-TARGET.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000359",
@@ -12939,10 +12939,10 @@
     "lines": "347",
     "sha256": "e762153ea274ac9a94c86da8a3ae1be5ccdca69a08ab581bf35e4ec180b7d2cd",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-TARGET-METHOD.md;audits/TANDA-08-HOST-TARGET-AUDIT.md",
+    "section": "components/HOST-TARGET.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000864",
@@ -12954,10 +12954,10 @@
     "lines": "234",
     "sha256": "18b002994f45607056584668bb72276d4a8e305fcae8eb125dfadd81b4885904",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
-    "notes": ""
+    "state": "AUDITADO",
+    "evidence": "evidence/TANDA-08-HOST-TARGET-METHOD.md;audits/TANDA-08-HOST-TARGET-AUDIT.md",
+    "section": "components/HOST-TARGET.md",
+    "notes": "complete static reading; no build or execution"
   },
   {
     "id": "PF-000865",

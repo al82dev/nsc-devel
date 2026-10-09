@@ -58,6 +58,9 @@
 - [Host.Passes](components/HOST-PASSES.md)
   - [Test plan](test-plans/HOST-PASSES-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-07-HOST-PASSES-AUDIT.md)
+- [Host.Target](components/HOST-TARGET.md)
+  - [Test plan](test-plans/HOST-TARGET-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-08-HOST-TARGET-AUDIT.md)
 
 ## Artefactos mecánicos
 

@@ -26,6 +26,7 @@ tabla; registra el criterio y enlazará los informes individuales conforme se pr
 | `Host.SSA` | `RECONSTRUIBLE` | 102 | 42 | 336 | `audits/TANDA-07-HOST-SSA-AUDIT.md` |
 | `Host.Dominance` | `RECONSTRUIBLE` | 81 | 32 | 256 | `audits/TANDA-07-HOST-DOMINANCE-AUDIT.md` |
 | `Host.Passes` | `RECONSTRUIBLE` | 158 | 56 | 448 | `audits/TANDA-07-HOST-PASSES-AUDIT.md` |
+| `Host.Target` | `RECONSTRUIBLE` | 46 | 30 | 240 | `audits/TANDA-08-HOST-TARGET-AUDIT.md` |
 
 `RECONSTRUIBLE` describe suficiencia documental para la revisión congelada. No significa que la suite nueva
 esté implementada ni que se haya ejecutado validación.
