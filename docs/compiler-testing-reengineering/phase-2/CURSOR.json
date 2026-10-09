@@ -3,16 +3,17 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "77c6ea0ad",
+  "last_completed_commit": "c666fe6be",
   "current_wave": 1,
   "current_component": "Host.Basic",
-  "next_contract": "CB-BAS-013",
-  "next_action": "Implement the seven pending CB-BAS-013 cases: TB-BAS-058, TB-BAS-059 and TB-BAS-068..072. Then implement CB-BAS-014 TB-BAS-073..077. Keep the 14 documented product or feasibility blockers visible; Phase 2 cannot modify product. CL-LANG-021 is complete at 16/16 and no CL-LANG-022 exists.",
+  "next_contract": "CB-BAS-014",
+  "next_action": "Implement the five pending CB-BAS-014 rollback cases TB-BAS-073..077. Keep the 14 documented product or feasibility blockers visible; Phase 2 cannot modify product. CB-BAS-013 is complete at 7/7.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
     "CS-SRC-005",
     "CS-SRC-008",
+    "CB-BAS-013",
     "CF-TGT-001",
     "CF-TGT-002",
     "CF-TGT-003",
@@ -161,16 +162,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 721,
-      "product_cases_verified": 721
+      "product_cases_implemented": 728,
+      "product_cases_verified": 728
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 81,
-    "debug_ctest_total": 81,
-    "release_ctest_passed": 81,
-    "release_ctest_total": 81,
+    "debug_ctest_passed": 82,
+    "debug_ctest_total": 82,
+    "release_ctest_passed": 82,
+    "release_ctest_total": 82,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
