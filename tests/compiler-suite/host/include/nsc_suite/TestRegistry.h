@@ -69,4 +69,5 @@ void registerSourceManagerQueryModule(TestRegistry& registry);
 void registerTargetDomainEnumsModule(TestRegistry& registry);
 void registerTargetLayoutValuesModule(TestRegistry& registry);
 void registerTargetAggregateRequestModule(TestRegistry& registry);
+void registerTargetWindowsFactoriesModule(TestRegistry& registry);
 }

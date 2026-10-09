@@ -113,6 +113,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetDomainEnumsModule(registry);
         nsc::suite::registerTargetLayoutValuesModule(registry);
         nsc::suite::registerTargetAggregateRequestModule(registry);
+        nsc::suite::registerTargetWindowsFactoriesModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
