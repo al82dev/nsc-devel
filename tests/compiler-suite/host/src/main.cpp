@@ -121,6 +121,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetArrayLayoutModule(registry);
         nsc::suite::registerTargetPlainStructLayoutModule(registry);
         nsc::suite::registerTargetAggregateOptionsModule(registry);
+        nsc::suite::registerTargetPackedFieldPlacementModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

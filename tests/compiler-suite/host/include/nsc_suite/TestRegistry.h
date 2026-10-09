@@ -77,4 +77,5 @@ void registerTargetElementStrideModule(TestRegistry& registry);
 void registerTargetArrayLayoutModule(TestRegistry& registry);
 void registerTargetPlainStructLayoutModule(TestRegistry& registry);
 void registerTargetAggregateOptionsModule(TestRegistry& registry);
+void registerTargetPackedFieldPlacementModule(TestRegistry& registry);
 }
