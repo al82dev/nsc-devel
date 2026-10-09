@@ -21,8 +21,9 @@ nombradas y una raíz aislada en `A:`. La limpieza conserva un inventario explí
 padres y utiliza llamadas Win32 de ruta extendida; no existe recorrido recursivo.
 
 El reparse point es un junction creado mediante `FSCTL_SET_REPARSE_POINT`, sin depender de Developer Mode ni
-del privilegio para symbolic links. El caso de espacio usa un archivo sparse cuyo tamaño lógico supera por un
-byte el espacio disponible. El último caso deriva el ordinal real con una transacción sonda y ocupa el nombre
+del privilegio para symbolic links. El caso de espacio usa un stage acotado de nueve bytes y hace que el
+ejecutable de prueba reporte cuatro bytes disponibles sólo para el directorio del fixture. El último caso
+deriva el ordinal real con una transacción sonda y ocupa el nombre
 del segundo sibling con un directorio. Así fuerza el fallo de copia después de preparar el primero y demuestra
 que ningún destino entra en la fase de instalación; el directorio es parte del fixture, no un temporal creado
 por el producto.
@@ -56,7 +57,7 @@ se relajó su validador.
 - Release: build con `/W4 /WX` y CTest 8/8 aprobadas.
 - Gate aislado de `CB-BAS-012`: 8/8 en ambos modos.
 - Imports dinámicos de VCRUNTIME, MSVCP o UCRT: 0 en Debug y 0 en Release.
-- Residuos de fixtures, junctions, sparse files o siblings: 0.
+- Residuos de fixtures, junctions o siblings: 0.
 - Líneas mayores a 120 caracteres en código y documentación nuevos: 0; el manifiesto conserva JSONL canónico.
 - Diferencial de código de producto bajo `src` e `include/nativesharp`: 0 archivos.
 - Los hashes SHA-256 de los seis archivos protegidos coinciden con `CURSOR.json`.

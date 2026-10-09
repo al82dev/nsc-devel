@@ -2,6 +2,8 @@
 
 #include "nativesharp/Basic/ArtifactTransaction.h"
 
+#include "../support/ControlledAvailableSpace.h"
+
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -332,28 +334,6 @@ void createJunction(const std::filesystem::path& link, const std::filesystem::pa
     }
 }
 
-// Creates a sparse file with the requested logical size without allocating its data range.
-void createSparseFile(const std::filesystem::path& path, unsigned long long logicalSize)
-{
-    Win32Handle handle(CreateFileW(
-        extendedPath(path).c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL, nullptr));
-    DWORD returned = 0;
-    if (handle.get() == INVALID_HANDLE_VALUE ||
-        !DeviceIoControl(handle.get(), FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &returned, nullptr))
-    {
-        throw std::runtime_error("cannot create sparse preflight stage: " +
-            std::to_string(GetLastError()));
-    }
-    LARGE_INTEGER end{};
-    end.QuadPart = static_cast<LONGLONG>(logicalSize);
-    if (!SetFilePointerEx(handle.get(), end, nullptr, FILE_BEGIN) || !SetEndOfFile(handle.get()))
-    {
-        throw std::runtime_error("cannot size sparse preflight stage: " +
-            std::to_string(GetLastError()));
-    }
-}
-
 // Extracts the monotonically increasing transaction ordinal from a generated staging root.
 unsigned long long stagingOrdinal(const std::filesystem::path& stagingRoot)
 {
@@ -424,24 +404,31 @@ void testExtendedPathLimit(TestContext& context)
     context.expect(std::filesystem::is_regular_file(stage), "path rejection must preserve the stage");
 }
 
-// Exercises free-space rejection with a sparse stage one byte larger than reported capacity.
+// Exercises free-space rejection with a bounded stage and a process-local capacity report.
 void testInsufficientSpace(TestContext& context)
 {
     const ADriveTemporaryEnvironment temporary;
     CaseTree tree("TB-BAS-066");
     const auto destination = tree.path("destination.lib");
-    const auto stage = tree.path("oversized-stage.lib");
+    const auto stage = tree.path("bounded-stage.lib");
     writeText(destination, "original");
-    ULARGE_INTEGER available{};
-    if (!GetDiskFreeSpaceExW(extendedPath(destination.parent_path()).c_str(), &available, nullptr, nullptr))
-    {
-        throw std::runtime_error("cannot query controlled preflight free space");
-    }
-    createSparseFile(stage, available.QuadPart + 1ULL);
-    nativesharp::basic::ArtifactTransaction transaction;
+    writeText(stage, "new bytes");
     std::string error;
-    context.expect(transaction.addStaged(destination, stage, error), "sparse stage must register");
-    context.expect(!transaction.commit(error), "oversized sparse stage must fail preflight");
+    bool committed = false;
+    bool observed = false;
+    bool restored = false;
+    {
+        preflight::ScopedAvailableSpaceLimit limit(
+            extendedPath(destination.parent_path()).native(), 4ULL);
+        nativesharp::basic::ArtifactTransaction transaction;
+        context.expect(transaction.addStaged(destination, stage, error), "bounded stage must register");
+        committed = transaction.commit(error);
+        observed = limit.observed();
+        restored = limit.restore();
+    }
+    context.expect(observed, "free-space preflight must reach the process-local capacity report");
+    context.expect(restored, "disk-space import must be restored before assertions");
+    context.expect(!committed, "stage larger than reported capacity must fail preflight");
     context.expect(error.find("insufficient-space") != std::string::npos, "space error category");
     context.expect(readText(destination) == "original", "space rejection must preserve destination bytes");
     context.expect(std::filesystem::is_regular_file(stage), "space rejection must preserve the stage");
