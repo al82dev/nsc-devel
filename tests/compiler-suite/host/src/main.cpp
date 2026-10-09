@@ -95,6 +95,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerInfrastructureModule(registry);
         nsc::suite::registerBasicValuesModule(registry);
         nsc::suite::registerBasicSha256Module(registry);
+        nsc::suite::registerBasicSha256FileModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

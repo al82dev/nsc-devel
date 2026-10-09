@@ -51,4 +51,5 @@ private:
 void registerInfrastructureModule(TestRegistry& registry);
 void registerBasicValuesModule(TestRegistry& registry);
 void registerBasicSha256Module(TestRegistry& registry);
+void registerBasicSha256FileModule(TestRegistry& registry);
 }
