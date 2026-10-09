@@ -1,44 +1,44 @@
 {
   "phase": 1,
   "scope": "compiler-test-inventory-and-plans-only",
-  "revision": "65835716712f0d04537aa92591f766fb65ff641b",
-  "batch": "12B",
+  "revision": "93094d49210999de5018765df1c7551e942f43f4",
+  "batch": "12C",
   "status": "in_progress",
-  "last_completed_artifact": "audits/TANDA-12A-SELFHOST-AUDIT.md",
-  "last_completed_item": "SELFHOST-PRIMARY-COMPILER-0029",
-  "next_item": "REMAINING-SURFACE-0001",
-  "next_action": "audit_all_421_build_contract_dependency_support_and_vendored_files_then_assign_direct_indirect_upstream_or_excluded_disposition",
+  "last_completed_artifact": "audits/TANDA-12B-REMAINING-SURFACE-AUDIT.md",
+  "last_completed_item": "REMAINING-SURFACE-0421",
+  "next_item": "SUITE-ARCHITECTURE-0001",
+  "next_action": "consolidate_all_57_component_plans_define_new_suite_executors_frequencies_and_final_case_count_without_implementation",
   "production_files": {
     "inventoried": 974,
     "inventory_verified": 974,
-    "semantically_read": 553,
-    "classified": 553,
-    "consolidated": 553,
-    "contrasted": 553,
-    "audited": 553,
+    "semantically_read": 974,
+    "classified": 974,
+    "consolidated": 974,
+    "contrasted": 974,
+    "audited": 974,
     "omitted": 0,
     "unknown": 0
   },
   "components": {
     "inventoried": 57,
-    "reviewed": 40,
-    "reconstructible": 40,
+    "reviewed": 57,
+    "reconstructible": 53,
     "blocked": 0
   },
   "symbols": {
-    "inventoried": 6168,
-    "reviewed": 6168,
+    "inventoried": 8401,
+    "reviewed": 8401,
     "untreated": 0,
     "historical_duplicate_ids_pending_final_audit": 1
   },
   "contracts": {
-    "inventoried": 1008,
-    "classified": 1008,
+    "inventoried": 1309,
+    "classified": 1309,
     "untreated": 0
   },
   "test_case_design": {
-    "inventoried": 8387,
-    "designed": 8387,
+    "inventoried": 10193,
+    "designed": 10193,
     "implemented": 0,
     "executed": 0
   },
@@ -49,18 +49,20 @@
     "tests_executed": 0
   },
   "manifests": {
-    "production_files_sha256": "b47aa58caa2dd86fde1c353339d5293559f15c9b808ec77c9b49e44898e1d68b",
+    "production_files_sha256": "05505129110dce66974af831c497dcf5ac9bd65dd71829f454891a753d746827",
     "historical_tests_sha256": "fba06c64f0b3d83b517edd43756ebbebeb8227699adaf55eb07c870f03686267",
-    "document_coverage_sha256": "89c9c9df413201c2754829f3cbef7c4219ac1fea7d8ae6bb5409c6ce9de57d0d",
-    "symbols_sha256": "c06775f14c17b94c923bb57ce2754e08d6d7c941bf91f39ada8e140caa4350ad",
-    "contracts_sha256": "a79c52bf2fbc4a3e5ce5b63d34e61fdd81b0bcbbd35cb14d32be41a4eb6d0cd6",
-    "test_case_design_sha256": "d0d3327316415475ccec80edc107dcda3ae14fceb8eebd133207b8174f761826",
-    "transversal_contracts_sha256": "2e9c658976bf8f32f8a0bd095a455d0eba96f2d293bbfa69c5cbfe1730959ea9",
-    "error_taxonomy_sha256": "addc323a68744c68c686d24f1f45f1fb7a72c1af8be86fd1c0ece90f62fcfef1",
+    "document_coverage_sha256": "8cad5dde8d099a213c0904c8dafbf50c1e7bbacca3b0ccdd258934dd88c370e9",
+    "symbols_sha256": "d424a1259207029f439d6fb446550ac8e37ff19ec224fc5b4279990620368d74",
+    "contracts_sha256": "3e1498ae76c27f0a8da3ef51424f392a365e538294bc70556d47cd2255259fa0",
+    "test_case_design_sha256": "32afbaa0e1a6ace83f48d8f8360652c7b11f8c0de982e1392ea9cab9e0190205",
+    "transversal_contracts_sha256": "9c4f858279a4d7804c5acf33d4eab43fc15b6c6e9650499b420226a5cdf39cd5",
+    "error_taxonomy_sha256": "c337d5099e8eb6643d1bdc0f9835f3bcce9edd15dbcc642dd87063cb82aef599",
     "state_machines_sha256": "a0456bea25b080ab37a120bb54724981631df8725937ecd87c923b26f0e29f27",
-    "state_machine_contract_map_sha256": "146532b60bfe9244d0b61ee22da12d2311f1675459779fb5a7d929191e8845eb",
+    "state_machine_contract_map_sha256": "c2aa12d540d077fe93708da7e95ca14fb4400a46e41ea558838bfc860c9c713f",
     "selfhost_file_audit_sha256": "1f17f1e85875f388ff0c36c14b32fee86574e36d6f425d160c9b6fc7ab629cdc",
-    "selfhost_audit_summary_sha256": "f8734952a0839db340caca67fdbcde5e6793cd2281a129c1dc5f4a3314c0c53a"
+    "selfhost_audit_summary_sha256": "f8734952a0839db340caca67fdbcde5e6793cd2281a129c1dc5f4a3314c0c53a",
+    "remaining_surface_file_audit_sha256": "5c8c570b6829e0df49645daa9e9be24e3e9137c638feb203512261da41a319dd",
+    "remaining_surface_audit_summary_sha256": "6d89c74b77c3b7bc55ae97ea3e54da1dcbc3e82a8c97b31e6fcd51c822003497"
   },
   "protected_preexisting_changes": 6,
   "constraints": {

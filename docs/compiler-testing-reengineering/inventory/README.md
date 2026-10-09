@@ -33,3 +33,12 @@ representa código de prueba creado o ejecutado.
 - `test-case-design.csv`: 1027 casos futuros self-host.
 - Los conteos se recalculan con `evidence/TANDA-12A-SELFHOST-GENERATOR.ps1`.
 <!-- END TANDA-12A-SELFHOST-INVENTORY -->
+
+<!-- BEGIN TANDA-12B-REMAINING-SURFACE-INVENTORY -->
+## Tanda 12B — superficies restantes
+
+- `remaining-surface-file-audit.csv`: disposición de los 421 archivos.
+- `remaining-surface-audit-summary.json`: 2233 declaraciones/artefactos, 301 contratos y 1806 casos diseñados.
+- Los upstream y excluidos no generan pruebas ficticias; su frontera queda en los documentos de componente.
+- Regeneración: `evidence/TANDA-12B-REMAINING-SURFACE-GENERATOR.ps1`.
+<!-- END TANDA-12B-REMAINING-SURFACE-INVENTORY -->

@@ -147,3 +147,12 @@ Los documentos distinguen `HECHO COMPROBADO`, `INFERENCIA`, `DISEÑO PROPUESTO`,
 - `SelfHost.Syntax`: `components/SELFHOST-SYNTAX.md`; plan: `test-plans/SELFHOST-SYNTAX-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-SYNTAX-AUDIT.md`.
 - `SelfHost.Types`: `components/SELFHOST-TYPES.md`; plan: `test-plans/SELFHOST-TYPES-TEST-PLAN.md`; auditoría: `audits/TANDA-12A-SELFHOST-TYPES-AUDIT.md`.
 <!-- END TANDA-12A-SELFHOST-INDEX -->
+
+<!-- BEGIN TANDA-12B-INDEX -->
+## Tanda 12B — build, dependencias y soporte
+
+- Método: `evidence/TANDA-12B-REMAINING-SURFACE-METHOD.md`.
+- Auditoría consolidada: `audits/TANDA-12B-REMAINING-SURFACE-AUDIT.md`.
+- Disposición por archivo: `inventory/remaining-surface-file-audit.csv`.
+- Resumen reproducible: `inventory/remaining-surface-audit-summary.json`.
+<!-- END TANDA-12B-INDEX -->

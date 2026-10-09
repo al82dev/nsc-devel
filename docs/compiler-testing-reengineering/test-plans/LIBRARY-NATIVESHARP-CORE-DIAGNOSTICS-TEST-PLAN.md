@@ -1,0 +1,40 @@
+# Plan de pruebas — Library.NativeSharp.Core.Diagnostics
+
+## Alcance
+
+5 contratos mantenidos; 30 casos diseñados. No es una cuota: el conteo deriva del inventario 12B.
+
+## Casos
+
+| ID | Contrato | Clase | Objetivo | Oráculo | Frecuencia |
+|---|---|---|---|---|---|
+| `T12B-00631` | `C12B-DIA-001` | `valid-minimal` | caso nominal mínimo: Superficie de biblioteca Debug | éxito exacto y salida del productor; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00632` | `C12B-DIA-001` | `valid-representative` | caso representativo completo: Superficie de biblioteca Debug | salida, efectos y artefactos completos; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00633` | `C12B-DIA-001` | `invalid-precondition` | productor o dependencia ausente: Superficie de biblioteca Debug | fallo en la frontera propietaria y cero consumo downstream; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00634` | `C12B-DIA-001` | `invalid-structure` | estructura, valor o referencia inválida: Superficie de biblioteca Debug | diagnóstico estructural sin publicación parcial; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00635` | `C12B-DIA-001` | `boundary` | vacío, singleton, duplicado y extremos: Superficie de biblioteca Debug | resultado de borde documentado; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00636` | `C12B-DIA-001` | `determinism` | repetición y orden independiente: Superficie de biblioteca Debug | misma estructura/hash canónico o diferencia declarada; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `NIGHTLY` |
+| `T12B-00637` | `C12B-DIA-002` | `valid-minimal` | caso nominal mínimo: Proyecto distribuido Native Sharp.Core.Diagnostics | éxito exacto y salida del productor; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `PR` |
+| `T12B-00638` | `C12B-DIA-002` | `valid-representative` | caso representativo completo: Proyecto distribuido Native Sharp.Core.Diagnostics | salida, efectos y artefactos completos; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `PR` |
+| `T12B-00639` | `C12B-DIA-002` | `invalid-precondition` | productor o dependencia ausente: Proyecto distribuido Native Sharp.Core.Diagnostics | fallo en la frontera propietaria y cero consumo downstream; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `PR` |
+| `T12B-00640` | `C12B-DIA-002` | `invalid-structure` | estructura, valor o referencia inválida: Proyecto distribuido Native Sharp.Core.Diagnostics | diagnóstico estructural sin publicación parcial; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `PR` |
+| `T12B-00641` | `C12B-DIA-002` | `boundary` | vacío, singleton, duplicado y extremos: Proyecto distribuido Native Sharp.Core.Diagnostics | resultado de borde documentado; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `PR` |
+| `T12B-00642` | `C12B-DIA-002` | `determinism` | repetición y orden independiente: Proyecto distribuido Native Sharp.Core.Diagnostics | misma estructura/hash canónico o diferencia declarada; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `NIGHTLY` |
+| `T12B-00643` | `C12B-DIA-003` | `valid-minimal` | caso nominal mínimo: Superficie de biblioteca Process | éxito exacto y salida del productor; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00644` | `C12B-DIA-003` | `valid-representative` | caso representativo completo: Superficie de biblioteca Process | salida, efectos y artefactos completos; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00645` | `C12B-DIA-003` | `invalid-precondition` | productor o dependencia ausente: Superficie de biblioteca Process | fallo en la frontera propietaria y cero consumo downstream; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00646` | `C12B-DIA-003` | `invalid-structure` | estructura, valor o referencia inválida: Superficie de biblioteca Process | diagnóstico estructural sin publicación parcial; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00647` | `C12B-DIA-003` | `boundary` | vacío, singleton, duplicado y extremos: Superficie de biblioteca Process | resultado de borde documentado; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00648` | `C12B-DIA-003` | `determinism` | repetición y orden independiente: Superficie de biblioteca Process | misma estructura/hash canónico o diferencia declarada; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `NIGHTLY` |
+| `T12B-00649` | `C12B-DIA-004` | `valid-minimal` | caso nominal mínimo: Superficie de biblioteca Stopwatch | éxito exacto y salida del productor; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00650` | `C12B-DIA-004` | `valid-representative` | caso representativo completo: Superficie de biblioteca Stopwatch | salida, efectos y artefactos completos; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00651` | `C12B-DIA-004` | `invalid-precondition` | productor o dependencia ausente: Superficie de biblioteca Stopwatch | fallo en la frontera propietaria y cero consumo downstream; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00652` | `C12B-DIA-004` | `invalid-structure` | estructura, valor o referencia inválida: Superficie de biblioteca Stopwatch | diagnóstico estructural sin publicación parcial; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00653` | `C12B-DIA-004` | `boundary` | vacío, singleton, duplicado y extremos: Superficie de biblioteca Stopwatch | resultado de borde documentado; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00654` | `C12B-DIA-004` | `determinism` | repetición y orden independiente: Superficie de biblioteca Stopwatch | misma estructura/hash canónico o diferencia declarada; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `NIGHTLY` |
+| `T12B-00655` | `C12B-DIA-005` | `valid-minimal` | caso nominal mínimo: Superficie de biblioteca System Info | éxito exacto y salida del productor; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00656` | `C12B-DIA-005` | `valid-representative` | caso representativo completo: Superficie de biblioteca System Info | salida, efectos y artefactos completos; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00657` | `C12B-DIA-005` | `invalid-precondition` | productor o dependencia ausente: Superficie de biblioteca System Info | fallo en la frontera propietaria y cero consumo downstream; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00658` | `C12B-DIA-005` | `invalid-structure` | estructura, valor o referencia inválida: Superficie de biblioteca System Info | diagnóstico estructural sin publicación parcial; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00659` | `C12B-DIA-005` | `boundary` | vacío, singleton, duplicado y extremos: Superficie de biblioteca System Info | resultado de borde documentado; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00660` | `C12B-DIA-005` | `determinism` | repetición y orden independiente: Superficie de biblioteca System Info | misma estructura/hash canónico o diferencia declarada; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `NIGHTLY` |

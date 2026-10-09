@@ -63,3 +63,29 @@ esté implementada ni que se haya ejecutado validación.
 
 El dictamen es exclusivamente documental para la revisión auditada; no demuestra ejecución, cobertura ni equivalencia con la batería histórica.
 <!-- END TANDA-12A-SELFHOST-RECONSTRUCTIBILITY -->
+
+<!-- BEGIN TANDA-12B-RECONSTRUCTIBILITY -->
+## Superficies tratadas en Tanda 12B
+
+| Componente | Resultado | Archivos | Contratos | Casos | Evidencia |
+|---|---|---:|---:|---:|---|
+| `BuildSystem` | `RECONSTRUIBLE` | 76 | 76 | 456 | `audits/TANDA-12B-BUILD-SYSTEM-AUDIT.md` |
+| `Library.NativeSharp.Core` | `RECONSTRUIBLE` | 48 | 44 | 264 | `audits/TANDA-12B-LIBRARY-NATIVESHARP-CORE-AUDIT.md` |
+| `Library.NativeSharp.Core.Collections.Generic` | `RECONSTRUIBLE` | 30 | 26 | 156 | `audits/TANDA-12B-LIBRARY-NATIVESHARP-CORE-COLLECTIONS-GENERIC-AUDIT.md` |
+| `Library.NativeSharp.Core.Diagnostics` | `RECONSTRUIBLE` | 5 | 5 | 30 | `audits/TANDA-12B-LIBRARY-NATIVESHARP-CORE-DIAGNOSTICS-AUDIT.md` |
+| `Library.NativeSharp.Core.IO` | `RECONSTRUIBLE` | 5 | 5 | 30 | `audits/TANDA-12B-LIBRARY-NATIVESHARP-CORE-IO-AUDIT.md` |
+| `Library.NativeSharp.Core.Threading` | `RECONSTRUIBLE` | 12 | 11 | 66 | `audits/TANDA-12B-LIBRARY-NATIVESHARP-CORE-THREADING-AUDIT.md` |
+| `Library.NativeSharp.LLVM.C` | `RECONSTRUIBLE` | 4 | 4 | 24 | `audits/TANDA-12B-LIBRARY-NATIVESHARP-LLVM-C-AUDIT.md` |
+| `Library.NativeSharp.Win32.Compiler` | `RECONSTRUIBLE` | 4 | 4 | 24 | `audits/TANDA-12B-LIBRARY-NATIVESHARP-WIN32-COMPILER-AUDIT.md` |
+| `Library.Provenance` | `RECONSTRUIBLE` | 1 | 1 | 6 | `audits/TANDA-12B-LIBRARY-PROVENANCE-AUDIT.md` |
+| `Packaging` | `RECONSTRUIBLE` | 3 | 3 | 18 | `audits/TANDA-12B-PACKAGING-AUDIT.md` |
+| `SDK` | `RECONSTRUIBLE` | 1 | 1 | 6 | `audits/TANDA-12B-SDK-AUDIT.md` |
+| `SelfHost.Bootstrap` | `RECONSTRUIBLE` | 74 | 73 | 438 | `audits/TANDA-12B-SELFHOST-BOOTSTRAP-INFRASTRUCTURE-AUDIT.md` |
+| `SelfHost.Contracts` | `RECONSTRUIBLE` | 48 | 48 | 288 | `audits/TANDA-12B-SELFHOST-CONTRACTS-AUDIT.md` |
+| `ThirdParty.Documentation` | `TRATADO — UPSTREAM` | 1 | 0 | 0 | `audits/TANDA-12B-THIRDPARTY-DOCUMENTATION-AUDIT.md` |
+| `ThirdParty.zlib` | `TRATADO — UPSTREAM` | 28 | 0 | 0 | `audits/TANDA-12B-THIRDPARTY-ZLIB-AUDIT.md` |
+| `ThirdParty.zstd` | `TRATADO — UPSTREAM` | 66 | 0 | 0 | `audits/TANDA-12B-THIRDPARTY-ZSTD-AUDIT.md` |
+| `Tooling` | `TRATADO — FUERA DE SUITE NSC` | 15 | 0 | 0 | `audits/TANDA-12B-TOOLING-AUDIT.md` |
+
+`RECONSTRUIBLE` sigue siendo suficiencia documental. `TRATADO` cierra una disposición explícita sin atribuir propiedad interna a NSC.
+<!-- END TANDA-12B-RECONSTRUCTIBILITY -->

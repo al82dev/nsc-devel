@@ -1,0 +1,40 @@
+# Plan de pruebas — Library.NativeSharp.Core.IO
+
+## Alcance
+
+5 contratos mantenidos; 30 casos diseñados. No es una cuota: el conteo deriva del inventario 12B.
+
+## Casos
+
+| ID | Contrato | Clase | Objetivo | Oráculo | Frecuencia |
+|---|---|---|---|---|---|
+| `T12B-00661` | `C12B-CIO-001` | `valid-minimal` | caso nominal mínimo: Superficie de biblioteca Directory | éxito exacto y salida del productor; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00662` | `C12B-CIO-001` | `valid-representative` | caso representativo completo: Superficie de biblioteca Directory | salida, efectos y artefactos completos; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00663` | `C12B-CIO-001` | `invalid-precondition` | productor o dependencia ausente: Superficie de biblioteca Directory | fallo en la frontera propietaria y cero consumo downstream; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00664` | `C12B-CIO-001` | `invalid-structure` | estructura, valor o referencia inválida: Superficie de biblioteca Directory | diagnóstico estructural sin publicación parcial; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00665` | `C12B-CIO-001` | `boundary` | vacío, singleton, duplicado y extremos: Superficie de biblioteca Directory | resultado de borde documentado; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00666` | `C12B-CIO-001` | `determinism` | repetición y orden independiente: Superficie de biblioteca Directory | misma estructura/hash canónico o diferencia declarada; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `NIGHTLY` |
+| `T12B-00667` | `C12B-CIO-002` | `valid-minimal` | caso nominal mínimo: Superficie de biblioteca File | éxito exacto y salida del productor; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00668` | `C12B-CIO-002` | `valid-representative` | caso representativo completo: Superficie de biblioteca File | salida, efectos y artefactos completos; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00669` | `C12B-CIO-002` | `invalid-precondition` | productor o dependencia ausente: Superficie de biblioteca File | fallo en la frontera propietaria y cero consumo downstream; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00670` | `C12B-CIO-002` | `invalid-structure` | estructura, valor o referencia inválida: Superficie de biblioteca File | diagnóstico estructural sin publicación parcial; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00671` | `C12B-CIO-002` | `boundary` | vacío, singleton, duplicado y extremos: Superficie de biblioteca File | resultado de borde documentado; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00672` | `C12B-CIO-002` | `determinism` | repetición y orden independiente: Superficie de biblioteca File | misma estructura/hash canónico o diferencia declarada; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `NIGHTLY` |
+| `T12B-00673` | `C12B-CIO-003` | `valid-minimal` | caso nominal mínimo: Proyecto distribuido Native Sharp.Core.IO | éxito exacto y salida del productor; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `PR` |
+| `T12B-00674` | `C12B-CIO-003` | `valid-representative` | caso representativo completo: Proyecto distribuido Native Sharp.Core.IO | salida, efectos y artefactos completos; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `PR` |
+| `T12B-00675` | `C12B-CIO-003` | `invalid-precondition` | productor o dependencia ausente: Proyecto distribuido Native Sharp.Core.IO | fallo en la frontera propietaria y cero consumo downstream; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `PR` |
+| `T12B-00676` | `C12B-CIO-003` | `invalid-structure` | estructura, valor o referencia inválida: Proyecto distribuido Native Sharp.Core.IO | diagnóstico estructural sin publicación parcial; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `PR` |
+| `T12B-00677` | `C12B-CIO-003` | `boundary` | vacío, singleton, duplicado y extremos: Proyecto distribuido Native Sharp.Core.IO | resultado de borde documentado; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `PR` |
+| `T12B-00678` | `C12B-CIO-003` | `determinism` | repetición y orden independiente: Proyecto distribuido Native Sharp.Core.IO | misma estructura/hash canónico o diferencia declarada; oracle: grafo de proyecto, unidades, referencias y artefactos publicados | `NIGHTLY` |
+| `T12B-00679` | `C12B-CIO-004` | `valid-minimal` | caso nominal mínimo: Superficie de biblioteca Path | éxito exacto y salida del productor; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00680` | `C12B-CIO-004` | `valid-representative` | caso representativo completo: Superficie de biblioteca Path | salida, efectos y artefactos completos; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00681` | `C12B-CIO-004` | `invalid-precondition` | productor o dependencia ausente: Superficie de biblioteca Path | fallo en la frontera propietaria y cero consumo downstream; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00682` | `C12B-CIO-004` | `invalid-structure` | estructura, valor o referencia inválida: Superficie de biblioteca Path | diagnóstico estructural sin publicación parcial; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00683` | `C12B-CIO-004` | `boundary` | vacío, singleton, duplicado y extremos: Superficie de biblioteca Path | resultado de borde documentado; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00684` | `C12B-CIO-004` | `determinism` | repetición y orden independiente: Superficie de biblioteca Path | misma estructura/hash canónico o diferencia declarada; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `NIGHTLY` |
+| `T12B-00685` | `C12B-CIO-005` | `valid-minimal` | caso nominal mínimo: Superficie de biblioteca Text Writer | éxito exacto y salida del productor; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00686` | `C12B-CIO-005` | `valid-representative` | caso representativo completo: Superficie de biblioteca Text Writer | salida, efectos y artefactos completos; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00687` | `C12B-CIO-005` | `invalid-precondition` | productor o dependencia ausente: Superficie de biblioteca Text Writer | fallo en la frontera propietaria y cero consumo downstream; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00688` | `C12B-CIO-005` | `invalid-structure` | estructura, valor o referencia inválida: Superficie de biblioteca Text Writer | diagnóstico estructural sin publicación parcial; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00689` | `C12B-CIO-005` | `boundary` | vacío, singleton, duplicado y extremos: Superficie de biblioteca Text Writer | resultado de borde documentado; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `PR` |
+| `T12B-00690` | `C12B-CIO-005` | `determinism` | repetición y orden independiente: Superficie de biblioteca Text Writer | misma estructura/hash canónico o diferencia declarada; oracle: API observable, contenido, estado, diagnóstico y liberación de recursos | `NIGHTLY` |

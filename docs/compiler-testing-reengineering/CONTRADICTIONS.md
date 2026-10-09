@@ -27,3 +27,29 @@ Estas contradicciones se registran sin corregirlas porque la Fase 1 es exclusiva
 | `CON-0012` | ABIERTA | Recorridos en Parser, Sema, IR, SourceGraph, SyntaxDumper y LlvmBackend | Lineamiento general que prohíbe recursión salvo necesidad demostrada | Existen descensos y clausuras recursivas, algunas sin cota explícita | Profundidad hostil puede agotar stack; cambiar algoritmo alteraría producto | Diseñar casos NIGHTLY de profundidad; cualquier reescritura iterativa exige otra fase y SCOPE LOCK |
 | `CON-0013` | ABIERTA | Comentario de `LlvmBackend.ns:139` | Toolchain actual exige componentes LLVM estáticos y no depender de `LLVM-C.dll` monolítico | El comentario histórico afirma que toda dependencia cruza `LLVM-C.dll` | Puede confundir documentación de bootstrap con el contrato de distribución vigente | Contrastar en fase funcional/toolchain; en esta fase conservar ambos hechos y no editar fuente |
 <!-- END TANDA-12A-SELFHOST-CONTRADICTIONS -->
+
+<!-- BEGIN TANDA-12B-CONTRADICTIONS -->
+## CON-0014 — Ediciones 2.0/3.0 persisten en bootstrap y proyectos distribuidos
+
+- **Evidencia:** `bootstrap-profile.json`, `bootstrap.lock`, contratos self-host y tres `.nsproj` aún nombran Language/SDK 2.0 o 3.0.
+- **Impacto:** son residuos históricos o metadata de la revisión, no autorización para rechazar fuente por edición.
+- **Tratamiento:** casos futuros prueban reconocimiento sintáctico/semántico y registran el residuo; no lo convierten en precondición universal.
+
+## CON-0015 — Documentación de enlace dual frente a matrices actuales de una sola ruta
+
+- **Evidencia:** `selfhost/contracts/README.md` describe LLD/NSLink, mientras los JSON vigentes publican arreglos `linkers`/`routes` con una sola entrada.
+- **Impacto:** una prueba nueva no puede inferir una segunda ruta inexistente ni borrar la afirmación histórica.
+- **Tratamiento:** conservar la contradicción hasta decidir el contrato vigente en Fase 2.
+
+## CON-0016 — Bootstrap lock congela herramientas incidentales por hash y texto de versión
+
+- **Evidencia:** `selfhost/bootstrap/bootstrap.lock` fija Python, CMake y Ninja además de productores binarios.
+- **Impacto:** esos hashes pueden fallar sin que el compilador esté incorrecto.
+- **Tratamiento:** el plan nuevo separa identidad semántica del productor de versiones incidentales del orquestador.
+
+## CON-0017 — Stubs de biblioteca representan intrínsecos, no algoritmos ejecutables
+
+- **Evidencia:** SIMD, atomics, bit operations e intrinsics contienen retornos placeholder que dependen del lowering de NSC.
+- **Impacto:** una unitaria sobre el cuerpo fuente aceptaría resultados falsos.
+- **Tratamiento:** validar IR/objeto y ejecución del programa `.ns`, nunca el stub como oráculo.
+<!-- END TANDA-12B-CONTRADICTIONS -->

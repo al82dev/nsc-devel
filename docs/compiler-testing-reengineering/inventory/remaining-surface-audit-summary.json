@@ -1,0 +1,16 @@
+{
+  "revision": "93094d49210999de5018765df1c7551e942f43f4",
+  "files": 421,
+  "lines": 110964.0,
+  "components": 17,
+  "symbols": 2233,
+  "contracts": 301,
+  "cases": 1806,
+  "dispositions": {
+    "direct": 8,
+    "indirect": 293,
+    "upstream": 95,
+    "excluded": 25
+  },
+  "unknown": 0
+}
