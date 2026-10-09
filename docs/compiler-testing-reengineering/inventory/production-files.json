@@ -4944,9 +4944,9 @@
     "lines": "44",
     "sha256": "887b25cea9cc4f97e96094dfd2d0f02de6be87b743f0db400c7bde2530b68b11",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "3",
     "notes": ""
   },
   {
@@ -4959,9 +4959,9 @@
     "lines": "30",
     "sha256": "df078940ebafe0ab7c43ddb45e6a91d412cdbc454b5c5016d515c34fe349e08f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "4",
     "notes": ""
   },
   {
@@ -4974,9 +4974,9 @@
     "lines": "25",
     "sha256": "729b1bde208eae88914ee4691fb23488b530ce789cc57675b146def385a68834",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "4",
     "notes": ""
   },
   {
@@ -4989,9 +4989,9 @@
     "lines": "85",
     "sha256": "925128b26f60ab7e9c0ad612a03bb2902ebadffe84b5b857efd24c5b88fdb650",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "6",
     "notes": ""
   },
   {
@@ -5004,9 +5004,9 @@
     "lines": "65",
     "sha256": "3817a4101aedf5ec678ef0640299c8b5da6d32fb18cc9a997510a15baace396a",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "7",
     "notes": ""
   },
   {
@@ -5019,9 +5019,9 @@
     "lines": "15",
     "sha256": "4e39cdbb7684350dad07e084d8cee869cedf6ea398ce16ac5d00b0f2a87cf05f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "5",
     "notes": ""
   },
   {
@@ -5034,9 +5034,9 @@
     "lines": "18",
     "sha256": "7d3b2a68eca61bd044e8b6ba886fcb195a311e1b986847e358a5b8bdb8daab72",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "7",
     "notes": ""
   },
   {
@@ -5049,9 +5049,9 @@
     "lines": "25",
     "sha256": "4dfaed4b766557656916bb05841c7bb569e59171b1f6ffe4e7df105ee10fdcfc",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "8",
     "notes": ""
   },
   {
@@ -5064,9 +5064,9 @@
     "lines": "173",
     "sha256": "8f5bb233dc419a480df9b9582c9e291b9bd4594e794b5a4206e847507ea98d66",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "13",
     "notes": ""
   },
   {
@@ -5079,9 +5079,9 @@
     "lines": "24",
     "sha256": "051e037b2d5c5da32327d179c870a07992ac06f9292af369da71883848926c06",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "31",
     "notes": ""
   },
   {
@@ -5094,9 +5094,9 @@
     "lines": "41",
     "sha256": "443d44610db77f8edf3bf9eba10012b0ef3492d8d42b30af388448c4ca8fd1f1",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "12",
     "notes": ""
   },
   {
@@ -5109,9 +5109,9 @@
     "lines": "66",
     "sha256": "ab23b54688e9d8b7070d6b0c13d5902685439b773723759a90b42c944750810c",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "9",
     "notes": ""
   },
   {
@@ -5124,9 +5124,9 @@
     "lines": "15",
     "sha256": "ac860973080d14ce565ff555de8b6a7ad527291003fc24aaf682448628ed60d7",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "32",
     "notes": ""
   },
   {
@@ -5139,9 +5139,9 @@
     "lines": "20",
     "sha256": "4ef1d3bf71f38069f0525fa5390c0672f9e319b62f53fa1e1af316487cc55a18",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "9",
     "notes": ""
   },
   {
@@ -5154,9 +5154,9 @@
     "lines": "63",
     "sha256": "2e69ca3a3d0b64ecca1edeed02a991e959455901749387c3b164f980ecfa6037",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "10",
     "notes": ""
   },
   {
@@ -5169,9 +5169,9 @@
     "lines": "39",
     "sha256": "bc7b9df26769399254da8e251dc5785e1e0464ec3e7a158cb801a4257c942727",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "11",
     "notes": ""
   },
   {
@@ -5184,9 +5184,9 @@
     "lines": "34",
     "sha256": "7f41a64f6fc28a71a821c0d435257e5322e834c9e7aaa5aba26db39d2224fc37",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "10",
     "notes": ""
   },
   {
@@ -12609,9 +12609,9 @@
     "lines": "60",
     "sha256": "a93ef7da49a0691bd5a105f88475effb36e9e91ba3349161ecaab5622eae0af9",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "3",
     "notes": ""
   },
   {
@@ -12624,9 +12624,9 @@
     "lines": "38",
     "sha256": "f32b14b0c33589a1d71d5f2e3b8f34c406a709b57b93c6b67708a275815550d3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "4",
     "notes": ""
   },
   {
@@ -12639,9 +12639,9 @@
     "lines": "15",
     "sha256": "3163654b9e1fe62264be29ae924dab1422534b449d967246e7ddca6e44767ce6",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "5",
     "notes": ""
   },
   {
@@ -12654,9 +12654,9 @@
     "lines": "40",
     "sha256": "d2f5baf247464e122ec581df4c21b2fa696bdc6680a00c79811a007e79e4217f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "8",
     "notes": ""
   },
   {
@@ -12669,9 +12669,9 @@
     "lines": "3531",
     "sha256": "2337f33f9b578a52d328b2a9120a9170d265bd795cc829feb053a97403dee533",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "13;14;15;16;17;18;19;20;21;22;23;24;25;26;27;28;29;30",
     "notes": ""
   },
   {
@@ -12684,9 +12684,9 @@
     "lines": "150",
     "sha256": "72e3b492d453c57bdb0d7889bf13fd5931ac24e97fd41ffc799513013aa60a10",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "31",
     "notes": ""
   },
   {
@@ -12699,9 +12699,9 @@
     "lines": "55",
     "sha256": "0387cb0d5b1627e369bc42013b4a3a9794a2ed69ef6cb143b345472c8b60f225",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "12",
     "notes": ""
   },
   {
@@ -12714,9 +12714,9 @@
     "lines": "51",
     "sha256": "7320cbb4ec7b0b428055ec944e68fa812b7dc0a7d78d1671b7eab3470385c33b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "9",
     "notes": ""
   },
   {
@@ -12729,9 +12729,9 @@
     "lines": "48",
     "sha256": "28219f1ef224cce995ed5f30187f7145747ea1d1a2f304b183337e5a423b19c3",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "32",
     "notes": ""
   },
   {
@@ -12744,9 +12744,9 @@
     "lines": "22",
     "sha256": "1718ca4ca8ff7cddab0928fc7f355f09fe3c3e94e64b0792c2e1821c7d8aa487",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "9",
     "notes": ""
   },
   {
@@ -12759,9 +12759,9 @@
     "lines": "144",
     "sha256": "1b4218f0114fb2cea94ed80c7d0112b76846a570ce96ea1bb37abecec8bad883",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "10",
     "notes": ""
   },
   {
@@ -12774,9 +12774,9 @@
     "lines": "171",
     "sha256": "4d60c44f908408f58a851b7a38824448dea0cefcbd95f0b26042202b62ab4f4b",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "11",
     "notes": ""
   },
   {
@@ -12789,9 +12789,9 @@
     "lines": "36",
     "sha256": "337b06433be7cd1451e430f68375a69b51cdfe81a80949bf194d230aaffba07e",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "components/HOST-SEMA.md;audits/TANDA-05-HOST-SEMA-AUDIT.md",
+    "section": "10",
     "notes": ""
   },
   {

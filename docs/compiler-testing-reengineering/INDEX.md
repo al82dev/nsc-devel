@@ -34,6 +34,9 @@
 - [Host.Language](components/HOST-LANGUAGE.md)
   - [Test plan](test-plans/HOST-LANGUAGE-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-05-HOST-LANGUAGE-AUDIT.md)
+- [Host.Sema](components/HOST-SEMA.md)
+  - [Test plan](test-plans/HOST-SEMA-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-05-HOST-SEMA-AUDIT.md)
 
 ## Artefactos mecánicos
 
