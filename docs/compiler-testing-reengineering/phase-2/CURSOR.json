@@ -3,20 +3,22 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "92e1b6019",
+  "last_completed_commit": "11d2ae852",
+  "last_completed_batch": "TANDA-01-90",
+  "last_completed_case": "TL-LANG-201",
   "current_wave": 1,
   "current_component": null,
-  "next_contract": "CL-LANG-016",
-  "next_action": "Implement corrected TL-LANG-201 against the existing Divide operation, then materialize the seven defect-revealing cases with their real oracles. Keep the four special-infrastructure cases pending and continue causally independent work without reducing the 747-case denominator.",
+  "next_contract": "CL-LANG-002",
+  "next_action": "Materialize TL-LANG-019 as a real defect-revealing test with the correct aggregate-overflow oracle. Continue the remaining six product-defect cases without changing product, hiding failures, or reducing the 747-case denominator. Keep four special-infrastructure cases pending.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
-    "revision": "92e1b6019",
+    "revision": "11d2ae852",
     "total": 14,
     "special_infrastructure_pending": 4,
     "product_defect_tests_to_implement": 7,
     "test_plan_corrections_total": 3,
-    "test_plan_corrections_implemented": 2,
-    "test_plan_corrections_pending": 1,
+    "test_plan_corrections_implemented": 3,
+    "test_plan_corrections_pending": 0,
     "unclassified": 0
   },
   "independent_completed_contracts": [
@@ -134,11 +136,8 @@
       ]
     },
     "CL-LANG-016": {
-      "implemented_cases": 24,
-      "verified_cases": 24,
-      "next_cases": [
-        "TL-LANG-201"
-      ]
+      "implemented_cases": 25,
+      "verified_cases": 25
     },
     "CL-LANG-017": {
       "implemented_cases": 13,
@@ -172,12 +171,12 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 735,
-      "product_cases_verified": 735,
+      "product_cases_implemented": 736,
+      "product_cases_verified": 736,
       "defect_tests_pending_implementation": 7,
       "special_infrastructure_pending": 4,
       "product_features_pending": 0,
-      "corrected_test_plan_cases_pending_implementation": 1
+      "corrected_test_plan_cases_pending_implementation": 0
     }
   },
   "validation": {

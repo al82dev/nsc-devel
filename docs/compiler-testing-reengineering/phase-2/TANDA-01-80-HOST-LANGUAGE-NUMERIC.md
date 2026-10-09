@@ -72,3 +72,6 @@ Remainder no forma parte de `IntegerArithmeticOperation`; exigirlo fue un error
 del plan, no un hueco del compilador. `TL-LANG-201` conserva las capacidades
 vigentes de división, división por cero y `signed min / -1` bajo las políticas
 actuales. El caso queda `PLAN CORREGIDO — IMPLEMENTABLE` sin cambios de producto.
+
+El caso fue implementado posteriormente y pasó su ejecución exclusiva. El
+contrato queda en 25/25 casos implementados y verificados.

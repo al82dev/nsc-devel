@@ -193,6 +193,50 @@ void registerArithmeticCase(TestRegistry& registry)
     });
 }
 
+void registerDivisionCase(TestRegistry& registry)
+{
+    addCase(registry, "TL-LANG-201", [](TestContext& context) {
+        std::string error = "stale";
+        const auto quotient = evaluateIntegerArithmetic({IntegerArithmeticOperation::Divide, 255, 3,
+            {8, false}, OverflowPolicy::Checked, NumericEvaluationDomain::Runtime}, error);
+        context.expect(quotient && quotient->bits == 85 && !quotient->overflowed &&
+                !quotient->undefinedBehavior && error.empty(),
+            "TL-LANG-201 ordinary unsigned division must produce exact bits without overflow");
+
+        for (const OverflowPolicy policy : {OverflowPolicy::Checked, OverflowPolicy::Wrapping,
+                 OverflowPolicy::Saturating, OverflowPolicy::Unchecked})
+        {
+            context.expect(!evaluateIntegerArithmetic({IntegerArithmeticOperation::Divide, 7, 0,
+                    {8, true}, policy, NumericEvaluationDomain::Runtime}, error) &&
+                    error == "integer division by zero",
+                "TL-LANG-201 division by zero must fail identically under every overflow policy");
+        }
+
+        const auto checked = evaluateIntegerArithmetic({IntegerArithmeticOperation::Divide, 0x80, 0xff,
+            {8, true}, OverflowPolicy::Checked, NumericEvaluationDomain::Runtime}, error);
+        context.expect(!checked && error == "checked integer operation overflowed",
+            "TL-LANG-201 checked signed minimum divided by negative one must reject overflow");
+
+        const auto wrapping = evaluateIntegerArithmetic({IntegerArithmeticOperation::Divide, 0x80, 0xff,
+            {8, true}, OverflowPolicy::Wrapping, NumericEvaluationDomain::Runtime}, error);
+        context.expect(wrapping && wrapping->bits == 0x80 && wrapping->overflowed &&
+                !wrapping->undefinedBehavior && error.empty(),
+            "TL-LANG-201 wrapping signed division overflow must preserve wrapped bits and evidence");
+
+        const auto saturating = evaluateIntegerArithmetic({IntegerArithmeticOperation::Divide, 0x80, 0xff,
+            {8, true}, OverflowPolicy::Saturating, NumericEvaluationDomain::Runtime}, error);
+        context.expect(saturating && saturating->bits == 0x7f && saturating->overflowed &&
+                !saturating->undefinedBehavior && error.empty(),
+            "TL-LANG-201 saturating signed division overflow must clamp to the signed maximum");
+
+        const auto unchecked = evaluateIntegerArithmetic({IntegerArithmeticOperation::Divide, 0x80, 0xff,
+            {8, true}, OverflowPolicy::Unchecked, NumericEvaluationDomain::Runtime}, error);
+        context.expect(unchecked && unchecked->bits == 0x80 && unchecked->overflowed &&
+                unchecked->undefinedBehavior && error.empty(),
+            "TL-LANG-201 unchecked signed division overflow must expose undefined behavior");
+    });
+}
+
 void registerShiftCase(TestRegistry& registry)
 {
     addCase(registry, "TL-LANG-202", [](TestContext& context) {
@@ -242,6 +286,7 @@ void registerLanguageNumericCoreModule(TestRegistry& registry)
     registerResolveInvalidCase(registry);
     registerAddCase(registry);
     registerArithmeticCase(registry);
+    registerDivisionCase(registry);
     registerShiftCase(registry);
     registerSignedResultCase(registry);
 }
