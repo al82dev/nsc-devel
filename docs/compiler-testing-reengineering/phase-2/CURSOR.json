@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "54cba303c",
+  "last_completed_commit": "ac33e4f8c",
   "current_wave": 1,
   "current_component": "Host.Basic",
-  "next_contract": "CB-BAS-001",
-  "next_action": "Materialize the 88 canonical Host.Basic cases in the consolidated host executable, beginning with CB-BAS-001 and preserving contract-to-case traceability.",
+  "next_contract": "CB-BAS-006",
+  "next_action": "Implement the Host.Basic build identity boundary for TB-BAS-020..023 through the controller-owned process executor declared by the canonical allocation.",
   "wave_status": {
     "0": {
       "status": "LISTA",
@@ -16,10 +16,10 @@
       "synthetic_cases_verified": 3
     },
     "1": {
-      "status": "PENDIENTE",
+      "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 0,
-      "product_cases_verified": 0
+      "product_cases_implemented": 19,
+      "product_cases_verified": 19
     }
   },
   "validation": {
