@@ -1,7 +1,7 @@
 "role","component","files","lines","bytes","state","reconstructibility","document","audit_report"
 "BUILD_CONTRACT","BuildSystem","76","11264","622750","NO LEIDO","NO VERIFICADO","",""
 "BUILD_CONTRACT","Packaging","3","561","20708","NO LEIDO","NO VERIFICADO","",""
-"PRIMARY_COMPILER","Host.AST","10","1372","58082","NO LEIDO","NO VERIFICADO","",""
+"PRIMARY_COMPILER","Host.AST","10","1372","58082","AUDITADO","RECONSTRUIBLE","components/HOST-AST.md","audits/TANDA-04-HOST-AST-AUDIT.md"
 "PRIMARY_COMPILER","Host.Basic","12","939","32016","AUDITADO","RECONSTRUIBLE","components/HOST-BASIC.md","audits/TANDA-03-HOST-BASIC-AUDIT.md"
 "PRIMARY_COMPILER","Host.CFG","20","1224","34006","NO LEIDO","NO VERIFICADO","",""
 "PRIMARY_COMPILER","Host.Compilation","24","4255","144247","NO LEIDO","NO VERIFICADO","",""

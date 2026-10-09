@@ -28,6 +28,9 @@
 - [Host.Parser](components/HOST-PARSER.md)
   - [Test plan](test-plans/HOST-PARSER-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-04-HOST-PARSER-AUDIT.md)
+- [Host.AST](components/HOST-AST.md)
+  - [Test plan](test-plans/HOST-AST-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-04-HOST-AST-AUDIT.md)
 
 ## Artefactos mecánicos
 

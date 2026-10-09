@@ -1179,9 +1179,9 @@
     "lines": "39",
     "sha256": "19c93fb5c66672302b6cf3eea766785bfb4f6de72df7767c40c54250c9423f08",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-AST-AUDIT.md",
+    "section": "Host.AST",
     "notes": ""
   },
   {
@@ -1194,9 +1194,9 @@
     "lines": "18",
     "sha256": "b55e16457b94a629e7e46cf4d316fc7dd4b45d6435d8cc2f0957860722e57a32",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-AST-AUDIT.md",
+    "section": "Host.AST",
     "notes": ""
   },
   {
@@ -1209,9 +1209,9 @@
     "lines": "243",
     "sha256": "a017cb19b0d6b84e31c4183168bbaa6999678b3af286f50c8b97bf834d71c7f0",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-AST-AUDIT.md",
+    "section": "Host.AST",
     "notes": ""
   },
   {
@@ -1224,9 +1224,9 @@
     "lines": "172",
     "sha256": "7f974bb27aae16f42d6210fd49f4ba23194cce6c8518edc48d7d6741dc2f31bb",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-AST-AUDIT.md",
+    "section": "Host.AST",
     "notes": ""
   },
   {
@@ -1239,9 +1239,9 @@
     "lines": "250",
     "sha256": "30e967c889ab4c3256f0e76c6cfe3bfe066dc6acae834c03f925b3772a2a3509",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-AST-AUDIT.md",
+    "section": "Host.AST",
     "notes": ""
   },
   {
@@ -9309,9 +9309,9 @@
     "lines": "12",
     "sha256": "c551c224545d160a148d55a3a7302dabb2e9b0f9bb36040854d6d98170c901fe",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-AST-AUDIT.md",
+    "section": "Host.AST",
     "notes": ""
   },
   {
@@ -9324,9 +9324,9 @@
     "lines": "256",
     "sha256": "926851b8908d88cbe7fe7ec60d4ce62ec1e58a2bae86d8120ed765e3f11a83d9",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-AST-AUDIT.md",
+    "section": "Host.AST",
     "notes": ""
   },
   {
@@ -9339,9 +9339,9 @@
     "lines": "120",
     "sha256": "c6d46e8fc2278d3e6504c1399a057eaaf62c3d9575ad73d6468977165d53d360",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-AST-AUDIT.md",
+    "section": "Host.AST",
     "notes": ""
   },
   {
@@ -9354,9 +9354,9 @@
     "lines": "115",
     "sha256": "63e4c05afa08b66ecedb3dfeac5f64872dbeee8266322c871311362e035e6c9f",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-AST-AUDIT.md",
+    "section": "Host.AST",
     "notes": ""
   },
   {
@@ -9369,9 +9369,9 @@
     "lines": "147",
     "sha256": "888629e732fb5126aaee9713a42fcbfe01b8e9c980ffbb597ab0e27562c8175e",
     "revision": "3bb175443a18b2049c20d75443dd6743e2993903",
-    "state": "NO LEIDO",
-    "evidence": "",
-    "section": "",
+    "state": "AUDITADO",
+    "evidence": "audits/TANDA-04-HOST-AST-AUDIT.md",
+    "section": "Host.AST",
     "notes": ""
   },
   {
