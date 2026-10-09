@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "a74288bf2",
+  "last_completed_commit": "6b9a92027",
   "current_wave": 1,
   "current_component": "Host.Basic",
-  "next_contract": "CB-BAS-011",
-  "next_action": "Complete Host.Basic artifact-staging lifecycle contract CB-BAS-011 with TB-BAS-054..057: exhaustion, addStaged validation, deferred registration, and destructor cleanup.",
+  "next_contract": "CB-BAS-013",
+  "next_action": "Implement the dependency-free ArtifactTransaction commit boundary TB-BAS-058..059 before the preflight and publication cases.",
   "wave_status": {
     "0": {
       "status": "LISTA",
@@ -18,16 +18,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 53,
-      "product_cases_verified": 53
+      "product_cases_implemented": 57,
+      "product_cases_verified": 57
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 6,
-    "debug_ctest_total": 6,
-    "release_ctest_passed": 6,
-    "release_ctest_total": 6,
+    "debug_ctest_passed": 7,
+    "debug_ctest_total": 7,
+    "release_ctest_passed": 7,
+    "release_ctest_total": 7,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
