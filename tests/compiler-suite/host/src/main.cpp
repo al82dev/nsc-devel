@@ -135,6 +135,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetCpuFeatureSelectionModule(registry);
         nsc::suite::registerTargetDisplayNamesModule(registry);
         nsc::suite::registerTargetLlvmIdentityModule(registry);
+        nsc::suite::registerTargetMachineStringsModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
