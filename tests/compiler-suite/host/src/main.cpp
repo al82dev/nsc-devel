@@ -120,6 +120,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetElementStrideModule(registry);
         nsc::suite::registerTargetArrayLayoutModule(registry);
         nsc::suite::registerTargetPlainStructLayoutModule(registry);
+        nsc::suite::registerTargetAggregateOptionsModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
