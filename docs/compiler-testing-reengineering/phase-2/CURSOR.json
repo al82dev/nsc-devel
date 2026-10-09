@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "d101b0417",
+  "last_completed_commit": "802989272",
   "current_wave": 1,
   "current_component": "Host.Language",
-  "next_contract": "CL-LANG-009",
-  "next_action": "Keep the documented product blockers open; Phase 2 cannot modify product. CL-LANG-008 has 13/14 cases implemented and verified; TL-LANG-099 is blocked because expressionLoweringContract performs unchecked external-enum indexing. Audit CL-LANG-009 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_contract": "CL-LANG-010",
+  "next_action": "Keep the documented product blockers open; Phase 2 cannot modify product. CL-LANG-009 has 10/12 cases implemented and verified; TL-LANG-116 is blocked by a marker grammar without a trailing boundary and TL-LANG-121 by asymmetric duplicate handling in specialization dominance. Audit CL-LANG-010 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
@@ -98,6 +98,14 @@
       "blocked_cases": [
         "TL-LANG-099"
       ]
+    },
+    "CL-LANG-009": {
+      "implemented_cases": 10,
+      "verified_cases": 10,
+      "blocked_cases": [
+        "TL-LANG-116",
+        "TL-LANG-121"
+      ]
     }
   },
   "wave_status": {
@@ -110,16 +118,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 552,
-      "product_cases_verified": 552
+      "product_cases_implemented": 562,
+      "product_cases_verified": 562
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 68,
-    "debug_ctest_total": 68,
-    "release_ctest_passed": 68,
-    "release_ctest_total": 68,
+    "debug_ctest_passed": 69,
+    "debug_ctest_total": 69,
+    "release_ctest_passed": 69,
+    "release_ctest_total": 69,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
