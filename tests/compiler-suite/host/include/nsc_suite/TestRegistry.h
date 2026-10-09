@@ -121,4 +121,5 @@ void registerLanguageGenericSemanticsModule(TestRegistry& registry);
 void registerLanguageIntegrationQualityModule(TestRegistry& registry);
 void registerLanguageIterationSemanticsModule(TestRegistry& registry);
 void registerLanguageSurfaceModule(TestRegistry& registry);
+void registerLanguageMemoryModelModule(TestRegistry& registry);
 }
