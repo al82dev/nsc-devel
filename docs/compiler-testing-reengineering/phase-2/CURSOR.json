@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "802989272",
+  "last_completed_commit": "5ba0b482f",
   "current_wave": 1,
   "current_component": "Host.Language",
-  "next_contract": "CL-LANG-010",
-  "next_action": "Keep the documented product blockers open; Phase 2 cannot modify product. CL-LANG-009 has 10/12 cases implemented and verified; TL-LANG-116 is blocked by a marker grammar without a trailing boundary and TL-LANG-121 by asymmetric duplicate handling in specialization dominance. Audit CL-LANG-010 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_contract": "CL-LANG-011",
+  "next_action": "Keep the documented product blockers open; Phase 2 cannot modify product. CL-LANG-010 is complete with TL-LANG-124..141 implemented and verified. Audit CL-LANG-011 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
@@ -59,7 +59,8 @@
     "CL-LANG-004",
     "CL-LANG-005",
     "CL-LANG-006",
-    "CL-LANG-007"
+    "CL-LANG-007",
+    "CL-LANG-010"
   ],
   "independent_partial_contracts": {
     "CS-SRC-006": {
@@ -118,16 +119,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 562,
-      "product_cases_verified": 562
+      "product_cases_implemented": 580,
+      "product_cases_verified": 580
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 69,
-    "debug_ctest_total": 69,
-    "release_ctest_passed": 69,
-    "release_ctest_total": 69,
+    "debug_ctest_passed": 70,
+    "debug_ctest_total": 70,
+    "release_ctest_passed": 70,
+    "release_ctest_total": 70,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
