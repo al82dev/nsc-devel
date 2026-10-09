@@ -84,4 +84,5 @@ void registerTargetUnionLayoutModule(TestRegistry& registry);
 void registerTargetFlexibleArrayLayoutModule(TestRegistry& registry);
 void registerTargetBitFieldValidationModule(TestRegistry& registry);
 void registerTargetSequentialBitFieldModule(TestRegistry& registry);
+void registerTargetZeroWidthBitFieldModule(TestRegistry& registry);
 }

@@ -128,6 +128,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetFlexibleArrayLayoutModule(registry);
         nsc::suite::registerTargetBitFieldValidationModule(registry);
         nsc::suite::registerTargetSequentialBitFieldModule(registry);
+        nsc::suite::registerTargetZeroWidthBitFieldModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
