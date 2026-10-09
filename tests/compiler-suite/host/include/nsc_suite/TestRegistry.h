@@ -75,4 +75,5 @@ void registerTargetCheckedArithmeticModule(TestRegistry& registry);
 void registerTargetPowerOfTwoAlignmentModule(TestRegistry& registry);
 void registerTargetElementStrideModule(TestRegistry& registry);
 void registerTargetArrayLayoutModule(TestRegistry& registry);
+void registerTargetPlainStructLayoutModule(TestRegistry& registry);
 }
