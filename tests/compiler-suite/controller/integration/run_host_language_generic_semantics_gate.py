@@ -39,11 +39,7 @@ def main() -> int:
             raise RuntimeError(f"controller returned {code}")
         payload = json.loads(
             (root / "host-language-generics" / "results.json").read_text(encoding="utf-8"))
-        expected_ids = [
-            "TL-LANG-112", "TL-LANG-113", "TL-LANG-114", "TL-LANG-115",
-            "TL-LANG-117", "TL-LANG-118", "TL-LANG-119", "TL-LANG-120",
-            "TL-LANG-121", "TL-LANG-122", "TL-LANG-123",
-        ]
+        expected_ids = [f"TL-LANG-{number:03d}" for number in range(112, 124)]
         if [result["case_id"] for result in payload["results"]] != expected_ids:
             raise RuntimeError("controller did not execute the implemented CL-LANG-009 case set")
         counts = payload["counts"]

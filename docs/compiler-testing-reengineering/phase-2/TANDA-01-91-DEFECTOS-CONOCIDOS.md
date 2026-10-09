@@ -38,3 +38,8 @@ conocidos implementados y cuatro casos pendientes de infraestructura especial.
 La validación integrada se ejecutará después de este commit, conforme a la regla
 de preservar primero el estado reproducible. El resultado se añadirá en un
 commit posterior sin reescribir esta evidencia.
+
+La primera validación reveló que el gate de `CL-LANG-009` todavía omitía
+`TL-LANG-116`, aunque ese caso ya había sido corregido e implementado. La lista
+se cambió a la secuencia canónica `TL-LANG-112..123`; no se modificó ningún caso
+ni se redujo el contrato para hacer pasar el gate.
