@@ -3,11 +3,11 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "dd6ef8d6d",
+  "last_completed_commit": "71a33d5dc",
   "current_wave": 1,
   "current_component": "Host.Source",
   "next_contract": "CS-SRC-002",
-  "next_action": "Keep CS-SRC-002 open for the explicit TS-SRC-008 memory-bound blocker. Keep CS-SRC-006 partial because TS-SRC-040..041 lack a deterministic product-side mutation point. Keep CS-SRC-007 partial because TS-SRC-049 requires a versioned sanitizer misuse-probe profile. Host.Target CF-TGT-001..030 and Host.Diagnostics CD-DIA-001..005 are complete. Continue only proven-independent work by auditing Host.Diagnostics CD-DIA-006 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
+  "next_action": "Keep CS-SRC-002 open for the explicit TS-SRC-008 memory-bound blocker. Keep CS-SRC-006 partial because TS-SRC-040..041 lack a deterministic product-side mutation point. Keep CS-SRC-007 partial because TS-SRC-049 requires a versioned sanitizer misuse-probe profile. Host.Target CF-TGT-001..030 and Host.Diagnostics CD-DIA-001..006 are complete. Continue only proven-independent work by auditing Host.Diagnostics CD-DIA-007 next. Host.Basic TB-BAS-058..059 and TB-BAS-068..077 remain assigned to the future nsc_suite_controller+nsc integration executor.",
   "independent_completed_contracts": [
     "CS-SRC-003",
     "CS-SRC-004",
@@ -47,7 +47,8 @@
     "CD-DIA-002",
     "CD-DIA-003",
     "CD-DIA-004",
-    "CD-DIA-005"
+    "CD-DIA-005",
+    "CD-DIA-006"
   ],
   "independent_partial_contracts": {
     "CS-SRC-006": {
@@ -76,16 +77,16 @@
     "1": {
       "status": "EN CURSO",
       "product_cases_expected": 747,
-      "product_cases_implemented": 396,
-      "product_cases_verified": 396
+      "product_cases_implemented": 401,
+      "product_cases_verified": 401
     }
   },
   "validation": {
     "python_controller_tests": 51,
-    "debug_ctest_passed": 53,
-    "debug_ctest_total": 53,
-    "release_ctest_passed": 53,
-    "release_ctest_total": 53,
+    "debug_ctest_passed": 54,
+    "debug_ctest_total": 54,
+    "release_ctest_passed": 54,
+    "release_ctest_total": 54,
     "debug_dynamic_crt_imports": 0,
     "release_dynamic_crt_imports": 0
   },
