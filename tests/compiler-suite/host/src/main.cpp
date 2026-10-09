@@ -142,6 +142,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerTargetAssemblyFeatureRequirementModule(registry);
         nsc::suite::registerDiagnosticSeverityModule(registry);
         nsc::suite::registerDiagnosticIdentityModule(registry);
+        nsc::suite::registerDiagnosticRecordModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())

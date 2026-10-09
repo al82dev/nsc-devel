@@ -98,4 +98,5 @@ void registerTargetArm64AssemblyRegisterModule(TestRegistry& registry);
 void registerTargetAssemblyFeatureRequirementModule(TestRegistry& registry);
 void registerDiagnosticSeverityModule(TestRegistry& registry);
 void registerDiagnosticIdentityModule(TestRegistry& registry);
+void registerDiagnosticRecordModule(TestRegistry& registry);
 }

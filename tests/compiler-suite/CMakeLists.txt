@@ -69,12 +69,14 @@ add_executable(
     host/modules/TargetAssemblyFeatureRequirementModule.cpp
     host/modules/DiagnosticSeverityModule.cpp
     host/modules/DiagnosticIdentityModule.cpp
+    host/modules/DiagnosticRecordModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceManager.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetDataLayout.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetInfo.cpp")
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetInfo.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Diagnostics/Diagnostic.cpp")
 
 target_include_directories(
     nsc_component_tests
@@ -513,6 +515,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-diagnostics-identity-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-diagnostics-record-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_diagnostics_record_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-diagnostics-record-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND
