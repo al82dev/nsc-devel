@@ -117,4 +117,5 @@ void registerLanguageConcurrencyModule(TestRegistry& registry);
 void registerLanguageLifetimeModule(TestRegistry& registry);
 void registerLanguageErrorSemanticsModule(TestRegistry& registry);
 void registerLanguageExpressionSemanticsModule(TestRegistry& registry);
+void registerLanguageGenericSemanticsModule(TestRegistry& registry);
 }

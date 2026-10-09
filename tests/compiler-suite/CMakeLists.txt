@@ -88,6 +88,7 @@ add_executable(
     host/modules/LanguageLifetimeModule.cpp
     host/modules/LanguageErrorSemanticsModule.cpp
     host/modules/LanguageExpressionSemanticsModule.cpp
+    host/modules/LanguageGenericSemanticsModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp"
@@ -105,7 +106,8 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/CoroutineSemantics.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/CrossModuleLifetime.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/ErrorSemantics.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/ExpressionErgonomics.cpp")
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/ExpressionErgonomics.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Language/GenericSemantics.cpp")
 
 target_include_directories(
     nsc_component_tests
@@ -706,6 +708,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-language-expression-semantics-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-language-generic-semantics-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_language_generic_semantics_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-language-generic-semantics-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND

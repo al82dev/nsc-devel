@@ -161,6 +161,7 @@ int main(int argumentCount, char** arguments)
         nsc::suite::registerLanguageLifetimeModule(registry);
         nsc::suite::registerLanguageErrorSemanticsModule(registry);
         nsc::suite::registerLanguageExpressionSemanticsModule(registry);
+        nsc::suite::registerLanguageGenericSemanticsModule(registry);
         if (options.list)
         {
             for (const auto& testCase : registry.cases())
