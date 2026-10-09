@@ -1,0 +1,22 @@
+artifact_id,producer,artifact,kind,consumer_or_destination,evidence,state
+PA-001,nsc,nsc.exe,EXECUTABLE,bin,CMakeLists.txt:654-655,CLASIFICADO
+PA-002,nsc_build_identity,BuildId.h,GENERATED_HEADER,nsc_basic,CMakeLists.txt:132-156,CLASIFICADO
+PA-003,nsc_language_service,NativeSharpLanguageServiceTargets.cmake,CMAKE_EXPORT,nsc-lsp build tree,CMakeLists.txt:403-421,CLASIFICADO
+PA-004,nsc,NativeSharpToolchain.contract,CONTRACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-005,nsc,NativeSharpCompatibility.policy,POLICY,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-006,nsc,NativeSharp3Migration.baseline,BASELINE_CONTRACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-007,nsc,NativeSharp3BreakingChanges.ledger,LEDGER,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-008,nsc,NativeSharp3Migration.guide,GUIDE,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-009,nsc,NativeSharp3RC.freeze,FREEZE_CONTRACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-010,nsc,NativeSharp3Compatibility.matrix,COMPATIBILITY_MATRIX,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-011,nsc,NativeSharp3FinalBaseline.contract,BASELINE_CONTRACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-012,nsc,NativeSharp3Promotion.act,PROMOTION_ACT,share/nativesharp/toolchain,CMakeLists.txt:698-890,CLASIFICADO
+PA-013,nsc,NativeSharpRuntime.abi,RUNTIME_CONTRACT,share/nativesharp/runtime,CMakeLists.txt:698-890,CLASIFICADO
+PA-014,nsc,NativeSharpConcurrency.contract,CONCURRENCY_CONTRACT,share/nativesharp/runtime,CMakeLists.txt:698-890,CLASIFICADO
+PA-015,nsc,NativeSharpNumeric.contract,NUMERIC_CONTRACT,share/nativesharp/runtime,CMakeLists.txt:698-890,CLASIFICADO
+PA-016,nsc,NativeSharp.Runtime.Win32.lib,STATIC_LIBRARY,lib/nativesharp/runtime,CMakeLists.txt:698-890,CLASIFICADO
+PA-017,CMake,NativeSharpInstallation.files,INSTALL_MANIFEST,share/nativesharp/toolchain,CMakeLists.txt:797-890,CLASIFICADO
+PA-018,CMake,spec/**,SPECIFICATION_TREE,share/nativesharp/spec,CMakeLists.txt:772-873,CLASIFICADO
+PA-019,CMake,docs/**,DOCUMENTATION_TREE,share/nativesharp/docs,CMakeLists.txt:777-874,CLASIFICADO
+PA-020,CMake,nativesharp-runtime.nsimports,SDK_IMPORT_MAP,sdk/win64,CMakeLists.txt:780-876,CLASIFICADO
+PA-021,CMake,modular NativeSharp libraries,SOURCE_LIBRARY_TREE,lib,CMakeLists.txt:750-871,CLASIFICADO

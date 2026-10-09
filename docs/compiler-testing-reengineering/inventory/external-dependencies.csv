@@ -1,0 +1,7 @@
+"dependency_id","name","kind","consumer","contract","evidence","state"
+"ED-001","NSLink","EXECUTABLE","CMake configure and nsc-generated products","Required path via NSC_NSLINK_EXECUTABLE or NSC_NSLINK_ROOT","CMakeLists.txt:18-56","CLASIFICADO"
+"ED-002","LLVM 23.x","STATIC_COMPONENT_LIBRARIES","nsc_llvm","Qualified 23.x CMake package; dynamic LLVM-C only development mode","CMakeLists.txt:420-558","CLASIFICADO"
+"ED-003","Visual Studio 2026 static CRT x64","STATIC_RUNTIME","nsc host on Windows","Pinned A:/vc2026-runtime Release set; /MT","CMakeLists.txt:413-453","CLASIFICADO"
+"ED-004","Visual Studio 2026 DIA SDK","BUILD_ONLY_SDK","LLVM static PDB support while linking nsc","Build-only; tests do not discover Visual Studio","CMakeLists.txt:455-474","CLASIFICADO"
+"ED-005","zlib vendored","STATIC_DEPENDENCY","LLVM static support","Pinned target from NativeSharpLlvmStaticDependencies.cmake","cmake/NativeSharpLlvmStaticDependencies.cmake","CLASIFICADO"
+"ED-006","zstd vendored","STATIC_DEPENDENCY","LLVM static support","Pinned target from NativeSharpLlvmStaticDependencies.cmake","cmake/NativeSharpLlvmStaticDependencies.cmake","CLASIFICADO"

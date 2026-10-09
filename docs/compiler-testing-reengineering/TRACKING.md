@@ -3,8 +3,8 @@
 | Tanda | Entregable | Estado | Inventariados | Revisados | Pendientes |
 |---:|---|---|---:|---:|---:|
 | 01 | Alcance, reglas, inventario canónico de archivos y cursor | LISTA | 974 | 974 | 0 |
-| 02 | Grafo de componentes, dependencias y fronteras | EN CURSO | 57 | 0 | 57 |
-| 03 | Basic, Source y Diagnostics | PENDIENTE | 0 | 0 | Por determinar |
+| 02 | Grafo de componentes, dependencias y fronteras | LISTA | 57 | 57 | 0 |
+| 03 | Basic, Source y Diagnostics | EN CURSO | 25 | 0 | 25 |
 | 04 | Lexer, Parser y AST | PENDIENTE | 0 | 0 | Por determinar |
 | 05 | Language, tipos y Sema | PENDIENTE | 0 | 0 | Por determinar |
 | 06 | Frontend, proyectos, construcción, genéricos y ownership | PENDIENTE | 0 | 0 | Por determinar |

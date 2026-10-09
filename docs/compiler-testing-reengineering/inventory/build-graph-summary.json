@@ -1,0 +1,14 @@
+{
+  "targets": 12,
+  "host_sources": 242,
+  "mapped_host_sources": 242,
+  "selfhost_sources": 27,
+  "edges": 23,
+  "external_dependencies": 6,
+  "missing": 0,
+  "extra": 0,
+  "targets_sha256": "90582bddf630c0847dba38f8b382015ebe6768812d1febd48b62dca50a0afa21",
+  "sources_sha256": "1272baf274a197f4811fa11c0e49ad9e092cb06bacf4e6f55f95c3a91dee6f4f",
+  "edges_sha256": "94009b61f757c7eb4646a582892dc8fd18d42af6e2bb36daf759eed9d2a5340b",
+  "external_sha256": "e0a7d6311e75fd75d1944cc8c459303b956eb0e2b181f0d5c41b8d1e388fee17"
+}
