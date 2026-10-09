@@ -40,6 +40,9 @@
 - [Host.Frontend](components/HOST-FRONTEND.md)
   - [Test plan](test-plans/HOST-FRONTEND-TEST-PLAN.md)
   - [Auditoría independiente](audits/TANDA-06-HOST-FRONTEND-AUDIT.md)
+- [Host.HIR](components/HOST-HIR.md)
+  - [Test plan](test-plans/HOST-HIR-TEST-PLAN.md)
+  - [Auditoría independiente](audits/TANDA-07-HOST-HIR-AUDIT.md)
 
 ## Artefactos mecánicos
 
