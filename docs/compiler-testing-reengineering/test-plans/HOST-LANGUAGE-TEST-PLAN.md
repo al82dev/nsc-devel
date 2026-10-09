@@ -170,7 +170,7 @@ forma parte del caso: no se permite escoger sólo una muestra positiva.
 | TL-LANG-113 | CL-LANG-009 | normalizeConstraints con atom vacio y tres conflictos | primer error exacto y result definido | PR |
 | TL-LANG-114 | CL-LANG-009 | validateConstGeneric con type/value presentes o vacios | aceptacion o error exacto | PR |
 | TL-LANG-115 | CL-LANG-009 | constGenericArgumentMarker y parse round-trip con longitudes/bordes | campos exactos | PR |
-| TL-LANG-116 | CL-LANG-009 | parse marker con prefijo, decimal, overflow, separator y trailing invalidos | false y outputs definidos | PR |
+| TL-LANG-116 | CL-LANG-009 | parse marker con prefijo, decimal, overflow y separator invalidos; valor normalizado como sufijo completo | rechazos dejan outputs definidos; un marker valido consume todo el sufijo como valor | PR |
 | TL-LANG-117 | CL-LANG-009 | genericInstantiationIdentity con type/value args vacios y mixtos | identidad length-prefixed y orden exactos | PR |
 | TL-LANG-118 | CL-LANG-009 | validatePackExpansion con 0/1/N packs, longitudes iguales/desiguales y budget | aceptacion o diagnostico exacto | PR |
 | TL-LANG-119 | CL-LANG-009 | bidirectionalInferenceAccepts sobre igualdad/diferencia y arbitrary conversion | true solo igualdad sin conversion arbitraria | PR |

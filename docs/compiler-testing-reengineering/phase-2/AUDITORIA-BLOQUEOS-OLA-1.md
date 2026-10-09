@@ -97,3 +97,24 @@ denominador, simular los casos o convertir defectos en resultados esperados
 violaría el `SCOPE LOCK`. El siguiente paso requiere una decisión explícita que
 autorice, por caso o por categoría, ampliar infraestructura, corregir producto o
 enmendar el test plan.
+
+## Adenda de decisión — 2026-10-09
+
+La autoridad del producto resolvió posteriormente las cuatro categorías sin
+alterar el denominador de 747 casos:
+
+1. Los siete defectos observables conservarán pruebas reales. Esas pruebas pueden
+   permanecer rojas hasta que el producto sea corregido en una tarea distinta;
+   no se convierten en éxitos ni en exclusiones.
+2. `TL-LANG-034` y `TL-LANG-201` quedan como capacidades de producto pendientes.
+3. `TS-SRC-008`, `TS-SRC-040`, `TS-SRC-041` y `TS-SRC-049` quedan pendientes de
+   infraestructura especial, con sus alternativas documentadas en
+   `PENDIENTES-TESTING-Y-FEATURES.md`.
+4. La contradicción de `TL-LANG-116` se resolvió a favor del formato implementado:
+   `normalizedValue` es el sufijo completo. La expectativa de un `trailing`
+   separable era un defecto del test plan y se retiró únicamente de ese caso.
+
+Esta adenda reemplaza sólo la decisión operativa final de la auditoría original.
+La evidencia y clasificación histórica anteriores se conservan. La ola vuelve a
+`EN CURSO`; sus pendientes siguen visibles y no se permite declararla completa
+mientras haya casos sin verificar.

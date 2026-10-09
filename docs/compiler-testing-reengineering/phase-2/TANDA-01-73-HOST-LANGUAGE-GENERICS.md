@@ -88,3 +88,11 @@ caso requerido expresamente por el plan.
 `CL-LANG-009` queda con 10 casos implementados y verificados y dos bloqueos de producto
 documentados. La Fase 2 puede continuar con `CL-LANG-010`, pero no declarar esta ola completa
 mientras `TL-LANG-116` y `TL-LANG-121` sigan bloqueados.
+
+## Adenda de contrato — 2026-10-09
+
+La revisión del productor y parser confirmó que `normalizedValue` ocupa todo el
+sufijo del marker. Por tanto, `TL-LANG-116` no es un bloqueo de producto: la
+expectativa de `trailing` inválido era irrepresentable y fue corregida en el test
+plan. `TL-LANG-121` conserva su clasificación como defecto observable y tendrá
+una prueba real, sin invertir ni relajar el oráculo.

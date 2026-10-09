@@ -3,7 +3,7 @@
 | Ola | Alcance | Estado | Casos previstos | Implementados | Verificados |
 |---:|---|---|---:|---:|---:|
 | 0 | Infraestructura mínima | LISTA | 0 de producto / 3 sintéticos | 3 | 3 |
-| 1 | Fundaciones host | BLOQUEADA | 747 | 733 | 733 |
+| 1 | Fundaciones host | EN CURSO — 7 defectos y 6 pendientes explícitos | 747 | 733 | 733 |
 | 2 | Sintaxis y semántica frontal | PENDIENTE | 1,197 | 0 | 0 |
 | 3 | IR y optimización | PENDIENTE | 1,784 | 0 | 0 |
 | 4 | Sesión, frontend y method bodies | PENDIENTE | 920 | 0 | 0 |
