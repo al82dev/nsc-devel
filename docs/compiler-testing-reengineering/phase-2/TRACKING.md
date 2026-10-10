@@ -152,6 +152,15 @@ el grafo de dependencias entre IDs de caso y productores externos. Las `14`
 pruebas unitarias dirigidas del esquema pasan. No se alteró ningún caso ni
 oráculo.
 
+Los quince gates host por componente dejaron de copiar denominadores de una
+revisión. Ahora reutilizan la selección productiva sobre el manifiesto y los
+inventarios canónicos, y validan identidad, orden y estado terminal de cada
+fila seleccionada. La auditoría estática cubre `19` componentes y `4,774`
+selecciones ejecutables en Debug; las `25` pruebas Python dirigidas del esquema,
+selector y helper pasan. `Host.nsc` conserva sus `160` casos como
+`InfrastructurePending` derivados del inventario, sin promoverlos al manifiesto.
+No se compiló ni ejecutó producto.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

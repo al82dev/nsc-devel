@@ -9,31 +9,7 @@ from pathlib import Path
 CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 from run_suite import run
-
-
-EXECUTABLE_CONTRACTS = (
-    *range(11, 19),
-    22,
-    *range(24, 29),
-    34,
-    35,
-    39,
-    43,
-    44,
-    48,
-)
-
-
-def _expected_ids() -> list[str]:
-    identifiers: list[str] = []
-    for contract in EXECUTABLE_CONTRACTS:
-        first = ((contract - 1) * 8) + 1
-        for variant in range(8):
-            identifiers.append(f"TF-INTEROP-{first + variant:03d}")
-    return identifiers
-
-
-EXPECTED_IDS = _expected_ids()
+from component_gate_support import assert_component_results, component_manifest_cases
 
 
 def main() -> int:
@@ -47,18 +23,13 @@ def main() -> int:
     options.work_parent.mkdir(parents=True, exist_ok=True)
 
     manifest_path = options.source_root / "manifest" / "cases.jsonl"
-    manifests = [
-        json.loads(line)
-        for line in manifest_path.read_text(encoding="utf-8").splitlines()
-    ]
-    interop_manifests = [
-        case for case in manifests if case["component"] == "Host.Interop"
-    ]
-    if [case["case_id"] for case in interop_manifests] != EXPECTED_IDS:
-        raise RuntimeError(
-            "manifest does not contain exactly the 160 executable Host.Interop "
-            "cases in canonical order"
-        )
+    interop_manifests = component_manifest_cases(
+        options.source_root,
+        options.repository_root,
+        "Host.Interop",
+        "NIGHTLY",
+        options.build_mode,
+    )
 
     inventory = (
         options.repository_root
@@ -99,17 +70,7 @@ def main() -> int:
         payload = json.loads(
             (root / "host-interop" / "results.json").read_text(encoding="utf-8")
         )
-        if [result["case_id"] for result in payload["results"]] != EXPECTED_IDS:
-            raise RuntimeError(
-                "controller did not execute exactly the 160 executable "
-                "Host.Interop cases in canonical order"
-            )
-        counts = payload["counts"]
-        unexpected = any(
-            count != 0 for status, count in counts.items() if status != "PASS"
-        )
-        if counts["PASS"] != len(EXPECTED_IDS) or unexpected:
-            raise RuntimeError(f"unexpected Host.Interop result counts: {counts}")
+        assert_component_results(payload, interop_manifests, "Host.Interop")
     return 0
 
 

@@ -9,22 +9,7 @@ from pathlib import Path
 CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 from run_suite import run
-
-
-EXECUTABLE_CONTRACTS = tuple(range(1, 11))
-
-
-def expected_ids() -> list[str]:
-    identifiers: list[str] = []
-    for contract in EXECUTABLE_CONTRACTS:
-        first = ((contract - 1) * 8) + 1
-        identifiers.extend(
-            f"TF-RUNTIME-{ordinal:03d}" for ordinal in range(first, first + 8)
-        )
-    return identifiers
-
-
-EXPECTED_IDS = expected_ids()
+from component_gate_support import assert_component_results, component_manifest_cases
 
 
 def main() -> int:
@@ -38,18 +23,13 @@ def main() -> int:
     options.work_parent.mkdir(parents=True, exist_ok=True)
 
     manifest_path = options.source_root / "manifest" / "cases.jsonl"
-    manifests = [
-        json.loads(line)
-        for line in manifest_path.read_text(encoding="utf-8").splitlines()
-    ]
-    runtime_manifests = [
-        case for case in manifests if case["component"] == "Host.Runtime"
-    ]
-    if [case["case_id"] for case in runtime_manifests] != EXPECTED_IDS:
-        raise RuntimeError(
-            "fragment does not contain exactly the 80 executable Host.Runtime "
-            "cases in canonical order"
-        )
+    runtime_manifests = component_manifest_cases(
+        options.source_root,
+        options.repository_root,
+        "Host.Runtime",
+        "NIGHTLY",
+        options.build_mode,
+    )
     inventory = (
         options.repository_root
         / "docs"
@@ -89,18 +69,7 @@ def main() -> int:
         payload = json.loads(
             (root / "host-runtime" / "results.json").read_text(encoding="utf-8")
         )
-        result_ids = [result["case_id"] for result in payload["results"]]
-        if result_ids != EXPECTED_IDS:
-            raise RuntimeError(
-                "controller did not execute exactly the 80 executable "
-                "Host.Runtime cases in canonical order"
-            )
-        counts = payload["counts"]
-        unexpected = any(
-            count != 0 for status, count in counts.items() if status != "PASS"
-        )
-        if counts["PASS"] != len(EXPECTED_IDS) or unexpected:
-            raise RuntimeError(f"unexpected Host.Runtime result counts: {counts}")
+        assert_component_results(payload, runtime_manifests, "Host.Runtime")
     return 0
 
 

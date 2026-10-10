@@ -351,3 +351,19 @@ ejecutores y sus pruebas unitarias, más la evidencia de Validación 15. Se
 prohíbe cambiar casos, oráculos, resultados esperados, producto o batería
 histórica. La validación carga el manifiesto y ejecuta sólo pruebas Python del
 esquema; no compila ni ejecuta producto.
+
+### Enmienda: denominadores vivos de gates host por componente
+
+Los gates de componente host deben usar la misma carga, validación y selección
+que el controlador productivo. Se prohíbe duplicar en cada gate rangos de IDs,
+listas de exclusión, repartos por perfil o capa y cantidades de resultados que
+dependan de una revisión concreta. Cada gate conserva la obligación de recibir
+exactamente un resultado terminal por caso seleccionado y de cotejar los
+estados con `expected_outcome`.
+
+El presupuesto queda limitado al helper compartido de selección/resultados,
+los quince gates host por componente, sus pruebas Python y la evidencia de
+Validación 16. `Host.nsc`, que aún no tiene filas ejecutables, deriva su
+inventario pendiente de los registros canónicos y conserva esa frontera. No se
+modifican casos, oráculos, resultados esperados, producto ni batería histórica;
+no se configura, compila ni ejecuta producto.

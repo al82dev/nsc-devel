@@ -1,24 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import csv
-import json
 import subprocess
 from pathlib import Path
 
-
-EXPECTED_IDS = [f"TF-NSC-{ordinal:03d}" for ordinal in range(1, 161)]
-EXPECTED_CONTRACTS = [
-    f"CF-NSC-{contract:03d}"
-    for contract in range(1, 21)
-    for _variant in range(1, 9)
-]
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    """Load one canonical UTF-8 inventory while preserving its published row order."""
-    with path.open("r", encoding="utf-8", newline="") as stream:
-        return list(csv.DictReader(stream))
+from selfhost_inventory import load_component_inventory, read_jsonl
 
 
 def listed_nsc_cases(host_executable: Path) -> list[tuple[str, str]]:
@@ -71,44 +57,21 @@ def main() -> int:
     parser.add_argument("--repository-root", type=Path, required=True)
     options = parser.parse_args()
 
-    inventory = (
-        options.repository_root
-        / "docs"
-        / "compiler-testing-reengineering"
-        / "inventory"
+    inventory = load_component_inventory(options.repository_root, "Host.nsc")
+    expected = sorted(
+        (case_id, row["contract_id"])
+        for case_id, row in inventory.design_by_id.items()
     )
-    design = [
-        row
-        for row in read_csv(inventory / "test-case-design.csv")
-        if row["component"] == "Host.nsc"
-    ]
-    allocation = [
-        row
-        for row in read_csv(inventory / "suite-case-allocation.csv")
-        if row["component"] == "Host.nsc"
-    ]
-    if [row["case_id"] for row in design] != EXPECTED_IDS:
-        raise RuntimeError("test-case design does not contain canonical TF-NSC-001..160")
-    if [row["contract_id"] for row in design] != EXPECTED_CONTRACTS:
-        raise RuntimeError("test-case design does not preserve eight cases per Host.nsc contract")
-    if [row["case_id"] for row in allocation] != EXPECTED_IDS:
-        raise RuntimeError("suite allocation does not contain canonical TF-NSC-001..160")
-    layers = [row["layer"] for row in allocation]
-    if layers.count("unit") != 80 or layers.count("process") != 80:
-        raise RuntimeError("Host.nsc layer distribution is not the canonical 80 unit and 80 process")
 
     manifest_path = options.source_root / "manifest" / "cases.jsonl"
-    manifests = [
-        json.loads(line)
-        for line in manifest_path.read_text(encoding="utf-8").splitlines()
-    ]
+    manifests = read_jsonl(manifest_path)
     if any(case["component"] == "Host.nsc" for case in manifests):
         raise RuntimeError(
             "Host.nsc has no executable cases yet; its manifest fragment must remain empty"
         )
 
     listed = listed_nsc_cases(options.host_executable)
-    if listed != list(zip(EXPECTED_IDS, EXPECTED_CONTRACTS, strict=True)):
+    if listed != expected:
         raise RuntimeError("host registry does not expose the complete ordered Host.nsc inventory")
     assert_no_required_nsc_cases(options.host_executable)
     return 0

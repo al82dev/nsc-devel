@@ -11,6 +11,7 @@ CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 
 from run_suite import run
+from component_gate_support import assert_component_results, component_manifest_cases
 
 
 def main() -> int:
@@ -47,20 +48,14 @@ def main() -> int:
         payload = json.loads(
             (root / "host-basic-values" / "results.json").read_text(encoding="utf-8")
         )
-        results = payload["results"]
-        expected_ids = []
-        for line in manifest.read_text(encoding="utf-8").splitlines():
-            case = json.loads(line)
-            if case["component"] == "Host.Basic" and case["profile"] == "PR":
-                expected_ids.append(case["case_id"])
-        expected_ids.sort()
-        if [result["case_id"] for result in results] != expected_ids:
-            raise RuntimeError("controller did not execute the canonical Host.Basic PR set")
-        counts = payload["counts"]
-        if counts["PASS"] != len(expected_ids) or any(
-            count != 0 for status, count in counts.items() if status != "PASS"
-        ):
-            raise RuntimeError(f"unexpected Host.Basic result counts: {counts}")
+        cases = component_manifest_cases(
+            options.source_root,
+            options.repository_root,
+            "Host.Basic",
+            "PR",
+            options.build_mode,
+        )
+        assert_component_results(payload, cases, "Host.Basic PR")
     return 0
 
 

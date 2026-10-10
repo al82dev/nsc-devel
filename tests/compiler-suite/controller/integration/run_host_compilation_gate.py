@@ -4,17 +4,12 @@ import argparse
 import json
 import sys
 import tempfile
-from collections import Counter
 from pathlib import Path
 
 CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 from run_suite import run
-
-
-EXPECTED_IDS = [f"TF-COMPILATION-{number:03d}" for number in range(1, 417)]
-EXPECTED_PROFILES = {"PR": 364, "NIGHTLY": 52}
-EXPECTED_LAYERS = {"unit": 328, "integration": 88}
+from component_gate_support import assert_component_results, component_manifest_cases
 
 
 def main() -> int:
@@ -28,22 +23,13 @@ def main() -> int:
     options.work_parent.mkdir(parents=True, exist_ok=True)
 
     manifest_path = options.source_root / "manifest" / "cases.jsonl"
-    manifests = [
-        json.loads(line)
-        for line in manifest_path.read_text(encoding="utf-8").splitlines()
-    ]
-    compilation_manifests = [
-        case for case in manifests if case["component"] == "Host.Compilation"
-    ]
-    if [case["case_id"] for case in compilation_manifests] != EXPECTED_IDS:
-        raise RuntimeError(
-            "manifest does not contain exactly TF-COMPILATION-001..416 "
-            "in canonical order"
-        )
-    if Counter(case["profile"] for case in compilation_manifests) != EXPECTED_PROFILES:
-        raise RuntimeError("Host.Compilation manifest profile distribution is not canonical")
-    if Counter(case["layer"] for case in compilation_manifests) != EXPECTED_LAYERS:
-        raise RuntimeError("Host.Compilation manifest layer distribution is not canonical")
+    compilation_manifests = component_manifest_cases(
+        options.source_root,
+        options.repository_root,
+        "Host.Compilation",
+        "NIGHTLY",
+        options.build_mode,
+    )
 
     inventory = (
         options.repository_root
@@ -84,17 +70,11 @@ def main() -> int:
         payload = json.loads(
             (root / "host-compilation" / "results.json").read_text(encoding="utf-8")
         )
-        if [result["case_id"] for result in payload["results"]] != EXPECTED_IDS:
-            raise RuntimeError(
-                "controller did not execute exactly TF-COMPILATION-001..416 "
-                "in canonical order"
-            )
-        counts = payload["counts"]
-        unexpected = any(
-            count != 0 for status, count in counts.items() if status != "PASS"
+        assert_component_results(
+            payload,
+            compilation_manifests,
+            "Host.Compilation",
         )
-        if counts["PASS"] != len(EXPECTED_IDS) or unexpected:
-            raise RuntimeError(f"unexpected Host.Compilation result counts: {counts}")
     return 0
 
 
