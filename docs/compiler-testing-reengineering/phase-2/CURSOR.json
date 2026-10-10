@@ -6,10 +6,44 @@
   "last_completed_commit": "91aed6dce",
   "last_completed_batch": "TANDA-02-06",
   "last_completed_case": "TP-PAR-536",
-  "current_wave": 2,
-  "current_component": "Host.Sema",
-  "next_contract": "CS-SEMA-001..030",
-  "next_action": "Materialize and integrate TS-SEMA-001..321 without running validation; then continue to the next implementation wave.",
+  "current_wave": 3,
+  "current_component": "Host.CFG;Host.Dominance;Host.SSA",
+  "current_components": [
+    "Host.CFG",
+    "Host.Dominance",
+    "Host.SSA"
+  ],
+  "next_contract": "CF-CFG-001..026;CF-DOM-001..032;CF-SSA-001..042",
+  "next_action": "Integrate the already materialized Host.Sema and Host.HIR cases while agents materialize Host.CFG, Host.Dominance, and Host.SSA; do not run validation until all Phase 2 implementation is complete.",
+  "implementation_materialization": {
+    "Host.Sema": {
+      "expected": 321,
+      "materialized": 321,
+      "integrated": false,
+      "verified": 0
+    },
+    "Host.HIR": {
+      "expected": 232,
+      "materialized": 232,
+      "integrated": false,
+      "verified": 0
+    },
+    "Host.CFG": {
+      "expected": 208,
+      "materialized": 0,
+      "status": "IN_PROGRESS"
+    },
+    "Host.Dominance": {
+      "expected": 256,
+      "materialized": 0,
+      "status": "IN_PROGRESS"
+    },
+    "Host.SSA": {
+      "expected": 336,
+      "materialized": 0,
+      "status": "IN_PROGRESS"
+    }
+  },
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
     "revision": "11d2ae852",
@@ -243,15 +277,31 @@
     "2": {
       "status": "EN CURSO",
       "product_cases_expected": 1197,
-      "product_cases_implemented": 870,
+      "product_cases_implemented": 1191,
       "product_cases_verified": 333,
       "known_failure_cases_implemented": 1,
       "validation_pending_cases": 0,
       "special_infrastructure_pending": 6,
       "current_component": "Host.Sema",
       "current_component_cases_expected": 321,
+      "current_component_cases_materialized": 321,
+      "current_component_validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE",
       "previous_component": "Host.Parser",
       "previous_component_cases_materialized": 536,
+      "previous_component_validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
+    },
+    "3": {
+      "status": "EN CURSO",
+      "product_cases_expected": 1784,
+      "product_cases_implemented": 232,
+      "product_cases_verified": 0,
+      "current_components": [
+        "Host.CFG",
+        "Host.Dominance",
+        "Host.SSA"
+      ],
+      "previous_component": "Host.HIR",
+      "previous_component_cases_materialized": 232,
       "previous_component_validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
     }
   },
