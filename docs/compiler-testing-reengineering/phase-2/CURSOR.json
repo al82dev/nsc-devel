@@ -10,8 +10,8 @@
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "NSCBUILDER3-O0-DEFAULT",
-  "next_action": "Validate complete compiler progress and construction cancellation in the next user-run build, then continue the authorized deferred Phase 2 validation.",
+  "current_batch": "NSCBUILDER3-TERMINAL-PROGRESS",
+  "next_action": "Validate that the next user-run build closes at total/total and TERMINADO (100%), then continue the authorized deferred Phase 2 validation.",
   "implementation_materialization": {
     "Host.Source": {
       "expected": 58,
@@ -731,6 +731,7 @@
       "current_step_description": true,
       "construction_cancel_button": true,
       "default_host_optimization": "O0",
+      "terminal_success_indicator": true,
       "full_log_preserved": true,
       "static_validation": "PASS",
       "functional_validation": "PENDING_USER_EXECUTION"

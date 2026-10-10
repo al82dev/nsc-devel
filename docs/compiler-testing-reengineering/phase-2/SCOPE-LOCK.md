@@ -118,3 +118,17 @@ El selector de optimización host de la construcción de NSC debe iniciar en
 `O0`. El único cambio funcional autorizado es ordenar sus opciones como
 `O0`, `O1`, `O2`, `O3`; no se modifica la selección de optimización de la suite
 ni los comandos resultantes para una opción elegida explícitamente.
+
+### Cambio cerrado: cierre inequívoco del progreso de construcción
+
+La finalización correcta de una operación debe sustituir el último porcentaje
+observado por un estado terminal inequívoco. El cambio se limita a la pestaña
+`Construcción`: cuando el proceso termina correctamente, la barra alcanza su
+máximo y muestra `TERMINADO — 100%`; si existía un total de Ninja, conserva
+además el contador `total/total`. La etiqueta inferior deja de presentar el
+último paso como si continuara activo.
+
+Permanecen idénticos los comandos, la detección de progreso, la salida completa,
+los artefactos generados y los estados de error o cancelación. No se infiere el
+éxito por el porcentaje: únicamente el resultado terminal del proceso puede
+activar este estado.

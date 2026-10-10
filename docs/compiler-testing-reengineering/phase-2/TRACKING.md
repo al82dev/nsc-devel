@@ -42,6 +42,9 @@ lado de `Construir NSC`, habilitado sólo durante configuración o construcción
 y conectado al árbol de procesos activo.
 La construcción de NSC y la ejecución de pruebas seleccionan `O0` de forma
 predeterminada; los niveles superiores siguen disponibles de forma explícita.
+Cuando una operación termina correctamente, el indicador de construcción ya no
+queda visualmente en el último paso de Ninja: alcanza `total/total`, muestra
+`TERMINADO (100%)` y sustituye la descripción activa por un cierre explícito.
 
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`

@@ -1499,6 +1499,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.path_edits: dict[str, QLineEdit] = {}
             self.active_operation = ""
             self.active_modes: tuple[str, ...] = ()
+            self.infrastructure_ninja_total = 0
             self.setWindowTitle(APP_NAME)
             self.resize(1600, 960)
             self._build_ui()
@@ -1863,6 +1864,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.infrastructure_progress.setValue(0)
                 self.infrastructure_progress.setFormat("Esperando pasos de Ninja")
                 self.infrastructure_progress_detail.setText("Esperando salida completa del proceso")
+                self.infrastructure_ninja_total = 0
                 self.active_operation = operation
                 self.active_modes = modes
                 self._set_busy(True)
@@ -1890,6 +1892,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.infrastructure_progress.setValue(0)
             self.infrastructure_progress.setFormat("Esperando pasos de Ninja")
             self.infrastructure_progress_detail.setText("Esperando salida completa del proceso")
+            self.infrastructure_ninja_total = 0
 
         def _update_infrastructure_progress(
             self,
@@ -1902,6 +1905,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.infrastructure_progress.setValue(min(current, total))
             self.infrastructure_progress.setFormat("%v/%m pasos de Ninja (%p%)")
             self.infrastructure_progress_detail.setText(detail or "Paso Ninja sin descripción")
+            self.infrastructure_ninja_total = total
 
         def _infrastructure_finished(
             self, outcomes: object, cancelled: bool, evidence: str
@@ -1916,6 +1920,18 @@ def launch_gui(smoke_only: bool = False) -> int:
                 message = f"Operación terminada con errores. Evidencia: {evidence}"
             else:
                 message = f"Operación terminada correctamente. Evidencia: {evidence}"
+                total = self.infrastructure_ninja_total
+                self.infrastructure_progress.setRange(0, max(total, 1))
+                self.infrastructure_progress.setValue(max(total, 1))
+                if total:
+                    self.infrastructure_progress.setFormat(
+                        "%v/%m pasos de Ninja — TERMINADO (100%)"
+                    )
+                else:
+                    self.infrastructure_progress.setFormat("TERMINADO (100%)")
+                self.infrastructure_progress_detail.setText(
+                    "TERMINADO: la operación concluyó correctamente."
+                )
                 if self.active_operation == "compiler-build":
                     preferred = "Release" if "Release" in self.active_modes else self.active_modes[0]
                     config = self._config_from_ui()

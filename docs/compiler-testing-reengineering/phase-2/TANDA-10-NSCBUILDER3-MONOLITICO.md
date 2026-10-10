@@ -149,6 +149,8 @@ oráculos existentes.
 - análisis sintáctico y auditoría del cableado del botón de cancelación:
   correctos; la terminación real del árbol queda pendiente de una ejecución
   iniciada por el usuario.
+- análisis sintáctico, JSON del cursor y contrato estático del cierre terminal:
+  correctos; no se compiló NSC ni se ejecutaron pruebas.
 
 La implementación no lanzó compilaciones por cuenta propia. Posteriormente el
 usuario ejecutó Builder 3 y produjo la evidencia
@@ -166,4 +168,11 @@ pendiente de comprobación funcional en la siguiente ejecución del usuario. El
 log histórico `20261009-225838-013b3717` demuestra que la fuente de datos ya
 contiene las líneas completas `[0/2]`, `[1/14]` a `[13/14]`; el cambio actual
 sólo las expone de forma persistente en la interfaz.
+
+La corrida `20261009-231217-72aa28dd` confirmó que el proceso terminaba
+correctamente aunque Ninja dejara como última línea de progreso `288/289`. La
+interfaz ahora completa la barra al recibir el resultado correcto del proceso,
+muestra `total/total — TERMINADO (100%)` y reemplaza la descripción del último
+paso por una confirmación terminal. Esta corrección no oculta ni altera la
+salida conservada en `full.log`.
 
