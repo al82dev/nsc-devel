@@ -1030,6 +1030,109 @@ def parse_host_envelope(
     return status == "PASS", "; ".join(failures)
 
 
+def parse_identity_envelope(
+    *,
+    content: str,
+    exit_code: int,
+    run_id: str,
+    revision: str,
+    build_mode: str,
+    optimization: str,
+    case_id: str,
+) -> tuple[str, str]:
+    """Validate one canonical focused report produced by ``run_suite.py``."""
+    payload = json.loads(content)
+    if not isinstance(payload, dict):
+        raise ValueError("identity report must be a JSON object")
+    if payload.get("schema") != 1:
+        raise ValueError("identity report schema must be 1")
+
+    run = payload.get("run")
+    if not isinstance(run, dict):
+        raise ValueError("identity report run must be a JSON object")
+    expected_identity = (run_id, revision, build_mode, optimization)
+    actual_identity = (
+        run.get("run_id"),
+        run.get("revision"),
+        run.get("build_mode"),
+        run.get("optimization"),
+    )
+    if actual_identity != expected_identity:
+        raise ValueError("identity report run identity mismatch")
+    if (
+        run.get("profile") != "explicit"
+        or run.get("scope") != "focused"
+        or run.get("selected") != 1
+    ):
+        raise ValueError("identity report is not a focused single-case run")
+
+    results = payload.get("results")
+    if not isinstance(results, list) or len(results) != 1:
+        raise ValueError("identity report must contain exactly one result")
+    result = results[0]
+    if not isinstance(result, dict):
+        raise ValueError("identity result must be a JSON object")
+    if result.get("case_id") != case_id:
+        raise ValueError("identity report case identity mismatch")
+
+    status = result.get("status")
+    if not isinstance(status, str) or status not in RESULT_STATUSES:
+        raise ValueError(f"identity report has unknown status: {status!r}")
+    duration = result.get("duration_seconds")
+    if (
+        isinstance(duration, bool)
+        or not isinstance(duration, (int, float))
+        or duration < 0
+    ):
+        raise ValueError("identity result duration_seconds must be non-negative")
+    failures = result.get("failures")
+    if not isinstance(failures, list) or any(not isinstance(item, str) for item in failures):
+        raise ValueError("identity result failures must be a list of strings")
+    blocked_by = result.get("blocked_by")
+    if not isinstance(blocked_by, list) or any(
+        not isinstance(item, str) for item in blocked_by
+    ):
+        raise ValueError("identity result blocked_by must be a list of strings")
+
+    if status == "PASS" and (failures or blocked_by):
+        raise ValueError("PASS cannot contain failures or blockers")
+    if status == "BLOCKED" and not blocked_by:
+        raise ValueError("BLOCKED requires blocked_by evidence")
+    if status != "BLOCKED" and blocked_by:
+        raise ValueError("only BLOCKED can contain blocked_by evidence")
+    if status in {
+        "FAIL",
+        "KNOWN_FAILURE",
+        "UNEXPECTED_PASS",
+        "INFRASTRUCTURE_ERROR",
+    } and not failures:
+        raise ValueError(f"{status} requires failure evidence")
+
+    counts = payload.get("counts")
+    expected_counts = {name: 0 for name in RESULT_STATUSES}
+    expected_counts[status] = 1
+    if (
+        not isinstance(counts, dict)
+        or any(
+            not isinstance(name, str)
+            or isinstance(count, bool)
+            or not isinstance(count, int)
+            or count < 0
+            for name, count in counts.items()
+        )
+        or counts != expected_counts
+    ):
+        raise ValueError("identity report counts do not match its result")
+
+    expected_exit = 0 if status in {"PASS", "KNOWN_FAILURE"} else 1
+    if exit_code != expected_exit:
+        raise ValueError(
+            f"identity controller exit code {exit_code} contradicts status {status}; "
+            f"expected {expected_exit}"
+        )
+    return status, "; ".join(failures)
+
+
 def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[str, list[str], Path]]:
     """Create explicit standalone CMake commands without building NSC."""
     tools = discover_build_tools(config.llvm_dir)
@@ -1303,6 +1406,7 @@ class ExecutionEngine:
         """Delegate one compiler-identity case to the existing manifest controller."""
         case_root = self._case_root(variant)
         run_id = variant.key.replace("|", "-")
+        revision = current_revision()
         command = [
             sys.executable,
             str(RUN_SUITE_PATH),
@@ -1319,7 +1423,7 @@ class ExecutionEngine:
             "--run-id",
             run_id,
             "--revision",
-            current_revision(),
+            revision,
             "--build-mode",
             variant.build_mode,
             "--optimization",
@@ -1337,12 +1441,19 @@ class ExecutionEngine:
         result_path = case_root / run_id / "results.json"
         if not result_path.is_file():
             return "INFRASTRUCTURE_ERROR", f"controller exited with {code} without results", str(log_path)
-        payload = json.loads(result_path.read_text(encoding="utf-8"))
-        results = payload if isinstance(payload, list) else payload.get("results", [])
-        if len(results) != 1:
-            return "INFRASTRUCTURE_ERROR", "identity controller result cardinality mismatch", str(result_path)
-        result = results[0]
-        return str(result["status"]), "; ".join(result.get("failures", [])), str(result_path)
+        try:
+            status, detail = parse_identity_envelope(
+                content=result_path.read_text(encoding="utf-8"),
+                exit_code=code,
+                run_id=run_id,
+                revision=revision,
+                build_mode=variant.build_mode,
+                optimization=variant.optimization,
+                case_id=variant.case.case_id,
+            )
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as error:
+            return "INFRASTRUCTURE_ERROR", str(error), str(result_path)
+        return status, detail, str(result_path)
 
     def _run_selfhost(self, variant: RunVariant) -> tuple[str, str, str]:
         """Compile a real NativeSharp fixture once, then run one selected case."""

@@ -655,3 +655,10 @@ un solo objeto JSON con identidad completa, duración y fallos tipados, estado
 `PASS`/`FAIL` y exit code coherente. Cualquier violación queda como error de
 infraestructura antes de evaluar defectos conocidos. Las pruebas dirigidas
 pasan `5/5` y la suite Python completa `134/134` sin ejecutar el host.
+
+Validación 45 cerró la envolvente del controlador de identidad. Builder 3
+exige ahora el esquema canónico, identidad exacta de corrida y caso, evidencia
+y conteos tipados, y concordancia entre estado y exit code. Un reporte ajeno,
+truncado o contradictorio queda como error de infraestructura con su archivo
+como evidencia. Las pruebas dirigidas pasan `5/5` y la suite Python completa
+`139/139` sin ejecutar el controlador ni producto.

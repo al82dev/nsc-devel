@@ -752,3 +752,18 @@ El presupuesto queda limitado a un parser puro, `ExecutionEngine._run_host`,
 pruebas Python sintéticas y la evidencia de Validación 44. No se modifica el
 host C++, sus casos, oráculos, estados esperados, producto o manifiestos; no se
 ejecuta ningún binario ni se configura, compila o ejecuta producto.
+
+### Enmienda: envolvente cerrada del controlador de identidad
+
+Los casos de identidad delegados a `run_suite.py` sólo pueden adoptar un estado
+terminal cuando `results.json` conserva el esquema canónico, identifica la misma
+corrida, revisión, modo, optimización y caso solicitados, contiene exactamente un
+resultado bien formado y concuerda con el código de salida del controlador. Un
+JSON truncado, una identidad ajena, un estado desconocido, evidencia de tipo
+incorrecto o una contradicción proceso/reporte es un error de infraestructura.
+
+El presupuesto queda limitado a un parser puro, `ExecutionEngine._run_identity`,
+pruebas Python sintéticas y la evidencia de Validación 45. No se modifica
+`run_suite.py`, el controlador canónico, sus casos, oráculos, manifiestos,
+producto ni batería histórica; no se ejecuta ningún binario ni se configura,
+compila o ejecuta producto.
