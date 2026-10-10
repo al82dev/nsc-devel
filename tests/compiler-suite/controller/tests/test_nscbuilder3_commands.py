@@ -58,11 +58,18 @@ class Builder3CommandTests(unittest.TestCase):
                 command,
             )
             self.assertIn("-DNSC_NSLINK_EXECUTABLE=A:/toolchain/bin/nslink.exe", command)
+            self.assertIn(
+                "-DNSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY="
+                "A:/native-sharp-3.0-baseline/lib/nativesharp/runtime/"
+                "NativeSharp.Runtime.Win32.lib",
+                command,
+            )
             self.assertIn("-DLLVM_DIR=C:/clang-llvm/lib/cmake/llvm", command)
             self.assertIn("-DCMAKE_EXE_LINKER_FLAGS=", command)
             self.assertIn("-UNSC_COMPILER_SUITE_ARCHIVE_EXECUTABLE", command)
             self.assertIn("-UNSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE", command)
             self.assertIn("-UNSC_COMPILER_SUITE_BUILD_ID_HEADER", command)
+            self.assertFalse(any("Program Files" in argument for argument in command))
             self.assertFalse(any("\\" in argument for argument in command[1:]))
 
     @patch.object(builder, "discover_build_tools", return_value=TOOLS)

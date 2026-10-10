@@ -1719,6 +1719,13 @@ def parse_selfhost_inputs(
 def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[str, list[str], Path]]:
     """Create explicit standalone CMake commands without building NSC."""
     tools = discover_build_tools(config.llvm_dir)
+    runtime_library = (
+        Path(config.install_prefix)
+        / "lib"
+        / "nativesharp"
+        / "runtime"
+        / "NativeSharp.Runtime.Win32.lib"
+    ).resolve().as_posix()
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
         build = effective_build_dir(config, mode)
@@ -1742,6 +1749,8 @@ def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tupl
             f"-DNSC_COMPILER_SUITE_NSC_EXECUTABLE="
             f"{Path(config.nsc_executable).resolve().as_posix()}",
             f"-DNSC_NSLINK_EXECUTABLE={Path(config.nslink_executable).resolve().as_posix()}",
+            f"-DNSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY="
+            f"{runtime_library}",
         ]
         command.append(f"-DLLVM_DIR={Path(tools['llvm_dir']).as_posix()}")
         if config.archive_executable:

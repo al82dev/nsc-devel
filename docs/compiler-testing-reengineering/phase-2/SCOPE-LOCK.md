@@ -1753,3 +1753,27 @@ inventarios, casos, producto ni bateria historica. Los seis archivos del
 usuario registrados en `CURSOR.json` permanecen protegidos. No se configura,
 compila o ejecuta producto; no se ejecuta baseline y no se toca la unidad
 `C:`.
+
+### Enmienda: autoridad explicita del runtime en la suite de Builder 3
+
+La configuracion de `tests/compiler-suite` emitida por Builder 3 no puede
+heredar `CMAKE_INSTALL_PREFIX` del entorno ni materializar la biblioteca
+runtime bajo el prefijo predeterminado de Windows. Debe transmitir de forma
+explicita `NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY` derivada del
+`install_prefix` ya seleccionado y validado en la unidad `A:`.
+
+La entrada exacta es una configuracion de Builder 3 con
+`install_prefix=A:/native-sharp-3.0-baseline`. La operacion defectuosa es
+omitir la variable especifica de la suite, lo que deja que CMake derive
+`C:/Program Files (x86)/NativeSharpCompilerSuiteInfrastructure/...`. La
+invariante violada es que la infraestructura aislada no puede descubrir ni
+consumir artefactos de `C:`. El consumidor exacto es el comando producido por
+`configure_commands`.
+
+El presupuesto de Validacion 122 queda limitado a agregar ese argumento a
+`configure_commands`, ampliar su prueba contractual, documentar la evidencia
+y actualizar tracking y cursor. No se cambia CMake, el compilador, NSLink,
+deploy, manifiestos, casos, oraculos, producto ni bateria historica. Los seis
+archivos del usuario registrados en `CURSOR.json` permanecen protegidos. No se
+configura, compila o ejecuta producto; no se ejecuta baseline y no se toca la
+unidad `C:`.

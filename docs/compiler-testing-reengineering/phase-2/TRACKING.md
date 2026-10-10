@@ -1108,3 +1108,10 @@ unicos y un duplicado exacto. Cada causa posee correccion estatica en el arbol
 actual; la auditoria Builder 3 conserva `9,587` casos, `1,208` contratos, `44`
 componentes y `0` sin clasificar. No se afirma recompilacion posterior: la
 corrida funcional externa sigue pendiente y la tarea permanece activa.
+
+Validacion 122 cerro la ruta runtime implicita de la suite. Builder 3 transmite
+ahora la biblioteca de `install_prefix` en `A:` para Debug y Release y su
+prueba contractual rechaza una caida a `Program Files`. La prueba dirigida
+pasa `4/4`, la suite Python `270/270`, el catalogo conserva `9,587` casos y
+`0` sin clasificar, sin configurar, compilar o ejecutar producto. La corrida
+funcional externa sigue pendiente y la tarea permanece activa.
