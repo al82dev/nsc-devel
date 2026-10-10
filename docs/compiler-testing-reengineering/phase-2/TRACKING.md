@@ -699,3 +699,9 @@ Validación 51 cerró el tipo desde la autodetección. Los ejecutables y el
 archivador se seleccionan sólo con `is_file()` y `LLVM_DIR` sólo con
 `is_dir()`, conservando candidatos y prioridades. Las pruebas dirigidas pasan
 `10/10` y la suite Python completa `161/161` sin descubrir herramientas reales.
+
+Validación 52 cerró el esquema de `config.json` en su lectura. Campos
+desconocidos y tipos incorrectos ya no se ignoran ni alcanzan la GUI o los
+comandos; los campos omitidos conservan defaults y la autodetección posterior.
+Las pruebas dirigidas pasan `4/4` y la suite Python completa `165/165` sin leer
+la configuración real.

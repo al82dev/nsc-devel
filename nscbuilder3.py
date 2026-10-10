@@ -72,6 +72,17 @@ NON_EXECUTABLE = {
     "UNCLASSIFIED",
 }
 NINJA_PROGRESS_PATTERN = re.compile(r"^\[(\d+)/(\d+)\]\s*(.*)$")
+CONFIG_STRING_FIELDS = (
+    "nsc_executable",
+    "nslink_executable",
+    "compiler_build_root",
+    "install_prefix",
+    "build_root",
+    "llvm_dir",
+    "archive_executable",
+    "comparison_nsc",
+    "build_id_header",
+)
 
 
 def utc_now() -> str:
@@ -97,6 +108,22 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
                 raise ValueError(f"{path}:{number}: expected a JSON object")
             rows.append(value)
     return rows
+
+
+def parse_builder_config_payload(value: Any) -> dict[str, Any]:
+    """Validate persisted Builder 3 settings before constructing the dataclass."""
+    if not isinstance(value, dict):
+        raise ValueError("Builder 3 configuration must be a JSON object")
+    allowed = set(CONFIG_STRING_FIELDS) | {"jobs"}
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise ValueError("Builder 3 configuration contains unknown fields: " + ", ".join(unknown))
+    for field_name in CONFIG_STRING_FIELDS:
+        if field_name in value and not isinstance(value[field_name], str):
+            raise ValueError(f"Builder 3 configuration {field_name} must be a string")
+    if "jobs" in value and type(value["jobs"]) is not int:
+        raise ValueError("Builder 3 configuration jobs must be an integer")
+    return dict(value)
 
 
 def write_json(path: Path, value: object) -> None:
@@ -255,8 +282,7 @@ class BuilderConfig:
         """Load saved overrides and repair missing tools with known local locations."""
         if CONFIG_PATH.is_file():
             value = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-            allowed = {item.name for item in cls.__dataclass_fields__.values()}
-            base = cls(**{key: item for key, item in value.items() if key in allowed})
+            base = cls(**parse_builder_config_payload(value))
         else:
             base = cls()
         return base.with_discovery()

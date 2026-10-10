@@ -850,3 +850,15 @@ tipo, actualizar sus consumidores, pruebas Python sintéticas bajo
 `_nscbuilder3` y la evidencia de Validación 51. No se cambian candidatos,
 prioridades, defaults, comandos o validación posterior y no se descubre o
 ejecuta ninguna herramienta real.
+
+### Enmienda: esquema cerrado de configuración persistida
+
+`config.json` debe ser un objeto con únicamente los campos de `BuilderConfig`.
+Las rutas son cadenas y `jobs` es un entero no booleano; campos desconocidos o
+tipos distintos deben producir un diagnóstico causal durante la carga, nunca ser
+ignorados ni propagarse hasta la GUI o la construcción de comandos.
+
+El presupuesto queda limitado a un parser puro, `BuilderConfig.load`, pruebas
+Python con un archivo sintético bajo `_nscbuilder3` y la evidencia de Validación
+52. No se lee o modifica la configuración real, no se cambia autodetección,
+defaults, guardado, comandos o GUI y no se ejecuta producto.
