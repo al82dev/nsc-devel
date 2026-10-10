@@ -424,6 +424,17 @@ El presupuesto queda limitado al dominio de estados y
 manifiestos, producto ni batería histórica; no se configura, compila ni ejecuta
 producto.
 
+### Enmienda: proyección determinista de reejecución de fallos
+
+La reejecución debe derivarse del plan visible en su orden original, incluir
+exactamente los estados terminales y rechazar resultados duplicados o claves
+que no pertenecen al plan. `PASS` y `KNOWN_FAILURE` permanecen fuera del retry.
+
+El presupuesto queda limitado a una función pura de proyección en
+`nscbuilder3.py`, su uso por `_suite_finished`, una prueba Python y la evidencia
+de Validación 36. No se modifican estados, casos, manifiestos, ejecución,
+producto ni batería histórica; no se configura, compila ni ejecuta producto.
+
 ### Enmienda: cardinalidad terminal de la evidencia de Builder 3
 
 Cuando la metadata de una corrida declara `variant_count`, la evidencia final

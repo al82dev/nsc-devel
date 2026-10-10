@@ -599,3 +599,9 @@ reproducen y rechazan una variante omitida, una clave duplicada y una
 cardinalidad mal tipada; el flujo correcto conserva pares de eventos, resultados
 y log progresivo. Las pruebas dirigidas pasan `4/4` y la suite Python completa
 `103/103`.
+
+Validación 36 hizo determinista la reejecución. La proyección conserva el orden
+del plan visible, incluye sólo estados terminales y rechaza claves duplicadas o
+ajenas en lugar de descartarlas silenciosamente. `PASS` y `KNOWN_FAILURE` no
+entran al retry. Las pruebas dirigidas pasan `4/4` y la suite Python completa
+`107/107`.

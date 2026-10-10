@@ -573,6 +573,27 @@ def expand_variants(
     return tuple(variants)
 
 
+def retry_variants(
+    visible: Sequence[RunVariant], outcomes: Sequence[CaseOutcome]
+) -> tuple[RunVariant, ...]:
+    """Project terminal failures back to the exact visible plan deterministically."""
+    by_key = {variant.key: variant for variant in visible}
+    if len(by_key) != len(visible):
+        raise ValueError("visible retry plan contains duplicate variant keys")
+    status_by_key: dict[str, str] = {}
+    for outcome in outcomes:
+        if outcome.key in status_by_key:
+            raise ValueError(f"duplicate outcome key in retry projection: {outcome.key}")
+        status_by_key[outcome.key] = outcome.status
+    terminal_keys = {
+        key for key, status in status_by_key.items() if status in TERMINAL_FAILURES
+    }
+    unknown = sorted(terminal_keys - set(by_key))
+    if unknown:
+        raise ValueError("terminal outcomes are outside the visible plan: " + ", ".join(unknown))
+    return tuple(variant for variant in visible if variant.key in terminal_keys)
+
+
 class EvidenceStore:
     """Write crash-surviving run evidence and final human/machine reports."""
 
@@ -2270,13 +2291,10 @@ def launch_gui(smoke_only: bool = False) -> int:
 
         def _suite_finished(self, outcomes: object, cancelled: bool, evidence: str) -> None:
             typed = list(outcomes) if isinstance(outcomes, list) else []
-            by_key = {variant.key: variant for variant in self.visible_variants}
             failed_keys = {
                 item.key for item in typed if item.status in TERMINAL_FAILURES
             }
-            self.last_failed_variants = tuple(
-                by_key[key] for key in failed_keys if key in by_key
-            )
+            self.last_failed_variants = retry_variants(self.visible_variants, typed)
             self.retry_button.setEnabled(bool(self.last_failed_variants))
             self._render_error_report(typed, cancelled, evidence)
             self.worker = None
