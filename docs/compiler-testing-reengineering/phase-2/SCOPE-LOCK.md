@@ -2304,3 +2304,21 @@ bateria historica. No se configura, compila o ejecuta producto; la validacion
 se limita a sintaxis Python, diferencial y smoke no interactivo de GUI. Los
 seis archivos protegidos permanecen intactos. No se ejecuta baseline, no se
 despliega y no se toca la unidad `C:`.
+
+### Enmienda: Historial como espacio principal independiente
+
+Validacion 147 corrige una interpretacion incorrecta de la jerarquia visual:
+`Historial` no pertenece a `Resultados`. `Resultados` representa unicamente la
+corrida actual. `Historial` es una pestaña principal independiente que contiene
+su lista de corridas y los tabs internos abiertos para cada una.
+
+El presupuesto queda limitado a `nscbuilder3.py`, esta enmienda,
+`TRACKING.md`, `CURSOR.json` y la evidencia de tanda. Se conserva sin cambios
+el almacenamiento, el cargador, los filtros, los reportes y las acciones de
+reejecucion. Solamente cambia el contenedor grafico que posee esos elementos.
+
+No se cambian motor, compilador, casos, manifiestos, ejecutores, CMake ni
+bateria historica. No se configura, compila o ejecuta producto; la validacion
+se limita a sintaxis Python, diferencial y smoke no interactivo de GUI. Los
+seis archivos protegidos permanecen intactos. No se ejecuta baseline, no se
+despliega y no se toca la unidad `C:`.

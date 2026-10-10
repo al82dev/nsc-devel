@@ -3096,6 +3096,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.tabs.addTab(self._build_infrastructure_tab(), "Construcción")
             self.tabs.addTab(self._build_execution_tab(), "Pruebas")
             self.tabs.addTab(self._build_results_tab(), "Resultados")
+            self.history_top_tab_index = self.tabs.addTab(
+                self._build_history_tab(), "Historial"
+            )
             outer.addWidget(self.tabs, 1)
             self.setCentralWidget(central)
             self.statusBar().showMessage("Listo")
@@ -3319,14 +3322,6 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.full_log.setReadOnly(True)
             self.error_report = QTextEdit()
             self.error_report.setReadOnly(True)
-            self.history_table = QTableWidget(0, len(self.HISTORY_HEADERS))
-            self.history_table.setHorizontalHeaderLabels(self.HISTORY_HEADERS)
-            self.history_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-            self.history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-            self.history_table.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeMode.ResizeToContents
-            )
-            self.history_table.horizontalHeader().setStretchLastSection(True)
             failure_page = QWidget()
             failure_layout = QVBoxLayout(failure_page)
             self.failure_summary = QLabel("No hay fallos terminales registrados")
@@ -3366,8 +3361,42 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self._show_failure_context_menu
             )
             failure_layout.addWidget(self.failure_table, 1)
-            history_page = QWidget()
-            history_layout = QVBoxLayout(history_page)
+            self.result_tabs.addTab(self.full_log, "Log completo")
+            self.result_tabs.addTab(self.error_report, "Errores condensados")
+            self.failure_tab_index = self.result_tabs.addTab(
+                failure_page, "Fallos exactos (0)"
+            )
+            self.failure_retry_button.clicked.connect(self._retry_failures)
+            self.failure_disable_button.clicked.connect(
+                lambda: self._set_selected_failures_enabled(False)
+            )
+            self.failure_enable_button.clicked.connect(
+                lambda: self._set_selected_failures_enabled(True)
+            )
+            self._refresh_failure_controls()
+            layout.addWidget(self.result_tabs)
+            return page
+
+        def _build_history_tab(self) -> QWidget:
+            """Build the top-level historical workspace, separate from live results."""
+            page = QWidget()
+            layout = QVBoxLayout(page)
+            self.history_workspace_tabs = QTabWidget()
+            self.history_workspace_tabs.setObjectName("history_workspace_tabs")
+            launcher_page = QWidget()
+            history_layout = QVBoxLayout(launcher_page)
+            self.history_table = QTableWidget(0, len(self.HISTORY_HEADERS))
+            self.history_table.setHorizontalHeaderLabels(self.HISTORY_HEADERS)
+            self.history_table.setSelectionBehavior(
+                QTableWidget.SelectionBehavior.SelectRows
+            )
+            self.history_table.setEditTriggers(
+                QTableWidget.EditTrigger.NoEditTriggers
+            )
+            self.history_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.ResizeToContents
+            )
+            self.history_table.horizontalHeader().setStretchLastSection(True)
             history_intro = QLabel(
                 f"Corridas guardadas en {HISTORY_ROOT}. Selecciona una fila para ver "
                 "qué se ejecutó, sus resultados y su log; abrirla crea un tab "
@@ -3412,21 +3441,10 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.history_table.cellDoubleClicked.connect(
                 lambda _row, _column: self._load_history_from_table()
             )
-            self.result_tabs.addTab(self.full_log, "Log completo")
-            self.result_tabs.addTab(self.error_report, "Errores condensados")
-            self.failure_tab_index = self.result_tabs.addTab(
-                failure_page, "Fallos exactos (0)"
+            self.history_launcher_tab_index = self.history_workspace_tabs.addTab(
+                launcher_page, "Corridas guardadas"
             )
-            self.history_tab_index = self.result_tabs.addTab(history_page, "Historial")
-            self.failure_retry_button.clicked.connect(self._retry_failures)
-            self.failure_disable_button.clicked.connect(
-                lambda: self._set_selected_failures_enabled(False)
-            )
-            self.failure_enable_button.clicked.connect(
-                lambda: self._set_selected_failures_enabled(True)
-            )
-            self._refresh_failure_controls()
-            layout.addWidget(self.result_tabs)
+            layout.addWidget(self.history_workspace_tabs, 1)
             return page
 
         def _add_path_row(
@@ -4545,10 +4563,10 @@ def launch_gui(smoke_only: bool = False) -> int:
                 key = os.path.normcase(str(loaded.root))
                 existing = self.history_run_pages.get(key)
                 if existing is not None:
-                    index = self.result_tabs.indexOf(existing)
+                    index = self.history_workspace_tabs.indexOf(existing)
                     if index >= 0:
-                        self.tabs.setCurrentIndex(2)
-                        self.result_tabs.setCurrentIndex(index)
+                        self.tabs.setCurrentIndex(self.history_top_tab_index)
+                        self.history_workspace_tabs.setCurrentIndex(index)
                         self.statusBar().showMessage(
                             f"Ejecución histórica enfocada: {loaded.root.name}"
                         )
@@ -4556,11 +4574,11 @@ def launch_gui(smoke_only: bool = False) -> int:
                     self.history_run_pages.pop(key, None)
                 page = self._create_history_run_page(loaded, key)
                 label = f"{loaded.root.name[:15]} · {loaded.status}"
-                index = self.result_tabs.addTab(page, label)
-                self.result_tabs.setTabToolTip(index, str(loaded.root))
+                index = self.history_workspace_tabs.addTab(page, label)
+                self.history_workspace_tabs.setTabToolTip(index, str(loaded.root))
                 self.history_run_pages[key] = page
-                self.tabs.setCurrentIndex(2)
-                self.result_tabs.setCurrentIndex(index)
+                self.tabs.setCurrentIndex(self.history_top_tab_index)
+                self.history_workspace_tabs.setCurrentIndex(index)
                 self.statusBar().showMessage(
                     f"Ejecución histórica abierta: {loaded.root.name}"
                 )
@@ -5046,9 +5064,9 @@ def launch_gui(smoke_only: bool = False) -> int:
 
         def _close_history_run_tab(self, page_key: str, page: QWidget) -> None:
             """Close only the selected historical view; evidence remains on disk."""
-            index = self.result_tabs.indexOf(page)
+            index = self.history_workspace_tabs.indexOf(page)
             if index >= 0:
-                self.result_tabs.removeTab(index)
+                self.history_workspace_tabs.removeTab(index)
             self.history_run_pages.pop(page_key, None)
 
         def _start_historical_variant(self, variant: RunVariant) -> None:
@@ -5166,10 +5184,25 @@ def launch_gui(smoke_only: bool = False) -> int:
                 )
         if window.result_tabs.tabText(window.failure_tab_index) != "Fallos exactos (0)":
             raise RuntimeError("GUI smoke missing the exact-failure result tab")
-        if window.result_tabs.tabText(window.history_tab_index) != "Historial":
-            raise RuntimeError("GUI smoke missing the independent history launcher tab")
-        if window.tabs.tabText(1) != "Pruebas":
-            raise RuntimeError("GUI smoke missing the primary test-progress tab")
+        primary_tabs = [
+            window.tabs.tabText(index) for index in range(window.tabs.count())
+        ]
+        if primary_tabs != ["Construcción", "Pruebas", "Resultados", "Historial"]:
+            raise RuntimeError(
+                "GUI smoke missing the Construcción/Pruebas/Resultados/Historial hierarchy"
+            )
+        if any(
+            window.result_tabs.tabText(index) == "Historial"
+            for index in range(window.result_tabs.count())
+        ):
+            raise RuntimeError("GUI smoke found history mixed into current results")
+        if (
+            window.history_workspace_tabs.tabText(
+                window.history_launcher_tab_index
+            )
+            != "Corridas guardadas"
+        ):
+            raise RuntimeError("GUI smoke missing the history run-list panel")
         headers = [
             window.case_table.horizontalHeaderItem(index).text()
             for index in range(window.case_table.columnCount())
@@ -5204,10 +5237,12 @@ def launch_gui(smoke_only: bool = False) -> int:
                 window.full_log.toPlainText(),
                 window.error_report.toPlainText(),
             )
-            prior_tab_count = window.result_tabs.count()
+            prior_tab_count = window.history_workspace_tabs.count()
             window._load_history_path(valid_history)
-            if window.result_tabs.count() != prior_tab_count + 1:
+            if window.history_workspace_tabs.count() != prior_tab_count + 1:
                 raise RuntimeError("GUI smoke did not open a dedicated historical tab")
+            if window.tabs.currentIndex() != window.history_top_tab_index:
+                raise RuntimeError("GUI smoke did not keep the run inside Historial")
             if len(window.history_run_pages) != 1:
                 raise RuntimeError("GUI smoke did not retain the historical page identity")
             historical_page = next(iter(window.history_run_pages.values()))

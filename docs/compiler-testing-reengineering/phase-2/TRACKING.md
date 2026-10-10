@@ -1320,3 +1320,10 @@ reporte agrupa sus seis artefactos y las pruebas exponen acciones visibles para
 reejecutar la fila seleccionada o la corrida completa. La sintaxis y el smoke
 de GUI pasan; no se compilo ni ejecuto producto, no se ejecuto baseline y no se
 toco `C:`.
+
+Validacion 147 separa `Historial` de `Resultados` en la jerarquia principal de
+Builder 3. `Resultados` queda reservado al log, errores y fallos de la corrida
+actual. `Historial` muestra la lista de corridas y abre cada una como tab dentro
+de su propio panel; cada corrida conserva internamente `Pruebas` y `Reporte`.
+La sintaxis y el smoke de GUI pasan; no se compilo ni ejecuto producto, no se
+ejecuto baseline y no se toco `C:`.
