@@ -688,3 +688,9 @@ cualquier resultado parcial como `CANCELLED` y un timeout queda como
 `INFRASTRUCTURE_ERROR`; ninguno puede convertirse en falla o defecto conocido
 del compilador. Las pruebas dirigidas pasan `8/8` y la suite Python completa
 `156/156` usando sólo dobles de proceso.
+
+Validación 50 cerró los tipos de ruta configurados. Los ejecutables y archivos
+opcionales ya no aceptan directorios; `LLVM_DIR` y las raíces escribibles no
+aceptan archivos, y las raíces conservan su frontera en `A:`. Las pruebas
+dirigidas pasan `8/8` y la suite Python completa `159/159` sin descubrir o
+ejecutar herramientas reales.

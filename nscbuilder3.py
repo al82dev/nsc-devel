@@ -141,6 +141,34 @@ def require_a_path(path: Path, label: str, must_exist: bool = False) -> Path:
     return resolved
 
 
+def require_file_path(path: Path, label: str, require_a_drive: bool = False) -> Path:
+    """Require an existing regular file, optionally constrained to the A drive."""
+    resolved = path.resolve()
+    if require_a_drive and not is_a_drive(resolved):
+        raise ValueError(f"{label} must be on A:, got {resolved}")
+    if not resolved.is_file():
+        raise ValueError(f"{label} must be an existing file: {resolved}")
+    return resolved
+
+
+def require_directory_path(
+    path: Path,
+    label: str,
+    *,
+    require_a_drive: bool = False,
+    must_exist: bool = False,
+) -> Path:
+    """Require a directory or a not-yet-created directory destination."""
+    resolved = path.resolve()
+    if require_a_drive and not is_a_drive(resolved):
+        raise ValueError(f"{label} must be on A:, got {resolved}")
+    if resolved.exists() and not resolved.is_dir():
+        raise ValueError(f"{label} must be a directory: {resolved}")
+    if must_exist and not resolved.is_dir():
+        raise ValueError(f"{label} directory does not exist: {resolved}")
+    return resolved
+
+
 def current_revision() -> str:
     """Read the local revision for evidence without contacting a remote."""
     completed = subprocess.run(
@@ -266,15 +294,37 @@ class BuilderConfig:
 
     def validated(self, require_tools: bool = False) -> "BuilderConfig":
         """Validate writable roots and, when requested, external tool receipts."""
-        require_a_path(Path(self.build_root), "test build root")
-        require_a_path(Path(self.compiler_build_root), "compiler build root")
-        require_a_path(Path(self.install_prefix), "compiler install prefix")
-        require_a_path(STORAGE_ROOT, "Builder 3 storage root")
+        require_directory_path(
+            Path(self.build_root), "test build root", require_a_drive=True
+        )
+        require_directory_path(
+            Path(self.compiler_build_root), "compiler build root", require_a_drive=True
+        )
+        require_directory_path(
+            Path(self.install_prefix), "compiler install prefix", require_a_drive=True
+        )
+        require_directory_path(
+            STORAGE_ROOT, "Builder 3 storage root", require_a_drive=True
+        )
         if not 1 <= self.jobs <= 256:
             raise ValueError("parallel jobs must be between 1 and 256")
         if require_tools:
-            require_a_path(Path(self.nsc_executable), "NSC executable", True)
-            require_a_path(Path(self.nslink_executable), "NSLink executable", True)
+            require_file_path(
+                Path(self.nsc_executable), "NSC executable", require_a_drive=True
+            )
+            require_file_path(
+                Path(self.nslink_executable), "NSLink executable", require_a_drive=True
+            )
+            if self.archive_executable:
+                require_file_path(Path(self.archive_executable), "archive executable")
+            if self.comparison_nsc:
+                require_file_path(Path(self.comparison_nsc), "comparison NSC executable")
+            if self.build_id_header:
+                require_file_path(Path(self.build_id_header), "build-id header")
+            if self.llvm_dir:
+                require_directory_path(
+                    Path(self.llvm_dir), "LLVM_DIR", must_exist=True
+                )
         return self
 
 

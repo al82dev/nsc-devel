@@ -824,3 +824,16 @@ El presupuesto queda limitado a registrar la causa de terminación en
 pruebas Python con dobles y la evidencia de Validación 49. No se cambian
 timeouts, comandos, oráculos, procesos reales, producto ni batería histórica;
 no se crea, prepara o ejecuta ningún proceso o fixture real.
+
+### Enmienda: tipo exacto de rutas configuradas
+
+Una ruta existente no basta para demostrar que es una herramienta. NSC,
+NSLink, archivador, NSC de comparación y build-id header deben ser archivos;
+`LLVM_DIR` debe ser un directorio. Las tres raíces escribibles siguen limitadas
+a `A:` y, si ya existen, deben ser directorios. Una ruta explícita con tipo
+incorrecto debe fallar antes de configurar o ejecutar comandos.
+
+El presupuesto queda limitado a validadores puros de archivo/directorio,
+`BuilderConfig.validated`, pruebas Python con artefactos sintéticos bajo
+`_nscbuilder3` y la evidencia de Validación 50. No se redetectan herramientas,
+no se cambian defaults o comandos y no se configura, compila o ejecuta producto.

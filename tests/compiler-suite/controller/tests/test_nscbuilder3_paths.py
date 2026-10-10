@@ -55,6 +55,57 @@ class Builder3PathTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "between 1 and 256"):
                     builder.BuilderConfig(jobs=jobs).validated(require_tools=False)
 
+    def test_existing_files_cannot_be_used_as_writable_roots(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
+            file_path = Path(directory) / "not-a-root"
+            file_path.write_text("file\n", encoding="utf-8")
+            baseline = builder.BuilderConfig(jobs=1)
+            for field in ("build_root", "compiler_build_root", "install_prefix"):
+                with self.subTest(field=field):
+                    values = {**baseline.__dict__, field: str(file_path)}
+                    with self.assertRaisesRegex(ValueError, "directory"):
+                        builder.BuilderConfig(**values).validated(require_tools=False)
+
+    def test_required_tools_must_be_files_not_existing_directories(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
+            root = Path(directory)
+            valid = root / "tool.exe"
+            valid.write_bytes(b"tool\n")
+            for field in ("nsc_executable", "nslink_executable"):
+                with self.subTest(field=field):
+                    values = {
+                        **builder.BuilderConfig(jobs=1).__dict__,
+                        "nsc_executable": str(valid),
+                        "nslink_executable": str(valid),
+                        field: str(root),
+                    }
+                    with self.assertRaisesRegex(ValueError, "file"):
+                        builder.BuilderConfig(**values).validated(require_tools=True)
+
+    def test_optional_files_and_llvm_directory_have_exact_kinds(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
+            root = Path(directory)
+            valid = root / "tool.exe"
+            valid.write_bytes(b"tool\n")
+            baseline = builder.BuilderConfig(
+                nsc_executable=str(valid),
+                nslink_executable=str(valid),
+                jobs=1,
+            )
+            for field in ("archive_executable", "comparison_nsc", "build_id_header"):
+                with self.subTest(field=field):
+                    values = {**baseline.__dict__, field: str(root)}
+                    with self.assertRaisesRegex(ValueError, "file"):
+                        builder.BuilderConfig(**values).validated(require_tools=True)
+            llvm_file = root / "LLVMConfig.cmake"
+            llvm_file.write_text("config\n", encoding="utf-8")
+            values = {**baseline.__dict__, "llvm_dir": str(llvm_file)}
+            with self.assertRaisesRegex(ValueError, "directory"):
+                builder.BuilderConfig(**values).validated(require_tools=True)
+
     def test_file_receipt_identifies_exact_selected_file(self) -> None:
         builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
         with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
