@@ -15,6 +15,32 @@ from nsc_suite.manifest import TIMEOUT_SECONDS as MANIFEST_TIMEOUT_SECONDS
 
 
 class Builder3TimeoutTests(unittest.TestCase):
+    def test_nightly_dominance_scale_cases_use_the_extended_budget(self) -> None:
+        expected = {
+            "TF-DOM-024",
+            "TF-DOM-032",
+            "TF-DOM-040",
+            "TF-DOM-072",
+            "TF-DOM-080",
+            "TF-DOM-104",
+            "TF-DOM-128",
+            "TF-DOM-216",
+            "TF-DOM-224",
+            "TF-DOM-232",
+            "TF-DOM-256",
+        }
+        cases = {
+            case.case_id: case
+            for case in builder.CanonicalCatalog.load().cases
+            if case.case_id in expected
+        }
+
+        self.assertEqual(set(cases), expected)
+        for case_id, case in cases.items():
+            with self.subTest(case_id=case_id):
+                self.assertEqual(case.profile, "NIGHTLY")
+                self.assertEqual(case.manifest["timeout_class"], "extended")
+
     def test_builder_timeout_table_equals_manifest_contract(self) -> None:
         self.assertEqual(builder.TIMEOUT_SECONDS, MANIFEST_TIMEOUT_SECONDS)
 

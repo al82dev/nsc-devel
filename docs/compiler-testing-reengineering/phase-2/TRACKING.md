@@ -1376,3 +1376,10 @@ publica Windows. No codifica una unidad ni modifica el entorno. Dos pruebas
 dirigidas cubren la instalacion estandar y la precedencia del override. La
 ejecucion queda diferida hasta la corrida integral final. Evidencia:
 `TANDA-VALIDACION-152-DESCUBRIMIENTO-ARCHIVADOR-PACKAGING.md`.
+
+Validacion 153 asigna la clase temporal canonica `extended` a los once casos
+NIGHTLY de Dominance que ejercitan profundidad, amplitud y escala. No reduce el
+trabajo ni toca el producto; un agotamiento de 180 segundos seguira siendo
+error de infraestructura. Una prueba dirigida fija los once IDs y su perfil.
+La ejecucion queda diferida hasta la corrida integral final. Evidencia:
+`TANDA-VALIDACION-153-PRESUPUESTO-NIGHTLY-DOMINANCE.md`.
