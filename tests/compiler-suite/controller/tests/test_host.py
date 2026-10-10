@@ -67,6 +67,20 @@ class HostExecutorTests(unittest.TestCase):
         result = HostExecutor((sys.executable, str(script)))(case(), workspace)
         return result, workspace
 
+    def execute_raw(self, payload: str, exit_code: int = 0):
+        self.next_run += 1
+        script = self.root / f"fake-host-{self.next_run}.py"
+        script.write_text(
+            f"print({payload!r})\nraise SystemExit({exit_code})\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        workspace = WorkspaceManager(self.root).prepare(
+            f"run-{self.next_run:03d}", "TB-BAS-001"
+        )
+        result = HostExecutor((sys.executable, str(script)))(case(), workspace)
+        return result, workspace
+
     def valid_payload(self, status: str, failures: list[str]) -> dict[str, object]:
         return {
             "case_id": "TB-BAS-001",
@@ -156,6 +170,15 @@ class HostExecutorTests(unittest.TestCase):
         result, _ = self.execute(self.valid_payload("FAIL", [""]), exit_code=1)
         self.assertIs(result.status, CaseStatus.INFRASTRUCTURE_ERROR)
         self.assertIn("schema", result.failures[0])
+
+    def test_rejects_duplicate_json_keys_without_last_wins(self) -> None:
+        result, _ = self.execute_raw(
+            '{"case_id":"TB-BAS-001","contract_id":"CB-BAS-001",'
+            '"component":"Host.Basic","status":"PASS","status":"FAIL",'
+            '"failures":[]}'
+        )
+        self.assertIs(result.status, CaseStatus.INFRASTRUCTURE_ERROR)
+        self.assertIn("duplicate JSON object key: status", result.failures[0])
 
     def test_rejects_an_executor_owned_by_another_adapter(self) -> None:
         workspace = WorkspaceManager(self.root).prepare("run-other", "TB-BAS-001")

@@ -1460,3 +1460,14 @@ LLVM, directorios de build o paralelismo antes del descubrimiento.
 El presupuesto queda limitado al parseo de la configuracion, una prueba Python
 sintetica y la evidencia de Validacion 99. No se cambian defaults, descubrimiento,
 producto ni bateria historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: claves JSON unicas en el adaptador host canonico
+
+`HostExecutor` debe rechazar claves duplicadas en la linea JSON emitida por
+`nsc_component_tests`. El controlador canonico no puede aceptar una identidad,
+estado o evidencia resuelta mediante la politica last-wins.
+
+El presupuesto queda limitado al parseo del adaptador host, un constructor
+local no recursivo, una prueba Python sintetica y la evidencia de Validacion
+100. No se cambia el productor, producto ni bateria historica y no se
+configura, compila o ejecuta producto.

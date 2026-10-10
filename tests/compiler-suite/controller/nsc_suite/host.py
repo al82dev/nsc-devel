@@ -73,10 +73,14 @@ class HostExecutor:
                 duration,
             )
         try:
-            payload = json.loads(lines[0])
+            payload = json.loads(lines[0], object_pairs_hook=_unique_json_object)
         except json.JSONDecodeError as error:
             return _infrastructure_error(
                 case.case_id, f"host executable emitted invalid JSON: {error.msg}", duration
+            )
+        except ValueError as error:
+            return _infrastructure_error(
+                case.case_id, f"host executable emitted invalid JSON: {error}", duration
             )
         if not isinstance(payload, dict) or payload.get("case_id") != case.case_id:
             return _infrastructure_error(
@@ -144,6 +148,16 @@ def _timeout_text(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Build one host object only when every key has one definition."""
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
 
 
 def _infrastructure_error(

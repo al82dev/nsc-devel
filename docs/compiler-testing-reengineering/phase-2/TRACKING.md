@@ -973,3 +973,8 @@ Validacion 99 cerro las claves JSON duplicadas de `config.json`. Las rutas y el
 paralelismo no pueden sustituirse por last-wins antes del descubrimiento. Las
 pruebas dirigidas pasan `5/5` y la suite Python `233/233`, sin ejecutar producto.
 La tarea funcional permanece activa.
+
+Validacion 100 cerro las claves JSON duplicadas del adaptador host canonico.
+Identidad, estado y evidencia exigen definiciones unicas antes de validar el
+resultado terminal. Las pruebas dirigidas pasan `11/11` y la suite Python
+`234/234`, sin ejecutar producto. La tarea funcional permanece activa.
