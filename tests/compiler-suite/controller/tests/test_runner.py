@@ -75,6 +75,21 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(events[0]["kind"], "RUN_STARTED")
         self.assertEqual(events[-1]["kind"], "RUN_FINISHED")
 
+    def test_external_producers_do_not_stall_execution(self) -> None:
+        executed: list[str] = []
+
+        def executor(item, workspace):
+            executed.append(item.case_id)
+            return CaseResult(item.case_id, CaseStatus.PASS)
+
+        results, events = self.run_cases(
+            (case("TB-BAS-001", ("CMake", "LLVM 23", "NSLink")),),
+            executor,
+        )
+        self.assertEqual(executed, ["TB-BAS-001"])
+        self.assertEqual(results[0].status, CaseStatus.PASS)
+        self.assertEqual(events[-1]["kind"], "RUN_FINISHED")
+
     def test_failed_producer_blocks_consumer_without_execution(self) -> None:
         executed: list[str] = []
 

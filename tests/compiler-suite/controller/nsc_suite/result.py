@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable
 
-from .manifest import CaseManifest
+from .manifest import CASE_ID, CaseManifest
 
 
 class CaseStatus(str, Enum):
@@ -82,7 +82,11 @@ class ResultLedger:
             raise ValueError(f"unknown case: {case_id}")
         waiting: list[str] = []
         blocked: list[str] = []
-        for dependency in sorted(case.dependencies):
+        for dependency in sorted(
+            dependency
+            for dependency in case.dependencies
+            if CASE_ID.fullmatch(dependency) is not None
+        ):
             result = self._results.get(dependency)
             if result is None:
                 waiting.append(dependency)

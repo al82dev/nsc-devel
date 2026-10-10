@@ -69,6 +69,20 @@ class ResultTests(unittest.TestCase):
         ledger.record(CaseResult("TB-BAS-002", CaseStatus.PASS))
         self.assertTrue(ledger.dependency_decision("TB-BAS-003").runnable)
 
+    def test_external_producers_do_not_create_internal_waits(self) -> None:
+        ledger = ResultLedger(
+            (
+                case(
+                    "TB-BAS-001",
+                    ("CMake", "LLVM 23", "NSLink"),
+                ),
+            )
+        )
+        decision = ledger.dependency_decision("TB-BAS-001")
+        self.assertTrue(decision.runnable)
+        self.assertEqual(decision.waiting_for, ())
+        self.assertEqual(decision.blocked_by, ())
+
     def test_failed_producer_blocks_consumer_by_identity(self) -> None:
         ledger = ResultLedger(
             (case("TB-BAS-001"), case("TB-BAS-002", ("TB-BAS-001",)))

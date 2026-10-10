@@ -492,3 +492,9 @@ infraestructura y todos los casos de la Fase 2; después se ejecuta la validaci�
 offline. Mientras dure la implementación no se consumirá tiempo en builds,
 ejecuciones ni gates parciales. Los conteos verificados permanecerán congelados
 hasta comenzar ese cierre.
+
+Validación 21 cerró la segunda mitad del contrato de dependencias: el ledger y
+el runner ya distinguen dependencias entre casos de requisitos externos. Los
+`213` casos que declaran alguno de `11` productores externos conservan esa
+evidencia sin quedar esperando un resultado interno imposible. Las `11/11`
+pruebas dirigidas de ledger y runner pasan; no se compiló ni ejecutó producto.

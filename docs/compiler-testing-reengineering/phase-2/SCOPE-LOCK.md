@@ -423,3 +423,17 @@ El presupuesto queda limitado a esos treinta gates y la evidencia de Validación
 layout, alineación, bitfields, CPU, LLVM y registros de ensamblado. No se
 modifican producto, casos, resultados esperados, selector, runner, reporte ni
 batería histórica. No se configura, compila ni ejecuta producto.
+
+### Enmienda: decisiones causales con productores externos
+
+El libro de resultados debe distinguir las dependencias entre casos de los
+productores externos declarados por un caso. Sólo los valores con forma de ID
+de caso participan en espera y bloqueo causal; requisitos como `CMake`,
+`LLVM 23` o `NSLink` permanecen en el manifiesto y en la evidencia, pero no
+pueden producir una espera imposible dentro del ejecutor.
+
+El presupuesto queda limitado a `nsc_suite/result.py`, sus pruebas unitarias,
+una prueba dirigida del runner y la evidencia de Validación 21. Se preserva el
+error causal cuando un productor que sí es un caso no fue seleccionado. No se
+modifican casos, oráculos, resultados esperados, selector, manifiesto,
+producto ni batería histórica. No se configura, compila ni ejecuta producto.
