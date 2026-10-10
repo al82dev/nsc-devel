@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import csv
 import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as stream:
-        return list(csv.DictReader(stream))
+from component_gate_support import read_csv
 
 
 def read_jsonl(path: Path) -> list[dict[str, object]]:
@@ -127,17 +123,26 @@ def load_component_inventory(repository_root: Path, component: str) -> Component
     )
     design = tuple(
         row
-        for row in read_csv(inventory_root / "test-case-design.csv")
+        for row in read_csv(
+            inventory_root / "test-case-design.csv",
+            ("case_id", "contract_id", "component", "layer", "frequency"),
+        )
         if row.get("component") == component
     )
     allocation = tuple(
         row
-        for row in read_csv(inventory_root / "suite-case-allocation.csv")
+        for row in read_csv(
+            inventory_root / "suite-case-allocation.csv",
+            ("case_id", "contract_id", "component", "layer", "default_profile"),
+        )
         if row.get("component") == component
     )
     contracts = tuple(
         row
-        for row in read_csv(inventory_root / "contracts.csv")
+        for row in read_csv(
+            inventory_root / "contracts.csv",
+            ("contract_id", "component"),
+        )
         if row.get("component") == component
     )
     if not design or not allocation or not contracts:

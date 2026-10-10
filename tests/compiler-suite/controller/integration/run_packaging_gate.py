@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import os
 import shutil
@@ -11,15 +10,11 @@ import time
 from pathlib import Path
 
 from component_gate_support import (
+    read_csv,
     read_jsonl,
     required_manifest_integer,
     required_nonnegative_integer,
 )
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as stream:
-        return list(csv.DictReader(stream))
 
 
 def write_text(path: Path, value: str) -> None:
@@ -73,12 +68,30 @@ def validate_lineage(
     frozenset[str],
 ]:
     inventory = repository_root / "docs" / "compiler-testing-reengineering" / "inventory"
-    design = [row for row in read_csv(inventory / "test-case-design.csv") if row["component"] == "Packaging"]
-    allocation = [
-        row for row in read_csv(inventory / "suite-case-allocation.csv")
+    design = [
+        row
+        for row in read_csv(
+            inventory / "test-case-design.csv",
+            ("case_id", "contract_id", "component", "layer", "frequency"),
+        )
         if row["component"] == "Packaging"
     ]
-    contracts = [row for row in read_csv(inventory / "contracts.csv") if row["component"] == "Packaging"]
+    allocation = [
+        row
+        for row in read_csv(
+            inventory / "suite-case-allocation.csv",
+            ("case_id", "contract_id", "component", "layer", "default_profile"),
+        )
+        if row["component"] == "Packaging"
+    ]
+    contracts = [
+        row
+        for row in read_csv(
+            inventory / "contracts.csv",
+            ("contract_id", "component"),
+        )
+        if row["component"] == "Packaging"
+    ]
     if not design or not allocation or not contracts:
         raise RuntimeError("Packaging canonical inventory is empty")
     design_by_id = unique_map(design, "case_id", "Packaging design")

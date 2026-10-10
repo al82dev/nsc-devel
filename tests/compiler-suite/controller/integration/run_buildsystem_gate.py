@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import os
 import shutil
@@ -10,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-from component_gate_support import read_jsonl, required_manifest_integer
+from component_gate_support import read_csv, read_jsonl, required_manifest_integer
 
 
 ZLIB_SOURCES = (
@@ -28,11 +27,6 @@ ROOT_CONFIG_PREFIXES = (
     "-DLLVM_DIR=",
     "-DNSC_NSLINK_EXECUTABLE=",
 )
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as stream:
-        return list(csv.DictReader(stream))
 
 
 def write_text(path: Path, value: str) -> None:
@@ -90,9 +84,30 @@ def validate_lineage(
     cases: list[dict[str, object]],
 ) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
     inventory = repository_root / "docs" / "compiler-testing-reengineering" / "inventory"
-    design = [r for r in read_csv(inventory / "test-case-design.csv") if r["component"] == "BuildSystem"]
-    allocation = [r for r in read_csv(inventory / "suite-case-allocation.csv") if r["component"] == "BuildSystem"]
-    contracts = [r for r in read_csv(inventory / "contracts.csv") if r["component"] == "BuildSystem"]
+    design = [
+        row
+        for row in read_csv(
+            inventory / "test-case-design.csv",
+            ("case_id", "contract_id", "component", "layer", "frequency"),
+        )
+        if row["component"] == "BuildSystem"
+    ]
+    allocation = [
+        row
+        for row in read_csv(
+            inventory / "suite-case-allocation.csv",
+            ("case_id", "contract_id", "component", "layer", "default_profile"),
+        )
+        if row["component"] == "BuildSystem"
+    ]
+    contracts = [
+        row
+        for row in read_csv(
+            inventory / "contracts.csv",
+            ("contract_id", "component"),
+        )
+        if row["component"] == "BuildSystem"
+    ]
     if not design or not allocation or not contracts:
         raise RuntimeError("BuildSystem canonical inventory is empty")
     design_by_id = unique_map(design, "case_id", "BuildSystem design")

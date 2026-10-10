@@ -13,6 +13,7 @@ sys.path.insert(0, str(INTEGRATION_ROOT))
 
 from component_gate_support import (
     assert_component_results,
+    read_csv,
     read_json_object,
     read_jsonl,
     required_manifest_integer,
@@ -61,6 +62,21 @@ class ComponentGateSupportTests(unittest.TestCase):
                 RuntimeError, "duplicate JSON object key: required"
             ):
                 read_jsonl(path)
+
+    def test_csv_reader_rejects_ambiguous_structure(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="component-csv-", dir=Path.cwd()) as root:
+            path = Path(root) / "inventory.csv"
+            path.write_text("case_id,case_id\nA,B\n", encoding="utf-8", newline="\n")
+            with self.assertRaisesRegex(RuntimeError, "duplicate names"):
+                read_csv(path, ("case_id",))
+
+            path.write_text("other\nA\n", encoding="utf-8", newline="\n")
+            with self.assertRaisesRegex(RuntimeError, "missing required fields"):
+                read_csv(path, ("case_id",))
+
+            path.write_text("case_id\nA,extra\n", encoding="utf-8", newline="\n")
+            with self.assertRaisesRegex(RuntimeError, "extra cells"):
+                read_csv(path, ("case_id",))
 
     def test_json_document_reader_rejects_duplicate_nested_keys(self) -> None:
         with tempfile.TemporaryDirectory(prefix="component-json-", dir=Path.cwd()) as root:

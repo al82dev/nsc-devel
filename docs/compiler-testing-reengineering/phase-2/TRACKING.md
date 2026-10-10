@@ -1018,3 +1018,10 @@ extra ya no atraviesan `InventoryIndex`; columnas adicionales con nombre se
 conservan. Las pruebas dirigidas pasan `16/16`, la suite Python `241/241` y el
 inventario vivo carga `57` componentes y `1,309` contratos, sin ejecutar
 producto. La tarea funcional permanece activa.
+
+Validacion 108 cerro los tres lectores CSV permisivos de integracion y su
+consumidor indirecto. Diez consumos declaran ahora campos requeridos sobre un
+lector comun estricto. Las pruebas dirigidas pasan `19/19`, la suite Python
+`242/242`, la sintaxis pasa y los inventarios vivos conservan `10,193` filas de
+diseno, `10,193` asignaciones y `1,309` contratos, sin ejecutar producto. La
+tarea funcional permanece activa.

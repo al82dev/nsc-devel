@@ -10,7 +10,7 @@ CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 
 from nsc_suite import InventoryIndex, load_manifest
-from selfhost_inventory import read_csv
+from component_gate_support import read_csv
 
 
 RegistryRow = tuple[str, str, str]
@@ -28,7 +28,10 @@ def expected_registry_rows(
     )
     expected = [
         (row["case_id"], row["contract_id"], row["component"])
-        for row in read_csv(design_path)
+        for row in read_csv(
+            design_path,
+            ("case_id", "contract_id", "component"),
+        )
         if row["component"].startswith(("Host.", "SelfHost."))
     ]
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import csv
 import json
 from pathlib import Path
 
@@ -11,6 +12,43 @@ from nsc_suite import (
     load_manifest,
     select_cases,
 )
+
+
+def read_csv(path: Path, required_fields: tuple[str, ...]) -> list[dict[str, str]]:
+    """Read an extensible integration CSV without ambiguous row structure."""
+    with path.open("r", encoding="utf-8-sig", newline="") as stream:
+        reader = csv.DictReader(stream)
+        headers = reader.fieldnames
+        if headers is None:
+            raise RuntimeError(f"{path}: missing CSV header")
+        if any(header is None or not header.strip() for header in headers):
+            raise RuntimeError(f"{path}: CSV header contains an empty name")
+        if len(headers) != len(set(headers)):
+            raise RuntimeError(f"{path}: CSV header contains duplicate names")
+        missing = tuple(field for field in required_fields if field not in headers)
+        if missing:
+            raise RuntimeError(
+                f"{path}: CSV header is missing required fields: {', '.join(missing)}"
+            )
+        rows: list[dict[str, str]] = []
+        for row_number, raw_row in enumerate(reader, start=2):
+            if None in raw_row:
+                raise RuntimeError(f"{path}: row {row_number} contains extra cells")
+            if any(value is None for value in raw_row.values()):
+                raise RuntimeError(f"{path}: row {row_number} is truncated")
+            row = {
+                key: value
+                for key, value in raw_row.items()
+                if key is not None and value is not None
+            }
+            blank = tuple(field for field in required_fields if not row[field].strip())
+            if blank:
+                raise RuntimeError(
+                    f"{path}: row {row_number} has blank required fields: "
+                    + ", ".join(blank)
+                )
+            rows.append(row)
+        return rows
 
 
 def read_jsonl(path: Path) -> list[dict[str, object]]:

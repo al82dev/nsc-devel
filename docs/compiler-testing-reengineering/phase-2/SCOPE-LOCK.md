@@ -1548,3 +1548,15 @@ El presupuesto queda limitado al lector CSV del inventario canonico, una
 prueba Python sintetica y la evidencia de Validacion 107. No se cambian los
 CSV vivos, manifiesto, seleccion, producto ni bateria historica y no se ejecuta
 producto.
+
+### Enmienda: esquema CSV estricto en gates de integracion
+
+Los gates self-host, BuildSystem y Packaging deben consumir los tres
+inventarios CSV mediante un lector comun que rechace estructura ambigua. Cada
+consumo declara sus campos requeridos; las columnas adicionales con nombre
+siguen permitidas.
+
+El presupuesto queda limitado a consolidar los tres lectores, actualizar sus
+diez consumos, una prueba Python sintetica y la evidencia de Validacion 108.
+No se cambian los CSV vivos, reglas de gates, producto ni bateria historica y
+no se ejecuta producto.
