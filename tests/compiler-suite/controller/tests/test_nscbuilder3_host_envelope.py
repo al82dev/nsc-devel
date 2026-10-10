@@ -72,6 +72,8 @@ class Builder3HostEnvelopeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly one"):
             self.parse(envelope() + envelope())
         with self.assertRaisesRegex(ValueError, "exactly one"):
+            self.parse("unexpected diagnostic\n" + envelope())
+        with self.assertRaisesRegex(ValueError, "JSON object"):
             self.parse("[]\n")
 
 

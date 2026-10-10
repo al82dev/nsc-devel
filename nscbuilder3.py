@@ -1434,7 +1434,7 @@ def parse_host_envelope(
     component: str,
 ) -> tuple[bool, str]:
     """Validate the exact single-case protocol emitted by the consolidated host."""
-    lines = [line for line in captured.splitlines() if line.strip().startswith("{")]
+    lines = [line for line in captured.splitlines() if line.strip()]
     if len(lines) != 1:
         raise ValueError(f"host must emit exactly one JSON object, got {len(lines)}")
     payload = json.loads(lines[0])

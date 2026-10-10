@@ -896,3 +896,9 @@ Validacion 84 cerro las duraciones no finitas del reporte enfocado. `NaN` e
 infinitos ya no pueden acreditar un resultado terminal. Las pruebas dirigidas
 pasan `5/5` y la suite Python completa `223/223`, sin ejecutar producto. La
 tarea funcional permanece activa.
+
+Validacion 85 cerro la omision de ruido en stdout del host. Builder 3 exige
+ahora exactamente una linea no vacia, igual que el productor y el adaptador
+canonico; un diagnostico adicional ya no se descarta para fabricar un sobre
+valido. Las pruebas dirigidas pasan `5/5` y la suite Python completa `223/223`,
+sin ejecutar producto. La tarea funcional permanece activa.

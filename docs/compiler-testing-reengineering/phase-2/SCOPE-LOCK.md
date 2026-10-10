@@ -1303,3 +1303,15 @@ El presupuesto queda limitado al predicado de `duration_seconds`, el import
 estandar indispensable, una prueba Python sintetica y la evidencia de
 Validacion 84. No se cambia el esquema, estados, conteos, producto ni bateria
 historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: stdout host de una sola linea
+
+`parse_host_envelope` debe aplicar el contrato real del productor y del
+adaptador canonico: una ejecucion enfocada emite exactamente una linea no
+vacia y esa linea es el objeto JSON. No puede descartar ruido textual para
+convertir una salida de varias lineas en un resultado valido.
+
+El presupuesto queda limitado a la seleccion de lineas de stdout, una prueba
+Python sintetica y la evidencia de Validacion 85. No se cambia el productor,
+esquema, estados, producto ni bateria historica y no se configura, compila o
+ejecuta producto.
