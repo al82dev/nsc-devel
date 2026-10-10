@@ -1499,3 +1499,22 @@ sobrantes, duplicados ni intersecciones. Los dos pendientes exactos son
 `TS-SEMA-111` y `TF-SSA-273`; no deben modificarse antes de instrumentarlos.
 No se compilo ni se ejecutaron pruebas para esta actualizacion documental.
 Evidencia: `TANDA-VALIDACION-168-CLASIFICACION-221.md`.
+
+Validacion 167 corrigio las fixtures Frontend de `move(...)`, flujo de
+excepcion tipada y `trait IValue` en el commit `5ad58bf9e`. La corrida dirigida
+`20261010-tanda167-frontend-fixtures-5ad58bf9e` termino `25/25 PASS` en
+`Debug/NA`, sin IDs faltantes ni adicionales. Evidencia:
+`TANDA-VALIDACION-167-FIXTURES-FRONTEND-MOVE-EXCEPCIONES-OPAQUE.md`.
+
+Validacion 169 preservo el boundary vacio de `CF-FRONT-006` y corrigio su
+oraculo en el commit `e3fbe5e7b`. La corrida dirigida
+`20261010-tanda169-frontend-empty-namespace-e3fbe5e7b` termino `1/1 PASS` en
+`Debug/NA`. Evidencia:
+`TANDA-VALIDACION-169-ORACULO-FRONTEND-NAMESPACE-VACIO.md`.
+
+Validacion 170 agrego oraculos explicitos de ausencia para `34` boundaries
+Frontend en el commit `de719a9fe`. El build exclusivo de
+`nsc_component_tests` Debug fue correcto y la corrida dirigida
+`20261010-tanda170-frontend-absence-de719a9fe` termino `34/34 PASS` en
+`Debug/NA`, con `0` faltantes, extras o duplicados. Evidencia:
+`TANDA-VALIDACION-170-ORACULOS-AUSENCIA-FRONTEND.md`.
