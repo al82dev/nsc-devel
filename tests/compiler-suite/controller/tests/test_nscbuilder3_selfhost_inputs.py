@@ -19,8 +19,10 @@ VALID_INPUTS = {
 
 
 class Builder3SelfHostInputTests(unittest.TestCase):
-    def parse(self, value: object) -> tuple[str, str, bool]:
-        return builder.parse_selfhost_inputs(value, builder.SUITE_ROOT)
+    def parse(
+        self, value: object, expected_case_id: str = "TSH-00001"
+    ) -> tuple[str, str, bool]:
+        return builder.parse_selfhost_inputs(value, builder.SUITE_ROOT, expected_case_id)
 
     def test_live_inputs_are_closed_and_producer_stems_do_not_collide(self) -> None:
         cases = tuple(
@@ -32,7 +34,7 @@ class Builder3SelfHostInputTests(unittest.TestCase):
         for case in cases:
             with self.subTest(case_id=case.case_id):
                 project, argument, sandbox = self.parse(
-                    (case.manifest or {}).get("inputs")
+                    (case.manifest or {}).get("inputs"), case.case_id
                 )
                 projects.add(project)
                 self.assertTrue(argument)
@@ -60,6 +62,8 @@ class Builder3SelfHostInputTests(unittest.TestCase):
                 value = dict(VALID_INPUTS, case_argument=argument)
                 with self.assertRaisesRegex(ValueError, "case_argument"):
                     self.parse(value)
+        with self.assertRaisesRegex(ValueError, "selected case"):
+            self.parse(dict(VALID_INPUTS, case_argument="TSH-99999"))
 
     def test_sandbox_is_absent_or_the_declared_literal(self) -> None:
         self.assertEqual(self.parse(VALID_INPUTS)[2], False)

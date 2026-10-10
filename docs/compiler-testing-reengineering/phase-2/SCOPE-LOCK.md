@@ -1372,3 +1372,14 @@ acredite la version de esquema `1` ni la cardinalidad seleccionada `1`.
 El presupuesto queda limitado a esos dos predicados, pruebas Python sinteticas
 y la evidencia de Validacion 90. No se cambian valores validos, productores,
 producto ni bateria historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: identidad de argumento self-host
+
+`parse_selfhost_inputs` debe cotejar `case_argument` contra el `case_id` de la
+fila seleccionada. Una variante no puede acreditarse ejecutando por error otro
+caso del mismo fixture, aunque ese caso termine con el codigo esperado.
+
+El presupuesto queda limitado al parser de entradas self-host, su llamada en
+`_run_selfhost`, pruebas Python sinteticas y la evidencia de Validacion 91. No
+se cambian manifiestos, fixtures, producto ni bateria historica y no se
+configura, compila o ejecuta producto.

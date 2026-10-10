@@ -928,3 +928,8 @@ Validacion 90 cerro la coercion booleano-entero en el reporte enfocado.
 `schema` y `run.selected` exigen ahora tipo `int` exacto ademas del valor `1`.
 Las pruebas dirigidas pasan `6/6` y la suite Python completa `226/226`, sin
 ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 91 cerro la sustitucion de identidad self-host. `case_argument`
+debe coincidir exactamente con el caso seleccionado; los `192/192` casos vivos
+cumplen la relacion. Las pruebas dirigidas pasan `5/5` y la suite Python
+completa `226/226`, sin ejecutar producto. La tarea funcional permanece activa.

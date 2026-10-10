@@ -1651,7 +1651,9 @@ def equal_json_exact(expected: Any, actual: Any) -> bool:
     return True
 
 
-def parse_selfhost_inputs(value: Any, suite_root: Path) -> tuple[str, str, bool]:
+def parse_selfhost_inputs(
+    value: Any, suite_root: Path, expected_case_id: str
+) -> tuple[str, str, bool]:
     """Validate the closed producer and invocation contract of self-host cases."""
     if not isinstance(value, dict):
         raise ValueError("self-host inputs must be a JSON object")
@@ -1678,6 +1680,8 @@ def parse_selfhost_inputs(value: Any, suite_root: Path) -> tuple[str, str, bool]
     argument = value.get("case_argument")
     if not isinstance(argument, str) or not argument:
         raise ValueError("self-host case_argument must be non-empty text")
+    if argument != expected_case_id:
+        raise ValueError("self-host case_argument does not match selected case")
     sandbox = value.get("sandbox_argument")
     if sandbox is not None and sandbox != "fresh-case-directory":
         raise ValueError(
@@ -2028,7 +2032,7 @@ class ExecutionEngine:
         manifest = variant.case.manifest or {}
         try:
             project_relative, case_argument, use_sandbox = parse_selfhost_inputs(
-                manifest.get("inputs"), SUITE_ROOT
+                manifest.get("inputs"), SUITE_ROOT, variant.case.case_id
             )
             expected, expected_json = parse_selfhost_oracle(manifest.get("oracle"))
         except ValueError as error:
