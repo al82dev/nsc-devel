@@ -53,11 +53,32 @@ ese commit se permiten únicamente:
 
 No se ejecutará ninguna de las `439` variantes en esta tanda.
 
-## Estado previo a validación
+## Evidencia posterior al commit funcional
+
+- Commit funcional previo a toda prueba: `0068b28d4`.
+- `python -m py_compile nscbuilder3.py`: PASS.
+- `python tests/compiler-suite/controller/tests/test_nscbuilder3_retry.py`:
+  PASS, `13` pruebas.
+- Carga estática de la autoridad mediante `load_history_execution()` y
+  `retry_variants()`: PASS, `439` variantes y `439` claves únicas.
+- Distribución comprobada: `274 FAIL`, `4 INFRASTRUCTURE_ERROR` y
+  `161 BLOCKED`.
+- Intersección de las claves proyectadas con `PASS` o `KNOWN_FAILURE`: vacía.
+- `python nscbuilder3.py --gui-smoke`: PASS en la repetición estándar; construyó
+  y cerró la interfaz sin ejecutar variantes.
+
+El primer intento de `--gui-smoke` informó transitoriamente que no había abierto
+una pestaña histórica dedicada. La repetición diagnóstica inmediata y una
+segunda ejecución estándar finalizaron con código `0`; la incidencia no volvió
+a reproducirse y no se atribuye aquí una causa no demostrada.
+
+Los directorios temporales y el bytecode de estas comprobaciones se
+redirigieron a `_nscbuilder3` dentro de `A:\nsc-devel`.
+
+## Estado de cierre
 
 - Implementación: terminada.
-- Commit funcional previo a pruebas: preparado en esta tanda; la evidencia de
-  validación se registrará después de crearlo.
-- Validación sintáctica y dirigida: pendiente.
-- Reejecución de las `439` variantes: no autorizada en esta tanda.
-- Unidad `C:` modificada: no.
+- Validación sintáctica y dirigida: aprobada con el alcance anterior.
+- Reejecución de las `439` variantes: no ejecutada ni autorizada en esta tanda.
+- Corrida integral: no ejecutada.
+- Unidad `C:` modificada por las validaciones: no.
