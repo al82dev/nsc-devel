@@ -104,3 +104,10 @@ Presupuesto del cambio:
 
 El botón de ejecución conserva su responsabilidad sobre la batería de pruebas;
 el botón nuevo sólo se habilita para operaciones de construcción.
+
+### Cambio cerrado: ubicación del control de cancelación
+
+Por instrucción explícita del usuario, el botón `Cancelar construcción` debe
+aparecer inmediatamente al lado de `Construir NSC`. Sólo se autoriza mover el
+widget; su señal, estado habilitado y mecanismo de cancelación permanecen
+idénticos.

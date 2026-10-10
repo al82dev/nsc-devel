@@ -124,9 +124,10 @@ oráculos existentes.
 - La pestaña de construcción interpreta las líneas nativas `[n/total]` de
   Ninja y muestra barra, contador y descripción del paso actual sin retirar la
   línea original de la consola ni de `full.log`.
-- La misma pestaña expone `Cancelar construcción` durante configuración o
-  compilación y lo conecta a la cancelación del árbol de procesos ya existente;
-  el botón de ejecución permanece reservado para la batería de pruebas.
+- La misma pestaña expone `Cancelar construcción` inmediatamente al lado de
+  `Construir NSC` durante configuración o compilación y lo conecta a la
+  cancelación del árbol de procesos ya existente; el botón de ejecución
+  permanece reservado para la batería de pruebas.
 - Recibo SHA-256 del `nsc.exe` y `nslink.exe` externos seleccionados.
 
 ## Evidencia ejecutada

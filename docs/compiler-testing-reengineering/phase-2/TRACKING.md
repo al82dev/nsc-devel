@@ -37,8 +37,9 @@ líneas nativas `[n/total]` de Ninja alimentan un contador, una barra de progres
 y la descripción del paso actual en la pestaña `Construcción`; el reporte
 condensado no sustituye la consola ni el `full.log`. Esta presentación tiene
 validación estática y queda pendiente de comprobación funcional por el usuario.
-La pestaña incorpora además un botón de cancelación propio, habilitado sólo
-durante configuración o construcción y conectado al árbol de procesos activo.
+La pestaña incorpora además un botón de cancelación propio inmediatamente al
+lado de `Construir NSC`, habilitado sólo durante configuración o construcción
+y conectado al árbol de procesos activo.
 
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`

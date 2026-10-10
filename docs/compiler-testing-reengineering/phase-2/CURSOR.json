@@ -10,7 +10,7 @@
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "NSCBUILDER3-CONSTRUCTION-CANCELLATION",
+  "current_batch": "NSCBUILDER3-CANCELLATION-PLACEMENT",
   "next_action": "Validate complete compiler progress and construction cancellation in the next user-run build, then continue the authorized deferred Phase 2 validation.",
   "implementation_materialization": {
     "Host.Source": {
