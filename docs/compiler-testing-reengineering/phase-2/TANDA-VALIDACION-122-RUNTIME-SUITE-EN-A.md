@@ -83,3 +83,10 @@ La auditoria inmediatamente posterior encontro que el `CMakeLists.txt`
 sombreaba la entrada de cache con una asignacion normal. Por tanto, esta tanda
 demuestra solamente que Builder 3 emite la autoridad correcta; el consumo
 efectivo se corrige y documenta por separado en Validacion 123.
+
+Una segunda auditoria demostro que la fuente elegida aqui tampoco acreditaba
+la identidad del runtime: `install_prefix` podia contener una biblioteca
+anterior al `nsc.exe` seleccionado. Validacion 126 sustituye esa derivacion por
+el directorio `generated` propietario del NSC o del `BuildId.h` explicito. Esta
+tanda conserva valor historico como cierre de la caida a `Program Files`, pero
+su afirmacion de autoridad runtime queda reemplazada por Validacion 126.

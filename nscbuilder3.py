@@ -1432,6 +1432,21 @@ def compiler_output(config: BuilderConfig, mode: str) -> Path:
     return compiler_build_dir(config, mode) / "bin" / "nsc.exe"
 
 
+def compiler_runtime_library(config: BuilderConfig) -> Path:
+    """Return the runtime produced with the selected compiler identity."""
+    if config.build_id_header:
+        build_id_header = Path(config.build_id_header).resolve()
+        if len(build_id_header.parents) < 3:
+            raise ValueError(
+                "El encabezado BuildId no permite identificar su directorio generated"
+            )
+        generated_root = build_id_header.parents[2]
+    else:
+        selected_nsc = Path(config.nsc_executable).resolve()
+        generated_root = selected_nsc.parent.parent / "generated"
+    return generated_root / "NativeSharp.Runtime.Win32.lib"
+
+
 def host_executable(config: BuilderConfig, mode: str) -> Path:
     """Locate the consolidated host executable in supported CMake layouts."""
     root = effective_build_dir(config, mode)
@@ -1720,13 +1735,7 @@ def parse_selfhost_inputs(
 def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[str, list[str], Path]]:
     """Create explicit standalone CMake commands without building NSC."""
     tools = discover_build_tools(config.llvm_dir)
-    runtime_library = (
-        Path(config.install_prefix)
-        / "lib"
-        / "nativesharp"
-        / "runtime"
-        / "NativeSharp.Runtime.Win32.lib"
-    ).resolve().as_posix()
+    runtime_library = compiler_runtime_library(config).resolve().as_posix()
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
         build = effective_build_dir(config, mode)

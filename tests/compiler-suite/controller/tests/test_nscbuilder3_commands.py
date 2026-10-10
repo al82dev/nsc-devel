@@ -62,8 +62,7 @@ class Builder3CommandTests(unittest.TestCase):
             self.assertIn("-DNSC_NSLINK_EXECUTABLE=A:/toolchain/bin/nslink.exe", command)
             self.assertIn(
                 "-DNSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY="
-                "A:/native-sharp-3.0-baseline/lib/nativesharp/runtime/"
-                "NativeSharp.Runtime.Win32.lib",
+                "A:/toolchain/generated/NativeSharp.Runtime.Win32.lib",
                 command,
             )
             self.assertIn("-DLLVM_DIR=C:/clang-llvm/lib/cmake/llvm", command)
@@ -169,7 +168,9 @@ class Builder3CommandTests(unittest.TestCase):
                 **self.config.__dict__,
                 "archive_executable": "A:/tools/7z.exe",
                 "comparison_nsc": "A:/comparison/nsc.exe",
-                "build_id_header": "A:/comparison/BuildId.h",
+                "build_id_header": (
+                    "A:/comparison/generated/nativesharp/Basic/BuildId.h"
+                ),
             }
         )
         _, command, _ = builder.configure_commands(configured, ("Debug",))[0]
@@ -179,7 +180,16 @@ class Builder3CommandTests(unittest.TestCase):
             "-DNSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE=A:/comparison/nsc.exe",
             command,
         )
-        self.assertIn("-DNSC_COMPILER_SUITE_BUILD_ID_HEADER=A:/comparison/BuildId.h", command)
+        self.assertIn(
+            "-DNSC_COMPILER_SUITE_BUILD_ID_HEADER="
+            "A:/comparison/generated/nativesharp/Basic/BuildId.h",
+            command,
+        )
+        self.assertIn(
+            "-DNSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY="
+            "A:/comparison/generated/NativeSharp.Runtime.Win32.lib",
+            command,
+        )
         self.assertFalse(
             any(argument.startswith("-UNSC_COMPILER_SUITE_") for argument in command)
         )

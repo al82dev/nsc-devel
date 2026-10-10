@@ -1134,3 +1134,11 @@ como `Python3_EXECUTABLE` para Debug y Release. Las pruebas dirigidas pasan
 `17/17` y la suite Python `273/273`, sin configurar, compilar o ejecutar
 producto. La corrida funcional externa sigue pendiente y la tarea permanece
 activa.
+
+Validacion 126 rectifico la autoridad runtime establecida en Validacion 122.
+Builder 3 ya no deriva `NativeSharp.Runtime.Win32.lib` de `install_prefix`:
+usa el mismo directorio `generated` propietario del `nsc.exe` seleccionado o
+del `BuildId.h` explicito. Las pruebas dirigidas pasan `6/6`, la suite Python
+`273/273` y el catalogo conserva `9,587` casos, `1,208` contratos, `44`
+componentes y `0` sin clasificar, sin configurar, compilar o ejecutar producto.
+La corrida funcional externa sigue pendiente y la tarea permanece activa.

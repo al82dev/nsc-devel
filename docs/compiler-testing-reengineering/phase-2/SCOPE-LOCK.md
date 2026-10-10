@@ -1845,3 +1845,30 @@ controladores, CMake, producto, casos, manifiestos, oraculos ni bateria
 historica. Los seis archivos del usuario registrados en `CURSOR.json`
 permanecen protegidos. No se configura, compila o ejecuta producto; no se
 ejecuta baseline y no se toca la unidad `C:`.
+
+### Enmienda: runtime perteneciente al compilador seleccionado
+
+La auditoria posterior demostro que derivar el runtime de `install_prefix`,
+como hizo Validacion 122, mezcla el NSC recien construido con una biblioteca
+instalada anterior. El arbol vivo contiene
+`build-clang/generated/NativeSharp.Runtime.Win32.lib` del 2026-10-10 y el
+prefijo instalado contiene otro artefacto del 2026-10-07.
+
+La autoridad runtime debe ser el mismo directorio `generated` que proporciona
+el `BuildId.h` compilado por `Version.cpp`: cuando existe un encabezado
+explicito se deriva de sus ancestros y, en caso contrario, se deriva del arbol
+propietario del `nsc.exe` seleccionado. No se permite fallback al prefijo
+instalado.
+
+La entrada exacta es un NSC seleccionado bajo `<build>/bin/nsc.exe`. La
+operacion defectuosa es construir la ruta desde un `install_prefix` ajeno a la
+identidad de ese binario. La invariante violada es que binario, BuildId y
+runtime pertenecen al mismo productor de compilacion.
+
+El presupuesto de Validacion 126 queda limitado a una funcion pura de
+derivacion, usarla en `configure_commands`, ampliar las pruebas de comandos,
+rectificar la evidencia previa y actualizar tracking y cursor. No se cambian
+artefactos, CMake, producto, casos, manifiestos, oraculos ni bateria historica.
+Los seis archivos del usuario registrados en `CURSOR.json` permanecen
+protegidos. No se configura, compila o ejecuta producto; no se ejecuta baseline
+y no se toca la unidad `C:`.
