@@ -879,3 +879,19 @@ El presupuesto queda limitado a un adaptador puro hacia el cargador canónico,
 53. No se reescribe el validador, no se modifican manifiestos, inventarios,
 selección, comandos, producto ni batería histórica y no se configura, compila o
 ejecuta producto.
+
+### Enmienda: esquema mínimo de los CSV del catálogo
+
+Los tres CSV que construyen el catálogo gráfico deben declarar sin duplicados
+todos los encabezados que Builder 3 consume, contener exactamente una celda por
+encabezado en cada fila y publicar valores no vacíos para esos campos. La ola
+debe ser un decimal positivo canónico; queda prohibido que `int(...)` acepte
+espacios, signos, ceros iniciales o formas no documentadas. Se permiten
+encabezados adicionales para que el inventario pueda evolucionar sin fijar un
+conteo de columnas ni de filas.
+
+El presupuesto queda limitado a un lector CSV puro, un parser de ola,
+`CanonicalCatalog.load`, pruebas Python sintéticas y la evidencia de Validación
+54. No se modifican los CSV, sus dominios semánticos, conteos, selección,
+manifiestos, producto ni batería histórica y no se configura, compila o ejecuta
+producto.

@@ -84,6 +84,17 @@ CONFIG_STRING_FIELDS = (
     "comparison_nsc",
     "build_id_header",
 )
+WAVE_CATALOG_FIELDS = ("wave", "purpose", "component")
+DESIGN_CATALOG_FIELDS = ("case_id", "contract_id", "component", "objective")
+ALLOCATION_CATALOG_FIELDS = (
+    "case_id",
+    "component",
+    "layer",
+    "planned_executor",
+    "default_profile",
+    "supported_build_modes",
+    "supported_optimizations",
+)
 
 
 def utc_now() -> str:
@@ -95,6 +106,49 @@ def read_csv(path: Path) -> list[dict[str, str]]:
     """Read one canonical UTF-8 CSV file without mutating its source."""
     with path.open("r", encoding="utf-8-sig", newline="") as stream:
         return list(csv.DictReader(stream))
+
+
+def read_catalog_csv(
+    path: Path, required_fields: Sequence[str]
+) -> list[dict[str, str]]:
+    """Read a catalogue CSV while preserving extensible named columns."""
+    with path.open("r", encoding="utf-8-sig", newline="") as stream:
+        reader = csv.DictReader(stream)
+        headers = reader.fieldnames
+        if headers is None:
+            raise ValueError(f"{path}: missing CSV header")
+        if any(header is None or not header.strip() for header in headers):
+            raise ValueError(f"{path}: CSV header contains an empty name")
+        if len(headers) != len(set(headers)):
+            raise ValueError(f"{path}: CSV header contains duplicate names")
+        missing = [field for field in required_fields if field not in headers]
+        if missing:
+            raise ValueError(
+                f"{path}: CSV header is missing required fields: {', '.join(missing)}"
+            )
+        rows: list[dict[str, str]] = []
+        for row_number, row in enumerate(reader, start=2):
+            if None in row:
+                raise ValueError(f"{path}: row {row_number} contains extra cells")
+            blank = [
+                field
+                for field in required_fields
+                if row.get(field) is None or not row[field].strip()
+            ]
+            if blank:
+                raise ValueError(
+                    f"{path}: row {row_number} has blank required fields: "
+                    + ", ".join(blank)
+                )
+            rows.append(row)
+        return rows
+
+
+def parse_wave_number(value: str) -> int:
+    """Parse one canonical positive decimal implementation-wave number."""
+    if re.fullmatch(r"[1-9][0-9]*", value) is None:
+        raise ValueError(f"invalid implementation wave: {value!r}")
+    return int(value)
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -463,15 +517,19 @@ class CanonicalCatalog:
     def load(cls) -> "CanonicalCatalog":
         """Load and validate the complete compiler-only denominator."""
         validate_executable_manifest()
-        waves = read_csv(WAVES_PATH)
-        wave_by_component = {row["component"]: int(row["wave"]) for row in waves}
+        waves = read_catalog_csv(WAVES_PATH, WAVE_CATALOG_FIELDS)
+        wave_by_component = {
+            row["component"]: parse_wave_number(row["wave"]) for row in waves
+        }
         purpose_by_component = {row["component"]: row["purpose"] for row in waves}
         design = [
-            row for row in read_csv(DESIGN_PATH) if row["component"] in wave_by_component
+            row
+            for row in read_catalog_csv(DESIGN_PATH, DESIGN_CATALOG_FIELDS)
+            if row["component"] in wave_by_component
         ]
         allocation_rows = [
             row
-            for row in read_csv(ALLOCATION_PATH)
+            for row in read_catalog_csv(ALLOCATION_PATH, ALLOCATION_CATALOG_FIELDS)
             if row["component"] in wave_by_component
         ]
         manifest_rows = read_jsonl(MANIFEST_PATH)

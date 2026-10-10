@@ -711,3 +711,9 @@ ahora `cases.jsonl` al mismo cargador estricto que el controlador antes de
 proyectarlo y ya no convierte silenciosamente identificadores, ejecutores,
 resultados esperados u optimizaciones. Las pruebas dirigidas pasan `3/3` y la
 suite Python completa `168/168` sin modificar inventarios ni ejecutar producto.
+
+Validación 54 cerró el esquema mínimo de los tres CSV del catálogo. Encabezados
+requeridos ausentes o duplicados, filas desalineadas, valores obligatorios
+vacíos y olas no canónicas fallan ahora en su origen; columnas futuras con
+nombre siguen permitidas. Las pruebas dirigidas pasan `5/5` y la suite Python
+completa `173/173` sin modificar inventarios ni ejecutar producto.
