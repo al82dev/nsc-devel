@@ -1291,3 +1291,15 @@ El presupuesto queda limitado a un comparador local no recursivo, su uso en
 `_run_selfhost`, pruebas Python sinteticas y la evidencia de Validacion 83. No
 se cambian oraculos, fixtures, producto ni bateria historica y no se configura,
 compila o ejecuta producto.
+
+### Enmienda: duracion finita del reporte enfocado
+
+`parse_identity_envelope` debe rechazar duraciones `NaN` e infinitas. Un valor
+numericamente no finito no representa tiempo transcurrido valido y no puede
+acreditar un resultado terminal aun cuando la comparacion con cero no lo
+detecte.
+
+El presupuesto queda limitado al predicado de `duration_seconds`, el import
+estandar indispensable, una prueba Python sintetica y la evidencia de
+Validacion 84. No se cambia el esquema, estados, conteos, producto ni bateria
+historica y no se configura, compila o ejecuta producto.

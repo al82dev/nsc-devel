@@ -891,3 +891,8 @@ comparacion conserva estructura, tipo y valor mediante una lista de trabajo
 iterativa; `true`, `1` y `1.0` ya no son intercambiables. Las pruebas dirigidas
 pasan `6/6` y la suite Python completa `223/223`, sin ejecutar producto. La
 tarea funcional permanece activa.
+
+Validacion 84 cerro las duraciones no finitas del reporte enfocado. `NaN` e
+infinitos ya no pueden acreditar un resultado terminal. Las pruebas dirigidas
+pasan `5/5` y la suite Python completa `223/223`, sin ejecutar producto. La
+tarea funcional permanece activa.

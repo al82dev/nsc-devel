@@ -13,6 +13,7 @@ import csv
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import queue
 import re
@@ -1516,6 +1517,7 @@ def parse_identity_envelope(
     if (
         isinstance(duration, bool)
         or not isinstance(duration, (int, float))
+        or not math.isfinite(duration)
         or duration < 0
     ):
         raise ValueError("identity result duration_seconds must be non-negative")

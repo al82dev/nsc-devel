@@ -98,6 +98,12 @@ class Builder3IdentityEnvelopeTests(unittest.TestCase):
             payload = json.loads(envelope())
             payload["results"][0]["duration_seconds"] = -1
             self.parse(json.dumps(payload))
+        for duration in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(duration=duration):
+                payload = json.loads(envelope())
+                payload["results"][0]["duration_seconds"] = duration
+                with self.assertRaisesRegex(ValueError, "duration_seconds"):
+                    self.parse(json.dumps(payload))
         with self.assertRaisesRegex(ValueError, "failures"):
             payload = json.loads(envelope())
             payload["results"][0]["failures"] = "broken"
