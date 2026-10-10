@@ -54,7 +54,13 @@ TIMEOUT_SECONDS = {
     "self-host": 900.0,
     "packaging": 900.0,
 }
-TERMINAL_FAILURES = {"FAIL", "UNEXPECTED_PASS", "INFRASTRUCTURE_ERROR", "CANCELLED"}
+TERMINAL_FAILURES = {
+    "FAIL",
+    "UNEXPECTED_PASS",
+    "BLOCKED",
+    "INFRASTRUCTURE_ERROR",
+    "CANCELLED",
+}
 NON_EXECUTABLE = {
     "InfrastructurePending",
     "HistoricalDelegated",
@@ -906,6 +912,7 @@ class ExecutionEngine:
         self.progress = progress
         self.process = ProcessController(self._emit_output)
         self.fixture_cache: dict[tuple[str, str, str], Path] = {}
+        self.fixture_failures: dict[tuple[str, str, str], tuple[str, str]] = {}
         self.module_cache: dict[str, Any] = {}
 
     def run(self, variants: Sequence[RunVariant]) -> tuple[list[CaseOutcome], bool]:
@@ -1064,7 +1071,22 @@ class ExecutionEngine:
         project_relative = inputs.get("fixture_project")
         if not isinstance(project_relative, str):
             return "INFRASTRUCTURE_ERROR", "self-host case lacks fixture_project", ""
-        executable = self._prepare_selfhost_fixture(variant, project_relative)
+        fixture_key = (project_relative, variant.build_mode, variant.optimization)
+        producer_failure = self.fixture_failures.get(fixture_key)
+        if producer_failure is not None:
+            detail, evidence = producer_failure
+            return "BLOCKED", f"BLOQUEADO_POR fixture {project_relative}: {detail}", evidence
+        try:
+            executable = self._prepare_selfhost_fixture(variant, project_relative)
+        except RuntimeError as error:
+            project = SUITE_ROOT / project_relative
+            fixture_root = self.store.root / "fixtures" / (
+                f"{project.stem}-{variant.build_mode.casefold()}-{variant.optimization.casefold()}"
+            )
+            evidence = str(fixture_root / "compile.log")
+            detail = str(error)
+            self.fixture_failures[fixture_key] = (detail, evidence)
+            return "INFRASTRUCTURE_ERROR", detail, evidence
         case_root = self._case_root(variant)
         if variant.case.component == "SelfHost.Source":
             self._prepare_source_files(case_root)
@@ -2308,6 +2330,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "COMPILING": QColor("#e6c76a"),
                 "KNOWN_FAILURE": QColor("#f0a35e"),
                 "FAIL": QColor("#ff7777"),
+                "BLOCKED": QColor("#d9955b"),
                 "INFRASTRUCTURE_ERROR": QColor("#ff7777"),
                 "UNEXPECTED_PASS": QColor("#ff7777"),
                 "CANCELLED": QColor("#b7b7b7"),

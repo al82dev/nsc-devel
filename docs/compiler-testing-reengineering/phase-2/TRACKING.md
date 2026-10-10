@@ -93,6 +93,12 @@ Ninja, `Debug`/`Release`, CMake, Clang, LLD, LLVM, `llvm-mt`, `llvm-rc` y el
 NSLink seleccionado; el controlador rechaza una invocación incompleta antes de
 configurar. La validación externa permanece pendiente.
 
+Los cinco productores de fixtures self-host ya conservan también fallos por
+proyecto, modo y optimización. La primera compilación fallida queda como causa
+de infraestructura y los consumidores restantes se reportan `BLOCKED` con la
+misma evidencia, en lugar de repetir hasta 1,536 compilaciones fallidas. Ningún
+caso desaparece del reporte ni se convierte en éxito.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

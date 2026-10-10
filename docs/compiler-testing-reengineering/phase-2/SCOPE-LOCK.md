@@ -235,3 +235,17 @@ El presupuesto queda limitado a `run_buildsystem_gate.py`, la inscripción
 Validación 07. Los seis casos, sus oráculos, el producto, los demás
 controladores y los archivos protegidos permanecen intactos. No se configura ni
 compila localmente; la validación corresponde a la corrida externa.
+
+### Enmienda: bloqueo causal de consumidores self-host
+
+Los cinco proyectos de fixture self-host son productores compartidos por 192
+casos lógicos y 1,536 variantes concretas. Una compilación fallida debe
+registrarse una sola vez por proyecto, modo y optimización; los consumidores
+restantes conservan su identidad con estado `BLOCKED` y evidencia
+`BLOQUEADO_POR`, sin reintentar el mismo productor ni convertirlos en éxito.
+
+El presupuesto queda limitado a `ExecutionEngine._run_selfhost`, sus caches de
+productor, el conjunto de estados terminales y el color de `BLOCKED` en
+`nscbuilder3.py`, más la evidencia de Validación 08. Permanecen intactos los
+fixtures, manifiestos, casos, oráculos, compilador, suite histórica y archivos
+protegidos. No se compila ni ejecuta localmente.
