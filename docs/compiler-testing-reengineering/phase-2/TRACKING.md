@@ -130,6 +130,13 @@ detectó además que el parser de Projects omitía `CSH-PRJ-005` cuando el orác
 estaba en la línea siguiente; el patrón ahora admite espacio multilínea y el
 contrato se coteja correctamente, sin modificar la prueba materializada.
 
+Los cinco controladores self-host ejecutables o mixtos (`Basic`, `Diagnostics`,
+`Lexer`, `Source` y `Types`) ya derivan también su denominador y disposiciones.
+El manifiesto se coteja caso por caso con contrato, capa y perfil; las
+clasificaciones no ejecutables forman una partición exacta y los defectos
+conocidos deben coincidir con sus etiquetas ejecutables. La validación estática
+cerró `217` casos canónicos y `192` ejecutables sin compilar fixtures.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

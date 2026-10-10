@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import os
 import subprocess
@@ -9,29 +8,12 @@ import sys
 import time
 from pathlib import Path
 
+from selfhost_inventory import (
+    load_component_inventory,
+    read_jsonl,
+    validate_manifest_cases,
+)
 
-EXPECTED_IDS = tuple(f"TSH-{ordinal:05d}" for ordinal in range(188, 216))
-KNOWN_PRODUCT_DEFECTS = frozenset({"TSH-00213", "TSH-00214"})
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as stream:
-        return list(csv.DictReader(stream))
-
-
-def read_jsonl(path: Path) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
-    for line_number, raw_line in enumerate(
-        path.read_text(encoding="utf-8-sig").splitlines(), start=1
-    ):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        payload = json.loads(line)
-        if not isinstance(payload, dict):
-            raise RuntimeError(f"manifest row {path}:{line_number} is not an object")
-        rows.append(payload)
-    return rows
 
 
 def write_text(path: Path, value: str) -> None:
@@ -55,33 +37,24 @@ def run_process(
     )
 
 
-def validate_lineage(root: Path, cases: list[dict[str, object]]) -> None:
-    inventory = root / "docs" / "compiler-testing-reengineering" / "inventory"
-    design = [
-        row
-        for row in read_csv(inventory / "test-case-design.csv")
-        if row["component"] == "SelfHost.Diagnostics"
-    ]
-    contracts = [
-        row
-        for row in read_csv(inventory / "contracts.csv")
-        if row["component"] == "SelfHost.Diagnostics"
-    ]
-    if tuple(row["case_id"] for row in design) != EXPECTED_IDS:
-        raise RuntimeError("design does not contain canonical TSH-00188..TSH-00215")
-    if len(contracts) != 4:
-        raise RuntimeError("contract inventory does not contain four Diagnostics contracts")
-    if tuple(str(row["case_id"]) for row in cases) != EXPECTED_IDS:
-        raise RuntimeError("manifest does not contain the canonical 28 Diagnostics cases")
-    if len({str(row["case_id"]) for row in cases}) != 28:
-        raise RuntimeError("Diagnostics manifest contains duplicate case identifiers")
+def validate_lineage(root: Path, cases: list[dict[str, object]]) -> frozenset[str]:
+    inventory = load_component_inventory(root, "SelfHost.Diagnostics")
+    manifest_by_id = validate_manifest_cases(inventory, cases)
+    if manifest_by_id.keys() != inventory.design_by_id.keys():
+        raise RuntimeError("Diagnostics manifest differs from the canonical denominator")
     known = {
         str(row["case_id"])
         for row in cases
         if row.get("expected_outcome") == "KNOWN_FAILURE"
     }
-    if known != KNOWN_PRODUCT_DEFECTS:
-        raise RuntimeError("Diagnostics known-product-defect classification changed")
+    tagged = {
+        str(row["case_id"])
+        for row in cases
+        if "known-product-defect" in row.get("tags", [])
+    }
+    if known != tagged:
+        raise RuntimeError("Diagnostics defect outcome and tags differ")
+    return frozenset(known)
 
 
 def oracle_satisfied(
@@ -128,7 +101,7 @@ def main() -> int:
         for row in read_jsonl(manifest)
         if row.get("component") == "SelfHost.Diagnostics"
     ]
-    validate_lineage(root, cases)
+    known_product_defects = validate_lineage(root, cases)
 
     work_root = options.work_parent.resolve() / (
         f"selfhost-diagnostics-{options.build_mode.lower()}-{options.optimization.lower()}"
@@ -169,7 +142,7 @@ def main() -> int:
         write_text(case_root / "stdout.log", completed.stdout)
         write_text(case_root / "stderr.log", completed.stderr)
         satisfied, detail = oracle_satisfied(row, completed)
-        if case_id in KNOWN_PRODUCT_DEFECTS:
+        if case_id in known_product_defects:
             status = "UNEXPECTED_PASS" if satisfied else "KNOWN_PRODUCT_DEFECT"
             failures += 1
         else:
@@ -191,8 +164,8 @@ def main() -> int:
         "build_mode": options.build_mode,
         "optimization": options.optimization,
         "selected": len(cases),
-        "required": len(cases) - len(KNOWN_PRODUCT_DEFECTS),
-        "known_product_defects": len(KNOWN_PRODUCT_DEFECTS),
+        "required": len(cases) - len(known_product_defects),
+        "known_product_defects": len(known_product_defects),
         "failures": failures,
         "results": results,
     }

@@ -8,28 +8,15 @@ import sys
 import time
 from pathlib import Path
 
-
-EXECUTABLE_CASES = tuple(
-    f"TSH-{number:05d}" for number in range(1, 29) if number != 18
+from selfhost_inventory import (
+    classification_sets,
+    load_component_inventory,
+    read_jsonl,
+    validate_manifest_cases,
+    validate_manifest_partition,
 )
-PLAN_CONTRADICTION_CASES = ("TSH-00018",)
+
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1}
-
-
-def read_jsonl(path: Path) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as error:
-            raise RuntimeError(f"invalid JSON at {path}:{line_number}: {error.msg}") from error
-        if not isinstance(payload, dict):
-            raise RuntimeError(f"expected JSON object at {path}:{line_number}")
-        rows.append(payload)
-    return rows
 
 
 def write_text(path: Path, value: str) -> None:
@@ -69,24 +56,26 @@ def main() -> int:
     if not nsc.is_file() or not nslink.is_file():
         raise RuntimeError("SelfHost.Basic requires explicit existing NSC and NSLink executables")
 
-    manifest = options.source_root / "manifest" / "cases.jsonl"
+    source_root = options.source_root.resolve()
+    repository_root = source_root.parents[1]
+    inventory = load_component_inventory(repository_root, "SelfHost.Basic")
+    manifest = source_root / "manifest" / "cases.jsonl"
     cases = [
         row for row in read_jsonl(manifest) if row.get("component") == "SelfHost.Basic"
     ]
-    if tuple(row.get("case_id") for row in cases) != EXECUTABLE_CASES:
-        raise RuntimeError("SelfHost.Basic manifest does not contain the exact 27-case set")
-    if any(row.get("component") != "SelfHost.Basic" for row in cases):
-        raise RuntimeError("SelfHost.Basic fragment contains a foreign component")
+    manifest_by_id = validate_manifest_cases(inventory, cases)
 
     contradiction_path = (
-        options.source_root
+        source_root
         / "selfhost"
         / "modules"
         / "SelfHostBasicPlanContradictions.jsonl"
     )
-    contradictions = read_jsonl(contradiction_path)
-    if tuple(row.get("case_id") for row in contradictions) != PLAN_CONTRADICTION_CASES:
-        raise RuntimeError("SelfHost.Basic plan-contradiction catalogue is incomplete")
+    classified = classification_sets(inventory, contradiction_path)
+    if set(classified) != {"PlanContradiction"}:
+        raise RuntimeError("SelfHost.Basic contains an unsupported classification")
+    plan_contradictions = classified["PlanContradiction"]
+    validate_manifest_partition(inventory, manifest_by_id, plan_contradictions)
 
     selected = [
         row
@@ -98,7 +87,7 @@ def main() -> int:
     )
     work_root.mkdir(parents=True, exist_ok=True)
     executable = work_root / "selfhost-basic-tests.exe"
-    project = options.source_root / "selfhost" / "modules" / "SelfHostBasic.nsproj"
+    project = source_root / "selfhost" / "modules" / "SelfHostBasic.nsproj"
     environment = dict(os.environ)
     environment["NSC_LINKER"] = str(nslink)
     environment["PATH"] = str(nslink.parent) + os.pathsep + environment.get("PATH", "")
@@ -151,7 +140,7 @@ def main() -> int:
         "selected": len(selected),
         "passed": len(selected) - failed,
         "failed": failed,
-        "plan_contradictions": list(PLAN_CONTRADICTION_CASES),
+        "plan_contradictions": sorted(plan_contradictions),
         "results": results,
     }
     write_text(work_root / "results.json", json.dumps(payload, indent=2) + "\n")

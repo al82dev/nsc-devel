@@ -8,22 +8,13 @@ import sys
 import time
 from pathlib import Path
 
+from selfhost_inventory import (
+    load_component_inventory,
+    read_jsonl,
+    validate_manifest_cases,
+)
 
-EXPECTED_IDS = tuple(f"TSH-{value:05d}" for value in range(399, 452))
-KNOWN_PRODUCT_DEFECTS = frozenset({"TSH-00442"})
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1}
-
-
-def read_jsonl(path: Path) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
-    for number, raw in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
-        if not raw.strip() or raw.lstrip().startswith("#"):
-            continue
-        value = json.loads(raw)
-        if not isinstance(value, dict):
-            raise RuntimeError(f"manifest row {path}:{number} is not an object")
-        rows.append(value)
-    return rows
 
 
 def write_text(path: Path, value: str) -> None:
@@ -54,17 +45,21 @@ def main() -> int:
         raise RuntimeError("SelfHost.Lexer requires explicit NSC and NSLink executables")
 
     root = options.repository_root.resolve()
-    if not (root / "docs" / "compiler-testing-reengineering" / "inventory" / "test-case-design.csv").is_file():
-        raise RuntimeError("SelfHost.Lexer canonical test-case inventory is missing")
+    inventory = load_component_inventory(root, "SelfHost.Lexer")
     manifest = options.source_root / "manifest" / "cases.jsonl"
     cases = [row for row in read_jsonl(manifest) if row.get("component") == "SelfHost.Lexer"]
-    if tuple(str(row["case_id"]) for row in cases) != EXPECTED_IDS:
-        raise RuntimeError("central manifest does not contain canonical TSH-00399..TSH-00451")
-    if len({str(row["case_id"]) for row in cases}) != 53:
-        raise RuntimeError("central SelfHost.Lexer rows contain duplicate identifiers")
+    manifest_by_id = validate_manifest_cases(inventory, cases)
+    if manifest_by_id.keys() != inventory.design_by_id.keys():
+        raise RuntimeError("SelfHost.Lexer manifest differs from the canonical denominator")
     known = {str(row["case_id"]) for row in cases if row.get("expected_outcome") == "KNOWN_FAILURE"}
-    if known != KNOWN_PRODUCT_DEFECTS:
-        raise RuntimeError("SelfHost.Lexer known-product-defect classification changed")
+    tagged = {
+        str(row["case_id"])
+        for row in cases
+        if "known-product-defect" in row.get("tags", [])
+    }
+    if known != tagged:
+        raise RuntimeError("SelfHost.Lexer defect outcome and tags differ")
+    known_product_defects = frozenset(known)
 
     selected = [row for row in cases if PROFILE_RANK[str(row["profile"])] <= PROFILE_RANK[options.profile]]
     work_root = options.work_parent.resolve() / f"selfhost-lexer-{options.build_mode.lower()}-{options.optimization.lower()}"
@@ -94,7 +89,7 @@ def main() -> int:
         write_text(case_root / "stdout.log", completed.stdout)
         write_text(case_root / "stderr.log", completed.stderr)
         passed = completed.returncode == int(row["oracle"]["exit_code"])
-        if case_id in KNOWN_PRODUCT_DEFECTS:
+        if case_id in known_product_defects:
             status = "UNEXPECTED_PASS" if passed else "KNOWN_PRODUCT_DEFECT"
             failures += 1
         else:
@@ -104,8 +99,8 @@ def main() -> int:
                         "exit_code": completed.returncode, "duration_seconds": duration})
 
     payload = {"component": "SelfHost.Lexer", "profile": options.profile, "selected": len(selected),
-               "required": len(selected) - sum(str(row["case_id"]) in KNOWN_PRODUCT_DEFECTS for row in selected),
-               "known_product_defects": sum(str(row["case_id"]) in KNOWN_PRODUCT_DEFECTS for row in selected),
+               "required": len(selected) - sum(str(row["case_id"]) in known_product_defects for row in selected),
+               "known_product_defects": sum(str(row["case_id"]) in known_product_defects for row in selected),
                "failures": failures, "results": results}
     write_text(work_root / "results.json", json.dumps(payload, indent=2) + "\n")
     return 0 if failures == 0 else 1

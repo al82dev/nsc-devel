@@ -311,3 +311,16 @@ El presupuesto queda limitado a esos siete gates, las funciones compartidas
 de perfil/rango y la evidencia de Validación 12. Módulos, headers de soporte,
 casos, contratos, oráculos, disposiciones, manifiestos y producto permanecen
 intactos. No se configura ni compila producto.
+
+### Enmienda: inventario self-host ejecutable y mixto
+
+Los gates de `SelfHost.Basic`, `SelfHost.Diagnostics`, `SelfHost.Lexer`,
+`SelfHost.Source` y `SelfHost.Types` deben derivar el denominador ejecutable,
+las contradicciones, los pendientes de infraestructura y los defectos conocidos
+desde inventarios, clasificaciones y manifiesto vivos. Se conservan sin cambios
+la compilación de fixtures y todos los oráculos de ejecución.
+
+El presupuesto queda limitado a esos cinco gates, validadores compartidos de
+manifiesto/clasificación y la evidencia de Validación 13. No se ejecutan los
+fixtures porque requieren la corrida externa autorizada; sólo se valida su
+grafo estático completo.

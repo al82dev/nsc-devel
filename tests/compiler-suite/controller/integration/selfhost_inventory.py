@@ -186,6 +186,109 @@ def validate_unique_materialized_ids(
     return result
 
 
+def validate_manifest_cases(
+    inventory: ComponentInventory,
+    rows: list[dict[str, object]],
+) -> dict[str, dict[str, object]]:
+    result: dict[str, dict[str, object]] = {}
+    for row in rows:
+        case_id = str(row.get("case_id", ""))
+        if not case_id or case_id in result:
+            raise RuntimeError(f"{inventory.component} manifest has a missing or duplicate case ID")
+        design_row = inventory.design_by_id.get(case_id)
+        if design_row is None:
+            raise RuntimeError(f"{inventory.component} manifest contains foreign case {case_id}")
+        allocation_row = inventory.allocation_by_id[case_id]
+        if row.get("component") != inventory.component:
+            raise RuntimeError(f"{inventory.component} manifest changes the component of {case_id}")
+        if str(row.get("contract_id", "")) != design_row["contract_id"]:
+            raise RuntimeError(f"{inventory.component} manifest changes the contract of {case_id}")
+        if str(row.get("layer", "")) != design_row["layer"]:
+            raise RuntimeError(f"{inventory.component} manifest changes the layer of {case_id}")
+        if str(row.get("profile", "")) != allocation_row["default_profile"]:
+            raise RuntimeError(f"{inventory.component} manifest changes the profile of {case_id}")
+        result[case_id] = row
+    return result
+
+
+def classification_sets(
+    inventory: ComponentInventory,
+    path: Path,
+) -> dict[str, frozenset[str]]:
+    result: dict[str, set[str]] = {}
+    seen: set[str] = set()
+    for row in read_jsonl(path):
+        case_id = str(row.get("case_id", ""))
+        disposition = str(row.get("disposition", ""))
+        if not case_id or not disposition or case_id in seen:
+            raise RuntimeError(
+                f"{inventory.component} classifications have a missing or duplicate identity"
+            )
+        design_row = inventory.design_by_id.get(case_id)
+        if design_row is None:
+            raise RuntimeError(
+                f"{inventory.component} classifications contain foreign case {case_id}"
+            )
+        if str(row.get("contract_id", "")) != design_row["contract_id"]:
+            raise RuntimeError(
+                f"{inventory.component} classification changes the contract of {case_id}"
+            )
+        component = row.get("component")
+        if component is not None and component != inventory.component:
+            raise RuntimeError(
+                f"{inventory.component} classification changes the component of {case_id}"
+            )
+        seen.add(case_id)
+        result.setdefault(disposition, set()).add(case_id)
+    return {key: frozenset(value) for key, value in result.items()}
+
+
+def validate_manifest_partition(
+    inventory: ComponentInventory,
+    manifest_by_id: dict[str, dict[str, object]],
+    non_executable: frozenset[str],
+) -> None:
+    executable = set(manifest_by_id)
+    if executable & non_executable:
+        raise RuntimeError(f"{inventory.component} non-executable cases entered the manifest")
+    if executable | set(non_executable) != set(inventory.case_ids):
+        raise RuntimeError(f"{inventory.component} denominator contains omissions")
+
+
+def validate_classified_manifest(
+    inventory: ComponentInventory,
+    cases: list[dict[str, object]],
+    classification_path: Path,
+    non_executable_dispositions: frozenset[str],
+) -> tuple[dict[str, dict[str, object]], dict[str, frozenset[str]]]:
+    manifest_by_id = validate_manifest_cases(inventory, cases)
+    classified = classification_sets(inventory, classification_path)
+    supported = set(non_executable_dispositions) | {"KnownProductDefect"}
+    unsupported = set(classified) - supported
+    if unsupported:
+        raise RuntimeError(
+            f"{inventory.component} contains unsupported classifications: "
+            + ", ".join(sorted(unsupported))
+        )
+    non_executable = frozenset(
+        case_id
+        for disposition in non_executable_dispositions
+        for case_id in classified.get(disposition, frozenset())
+    )
+    validate_manifest_partition(inventory, manifest_by_id, non_executable)
+    defects = classified.get("KnownProductDefect", frozenset())
+    if not defects <= manifest_by_id.keys():
+        raise RuntimeError(f"{inventory.component} defects must be executable cases")
+    tagged = frozenset(
+        case_id
+        for case_id, row in manifest_by_id.items()
+        if "known-product-defect" in row.get("tags", [])
+    )
+    if tagged != defects:
+        raise RuntimeError(f"{inventory.component} defect tags differ from classifications")
+    return manifest_by_id, classified
+
+
 def validate_pending_manifest(
     repository_root: Path,
     component: str,

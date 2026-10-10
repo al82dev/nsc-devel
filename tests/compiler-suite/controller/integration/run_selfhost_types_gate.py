@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import os
 import subprocess
@@ -9,55 +8,14 @@ import sys
 import time
 from pathlib import Path
 
+from selfhost_inventory import (
+    ComponentInventory,
+    load_component_inventory,
+    read_jsonl,
+    validate_classified_manifest,
+)
 
-ALL_IDS = tuple(f"TSH-{ordinal:05d}" for ordinal in range(981, 1028))
-PLAN_CONTRADICTIONS = frozenset(
-    {
-        "TSH-00983",
-        "TSH-00984",
-        "TSH-00991",
-        "TSH-00996",
-        "TSH-00997",
-        "TSH-01003",
-        "TSH-01004",
-        "TSH-01017",
-        "TSH-01018",
-        "TSH-01024",
-    }
-)
-INFRASTRUCTURE_PENDING = frozenset({"TSH-01014"})
-KNOWN_PRODUCT_DEFECTS = frozenset({"TSH-01011", "TSH-01023"})
-EXECUTABLE_IDS = tuple(
-    case_id
-    for case_id in ALL_IDS
-    if case_id not in PLAN_CONTRADICTIONS | INFRASTRUCTURE_PENDING
-)
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1}
-
-
-def read_jsonl(path: Path) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
-    for line_number, raw_line in enumerate(
-        path.read_text(encoding="utf-8-sig").splitlines(), start=1
-    ):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as error:
-            raise RuntimeError(
-                f"invalid JSON at {path}:{line_number}: {error.msg}"
-            ) from error
-        if not isinstance(payload, dict):
-            raise RuntimeError(f"expected JSON object at {path}:{line_number}")
-        rows.append(payload)
-    return rows
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as stream:
-        return list(csv.DictReader(stream))
 
 
 def write_text(path: Path, value: str) -> None:
@@ -81,44 +39,11 @@ def run_process(
     )
 
 
-def validate_lineage(root: Path, cases: list[dict[str, object]]) -> None:
-    inventory = root / "docs" / "compiler-testing-reengineering" / "inventory"
-    design = [
-        row
-        for row in read_csv(inventory / "test-case-design.csv")
-        if row["component"] == "SelfHost.Types"
-    ]
-    allocation = [
-        row
-        for row in read_csv(inventory / "suite-case-allocation.csv")
-        if row["component"] == "SelfHost.Types"
-    ]
-    contracts = [
-        row
-        for row in read_csv(inventory / "contracts.csv")
-        if row["component"] == "SelfHost.Types"
-    ]
-    if tuple(row["case_id"] for row in design) != ALL_IDS:
-        raise RuntimeError("design does not contain canonical TSH-00981..TSH-01027")
-    if tuple(row["case_id"] for row in allocation) != ALL_IDS:
-        raise RuntimeError("allocation does not contain canonical TSH-00981..TSH-01027")
-    if len(contracts) != 7:
-        raise RuntimeError("contract inventory does not contain seven Types contracts")
-    if sum(row["default_profile"] == "PR" for row in allocation) != 46:
-        raise RuntimeError("Types allocation no longer contains exactly 46 PR cases")
-    if sum(row["default_profile"] == "NIGHTLY" for row in allocation) != 1:
-        raise RuntimeError("Types allocation no longer contains exactly one NIGHTLY case")
-    if sum(row["layer"] == "unit" for row in allocation) != 41:
-        raise RuntimeError("Types allocation no longer contains exactly 41 unit cases")
-    if sum(row["layer"] == "component" for row in allocation) != 6:
-        raise RuntimeError("Types allocation no longer contains exactly six component cases")
-    if tuple(str(row["case_id"]) for row in cases) != EXECUTABLE_IDS:
-        raise RuntimeError("central manifest does not contain the exact executable Types partition")
-    if any(row.get("component") != "SelfHost.Types" for row in cases):
-        raise RuntimeError("filtered Types manifest contains a foreign component")
-
-
-def validate_classifications(root: Path, cases: list[dict[str, object]]) -> None:
+def validate_inventory(
+    root: Path,
+    cases: list[dict[str, object]],
+) -> tuple[ComponentInventory, dict[str, frozenset[str]]]:
+    inventory = load_component_inventory(root, "SelfHost.Types")
     path = (
         root
         / "tests"
@@ -127,32 +52,13 @@ def validate_classifications(root: Path, cases: list[dict[str, object]]) -> None
         / "modules"
         / "SelfHostTypesCaseClassifications.jsonl"
     )
-    rows = read_jsonl(path)
-    by_disposition: dict[str, set[str]] = {}
-    for row in rows:
-        disposition = str(row["disposition"])
-        by_disposition.setdefault(disposition, set()).add(str(row["case_id"]))
-    if by_disposition.get("PlanContradiction", set()) != PLAN_CONTRADICTIONS:
-        raise RuntimeError("Types plan-contradiction catalogue changed")
-    if by_disposition.get("InfrastructurePending", set()) != INFRASTRUCTURE_PENDING:
-        raise RuntimeError("Types InfrastructurePending catalogue changed")
-    if by_disposition.get("KnownProductDefect", set()) != KNOWN_PRODUCT_DEFECTS:
-        raise RuntimeError("Types known-product-defect catalogue changed")
-    catalogued = set().union(*by_disposition.values())
-    if catalogued - set(ALL_IDS):
-        raise RuntimeError("Types classification catalogue contains a foreign case")
-    executable = {str(row["case_id"]) for row in cases}
-    if executable | PLAN_CONTRADICTIONS | INFRASTRUCTURE_PENDING != set(ALL_IDS):
-        raise RuntimeError("Types denominator contains omissions")
-    if executable & (PLAN_CONTRADICTIONS | INFRASTRUCTURE_PENDING):
-        raise RuntimeError("non-executable Types cases entered the central manifest")
-    tagged_defects = {
-        str(row["case_id"])
-        for row in cases
-        if "known-product-defect" in row.get("tags", [])
-    }
-    if tagged_defects != KNOWN_PRODUCT_DEFECTS:
-        raise RuntimeError("Types executable defect tags changed")
+    _manifest, classifications = validate_classified_manifest(
+        inventory,
+        cases,
+        path,
+        frozenset({"PlanContradiction", "InfrastructurePending"}),
+    )
+    return inventory, classifications
 
 
 def evaluate_case(
@@ -196,8 +102,10 @@ def main() -> int:
         for row in read_jsonl(manifest)
         if row.get("component") == "SelfHost.Types"
     ]
-    validate_lineage(repository_root, cases)
-    validate_classifications(repository_root, cases)
+    inventory, classifications = validate_inventory(repository_root, cases)
+    known_product_defects = classifications.get("KnownProductDefect", frozenset())
+    infrastructure_pending = classifications.get("InfrastructurePending", frozenset())
+    plan_contradictions = classifications.get("PlanContradiction", frozenset())
     selected = [
         row
         for row in cases
@@ -242,7 +150,7 @@ def main() -> int:
         write_text(case_root / "stdout.log", completed.stdout)
         write_text(case_root / "stderr.log", completed.stderr)
         satisfied, detail = evaluate_case(row, completed)
-        if case_id in KNOWN_PRODUCT_DEFECTS:
+        if case_id in known_product_defects:
             status = "UNEXPECTED_PASS" if satisfied else "KNOWN_PRODUCT_DEFECT"
             failures += 1
         else:
@@ -264,12 +172,12 @@ def main() -> int:
         "build_mode": options.build_mode,
         "optimization": options.optimization,
         "profile": options.profile,
-        "canonical_denominator": len(ALL_IDS),
+        "canonical_denominator": len(inventory.case_ids),
         "selected_executable": len(selected),
-        "required": len(EXECUTABLE_IDS) - len(KNOWN_PRODUCT_DEFECTS),
-        "known_product_defects": len(KNOWN_PRODUCT_DEFECTS),
-        "infrastructure_pending": len(INFRASTRUCTURE_PENDING),
-        "plan_contradictions": len(PLAN_CONTRADICTIONS),
+        "required": len(cases) - len(known_product_defects),
+        "known_product_defects": len(known_product_defects),
+        "infrastructure_pending": len(infrastructure_pending),
+        "plan_contradictions": len(plan_contradictions),
         "failures": failures,
         "results": results,
     }

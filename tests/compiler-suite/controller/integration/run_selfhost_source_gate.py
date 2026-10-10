@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import os
 import subprocess
@@ -9,56 +8,14 @@ import sys
 import time
 from pathlib import Path
 
+from selfhost_inventory import (
+    ComponentInventory,
+    load_component_inventory,
+    read_jsonl,
+    validate_classified_manifest,
+)
 
-ALL_IDS = tuple(f"TSH-{ordinal:05d}" for ordinal in range(849, 910))
-PLAN_CONTRADICTIONS = frozenset(
-    {
-        "TSH-00851",
-        "TSH-00863",
-        "TSH-00870",
-        "TSH-00874",
-        "TSH-00875",
-        "TSH-00881",
-        "TSH-00889",
-        "TSH-00892",
-        "TSH-00896",
-        "TSH-00897",
-        "TSH-00904",
-    }
-)
-INFRASTRUCTURE_PENDING = frozenset({"TSH-00885", "TSH-00908"})
-KNOWN_PRODUCT_DEFECTS = frozenset({"TSH-00903"})
-EXECUTABLE_IDS = tuple(
-    case_id
-    for case_id in ALL_IDS
-    if case_id not in PLAN_CONTRADICTIONS | INFRASTRUCTURE_PENDING
-)
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1}
-
-
-def read_jsonl(path: Path) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
-    for line_number, raw_line in enumerate(
-        path.read_text(encoding="utf-8-sig").splitlines(), start=1
-    ):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as error:
-            raise RuntimeError(
-                f"invalid JSON at {path}:{line_number}: {error.msg}"
-            ) from error
-        if not isinstance(payload, dict):
-            raise RuntimeError(f"expected JSON object at {path}:{line_number}")
-        rows.append(payload)
-    return rows
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as stream:
-        return list(csv.DictReader(stream))
 
 
 def write_text(path: Path, value: str) -> None:
@@ -82,44 +39,11 @@ def run_process(
     )
 
 
-def validate_lineage(root: Path, cases: list[dict[str, object]]) -> None:
-    inventory = root / "docs" / "compiler-testing-reengineering" / "inventory"
-    design = [
-        row
-        for row in read_csv(inventory / "test-case-design.csv")
-        if row["component"] == "SelfHost.Source"
-    ]
-    allocation = [
-        row
-        for row in read_csv(inventory / "suite-case-allocation.csv")
-        if row["component"] == "SelfHost.Source"
-    ]
-    contracts = [
-        row
-        for row in read_csv(inventory / "contracts.csv")
-        if row["component"] == "SelfHost.Source"
-    ]
-    if tuple(row["case_id"] for row in design) != ALL_IDS:
-        raise RuntimeError("design does not contain canonical TSH-00849..TSH-00909")
-    if tuple(row["case_id"] for row in allocation) != ALL_IDS:
-        raise RuntimeError("allocation does not contain canonical TSH-00849..TSH-00909")
-    if len(contracts) != 8:
-        raise RuntimeError("contract inventory does not contain eight Source contracts")
-    if sum(row["default_profile"] == "PR" for row in allocation) != 51:
-        raise RuntimeError("Source allocation no longer contains exactly 51 PR cases")
-    if sum(row["default_profile"] == "NIGHTLY" for row in allocation) != 10:
-        raise RuntimeError("Source allocation no longer contains exactly ten NIGHTLY cases")
-    if sum(row["layer"] == "unit" for row in allocation) != 36:
-        raise RuntimeError("Source allocation no longer contains exactly 36 unit cases")
-    if sum(row["layer"] == "component" for row in allocation) != 25:
-        raise RuntimeError("Source allocation no longer contains exactly 25 component cases")
-    if tuple(str(row["case_id"]) for row in cases) != EXECUTABLE_IDS:
-        raise RuntimeError("central manifest does not contain the exact executable Source partition")
-    if any(row.get("component") != "SelfHost.Source" for row in cases):
-        raise RuntimeError("filtered Source manifest contains a foreign component")
-
-
-def validate_classifications(root: Path, cases: list[dict[str, object]]) -> None:
+def validate_inventory(
+    root: Path,
+    cases: list[dict[str, object]],
+) -> tuple[ComponentInventory, dict[str, frozenset[str]]]:
+    inventory = load_component_inventory(root, "SelfHost.Source")
     path = (
         root
         / "tests"
@@ -128,32 +52,13 @@ def validate_classifications(root: Path, cases: list[dict[str, object]]) -> None
         / "modules"
         / "SelfHostSourceCaseClassifications.jsonl"
     )
-    rows = read_jsonl(path)
-    by_disposition: dict[str, set[str]] = {}
-    for row in rows:
-        disposition = str(row["disposition"])
-        by_disposition.setdefault(disposition, set()).add(str(row["case_id"]))
-    if by_disposition.get("PlanContradiction", set()) != PLAN_CONTRADICTIONS:
-        raise RuntimeError("Source plan-contradiction catalogue changed")
-    if by_disposition.get("InfrastructurePending", set()) != INFRASTRUCTURE_PENDING:
-        raise RuntimeError("Source InfrastructurePending catalogue changed")
-    if by_disposition.get("KnownProductDefect", set()) != KNOWN_PRODUCT_DEFECTS:
-        raise RuntimeError("Source known-product-defect catalogue changed")
-    catalogued = set().union(*by_disposition.values())
-    if catalogued - set(ALL_IDS):
-        raise RuntimeError("Source classification catalogue contains a foreign case")
-    executable = {str(row["case_id"]) for row in cases}
-    if executable | PLAN_CONTRADICTIONS | INFRASTRUCTURE_PENDING != set(ALL_IDS):
-        raise RuntimeError("Source denominator contains omissions")
-    if executable & (PLAN_CONTRADICTIONS | INFRASTRUCTURE_PENDING):
-        raise RuntimeError("non-executable Source cases entered the central manifest")
-    tagged_defects = {
-        str(row["case_id"])
-        for row in cases
-        if "known-product-defect" in row.get("tags", [])
-    }
-    if tagged_defects != KNOWN_PRODUCT_DEFECTS:
-        raise RuntimeError("Source executable defect tags changed")
+    _manifest, classifications = validate_classified_manifest(
+        inventory,
+        cases,
+        path,
+        frozenset({"PlanContradiction", "InfrastructurePending"}),
+    )
+    return inventory, classifications
 
 
 def prepare_case_files(case_root: Path) -> None:
@@ -208,8 +113,10 @@ def main() -> int:
         for row in read_jsonl(manifest)
         if row.get("component") == "SelfHost.Source"
     ]
-    validate_lineage(repository_root, cases)
-    validate_classifications(repository_root, cases)
+    inventory, classifications = validate_inventory(repository_root, cases)
+    known_product_defects = classifications.get("KnownProductDefect", frozenset())
+    infrastructure_pending = classifications.get("InfrastructurePending", frozenset())
+    plan_contradictions = classifications.get("PlanContradiction", frozenset())
     selected = [
         row
         for row in cases
@@ -257,7 +164,7 @@ def main() -> int:
         write_text(case_root / "stdout.log", completed.stdout)
         write_text(case_root / "stderr.log", completed.stderr)
         satisfied, detail = evaluate_case(row, completed)
-        if case_id in KNOWN_PRODUCT_DEFECTS:
+        if case_id in known_product_defects:
             status = "UNEXPECTED_PASS" if satisfied else "KNOWN_PRODUCT_DEFECT"
             failures += 1
         else:
@@ -279,12 +186,12 @@ def main() -> int:
         "build_mode": options.build_mode,
         "optimization": options.optimization,
         "profile": options.profile,
-        "canonical_denominator": len(ALL_IDS),
+        "canonical_denominator": len(inventory.case_ids),
         "selected_executable": len(selected),
-        "required": len(EXECUTABLE_IDS) - len(KNOWN_PRODUCT_DEFECTS),
-        "known_product_defects": len(KNOWN_PRODUCT_DEFECTS),
-        "infrastructure_pending": len(INFRASTRUCTURE_PENDING),
-        "plan_contradictions": len(PLAN_CONTRADICTIONS),
+        "required": len(cases) - len(known_product_defects),
+        "known_product_defects": len(known_product_defects),
+        "infrastructure_pending": len(infrastructure_pending),
+        "plan_contradictions": len(plan_contradictions),
         "failures": failures,
         "results": results,
     }
