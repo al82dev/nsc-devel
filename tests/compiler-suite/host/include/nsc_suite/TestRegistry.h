@@ -6,6 +6,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace nsc::suite
@@ -53,14 +54,18 @@ class TestRegistry
 public:
     void add(TestCase testCase);
 
-    [[nodiscard]] const std::vector<TestCase>& cases() const noexcept;
-    [[nodiscard]] const TestCase* find(std::string_view id) const noexcept;
+    [[nodiscard]] const std::vector<TestCase>& cases() const;
+    [[nodiscard]] const TestCase* find(std::string_view id) const;
     [[nodiscard]] std::vector<const TestCase*> all() const;
     [[nodiscard]] std::vector<const TestCase*> byComponent(std::string_view component) const;
     [[nodiscard]] std::vector<TestResult> run(const std::vector<const TestCase*>& selected) const;
 
 private:
-    std::vector<TestCase> cases_;
+    void ensureOrdered() const;
+
+    mutable std::vector<TestCase> cases_;
+    std::unordered_set<std::string> identifiers_;
+    mutable bool ordered_ = true;
 };
 
 [[nodiscard]] std::vector<TestInventoryRow> infrastructurePendingInventory();

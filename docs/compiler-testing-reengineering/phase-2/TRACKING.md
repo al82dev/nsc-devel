@@ -1220,3 +1220,11 @@ componente. Las pruebas dirigidas pasan `4/4` y
 `nsc.compiler-suite.registry-inventory` pasa `1/1` en `18.62 s`. La tarea
 permanece activa y continúa con el barrido de los 116 gates Debug; no se
 ejecutó baseline ni se tocó `C:`.
+
+Validacion 136 retiro el costo cuadratico residual del registro. Las 8,054
+altas ahora se anexan y el orden observable se materializa una sola vez; la
+reconstruccion Debug termino `315/315`, `INFRA-REGISTRY-001` pasa y el arranque
+`--list` bajo de `9,631 ms` a `645.626 ms`. El recorrido dirigido
+`nsc.compiler-suite.host-source-position-controller` pasa `1/1` en `1.05 s`,
+por debajo del limite `tiny` de 5 segundos. La tarea permanece activa y sigue
+con el barrido de los 116 gates Debug; no se ejecuto baseline ni se toco `C:`.

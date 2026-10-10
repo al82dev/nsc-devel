@@ -1985,6 +1985,32 @@ oraculos, disposiciones, manifiestos, CMake, producto ni bateria historica. Los
 seis archivos del usuario registrados en `CURSOR.json` permanecen protegidos.
 No se ejecuta baseline, no se despliega y no se toca la unidad `C:`.
 
+### Enmienda: costo de arranque del registro por caso
+
+El primer barrido completo posterior al cierre del inventario alcanzo `83/116`
+gates antes de ser detenido por dependencia causal. Dos productores pasaron y
+los controladores restantes terminaron con la misma firma: el proceso host
+consume alrededor de 9--10 segundos construyendo `8,054` casos antes de
+ejecutar uno, mientras los casos `tiny` permiten 5 segundos. Los cierres de los
+controladores no son 81 defectos independientes; expiran antes del cuerpo.
+
+Validacion 132 retiro el `sort` completo por alta, pero conservar orden mediante
+`vector::insert(lower_bound)` todavía desplaza un sufijo en cada insercion y
+mantiene costo cuadratico. La operacion responsable sigue siendo
+`TestRegistry::add`; la invariante violada es que registrar N casos tenga costo
+amortizado lineal y que el orden observable se materialice una sola vez al
+consultar.
+
+El presupuesto de Validacion 136 queda limitado a `TestRegistry.h/.cpp`:
+detectar IDs duplicados mediante un indice hash, anexar cada caso sin desplazar
+el vector, ordenar perezosamente una sola vez antes de `cases`, `find`, `all` o
+`byComponent`, y conservar filtros, orden, resultados y excepciones. Se valida
+el contrato interno, el tiempo de `--list`, un caso `tiny` a traves del
+controlador y despues los 116 gates completos. No se cambian timeouts,
+controladores, casos, cuerpos, disposiciones, CMake, producto ni bateria
+historica. Los seis archivos protegidos permanecen intactos. No se ejecuta
+baseline, no se despliega y no se toca la unidad `C:`.
+
 ### Enmienda: particion exacta del inventario global
 
 Validacion 134 demostro que las `9,116` identidades canónicas se reparten en

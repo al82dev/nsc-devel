@@ -13,33 +13,49 @@ void TestRegistry::add(TestCase testCase)
     {
         throw std::invalid_argument("test case metadata is incomplete");
     }
-    // Keep the externally visible ID order while locating only this insertion point.
-    // Re-sorting the complete registry after every add makes full registration superlinear by an extra log factor.
-    const auto insertion = std::lower_bound(
-        cases_.begin(), cases_.end(), testCase.id,
-        [](const TestCase& candidate, std::string_view id) { return candidate.id < id; });
-    if (insertion != cases_.end() && insertion->id == testCase.id)
+    if (!identifiers_.insert(testCase.id).second)
     {
         throw std::invalid_argument("duplicate test case id: " + testCase.id);
     }
-    cases_.insert(insertion, std::move(testCase));
+    cases_.push_back(std::move(testCase));
+    ordered_ = false;
 }
 
-const std::vector<TestCase>& TestRegistry::cases() const noexcept
+void TestRegistry::ensureOrdered() const
 {
+    if (ordered_)
+    {
+        return;
+    }
+    std::sort(cases_.begin(), cases_.end(),
+        [](const TestCase& left, const TestCase& right)
+        {
+            return left.id < right.id;
+        });
+    ordered_ = true;
+}
+
+const std::vector<TestCase>& TestRegistry::cases() const
+{
+    ensureOrdered();
     return cases_;
 }
 
-const TestCase* TestRegistry::find(std::string_view id) const noexcept
+const TestCase* TestRegistry::find(std::string_view id) const
 {
-    const auto found = std::find_if(cases_.begin(), cases_.end(), [id](const TestCase& testCase) {
-        return testCase.id == id;
-    });
-    return found == cases_.end() ? nullptr : &*found;
+    ensureOrdered();
+    const auto found = std::lower_bound(
+        cases_.begin(), cases_.end(), id,
+        [](const TestCase& candidate, std::string_view identity)
+        {
+            return candidate.id < identity;
+        });
+    return found == cases_.end() || found->id != id ? nullptr : &*found;
 }
 
 std::vector<const TestCase*> TestRegistry::all() const
 {
+    ensureOrdered();
     std::vector<const TestCase*> selected;
     selected.reserve(cases_.size());
     for (const TestCase& testCase : cases_)
@@ -54,6 +70,7 @@ std::vector<const TestCase*> TestRegistry::all() const
 
 std::vector<const TestCase*> TestRegistry::byComponent(std::string_view component) const
 {
+    ensureOrdered();
     std::vector<const TestCase*> selected;
     for (const TestCase& testCase : cases_)
     {
