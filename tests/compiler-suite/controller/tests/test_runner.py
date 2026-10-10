@@ -123,6 +123,30 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(events[-1]["kind"], "RUN_FINISHED")
         self.assertEqual(events[-1]["payload"]["completed"], 1)
 
+    def test_report_publication_failure_prevents_false_terminal_event(self) -> None:
+        def executor(item, workspace):
+            return CaseResult(item.case_id, CaseStatus.PASS)
+
+        def fail_publication(results):
+            self.assertEqual(len(results), 1)
+            raise RuntimeError("synthetic publication failure")
+
+        with EventWriter(self.events_path) as events:
+            runner = SuiteRunner(WorkspaceManager(self.root), events, CancellationToken())
+            with self.assertRaisesRegex(RuntimeError, "publication failure"):
+                runner.run(
+                    "run-001",
+                    (case("TB-BAS-001"),),
+                    executor,
+                    fail_publication,
+                )
+        event_rows = [
+            json.loads(line)
+            for line in self.events_path.read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(event_rows[-1]["kind"], "CASE_FINISHED")
+        self.assertNotIn("RUN_FINISHED", {event["kind"] for event in event_rows})
+
     def test_cancellation_finishes_every_selected_case(self) -> None:
         token = CancellationToken()
 

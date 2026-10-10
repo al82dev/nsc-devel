@@ -106,9 +106,6 @@ def run(arguments: list[str]) -> int:
     run_root = workspace_manager.run_root(options.run_id)
     event_path = run_root / "events.jsonl"
     cancellation = CancellationToken()
-    with EventWriter(event_path) as events:
-        runner = SuiteRunner(workspace_manager, events, cancellation)
-        results = runner.run(options.run_id, selected, ExecutorRouter(executors))
     metadata = RunMetadata(
         run_id=options.run_id,
         revision=options.revision,
@@ -119,7 +116,15 @@ def run(arguments: list[str]) -> int:
         selected_case_ids=tuple(case.case_id for case in selected),
         tools=tuple(tools),
     )
-    ReportWriter(run_root).write(metadata, results)
+    report_writer = ReportWriter(run_root)
+    with EventWriter(event_path) as events:
+        runner = SuiteRunner(workspace_manager, events, cancellation)
+        results = runner.run(
+            options.run_id,
+            selected,
+            ExecutorRouter(executors),
+            lambda completed: report_writer.write(metadata, completed),
+        )
     non_blocking = {"PASS", "KNOWN_FAILURE"}
     return 0 if all(result.status.value in non_blocking for result in results) else 1
 

@@ -1180,3 +1180,17 @@ El presupuesto queda limitado a `EventWriter.emit`, pruebas Python sinteticas
 y la evidencia de Validacion 74. No se cambian eventos validos, flush/fsync,
 runner, producto ni bateria historica y no se configura, compila o ejecuta
 producto.
+
+### Enmienda: RUN_FINISHED posterior a reportes
+
+`RUN_FINISHED` no puede publicarse antes de que `results.json`, `summary.md` y
+`failures.log` existan completamente. `SuiteRunner` debe aceptar un publicador
+terminal que reciba el conjunto completo de resultados y ejecutarlo antes del
+evento final. Si el publicador falla, la excepcion se conserva, el stream
+progresivo queda disponible y no aparece un cierre terminal falso.
+
+El presupuesto queda limitado al callback terminal de `SuiteRunner.run`, la
+reordenacion de metadata/reporte en `run_suite.run`, pruebas Python sinteticas
+y la evidencia de Validacion 75. No se cambia contenido de reportes, ejecucion
+de casos, estados, producto ni bateria historica y no se configura, compila o
+ejecuta producto.

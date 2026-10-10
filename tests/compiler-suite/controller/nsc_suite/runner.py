@@ -11,6 +11,7 @@ from .workspace import CaseWorkspace, WorkspaceManager
 
 
 CaseExecutor = Callable[[CaseManifest, CaseWorkspace], CaseResult]
+ResultPublisher = Callable[[tuple[CaseResult, ...]], None]
 
 
 class RunnerError(RuntimeError):
@@ -33,6 +34,7 @@ class SuiteRunner:
         run_id: str,
         cases: Iterable[CaseManifest],
         executor: CaseExecutor,
+        result_publisher: ResultPublisher | None = None,
     ) -> tuple[CaseResult, ...]:
         ordered = tuple(sorted(cases, key=lambda case: case.case_id))
         if not ordered:
@@ -74,6 +76,8 @@ class SuiteRunner:
                 raise RunnerError(f"selected graph made no progress: {unresolved}")
 
         results = ledger.results
+        if result_publisher is not None:
+            result_publisher(results)
         self.event_writer.emit(
             EventKind.RUN_FINISHED,
             payload={

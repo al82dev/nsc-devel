@@ -838,3 +838,9 @@ identidad y payload se validan antes de serializar; entradas invalidas no
 escriben ni avanzan la secuencia. Las pruebas dirigidas pasan `6/6` y la suite
 Python completa `214/214`, sin ejecutar producto. La tarea funcional permanece
 activa.
+
+Validacion 75 ordeno evidencia y cierre terminal. Los tres reportes se publican
+antes de `RUN_FINISHED`; si la publicacion falla, el stream progresivo se
+conserva pero no aparece un cierre falso. Las pruebas dirigidas pasan `11/11` y
+la suite Python completa `215/215`, sin ejecutar producto. La tarea funcional
+permanece activa.
