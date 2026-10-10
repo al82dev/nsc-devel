@@ -498,3 +498,9 @@ el runner ya distinguen dependencias entre casos de requisitos externos. Los
 `213` casos que declaran alguno de `11` productores externos conservan esa
 evidencia sin quedar esperando un resultado interno imposible. Las `11/11`
 pruebas dirigidas de ledger y runner pasan; no se compiló ni ejecutó producto.
+
+Validación 22 reemplazó la partición privada del gate especial `Host.Source`
+por una clasificación JSONL canónica. El inventario vivo demuestra `58 = 54`
+ejecutables `+ 4` `InfrastructurePending`; el gate ya no contiene rangos,
+conteos ni listas privadas de IDs y conserva la validación integral del
+registro. La comprobación fue estática; no se ejecutó producto.

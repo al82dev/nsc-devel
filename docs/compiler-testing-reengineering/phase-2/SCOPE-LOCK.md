@@ -437,3 +437,18 @@ una prueba dirigida del runner y la evidencia de Validación 21. Se preserva el
 error causal cuando un productor que sí es un caso no fue seleccionado. No se
 modifican casos, oráculos, resultados esperados, selector, manifiesto,
 producto ni batería histórica. No se configura, compila ni ejecuta producto.
+
+### Enmienda: partición canónica de Host.Source
+
+El gate especial de ownership debe obtener el denominador completo de
+`Host.Source` desde los inventarios canónicos y su partición ejecutable desde
+el manifiesto central. Los cuatro casos que requieren infraestructura especial
+se transcriben a una clasificación JSONL legible por máquina; el gate deja de
+duplicar rangos, cantidades y listas privadas de IDs.
+
+El presupuesto queda limitado al archivo de clasificación de `Host.Source`,
+`run_host_source_file_ownership_gate.py` y la evidencia de Validación 22. La
+clasificación no cambia disposiciones: sólo convierte en autoridad verificable
+lo ya registrado por los módulos y la auditoría de bloqueos. No se modifican
+casos, oráculos, resultados esperados, producto ni batería histórica. No se
+configura, compila ni ejecuta producto.
