@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from component_gate_support import (
+    component_manifest_rows,
     read_csv,
     read_jsonl,
     required_manifest_integer,
@@ -440,8 +441,9 @@ def main() -> int:
     if not (options.installation_root / "bin" / "nsc.exe").is_file():
         raise RuntimeError("Packaging requires an explicit sandbox-copyable installation root")
 
-    manifest = read_jsonl(options.source_root / "manifest" / "cases.jsonl")
-    cases = [row for row in manifest if row.get("component") == "Packaging"]
+    cases = component_manifest_rows(
+        options.source_root, options.repository_root, "Packaging"
+    )
     design_by_id, contracts_by_id, profile_mismatches = validate_lineage(
         options.repository_root,
         cases,

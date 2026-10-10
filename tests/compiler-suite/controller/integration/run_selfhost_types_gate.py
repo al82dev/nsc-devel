@@ -8,10 +8,10 @@ import sys
 import time
 from pathlib import Path
 
+from component_gate_support import component_manifest_rows
 from selfhost_inventory import (
     ComponentInventory,
     load_component_inventory,
-    read_jsonl,
     required_oracle_exit_code,
     validate_classified_manifest,
 )
@@ -94,12 +94,9 @@ def main() -> int:
     retired_fragment = source_root / "manifest" / "fragments" / "selfhost-types.jsonl"
     if retired_fragment.exists():
         raise RuntimeError("retired SelfHost.Types manifest fragment still exists")
-    manifest = source_root / "manifest" / "cases.jsonl"
-    cases = [
-        row
-        for row in read_jsonl(manifest)
-        if row.get("component") == "SelfHost.Types"
-    ]
+    cases = component_manifest_rows(
+        source_root, repository_root, "SelfHost.Types"
+    )
     inventory, classifications = validate_inventory(repository_root, cases)
     known_product_defects = classifications.get("KnownProductDefect", frozenset())
     infrastructure_pending = classifications.get("InfrastructurePending", frozenset())

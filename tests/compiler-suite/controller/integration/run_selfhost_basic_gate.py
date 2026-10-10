@@ -8,10 +8,10 @@ import sys
 import time
 from pathlib import Path
 
+from component_gate_support import component_manifest_rows
 from selfhost_inventory import (
     classification_sets,
     load_component_inventory,
-    read_jsonl,
     required_oracle_exit_code,
     validate_manifest_cases,
     validate_manifest_partition,
@@ -60,10 +60,9 @@ def main() -> int:
     source_root = options.source_root.resolve()
     repository_root = source_root.parents[1]
     inventory = load_component_inventory(repository_root, "SelfHost.Basic")
-    manifest = source_root / "manifest" / "cases.jsonl"
-    cases = [
-        row for row in read_jsonl(manifest) if row.get("component") == "SelfHost.Basic"
-    ]
+    cases = component_manifest_rows(
+        source_root, repository_root, "SelfHost.Basic"
+    )
     manifest_by_id = validate_manifest_cases(inventory, cases)
 
     contradiction_path = (

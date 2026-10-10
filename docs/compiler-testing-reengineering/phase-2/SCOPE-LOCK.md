@@ -1604,3 +1604,17 @@ las tres fronteras que validan esos manifiestos crudos, una reproduccion Python
 sobre BuildSystem, Packaging, SelfHost.Diagnostics y SelfHost.Lexer, y la
 evidencia de Validacion 112. No se cambian manifiestos, clasificaciones,
 oraculos, producto ni bateria historica y no se ejecuta producto.
+
+### Enmienda: autoridad canonica en cargas raw de manifiesto
+
+Los siete gates que necesitan conservar objetos raw de `cases.jsonl` deben
+validar primero el documento completo mediante `nsc_suite.load_manifest` y su
+inventario canonico. Sus validadores locales no pueden aceptar campos
+desconocidos, escalares en lugar de objetos o arreglos, enums invalidos ni
+otras formas que el parser canonico rechaza.
+
+El presupuesto queda limitado a una frontera compartida que devuelve las filas
+raw despues de la validacion canonica, sustituir las siete lecturas directas,
+una matriz sintetica de esquema, pruebas de integracion y la evidencia de
+Validacion 113. No se cambian manifiestos, parser canonico, casos, oraculos,
+producto ni bateria historica y no se ejecuta producto.

@@ -8,11 +8,11 @@ import sys
 import time
 from pathlib import Path
 
+from component_gate_support import component_manifest_rows
 from selfhost_inventory import (
     load_component_inventory,
     json_values_equal_exact,
     parse_json_value,
-    read_jsonl,
     required_oracle_exit_code,
     validate_manifest_cases,
 )
@@ -99,12 +99,9 @@ def main() -> int:
         raise RuntimeError("SelfHost.Diagnostics requires explicit NSC and NSLink executables")
 
     root = options.repository_root.resolve()
-    manifest = options.source_root / "manifest" / "cases.jsonl"
-    cases = [
-        row
-        for row in read_jsonl(manifest)
-        if row.get("component") == "SelfHost.Diagnostics"
-    ]
+    cases = component_manifest_rows(
+        options.source_root, root, "SelfHost.Diagnostics"
+    )
     known_product_defects = validate_lineage(root, cases)
 
     work_root = options.work_parent.resolve() / (

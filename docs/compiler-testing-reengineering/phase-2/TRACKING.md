@@ -1051,3 +1051,10 @@ elementos no string, vacios y duplicados se rechazan antes de clasificar. Las
 pruebas dirigidas pasan `14/14`, la suite Python `246/246` y los `129` casos
 vivos auditados pasan la frontera, sin compilar ni ejecutar producto. La tarea
 funcional permanece activa.
+
+Validacion 113 unifico la autoridad de esquema de los siete consumidores raw
+del manifiesto central. Todos validan primero las `5,695` filas mediante el
+parser canonico y cotejan despues identidad y orden antes de conservar objetos
+raw. Una matriz de `24` mutaciones queda rechazada, las pruebas dirigidas pasan
+`16/16`, la suite Python `248/248` y los `240` casos vivos de esos componentes
+validan, sin compilar ni ejecutar producto. La tarea funcional permanece activa.

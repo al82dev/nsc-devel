@@ -8,9 +8,9 @@ import sys
 import time
 from pathlib import Path
 
+from component_gate_support import component_manifest_rows
 from selfhost_inventory import (
     load_component_inventory,
-    read_jsonl,
     required_oracle_exit_code,
     validate_manifest_cases,
 )
@@ -47,8 +47,9 @@ def main() -> int:
 
     root = options.repository_root.resolve()
     inventory = load_component_inventory(root, "SelfHost.Lexer")
-    manifest = options.source_root / "manifest" / "cases.jsonl"
-    cases = [row for row in read_jsonl(manifest) if row.get("component") == "SelfHost.Lexer"]
+    cases = component_manifest_rows(
+        options.source_root, root, "SelfHost.Lexer"
+    )
     manifest_by_id = validate_manifest_cases(inventory, cases)
     if manifest_by_id.keys() != inventory.design_by_id.keys():
         raise RuntimeError("SelfHost.Lexer manifest differs from the canonical denominator")

@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from component_gate_support import (
+    component_manifest_rows,
     read_csv,
     read_jsonl,
     required_manifest_integer,
@@ -478,8 +479,9 @@ def main() -> int:
         raise RuntimeError("BuildSystem requires an explicit CMake executable")
     if not (options.installation_root / "bin" / "nsc.exe").is_file():
         raise RuntimeError("BuildSystem requires an explicit sandbox-copyable installation root")
-    manifest = read_jsonl(options.source_root / "manifest" / "cases.jsonl")
-    cases = [row for row in manifest if row.get("component") == "BuildSystem"]
+    cases = component_manifest_rows(
+        options.source_root, options.repository_root, "BuildSystem"
+    )
     design_by_id, contracts_by_id = validate_lineage(options.repository_root, cases)
     historical_delegated, known_product_defects = validate_classifications(
         options.repository_root,

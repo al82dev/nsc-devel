@@ -197,6 +197,38 @@ def component_manifest_cases(
     return selected
 
 
+def component_manifest_rows(
+    source_root: Path,
+    repository_root: Path,
+    component: str,
+) -> list[dict[str, object]]:
+    """Return raw component rows only after the canonical parser accepts the manifest."""
+    manifest = source_root / "manifest" / "cases.jsonl"
+    inventory_root = (
+        repository_root
+        / "docs"
+        / "compiler-testing-reengineering"
+        / "inventory"
+    )
+    inventory = InventoryIndex.from_csv(
+        inventory_root / "components.csv",
+        inventory_root / "contracts.csv",
+    )
+    canonical = load_manifest(manifest, inventory)
+    expected_ids = tuple(
+        case.case_id for case in canonical if case.component == component
+    )
+    rows = [
+        row for row in read_jsonl(manifest) if row.get("component") == component
+    ]
+    actual_ids = tuple(row["case_id"] for row in rows)
+    if actual_ids != expected_ids:
+        raise RuntimeError(
+            f"raw {component} manifest rows differ from the canonical parser"
+        )
+    return rows
+
+
 def assert_component_results(
     payload: dict[str, object],
     cases: tuple[CaseManifest, ...],
