@@ -3,16 +3,16 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "91aed6dce",
-  "last_completed_batch": "TANDA-07-16-SELFHOST-TYPES",
-  "last_completed_case": "TSH-01027",
-  "current_wave": 8,
-  "current_component": "SelfHost.Contracts",
+  "last_completed_commit": "71b87f840",
+  "last_completed_batch": "TANDA-08-02-SELFHOST-CONTRACTS",
+  "last_completed_case": "T12B-01806",
+  "current_wave": 9,
+  "current_component": "BuildSystem",
   "current_components": [
-    "SelfHost.Contracts"
+    "BuildSystem"
   ],
-  "next_contract": "C12B-SHC-001",
-  "next_action": "Materialize SelfHost.Contracts without validation while the independent Bootstrap.Infrastructure block proceeds separately.",
+  "next_contract": "C12B-BLD-001",
+  "next_action": "Continue Wave 9 BuildSystem materialization without validating the implementation-only closure of Waves 2 through 8.",
   "implementation_materialization": {
     "Host.AST": {
       "expected": 230,
@@ -279,6 +279,26 @@
       "infrastructure_pending": 1,
       "plan_contradiction": 10,
       "known_product_defect": 2,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Bootstrap.Infrastructure": {
+      "expected": 438,
+      "materialized": 438,
+      "executable": 0,
+      "infrastructure_pending": 438,
+      "plan_contradiction": 1,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Contracts": {
+      "expected": 288,
+      "materialized": 288,
+      "executable": 0,
+      "infrastructure_pending": 288,
+      "plan_contradiction": 1,
+      "known_product_defect": 0,
       "integrated": true,
       "verified": 0
     }
@@ -621,6 +641,19 @@
         "SelfHost.Symbols",
         "SelfHost.Syntax",
         "SelfHost.Types"
+      ],
+      "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
+    },
+    "8": {
+      "status": "EN CURSO",
+      "product_cases_expected": 726,
+      "product_cases_implemented": 726,
+      "product_cases_integrated": 726,
+      "product_cases_verified": 0,
+      "current_components": [],
+      "integrated_components": [
+        "SelfHost.Bootstrap.Infrastructure",
+        "SelfHost.Contracts"
       ],
       "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
     }

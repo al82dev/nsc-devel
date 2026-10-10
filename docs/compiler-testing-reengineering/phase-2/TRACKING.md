@@ -10,7 +10,7 @@
 | 5 | Backend, ABI, runtime y enlace | EN CURSO | 1,600 | 1,600 | 1,600 | 0 | 0 | 0 | 0 |
 | 6 | Producto, driver y servicio | EN CURSO | 1,112 | 1,112 | 1,112 | 0 | 0 | 0 | 0 |
 | 7 | Compilador self-host | EN CURSO | 1,027 | 1,027 | 1,027 | 0 | 0 | 0 | 0 |
-| 8 | Infraestructura y oráculos self-host | PENDIENTE | 726 | 0 | 0 | 726 | 0 | 726 | 0 |
+| 8 | Infraestructura y oráculos self-host | EN CURSO | 726 | 726 | 726 | 0 | 0 | 0 | 0 |
 | 9 | Build, instalación y paquete de NSC | PENDIENTE | 474 | 0 | 0 | 474 | 0 | 474 | 0 |
 
 Estados permitidos: `PENDIENTE`, `EN CURSO`, `LISTA`, `BLOQUEADA`.
@@ -54,6 +54,9 @@ la columna `Validados`.
 | SelfHost.Syntax | 36 | 36 | 36 | 0 | 0 | 0 | 0 |
 | SelfHost.Types | 47 | 47 | 47 | 0 | 0 | 0 | 0 |
 | **Total confirmado, olas 2–7** | **7,640** | **7,640** | **7,640** | **0** | **0** | **0** | **333** |
+| SelfHost.Bootstrap.Infrastructure | 438 | 438 | 438 | 0 | 0 | 0 | 0 |
+| SelfHost.Contracts | 288 | 288 | 288 | 0 | 0 | 0 | 0 |
+| **Total confirmado, olas 2–8** | **8,366** | **8,366** | **8,366** | **0** | **0** | **0** | **333** |
 
 Desglose canónico de la ola 7:
 
@@ -76,6 +79,14 @@ Desglose canónico de la ola 7:
 | SelfHost.Syntax | `TSH-00945..00980` | 5 | 36 | 36 | 36 | EN CURSO |
 | SelfHost.Types | `TSH-00981..01027` | 7 | 47 | 47 | 47 | EN CURSO |
 | **Total ola 7** | `TSH-00001..01027` | **138** | **1,027** | **1,027** | **1,027** | **EN CURSO** |
+
+Desglose canónico de la ola 8:
+
+| Componente | Rango canónico | Contratos | Previstos | Materializados | Integrados | Estado |
+|---|---|---:|---:|---:|---:|---|
+| SelfHost.Bootstrap.Infrastructure | `T12B-01081..01518` | 73 | 438 | 438 | 438 | EN CURSO |
+| SelfHost.Contracts | `T12B-01519..01806` | 48 | 288 | 288 | 288 | EN CURSO |
+| **Total ola 8** | `T12B-01081..01806` | **121** | **726** | **726** | **726** | **EN CURSO** |
 
 `Host.Compilation` ya tiene sus `416` casos, seis registros, manifiesto, CMake,
 gate y evidencia integrados; su validación permanece diferida.
@@ -119,6 +130,16 @@ integra `61/61`: `48` ejecutables (`47` ordinarios y `1`
 `PlanContradiction`. `SelfHost.Symbols` y `SelfHost.Syntax` integran sus `35`
 y `36` casos como `InfrastructurePending`. Ninguno de estos cierres aumenta
 `Validados` porque no se ejecutaron builds, pruebas ni gates.
+
+`SelfHost.Bootstrap.Infrastructure` integra sus `438/438` casos como
+`InfrastructurePending`: `16` productores de datos normativos y `57`
+verificadores dependen de la clausura real `nsc0/nsc1/nsc2`, NSLink, LLVM,
+Python y contratos self-host. `SelfHost.Contracts` integra `288/288` casos
+como `InfrastructurePending` porque requiere esa infraestructura, fixtures
+self-host y productos SH41. Ambos componentes conservan abierta la
+contradicción entre los perfiles PR/NIGHTLY del plan y la asignación totalmente
+NIGHTLY del inventario. No incorporan filas al manifiesto ordinario y no
+aumentan `Validados`.
 
 Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
 de forma individual, y `4` casos pendientes de infraestructura especial. Los

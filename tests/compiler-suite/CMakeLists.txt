@@ -315,6 +315,12 @@ add_executable(
     selfhost/modules/SelfHostSyntaxNodesModule.cpp
     selfhost/modules/SelfHostSyntaxTreeModule.cpp
     selfhost/modules/SelfHostSyntaxDumpModule.cpp
+    selfhost/modules/SelfHostBootstrapInfrastructureCatalog001To012Module.cpp
+    selfhost/modules/SelfHostBootstrapInfrastructureCatalog013To024Module.cpp
+    selfhost/modules/SelfHostBootstrapInfrastructureCatalog025To036Module.cpp
+    selfhost/modules/SelfHostBootstrapInfrastructureCatalog037To048Module.cpp
+    selfhost/modules/SelfHostBootstrapInfrastructureCatalog049To060Module.cpp
+    selfhost/modules/SelfHostBootstrapInfrastructureCatalog061To073Module.cpp
     selfhost/modules/SelfHostContractsToolchainModule.cpp
     selfhost/modules/SelfHostContractsIrRuntimeModule.cpp
     selfhost/modules/SelfHostContractsDistributionModule.cpp
@@ -1514,6 +1520,11 @@ add_test(
     NAME nsc.compiler-suite.selfhost-syntax-structure
     COMMAND "${Python3_EXECUTABLE}" -B
         "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_syntax_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_test(
+    NAME nsc.compiler-suite.selfhost-bootstrap-infrastructure-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_bootstrap_infrastructure_gate.py"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
 add_test(
     NAME nsc.compiler-suite.selfhost-contracts-structure
