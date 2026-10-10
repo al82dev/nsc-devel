@@ -1327,3 +1327,15 @@ actual. `Historial` muestra la lista de corridas y abre cada una como tab dentro
 de su propio panel; cada corrida conserva internamente `Pruebas` y `Reporte`.
 La sintaxis y el smoke de GUI pasan; no se compilo ni ejecuto producto, no se
 ejecuto baseline y no se toco `C:`.
+
+Validacion 148 cierra el analisis integral de la corrida funcional
+`20261010-090333-82a4a13f` sin reejecutarla. Los `555` resultados no exitosos
+quedan contabilizados: `247 FAIL` distribuidos en `95` contratos, `88
+INFRASTRUCTURE_ERROR` reducidos a siete fronteras causales, `187 BLOCKED`
+derivados de cinco productores self-host y `33 KNOWN_FAILURE` inventariados.
+El informe distingue causa confirmada, inferencia y falta de evidencia; en
+particular, `65` fallos de compilacion de proyectos pierden el error de carga o
+los diagnosticos observados y por ello no se promueven artificialmente a
+defectos del producto. No se modifico codigo, oraculos, manifiestos ni
+expectativas y no se toco `C:`. Evidencia:
+`ANALISIS-ERRORES-CORRIDA-20261010-090333-82a4a13f.md`.
