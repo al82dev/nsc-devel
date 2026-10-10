@@ -1585,8 +1585,13 @@ def launch_gui(smoke_only: bool = False) -> int:
             controls.addWidget(self.build_button)
             controls.addStretch(1)
             layout.addWidget(tests_group)
+            infrastructure_status = QHBoxLayout()
             self.infrastructure_stage = QLabel("Sin operación activa")
-            layout.addWidget(self.infrastructure_stage)
+            self.infrastructure_cancel_button = QPushButton("Cancelar construcción")
+            self.infrastructure_cancel_button.setEnabled(False)
+            infrastructure_status.addWidget(self.infrastructure_stage, 1)
+            infrastructure_status.addWidget(self.infrastructure_cancel_button)
+            layout.addLayout(infrastructure_status)
             self.infrastructure_progress = QProgressBar()
             self.infrastructure_progress.setRange(0, 1)
             self.infrastructure_progress.setValue(0)
@@ -1607,6 +1612,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.compiler_build_button.clicked.connect(
                 lambda: self._start_infrastructure("compiler-build")
             )
+            self.infrastructure_cancel_button.clicked.connect(self._cancel_active)
             self.configure_button.clicked.connect(
                 lambda: self._start_infrastructure("tests-configure")
             )
@@ -1859,9 +1865,9 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.infrastructure_progress.setValue(0)
                 self.infrastructure_progress.setFormat("Esperando pasos de Ninja")
                 self.infrastructure_progress_detail.setText("Esperando salida completa del proceso")
-                self._set_busy(True)
                 self.active_operation = operation
                 self.active_modes = modes
+                self._set_busy(True)
                 worker = CommandWorker(run_id, commands, metadata)
                 self.worker = worker
                 worker.output_ready.connect(self._append_infrastructure_output)
@@ -2217,7 +2223,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.save_button.setEnabled(not busy)
             self.detect_button.setEnabled(not busy)
             self.receipt_button.setEnabled(not busy)
-            self.cancel_button.setEnabled(busy)
+            infrastructure_busy = busy and bool(self.active_operation)
+            self.infrastructure_cancel_button.setEnabled(infrastructure_busy)
+            self.cancel_button.setEnabled(busy and not infrastructure_busy)
             if busy:
                 self.retry_button.setEnabled(False)
             self.statusBar().showMessage("Operación activa" if busy else "Listo")

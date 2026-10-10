@@ -61,7 +61,7 @@ Cada cambio incluye implementación, pruebas nuevas enfocadas, evidencia Markdow
 El mismo commit que cierra una tanda actualiza `TRACKING.md` y `CURSOR.json`; queda prohibido diferir el estado
 persistente a una tanda posterior.
 
-### Cambio activo: visibilidad íntegra de la construcción
+### Cambio cerrado: visibilidad íntegra de la construcción
 
 El cambio autorizado se limita a `nscbuilder3.py` y a la documentación de la
 Tanda 10. Su objetivo es presentar de forma explícita el progreso que Ninja ya
@@ -83,3 +83,24 @@ Presupuesto del cambio:
 Permanecen protegidos el compilador, la suite nueva, la suite histórica, los
 seis cambios preexistentes, `C:`, despliegues y remotos. El reporte condensado
 continúa siendo una vista adicional y nunca reemplaza el log completo.
+
+### Cambio cerrado: cancelación visible de construcción
+
+El controlador ya puede cancelar el árbol de procesos que posee, pero la
+pestaña `Construcción` no expone ese control. El cambio autorizado conecta un
+botón de cancelación visible al mecanismo existente, sin alterar los comandos,
+la compilación ni el cierre del proceso.
+
+Presupuesto del cambio:
+
+| Dimensión | Autorizado |
+|---|---|
+| Repositorio | `A:\nsc-devel` |
+| Componente | NSC Builder 3 |
+| Archivos funcionales | `nscbuilder3.py` |
+| Símbolos | Pestaña `Construcción`, `_set_busy` y `_cancel_active` |
+| Comportamiento | Cancelar configuración o construcción activas desde su propia pestaña |
+| Validación | Revisión estática; la cancelación real queda para una ejecución del usuario |
+
+El botón de ejecución conserva su responsabilidad sobre la batería de pruebas;
+el botón nuevo sólo se habilita para operaciones de construcción.

@@ -10,8 +10,8 @@
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "NSCBUILDER3-COMPILER-PROGRESS",
-  "next_action": "Validate the new complete compiler-progress presentation in the next user-run build, then continue the authorized deferred Phase 2 validation.",
+  "current_batch": "NSCBUILDER3-CONSTRUCTION-CANCELLATION",
+  "next_action": "Validate complete compiler progress and construction cancellation in the next user-run build, then continue the authorized deferred Phase 2 validation.",
   "implementation_materialization": {
     "Host.Source": {
       "expected": 58,
@@ -729,6 +729,7 @@
       "live_counter": true,
       "live_progress_bar": true,
       "current_step_description": true,
+      "construction_cancel_button": true,
       "full_log_preserved": true,
       "static_validation": "PASS",
       "functional_validation": "PENDING_USER_EXECUTION"

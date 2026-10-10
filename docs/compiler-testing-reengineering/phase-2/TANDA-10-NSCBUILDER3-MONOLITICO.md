@@ -124,6 +124,9 @@ oráculos existentes.
 - La pestaña de construcción interpreta las líneas nativas `[n/total]` de
   Ninja y muestra barra, contador y descripción del paso actual sin retirar la
   línea original de la consola ni de `full.log`.
+- La misma pestaña expone `Cancelar construcción` durante configuración o
+  compilación y lo conecta a la cancelación del árbol de procesos ya existente;
+  el botón de ejecución permanece reservado para la batería de pruebas.
 - Recibo SHA-256 del `nsc.exe` y `nslink.exe` externos seleccionados.
 
 ## Evidencia ejecutada
@@ -140,6 +143,9 @@ oráculos existentes.
 - análisis sintáctico mediante `ast.parse` y prueba aislada del contrato
   `[13/337] Building CXX object ...`: correctos; no construyó NSC ni ejecutó
   pruebas.
+- análisis sintáctico y auditoría del cableado del botón de cancelación:
+  correctos; la terminación real del árbol queda pendiente de una ejecución
+  iniciada por el usuario.
 
 La implementación no lanzó compilaciones por cuenta propia. Posteriormente el
 usuario ejecutó Builder 3 y produjo la evidencia
