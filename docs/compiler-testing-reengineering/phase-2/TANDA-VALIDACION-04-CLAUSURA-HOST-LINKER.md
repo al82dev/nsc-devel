@@ -44,4 +44,7 @@ Visual Studio, no se despliega y no se escribe en `C:`.
 - Símbolos de esta causa inventariados: `24/24`.
 - Productores NativeSharp incorporados: `11/11`.
 - Dependencias NativeSharp transitivas sin productor conocido: `0`.
+- Auditoría predictiva del enlace real más los productores nuevos:
+  `181,968` definiciones, `2,334` referencias externas, `0` símbolos
+  NativeSharp sin productor y `0` símbolos LLVM-C sin productor.
 - Configuración, compilación, enlace y ejecución: pendientes de corrida externa.

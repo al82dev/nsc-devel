@@ -67,7 +67,9 @@ La segunda causa del mismo enlace, `24` símbolos transitivos de
 `WindowsLibraryBuilder.cpp`, quedó cerrada estáticamente con sus `11`
 productores canónicos. La suite usa el `LLVM-C` del `LLVM_DIR` seleccionado y
 copia su runtime al árbol de pruebas en `A:`; no usa Visual Studio ni modifica
-producto. La validación externa permanece pendiente.
+producto. La auditoría predictiva de la tabla completa del enlace quedó en
+`0` símbolos NativeSharp y `0` símbolos LLVM-C sin productor. La validación
+externa permanece pendiente.
 
 Builder 3 dejó de enviar `-fuse-ld=lld` directamente a `lld-link` al configurar
 la suite. Envía el valor de flags vacío para limpiar también caches existentes;
