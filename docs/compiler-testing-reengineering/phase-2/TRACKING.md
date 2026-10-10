@@ -747,3 +747,9 @@ Validación 59 cerró la persistencia de configuración. `jobs` se valida en
 preservando la versión anterior ante fallos y limpiando temporales. Las pruebas
 dirigidas pasan `8/8` y la suite Python completa `193/193` sin tocar la
 configuración real.
+
+Validación 60 hizo atómica la publicación terminal. Metadatos, resultados y
+resumen ya no aparecen parcialmente; `RUN_FINISHED` sólo se agrega después de
+publicarlos y un fallo conserva la corrida como incompleta. Las pruebas
+dirigidas pasan `7/7` y la suite Python completa `196/196` sin tocar el historial
+real.

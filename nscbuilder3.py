@@ -368,9 +368,14 @@ def write_json(path: Path, value: object) -> None:
 
 def write_json_atomic(path: Path, value: object) -> None:
     """Durably replace one JSON file without exposing partial contents."""
+    content = json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+    write_text_atomic(path, content)
+
+
+def write_text_atomic(path: Path, content: str) -> None:
+    """Durably replace one UTF-8 text file without exposing partial contents."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    content = json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
     try:
         with temporary.open("x", encoding="utf-8", newline="\n") as stream:
             stream.write(content)
@@ -984,7 +989,7 @@ class EvidenceStore:
         self.log_path = self.root / "full.log"
         self._event_stream = self.events_path.open("a", encoding="utf-8", newline="\n")
         self._log_stream = self.log_path.open("a", encoding="utf-8", newline="\n")
-        write_json(self.root / "metadata.json", metadata)
+        write_json_atomic(self.root / "metadata.json", metadata)
         self.event("RUN_STARTED", metadata)
 
     def event(self, kind: str, payload: dict[str, Any]) -> None:
@@ -1024,7 +1029,7 @@ class EvidenceStore:
             "counts": dict(sorted(counts.items())),
             "results": [asdict(outcome) for outcome in outcomes],
         }
-        write_json(self.root / "results.json", payload)
+        write_json_atomic(self.root / "results.json", payload)
         lines = [
             f"# NSC Builder 3 — {self.run_id}",
             "",
@@ -1042,9 +1047,7 @@ class EvidenceStore:
             )
         else:
             lines.append("No se registraron fallos terminales en los casos ejecutados.")
-        (self.root / "summary.md").write_text(
-            "\n".join(lines) + "\n", encoding="utf-8", newline="\n"
-        )
+        write_text_atomic(self.root / "summary.md", "\n".join(lines) + "\n")
         self.event("RUN_FINISHED", {"status": status, "counts": dict(counts)})
         self.close()
 

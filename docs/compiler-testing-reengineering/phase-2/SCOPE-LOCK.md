@@ -975,3 +975,18 @@ sintético de `_nscbuilder3` y la evidencia de Validación 59. No se lee o
 modifica el `config.json` real, no se cambian defaults, autodetección, comandos,
 GUI, producto ni batería histórica y no se configura, compila o ejecuta
 producto.
+
+### Enmienda: publicación terminal atómica de evidencia
+
+`metadata.json`, `results.json` y `summary.md` son marcadores durables de una
+corrida y no pueden hacerse visibles a medio escribir. Deben publicarse por
+reemplazo atómico; `RUN_FINISHED` sólo puede agregarse después de que resultados
+y resumen estén completos. Si cualquiera falla, no existe evento terminal y el
+historial debe seguir clasificando la corrida como incompleta, conservando
+`events.jsonl` y `full.log` progresivos.
+
+El presupuesto queda limitado a escritores atómicos de texto/JSON,
+`EvidenceStore.__init__/finish`, pruebas Python en un historial sintético y la
+evidencia de Validación 60. No se modifica el historial real, contenido de
+reportes, estados, GUI, producto ni batería histórica y no se configura,
+compila o ejecuta producto.
