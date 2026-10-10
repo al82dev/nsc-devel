@@ -69,11 +69,13 @@ class Builder3FixtureFailureTests(unittest.TestCase):
         with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
             engine = self._engine(Path(directory))
             observed_project: list[Path] = []
+            observed_command: list[str] = []
 
             def run(
                 command: list[str], *_args: object, **_kwargs: object
             ) -> tuple[int, str]:
                 observed_project.append(Path(command[2]))
+                observed_command.extend(command)
                 output = Path(command[command.index("-o") + 1])
                 output.write_bytes(b"fixture\n")
                 return 0, ""
@@ -91,6 +93,11 @@ class Builder3FixtureFailureTests(unittest.TestCase):
             self.assertNotEqual(
                 observed_project[0],
                 builder.SUITE_ROOT / "selfhost/modules/SelfHostBasic.nsproj",
+            )
+            reference_option = observed_command.index("--library-reference-root")
+            self.assertEqual(
+                Path(observed_command[reference_option + 1]),
+                Path(engine.config.install_prefix).resolve() / "lib",
             )
             for item in ET.parse(observed_project[0]).getroot().iter("Compile"):
                 self.assertNotIn("..", Path(item.get("Include", "")).parts)

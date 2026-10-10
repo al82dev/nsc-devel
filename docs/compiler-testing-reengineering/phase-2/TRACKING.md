@@ -1420,3 +1420,11 @@ temprano de modulos cargados por ruta para permitir introspeccion de
 `dataclasses`, y lectura segura del manifiesto opcional en dobles sinteticos.
 No modifica producto ni expectativas. Evidencia:
 `TANDA-VALIDACION-157-CIERRE-CONTROLADOR.md`.
+
+Validacion 158 parte de la corrida dirigida
+`20261010-142040-70b38c9c`: las dos identidades Host.Basic y SelfHost.Basic
+pasaron, mientras cuatro productores revelaron dos residuos de fixture. La
+construccion self-host recibe ahora la raiz de bibliotecas del prefijo local y
+el fixture Types deja de usar palabras reservadas como identificadores. No se
+modifica producto. Evidencia:
+`TANDA-VALIDACION-158-DEPENDENCIAS-SELFHOST.md`.

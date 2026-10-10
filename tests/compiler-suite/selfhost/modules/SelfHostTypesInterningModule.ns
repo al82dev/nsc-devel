@@ -33,13 +33,13 @@ namespace NativeSharp.CompilerSuite.SelfHost.Types
             raii TypeTable table = new TypeTable();
             int pointer = table.Intern("int*");
             int array = table.Intern("short[3]");
-            int owned = table.Intern("owned int*");
+            int ownedTypeId = table.Intern("owned int*");
             int function = table.Intern("(int, short[3]) -> bool");
             return table.Get(pointer).Kind() == SemanticTypeKind.Pointer &&
                 table.Get(pointer).ElementType() == table.Find("int") &&
                 table.Get(array).Kind() == SemanticTypeKind.Array &&
                 table.Get(array).ElementCount() == 3 && table.Get(array).Size() == 6 &&
-                table.Get(owned).Ownership() == OwnershipKind.Owned &&
+                table.Get(ownedTypeId).Ownership() == OwnershipKind.Owned &&
                 table.Get(function).Kind() == SemanticTypeKind.Function &&
                 table.Get(function).ParameterCount() == 2 ? 0 : 29;
         }
@@ -81,11 +81,11 @@ namespace NativeSharp.CompilerSuite.SelfHost.Types
             int pointer = table.Intern("byte*");
             int unsized = table.Intern("byte[]");
             int sized = table.Intern("short[3]");
-            int borrowed = table.Intern("borrowed byte*");
+            int borrowedTypeId = table.Intern("borrowed byte*");
             int nested = table.Intern("(byte*, short[3]) -> double");
             return table.Get(pointer).Size() == 8 && table.Get(unsized).Size() == 8 &&
                 table.Get(sized).Size() == 6 && table.Get(sized).Alignment() == 2 &&
-                table.Get(borrowed).Ownership() == OwnershipKind.Borrowed &&
+                table.Get(borrowedTypeId).Ownership() == OwnershipKind.Borrowed &&
                 table.Get(nested).ReturnType() == table.Find("double") &&
                 table.Get(nested).ParameterCount() == 2 ? 0 : 33;
         }

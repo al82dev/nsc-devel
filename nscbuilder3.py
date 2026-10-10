@@ -2672,6 +2672,8 @@ class ExecutionEngine:
             f"-{variant.optimization}",
             f"--profile={variant.build_mode.casefold()}",
             "-g0",
+            "--library-reference-root",
+            str((Path(self.config.install_prefix).resolve() / "lib")),
             "-o",
             str(executable),
         ]
