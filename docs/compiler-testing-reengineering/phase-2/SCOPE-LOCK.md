@@ -1872,3 +1872,27 @@ artefactos, CMake, producto, casos, manifiestos, oraculos ni bateria historica.
 Los seis archivos del usuario registrados en `CURSOR.json` permanecen
 protegidos. No se configura, compila o ejecuta producto; no se ejecuta baseline
 y no se toca la unidad `C:`.
+
+### Enmienda: diagnostico causal en resultados de infraestructura
+
+La corrida `20261009-234910-fcda0e5c` demostro una perdida de evidencia en el
+controlador: `full.log` contiene errores concretos de `lld-link`, pero
+`results.json` y `summary.md` reducen el fallo de construccion a
+`exit code 4294967295`. `ProcessController.run` ya devuelve la salida completa;
+`CommandWorker` la descarta al desempaquetarla como `code, _`.
+
+La entrada exacta es un comando de infraestructura no cancelado que termina
+con codigo distinto de cero y salida que contiene un diagnostico reconocible.
+La operacion defectuosa es proyectar el resultado terminal sin esa salida. La
+invariante violada es que todo fallo conserva en `CaseOutcome.detail` una causa
+accionable y mantiene `full.log` como evidencia completa.
+
+El presupuesto de Validacion 127 queda limitado a una funcion pura e iterativa
+que selecciona el primer diagnostico causal de CMake, compilador, linker o
+Ninja; transmitir la salida ya capturada desde `CommandWorker`; ampliar las
+pruebas de resultados de infraestructura; y actualizar evidencia, tracking y
+cursor. El detalle permanece acotado y no sustituye ni duplica el log completo.
+No se cambian procesos, cancelacion, comandos, CMake, producto, casos,
+manifiestos, oraculos ni bateria historica. Los seis archivos del usuario
+registrados en `CURSOR.json` permanecen protegidos. No se configura, compila o
+ejecuta producto; no se ejecuta baseline y no se toca la unidad `C:`.

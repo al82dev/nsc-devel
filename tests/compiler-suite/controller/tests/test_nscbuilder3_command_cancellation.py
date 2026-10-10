@@ -19,6 +19,58 @@ COMMANDS = (
 
 
 class Builder3CommandCancellationTests(unittest.TestCase):
+    def test_failed_command_preserves_first_causal_diagnostic(self) -> None:
+        samples = (
+            (
+                "[12/20] Linking CXX executable nsc_component_tests.exe\n"
+                "lld-link: error: undefined symbol: Product::missing()\n"
+                "ninja: build stopped: subcommand failed.\n",
+                "lld-link: error: undefined symbol: Product::missing()",
+            ),
+            (
+                "-- Configuring incomplete\n"
+                "CMake Error at CMakeLists.txt:56 (message):\n"
+                "  NSLink is required for product cases\n",
+                "CMake Error at CMakeLists.txt:56 (message): — "
+                "NSLink is required for product cases",
+            ),
+            (
+                "Source.cpp(42,7): error C2039: 'missing': is not a member\n",
+                "Source.cpp(42,7): error C2039: 'missing': is not a member",
+            ),
+        )
+        for captured, expected in samples:
+            with self.subTest(expected=expected):
+                outcome = builder.infrastructure_command_outcome(
+                    index=1,
+                    label="Construir Debug",
+                    exit_code=4294967295,
+                    duration_seconds=0.25,
+                    cancelled=False,
+                    evidence="full.log",
+                    captured_output=captured,
+                )
+
+                self.assertEqual(outcome.status, "FAIL")
+                self.assertEqual(
+                    outcome.detail,
+                    f"exit code 4294967295: {expected}",
+                )
+                self.assertEqual(outcome.evidence, "full.log")
+
+    def test_failed_command_without_diagnostic_retains_exit_code(self) -> None:
+        outcome = builder.infrastructure_command_outcome(
+            index=1,
+            label="Construir Debug",
+            exit_code=7,
+            duration_seconds=0.25,
+            cancelled=False,
+            evidence="full.log",
+            captured_output="ninja: build stopped: subcommand failed.\n",
+        )
+
+        self.assertEqual(outcome.detail, "exit code 7")
+
     def test_active_cancelled_command_is_not_reported_as_failure(self) -> None:
         outcome = builder.infrastructure_command_outcome(
             index=1,

@@ -925,13 +925,14 @@ def infrastructure_command_outcome(
     duration_seconds: float,
     cancelled: bool,
     evidence: str,
+    captured_output: str = "",
 ) -> CaseOutcome:
     """Project one infrastructure command into the shared terminal protocol."""
     status = "CANCELLED" if cancelled else ("PASS" if exit_code == 0 else "FAIL")
     if cancelled:
         detail = "operation cancelled"
     elif exit_code != 0:
-        detail = f"exit code {exit_code}"
+        detail = infrastructure_failure_detail(exit_code, captured_output)
     else:
         detail = ""
     return CaseOutcome(
@@ -947,6 +948,29 @@ def infrastructure_command_outcome(
         detail=detail,
         evidence=evidence,
     )
+
+
+def infrastructure_failure_detail(exit_code: int, captured_output: str) -> str:
+    """Keep one bounded causal diagnostic while full.log retains all output."""
+    prefix = f"exit code {exit_code}"
+    lines = [line.strip() for line in captured_output.splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        folded = line.casefold()
+        if not (
+            folded.startswith("cmake error")
+            or ": error:" in folded
+            or ": error " in folded
+            or "fatal error" in folded
+            or folded.startswith("ninja: error:")
+        ):
+            continue
+        diagnostic = line
+        if folded.startswith("cmake error") and index + 1 < len(lines):
+            continuation = lines[index + 1]
+            if not continuation.casefold().startswith("call stack"):
+                diagnostic = f"{diagnostic} — {continuation}"
+        return f"{prefix}: {diagnostic}"[:800]
+    return prefix
 
 
 def cancelled_infrastructure_outcomes(
@@ -2481,7 +2505,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                     self.stage_ready.emit(label)
                     self._output(f"$ {subprocess.list2cmdline(command)}\n")
                     started = time.monotonic()
-                    code, _ = self.controller.run(command, cwd)
+                    code, captured = self.controller.run(command, cwd)
                     duration = time.monotonic() - started
                     command_cancelled = self.controller.cancelled.is_set()
                     outcomes.append(
@@ -2492,6 +2516,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                             duration_seconds=duration,
                             cancelled=command_cancelled,
                             evidence=str(self.store.log_path),
+                            captured_output=captured,
                         )
                     )
                     if command_cancelled:

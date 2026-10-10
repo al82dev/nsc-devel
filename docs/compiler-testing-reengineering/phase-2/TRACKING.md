@@ -1142,3 +1142,12 @@ del `BuildId.h` explicito. Las pruebas dirigidas pasan `6/6`, la suite Python
 `273/273` y el catalogo conserva `9,587` casos, `1,208` contratos, `44`
 componentes y `0` sin clasificar, sin configurar, compilar o ejecutar producto.
 La corrida funcional externa sigue pendiente y la tarea permanece activa.
+
+Validacion 127 cerro la perdida del diagnostico causal de comandos de
+infraestructura. `CommandWorker` ya no descarta la salida capturada: los fallos
+conservan en `CaseOutcome.detail` el primer error de CMake, compilador, linker o
+Ninja y mantienen `full.log` integro. Las pruebas dirigidas pasan `5/5`, la
+suite Python `275/275` y el catalogo conserva `9,587` casos, `1,208` contratos,
+`44` componentes y `0` sin clasificar, sin configurar, compilar o ejecutar
+producto. La corrida funcional externa sigue pendiente y la tarea permanece
+activa.
