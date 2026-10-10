@@ -4,13 +4,86 @@ import argparse
 import json
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
+from typing import Any
 
 
 CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 
 from run_suite import run
+from nsc_suite import CaseManifest, InventoryIndex, Selection, load_manifest, select_cases
+
+
+def fixture_cases(fixture: Path) -> tuple[CaseManifest, ...]:
+    inventory = InventoryIndex.from_csv(
+        fixture / "components.csv",
+        fixture / "contracts.csv",
+    )
+    cases = load_manifest(fixture / "cases.jsonl", inventory)
+    return select_cases(cases, Selection(all_cases=True, build_mode="Debug"))
+
+
+def validate_results(
+    cases: tuple[CaseManifest, ...], payload: dict[str, Any]
+) -> None:
+    raw_results = payload.get("results")
+    raw_counts = payload.get("counts")
+    if not isinstance(raw_results, list) or not isinstance(raw_counts, dict):
+        raise RuntimeError("controller result schema is invalid")
+    if any(not isinstance(result, dict) for result in raw_results):
+        raise RuntimeError("controller result list contains a non-object entry")
+    expected_ids = tuple(case.case_id for case in cases)
+    actual_ids = tuple(str(result.get("case_id", "")) for result in raw_results)
+    if actual_ids != expected_ids:
+        raise RuntimeError("controller results differ from the live fixture selection")
+    expected_counts = Counter(case.expected_outcome for case in cases)
+    observed_counts = Counter(
+        {
+            str(status): int(count)
+            for status, count in raw_counts.items()
+            if int(count) != 0
+        }
+    )
+    if observed_counts != expected_counts:
+        raise RuntimeError("controller result states differ from fixture expectations")
+
+
+def validate_events(
+    cases: tuple[CaseManifest, ...], events: list[dict[str, Any]]
+) -> None:
+    expected_ids = sorted(case.case_id for case in cases)
+    if len(events) != 2 + (2 * len(cases)):
+        raise RuntimeError("controller event stream has invalid protocol cardinality")
+    if [event.get("sequence") for event in events] != list(range(len(events))):
+        raise RuntimeError("controller event sequence is not contiguous")
+    if events[0].get("kind") != "RUN_STARTED":
+        raise RuntimeError("controller event stream does not start with RUN_STARTED")
+    if events[-1].get("kind") != "RUN_FINISHED":
+        raise RuntimeError("controller event stream does not end with RUN_FINISHED")
+    started = sorted(
+        str(event.get("case_id", ""))
+        for event in events
+        if event.get("kind") == "CASE_STARTED"
+    )
+    finished = sorted(
+        str(event.get("case_id", ""))
+        for event in events
+        if event.get("kind") == "CASE_FINISHED"
+    )
+    if started != expected_ids or finished != expected_ids:
+        raise RuntimeError("controller events do not cover the live fixture selection")
+    start_payload = events[0].get("payload", {})
+    finish_payload = events[-1].get("payload", {})
+    if start_payload.get("selected") != len(cases):
+        raise RuntimeError("RUN_STARTED selected count differs from the fixture")
+    if (
+        finish_payload.get("selected") != len(cases)
+        or finish_payload.get("completed") != len(cases)
+        or finish_payload.get("cancelled") is not False
+    ):
+        raise RuntimeError("RUN_FINISHED payload does not close the fixture run")
 
 
 def main() -> int:
@@ -21,6 +94,7 @@ def main() -> int:
     options = parser.parse_args()
     options.work_parent.mkdir(parents=True, exist_ok=True)
     fixture = options.source_root / "fixtures" / "infrastructure"
+    cases = fixture_cases(fixture)
     with tempfile.TemporaryDirectory(
         prefix="controller-gate-", dir=options.work_parent
     ) as temporary:
@@ -42,11 +116,12 @@ def main() -> int:
             raise RuntimeError(f"controller returned {code}")
         run_root = root / "infrastructure"
         payload = json.loads((run_root / "results.json").read_text(encoding="utf-8"))
-        if payload["counts"]["PASS"] != 3 or len(payload["results"]) != 3:
-            raise RuntimeError("controller did not preserve three passing results")
-        events = (run_root / "events.jsonl").read_text(encoding="utf-8").splitlines()
-        if len(events) != 8:
-            raise RuntimeError(f"controller emitted {len(events)} events instead of 8")
+        validate_results(cases, payload)
+        events = [
+            json.loads(line)
+            for line in (run_root / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        validate_events(cases, events)
         for required in ("summary.md", "failures.log"):
             if not run_root.joinpath(required).is_file():
                 raise RuntimeError(f"controller omitted {required}")

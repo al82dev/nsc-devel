@@ -452,3 +452,17 @@ clasificación no cambia disposiciones: sólo convierte en autoridad verificable
 lo ya registrado por los módulos y la auditoría de bloqueos. No se modifican
 casos, oráculos, resultados esperados, producto ni batería histórica. No se
 configura, compila ni ejecuta producto.
+
+### Enmienda: protocolo vivo del gate sintético
+
+El gate de infraestructura sintética debe cargar y seleccionar su manifiesto
+mediante los mismos componentes productivos que prueba. La cobertura de
+resultados se coteja con las identidades y resultados esperados de esa selección;
+la secuencia de eventos se valida por el protocolo `RUN_STARTED`, un inicio y
+un cierre por caso, y `RUN_FINISHED`, con cardinalidades derivadas del conjunto
+vivo y nunca de los números `3` u `8` de una revisión.
+
+El presupuesto queda limitado a `run_infrastructure_gate.py`, una prueba Python
+de sus validadores puros y la evidencia de Validación 23. No se modifican el
+fixture, manifiesto central, casos, oráculos, resultados esperados, producto ni
+batería histórica. No se configura, compila ni ejecuta producto.

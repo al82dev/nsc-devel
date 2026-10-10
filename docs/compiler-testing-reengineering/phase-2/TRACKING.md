@@ -504,3 +504,9 @@ por una clasificación JSONL canónica. El inventario vivo demuestra `58 = 54`
 ejecutables `+ 4` `InfrastructurePending`; el gate ya no contiene rangos,
 conteos ni listas privadas de IDs y conserva la validación integral del
 registro. La comprobación fue estática; no se ejecutó producto.
+
+Validación 23 retiró del gate sintético las expectativas rígidas de `3`
+resultados y `8` eventos. El gate carga y selecciona el fixture con la API
+productiva, compara identidades y estados con los casos vivos, y valida el
+protocolo completo de eventos con cardinalidad derivada. Sus `2/2` pruebas
+Python pasan; no se ejecutó el host compilado.
