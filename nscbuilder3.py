@@ -4778,11 +4778,19 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.history_refresh_button.setEnabled(not busy)
             for page in self.history_run_pages.values():
                 rerun_all = page.findChild(QPushButton, "history_rerun_all")
+                rerun_failures = page.findChild(
+                    QPushButton, "history_rerun_failures"
+                )
                 rerun_selected = page.findChild(
                     QPushButton, "history_rerun_selected"
                 )
                 if rerun_all is not None:
                     rerun_all.setEnabled(not busy)
+                if rerun_failures is not None:
+                    rerun_failures.setEnabled(
+                        not busy
+                        and bool(rerun_failures.property("hasRetryableFailures"))
+                    )
                 if rerun_selected is not None:
                     rerun_selected.setEnabled(
                         not busy
@@ -5086,12 +5094,22 @@ def launch_gui(smoke_only: bool = False) -> int:
             rerun_selected_button = QPushButton("Reejecutar prueba seleccionada")
             rerun_selected_button.setObjectName("history_rerun_selected")
             rerun_selected_button.setEnabled(False)
+            rerun_failures_button = QPushButton("Reejecutar fallos")
+            rerun_failures_button.setObjectName("history_rerun_failures")
+            has_retryable_failures = bool(
+                retry_variants(loaded.variants, loaded.outcomes)
+            )
+            rerun_failures_button.setProperty(
+                "hasRetryableFailures", has_retryable_failures
+            )
+            rerun_failures_button.setEnabled(has_retryable_failures)
             rerun_all_button = QPushButton("Reejecutar corrida completa")
             rerun_all_button.setObjectName("history_rerun_all")
             failures_button = QPushButton("Mostrar sólo fallos")
             open_button = QPushButton("Abrir carpeta de evidencia")
             close_button = QPushButton("Cerrar corrida")
             actions.addWidget(rerun_selected_button)
+            actions.addWidget(rerun_failures_button)
             actions.addWidget(rerun_all_button)
             actions.addWidget(failures_button)
             actions.addStretch(1)
@@ -5517,6 +5535,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             table.cellDoubleClicked.connect(open_detail)
             table.itemSelectionChanged.connect(update_selected_action)
             rerun_selected_button.clicked.connect(rerun_selected)
+            rerun_failures_button.clicked.connect(
+                lambda: self._start_historical_failures(loaded)
+            )
             rerun_all_button.clicked.connect(
                 lambda: self._start_historical_run(loaded)
             )
@@ -5636,6 +5657,41 @@ def launch_gui(smoke_only: bool = False) -> int:
                 )
             except Exception as error:
                 self._show_error("No se pudo reejecutar la corrida completa", error)
+
+        def _start_historical_failures(self, loaded: HistoricalExecution) -> None:
+            """Create a new run from only the exact failures of a prior run."""
+            if self.worker is not None:
+                return
+            try:
+                variants = retry_variants(loaded.variants, loaded.outcomes)
+                if not variants:
+                    raise ValueError(
+                        "la corrida histórica no contiene fallos reejecutables"
+                    )
+                selection = loaded.metadata["selection"]
+                scope = str(selection["scope"])
+                self.scope_combo.setCurrentText(scope)
+                self._refresh_scope_values()
+                if scope != "Total":
+                    self.scope_value.setCurrentText(str(selection["value"]))
+                self.profile_combo.setCurrentText(str(selection["profile"]))
+                self.execution_mode.setCurrentText(str(selection["build_mode"]))
+                self.optimization_combo.setCurrentText(
+                    str(selection["optimization"])
+                )
+                config = self._config_from_ui().validated(require_tools=True)
+                config.save()
+                self._populate_plan(
+                    tuple(variant.case for variant in variants), variants
+                )
+                self.tabs.setCurrentIndex(1)
+                self._run_variants(
+                    config,
+                    variants,
+                    f"historical-failures:{loaded.root.name}",
+                )
+            except Exception as error:
+                self._show_error("No se pudieron reejecutar los fallos", error)
 
         def _open_history(self) -> None:
             root = self._selected_history_path()
@@ -5794,6 +5850,8 @@ def launch_gui(smoke_only: bool = False) -> int:
                 raise RuntimeError("GUI smoke missing complete nested report tabs")
             if historical_page.findChild(
                 QPushButton, "history_rerun_selected"
+            ) is None or historical_page.findChild(
+                QPushButton, "history_rerun_failures"
             ) is None or historical_page.findChild(
                 QPushButton, "history_rerun_all"
             ) is None:
