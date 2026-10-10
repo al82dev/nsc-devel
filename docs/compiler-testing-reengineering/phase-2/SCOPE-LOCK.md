@@ -1913,3 +1913,26 @@ controladores, CMake, procesos, producto, casos, manifiestos, oraculos ni
 bateria historica. Los seis archivos del usuario registrados en `CURSOR.json`
 permanecen protegidos. No se configura, compila o ejecuta producto; no se
 ejecuta baseline y no se toca la unidad `C:`.
+
+### Enmienda: diagnostico causal visible al cerrar infraestructura
+
+Validacion 127 conserva ya el diagnostico causal en `CaseOutcome.detail`,
+`results.json` y `summary.md`, pero el cierre grafico de una configuracion o
+construccion fallida reduce esa informacion a `Operacion terminada con
+errores`. La pestaña de errores condensados solamente se actualiza al terminar
+la ejecucion de casos, no al terminar comandos de infraestructura.
+
+La entrada exacta es una lista terminal de resultados de infraestructura con
+al menos un estado de `TERMINAL_FAILURES`. La operacion defectuosa es cerrar el
+worker sin renderizar esos mismos resultados ni dirigir la interfaz a su
+reporte. La invariante violada es que toda causa persistida por Builder 3 sea
+visible en la GUI sin buscar manualmente en `full.log`.
+
+El presupuesto de Validacion 129 queda limitado a extraer el formateo
+condensado a una funcion pura compartida, usarla en los cierres de
+infraestructura y suite, abrir la pestaña de errores cuando la infraestructura
+termine con fallos y ampliar pruebas estaticas del reporte. No se cambian
+procesos, comandos, CMake, producto, casos, manifiestos, oraculos ni bateria
+historica. Los seis archivos del usuario registrados en `CURSOR.json`
+permanecen protegidos. No se configura, compila o ejecuta producto; no se
+ejecuta baseline y no se toca la unidad `C:`.

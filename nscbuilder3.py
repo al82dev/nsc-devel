@@ -1018,6 +1018,54 @@ def retry_variants(
     return tuple(variant for variant in visible if variant.key in terminal_keys)
 
 
+def condensed_error_report(
+    outcomes: Sequence[CaseOutcome], cancelled: bool, evidence: str
+) -> str:
+    """Render one causal report shared by infrastructure and suite closures."""
+    failures = [item for item in outcomes if item.status in TERMINAL_FAILURES]
+    known = [item for item in outcomes if item.status == "KNOWN_FAILURE"]
+    counts = Counter(item.status for item in outcomes)
+    controller_failure = evidence.startswith("ERROR:")
+    lines = [
+        "REPORTE CONDENSADO — NSC BUILDER 3",
+        "=" * 88,
+        f"Evidencia: {evidence}",
+        f"Cancelado: {'sí' if cancelled else 'no'}",
+        "Resultados: "
+        + ", ".join(f"{key}={value}" for key, value in sorted(counts.items())),
+        "",
+    ]
+    if failures:
+        grouped: dict[str, list[CaseOutcome]] = defaultdict(list)
+        for item in failures:
+            grouped[item.detail or item.status].append(item)
+        lines.append(f"CAUSAS TERMINALES ÚNICAS: {len(grouped)}")
+        for index, (cause, items) in enumerate(grouped.items(), start=1):
+            lines.extend(
+                [
+                    "-" * 88,
+                    f"CAUSA {index}/{len(grouped)} · {len(items)} ocurrencia(s)",
+                    cause,
+                ]
+            )
+            lines.extend(f"  - {item.key}" for item in items)
+    elif controller_failure:
+        lines.extend(
+            [
+                "CAUSAS TERMINALES ÚNICAS: 1",
+                "-" * 88,
+                "CAUSA 1/1 · fallo del controlador",
+                evidence,
+            ]
+        )
+    else:
+        lines.append("No hubo fallos terminales.")
+    if known:
+        lines.extend(["", f"DEFECTOS CONOCIDOS OBSERVADOS: {len(known)}"])
+        lines.extend(f"  - {item.key}: {item.detail}" for item in known)
+    return "\n".join(lines)
+
+
 class EvidenceStore:
     """Write crash-surviving run evidence and final human/machine reports."""
 
@@ -3035,7 +3083,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             self, outcomes: object, cancelled: bool, evidence: str
         ) -> None:
             typed = list(outcomes) if isinstance(outcomes, list) else []
-            failed = any(item.status != "PASS" for item in typed)
+            failed = evidence.startswith("ERROR:") or any(
+                item.status in TERMINAL_FAILURES for item in typed
+            )
             if evidence.startswith("ERROR:"):
                 message = evidence
             elif cancelled:
@@ -3065,6 +3115,10 @@ def launch_gui(smoke_only: bool = False) -> int:
                         self._config_from_ui().save()
                         message += f" NSC seleccionado: {built}"
             self.infrastructure_stage.setText(message)
+            self._render_error_report(typed, cancelled, evidence)
+            if failed:
+                self.tabs.setCurrentIndex(2)
+                self.result_tabs.setCurrentIndex(1)
             self.active_operation = ""
             self.worker = None
             self._set_busy(False)
@@ -3299,6 +3353,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             failed_keys = {
                 item.key for item in typed if item.status in TERMINAL_FAILURES
             }
+            failed = bool(failed_keys) or evidence.startswith("ERROR:")
             self.last_failed_variants = retry_variants(self.visible_variants, typed)
             self.retry_button.setEnabled(bool(self.last_failed_variants))
             self._render_error_report(typed, cancelled, evidence)
@@ -3306,42 +3361,14 @@ def launch_gui(smoke_only: bool = False) -> int:
             self._set_busy(False)
             self._refresh_history()
             self.tabs.setCurrentIndex(2)
-            self.result_tabs.setCurrentIndex(1 if failed_keys else 0)
+            self.result_tabs.setCurrentIndex(1 if failed else 0)
 
         def _render_error_report(
             self, outcomes: Sequence[CaseOutcome], cancelled: bool, evidence: str
         ) -> None:
-            failures = [item for item in outcomes if item.status in TERMINAL_FAILURES]
-            known = [item for item in outcomes if item.status == "KNOWN_FAILURE"]
-            counts = Counter(item.status for item in outcomes)
-            lines = [
-                "REPORTE CONDENSADO — NSC BUILDER 3",
-                "=" * 88,
-                f"Evidencia: {evidence}",
-                f"Cancelado: {'sí' if cancelled else 'no'}",
-                "Resultados: " + ", ".join(f"{key}={value}" for key, value in sorted(counts.items())),
-                "",
-            ]
-            if failures:
-                grouped: dict[str, list[CaseOutcome]] = defaultdict(list)
-                for item in failures:
-                    grouped[item.detail or item.status].append(item)
-                lines.append(f"CAUSAS TERMINALES ÚNICAS: {len(grouped)}")
-                for index, (cause, items) in enumerate(grouped.items(), start=1):
-                    lines.extend(
-                        [
-                            "-" * 88,
-                            f"CAUSA {index}/{len(grouped)} · {len(items)} ocurrencia(s)",
-                            cause,
-                        ]
-                    )
-                    lines.extend(f"  - {item.key}" for item in items)
-            else:
-                lines.append("No hubo fallos terminales.")
-            if known:
-                lines.extend(["", f"DEFECTOS CONOCIDOS OBSERVADOS: {len(known)}"])
-                lines.extend(f"  - {item.key}: {item.detail}" for item in known)
-            self.error_report.setPlainText("\n".join(lines))
+            self.error_report.setPlainText(
+                condensed_error_report(outcomes, cancelled, evidence)
+            )
 
         def _cancel_active(self) -> None:
             if self.worker is not None:

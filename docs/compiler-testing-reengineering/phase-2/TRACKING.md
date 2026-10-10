@@ -1158,3 +1158,12 @@ seis poseen cierre estatico trazable en el arbol actual, no quedan recibos
 malformados, omitidos o sin clasificar. Ninguna de esas revisiones constituye
 una corrida integral posterior a los cierres 122--127, por lo que la validacion
 funcional externa sigue pendiente y la tarea permanece activa.
+
+Validacion 129 cerro la perdida grafica del diagnostico de infraestructura.
+La causa ya persistida en `CaseOutcome`, `results.json` y `summary.md` alimenta
+ahora el mismo reporte condensado que la ejecucion de casos; ante fallos o
+excepciones del controlador, Builder 3 abre automaticamente `Resultados >
+Errores condensados`. Las pruebas dirigidas pasan `7/7`, la suite Python
+`277/277`, el catalogo conserva `9,587` casos y `0` sin clasificar y el smoke
+de GUI pasa, sin configurar, compilar o ejecutar producto. La corrida
+funcional externa sigue pendiente y la tarea permanece activa.

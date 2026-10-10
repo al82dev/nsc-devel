@@ -71,6 +71,36 @@ class Builder3CommandCancellationTests(unittest.TestCase):
 
         self.assertEqual(outcome.detail, "exit code 7")
 
+    def test_infrastructure_failure_is_visible_in_condensed_report(self) -> None:
+        outcome = builder.infrastructure_command_outcome(
+            index=2,
+            label="Construir infraestructura Debug",
+            exit_code=4294967295,
+            duration_seconds=0.25,
+            cancelled=False,
+            evidence="A:/evidence/full.log",
+            captured_output="lld-link: error: undefined symbol: Product::missing()\n",
+        )
+
+        report = builder.condensed_error_report(
+            [outcome], False, "A:/evidence"
+        )
+
+        self.assertIn("CAUSAS TERMINALES ÚNICAS: 1", report)
+        self.assertIn("lld-link: error: undefined symbol: Product::missing()", report)
+        self.assertIn("INFRA|2", report)
+        self.assertIn("Evidencia: A:/evidence", report)
+
+    def test_controller_exception_is_visible_without_case_outcomes(self) -> None:
+        report = builder.condensed_error_report(
+            [], False, "ERROR: RuntimeError: synthetic controller failure"
+        )
+
+        self.assertIn("CAUSAS TERMINALES ÚNICAS: 1", report)
+        self.assertIn("fallo del controlador", report)
+        self.assertIn("RuntimeError: synthetic controller failure", report)
+        self.assertNotIn("No hubo fallos terminales", report)
+
     def test_active_cancelled_command_is_not_reported_as_failure(self) -> None:
         outcome = builder.infrastructure_command_outcome(
             index=1,
