@@ -820,3 +820,9 @@ objetos se materializan ahora como `INFRASTRUCTURE_ERROR`; el ledger y los
 eventos llegan a cierre terminal en vez de truncarse por `AttributeError`. Las
 pruebas dirigidas pasan `6/6` y la suite Python completa `212/212`, sin ejecutar
 producto. La tarea funcional permanece activa.
+
+Validacion 72 cerro `run_id` antes de cualquier escritura. Workspace, eventos y
+reportes comparten una raiz validada; segmentos vacios, ocultos, anidados o con
+traversal fallan sin crear estado. Las pruebas dirigidas pasan `5/5` y la suite
+Python completa `213/213`, sin ejecutar producto. La tarea funcional permanece
+activa.

@@ -32,10 +32,14 @@ class WorkspaceManager:
             raise WorkspaceError(f"compiler suite workspace root must be on A: {resolved}")
         self.root = resolved
 
-    def prepare(self, run_id: str, case_id: str) -> CaseWorkspace:
+    def run_root(self, run_id: str) -> Path:
+        """Resolve one safe run directory without creating filesystem state."""
         _validate_segment(run_id, "run_id")
+        return self.root / run_id
+
+    def prepare(self, run_id: str, case_id: str) -> CaseWorkspace:
         _validate_segment(case_id, "case_id")
-        run_root = self.root / run_id
+        run_root = self.run_root(run_id)
         case_root = run_root / case_id
         if case_root.exists():
             raise WorkspaceError(f"case workspace already exists: {case_root}")

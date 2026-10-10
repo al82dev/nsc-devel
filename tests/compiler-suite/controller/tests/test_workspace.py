@@ -46,6 +46,15 @@ class WorkspaceTests(unittest.TestCase):
                 with self.assertRaisesRegex(WorkspaceError, "invalid"):
                     manager.prepare("run-001", value)
 
+    def test_run_root_rejects_unsafe_id_before_creating_state(self) -> None:
+        manager = WorkspaceManager(self.root)
+        for value in ("", "../escape", "nested/path", "nested\\path", ".hidden"):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                WorkspaceError, "invalid run_id"
+            ):
+                manager.run_root(value)
+        self.assertEqual(tuple(self.root.iterdir()), ())
+
     def test_root_is_canonical_and_on_a_drive(self) -> None:
         manager = WorkspaceManager(self.root / "child" / "..")
         self.assertEqual(manager.root, self.root.resolve())

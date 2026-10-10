@@ -1141,3 +1141,16 @@ El presupuesto queda limitado a la frontera de retorno en `_execute`, una
 prueba Python sintetica y la evidencia de Validacion 71. No se cambian
 executors, orden, dependencias, estados, producto ni bateria historica y no se
 configura, compila o ejecuta producto.
+
+### Enmienda: run_id validado antes de escribir evidencia
+
+El controlador no puede construir la ruta de `events.jsonl` mediante
+`work_root / run_id` antes de validar el segmento. `WorkspaceManager` debe
+resolver una unica raiz de corrida con la misma politica segura usada por los
+casos, y esa ruta debe alimentar eventos y reporte. Un `run_id` vacio, oculto,
+anidado o con traversal debe fallar antes de crear archivos.
+
+El presupuesto queda limitado a `WorkspaceManager.run_root`, su uso por
+`prepare` y `run_suite.run`, pruebas Python sinteticas y la evidencia de
+Validacion 72. No se cambian layouts validos, seleccion, ejecucion, producto ni
+bateria historica y no se configura, compila o ejecuta producto.

@@ -102,10 +102,12 @@ def run(arguments: list[str]) -> int:
             tools.append(ToolIdentity("build-id-header", str(header), _sha256(header)))
 
     work_root = options.work_root.resolve()
-    event_path = work_root / options.run_id / "events.jsonl"
+    workspace_manager = WorkspaceManager(work_root)
+    run_root = workspace_manager.run_root(options.run_id)
+    event_path = run_root / "events.jsonl"
     cancellation = CancellationToken()
     with EventWriter(event_path) as events:
-        runner = SuiteRunner(WorkspaceManager(work_root), events, cancellation)
+        runner = SuiteRunner(workspace_manager, events, cancellation)
         results = runner.run(options.run_id, selected, ExecutorRouter(executors))
     metadata = RunMetadata(
         run_id=options.run_id,
@@ -117,7 +119,7 @@ def run(arguments: list[str]) -> int:
         selected_case_ids=tuple(case.case_id for case in selected),
         tools=tuple(tools),
     )
-    ReportWriter(work_root / options.run_id).write(metadata, results)
+    ReportWriter(run_root).write(metadata, results)
     non_blocking = {"PASS", "KNOWN_FAILURE"}
     return 0 if all(result.status.value in non_blocking for result in results) else 1
 
