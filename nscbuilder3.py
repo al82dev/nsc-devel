@@ -2819,12 +2819,15 @@ class ExecutionEngine:
             return cached
         path = SUITE_ROOT / "controller" / "integration" / name
         # Integration gates intentionally share ``component_gate_support`` as a
-        # sibling module. Loading a gate from an absolute file path does not make
-        # that sibling importable, so publish the canonical integration root once
-        # before executing any gate. The entry remains stable for lazy imports.
+        # sibling module, and that support module imports the public ``nsc_suite``
+        # package from the controller root. Loading a gate from an absolute file
+        # path exposes neither location, so publish both canonical roots once
+        # before executing any gate. The entries remain stable for lazy imports.
+        controller_root = str(SUITE_ROOT / "controller")
         integration_root = str(path.parent)
-        if integration_root not in sys.path:
-            sys.path.insert(0, integration_root)
+        for import_root in (controller_root, integration_root):
+            if import_root not in sys.path:
+                sys.path.insert(0, import_root)
         module_name = f"nscbuilder3_{path.stem}"
         spec = importlib.util.spec_from_file_location(module_name, path)
         if spec is None or spec.loader is None:

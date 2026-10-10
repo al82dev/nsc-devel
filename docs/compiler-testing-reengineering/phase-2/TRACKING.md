@@ -1428,3 +1428,9 @@ construccion self-host recibe ahora la raiz de bibliotecas del prefijo local y
 el fixture Types deja de usar palabras reservadas como identificadores. No se
 modifica producto. Evidencia:
 `TANDA-VALIDACION-158-DEPENDENCIAS-SELFHOST.md`.
+
+Validacion 159 corrige una precondicion del cargador visible al ejecutar
+aisladamente el constructor self-host: los gates requieren tanto la raiz
+`controller` como `controller/integration`. Ambas se publican una sola vez; no
+se modifica producto ni oraculos. Evidencia:
+`TANDA-VALIDACION-159-IMPORTS-GATES-AISLADOS.md`.

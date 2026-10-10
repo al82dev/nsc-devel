@@ -41,6 +41,7 @@ class Builder3PythonGateEnvelopeTests(unittest.TestCase):
                 self.assertEqual(first.VALUE, "loaded-from-sibling")
                 self.assertIs(first, second)
                 self.assertEqual(sys.path.count(str(integration_root)), 1)
+                self.assertEqual(sys.path.count(str(suite_root / "controller")), 1)
             finally:
                 sys.path[:] = original_path
                 sys.modules.pop("synthetic_support", None)
