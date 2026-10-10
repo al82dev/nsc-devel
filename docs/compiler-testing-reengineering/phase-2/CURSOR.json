@@ -10,8 +10,8 @@
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "NSCBUILDER3-TERMINAL-PROGRESS",
-  "next_action": "Validate that the next user-run build closes at total/total and TERMINADO (100%), then continue the authorized deferred Phase 2 validation.",
+  "current_batch": "HOST-SEMA-DEBUG-BUILD-CLOSURE",
+  "next_action": "Consume the next user-run Debug build result after restoring the Host.Sema support contract; if it advances, diagnose the complete next compiler output without rerunning prior work.",
   "implementation_materialization": {
     "Host.Source": {
       "expected": 58,

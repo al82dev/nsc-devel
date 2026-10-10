@@ -28,6 +28,76 @@ namespace nsc::suite::sema_support
 using nativesharp::diagnostics::DiagnosticId;
 using nativesharp::sema::Symbol;
 
+// Owns the complete source-to-semantics state required by analyzer tests. The
+// source manager, tokens, arena, types, layout, and analyzer deliberately share
+// this lifetime so every pointer observed by a case remains valid.
+class AnalyzerFixture final
+{
+public:
+    explicit AnalyzerFixture(std::string source)
+        : layout_(nativesharp::target::TargetDataLayout::WindowsX64()),
+          analyzer_(types_, layout_, diagnostics_)
+    {
+        const auto fileId = sources_.addBuffer("sema-fixture.ns", std::move(source));
+        const auto* file = sources_.getFile(fileId);
+        if (file == nullptr) return;
+
+        nativesharp::lexer::Lexer lexer(*file, diagnostics_);
+        tokens_ = lexer.lexAll();
+        if (diagnostics_.hasErrors()) return;
+
+        nativesharp::parser::Parser parser(tokens_, arena_, diagnostics_);
+        root_ = parser.parseCompilationUnit();
+    }
+
+    bool analyze()
+    {
+        return root_ != nullptr && !diagnostics_.hasErrors() && analyzer_.analyze(root_);
+    }
+
+    nativesharp::sema::SemanticAnalyzer& analyzer() noexcept { return analyzer_; }
+    const nativesharp::diagnostics::DiagnosticEngine& diagnostics() const noexcept
+    {
+        return diagnostics_;
+    }
+    nativesharp::ast::AstNode* root() const noexcept { return root_; }
+
+private:
+    nativesharp::source::SourceManager sources_;
+    nativesharp::diagnostics::DiagnosticEngine diagnostics_;
+    std::vector<nativesharp::lexer::Token> tokens_;
+    nativesharp::ast::AstArena arena_;
+    nativesharp::ast::AstNode* root_ = nullptr;
+    nativesharp::sema::TypeContext types_;
+    nativesharp::target::TargetDataLayout layout_;
+    nativesharp::sema::SemanticAnalyzer analyzer_;
+};
+
+inline std::size_t diagnosticCount(
+    const nativesharp::diagnostics::DiagnosticEngine& diagnostics,
+    DiagnosticId id) noexcept
+{
+    return static_cast<std::size_t>(std::count_if(
+        diagnostics.diagnostics().begin(), diagnostics.diagnostics().end(),
+        [id](const auto& diagnostic) { return diagnostic.id() == id; }));
+}
+
+inline void addSemaCase(
+    TestRegistry& registry,
+    std::string id,
+    std::string contract,
+    std::string layer,
+    TestFunction function,
+    std::string profile = "PR",
+    TestDisposition disposition = TestDisposition::Required,
+    std::vector<std::string> tags = {})
+{
+    tags.push_back("sema");
+    tags.push_back("phase-2");
+    registry.add(TestCase{std::move(id), std::move(contract), "Host.Sema", std::move(layer),
+        std::move(profile), std::move(tags), std::move(function), disposition});
+}
+
 // Stops at semantic analysis deliberately. Host.Sema cases must not acquire
 // dependencies on HIR, MIR, CFG, dominance, SSA, or optimization behavior.
 class FrontendCompilation final

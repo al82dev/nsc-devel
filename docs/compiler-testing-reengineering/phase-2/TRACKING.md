@@ -249,6 +249,13 @@ en sus registros; no se ejecutaron ni se presentaron como verificados. La
 integración central de registro, manifiesto, CMake y controlador está
 materializada y su validación queda diferida.
 
+La primera construcción Debug offline alcanzó `144/524` y descubrió una
+omisión del soporte común: siete módulos consumían tres helpers no publicados.
+`SemaTestSupport.h` ahora proporciona `addSemaCase`, `AnalyzerFixture` y
+`diagnosticCount`; las dos inicializaciones ambiguas de `EffectContext` también
+quedaron desambiguadas. El cierre es estático y conserva `321/321`
+materializados; la nueva construcción del usuario determinará la verificación.
+
 Estado actual de `Host.HIR`: `232/232` casos están materializados para los
 `29/29` contratos `CF-HIR-001..029` en cinco archivos nuevos. Su registro,
 target, manifiesto y controlador de ola ya están integrados; la validación

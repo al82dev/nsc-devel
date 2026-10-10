@@ -67,3 +67,17 @@ Motivo: validación offline diferida hasta completar toda la Fase 2
 
 Los `321` casos aumentan la columna de implementación. Ninguno aumenta la
 columna de verificación en esta tanda.
+
+## Corrección posterior de compilación Debug
+
+La primera construcción offline del usuario alcanzó `144/524` y reveló que el
+soporte común no publicaba tres contratos ya consumidos por siete módulos:
+`addSemaCase`, `AnalyzerFixture` y `diagnosticCount`. Se añadieron al soporte
+común conservando el lifetime completo de source manager, tokens, AST, tipos,
+layout y analyzer. También se reemplazaron dos inicializaciones ambiguas de
+`EffectContext` por inicialización con llaves.
+
+La corrección es exclusivamente de infraestructura de prueba. No modifica NSC,
+los 321 casos, sus expectativas, IDs, contratos ni disposiciones. La revisión
+estática quedó cerrada; la recompilación funcional corresponde a la siguiente
+corrida del usuario.

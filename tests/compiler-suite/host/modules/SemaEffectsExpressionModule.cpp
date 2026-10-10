@@ -69,7 +69,7 @@ void c022(TestContext& c)
 
 void c023(TestContext& c)
 {
-    const EffectContext local(EffectSet(Effect::Throws));
+    const EffectContext local{EffectSet(Effect::Throws)};
     c.expect(local.allows(Effect::Throws) && !local.require(Effect::Throws).has_value() &&
             !local.allows(Effect::Unsafe) && local.require(Effect::Unsafe) == Effect::Unsafe,
         "TS-SEMA-023 allows and require are exact duals in a local context");
@@ -77,7 +77,7 @@ void c023(TestContext& c)
 
 void c024(TestContext& c)
 {
-    const EffectContext root(EffectSet(Effect::Unsafe));
+    const EffectContext root{EffectSet(Effect::Unsafe)};
     const EffectContext middle(EffectSet(Effect::Throws), &root);
     const EffectContext leaf(EffectSet(Effect::Async), &middle);
     c.expect(leaf.allows(Effect::Unsafe) && leaf.allows(Effect::Throws) &&

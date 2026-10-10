@@ -132,3 +132,17 @@ Permanecen idénticos los comandos, la detección de progreso, la salida complet
 los artefactos generados y los estados de error o cancelación. No se infiere el
 éxito por el porcentaje: únicamente el resultado terminal del proceso puede
 activar este estado.
+
+### Cambio cerrado: cierre de compilación del soporte Host.Sema
+
+La primera construcción Debug de `nsc_component_tests` demostró dos defectos
+locales de la suite nueva: siete módulos consumen `addSemaCase`, dos consumen
+además `AnalyzerFixture` y `diagnosticCount`, pero `SemaTestSupport.h` no publica
+esos tres contratos; `SemaEffectsExpressionModule.cpp` contiene además dos
+inicializaciones interpretadas por C++ como declaraciones de función.
+
+El presupuesto queda limitado a esos dos archivos de pruebas y a la evidencia
+de la Tanda 02.07. Se restauran los contratos ya consumidos y se desambiguan las
+dos inicializaciones con llaves. El compilador, CMake, manifiestos, oráculos,
+IDs, disposiciones y demás módulos permanecen protegidos. La nueva construcción
+queda en manos del usuario.
