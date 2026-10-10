@@ -94,6 +94,30 @@ ALLOCATION_CATALOG_FIELDS = (
     "default_profile",
     "supported_build_modes",
     "supported_optimizations",
+    "isolation",
+)
+ALLOCATION_LAYERS = frozenset(
+    {
+        "unit",
+        "component",
+        "robustness",
+        "integration",
+        "process",
+        "self-host",
+        "build-contract",
+        "packaging",
+        "historical-weekly",
+    }
+)
+ALLOCATION_EXECUTORS = frozenset(
+    {"nsc_component_tests", "nsc_suite_controller+nsc", "legacy_historical_suite"}
+)
+ALLOCATION_ISOLATIONS = frozenset(
+    {"RESET_PER_CASE", "FRESH_TEMP_PER_CASE", "LEGACY_OWNED"}
+)
+ALLOCATION_BUILD_MODES = frozenset({"Debug", "Release", "FROZEN_CONTRACT"})
+ALLOCATION_OPTIMIZATIONS = frozenset(
+    {"N/A", "O0", "O1", "O2", "O3", "FROZEN_CONTRACT"}
 )
 
 
@@ -149,6 +173,48 @@ def parse_wave_number(value: str) -> int:
     if re.fullmatch(r"[1-9][0-9]*", value) is None:
         raise ValueError(f"invalid implementation wave: {value!r}")
     return int(value)
+
+
+def validate_allocation_domains(rows: Sequence[dict[str, str]]) -> None:
+    """Reject allocation values that selection or expansion cannot represent."""
+    scalar_domains = {
+        "layer": ALLOCATION_LAYERS,
+        "planned_executor": ALLOCATION_EXECUTORS,
+        "default_profile": frozenset(PROFILE_RANK),
+        "isolation": ALLOCATION_ISOLATIONS,
+    }
+    list_domains = {
+        "supported_build_modes": (ALLOCATION_BUILD_MODES, {"FROZEN_CONTRACT"}),
+        "supported_optimizations": (
+            ALLOCATION_OPTIMIZATIONS,
+            {"N/A", "FROZEN_CONTRACT"},
+        ),
+    }
+    for row_number, row in enumerate(rows, start=2):
+        case_id = row.get("case_id", f"row {row_number}")
+        for field_name, allowed in scalar_domains.items():
+            value = row[field_name]
+            if value not in allowed:
+                raise ValueError(
+                    f"allocation {case_id} has unsupported {field_name}: {value!r}"
+                )
+        for field_name, (allowed, exclusive) in list_domains.items():
+            values = split_semicolon(row[field_name])
+            if not values or len(values) != len(set(values)):
+                raise ValueError(
+                    f"allocation {case_id} has invalid {field_name}: {row[field_name]!r}"
+                )
+            unknown = sorted(set(values) - allowed)
+            if unknown:
+                raise ValueError(
+                    f"allocation {case_id} has unsupported {field_name}: "
+                    + ", ".join(unknown)
+                )
+            if len(values) > 1 and set(values) & exclusive:
+                raise ValueError(
+                    f"allocation {case_id} mixes sentinel in {field_name}: "
+                    f"{row[field_name]!r}"
+                )
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -532,6 +598,7 @@ class CanonicalCatalog:
             for row in read_catalog_csv(ALLOCATION_PATH, ALLOCATION_CATALOG_FIELDS)
             if row["component"] in wave_by_component
         ]
+        validate_allocation_domains(allocation_rows)
         manifest_rows = read_jsonl(MANIFEST_PATH)
         dispositions = cls._load_dispositions()
         cls._validate_sources(design, allocation_rows, manifest_rows, waves)

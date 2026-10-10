@@ -717,3 +717,9 @@ requeridos ausentes o duplicados, filas desalineadas, valores obligatorios
 vacíos y olas no canónicas fallan ahora en su origen; columnas futuras con
 nombre siguen permitidas. Las pruebas dirigidas pasan `5/5` y la suite Python
 completa `173/173` sin modificar inventarios ni ejecutar producto.
+
+Validación 55 cerró los dominios de asignación del compilador. Perfiles, capas,
+ejecutores, aislamientos, modos u optimizaciones desconocidos ya no pueden
+desaparecer silenciosamente de la selección, y los centinelas no se mezclan con
+valores concretos. Las pruebas dirigidas pasan `4/4` y la suite Python completa
+`177/177` sin modificar los CSV ni ejecutar producto.

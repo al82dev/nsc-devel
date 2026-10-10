@@ -895,3 +895,19 @@ El presupuesto queda limitado a un lector CSV puro, un parser de ola,
 54. No se modifican los CSV, sus dominios semánticos, conteos, selección,
 manifiestos, producto ni batería histórica y no se configura, compila o ejecuta
 producto.
+
+### Enmienda: dominios cerrados de la asignación del compilador
+
+Las filas de `suite-case-allocation.csv` pertenecientes a los componentes del
+compilador no pueden publicar perfiles, capas, ejecutores, modos,
+optimizaciones o aislamientos que Builder 3 no entiende. Un perfil desconocido
+se excluye hoy por el fallback de selección y un modo u optimización desconocido
+no genera variantes; ambos son omisiones silenciosas. `FROZEN_CONTRACT` sólo
+puede aparecer como valor único de su campo y `N/A` no puede mezclarse con
+optimizaciones concretas.
+
+El presupuesto queda limitado a dominios consumidos por Builder 3, un validador
+puro, `CanonicalCatalog.load`, pruebas Python sintéticas y la evidencia de
+Validación 55. El manifiesto conserva autoridad sobre filas ejecutables; no se
+exige paridad entre las dos fuentes, no se cambian CSV, selección, manifiestos,
+producto ni batería histórica y no se configura, compila o ejecuta producto.
