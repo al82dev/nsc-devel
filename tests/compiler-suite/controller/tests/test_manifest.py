@@ -95,6 +95,26 @@ class ManifestTests(unittest.TestCase):
     def test_rejects_duplicate_case_ids(self) -> None:
         self.assert_manifest_error([valid_case(), valid_case()], "duplicate case id")
 
+    def test_inventory_rejects_ambiguous_csv_structure(self) -> None:
+        self.components.write_text(
+            "component,component\nHost.Basic,Host.Source\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ManifestError, "duplicate names"):
+            InventoryIndex.from_csv(self.components, self.contracts)
+
+        self.components.write_text("owner\nHost.Basic\n", encoding="utf-8")
+        with self.assertRaisesRegex(ManifestError, "missing required fields"):
+            InventoryIndex.from_csv(self.components, self.contracts)
+
+        self.components.write_text("component\nHost.Basic\n", encoding="utf-8")
+        self.contracts.write_text(
+            "contract_id,component\nCB-BAS-001,Host.Basic,extra\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ManifestError, "extra cells"):
+            InventoryIndex.from_csv(self.components, self.contracts)
+
     def test_rejects_duplicate_json_keys_at_any_depth(self) -> None:
         path = self.root / "duplicate-keys.jsonl"
         serialized = json.dumps(valid_case(), sort_keys=True)

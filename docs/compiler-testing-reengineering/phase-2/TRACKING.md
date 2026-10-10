@@ -1011,3 +1011,10 @@ Validacion 106 cerro las claves JSON duplicadas en la salida evaluada por
 `SelfHost.Diagnostics`. Una salida contradictoria ya no puede coincidir por
 last-wins con el oraculo exacto. Las pruebas dirigidas pasan `6/6` y la suite
 Python `240/240`, sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 107 cerro la estructura CSV ambigua del inventario canonico.
+Encabezados duplicados, campos requeridos ausentes, filas truncadas y celdas
+extra ya no atraviesan `InventoryIndex`; columnas adicionales con nombre se
+conservan. Las pruebas dirigidas pasan `16/16`, la suite Python `241/241` y el
+inventario vivo carga `57` componentes y `1,309` contratos, sin ejecutar
+producto. La tarea funcional permanece activa.

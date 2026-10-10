@@ -1537,3 +1537,14 @@ convertir una salida contradictoria del fixture en coincidencia valida.
 El presupuesto queda limitado al parser JSON exacto compartido, el evaluador
 Diagnostics, una prueba Python sintetica y la evidencia de Validacion 106. No
 se cambia ni ejecuta fixture, producto o bateria historica.
+
+### Enmienda: esquema CSV estricto en inventario canonico
+
+`InventoryIndex` debe rechazar encabezados vacios o duplicados, campos
+requeridos ausentes, filas truncadas y celdas extra. Las columnas adicionales
+con nombre permanecen permitidas para conservar la extensibilidad documental.
+
+El presupuesto queda limitado al lector CSV del inventario canonico, una
+prueba Python sintetica y la evidencia de Validacion 107. No se cambian los
+CSV vivos, manifiesto, seleccion, producto ni bateria historica y no se ejecuta
+producto.

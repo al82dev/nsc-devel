@@ -100,17 +100,12 @@ class InventoryIndex:
     def from_csv(components_path: Path, contracts_path: Path) -> "InventoryIndex":
         components = _read_column(components_path, "component")
         contract_components: dict[str, str] = {}
-        with contracts_path.open(encoding="utf-8-sig", newline="") as stream:
-            for row_number, row in enumerate(csv.DictReader(stream), start=2):
-                contract_id = row.get("contract_id", "").strip()
-                component = row.get("component", "").strip()
-                if not contract_id or not component:
-                    raise ManifestError(
-                        f"invalid contract inventory row {contracts_path}:{row_number}"
-                    )
-                if contract_id in contract_components:
-                    raise ManifestError(f"duplicate contract inventory id: {contract_id}")
-                contract_components[contract_id] = component
+        for row in _read_csv_rows(contracts_path, ("contract_id", "component")):
+            contract_id = row["contract_id"].strip()
+            component = row["component"].strip()
+            if contract_id in contract_components:
+                raise ManifestError(f"duplicate contract inventory id: {contract_id}")
+            contract_components[contract_id] = component
         unknown_owners = sorted(set(contract_components.values()) - components)
         if unknown_owners:
             raise ManifestError(
@@ -304,15 +299,45 @@ def _validate_dependency_graph(cases: Iterable[CaseManifest]) -> None:
 
 def _read_column(path: Path, field: str) -> set[str]:
     values: set[str] = set()
-    with path.open(encoding="utf-8-sig", newline="") as stream:
-        for row_number, row in enumerate(csv.DictReader(stream), start=2):
-            value = row.get(field, "").strip()
-            if not value:
-                raise ManifestError(f"missing {field} at {path}:{row_number}")
-            if value in values:
-                raise ManifestError(f"duplicate {field} in {path}: {value}")
-            values.add(value)
+    for row in _read_csv_rows(path, (field,)):
+        value = row[field].strip()
+        if value in values:
+            raise ManifestError(f"duplicate {field} in {path}: {value}")
+        values.add(value)
     return values
+
+
+def _read_csv_rows(path: Path, required_fields: tuple[str, ...]) -> list[dict[str, str]]:
+    """Read an extensible CSV while rejecting ambiguous or malformed structure."""
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        reader = csv.DictReader(stream)
+        headers = reader.fieldnames
+        if headers is None:
+            raise ManifestError(f"missing CSV header: {path}")
+        if any(header is None or not header.strip() for header in headers):
+            raise ManifestError(f"CSV header contains an empty name: {path}")
+        if len(headers) != len(set(headers)):
+            raise ManifestError(f"CSV header contains duplicate names: {path}")
+        missing = tuple(field for field in required_fields if field not in headers)
+        if missing:
+            raise ManifestError(
+                f"CSV header is missing required fields at {path}: {', '.join(missing)}"
+            )
+        rows: list[dict[str, str]] = []
+        for row_number, raw_row in enumerate(reader, start=2):
+            if None in raw_row:
+                raise ManifestError(f"CSV row contains extra cells at {path}:{row_number}")
+            if any(value is None for value in raw_row.values()):
+                raise ManifestError(f"CSV row is truncated at {path}:{row_number}")
+            row = {key: value for key, value in raw_row.items() if key is not None and value is not None}
+            blank = tuple(field for field in required_fields if not row[field].strip())
+            if blank:
+                raise ManifestError(
+                    f"CSV row has blank required fields at {path}:{row_number}: "
+                    + ", ".join(blank)
+                )
+            rows.append(row)
+        return rows
 
 
 def _string(payload: dict[str, Any], field: str, location: str) -> str:
