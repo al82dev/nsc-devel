@@ -218,16 +218,25 @@ class CompilerIdentityExecutor:
             encoding="utf-8",
             newline="\n",
         )
-        completed = subprocess.run(
-            full_command,
-            cwd=workspace.outputs,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            capture_output=True,
-            timeout=TIMEOUT_SECONDS[case.timeout_class],
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                full_command,
+                cwd=workspace.outputs,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+                timeout=TIMEOUT_SECONDS[case.timeout_class],
+                check=False,
+            )
+        except subprocess.TimeoutExpired as error:
+            workspace.logs.joinpath(f"{stem}.stdout.log").write_text(
+                _timeout_text(error.stdout), encoding="utf-8", newline="\n"
+            )
+            workspace.logs.joinpath(f"{stem}.stderr.log").write_text(
+                _timeout_text(error.stderr), encoding="utf-8", newline="\n"
+            )
+            raise
         workspace.logs.joinpath(f"{stem}.stdout.log").write_text(
             completed.stdout, encoding="utf-8", newline="\n"
         )
@@ -290,6 +299,14 @@ def _compare(expected: dict[str, Any], actual: dict[str, Any]) -> tuple[str, ...
         f"{failure.path}: {failure.reason}; expected={failure.expected!r}; actual={failure.actual!r}"
         for failure in compare_structured(expected, actual)
     )
+
+
+def _timeout_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
 
 
 def _infrastructure_error(

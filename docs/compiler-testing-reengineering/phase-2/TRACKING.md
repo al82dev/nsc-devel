@@ -867,3 +867,9 @@ bytes de `TimeoutExpired` se normalizan antes de escribir logs; el diagnostico
 causal ya no puede degradarse a un `TypeError`. Las pruebas dirigidas pasan
 `10/10` y la suite Python completa `219/219`, sin ejecutar producto. La tarea
 funcional permanece activa.
+
+Validacion 80 preservo tambien la evidencia parcial de timeouts del protocolo
+de identidad. `_invoke` publica ambos logs antes de propagar el timeout; el
+recibo y la salida parcial sobreviven juntos. Las pruebas dirigidas pasan `6/6`
+y la suite Python completa `220/220`, sin ejecutar producto. La tarea funcional
+permanece activa.

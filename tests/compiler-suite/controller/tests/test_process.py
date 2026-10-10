@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
@@ -162,6 +163,28 @@ class CompilerIdentityExecutorTests(unittest.TestCase):
         self.assertIn("compiler identity lacks non-empty fields", result.failures[0])
         self.assertIn("compiler_version", result.failures[0])
         self.assertIn("build", result.failures[0])
+
+    def test_timeout_preserves_partial_identity_logs(self) -> None:
+        self.primary.write_text(
+            "import sys, time\n"
+            "print('partial-identity', flush=True)\n"
+            "print('partial-error', file=sys.stderr, flush=True)\n"
+            "time.sleep(5)\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        with patch.dict("nsc_suite.process.TIMEOUT_SECONDS", {"tiny": 0.1}):
+            result, workspace = self.execute("semantic-version", 34)
+        self.assertIs(result.status, CaseStatus.INFRASTRUCTURE_ERROR)
+        self.assertIn("timed out", result.failures[0])
+        self.assertIn(
+            "partial-identity",
+            workspace.logs.joinpath("primary-identity.stdout.log").read_text(),
+        )
+        self.assertIn(
+            "partial-error",
+            workspace.logs.joinpath("primary-identity.stderr.log").read_text(),
+        )
 
     def test_router_never_falls_back_to_another_executor(self) -> None:
         test_case = case("semantic-version", "TB-BAS-032")

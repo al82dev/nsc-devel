@@ -1244,3 +1244,15 @@ El presupuesto queda limitado a la normalizacion UTF-8 con reemplazo de la
 salida parcial, una prueba Python sintetica y la evidencia de Validacion 79. No
 se cambia el tiempo limite, estado terminal, producto ni bateria historica y no
 se configura, compila o ejecuta producto.
+
+### Enmienda: evidencia parcial de timeout de identidad
+
+`CompilerIdentityExecutor._invoke` debe publicar los logs parciales asociados
+al `stem` antes de volver a propagar `TimeoutExpired`. La salida en bytes debe
+normalizarse igual que en el adaptador host para que el resultado conserve el
+timeout causal y la evidencia producida por el compilador.
+
+El presupuesto queda limitado a `_invoke`, la normalizacion local de salida,
+una prueba Python sintetica y la evidencia de Validacion 80. No se cambian
+comandos, tiempos limite, oraculos, producto ni bateria historica y no se
+configura, compila o ejecuta producto.
