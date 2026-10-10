@@ -923,3 +923,8 @@ Validacion 89 cerro la evidencia vacia del reporte enfocado. Las entradas de
 `failures` y `blocked_by` deben ser cadenas no vacias, igual que en
 `CaseResult`. Las pruebas dirigidas pasan `6/6` y la suite Python completa
 `226/226`, sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 90 cerro la coercion booleano-entero en el reporte enfocado.
+`schema` y `run.selected` exigen ahora tipo `int` exacto ademas del valor `1`.
+Las pruebas dirigidas pasan `6/6` y la suite Python completa `226/226`, sin
+ejecutar producto. La tarea funcional permanece activa.

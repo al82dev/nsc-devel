@@ -98,6 +98,12 @@ class Builder3IdentityEnvelopeTests(unittest.TestCase):
             self.parse("[]")
         with self.assertRaisesRegex(ValueError, "schema"):
             self.parse(envelope(schema=2))
+        with self.assertRaisesRegex(ValueError, "schema"):
+            self.parse(envelope(schema=True))
+        payload = json.loads(envelope())
+        payload["run"]["selected"] = True
+        with self.assertRaisesRegex(ValueError, "focused single-case"):
+            self.parse(json.dumps(payload))
         with self.assertRaisesRegex(ValueError, "exactly one"):
             self.parse(envelope(results=[]))
         with self.assertRaisesRegex(ValueError, "duration_seconds"):

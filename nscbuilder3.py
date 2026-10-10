@@ -1486,7 +1486,7 @@ def parse_identity_envelope(
     payload = json.loads(content)
     if not isinstance(payload, dict):
         raise ValueError("identity report must be a JSON object")
-    if payload.get("schema") != 1:
+    if type(payload.get("schema")) is not int or payload.get("schema") != 1:
         raise ValueError("identity report schema must be 1")
 
     run = payload.get("run")
@@ -1504,6 +1504,7 @@ def parse_identity_envelope(
     if (
         run.get("profile") != "explicit"
         or run.get("scope") != "focused"
+        or type(run.get("selected")) is not int
         or run.get("selected") != 1
     ):
         raise ValueError("identity report is not a focused single-case run")

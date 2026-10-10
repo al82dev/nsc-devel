@@ -1362,3 +1362,13 @@ El presupuesto queda limitado a los dos predicados de evidencia, pruebas
 Python sinteticas y la evidencia de Validacion 89. No se cambian estados,
 productores, producto ni bateria historica y no se configura, compila o
 ejecuta producto.
+
+### Enmienda: enteros exactos del reporte enfocado
+
+`parse_identity_envelope` debe exigir enteros exactos para `schema` y
+`run.selected`. La igualdad permisiva de Python no puede permitir que `true`
+acredite la version de esquema `1` ni la cardinalidad seleccionada `1`.
+
+El presupuesto queda limitado a esos dos predicados, pruebas Python sinteticas
+y la evidencia de Validacion 90. No se cambian valores validos, productores,
+producto ni bateria historica y no se configura, compila o ejecuta producto.
