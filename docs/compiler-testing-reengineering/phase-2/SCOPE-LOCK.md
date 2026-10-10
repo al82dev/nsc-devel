@@ -2161,6 +2161,13 @@ caminos resuelven exclusivamente la identidad exacta
 completa. Las filas pendientes o filtradas permanecen visibles pero no ofrecen
 una accion ejecutable.
 
+La pestaña `Pruebas` es el tablero principal y permite filtrar visualmente la
+misma tabla por estado exacto y por agrupaciones operativas (`Fallos`, `En
+curso`, `Pendientes/Listos`). El filtro solamente oculta o muestra filas: no
+modifica el plan, no reduce el denominador de `Ejecutar pruebas` y no altera la
+evidencia persistida. La propia pestaña muestra cuantas filas del plan quedan
+visibles bajo el filtro vigente.
+
 No se cambian compilador, casos, manifiestos, disposiciones, oraculos,
 controladores funcionales, timeouts, CMake ni bateria historica. No se
 configura, compila o ejecuta producto; la validacion local se limita a sintaxis,

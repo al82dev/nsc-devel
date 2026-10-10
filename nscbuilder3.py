@@ -1087,6 +1087,19 @@ def row_action_text(status: str, executable: bool) -> str:
     return "Ejecutar"
 
 
+def status_filter_matches(filter_name: str, status: str) -> bool:
+    """Match one row status without changing the underlying execution plan."""
+    if filter_name == "ALL":
+        return True
+    if filter_name == "FAILURES":
+        return status in TERMINAL_FAILURES
+    if filter_name == "ACTIVE":
+        return status in {"RUNNING", "COMPILING"}
+    if filter_name == "WAITING":
+        return status in {"LISTO", "PENDIENTE"}
+    return status == filter_name
+
+
 def condensed_error_report(
     outcomes: Sequence[CaseOutcome], cancelled: bool, evidence: str
 ) -> str:
@@ -2843,6 +2856,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.live_status_by_key: dict[str, str] = {}
             self.live_status_counts: Counter[str] = Counter()
             self.variant_position_by_key: dict[str, int] = {}
+            self.status_filter_visible_rows = 0
             self.path_edits: dict[str, QLineEdit] = {}
             self.active_operation = ""
             self.active_modes: tuple[str, ...] = ()
@@ -3005,6 +3019,33 @@ def launch_gui(smoke_only: bool = False) -> int:
             layout.addWidget(filters)
             self.plan_label = QLabel()
             layout.addWidget(self.plan_label)
+            status_filter_bar = QHBoxLayout()
+            status_filter_bar.addWidget(QLabel("Mostrar"))
+            self.status_filter_combo = QComboBox()
+            for label, value in (
+                ("Todos los estados", "ALL"),
+                ("Fallos", "FAILURES"),
+                ("En curso", "ACTIVE"),
+                ("Pendientes / listos", "WAITING"),
+                ("PASS", "PASS"),
+                ("FAIL", "FAIL"),
+                ("KNOWN_FAILURE", "KNOWN_FAILURE"),
+                ("BLOCKED", "BLOCKED"),
+                ("INFRASTRUCTURE_ERROR", "INFRASTRUCTURE_ERROR"),
+                ("UNEXPECTED_PASS", "UNEXPECTED_PASS"),
+                ("CANCELLED", "CANCELLED"),
+                ("RUNNING", "RUNNING"),
+                ("COMPILING", "COMPILING"),
+                ("LISTO", "LISTO"),
+                ("PENDIENTE", "PENDIENTE"),
+                ("FILTRADO", "FILTRADO"),
+            ):
+                self.status_filter_combo.addItem(label, value)
+            self.status_filter_summary = QLabel("Mostrando todas las filas")
+            status_filter_bar.addWidget(self.status_filter_combo)
+            status_filter_bar.addWidget(self.status_filter_summary)
+            status_filter_bar.addStretch(1)
+            layout.addLayout(status_filter_bar)
             self.execution_activity = QLabel("Sin ejecución activa")
             self.execution_activity.setWordWrap(True)
             layout.addWidget(self.execution_activity)
@@ -3040,6 +3081,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.run_button.clicked.connect(self._start_suite)
             self.cancel_button.clicked.connect(self._cancel_active)
             self.retry_button.clicked.connect(self._retry_failures)
+            self.status_filter_combo.currentIndexChanged.connect(
+                self._apply_status_filter
+            )
             self.case_table.cellClicked.connect(self._handle_case_table_click)
             self.case_table.customContextMenuRequested.connect(
                 self._show_case_context_menu
@@ -3512,6 +3556,43 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.progress.setFormat(f"0/{len(variants):,} pruebas (0%)")
             self.execution_activity.setText("Preparada; ninguna prueba ha iniciado")
             self._refresh_live_counts()
+            self._apply_status_filter()
+
+        def _current_status_filter(self) -> str:
+            value = self.status_filter_combo.currentData()
+            return value if isinstance(value, str) and value else "ALL"
+
+        def _render_status_filter_summary(self) -> None:
+            total = self.case_table.rowCount()
+            self.status_filter_summary.setText(
+                f"Mostrando {self.status_filter_visible_rows:,} de {total:,} filas"
+            )
+
+        def _apply_status_filter(self, _index: int | None = None) -> None:
+            """Hide rows by status while preserving the immutable execution plan."""
+            filter_name = self._current_status_filter()
+            visible = 0
+            self.case_table.setUpdatesEnabled(False)
+            try:
+                for row in range(self.case_table.rowCount()):
+                    item = self.case_table.item(row, self.STATUS_COLUMN)
+                    status = item.text() if item is not None else ""
+                    matches = status_filter_matches(filter_name, status)
+                    self.case_table.setRowHidden(row, not matches)
+                    visible += int(matches)
+            finally:
+                self.case_table.setUpdatesEnabled(True)
+            self.status_filter_visible_rows = visible
+            self._render_status_filter_summary()
+
+        def _apply_status_filter_to_row(self, row: int, status: str) -> None:
+            """Refresh one changing row without rescanning the full test table."""
+            was_visible = not self.case_table.isRowHidden(row)
+            is_visible = status_filter_matches(self._current_status_filter(), status)
+            self.case_table.setRowHidden(row, not is_visible)
+            if was_visible != is_visible:
+                self.status_filter_visible_rows += 1 if is_visible else -1
+                self._render_status_filter_summary()
 
         def _start_suite(self) -> None:
             if self.worker is not None:
@@ -3821,13 +3902,15 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.case_table.setItem(
                 row, self.DETAIL_COLUMN, QTableWidgetItem(merged)
             )
+            self._apply_status_filter_to_row(row, status)
             position = self.variant_position_by_key.get(key, 0)
             prefix = f"{position:,}/{len(self.visible_variants):,}" if position else "Actual"
             self.execution_activity.setText(
                 f"{prefix} · {status}: {key} — {merged or 'sin salida todavía'}"
             )
             self._refresh_live_counts()
-            self.case_table.scrollToItem(status_item)
+            if not self.case_table.isRowHidden(row):
+                self.case_table.scrollToItem(status_item)
 
         def _update_progress(self, done: int, total: int) -> None:
             self.progress.setRange(0, max(1, total))
@@ -4020,6 +4103,8 @@ def launch_gui(smoke_only: bool = False) -> int:
             raise RuntimeError("GUI smoke missing exact-row context actions")
         if window.execution_activity is None or window.execution_counts is None:
             raise RuntimeError("GUI smoke missing live execution summaries")
+        if window.status_filter_combo.count() < 10:
+            raise RuntimeError("GUI smoke missing the primary status filters")
         window.close()
         return 0
     window.show()

@@ -122,6 +122,20 @@ class Builder3RetryTests(unittest.TestCase):
         self.assertEqual(builder.row_action_text("RUNNING", True), "En ejecución")
         self.assertEqual(builder.row_action_text("COMPILING", True), "En ejecución")
 
+    def test_status_filter_matches_exact_and_grouped_states(self) -> None:
+        self.assertTrue(builder.status_filter_matches("ALL", "PASS"))
+        self.assertTrue(builder.status_filter_matches("FAILURES", "FAIL"))
+        self.assertTrue(
+            builder.status_filter_matches("FAILURES", "INFRASTRUCTURE_ERROR")
+        )
+        self.assertFalse(builder.status_filter_matches("FAILURES", "PASS"))
+        self.assertTrue(builder.status_filter_matches("ACTIVE", "RUNNING"))
+        self.assertTrue(builder.status_filter_matches("ACTIVE", "COMPILING"))
+        self.assertTrue(builder.status_filter_matches("WAITING", "LISTO"))
+        self.assertTrue(builder.status_filter_matches("WAITING", "PENDIENTE"))
+        self.assertTrue(builder.status_filter_matches("KNOWN_FAILURE", "KNOWN_FAILURE"))
+        self.assertFalse(builder.status_filter_matches("PASS", "FAIL"))
+
 
 if __name__ == "__main__":
     unittest.main()

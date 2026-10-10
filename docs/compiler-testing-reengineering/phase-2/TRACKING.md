@@ -1255,3 +1255,10 @@ columna visible como en el menu contextual, lanza solamente
 contratos dirigidos pasan `24/24`, el smoke de GUI pasa y `git diff --check`
 pasa. La validacion funcional queda pendiente del usuario; no se compilo ni
 ejecuto producto, no se ejecuto baseline y no se toco `C:`.
+
+Validacion 140 agrega a la tabla principal de `Pruebas` filtros visuales por
+estado exacto y por grupos `Fallos`, `En curso` y `Pendientes/Listos`, con un
+contador de filas visibles. Filtrar no cambia el plan ni el denominador de la
+corrida. Los contratos dirigidos pasan `25/25`, el smoke de GUI pasa y
+`git diff --check` pasa. No se compilo ni ejecuto producto, no se ejecuto
+baseline y no se toco `C:`.
