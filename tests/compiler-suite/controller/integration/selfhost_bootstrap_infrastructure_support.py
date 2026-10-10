@@ -32,7 +32,7 @@ def load_contracts(repository_root: Path, catalog: Path) -> tuple[BootstrapInfra
     for number, raw in enumerate(catalog.read_text(encoding="utf-8-sig").splitlines(), 1):
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
-        value = json.loads(raw)
+        value = parse_catalog_row(raw, catalog, number)
         case_ids = tuple(str(item) for item in value["case_ids"])
         contract_id = str(value["contract_id"])
         file_id = str(value["file_id"])
@@ -71,6 +71,33 @@ def load_contracts(repository_root: Path, catalog: Path) -> tuple[BootstrapInfra
     if any(not contract.source_path.is_file() for contract in contracts):
         raise RuntimeError("one or more catalogued bootstrap producers are absent")
     return tuple(contracts)
+
+
+def parse_catalog_row(raw: str, catalog: Path, line_number: int) -> dict[str, object]:
+    """Parse one catalogue row without allowing duplicate object keys."""
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique_json_object)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            f"{catalog}:{line_number}: invalid JSON: {error.msg}"
+        ) from error
+    except ValueError as error:
+        raise RuntimeError(
+            f"{catalog}:{line_number}: invalid JSON: {error}"
+        ) from error
+    if not isinstance(value, dict):
+        raise RuntimeError(f"{catalog}:{line_number}: expected JSON object")
+    return value
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Build one catalogue object only from unique key definitions."""
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
 
 
 def case_index(contracts: tuple[BootstrapInfrastructureContract, ...]) -> dict[str, BootstrapInfrastructureContract]:

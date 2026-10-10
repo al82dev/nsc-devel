@@ -1515,3 +1515,15 @@ El presupuesto queda limitado a un lector de objeto JSON estricto, reutilizar
 el lector JSONL estricto, sustituir lecturas equivalentes en los gates y la
 evidencia de Validacion 104. No se cambian seleccion, ejecucion, producto ni
 bateria historica y no se ejecuta producto.
+
+### Enmienda: claves JSON unicas en catalogo bootstrap infrastructure
+
+El catalogo de `SelfHost.Bootstrap.Infrastructure` debe rechazar claves
+duplicadas antes de validar linaje, cobertura y productores. Una segunda
+identidad, ruta o lista de casos no puede sustituir a la primera mediante
+last-wins.
+
+El presupuesto queda limitado al parser de una fila del catalogo, un
+constructor iterativo, una prueba Python sintetica y la evidencia de Validacion
+105. No se cambia el catalogo vivo, inventario, producto ni bateria historica
+y no se ejecuta producto.
