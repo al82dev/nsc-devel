@@ -10,7 +10,8 @@
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "next_action": "Begin the deferred offline validation only when explicitly authorized; implementation through Wave 9 is integrated.",
+  "current_batch": "NSCBUILDER3-COMPILER-PROGRESS",
+  "next_action": "Validate the new complete compiler-progress presentation in the next user-run build, then continue the authorized deferred Phase 2 validation.",
   "implementation_materialization": {
     "Host.Source": {
       "expected": 58,
@@ -719,6 +720,19 @@
     "implementation_gaps": 0,
     "validated_cases": 333,
     "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
+  },
+  "nscbuilder3": {
+    "status": "IMPLEMENTATION_READY_VALIDATION_DEFERRED",
+    "script": "nscbuilder3.py",
+    "compiler_progress": {
+      "source": "Ninja [n/total] output",
+      "live_counter": true,
+      "live_progress_bar": true,
+      "current_step_description": true,
+      "full_log_preserved": true,
+      "static_validation": "PASS",
+      "functional_validation": "PENDING_USER_EXECUTION"
+    }
   },
   "validation": {
     "python_controller_tests": 56,

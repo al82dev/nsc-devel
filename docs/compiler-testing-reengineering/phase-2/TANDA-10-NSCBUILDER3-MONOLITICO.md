@@ -121,6 +121,9 @@ oráculos existentes.
   optimización usan `NA`.
 - Estados en vivo, cancelación del árbol activo, reejecución de fallos, log
   completo, reporte condensado e historial persistente.
+- La pestaña de construcción interpreta las líneas nativas `[n/total]` de
+  Ninja y muestra barra, contador y descripción del paso actual sin retirar la
+  línea original de la consola ni de `full.log`.
 - Recibo SHA-256 del `nsc.exe` y `nslink.exe` externos seleccionados.
 
 ## Evidencia ejecutada
@@ -134,6 +137,9 @@ oráculos existentes.
   inválido `\c` de CMake.
 - comprobación de líneas mayores de 120 caracteres: ninguna.
 - `git diff --check` sobre los archivos de la tanda: sin errores de formato.
+- análisis sintáctico mediante `ast.parse` y prueba aislada del contrato
+  `[13/337] Building CXX object ...`: correctos; no construyó NSC ni ejecutó
+  pruebas.
 
 La implementación no lanzó compilaciones por cuenta propia. Posteriormente el
 usuario ejecutó Builder 3 y produjo la evidencia
@@ -145,4 +151,10 @@ optimización host `O0` y produjo `A:/nsc-devel/build-clang/bin/nsc.exe`.
 No se ha construido todavía `nsc_component_tests` mediante Builder 3 ni se ha
 ejecutado la batería de Fase 2. Esas comprobaciones permanecen explícitamente
 diferidas y no se presentan como aprobadas.
+
+La visualización estructurada del progreso de Ninja permanece igualmente
+pendiente de comprobación funcional en la siguiente ejecución del usuario. El
+log histórico `20261009-225838-013b3717` demuestra que la fuente de datos ya
+contiene las líneas completas `[0/2]`, `[1/14]` a `[13/14]`; el cambio actual
+sólo las expone de forma persistente en la interfaz.
 

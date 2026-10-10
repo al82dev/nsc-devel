@@ -62,6 +62,7 @@ NON_EXECUTABLE = {
     "MetadataConflict",
     "UNCLASSIFIED",
 }
+NINJA_PROGRESS_PATTERN = re.compile(r"^\[(\d+)/(\d+)\]\s*(.*)$")
 
 
 def utc_now() -> str:
@@ -1357,6 +1358,7 @@ def launch_gui(smoke_only: bool = False) -> int:
 
         output_ready = Signal(str)
         stage_ready = Signal(str)
+        progress_ready = Signal(int, int, str)
         completed = Signal(object, bool, str)
 
         def __init__(
@@ -1417,6 +1419,13 @@ def launch_gui(smoke_only: bool = False) -> int:
             if self.store is not None:
                 self.store.log(line)
             self.output_ready.emit(line)
+            match = NINJA_PROGRESS_PATTERN.match(line.rstrip("\r\n"))
+            if match is not None:
+                self.progress_ready.emit(
+                    int(match.group(1)),
+                    int(match.group(2)),
+                    match.group(3),
+                )
 
     class SuiteWorker(QThread):
         """Execute one immutable variant plan and publish live GUI events."""
@@ -1578,6 +1587,14 @@ def launch_gui(smoke_only: bool = False) -> int:
             layout.addWidget(tests_group)
             self.infrastructure_stage = QLabel("Sin operación activa")
             layout.addWidget(self.infrastructure_stage)
+            self.infrastructure_progress = QProgressBar()
+            self.infrastructure_progress.setRange(0, 1)
+            self.infrastructure_progress.setValue(0)
+            self.infrastructure_progress.setFormat("Sin pasos de Ninja")
+            layout.addWidget(self.infrastructure_progress)
+            self.infrastructure_progress_detail = QLabel("Sin actividad de construcción")
+            self.infrastructure_progress_detail.setWordWrap(True)
+            layout.addWidget(self.infrastructure_progress_detail)
             self.infrastructure_log = QTextEdit()
             self.infrastructure_log.setReadOnly(True)
             layout.addWidget(self.infrastructure_log, 1)
@@ -1838,13 +1855,18 @@ def launch_gui(smoke_only: bool = False) -> int:
                     "tool_receipt": receipt,
                 }
                 self.infrastructure_log.clear()
+                self.infrastructure_progress.setRange(0, 1)
+                self.infrastructure_progress.setValue(0)
+                self.infrastructure_progress.setFormat("Esperando pasos de Ninja")
+                self.infrastructure_progress_detail.setText("Esperando salida completa del proceso")
                 self._set_busy(True)
                 self.active_operation = operation
                 self.active_modes = modes
                 worker = CommandWorker(run_id, commands, metadata)
                 self.worker = worker
                 worker.output_ready.connect(self._append_infrastructure_output)
-                worker.stage_ready.connect(self.infrastructure_stage.setText)
+                worker.stage_ready.connect(self._set_infrastructure_stage)
+                worker.progress_ready.connect(self._update_infrastructure_progress)
                 worker.completed.connect(self._infrastructure_finished)
                 worker.start()
             except Exception as error:
@@ -1856,6 +1878,26 @@ def launch_gui(smoke_only: bool = False) -> int:
             cursor.insertText(text)
             self.infrastructure_log.setTextCursor(cursor)
             self.infrastructure_log.ensureCursorVisible()
+
+        def _set_infrastructure_stage(self, stage: str) -> None:
+            """Expose stage changes without discarding the unabridged console."""
+            self.infrastructure_stage.setText(stage)
+            self.infrastructure_progress.setRange(0, 1)
+            self.infrastructure_progress.setValue(0)
+            self.infrastructure_progress.setFormat("Esperando pasos de Ninja")
+            self.infrastructure_progress_detail.setText("Esperando salida completa del proceso")
+
+        def _update_infrastructure_progress(
+            self,
+            current: int,
+            total: int,
+            detail: str,
+        ) -> None:
+            """Render Ninja's own progress while retaining its original log line."""
+            self.infrastructure_progress.setRange(0, max(total, 1))
+            self.infrastructure_progress.setValue(min(current, total))
+            self.infrastructure_progress.setFormat("%v/%m pasos de Ninja (%p%)")
+            self.infrastructure_progress_detail.setText(detail or "Paso Ninja sin descripción")
 
         def _infrastructure_finished(
             self, outcomes: object, cancelled: bool, evidence: str

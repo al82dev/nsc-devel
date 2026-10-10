@@ -60,3 +60,26 @@ ejecuta baseline, no escribe ni despliega en `C:`; sólo ejecuta la toolchain in
 Cada cambio incluye implementación, pruebas nuevas enfocadas, evidencia Markdown y un commit pequeño.
 El mismo commit que cierra una tanda actualiza `TRACKING.md` y `CURSOR.json`; queda prohibido diferir el estado
 persistente a una tanda posterior.
+
+### Cambio activo: visibilidad íntegra de la construcción
+
+El cambio autorizado se limita a `nscbuilder3.py` y a la documentación de la
+Tanda 10. Su objetivo es presentar de forma explícita el progreso que Ninja ya
+emite durante la construcción de NSC, sin ocultar, resumir ni sustituir la
+salida original.
+
+Presupuesto del cambio:
+
+| Dimensión | Autorizado |
+|---|---|
+| Repositorio | `A:\nsc-devel` |
+| Componente | NSC Builder 3 |
+| Archivos funcionales | `nscbuilder3.py` |
+| Símbolos | `CommandWorker` y la pestaña `Construcción` de `MainWindow` |
+| Comportamiento | Contador `n/total`, barra y descripción del paso Ninja actual |
+| Persistencia | `full.log` conserva literalmente toda la salida recibida |
+| Validación | Revisión estática; la construcción y ejecución quedan en manos del usuario |
+
+Permanecen protegidos el compilador, la suite nueva, la suite histórica, los
+seis cambios preexistentes, `C:`, despliegues y remotos. El reporte condensado
+continúa siendo una vista adicional y nunca reemplaza el log completo.

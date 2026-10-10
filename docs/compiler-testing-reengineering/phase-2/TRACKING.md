@@ -32,6 +32,12 @@ total, ola, componente, contrato o caso. `Debug`/`Release` y
 del orquestador vive únicamente en `nscbuilder3.py`; no se creó un paquete
 auxiliar ni se modificó la infraestructura histórica.
 
+La construcción conserva y muestra toda la salida recibida. Además, las
+líneas nativas `[n/total]` de Ninja alimentan un contador, una barra de progreso
+y la descripción del paso actual en la pestaña `Construcción`; el reporte
+condensado no sustituye la consola ni el `full.log`. Esta presentación tiene
+validación estática y queda pendiente de comprobación funcional por el usuario.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,
