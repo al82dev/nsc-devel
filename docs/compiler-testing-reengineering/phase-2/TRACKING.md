@@ -170,6 +170,13 @@ gate especial de ownership de Host.Source permanece separado para la siguiente
 auditoría porque también verifica el inventario completo del componente. No se
 compiló ni ejecutó producto.
 
+Los `21` gates dirigidos de Host.Language conservan contratos, perfiles y
+ejecución, y delegan ya el cierre completo al selector, runner, ledger y reporte
+compartidos. Se retiraron exclusivamente sus rangos y conteos duplicados; los
+casos `KNOWN_FAILURE` continúan gobernados por `expected_outcome` en el
+manifiesto. Los `21/21` módulos pasan validación sintáctica y las `20/20`
+pruebas Python del cierre central pasan. No se compiló ni ejecutó producto.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

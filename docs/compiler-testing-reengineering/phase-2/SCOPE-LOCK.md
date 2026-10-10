@@ -384,3 +384,16 @@ de Host.Source queda fuera de esta tanda porque además valida el inventario y
 registro completos del componente. No se modifican producto, casos, oráculos,
 resultados esperados, selector, runner, reporte ni batería histórica. No se
 configura, compila ni ejecuta producto.
+
+### Enmienda: cierre central de gates Host.Language por contrato
+
+Los veintiún gates dirigidos de Host.Language que ejecutan un contrato mediante
+`run_suite.py` deben conservar su contrato, perfil, build mode, herramientas y
+oráculos declarados, pero no repetir rangos de IDs ni cantidades de `PASS` y
+`KNOWN_FAILURE`. El selector, ledger, reporte y código de retorno compartidos
+son la única autoridad para la selección completa y su cierre terminal.
+
+El presupuesto queda limitado a esos veintiún gates y la evidencia de
+Validación 18. No se modifican características del lenguaje, producto, casos,
+oráculos, disposiciones, resultados esperados, selector, runner, reporte ni
+batería histórica. No se configura, compila ni ejecuta producto.
