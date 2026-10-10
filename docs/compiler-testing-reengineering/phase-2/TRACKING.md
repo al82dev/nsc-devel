@@ -995,3 +995,9 @@ Packaging mediante un lector comun estricto. La unicidad alcanza objetos
 anidados y conserva archivo, linea y clave causal. Las pruebas dirigidas pasan
 `9/9` y la suite Python `237/237`, sin ejecutar producto. La tarea funcional
 permanece activa.
+
+Validacion 104 cerro las claves JSON duplicadas al reabrir evidencia terminal
+en 14 gates host y el gate Infrastructure. `results.json` y `events.jsonl`
+usan ahora lectores comunes estrictos. Las pruebas dirigidas pasan `15/15`, la
+suite Python `238/238` y la sintaxis de los gates pasa, sin ejecutar producto.
+La tarea funcional permanece activa.

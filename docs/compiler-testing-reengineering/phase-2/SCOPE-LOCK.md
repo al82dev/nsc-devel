@@ -1504,3 +1504,14 @@ El presupuesto queda limitado a consolidar los dos lectores equivalentes en
 `component_gate_support`, una prueba Python sintetica y la evidencia de
 Validacion 103. No se cambian catalogos, casos, producto ni bateria historica
 y no se ejecuta producto.
+
+### Enmienda: evidencia terminal JSON unica en gates de componentes
+
+Los gates host e Infrastructure deben reabrir `results.json` y `events.jsonl`
+sin politica last-wins. Una clave repetida en identidad, estado, conteo o
+evento no puede acreditar la clausura de un componente.
+
+El presupuesto queda limitado a un lector de objeto JSON estricto, reutilizar
+el lector JSONL estricto, sustituir lecturas equivalentes en los gates y la
+evidencia de Validacion 104. No se cambian seleccion, ejecucion, producto ni
+bateria historica y no se ejecuta producto.

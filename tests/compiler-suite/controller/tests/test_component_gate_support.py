@@ -13,6 +13,7 @@ sys.path.insert(0, str(INTEGRATION_ROOT))
 
 from component_gate_support import (
     assert_component_results,
+    read_json_object,
     read_jsonl,
     required_manifest_integer,
     required_nonnegative_integer,
@@ -60,6 +61,19 @@ class ComponentGateSupportTests(unittest.TestCase):
                 RuntimeError, "duplicate JSON object key: required"
             ):
                 read_jsonl(path)
+
+    def test_json_document_reader_rejects_duplicate_nested_keys(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="component-json-", dir=Path.cwd()) as root:
+            path = Path(root) / "results.json"
+            path.write_text(
+                '{"counts":{"PASS":1,"PASS":2},"results":[]}\n',
+                encoding="utf-8",
+                newline="\n",
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "duplicate JSON object key: PASS"
+            ):
+                read_json_object(path)
 
     def test_accepts_one_terminal_result_per_selected_case(self) -> None:
         assert_component_results(

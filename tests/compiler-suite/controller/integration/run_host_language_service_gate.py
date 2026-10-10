@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -9,7 +8,11 @@ from pathlib import Path
 CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 from run_suite import run
-from component_gate_support import assert_component_results, component_manifest_cases
+from component_gate_support import (
+    assert_component_results,
+    component_manifest_cases,
+    read_json_object,
+)
 
 
 def main() -> int:
@@ -71,11 +74,7 @@ def main() -> int:
         )
         if code != 0:
             raise RuntimeError(f"Host.LanguageService controller returned {code}")
-        payload = json.loads(
-            (root / "host-language-service" / "results.json").read_text(
-                encoding="utf-8"
-            )
-        )
+        payload = read_json_object(root / "host-language-service" / "results.json")
         assert_component_results(payload, manifests, "Host.LanguageService")
     return 0
 

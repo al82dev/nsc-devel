@@ -38,6 +38,22 @@ def read_jsonl(path: Path) -> list[dict[str, object]]:
     return rows
 
 
+def read_json_object(path: Path) -> dict[str, object]:
+    """Read one infrastructure JSON document with unique object keys."""
+    try:
+        payload = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_unique_json_object,
+        )
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"invalid JSON at {path}: {error.msg}") from error
+    except ValueError as error:
+        raise RuntimeError(f"invalid JSON at {path}: {error}") from error
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"expected JSON object at {path}")
+    return payload
+
+
 def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     """Build one infrastructure object only from unique key definitions."""
     result: dict[str, object] = {}

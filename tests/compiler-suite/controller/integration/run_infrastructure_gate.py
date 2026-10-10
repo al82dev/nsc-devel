@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -12,7 +11,7 @@ CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 
 from run_suite import run
-from component_gate_support import assert_component_results
+from component_gate_support import assert_component_results, read_json_object, read_jsonl
 from nsc_suite import CaseManifest, InventoryIndex, Selection, load_manifest, select_cases
 
 
@@ -132,12 +131,9 @@ def main() -> int:
         if code != 0:
             raise RuntimeError(f"controller returned {code}")
         run_root = root / "infrastructure"
-        payload = json.loads((run_root / "results.json").read_text(encoding="utf-8"))
+        payload = read_json_object(run_root / "results.json")
         validate_results(cases, payload)
-        events = [
-            json.loads(line)
-            for line in (run_root / "events.jsonl").read_text(encoding="utf-8").splitlines()
-        ]
+        events = read_jsonl(run_root / "events.jsonl")
         validate_events(cases, events)
         for required in ("summary.md", "failures.log"):
             if not run_root.joinpath(required).is_file():

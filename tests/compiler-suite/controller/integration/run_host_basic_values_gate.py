@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -11,7 +10,11 @@ CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 
 from run_suite import run
-from component_gate_support import assert_component_results, component_manifest_cases
+from component_gate_support import (
+    assert_component_results,
+    component_manifest_cases,
+    read_json_object,
+)
 
 
 def main() -> int:
@@ -45,9 +48,7 @@ def main() -> int:
         )
         if code != 0:
             raise RuntimeError(f"controller returned {code}")
-        payload = json.loads(
-            (root / "host-basic-values" / "results.json").read_text(encoding="utf-8")
-        )
+        payload = read_json_object(root / "host-basic-values" / "results.json")
         cases = component_manifest_cases(
             options.source_root,
             options.repository_root,
