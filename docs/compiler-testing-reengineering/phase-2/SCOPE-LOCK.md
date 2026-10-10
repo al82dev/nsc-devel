@@ -1439,3 +1439,14 @@ El presupuesto queda limitado a un parser local de salida self-host, su uso en
 `_run_selfhost`, una prueba Python sintetica y la evidencia de Validacion 97.
 No se cambian oraculos, fixtures, producto ni bateria historica y no se
 configura, compila o ejecuta producto.
+
+### Enmienda: claves JSON unicas al reabrir historial
+
+`history_record` debe rechazar claves duplicadas tanto en `metadata.json` como
+en `results.json`. La vista historica no puede mostrar como terminal una
+corrida cuya identidad, estado o conteos fueron resueltos mediante last-wins.
+
+El presupuesto queda limitado a esos dos parseos, una prueba Python sintetica
+y la evidencia de Validacion 98. No se cambian productores, artefactos
+existentes, producto ni bateria historica y no se configura, compila o ejecuta
+producto.

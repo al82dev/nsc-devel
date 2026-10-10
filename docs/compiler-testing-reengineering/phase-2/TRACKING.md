@@ -963,3 +963,8 @@ Validacion 97 cerro las claves JSON duplicadas en la salida de fixtures
 self-host. La unicidad se comprueba antes de comparar contra el oraculo. Las
 pruebas dirigidas pasan `7/7` y la suite Python `231/231`, sin ejecutar producto.
 La tarea funcional permanece activa.
+
+Validacion 98 cerro las claves JSON duplicadas al reabrir el historial.
+Metadata o resultados ambiguos quedan `MALFORMED` y el stream de eventos ya usa
+el lector estricto. Las pruebas dirigidas pasan `5/5` y la suite Python
+`232/232`, sin ejecutar producto. La tarea funcional permanece activa.

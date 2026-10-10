@@ -113,6 +113,23 @@ class Builder3HistoryTests(unittest.TestCase):
 
         self.assertEqual(record[2], "MALFORMED")
 
+    def test_duplicate_metadata_or_result_keys_are_malformed(self) -> None:
+        self._write_valid_terminal_run()
+        metadata = (self.root / "metadata.json").read_text(encoding="utf-8")
+        (self.root / "metadata.json").write_text(
+            metadata.replace('"schema": 1', '"schema": 1, "schema": 2'),
+            encoding="utf-8",
+        )
+        self.assertEqual(builder.history_record(self.root)[2], "MALFORMED")
+
+        self._write_valid_terminal_run()
+        results = (self.root / "results.json").read_text(encoding="utf-8")
+        (self.root / "results.json").write_text(
+            results.replace('"status": "PASSED"', '"status": "PASSED", "status": "FAILED"'),
+            encoding="utf-8",
+        )
+        self.assertEqual(builder.history_record(self.root)[2], "MALFORMED")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1098,7 +1098,10 @@ def history_record(root: Path) -> tuple[str, str, str, str, str]:
     if not metadata_path.is_file():
         return fallback
     try:
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata = json.loads(
+            metadata_path.read_text(encoding="utf-8"),
+            object_pairs_hook=unique_json_object,
+        )
         if not isinstance(metadata, dict):
             raise ValueError("metadata must be an object")
         kind = metadata.get("kind")
@@ -1112,7 +1115,10 @@ def history_record(root: Path) -> tuple[str, str, str, str, str]:
     if not results_path.is_file() or not summary_path.is_file() or not events_path.is_file():
         return incomplete
     try:
-        payload = json.loads(results_path.read_text(encoding="utf-8"))
+        payload = json.loads(
+            results_path.read_text(encoding="utf-8"),
+            object_pairs_hook=unique_json_object,
+        )
         if not isinstance(payload, dict):
             raise ValueError("results must be an object")
         if payload.get("run_id") != run_id:
