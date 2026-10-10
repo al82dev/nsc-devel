@@ -1434,3 +1434,10 @@ aisladamente el constructor self-host: los gates requieren tanto la raiz
 `controller` como `controller/integration`. Ambas se publican una sola vez; no
 se modifica producto ni oraculos. Evidencia:
 `TANDA-VALIDACION-159-IMPORTS-GATES-AISLADOS.md`.
+
+Validacion 160 corrige la dependencia declarativa ausente del productor
+`SelfHost.Types`: `TypeSystem.ns` usa `List<T>`, por lo que su proyecto de
+fixture debe referenciar `NativeSharp.Core.Collections.Generic`. No se modifica
+producto ni oraculos. La revalidacion queda limitada exclusivamente a
+`TSH-00981`. Evidencia:
+`TANDA-VALIDACION-160-DEPENDENCIA-COLLECTIONS-TYPES.md`.
