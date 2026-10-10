@@ -87,6 +87,12 @@ Builder 3 ahora los elimina expresamente del cache cuando sus campos quedan
 vacíos. La implementación está cerrada estáticamente; la configuración externa
 permanece pendiente.
 
+Los seis casos ejecutables del contrato de grafo raíz BuildSystem ya no pueden
+heredar el generador ni una toolchain parcial. Tanto CTest como Builder 3 fijan
+Ninja, `Debug`/`Release`, CMake, Clang, LLD, LLVM, `llvm-mt`, `llvm-rc` y el
+NSLink seleccionado; el controlador rechaza una invocación incompleta antes de
+configurar. La validación externa permanece pendiente.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

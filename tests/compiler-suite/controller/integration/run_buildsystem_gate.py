@@ -24,6 +24,17 @@ ZLIB_SOURCES = (
     "adler32.c", "compress.c", "crc32.c", "deflate.c", "infback.c", "inffast.c",
     "inflate.c", "inftrees.c", "trees.c", "uncompr.c", "zutil.c",
 )
+ROOT_CONFIG_PREFIXES = (
+    "-DCMAKE_MAKE_PROGRAM=",
+    "-DCMAKE_BUILD_TYPE=",
+    "-DCMAKE_C_COMPILER=",
+    "-DCMAKE_CXX_COMPILER=",
+    "-DCMAKE_LINKER=",
+    "-DCMAKE_MT=",
+    "-DCMAKE_RC_COMPILER=",
+    "-DLLVM_DIR=",
+    "-DNSC_NSLINK_EXECUTABLE=",
+)
 
 
 def read_jsonl(path: Path) -> list[dict[str, object]]:
@@ -297,6 +308,22 @@ def normalized_target_help(output: str) -> tuple[str, ...]:
     return tuple(sorted(line.strip() for line in output.splitlines() if line.strip().startswith("... ")))
 
 
+def validate_root_config_arguments(arguments: list[str]) -> None:
+    """Require one complete Ninja/Clang/LLVM/NSLink producer contract."""
+    generator_pairs = tuple(zip(arguments, arguments[1:]))
+    if ("-G", "Ninja") not in generator_pairs:
+        raise RuntimeError("BuildSystem root graph requires the Ninja generator")
+    missing = [
+        prefix
+        for prefix in ROOT_CONFIG_PREFIXES
+        if not any(argument.startswith(prefix) and len(argument) > len(prefix) for argument in arguments)
+    ]
+    if missing:
+        raise RuntimeError(
+            "BuildSystem root graph lacks explicit toolchain arguments: " + ", ".join(missing)
+        )
+
+
 def run_root_graph(
     cmake: Path, repository_root: Path, case_root: Path, variant: int,
     base_arguments: list[str], environment: dict[str, str],
@@ -350,6 +377,7 @@ def run_case(
     if contract == 5:
         return run_installation(options.cmake_executable, options.repository_root, options.installation_root, case_root, variant, environment)
     if contract == 76:
+        validate_root_config_arguments(options.root_config_argument)
         return run_root_graph(options.cmake_executable, options.repository_root, case_root, variant, options.root_config_argument, environment)
     return False, f"unsupported active BuildSystem contract {contract}"
 
@@ -372,9 +400,6 @@ def main() -> int:
         raise RuntimeError("BuildSystem requires an explicit CMake executable")
     if not (options.installation_root / "bin" / "nsc.exe").is_file():
         raise RuntimeError("BuildSystem requires an explicit sandbox-copyable installation root")
-    if not any("LLVM_DIR=" in argument for argument in options.root_config_argument):
-        raise RuntimeError("BuildSystem root graph requires an explicit LLVM_DIR config argument")
-
     manifest = read_jsonl(options.source_root / "manifest" / "cases.jsonl")
     cases = [row for row in manifest if row.get("component") == "BuildSystem"]
     validate_lineage(options.repository_root, cases)

@@ -1129,23 +1129,31 @@ class ExecutionEngine:
     def _run_buildsystem(self, variant: RunVariant) -> tuple[str, str, str]:
         """Execute one BuildSystem row through its existing case-level oracle."""
         module = self._load_gate("run_buildsystem_gate.py")
-        cmake = shutil.which("cmake")
-        if cmake is None:
-            return "INFRASTRUCTURE_ERROR", "cmake is not available on PATH", ""
+        tools = discover_build_tools(self.config.llvm_dir)
+        cmake = Path(tools["cmake"]).resolve()
         installation = Path(self.config.nsc_executable).resolve().parent.parent
         arguments = argparse.Namespace(
-            cmake_executable=Path(cmake).resolve(),
+            cmake_executable=cmake,
             source_root=SUITE_ROOT,
             repository_root=SOURCE_ROOT,
             installation_root=installation,
             work_parent=self.store.root,
             build_mode=variant.build_mode,
-            root_config_argument=[f"-DLLVM_DIR={Path(self.config.llvm_dir).resolve()}"]
-            if self.config.llvm_dir
-            else [],
+            root_config_argument=[
+                "-G",
+                "Ninja",
+                f"-DCMAKE_MAKE_PROGRAM={Path(tools['ninja']).resolve().as_posix()}",
+                f"-DCMAKE_BUILD_TYPE={variant.build_mode}",
+                f"-DCMAKE_C_COMPILER={Path(tools['clang_cl']).resolve().as_posix()}",
+                f"-DCMAKE_CXX_COMPILER={Path(tools['clang_cl']).resolve().as_posix()}",
+                f"-DCMAKE_LINKER={Path(tools['lld_link']).resolve().as_posix()}",
+                f"-DCMAKE_MT={Path(tools['llvm_mt']).resolve().as_posix()}",
+                f"-DCMAKE_RC_COMPILER={Path(tools['llvm_rc']).resolve().as_posix()}",
+                f"-DLLVM_DIR={Path(tools['llvm_dir']).resolve().as_posix()}",
+                f"-DNSC_NSLINK_EXECUTABLE="
+                f"{Path(self.config.nslink_executable).resolve().as_posix()}",
+            ],
         )
-        if not arguments.root_config_argument:
-            return "INFRASTRUCTURE_ERROR", "BuildSystem requires an explicit LLVM_DIR", ""
         return self._run_python_gate_case(module, variant, arguments)
 
     def _run_packaging(self, variant: RunVariant) -> tuple[str, str, str]:

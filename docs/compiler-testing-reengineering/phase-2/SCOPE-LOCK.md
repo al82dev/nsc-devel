@@ -221,3 +221,17 @@ correspondientes a esas variables opcionales. Permanecen protegidos CMake, los
 controladores, las pruebas, el producto, las demás opciones, los seis archivos
 preexistentes, `C:`, despliegues y remotos. La configuración funcional queda
 pendiente de la siguiente corrida externa.
+
+### Enmienda: toolchain completa del grafo raíz
+
+Los seis casos ejecutables `C12B-BLD-076` configuran árboles hijos del
+repositorio principal. Deben fijar Ninja, modo, CMake, Clang, LLD, LLVM,
+herramientas de recursos y el NSLink seleccionado; queda prohibido permitir que
+el CMake hijo elija Visual Studio o una herramienta residual del entorno.
+
+El presupuesto queda limitado a `run_buildsystem_gate.py`, la inscripción
+`buildsystem-controller` de `tests/compiler-suite/CMakeLists.txt`,
+`ExecutionEngine._run_buildsystem` en `nscbuilder3.py` y la evidencia de
+Validación 07. Los seis casos, sus oráculos, el producto, los demás
+controladores y los archivos protegidos permanecen intactos. No se configura ni
+compila localmente; la validación corresponde a la corrida externa.

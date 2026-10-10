@@ -1638,10 +1638,17 @@ if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND NSC_NSLINK_EXECUTABLE AND LLVM_DIR)
             --installation-root "${_nsc_suite_selected_root}"
             --work-parent "${CMAKE_CURRENT_BINARY_DIR}/buildsystem-gate"
             --build-mode "$<CONFIG>"
+            --root-config-argument=-G
+            --root-config-argument=Ninja
+            --root-config-argument=-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+            --root-config-argument=-DCMAKE_BUILD_TYPE=$<CONFIG>
             --root-config-argument=-DLLVM_DIR=${LLVM_DIR}
             --root-config-argument=-DNSC_NSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}
             --root-config-argument=-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-            --root-config-argument=-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER})
+            --root-config-argument=-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+            --root-config-argument=-DCMAKE_LINKER=${CMAKE_LINKER}
+            --root-config-argument=-DCMAKE_MT=${CMAKE_MT}
+            --root-config-argument=-DCMAKE_RC_COMPILER=${CMAKE_RC_COMPILER})
 endif()
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND NSC_COMPILER_SUITE_ARCHIVE_EXECUTABLE)
     get_filename_component(_nsc_suite_packaging_bin
