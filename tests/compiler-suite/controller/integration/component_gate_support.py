@@ -128,6 +128,22 @@ def required_nonnegative_integer(
     return value
 
 
+def required_string_array(
+    payload: dict[str, object], field: str, source: str
+) -> tuple[str, ...]:
+    """Read a JSON array of unique non-empty strings without scalar coercion."""
+    if field not in payload:
+        raise RuntimeError(f"{source} omits {field}")
+    value = payload[field]
+    if not isinstance(value, list):
+        raise RuntimeError(f"{source} field {field} must be an array")
+    if any(not isinstance(item, str) or not item for item in value):
+        raise RuntimeError(f"{source} field {field} must contain non-empty strings")
+    if len(value) != len(set(value)):
+        raise RuntimeError(f"{source} field {field} contains duplicates")
+    return tuple(value)
+
+
 def unique_string_index(
     rows: list[dict[str, object]] | list[dict[str, str]],
     key: str,

@@ -13,6 +13,7 @@ from component_gate_support import (
     read_csv,
     read_jsonl,
     required_manifest_integer,
+    required_string_array,
     unique_string_index,
 )
 
@@ -117,6 +118,9 @@ def validate_lineage(
         if str(allocation_row["contract_id"]) != contract_id:
             raise RuntimeError(f"BuildSystem allocation changes the contract of {case_id}")
     for case_id, manifest_row in manifest_by_id.items():
+        required_string_array(
+            manifest_row, "tags", f"BuildSystem manifest case {case_id}"
+        )
         if case_id not in design_by_id:
             raise RuntimeError(f"BuildSystem manifest contains foreign case {case_id}")
         if str(manifest_row.get("contract_id", "")) != str(design_by_id[case_id]["contract_id"]):

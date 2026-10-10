@@ -1591,3 +1591,16 @@ configurar, compilar o ejecutar producto y no sustituye la matriz funcional.
 
 El presupuesto queda limitado a documentar la evidencia de Validacion 111 y
 actualizar tracking/cursor. No se cambia codigo, producto ni bateria historica.
+
+### Enmienda: arreglo exacto de tags en manifiestos crudos
+
+Los gates BuildSystem, Packaging y self-host que consumen `cases.jsonl` como
+objetos crudos deben conservar el contrato canonico de `tags`: arreglo, cadenas
+no vacias y valores unicos. Un texto como `"known-product-defect"` no puede
+acreditar una clasificacion mediante pertenencia de substring.
+
+El presupuesto queda limitado a un validador compartido de arreglos de cadenas,
+las tres fronteras que validan esos manifiestos crudos, una reproduccion Python
+sobre BuildSystem, Packaging, SelfHost.Diagnostics y SelfHost.Lexer, y la
+evidencia de Validacion 112. No se cambian manifiestos, clasificaciones,
+oraculos, producto ni bateria historica y no se ejecuta producto.

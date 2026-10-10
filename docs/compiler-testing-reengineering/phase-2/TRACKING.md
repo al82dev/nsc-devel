@@ -1043,3 +1043,11 @@ Validacion 111 revalido el conjunto estatico posterior al endurecimiento:
 `5,695` ejecutables, `0` sin clasificar y GUI smoke PASS. La infraestructura
 estatica reporta cero errores detectados; la corrida funcional integral sigue
 pendiente y la tarea permanece activa.
+
+Validacion 112 cerro la aceptacion de `tags` escalares en los manifiestos
+crudos de BuildSystem, Packaging y self-host. Los nueve defectos conocidos de
+los cuatro componentes auditados conservan ahora arreglos exactos; texto,
+elementos no string, vacios y duplicados se rechazan antes de clasificar. Las
+pruebas dirigidas pasan `14/14`, la suite Python `246/246` y los `129` casos
+vivos auditados pasan la frontera, sin compilar ni ejecutar producto. La tarea
+funcional permanece activa.

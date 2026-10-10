@@ -18,6 +18,7 @@ from component_gate_support import (
     read_jsonl,
     required_manifest_integer,
     required_nonnegative_integer,
+    required_string_array,
     unique_string_index,
 )
 from nsc_suite.manifest import CaseManifest
@@ -221,6 +222,27 @@ class ComponentGateSupportTests(unittest.TestCase):
                 unique_string_index(
                     [{"case_id": value}], "case_id", "Synthetic"
                 )
+
+    def test_string_array_requires_exact_unique_strings(self) -> None:
+        self.assertEqual(
+            required_string_array(
+                {"tags": ["foundation", "known-product-defect"]},
+                "tags",
+                "Synthetic",
+            ),
+            ("foundation", "known-product-defect"),
+        )
+        invalid_values = (
+            "known-product-defect",
+            ["known-product-defect", 1],
+            ["known-product-defect", ""],
+            ["known-product-defect", "known-product-defect"],
+        )
+        for value in invalid_values:
+            with self.subTest(value=value), self.assertRaises(RuntimeError):
+                required_string_array({"tags": value}, "tags", "Synthetic")
+        with self.assertRaisesRegex(RuntimeError, "omits tags"):
+            required_string_array({}, "tags", "Synthetic")
 
 
 if __name__ == "__main__":

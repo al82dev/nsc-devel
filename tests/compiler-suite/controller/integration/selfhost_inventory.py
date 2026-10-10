@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from component_gate_support import read_csv
+from component_gate_support import read_csv, required_string_array
 
 
 def read_jsonl(path: Path) -> list[dict[str, object]]:
@@ -254,6 +254,9 @@ def validate_manifest_cases(
         case_id = str(row.get("case_id", ""))
         if not case_id or case_id in result:
             raise RuntimeError(f"{inventory.component} manifest has a missing or duplicate case ID")
+        required_string_array(
+            row, "tags", f"{inventory.component} manifest case {case_id}"
+        )
         design_row = inventory.design_by_id.get(case_id)
         if design_row is None:
             raise RuntimeError(f"{inventory.component} manifest contains foreign case {case_id}")

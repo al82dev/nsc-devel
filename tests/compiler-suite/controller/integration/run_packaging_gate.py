@@ -14,6 +14,7 @@ from component_gate_support import (
     read_jsonl,
     required_manifest_integer,
     required_nonnegative_integer,
+    required_string_array,
     unique_string_index,
 )
 
@@ -100,6 +101,9 @@ def validate_lineage(
         if str(design_row.get("frequency", "")) != str(allocation_row.get("default_profile", "")):
             profile_mismatches.add(case_id)
     for case_id, manifest_row in manifest_by_id.items():
+        required_string_array(
+            manifest_row, "tags", f"Packaging manifest case {case_id}"
+        )
         if case_id not in design_by_id:
             raise RuntimeError(f"Packaging manifest contains foreign case {case_id}")
         if str(manifest_row.get("contract_id", "")) != str(design_by_id[case_id]["contract_id"]):
