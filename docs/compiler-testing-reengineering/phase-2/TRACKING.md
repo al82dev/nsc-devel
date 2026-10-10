@@ -538,3 +538,11 @@ bloque CTest proporciona todas las opciones `required=True` de su parser, no
 pasa opciones desconocidas y referencia exactamente un script; todos los
 scripts quedan conectados. La suite Python completa pasa `76/76` sin ejecutar
 ni compilar producto.
+
+Validación 28 fijó el contrato puro de comandos de NSC Builder 3. Sus cuatro
+pruebas derivan y cotejan los árboles separados Debug/Release, rutas CMake
+normalizadas, NSC/NSLink/LLVM seleccionados, opciones de cache ausentes y
+presentes, optimización host `O0`, enlace estático y los únicos targets
+autorizados (`nsc` y `nsc_component_tests`). Las pruebas dirigidas pasan `4/4`
+y la suite Python completa pasa `80/80`; no se descubrieron herramientas
+reales, no se abrió la GUI y no se configuró, compiló ni ejecutó producto.

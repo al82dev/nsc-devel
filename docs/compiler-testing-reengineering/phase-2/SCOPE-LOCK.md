@@ -523,3 +523,19 @@ Validación 27. Una discrepancia demostrada podrá corregirse únicamente en el
 bloque CTest o parser causal correspondiente. No se modifican casos, oráculos,
 resultados esperados, producto ni batería histórica. No se configura, compila
 ni ejecuta producto.
+
+### Enmienda: contrato de configuración de NSC Builder 3
+
+Los comandos que Builder 3 prepara para NSC y para la infraestructura nueva
+deben conservar separadas las configuraciones `Debug` y `Release`, propagar la
+optimización host elegida, fijar el NSC y NSLink seleccionados, construir sólo
+los targets autorizados y normalizar como rutas CMake todos los argumentos de
+cache. Las opciones vacías deben retirar cualquier valor heredado del árbol.
+
+El presupuesto queda limitado a una prueba Python de las funciones puras de
+construcción de comandos y a la evidencia de Validación 28. `nscbuilder3.py`
+sólo podrá modificarse si esa prueba demuestra una discrepancia concreta. No se
+descubren herramientas reales, no se configura ni compila producto, no se abre
+la GUI y no se ejecutan casos. Permanecen protegidos el compilador, CMake, los
+manifiestos, oráculos, batería histórica, seis archivos preexistentes, `C:`,
+despliegues y remotos.
