@@ -1164,6 +1164,41 @@ def parse_selfhost_oracle(value: Any) -> tuple[int, dict[str, Any] | None]:
     return exit_code, expected_json
 
 
+def parse_selfhost_inputs(value: Any, suite_root: Path) -> tuple[str, str, bool]:
+    """Validate the closed producer and invocation contract of self-host cases."""
+    if not isinstance(value, dict):
+        raise ValueError("self-host inputs must be a JSON object")
+    unknown = sorted(
+        set(value) - {"fixture_project", "case_argument", "sandbox_argument"}
+    )
+    if unknown:
+        raise ValueError("self-host inputs contain unknown fields: " + ", ".join(unknown))
+
+    fixture = value.get("fixture_project")
+    if not isinstance(fixture, str) or not fixture:
+        raise ValueError("self-host fixture_project must be non-empty text")
+    relative = Path(fixture)
+    root = suite_root.resolve()
+    resolved = (root / relative).resolve()
+    if (
+        relative.is_absolute()
+        or root not in resolved.parents
+        or resolved.suffix.casefold() != ".nsproj"
+        or not resolved.is_file()
+    ):
+        raise ValueError("self-host fixture_project must be a local existing .nsproj")
+
+    argument = value.get("case_argument")
+    if not isinstance(argument, str) or not argument:
+        raise ValueError("self-host case_argument must be non-empty text")
+    sandbox = value.get("sandbox_argument")
+    if sandbox is not None and sandbox != "fresh-case-directory":
+        raise ValueError(
+            "self-host sandbox_argument must be absent or fresh-case-directory"
+        )
+    return fixture, argument, sandbox == "fresh-case-directory"
+
+
 def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[str, list[str], Path]]:
     """Create explicit standalone CMake commands without building NSC."""
     tools = discover_build_tools(config.llvm_dir)
@@ -1489,14 +1524,13 @@ class ExecutionEngine:
     def _run_selfhost(self, variant: RunVariant) -> tuple[str, str, str]:
         """Compile a real NativeSharp fixture once, then run one selected case."""
         manifest = variant.case.manifest or {}
-        inputs = manifest.get("inputs", {})
         try:
+            project_relative, case_argument, use_sandbox = parse_selfhost_inputs(
+                manifest.get("inputs"), SUITE_ROOT
+            )
             expected, expected_json = parse_selfhost_oracle(manifest.get("oracle"))
         except ValueError as error:
             return "INFRASTRUCTURE_ERROR", str(error), ""
-        project_relative = inputs.get("fixture_project")
-        if not isinstance(project_relative, str):
-            return "INFRASTRUCTURE_ERROR", "self-host case lacks fixture_project", ""
         fixture_key = (project_relative, variant.build_mode, variant.optimization)
         producer_failure = self.fixture_failures.get(fixture_key)
         if producer_failure is not None:
@@ -1516,8 +1550,8 @@ class ExecutionEngine:
         case_root = self._case_root(variant)
         if variant.case.component == "SelfHost.Source":
             self._prepare_source_files(case_root)
-        command = [str(executable), str(inputs.get("case_argument", variant.case.case_id))]
-        if inputs.get("sandbox_argument"):
+        command = [str(executable), case_argument]
+        if use_sandbox:
             command.append(str(case_root))
         environment = self._nsc_environment()
         code, captured = self.process.run(

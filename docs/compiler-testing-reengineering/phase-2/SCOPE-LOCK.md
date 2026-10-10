@@ -794,3 +794,19 @@ El presupuesto queda limitado a un parser puro, la lectura del oráculo en
 Validación 47. No se modifican manifiestos, fixtures, compilación, comparación
 JSON, estados esperados, producto ni batería histórica; no se prepara o ejecuta
 ningún fixture ni se configura, compila o ejecuta producto.
+
+### Enmienda: entradas self-host cerradas antes de preparar productores
+
+Los casos self-host sólo pueden referir un proyecto `.nsproj` relativo y
+existente dentro de `tests/compiler-suite`, un argumento de caso textual no
+vacío y el sandbox opcional exacto `fresh-case-directory`. Builder 3 no puede
+convertir otros tipos mediante `str(...)`, aceptar rutas absolutas o externas,
+ni interpretar por veracidad un valor de sandbox desconocido. La identidad de
+los cinco productores vivos se audita también por ruta y nombre base; cualquier
+colisión futura debe bloquearse antes de compartir evidencia.
+
+El presupuesto queda limitado a un parser puro, su consumo por
+`ExecutionEngine._run_selfhost`, pruebas Python sintéticas y la evidencia de
+Validación 48. No se cambia la identidad de workspace porque el inventario vivo
+no presenta colisiones; no se modifican manifiestos, fixtures, comandos,
+producto ni batería histórica y no se prepara o ejecuta ningún fixture.

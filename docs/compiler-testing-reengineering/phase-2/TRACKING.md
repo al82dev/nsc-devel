@@ -675,3 +675,10 @@ Los `192` casos vivos conservan su esquema; exit code, descripción y JSON se
 validan sin conversiones ni defaults, y se rechazan campos desconocidos. Las
 pruebas dirigidas pasan `5/5` y la suite Python completa `149/149` sin preparar
 o ejecutar fixtures.
+
+Validación 48 cerró las entradas self-host antes de preparar productores. El
+proyecto debe ser un `.nsproj` local existente, el argumento texto no vacío y
+el sandbox el literal declarado; no quedan conversiones por `str` o veracidad.
+Los cinco productores vivos no colisionan por nombre base. Las pruebas
+dirigidas pasan `5/5` y la suite Python completa `154/154` sin preparar o
+ejecutar fixtures.
