@@ -416,7 +416,7 @@ void registerSemaAllocationType245To266Module(TestRegistry& registry)
     addSemaCase(registry, "TS-SEMA-263", "CS-SEMA-025", "component", testValidateObjectTypeMatrix);
     addSemaCase(registry, "TS-SEMA-264", "CS-SEMA-025", "component", testCAbiDirectTypeMatrix);
     addSemaCase(registry, "TS-SEMA-265", "CS-SEMA-025", "component", testCAbiStructTerminationBoundary,
-        "PR", TestDisposition::KnownProductDefect, {"infrastructure-special", "process-isolation"});
+        "PR", TestDisposition::InfrastructurePending, {"infrastructure-special", "process-isolation"});
     addSemaCase(registry, "TS-SEMA-266", "CS-SEMA-025", "component", testCAbiStructFields);
 }
 }

@@ -1,0 +1,50 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Source
+{
+    // CSH-SRC-004 observes private marker recognition only through the public transformation.
+    public class SelfHostSourceMarkerModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00872")
+            {
+                return SelfHostSourceTestSupport.Transform("comptime", "        ") ? 0 : 30;
+            }
+            if (caseId == "TSH-00873")
+            {
+                return SelfHostSourceTestSupport.Transform(
+                    "xcomptime comptime comptime_x", "xcomptime          comptime_x") ? 0 : 31;
+            }
+            if (caseId == "TSH-00876")
+            {
+                bool valid = SelfHostSourceTestSupport.Transform("", "") &&
+                    SelfHostSourceTestSupport.Transform("comptime", "        ") &&
+                    SelfHostSourceTestSupport.Transform("écomptime", "é        ");
+                return valid ? 0 : 32;
+            }
+            if (caseId == "TSH-00877")
+            {
+                string source = "// comptime\n\"comptime\" 'c' comptime";
+                string expected = "// comptime\n\"comptime\" 'c'         ";
+                return SelfHostSourceTestSupport.Transform(source, expected) ? 0 : 33;
+            }
+            if (caseId == "TSH-00878")
+            {
+                raii StringBuilder source = new StringBuilder(36864);
+                raii StringBuilder expected = new StringBuilder(36864);
+                int index = 0;
+                while (index < 4096)
+                {
+                    source.Append("comptime ");
+                    expected.Append("         ");
+                    index = index + 1;
+                }
+                raii string sourceText = source.ToOwnedString();
+                raii string expectedText = expected.ToOwnedString();
+                return SelfHostSourceTestSupport.Transform(sourceText, expectedText) ? 0 : 34;
+            }
+            return -1;
+        }
+    }
+}

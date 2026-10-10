@@ -1,0 +1,94 @@
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Types
+{
+    // Covers structural function identity and the complete numeric predicate table.
+    // TSH-01023 invokes the invalid-ID contract directly and must remain red until fixed.
+    public class SelfHostTypesFunctionModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-01021") { return EmptyFunction(); }
+            if (caseId == "TSH-01022") { return RepresentativeFunction(); }
+            if (caseId == "TSH-01023") { return InvalidTypePredicates(); }
+            if (caseId == "TSH-01025") { return BoundarySignatures(); }
+            if (caseId == "TSH-01026") { return NumericVariants(); }
+            if (caseId == "TSH-01027") { return RepeatabilityAndOrder(); }
+            return -1;
+        }
+
+        private static int EmptyFunction()
+        {
+            raii TypeTable table = new TypeTable();
+            raii List<int> parameters = new List<int>();
+            int id = table.Function(table.Find("void"), parameters);
+            SemanticType type = table.Get(id);
+            return type.Kind() == SemanticTypeKind.Function && type.Display() == "() -> void" &&
+                type.ReturnType() == table.Find("void") && type.ParameterCount() == 0 &&
+                type.Size() == 8 && type.Alignment() == 8 ? 0 : 41;
+        }
+
+        private static int RepresentativeFunction()
+        {
+            raii TypeTable table = new TypeTable();
+            raii List<int> parameters = new List<int>();
+            parameters.Add(table.Find("int"));
+            parameters.Add(table.Find("double"));
+            int id = table.Function(table.Find("bool"), parameters);
+            SemanticType type = table.Get(id);
+            return type.Display() == "(int, double) -> bool" &&
+                type.ReturnType() == table.Find("bool") && type.ParameterCount() == 2 &&
+                type.ParameterType(0) == table.Find("int") &&
+                type.ParameterType(1) == table.Find("double") ? 0 : 42;
+        }
+
+        private static int InvalidTypePredicates()
+        {
+            raii TypeTable table = new TypeTable();
+            return !table.IsInteger(-1) && !table.IsNumeric(-1) &&
+                !table.IsInteger(table.Count()) && !table.IsNumeric(table.Count()) ? 0 : 43;
+        }
+
+        private static int BoundarySignatures()
+        {
+            raii TypeTable table = new TypeTable();
+            raii List<int> empty = new List<int>();
+            raii List<int> duplicate = new List<int>();
+            duplicate.Add(table.Find("int"));
+            duplicate.Add(table.Find("int"));
+            int noParameters = table.Function(table.Find("int"), empty);
+            int repeatedParameters = table.Function(table.Find("int"), duplicate);
+            return table.Get(noParameters).ParameterCount() == 0 &&
+                table.Get(repeatedParameters).ParameterCount() == 2 &&
+                table.Get(repeatedParameters).ParameterType(0) == table.Find("int") &&
+                table.Get(repeatedParameters).ParameterType(1) == table.Find("int") ? 0 : 45;
+        }
+
+        private static int NumericVariants()
+        {
+            raii TypeTable table = new TypeTable();
+            int pointer = table.Intern("int*");
+            int named = table.Intern("Widget");
+            return SelfHostTypesTestSupport.NumericTruthTable(table) &&
+                !table.IsInteger(pointer) && !table.IsNumeric(pointer) &&
+                !table.IsInteger(named) && !table.IsNumeric(named) ? 0 : 46;
+        }
+
+        private static int RepeatabilityAndOrder()
+        {
+            raii TypeTable table = new TypeTable();
+            raii List<int> first = new List<int>();
+            raii List<int> repeated = new List<int>();
+            raii List<int> reversed = new List<int>();
+            first.Add(table.Find("int")); first.Add(table.Find("double"));
+            repeated.Add(table.Find("int")); repeated.Add(table.Find("double"));
+            reversed.Add(table.Find("double")); reversed.Add(table.Find("int"));
+            int firstId = table.Function(table.Find("bool"), first);
+            int repeatedId = table.Function(table.Find("bool"), repeated);
+            int reversedId = table.Function(table.Find("bool"), reversed);
+            return firstId == repeatedId && reversedId != firstId &&
+                table.Get(reversedId).Display() == "(double, int) -> bool" ? 0 : 47;
+        }
+    }
+}

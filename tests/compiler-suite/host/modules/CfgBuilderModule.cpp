@@ -185,7 +185,7 @@ void builderErrorLatchContract(TestContext& c, std::size_t variant)
 
 void registerCfgBuilderModule(TestRegistry& registry)
 {
-    addCfgContract(registry, 10, "component", builderSelectionContract, {4});
+    addCfgContract(registry, 10, "component", builderSelectionContract, {}, {4});
     addCfgContract(registry, 11, "component", builderFunctionContract);
     addCfgContract(registry, 12, "component", builderTerminatorContract);
     addCfgContract(registry, 13, "component", builderEdgeContract);

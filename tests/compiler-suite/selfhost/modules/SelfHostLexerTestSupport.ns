@@ -1,0 +1,46 @@
+using NativeSharp.Core;
+using NativeSharp.Compiler.Basic;
+using NativeSharp.Compiler.Source;
+using NativeSharp.Compiler.Lexer;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Lexer
+{
+    public class SelfHostLexerTestSupport
+    {
+        public static owned TokenStream Lex(string text)
+        {
+            raii SourceBuffer source = new SourceBuffer(new FileId(1), "selfhost-lexer.ns", text);
+            raii NativeSharp.Compiler.Lexer.Lexer lexer = new NativeSharp.Compiler.Lexer.Lexer(source);
+            return lexer.LexAll();
+        }
+
+        public static bool Token(TokenStream tokens, int index, TokenKind kind, int begin, int end)
+        {
+            return index >= 0 && index < tokens.Count() && tokens.KindAt(index) == kind &&
+                tokens.BeginAt(index) == begin && tokens.EndAt(index) == end;
+        }
+
+        public static bool Single(string text, TokenKind kind, int begin, int end, int errors)
+        {
+            raii TokenStream tokens = Lex(text);
+            return tokens.Count() == 2 && Token(tokens, 0, kind, begin, end) &&
+                Token(tokens, 1, TokenKind.EndOfFile, text.Length, text.Length) &&
+                tokens.ErrorCount() == errors;
+        }
+
+        public static owned string Dump(string text)
+        {
+            raii SourceBuffer source = new SourceBuffer(new FileId(1), "selfhost-lexer.ns", text);
+            raii NativeSharp.Compiler.Lexer.Lexer lexer = new NativeSharp.Compiler.Lexer.Lexer(source);
+            raii TokenStream tokens = lexer.LexAll();
+            return TokenDumper.Dump(source, tokens);
+        }
+
+        public static bool SameLexing(string text)
+        {
+            raii string first = Dump(text);
+            raii string second = Dump(text);
+            return first == second;
+        }
+    }
+}

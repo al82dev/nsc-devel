@@ -441,7 +441,7 @@ void registerSemaFallthroughDump299To321Module(TestRegistry& registry)
     addSemaCase(registry, "TS-SEMA-304", "CS-SEMA-028", "unit", testBreakInLoopBody);
     addSemaCase(registry, "TS-SEMA-305", "CS-SEMA-028", "unit", testNestedLoopBreakIsolation);
     addSemaCase(registry, "TS-SEMA-306", "CS-SEMA-028", "unit", testDeepAcyclicFallthroughBoundary,
-        "NIGHTLY", TestDisposition::KnownProductDefect, {"infrastructure-special", "process-isolation"});
+        "NIGHTLY", TestDisposition::InfrastructurePending, {"infrastructure-special", "process-isolation"});
     addSemaCase(registry, "TS-SEMA-307", "CS-SEMA-029", "unit", testSemanticDumpEmpty);
     addSemaCase(registry, "TS-SEMA-308", "CS-SEMA-029", "unit", testSemanticDumpMinimalExpression);
     addSemaCase(registry, "TS-SEMA-309", "CS-SEMA-029", "unit", testSemanticDumpCategoriesAndFlags);
@@ -450,7 +450,7 @@ void registerSemaFallthroughDump299To321Module(TestRegistry& registry)
     addSemaCase(registry, "TS-SEMA-312", "CS-SEMA-029", "unit", testSemanticDumpOperators);
     addSemaCase(registry, "TS-SEMA-313", "CS-SEMA-029", "unit", testSemanticDumpTraversalAndOmission);
     addSemaCase(registry, "TS-SEMA-314", "CS-SEMA-029", "unit", testSemanticDumpRobustnessBoundary,
-        "NIGHTLY", TestDisposition::KnownProductDefect, {"infrastructure-special", "process-isolation"});
+        "NIGHTLY", TestDisposition::InfrastructurePending, {"infrastructure-special", "process-isolation"});
     addSemaCase(registry, "TS-SEMA-315", "CS-SEMA-030", "unit", testSymbolDumpEmpty);
     addSemaCase(registry, "TS-SEMA-316", "CS-SEMA-030", "unit", testSymbolDumpKinds);
     addSemaCase(registry, "TS-SEMA-317", "CS-SEMA-030", "unit", testSymbolConditionalFields,
@@ -459,6 +459,6 @@ void registerSemaFallthroughDump299To321Module(TestRegistry& registry)
     addSemaCase(registry, "TS-SEMA-319", "CS-SEMA-030", "unit", testSymbolGlobalOrdering);
     addSemaCase(registry, "TS-SEMA-320", "CS-SEMA-030", "unit", testSymbolComplexNamesAndTypes);
     addSemaCase(registry, "TS-SEMA-321", "CS-SEMA-030", "unit", testSymbolDumpRobustnessBoundary,
-        "NIGHTLY", TestDisposition::KnownProductDefect, {"infrastructure-special", "process-isolation"});
+        "NIGHTLY", TestDisposition::InfrastructurePending, {"infrastructure-special", "process-isolation"});
 }
 }

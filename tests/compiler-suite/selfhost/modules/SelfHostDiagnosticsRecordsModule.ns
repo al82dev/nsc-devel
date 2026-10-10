@@ -1,0 +1,141 @@
+using NativeSharp.Core;
+using NativeSharp.Compiler.Diagnostics;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Diagnostics
+{
+    public class SelfHostDiagnosticsRecordsModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00188") { return MinimalRecord(); }
+            if (caseId == "TSH-00189") { return RepresentativeRecord(); }
+            if (caseId == "TSH-00190") { return EmptyRecordFields(); }
+            if (caseId == "TSH-00191") { return UnvalidatedRecordValues(); }
+            if (caseId == "TSH-00192") { return RecordBoundaries(); }
+            if (caseId == "TSH-00193") { return SeverityVariants(); }
+            if (caseId == "TSH-00194") { return RecordCopyLifetime(); }
+            if (caseId == "TSH-00195") { return MinimalCatalogue(); }
+            if (caseId == "TSH-00196") { return RepresentativeCatalogue(); }
+            if (caseId == "TSH-00197") { return EmptyCatalogueInput(); }
+            if (caseId == "TSH-00198") { return AdversarialCatalogueInput(); }
+            if (caseId == "TSH-00199") { return CatalogueBoundaries(); }
+            if (caseId == "TSH-00200") { return CatalogueVariants(); }
+            if (caseId == "TSH-00201") { return CatalogueRepeatability(); }
+            return -1;
+        }
+
+        private static int MinimalRecord()
+        {
+            raii Diagnostic value = new Diagnostic("D", DiagnosticSeverity.Error, "", 0);
+            return value.Code() == "D" && value.Severity() == DiagnosticSeverity.Error &&
+                value.Argument() == "" && value.ExitCode() == 0 ? 0 : 1;
+        }
+
+        private static int RepresentativeRecord()
+        {
+            raii Diagnostic value = new Diagnostic("NSC2048", DiagnosticSeverity.Warning, "archivo-á.ns", 17);
+            return value.Code() == "NSC2048" && value.Severity() == DiagnosticSeverity.Warning &&
+                value.Argument() == "archivo-á.ns" && value.ExitCode() == 17 ? 0 : 2;
+        }
+
+        // The generic missing-prerequisite row is rewritten because this value contract declares no such error.
+        private static int EmptyRecordFields()
+        {
+            raii Diagnostic value = new Diagnostic("", DiagnosticSeverity.Note, "", 0);
+            return value.Code() == "" && value.Argument() == "" &&
+                value.Severity() == DiagnosticSeverity.Note ? 0 : 3;
+        }
+
+        // The record intentionally preserves unusual values instead of inventing validation absent from product.
+        private static int UnvalidatedRecordValues()
+        {
+            raii Diagnostic value = new Diagnostic("?", DiagnosticSeverity.Error, "value", -2147483647);
+            return value.Code() == "?" && value.ExitCode() == -2147483647 ? 0 : 4;
+        }
+
+        private static int RecordBoundaries()
+        {
+            raii Diagnostic minimum = new Diagnostic("", DiagnosticSeverity.Error, "ñ", -2147483647);
+            raii Diagnostic maximum = new Diagnostic("LONG-CODE", DiagnosticSeverity.Note, "終", 2147483647);
+            return minimum.Argument() == "ñ" && minimum.ExitCode() == -2147483647 &&
+                maximum.Argument() == "終" && maximum.ExitCode() == 2147483647 ? 0 : 5;
+        }
+
+        private static int SeverityVariants()
+        {
+            raii Diagnostic error = new Diagnostic("E", DiagnosticSeverity.Error, "x", 1);
+            raii Diagnostic warning = new Diagnostic("W", DiagnosticSeverity.Warning, "x", 2);
+            raii Diagnostic note = new Diagnostic("N", DiagnosticSeverity.Note, "x", 3);
+            return error.Severity() == DiagnosticSeverity.Error &&
+                warning.Severity() == DiagnosticSeverity.Warning &&
+                note.Severity() == DiagnosticSeverity.Note ? 0 : 6;
+        }
+
+        private static owned Diagnostic TemporaryRecord()
+        {
+            raii string code = String.Concat("NSC", "7777");
+            raii string argument = String.Concat("owned-", "copy");
+            return new Diagnostic(code, DiagnosticSeverity.Warning, argument, 7);
+        }
+
+        private static int RecordCopyLifetime()
+        {
+            raii Diagnostic first = TemporaryRecord();
+            raii Diagnostic second = TemporaryRecord();
+            return first.Code() == "NSC7777" && first.Argument() == "owned-copy" &&
+                second.Code() == first.Code() && second.Argument() == first.Argument() ? 0 : 7;
+        }
+
+        private static int MinimalCatalogue()
+        {
+            raii Diagnostic value = DiagnosticCatalog.MissingSource("a.ns");
+            return value.Code() == "NSC0001" && value.Severity() == DiagnosticSeverity.Error &&
+                value.Argument() == "a.ns" && value.ExitCode() == 1 ? 0 : 8;
+        }
+
+        private static int RepresentativeCatalogue()
+        {
+            raii Diagnostic value = DiagnosticCatalog.UnknownOption("--emit-object");
+            return value.Code() == "NSC0002" && value.Severity() == DiagnosticSeverity.Error &&
+                value.Argument() == "--emit-object" && value.ExitCode() == 2 ? 0 : 9;
+        }
+
+        // The catalogue has no absent producer; an empty path remains an observable admitted argument.
+        private static int EmptyCatalogueInput()
+        {
+            raii Diagnostic value = DiagnosticCatalog.MissingSource("");
+            return value.Code() == "NSC0001" && value.Argument() == "" && value.ExitCode() == 1 ? 0 : 10;
+        }
+
+        private static int AdversarialCatalogueInput()
+        {
+            raii Diagnostic value = DiagnosticCatalog.UnknownOption("--ñ=\"x\\y\"");
+            return value.Code() == "NSC0002" && value.Argument() == "--ñ=\"x\\y\"" &&
+                value.ExitCode() == 2 ? 0 : 11;
+        }
+
+        private static int CatalogueBoundaries()
+        {
+            raii Diagnostic empty = DiagnosticCatalog.UnknownOption("");
+            raii Diagnostic unicode = DiagnosticCatalog.MissingSource("目录/á.ns");
+            return empty.Argument() == "" && unicode.Argument() == "目录/á.ns" &&
+                empty.ExitCode() == 2 && unicode.ExitCode() == 1 ? 0 : 12;
+        }
+
+        private static int CatalogueVariants()
+        {
+            raii Diagnostic missing = DiagnosticCatalog.MissingSource("unit.ns");
+            raii Diagnostic unknown = DiagnosticCatalog.UnknownOption("--bad");
+            return missing.Code() == "NSC0001" && missing.ExitCode() == 1 &&
+                unknown.Code() == "NSC0002" && unknown.ExitCode() == 2 ? 0 : 13;
+        }
+
+        private static int CatalogueRepeatability()
+        {
+            raii Diagnostic first = DiagnosticCatalog.MissingSource("same.ns");
+            raii Diagnostic second = DiagnosticCatalog.MissingSource("same.ns");
+            return first.Code() == second.Code() && first.Argument() == second.Argument() &&
+                first.Severity() == second.Severity() && first.ExitCode() == second.ExitCode() ? 0 : 14;
+        }
+    }
+}

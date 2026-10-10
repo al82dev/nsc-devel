@@ -1,0 +1,49 @@
+using NativeSharp.Compiler.Lexer;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Lexer
+{
+    public class SelfHostLexerFullModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00444") { return SelfHostLexerTestSupport.Single("(", TokenKind.LeftParen, 0, 1, 0) ? 0 : 46; }
+            if (caseId == "TSH-00445") { return PunctuationMatrix() ? 0 : 47; }
+            if (caseId == "TSH-00446") { raii string dump = SelfHostLexerTestSupport.Dump(""); return dump == "EndOfFile \"\" @0:0\n" ? 0 : 48; }
+            if (caseId == "TSH-00447") { return SelfHostLexerTestSupport.Single("@", TokenKind.Invalid, 0, 1, 1) ? 0 : 49; }
+            if (caseId == "TSH-00448") { raii string dump = SelfHostLexerTestSupport.Dump("a"); return dump == "Identifier \"a\" @0:1\nEndOfFile \"\" @1:1\n" ? 0 : 50; }
+            if (caseId == "TSH-00449") { return AssemblyAndModes() ? 0 : 51; }
+            if (caseId == "TSH-00450") { return SelfHostLexerTestSupport.SameLexing("int x = 0; // stable\nreturn x;") ? 0 : 52; }
+            if (caseId == "TSH-00451") { return PartialFailure() ? 0 : 53; }
+            return -1;
+        }
+
+        private static bool PunctuationMatrix()
+        {
+            raii TokenStream t = SelfHostLexerTestSupport.Lex("(){}[];,?:... -> => ++ -- == != << >>= ?? ??= ?. ..");
+            return t.Count() == 24 && t.KindAt(0) == TokenKind.LeftParen &&
+                t.KindAt(9) == TokenKind.Question && t.KindAt(10) == TokenKind.Ellipsis &&
+                t.KindAt(18) == TokenKind.GreaterGreaterEqual &&
+                t.KindAt(19) == TokenKind.QuestionQuestion &&
+                t.KindAt(20) == TokenKind.QuestionQuestionEqual &&
+                t.KindAt(21) == TokenKind.QuestionDot && t.KindAt(22) == TokenKind.DotDot &&
+                t.KindAt(23) == TokenKind.EndOfFile && t.ErrorCount() == 0;
+        }
+
+        private static bool AssemblyAndModes()
+        {
+            raii TokenStream t = SelfHostLexerTestSupport.Lex("asm {mov rax, 1\n}");
+            return t.Count() == 6 && t.KindAt(0) == TokenKind.Identifier &&
+                t.KindAt(1) == TokenKind.LeftBrace && t.KindAt(2) == TokenKind.AssemblyText &&
+                t.KindAt(3) == TokenKind.AssemblyNewLine && t.KindAt(4) == TokenKind.RightBrace &&
+                t.KindAt(5) == TokenKind.EndOfFile && t.ErrorCount() == 0;
+        }
+
+        private static bool PartialFailure()
+        {
+            raii TokenStream t = SelfHostLexerTestSupport.Lex("int x; /*");
+            return t.Count() == 4 && t.KindAt(0) == TokenKind.KwInt &&
+                t.KindAt(1) == TokenKind.Identifier && t.KindAt(2) == TokenKind.Semicolon &&
+                t.KindAt(3) == TokenKind.EndOfFile && t.ErrorCount() == 1;
+        }
+    }
+}

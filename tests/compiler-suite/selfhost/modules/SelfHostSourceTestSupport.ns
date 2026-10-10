@@ -1,0 +1,45 @@
+using NativeSharp.Core;
+using NativeSharp.Compiler.Basic;
+using NativeSharp.Compiler.Source;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Source
+{
+    // These helpers compare public results only. They deliberately do not copy the parser,
+    // transformer, normalization, hashing or line-mapping algorithms under test.
+    public class SelfHostSourceTestSupport
+    {
+        public static bool Expression(string text, bool expectedSuccess, long expectedValue)
+        {
+            raii ComptimeExpression expression = new ComptimeExpression(text);
+            long value = 0;
+            bool success = expression.Evaluate(out value);
+            return success == expectedSuccess && (!success || value == expectedValue);
+        }
+
+        public static bool Transform(string source, string expected)
+        {
+            raii string actual = ComptimeProcessor.Transform(source);
+            return actual == expected && actual.Length == source.Length;
+        }
+
+        public static owned string NormalizedSandbox(string sandbox)
+        {
+            return String.Replace(sandbox, '\\', '/');
+        }
+
+        public static owned string SandboxFile(string sandbox, string name)
+        {
+            raii string root = NormalizedSandbox(sandbox);
+            raii string slash = String.Concat(root, "/");
+            return String.Concat(slash, name);
+        }
+
+        public static bool Position(SourceBuffer buffer, int offset, int expectedLine, int expectedColumn)
+        {
+            int line = 0;
+            int column = 0;
+            buffer.GetLineColumn(offset, out line, out column);
+            return line == expectedLine && column == expectedColumn;
+        }
+    }
+}

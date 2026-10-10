@@ -1,0 +1,64 @@
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Types
+{
+    // Covers string-literal descriptor identity for every admitted count class. Negative
+    // counts are not a declared product contract and stay outside the executable fragment.
+    public class SelfHostTypesStringLiteralModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-01015") { return EmptyLiteral(); }
+            if (caseId == "TSH-01016") { return RepresentativeLiteral(); }
+            if (caseId == "TSH-01019") { return BoundaryLiterals(); }
+            if (caseId == "TSH-01020") { return CountVariants(); }
+            return -1;
+        }
+
+        private static int EmptyLiteral()
+        {
+            raii TypeTable table = new TypeTable();
+            int id = table.StringLiteral(0);
+            SemanticType type = table.Get(id);
+            return type.Kind() == SemanticTypeKind.StringLiteral &&
+                type.Display() == "StringLiteralType<0>" &&
+                type.ElementType() == table.Find("char") && type.ElementCount() == 0 &&
+                type.Size() == 0 && type.Alignment() == 1 ? 0 : 35;
+        }
+
+        private static int RepresentativeLiteral()
+        {
+            raii TypeTable table = new TypeTable();
+            int id = table.StringLiteral(6);
+            int repeated = table.StringLiteral(6);
+            SemanticType type = table.Get(id);
+            return id == repeated && type.Display() == "StringLiteralType<6>" &&
+                type.ElementType() == table.Find("char") && type.ElementCount() == 6 &&
+                type.Size() == 6 && type.Alignment() == 1 ? 0 : 36;
+        }
+
+        private static int BoundaryLiterals()
+        {
+            raii TypeTable table = new TypeTable();
+            int zero = table.StringLiteral(0);
+            int one = table.StringLiteral(1);
+            int maximum = table.StringLiteral(2147483647);
+            return zero != one && one != maximum && table.StringLiteral(0) == zero &&
+                table.Get(one).ElementCount() == 1 &&
+                table.Get(maximum).ElementCount() == 2147483647 &&
+                table.Get(maximum).Size() == 2147483647 ? 0 : 39;
+        }
+
+        private static int CountVariants()
+        {
+            raii TypeTable table = new TypeTable();
+            int empty = table.StringLiteral(0);
+            int terminatorOnly = table.StringLiteral(1);
+            int ordinary = table.StringLiteral(8);
+            return table.Get(empty).Display() == "StringLiteralType<0>" &&
+                table.Get(terminatorOnly).Display() == "StringLiteralType<1>" &&
+                table.Get(ordinary).Display() == "StringLiteralType<8>" &&
+                table.StringLiteral(8) == ordinary ? 0 : 40;
+        }
+    }
+}

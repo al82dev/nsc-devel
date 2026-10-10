@@ -1,0 +1,48 @@
+using NativeSharp.Compiler.Lexer;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Lexer
+{
+    public class SelfHostLexerIdentifiersNumbersModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00426") { return SelfHostLexerTestSupport.Single("a", TokenKind.Identifier, 0, 1, 0) ? 0 : 28; }
+            if (caseId == "TSH-00427") { raii TokenStream t = SelfHostLexerTestSupport.Lex("int value return"); return t.Count() == 4 && t.KindAt(0) == TokenKind.KwInt && t.KindAt(1) == TokenKind.Identifier && t.KindAt(2) == TokenKind.KwReturn ? 0 : 29; }
+            if (caseId == "TSH-00428") { raii TokenStream t = SelfHostLexerTestSupport.Lex("asm C"); return t.Count() == 3 && t.KindAt(0) == TokenKind.Identifier && t.KindAt(1) == TokenKind.Identifier ? 0 : 30; }
+            if (caseId == "TSH-00429") { return SelfHostLexerTestSupport.Single("$", TokenKind.Invalid, 0, 1, 1) ? 0 : 31; }
+            if (caseId == "TSH-00430") { raii TokenStream t = SelfHostLexerTestSupport.Lex("_ _0 Z9"); return t.Count() == 4 && t.KindAt(0) == TokenKind.Identifier && t.KindAt(1) == TokenKind.Identifier && t.KindAt(2) == TokenKind.Identifier ? 0 : 32; }
+            if (caseId == "TSH-00431") { return AllKeywords() ? 0 : 33; }
+            if (caseId == "TSH-00432") { return SelfHostLexerTestSupport.Single("0", TokenKind.IntegerLiteral, 0, 1, 0) ? 0 : 34; }
+            if (caseId == "TSH-00433") { return RepresentativeNumbers() ? 0 : 35; }
+            if (caseId == "TSH-00434") { raii TokenStream t = SelfHostLexerTestSupport.Lex("0x 0b"); return t.Count() == 3 && t.KindAt(0) == TokenKind.Invalid && t.KindAt(1) == TokenKind.Invalid && t.ErrorCount() == 2 ? 0 : 36; }
+            if (caseId == "TSH-00435") { raii TokenStream t = SelfHostLexerTestSupport.Lex("1e+ 1uuu"); return t.Count() == 3 && t.KindAt(0) == TokenKind.Invalid && t.KindAt(1) == TokenKind.Invalid && t.ErrorCount() == 2 ? 0 : 37; }
+            if (caseId == "TSH-00436") { raii TokenStream t = SelfHostLexerTestSupport.Lex("18446744073709551615 18446744073709551616"); return t.Count() == 3 && t.KindAt(0) == TokenKind.IntegerLiteral && t.KindAt(1) == TokenKind.Invalid && t.ErrorCount() == 1 ? 0 : 38; }
+            if (caseId == "TSH-00437") { raii TokenStream t = SelfHostLexerTestSupport.Lex("1u 2U 3l 4L 5ul 6LU"); int i = 0; while (i < 6) { if (t.KindAt(i) != TokenKind.IntegerLiteral) { return 39; } i = i + 1; } return t.Count() == 7 && t.ErrorCount() == 0 ? 0 : 39; }
+            return -1;
+        }
+
+        private static bool AllKeywords()
+        {
+            string text = "void bool sbyte byte char short ushort int uint long ulong nint nuint float double string const static readonly volatile inline forceinline noinline noheap public internal protected private if else while do for switch case break continue return try catch finally throw struct class interface enum namespace using new delete destroy stackalloc sizeof alignof offsetof static_assert default extern export vectorcall true false null this base virtual override abstract sealed get set operator implicit explicit is as delegate event raii move owned borrowed var foreach in";
+            raii TokenStream t = SelfHostLexerTestSupport.Lex(text);
+            if (t.Count() != 86 || t.ErrorCount() != 0 || t.KindAt(0) != TokenKind.KwVoid || t.KindAt(84) != TokenKind.KwIn) { return false; }
+            int index = 0;
+            while (index < 85)
+            {
+                if (t.KindAt(index) == TokenKind.Identifier || t.KindAt(index) == TokenKind.Invalid) { return false; }
+                index = index + 1;
+            }
+            return t.KindAt(85) == TokenKind.EndOfFile;
+        }
+
+        private static bool RepresentativeNumbers()
+        {
+            raii TokenStream t = SelfHostLexerTestSupport.Lex("0 42 0xFF 0b101 1.25 2e3 4f");
+            if (t.Count() != 8 || t.ErrorCount() != 0) { return false; }
+            int index = 0;
+            while (index < 4) { if (t.KindAt(index) != TokenKind.IntegerLiteral) { return false; } index = index + 1; }
+            while (index < 7) { if (t.KindAt(index) != TokenKind.FloatingLiteral) { return false; } index = index + 1; }
+            return t.KindAt(7) == TokenKind.EndOfFile;
+        }
+    }
+}

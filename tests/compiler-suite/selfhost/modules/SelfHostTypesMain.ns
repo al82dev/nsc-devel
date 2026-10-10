@@ -1,0 +1,33 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Types
+{
+    // Dispatches exactly one canonical case per process so a crashing negative case cannot
+    // contaminate another oracle. The lookup is iterative and performs no hidden fallback.
+    public class Program
+    {
+        public static int Main()
+        {
+            string[] arguments = new string[3];
+            int count = Environment.GetCommandLineArgs(arguments);
+            if (count != 2) { return 250; }
+
+            string caseId = arguments[1];
+            int result = SelfHostTypesVocabularyModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostTypesSemanticValueModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostTypesParametersModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostTypesBuiltinsModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostTypesInterningModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostTypesStringLiteralModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostTypesFunctionModule.Run(caseId);
+            if (result != -1) { return result; }
+            return 251;
+        }
+    }
+}

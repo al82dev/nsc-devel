@@ -1,0 +1,87 @@
+using NativeSharp.Compiler.Basic;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Basic
+{
+    public class SelfHostBasicArenaModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00009") { return MinimalAllocation(); }
+            if (caseId == "TSH-00010") { return RepresentativeAllocation(); }
+            if (caseId == "TSH-00011") { return MissingHandle(); }
+            if (caseId == "TSH-00012") { return MalformedGeneration(); }
+            if (caseId == "TSH-00013") { return BoundaryHandles(); }
+            if (caseId == "TSH-00014") { return HandleVariants(); }
+            if (caseId == "TSH-00015") { return ScaleBoundary(); }
+            return -1;
+        }
+
+        private static int MinimalAllocation()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle handle = arena.Allocate(1);
+            return !handle.IsEmpty() && handle.Generation() == 1 && handle.Size() == 1 &&
+                arena.Resolve(handle) == handle.Address() && arena.BytesUsed() == 8 ? 0 : 9;
+        }
+
+        private static int RepresentativeAllocation()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle first = arena.Allocate(8);
+            ArenaHandle second = arena.Allocate(9);
+            return arena.Resolve(first) == first.Address() && arena.Resolve(second) == second.Address() &&
+                first.Address() != second.Address() && arena.BytesUsed() == 24 ? 0 : 10;
+        }
+
+        private static int MissingHandle()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle missing = new ArenaHandle(null, arena.Generation(), 8);
+            return missing.IsEmpty() && arena.Resolve(missing) == null ? 0 : 11;
+        }
+
+        private static int MalformedGeneration()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle current = arena.Allocate(8);
+            ArenaHandle forged = new ArenaHandle(current.Address(), current.Generation() + 1,
+                current.Size());
+            return arena.Resolve(current) != null && arena.Resolve(forged) == null ? 0 : 12;
+        }
+
+        private static int BoundaryHandles()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle zero = arena.Allocate(0);
+            ArenaHandle negative = arena.Allocate(-1);
+            return zero.IsEmpty() && negative.IsEmpty() && arena.BytesUsed() == 0 &&
+                arena.Resolve(zero) == null && arena.Resolve(negative) == null ? 0 : 13;
+        }
+
+        private static int HandleVariants()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle present = arena.Allocate(8);
+            ArenaHandle noAddress = new ArenaHandle(null, 1, 8);
+            ArenaHandle noSize = new ArenaHandle(present.Address(), 1, 0);
+            return !present.IsEmpty() && noAddress.IsEmpty() && noSize.IsEmpty() &&
+                present.Address() != null && present.Generation() == 1 && present.Size() == 8 ? 0 : 14;
+        }
+
+        private static int ScaleBoundary()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            int index = 0;
+            while (index < 512)
+            {
+                ArenaHandle handle = arena.Allocate(16);
+                if (handle.IsEmpty() || arena.Resolve(handle) == null || handle.Generation() != 1)
+                {
+                    return 15;
+                }
+                index = index + 1;
+            }
+            return arena.BytesUsed() == 8192 ? 0 : 15;
+        }
+    }
+}

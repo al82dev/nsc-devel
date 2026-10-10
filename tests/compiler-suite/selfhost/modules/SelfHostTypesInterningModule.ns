@@ -1,0 +1,93 @@
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Types
+{
+    // Covers structural interning with exact descriptors and mutation counts. TSH-01011
+    // intentionally keeps the documented malformed-descriptor oracle and remains red.
+    public class SelfHostTypesInterningModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-01008") { return MinimalInterning(); }
+            if (caseId == "TSH-01009") { return RepresentativeInterning(); }
+            if (caseId == "TSH-01010") { return UnknownNominalDescriptor(); }
+            if (caseId == "TSH-01011") { return MalformedCompositeRemainsUnknown(); }
+            if (caseId == "TSH-01012") { return BoundaryDescriptors(); }
+            if (caseId == "TSH-01013") { return CompositeVariants(); }
+            return -1;
+        }
+
+        private static int MinimalInterning()
+        {
+            raii TypeTable table = new TypeTable();
+            int id = table.Intern("Widget");
+            SemanticType type = table.Get(id);
+            return id == 16 && table.Count() == 17 && table.Find("Widget") == id &&
+                type.Kind() == SemanticTypeKind.Named && type.Size() == 8 &&
+                type.Alignment() == 8 ? 0 : 28;
+        }
+
+        private static int RepresentativeInterning()
+        {
+            raii TypeTable table = new TypeTable();
+            int pointer = table.Intern("int*");
+            int array = table.Intern("short[3]");
+            int owned = table.Intern("owned int*");
+            int function = table.Intern("(int, short[3]) -> bool");
+            return table.Get(pointer).Kind() == SemanticTypeKind.Pointer &&
+                table.Get(pointer).ElementType() == table.Find("int") &&
+                table.Get(array).Kind() == SemanticTypeKind.Array &&
+                table.Get(array).ElementCount() == 3 && table.Get(array).Size() == 6 &&
+                table.Get(owned).Ownership() == OwnershipKind.Owned &&
+                table.Get(function).Kind() == SemanticTypeKind.Function &&
+                table.Get(function).ParameterCount() == 2 ? 0 : 29;
+        }
+
+        private static int UnknownNominalDescriptor()
+        {
+            raii TypeTable table = new TypeTable();
+            int before = table.Count();
+            int first = table.Intern("Missing.Dependency.Type");
+            int repeated = table.Intern("Missing.Dependency.Type");
+            return first == repeated && table.Count() == before + 1 &&
+                table.Get(first).Kind() == SemanticTypeKind.Named ? 0 : 30;
+        }
+
+        private static int MalformedCompositeRemainsUnknown()
+        {
+            raii TypeTable table = new TypeTable();
+            int malformed = table.Intern("int[not-a-count]");
+            SemanticType descriptor = table.Get(malformed);
+            return descriptor.Kind() == SemanticTypeKind.Named &&
+                descriptor.Display() == "int[not-a-count]" ? 0 : 31;
+        }
+
+        private static int BoundaryDescriptors()
+        {
+            raii TypeTable table = new TypeTable();
+            int before = table.Count();
+            int empty = table.Intern("");
+            int repeatedEmpty = table.Intern("");
+            int nonAscii = table.Intern("Niño");
+            return empty == repeatedEmpty && nonAscii != empty &&
+                table.Get(empty).Kind() == SemanticTypeKind.Named &&
+                table.Get(nonAscii).Display() == "Niño" && table.Count() == before + 2 ? 0 : 32;
+        }
+
+        private static int CompositeVariants()
+        {
+            raii TypeTable table = new TypeTable();
+            int pointer = table.Intern("byte*");
+            int unsized = table.Intern("byte[]");
+            int sized = table.Intern("short[3]");
+            int borrowed = table.Intern("borrowed byte*");
+            int nested = table.Intern("(byte*, short[3]) -> double");
+            return table.Get(pointer).Size() == 8 && table.Get(unsized).Size() == 8 &&
+                table.Get(sized).Size() == 6 && table.Get(sized).Alignment() == 2 &&
+                table.Get(borrowed).Ownership() == OwnershipKind.Borrowed &&
+                table.Get(nested).ReturnType() == table.Find("double") &&
+                table.Get(nested).ParameterCount() == 2 ? 0 : 33;
+        }
+    }
+}

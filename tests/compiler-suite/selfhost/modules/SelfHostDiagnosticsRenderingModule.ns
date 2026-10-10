@@ -1,0 +1,138 @@
+using NativeSharp.Core;
+using NativeSharp.Compiler.Diagnostics;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Diagnostics
+{
+    public class SelfHostDiagnosticsRenderingModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00202") { return HumanMissingSource(); }
+            if (caseId == "TSH-00203") { return HumanUnknownOption(); }
+            if (caseId == "TSH-00204") { return HumanUnknownCode(); }
+            if (caseId == "TSH-00205") { return HumanAdversarialArgument(); }
+            if (caseId == "TSH-00206") { return HumanBoundary(); }
+            if (caseId == "TSH-00207") { return HumanSeverityVariants(); }
+            if (caseId == "TSH-00208") { return HumanDeterminismAndPath(); }
+            if (caseId == "TSH-00209") { return JsonMinimal(); }
+            if (caseId == "TSH-00210") { return JsonRepresentative(); }
+            if (caseId == "TSH-00211") { return JsonEmptyArgument(); }
+            if (caseId == "TSH-00212") { return JsonEscapedSyntax(); }
+            if (caseId == "TSH-00213") { return JsonControlCharacter(); }
+            if (caseId == "TSH-00214") { return JsonSeverityIdentity(); }
+            if (caseId == "TSH-00215") { return JsonDeterminism(); }
+            return -1;
+        }
+
+        private static int HumanMissingSource()
+        {
+            raii Diagnostic diagnostic = DiagnosticCatalog.MissingSource("a.ns");
+            raii string rendered = DiagnosticRenderer.Human(diagnostic);
+            return rendered == "nsc: error: cannot open source file 'a.ns'" ? 0 : 15;
+        }
+
+        private static int HumanUnknownOption()
+        {
+            raii Diagnostic diagnostic = DiagnosticCatalog.UnknownOption("--ñ");
+            raii string rendered = DiagnosticRenderer.Human(diagnostic);
+            return rendered == "nsc: error: unknown option '--ñ'" ? 0 : 16;
+        }
+
+        // The generated negative row is rewritten to exercise the renderer's declared unknown-code branch.
+        private static int HumanUnknownCode()
+        {
+            raii Diagnostic diagnostic = new Diagnostic("CUSTOM", DiagnosticSeverity.Error, "payload", 9);
+            raii string rendered = DiagnosticRenderer.Human(diagnostic);
+            return rendered == "nsc: error: unknown diagnosticpayload'" ? 0 : 17;
+        }
+
+        private static int HumanAdversarialArgument()
+        {
+            raii Diagnostic diagnostic = DiagnosticCatalog.UnknownOption("'quoted'\nnext");
+            raii string rendered = DiagnosticRenderer.Human(diagnostic);
+            return rendered == "nsc: error: unknown option ''quoted'\nnext'" ? 0 : 18;
+        }
+
+        private static int HumanBoundary()
+        {
+            raii Diagnostic diagnostic = DiagnosticCatalog.MissingSource("");
+            raii string rendered = DiagnosticRenderer.Human(diagnostic);
+            return rendered == "nsc: error: cannot open source file ''" ? 0 : 19;
+        }
+
+        private static int HumanSeverityVariants()
+        {
+            raii Diagnostic warning = new Diagnostic("NSC0002", DiagnosticSeverity.Warning, "--x", 2);
+            raii Diagnostic note = new Diagnostic("NSC0002", DiagnosticSeverity.Note, "--x", 2);
+            raii string first = DiagnosticRenderer.Human(warning);
+            raii string second = DiagnosticRenderer.Human(note);
+            return first == "nsc: error: unknown option '--x'" && second == first ? 0 : 20;
+        }
+
+        private static int HumanDeterminismAndPath()
+        {
+            raii Diagnostic diagnostic = DiagnosticCatalog.MissingSource("same.ns");
+            raii string first = DiagnosticRenderer.Human(diagnostic);
+            raii string second = DiagnosticRenderer.Human(diagnostic);
+            raii string normalized = DiagnosticRenderer.NormalizedPath(".\\folder\\..\\same.ns");
+            return first == second && !String.Contains(normalized, "\\") &&
+                String.EndsWith(normalized, "/same.ns") ? 0 : 21;
+        }
+
+        private static int EmitJson(Diagnostic diagnostic)
+        {
+            raii string rendered = DiagnosticRenderer.Json(diagnostic);
+            Console.WriteLine(rendered);
+            return 0;
+        }
+
+        private static int JsonMinimal()
+        {
+            raii Diagnostic diagnostic = new Diagnostic("D", DiagnosticSeverity.Error, "x", 1);
+            return EmitJson(diagnostic);
+        }
+
+        private static int JsonRepresentative()
+        {
+            raii Diagnostic diagnostic = new Diagnostic("NSC0002", DiagnosticSeverity.Error,
+                "quote=\" slash=\\ cr=\r nl=\n ñ", 2);
+            return EmitJson(diagnostic);
+        }
+
+        private static int JsonEmptyArgument()
+        {
+            raii Diagnostic diagnostic = new Diagnostic("EMPTY", DiagnosticSeverity.Error, "", 0);
+            return EmitJson(diagnostic);
+        }
+
+        private static int JsonEscapedSyntax()
+        {
+            raii Diagnostic diagnostic = new Diagnostic("ESC", DiagnosticSeverity.Error, "\\\"", 0);
+            return EmitJson(diagnostic);
+        }
+
+        // Product currently leaves tab unescaped, so the controller's JSON parser must reject this output.
+        private static int JsonControlCharacter()
+        {
+            raii Diagnostic diagnostic = new Diagnostic("CTRL", DiagnosticSeverity.Error, "a\tb", 0);
+            return EmitJson(diagnostic);
+        }
+
+        // Product currently hardcodes error and therefore loses the warning identity required by the contract.
+        private static int JsonSeverityIdentity()
+        {
+            raii Diagnostic diagnostic = new Diagnostic("WARN", DiagnosticSeverity.Warning, "warning", 0);
+            return EmitJson(diagnostic);
+        }
+
+        private static int JsonDeterminism()
+        {
+            raii Diagnostic diagnostic = new Diagnostic("SAME", DiagnosticSeverity.Error, "repeat", 0);
+            raii string first = DiagnosticRenderer.Json(diagnostic);
+            raii string second = DiagnosticRenderer.Json(diagnostic);
+            if (first != second) { return 22; }
+            Console.WriteLine(first);
+            return 0;
+        }
+    }
+}

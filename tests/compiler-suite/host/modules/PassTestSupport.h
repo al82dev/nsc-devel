@@ -71,11 +71,11 @@ inline void addPassContract(TestRegistry& registry, std::size_t contract, std::s
         caseTags.push_back("passes");
         caseTags.push_back("variant-" + std::to_string(variant));
         const bool known = std::find(knownVariants.begin(), knownVariants.end(), variant) != knownVariants.end();
-        if (known) caseTags.push_back("known-limitation");
+        if (known) caseTags.push_back("infrastructure-special");
         registry.add(TestCase{caseId(contract, variant), contractId(contract), "Host.Passes", std::move(layer),
             variant == 8 ? "NIGHTLY" : "PR", std::move(caseTags),
             [function, variant](TestContext& context) { function(context, variant); },
-            known ? TestDisposition::KnownProductDefect : TestDisposition::Required});
+            known ? TestDisposition::InfrastructurePending : TestDisposition::Required});
     }
 }
 

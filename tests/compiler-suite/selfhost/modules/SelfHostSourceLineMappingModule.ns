@@ -1,0 +1,63 @@
+using NativeSharp.Core;
+using NativeSharp.Compiler.Basic;
+using NativeSharp.Compiler.Source;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Source
+{
+    // CSH-SRC-007 verifies normalized bytes, lengths, line count and public offset mapping.
+    public class SelfHostSourceLineMappingModule
+    {
+        public static int Run(string caseId, string sandbox)
+        {
+            raii string path = SelfHostSourceTestSupport.SandboxFile(sandbox, "memory.ns");
+            if (caseId == "TSH-00894")
+            {
+                raii SourceBuffer buffer = new SourceBuffer(new FileId(1), path, "");
+                bool valid = buffer.RawLength() == 0 && buffer.Length() == 0 && buffer.LineCount() == 1 &&
+                    SelfHostSourceTestSupport.Position(buffer, -1, 1, 1) &&
+                    SelfHostSourceTestSupport.Position(buffer, 1, 1, 1);
+                return valid ? 0 : 60;
+            }
+            if (caseId == "TSH-00895")
+            {
+                raii SourceBuffer buffer = new SourceBuffer(new FileId(2), path, "a\r\nb\rc\n");
+                bool valid = buffer.RawText() == "a\r\nb\rc\n" && buffer.Text() == "a\nb\nc\n" &&
+                    buffer.RawLength() == 7 && buffer.Length() == 6 && buffer.LineCount() == 4 &&
+                    SelfHostSourceTestSupport.Position(buffer, 0, 1, 1) &&
+                    SelfHostSourceTestSupport.Position(buffer, 2, 2, 1) &&
+                    SelfHostSourceTestSupport.Position(buffer, 6, 4, 1);
+                return valid ? 0 : 61;
+            }
+            if (caseId == "TSH-00898")
+            {
+                raii SourceBuffer empty = new SourceBuffer(new FileId(3), path, "");
+                raii SourceBuffer one = new SourceBuffer(new FileId(4), path, "é");
+                raii SourceBuffer trailing = new SourceBuffer(new FileId(5), path, "x\n");
+                bool valid = empty.LineCount() == 1 && one.Text() == "é" && one.LineCount() == 1 &&
+                    trailing.LineCount() == 2 && SelfHostSourceTestSupport.Position(trailing, 99, 2, 1);
+                return valid ? 0 : 62;
+            }
+            if (caseId == "TSH-00899")
+            {
+                raii SourceBuffer lf = new SourceBuffer(new FileId(6), path, "x\ny");
+                raii SourceBuffer cr = new SourceBuffer(new FileId(7), path, "x\ry");
+                raii SourceBuffer crlf = new SourceBuffer(new FileId(8), path, "x\r\ny");
+                bool valid = lf.Text() == "x\ny" && cr.Text() == lf.Text() && crlf.Text() == lf.Text() &&
+                    lf.LineCount() == 2 && cr.LineCount() == 2 && crlf.LineCount() == 2;
+                return valid ? 0 : 63;
+            }
+            if (caseId == "TSH-00900")
+            {
+                raii StringBuilder raw = new StringBuilder(12288);
+                int index = 0;
+                while (index < 4096) { raw.Append("x\r\n"); index = index + 1; }
+                raii string rawText = raw.ToOwnedString();
+                raii SourceBuffer buffer = new SourceBuffer(new FileId(9), path, rawText);
+                bool valid = buffer.RawLength() == 12288 && buffer.Length() == 8192 &&
+                    buffer.LineCount() == 4097 && SelfHostSourceTestSupport.Position(buffer, 8192, 4097, 1);
+                return valid ? 0 : 64;
+            }
+            return -1;
+        }
+    }
+}

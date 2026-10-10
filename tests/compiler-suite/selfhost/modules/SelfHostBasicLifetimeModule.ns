@@ -1,0 +1,74 @@
+using NativeSharp.Compiler.Basic;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Basic
+{
+    public class SelfHostBasicLifetimeModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00023") { return MinimalLifetime(); }
+            if (caseId == "TSH-00024") { return RepresentativeLifetime(); }
+            if (caseId == "TSH-00025") { return MissingView(); }
+            if (caseId == "TSH-00026") { return ForgedView(); }
+            if (caseId == "TSH-00027") { return ResetBoundary(); }
+            if (caseId == "TSH-00028") { return ResultAndHandleVariants(); }
+            return -1;
+        }
+
+        private static int MinimalLifetime()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle handle = arena.Allocate(8);
+            return arena.Resolve(handle) == handle.Address() ? 0 : 23;
+        }
+
+        private static int RepresentativeLifetime()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle first = arena.Allocate(8);
+            ArenaHandle second = arena.Allocate(8);
+            byte* firstView = arena.Resolve(first);
+            byte* secondView = arena.Resolve(second);
+            return firstView != null && secondView != null && firstView != secondView &&
+                first.Generation() == second.Generation() ? 0 : 24;
+        }
+
+        private static int MissingView()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle missing = new ArenaHandle(null, arena.Generation(), 0);
+            return arena.Resolve(missing) == null ? 0 : 25;
+        }
+
+        private static int ForgedView()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle current = arena.Allocate(8);
+            ArenaHandle stale = new ArenaHandle(current.Address(), 0, current.Size());
+            return arena.Resolve(current) != null && arena.Resolve(stale) == null ? 0 : 26;
+        }
+
+        private static int ResetBoundary()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle stale = arena.Allocate(8);
+            int before = arena.Generation();
+            arena.Reset();
+            return arena.Generation() == before + 1 && arena.BytesUsed() == 0 &&
+                arena.Resolve(stale) == null ? 0 : 27;
+        }
+
+        private static int ResultAndHandleVariants()
+        {
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle first = arena.Allocate(8);
+            CompilerResult success = CompilerResult.Success();
+            CompilerResult failure = CompilerResult.Failure(9);
+            arena.Reset();
+            ArenaHandle second = arena.Allocate(8);
+            return success.Succeeded() && success.ExitCode() == 0 && !failure.Succeeded() &&
+                failure.ExitCode() == 9 && arena.Resolve(first) == null &&
+                arena.Resolve(second) != null && second.Generation() == first.Generation() + 1 ? 0 : 28;
+        }
+    }
+}

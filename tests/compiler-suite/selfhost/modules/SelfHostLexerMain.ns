@@ -1,0 +1,26 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Lexer
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            string[] arguments = new string[3];
+            int count = Environment.GetCommandLineArgs(arguments);
+            if (count != 2) { return 250; }
+            string caseId = arguments[1];
+            int result = SelfHostLexerVocabularyStreamModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostLexerCursorTriviaModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostLexerIdentifiersNumbersModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostLexerLiteralsModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostLexerFullModule.Run(caseId);
+            if (result != -1) { return result; }
+            return 251;
+        }
+    }
+}

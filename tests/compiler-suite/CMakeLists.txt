@@ -14,6 +14,8 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(NSC_COMPILER_SUITE_NSC_EXECUTABLE "" CACHE FILEPATH "Explicit A:-drive NSC for process-owned suite cases")
 set(NSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE "" CACHE FILEPATH "Second explicit NSC for build-identity comparison")
 set(NSC_COMPILER_SUITE_BUILD_ID_HEADER "" CACHE FILEPATH "Generated BuildId.h owned by the selected NSC")
+set(NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY
+    "${CMAKE_INSTALL_PREFIX}/lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib")
 
 add_executable(
     nsc_component_tests
@@ -104,6 +106,7 @@ add_executable(
     host/modules/AstNodeLifetimeModule.cpp
     host/modules/AstNodeTopologyModule.cpp
     host/modules/AstNodeScalarStateModule.cpp
+    host/modules/AstInfrastructurePendingModule.cpp
     host/modules/TypeSyntaxIdentityModule.cpp
     host/modules/TypeSyntaxOwnershipModule.cpp
     host/modules/TypeSyntaxArgumentsModule.cpp
@@ -180,6 +183,33 @@ add_executable(
     host/modules/SemaNumericConversion267To280Module.cpp
     host/modules/SemaConstantEvaluation281To298Module.cpp
     host/modules/SemaFallthroughDump299To321Module.cpp
+    host/modules/HIRCoreModule.cpp
+    host/modules/HIRLoweringModule.cpp
+    host/modules/HIRDumpModule.cpp
+    host/modules/HIRVerifierModule.cpp
+    host/modules/CfgModelTraversalModule.cpp
+    host/modules/CfgBuilderModule.cpp
+    host/modules/CfgDumperModule.cpp
+    host/modules/CfgVerifierModule.cpp
+    host/modules/DominanceModel001To064Module.cpp
+    host/modules/DominanceBuilder065To128Module.cpp
+    host/modules/DominanceTraversalDump129To192Module.cpp
+    host/modules/DominanceVerifier193To256Module.cpp
+    host/modules/MirModelModule.cpp
+    host/modules/MirBuilderModule.cpp
+    host/modules/MirDumpModule.cpp
+    host/modules/MirVerifierModule.cpp
+    host/modules/SsaModelModule.cpp
+    host/modules/SsaBuilderModule.cpp
+    host/modules/SsaDumpModule.cpp
+    host/modules/SsaVerifierModule.cpp
+    host/modules/PassProtocolModule.cpp
+    host/modules/PassModelAnalysisModule.cpp
+    host/modules/PassConstantEffectsModule.cpp
+    host/modules/PassTransformsModule.cpp
+    host/modules/PassManagerModule.cpp
+    host/modules/PassDumpModule.cpp
+    host/modules/PassVerifierModule.cpp
     host/modules/LanguageAbiSemanticsModule.cpp
     host/modules/LanguageAggregateSemanticsModule.cpp
     host/modules/LanguageCallableSemanticsModule.cpp
@@ -210,10 +240,91 @@ add_executable(
     host/modules/LanguageTraitValidationModule.cpp
     host/modules/LanguageTraitDispatchModule.cpp
     host/modules/LanguageTraitOperatorModule.cpp
+    host/modules/FrontendCoreModule.cpp
+    host/modules/FrontendNamesMembersModule.cpp
+    host/modules/FrontendGenericsFlowModule.cpp
+    host/modules/FrontendMethodBodiesModule.cpp
+    host/modules/FrontendAuxiliaryModelsModule.cpp
+    host/modules/FrontendLoweringModule.cpp
+    host/modules/LlvmFoundationModule.cpp
+    host/modules/LlvmPolicyModule.cpp
+    host/modules/LlvmObservationLowererModule.cpp
+    host/modules/LlvmGenericPartitionModule.cpp
+    host/modules/LlvmOopRuntimeModule.cpp
+    host/modules/LlvmOopAbiLifetimeModule.cpp
+    host/modules/LlvmOopControlExpressionsModule.cpp
+    host/modules/LlvmOopDataObjectsModule.cpp
+    host/modules/InteropMetadataModelModule.cpp
+    host/modules/InteropCodecModule.cpp
+    host/modules/InteropSurfacesModule.cpp
+    host/modules/InteropValidationMergeModule.cpp
+    host/modules/InteropDiffSchemaModule.cpp
+    host/modules/InteropCHeaderModule.cpp
+    modules/LinkerFormatsModule.cpp
+    modules/LinkerToolProcessModule.cpp
+    modules/LinkerBuildersModule.cpp
+    host/modules/CompilationCore001To112Module.cpp
+    host/modules/CompilationGraph113To168Module.cpp
+    host/modules/CompilationXml169To216Module.cpp
+    host/modules/CompilationProject217To336Module.cpp
+    host/modules/CompilationSdk337To384Module.cpp
+    host/modules/CompilationIdentity385To416Module.cpp
+    host/modules/DriverFoundation001To096Module.cpp
+    host/modules/DriverRuntime097To192Module.cpp
+    host/modules/DriverPipeline193To344Module.cpp
+    host/modules/DriverMigration345To432Module.cpp
+    host/modules/DriverInstallation433To496Module.cpp
+    host/modules/DriverProject497To616Module.cpp
+    host/modules/LanguageServiceProtocol001To080Module.cpp
+    host/modules/LanguageServiceDocuments081To160Module.cpp
+    host/modules/LanguageServiceIndex161To232Module.cpp
+    host/modules/LanguageServiceQueries233To312Module.cpp
+    host/modules/LanguageServiceAnalysis313To336Module.cpp
+    host/modules/NscUnit001To080Module.cpp
+    host/modules/NscProcess081To160Module.cpp
+    selfhost/modules/SelfHostBootstrapProfileModule.cpp
+    selfhost/modules/SelfHostBootstrapBuildModule.cpp
+    selfhost/modules/SelfHostCodeGenFoundationModule.cpp
+    selfhost/modules/SelfHostCodeGenLoweringEmissionModule.cpp
+    selfhost/modules/SelfHostDocumentationArchitectureModule.cpp
+    selfhost/modules/SelfHostDocumentationPolicyModule.cpp
+    selfhost/modules/SelfHostDriverCliFrontendModule.cpp
+    selfhost/modules/SelfHostDriverEmissionModule.cpp
+    selfhost/modules/SelfHostDriverAuditDispatchModule.cpp
+    selfhost/modules/SelfHostIrHirFlowModule.cpp
+    selfhost/modules/SelfHostIrMirVerificationModule.cpp
+    selfhost/modules/SelfHostIrDominanceLifecycleModule.cpp
+    selfhost/modules/SelfHostParserTypesLiteralsModule.cpp
+    selfhost/modules/SelfHostParserExpressionsModule.cpp
+    selfhost/modules/SelfHostParserStatementsModule.cpp
+    selfhost/modules/SelfHostParserDeclarationsModule.cpp
+    selfhost/modules/SelfHostProjectIdentityModule.cpp
+    selfhost/modules/SelfHostProjectDependenciesModule.cpp
+    selfhost/modules/SelfHostProjectInventoryModule.cpp
+    selfhost/modules/SelfHostProjectsModelModule.cpp
+    selfhost/modules/SelfHostProjectsIdentityModule.cpp
+    selfhost/modules/SelfHostProjectsArtifactsModule.cpp
+    selfhost/modules/SelfHostProjectsGraphModule.cpp
+    selfhost/modules/SelfHostSemaModelModule.cpp
+    selfhost/modules/SelfHostSemaModuleSetModule.cpp
+    selfhost/modules/SelfHostSemaResolutionModule.cpp
+    selfhost/modules/SelfHostSemaAnalysisModule.cpp
+    selfhost/modules/SelfHostSymbolsIdentityModule.cpp
+    selfhost/modules/SelfHostSymbolsMetadataModule.cpp
+    selfhost/modules/SelfHostSymbolsScopeModule.cpp
+    selfhost/modules/SelfHostSyntaxNodesModule.cpp
+    selfhost/modules/SelfHostSyntaxTreeModule.cpp
+    selfhost/modules/SelfHostSyntaxDumpModule.cpp
+    host/modules/RuntimeAbiIdentityModule.cpp
+    host/modules/RuntimeAbiVerificationModule.cpp
+    host/modules/RuntimeCapabilityModule.cpp
+    host/modules/RuntimeInfrastructureModule.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceManager.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LanguageService/ProtocolTypes.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LanguageService/LanguageService.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/Lexer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/Token.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/TokenDumper.cpp"
@@ -236,6 +347,165 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SymbolDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SemanticAnalyzer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SemanticDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/HIR/HirNodeKind.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/HIR/HirNode.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/HIR/HirArena.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/HIR/HirBuilder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/HIR/HirDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/HIR/HirVerifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/MIR/MirOpcode.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/MIR/MirValue.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/MIR/MirInstruction.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/MIR/MirBlock.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/MIR/MirGlobal.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/MIR/MirFunction.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/MIR/MirModule.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/MIR/MirArena.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/MIR/MirBuilder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/MIR/MirDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/MIR/MirVerifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/CFG/CfgEdgeKind.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/CFG/CfgEdge.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/CFG/CfgNode.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/CFG/CfgFunction.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/CFG/CfgModule.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/CFG/CfgArena.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/CFG/CfgTraversal.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/CFG/CfgBuilder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/CFG/CfgDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/CFG/CfgVerifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominatorTreeNode.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominatorTree.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceFrontier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceFunction.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceModule.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceArena.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceBuilder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceVerifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/SSA/SsaFunction.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/SSA/SsaModule.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/SSA/SsaArena.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/SSA/SsaPromotability.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/SSA/SsaBuilder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/SSA/SsaDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/SSA/SsaVerifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/PreservedAnalyses.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/PassRequirements.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/PassContext.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/OptimizationModule.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/OptimizationArena.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/OptimizationBuilder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/AnalysisManager.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/MirEffectClassifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/MirRewriter.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/ConstantFolder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/OptimizationVerifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/PhiSimplificationPass.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/CopyPropagationPass.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/ConstantPropagationPass.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/DeadCodeEliminationPass.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/SimplifyControlFlowPass.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/PassManager.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/OptimizationDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Passes/PassPipelineDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/FrontendCompilation.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/CompilationStage.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/StageBoundaryVerifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ComptimeEngine.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MacroExpansionEngine.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectSyntaxUnit.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/NamespaceSymbol.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/QualifiedNameLadder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectGenericConstraintModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectGenericModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectGenericModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOpaqueResultModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectNameLookup.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectNameLookupDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/PrecompiledMemberIdentityIndex.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectMemberModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectNamespaceFunctionModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectMemberModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectInheritanceModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectInheritanceModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectInterfaceModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectInterfaceModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectMemberAccessibility.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectVirtualDispatchModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectVirtualDispatchModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectDestructionModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectDestructionModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectTypeConversion.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectIntegerEvaluator.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectConversionClassifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCallableBindingIndex.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCallableAnalysisContext.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCallableAnalysisResult.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCallableResultMerger.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCallableWaveReducer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCallableWaveScheduler.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectMethodBodyModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectReferenceEscapeEvaluator.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectMethodBodyModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectConstructionModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectConstructionModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectObjectLayoutModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectObjectLayoutModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectMetaprogrammingModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOopHirModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOopHirModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOopMirModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCostExplorer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOopMirModelDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCompilation.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCompilationDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/SimpleXmlParser.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/SdkManifest.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/GlobPattern.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/Project.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectSourceSet.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectLoader.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectGraph.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectGraphLoader.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectGraphDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/TypeIdentity.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/PartialTypeAggregator.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/CompilationJobPolicy.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/CompilationWorkerPool.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/BreakingChangeLedger.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/CompilationProfile.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/CompilationTelemetry.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/CompilationGraphScheduler.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/CompilerConsole.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/CompatibilityPolicy.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/DeprecationPolicy.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/FinalBaselineContract.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/ExecutableMigrationGuide.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/MigrationBaseline.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/MigrationAnalyzer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/MigrationCompatibilityMatrix.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/MigrationGuide.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/NumericContract.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/ProjectCommands.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/PromotionAct.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/ReleaseCandidateFreeze.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/ToolchainContract.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Runtime/RuntimeAbiContract.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Runtime/RuntimeCapabilityReport.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/CoffObjectVerifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/DebugInformationKind.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/FloatingPointMode.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LinkTimeOptimizationMode.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmOptimizationLevel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmOptimizationObservation.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/WindowsLibraryBuilder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/WindowsRuntimeLibrary.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryAbiReport.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryApiDiff.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryMetadata.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryMetadataMerger.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetDataLayout.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetInfo.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Diagnostics/Diagnostic.cpp"
@@ -268,6 +538,11 @@ target_include_directories(
     PRIVATE
         host/include
         "${CMAKE_CURRENT_LIST_DIR}/../../include")
+
+target_compile_definitions(
+    nsc_component_tests
+    PRIVATE
+        "NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY=\"${NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY}\"")
 target_compile_features(nsc_component_tests PRIVATE cxx_std_20)
 
 if(MSVC)
@@ -1033,6 +1308,217 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-sema-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-ir-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_ir_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-ir-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-frontend-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_frontend_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-frontend-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-llvm-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_llvm_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-llvm-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-interop-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_interop_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-interop-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-linker-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_linker_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-linker-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-compilation-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_compilation_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-compilation-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-driver-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_driver_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-driver-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-language-service-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_language_service_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-language-service-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-nsc-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_nsc_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_test(
+    NAME nsc.compiler-suite.selfhost-bootstrap-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_bootstrap_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND NSC_NSLINK_EXECUTABLE)
+    add_test(
+        NAME nsc.compiler-suite.selfhost-basic-controller
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_basic_gate.py"
+            --nsc-executable "${NSC_COMPILER_SUITE_NSC_EXECUTABLE}"
+            --nslink-executable "${NSC_NSLINK_EXECUTABLE}"
+            --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --work-parent "${CMAKE_CURRENT_BINARY_DIR}/selfhost-basic-gate"
+            --build-mode "$<CONFIG>"
+            --optimization O0
+            --profile NIGHTLY)
+endif()
+add_test(
+    NAME nsc.compiler-suite.selfhost-codegen-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_codegen_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND NSC_NSLINK_EXECUTABLE)
+    add_test(
+        NAME nsc.compiler-suite.selfhost-diagnostics-controller
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_diagnostics_gate.py"
+            --nsc-executable "${NSC_COMPILER_SUITE_NSC_EXECUTABLE}"
+            --nslink-executable "${NSC_NSLINK_EXECUTABLE}"
+            --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+            --work-parent "${CMAKE_CURRENT_BINARY_DIR}/selfhost-diagnostics-gate"
+            --build-mode "$<CONFIG>"
+            --optimization O0)
+endif()
+if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND NSC_NSLINK_EXECUTABLE)
+    add_test(
+        NAME nsc.compiler-suite.selfhost-types-controller
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_types_gate.py"
+            --nsc-executable "${NSC_COMPILER_SUITE_NSC_EXECUTABLE}"
+            --nslink-executable "${NSC_NSLINK_EXECUTABLE}"
+            --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+            --work-parent "${CMAKE_CURRENT_BINARY_DIR}/selfhost-types-gate"
+            --build-mode "$<CONFIG>"
+            --optimization O0
+            --profile NIGHTLY)
+endif()
+add_test(
+    NAME nsc.compiler-suite.selfhost-documentation-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_documentation_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_test(
+    NAME nsc.compiler-suite.selfhost-driver-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_driver_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_test(
+    NAME nsc.compiler-suite.selfhost-ir-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_ir_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND NSC_NSLINK_EXECUTABLE)
+    add_test(
+        NAME nsc.compiler-suite.selfhost-lexer-controller
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_lexer_gate.py"
+            --nsc-executable "${NSC_COMPILER_SUITE_NSC_EXECUTABLE}"
+            --nslink-executable "${NSC_NSLINK_EXECUTABLE}"
+            --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+            --work-parent "${CMAKE_CURRENT_BINARY_DIR}/selfhost-lexer-gate"
+            --build-mode "$<CONFIG>"
+            --optimization O0
+            --profile NIGHTLY)
+endif()
+add_test(
+    NAME nsc.compiler-suite.selfhost-parser-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_parser_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_test(
+    NAME nsc.compiler-suite.selfhost-project-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_project_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_test(
+    NAME nsc.compiler-suite.selfhost-projects-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_projects_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_test(
+    NAME nsc.compiler-suite.selfhost-sema-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_sema_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND NSC_NSLINK_EXECUTABLE)
+    add_test(
+        NAME nsc.compiler-suite.selfhost-source-controller
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_source_gate.py"
+            --nsc-executable "${NSC_COMPILER_SUITE_NSC_EXECUTABLE}"
+            --nslink-executable "${NSC_NSLINK_EXECUTABLE}"
+            --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+            --work-parent "${CMAKE_CURRENT_BINARY_DIR}/selfhost-source-gate"
+            --build-mode "$<CONFIG>"
+            --optimization O0
+            --profile NIGHTLY)
+endif()
+add_test(
+    NAME nsc.compiler-suite.selfhost-symbols-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_symbols_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_test(
+    NAME nsc.compiler-suite.selfhost-syntax-structure
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_syntax_gate.py"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_test(
+    NAME nsc.compiler-suite.host-runtime-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_runtime_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-runtime-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND

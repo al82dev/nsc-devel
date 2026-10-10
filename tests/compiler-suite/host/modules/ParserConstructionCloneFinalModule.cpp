@@ -216,10 +216,10 @@ void registerParserConstructionCloneFinalModule(TestRegistry& registry)
 {
     addFinalParserCase(registry, "TP-PAR-513", "CP-PAR-041", testMakeHelpers);
     addFinalParserCase(registry, "TP-PAR-514", "CP-PAR-041", testCloneTypeRepresentativeAndExposeSeamLimit,
-        "PR", TestDisposition::KnownProductDefect, {"infrastructure-special"});
+        "PR", TestDisposition::InfrastructurePending, {"infrastructure-special"});
     addFinalParserCase(registry, "TP-PAR-515", "CP-PAR-041", testCloneAstTopology);
     addFinalParserCase(registry, "TP-PAR-516", "CP-PAR-041", testCloneGenericConstraintSeam,
-        "PR", TestDisposition::KnownProductDefect, {"infrastructure-special"});
+        "PR", TestDisposition::InfrastructurePending, {"infrastructure-special"});
     addFinalParserCase(registry, "TP-PAR-517", "CP-PAR-041", testCloneNullThroughOrPattern);
     addFinalParserCase(registry, "TP-PAR-518", "CP-PAR-041", testFloatingPointPropagation);
     addFinalParserCase(registry, "TP-PAR-519", "CP-PAR-041", testFloatingPointOverrideBoundary);
@@ -228,6 +228,6 @@ void registerParserConstructionCloneFinalModule(TestRegistry& registry)
     addFinalParserCase(registry, "TP-PAR-522", "CP-PAR-041", testSignedIntegerOverflow);
     addFinalParserCase(registry, "TP-PAR-523", "CP-PAR-041", testSignedIntegerNonLiteral);
     addFinalParserCase(registry, "TP-PAR-524", "CP-PAR-041", testOperatorMappingsAndExposeFallbackLimit,
-        "PR", TestDisposition::KnownProductDefect, {"infrastructure-special"});
+        "PR", TestDisposition::InfrastructurePending, {"infrastructure-special"});
 }
 }

@@ -1,0 +1,46 @@
+using NativeSharp.Core;
+using NativeSharp.Compiler.Source;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Source
+{
+    // CSH-SRC-006 uses an explicit absolute sandbox oracle, never the ambient caller cwd.
+    public class SelfHostSourceDiagnosticPathModule
+    {
+        public static int Run(string caseId, string sandbox)
+        {
+            raii string root = SelfHostSourceTestSupport.NormalizedSandbox(sandbox);
+            raii string input = SelfHostSourceTestSupport.SandboxFile(sandbox, "source-input.ns");
+            if (caseId == "TSH-00887")
+            {
+                raii string actual = DiagnosticPath.Normalize(sandbox);
+                return actual == root ? 0 : 50;
+            }
+            if (caseId == "TSH-00888")
+            {
+                raii string mixed = String.Concat(sandbox, "\\folder/../source-input.ns");
+                raii string actual = DiagnosticPath.Normalize(mixed);
+                return actual == input ? 0 : 51;
+            }
+            if (caseId == "TSH-00890")
+            {
+                raii string actual = DiagnosticPath.Normalize("");
+                return actual == "" ? 0 : 52;
+            }
+            if (caseId == "TSH-00891")
+            {
+                raii string dotted = String.Concat(sandbox, "\\.\\source-input.ns");
+                raii string actual = DiagnosticPath.Normalize(dotted);
+                return DiagnosticPath.Normalize("") == "" && actual == input ? 0 : 53;
+            }
+            if (caseId == "TSH-00893")
+            {
+                raii string first = DiagnosticPath.Normalize(input);
+                raii string otherInput = SelfHostSourceTestSupport.SandboxFile(sandbox, "source-empty.ns");
+                raii string other = DiagnosticPath.Normalize(otherInput);
+                raii string second = DiagnosticPath.Normalize(input);
+                return first == input && second == input && other == otherInput ? 0 : 54;
+            }
+            return -1;
+        }
+    }
+}

@@ -4,18 +4,25 @@
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
   "last_completed_commit": "91aed6dce",
-  "last_completed_batch": "TANDA-03-03",
-  "last_completed_case": "TF-PAS-448",
-  "current_wave": 4,
-  "current_component": "Host.Compilation;Host.Frontend;Host.LLVM",
+  "last_completed_batch": "TANDA-07-16-SELFHOST-TYPES",
+  "last_completed_case": "TSH-01027",
+  "current_wave": 8,
+  "current_component": "SelfHost.Contracts",
   "current_components": [
-    "Host.Compilation",
-    "Host.Frontend",
-    "Host.LLVM"
+    "SelfHost.Contracts"
   ],
-  "next_contract": "Host.Compilation canonical contracts;Host.Frontend canonical contracts;Host.LLVM canonical contracts",
-  "next_action": "Integrate the fully materialized Wave 3 while agents materialize Host.Compilation, Host.Frontend, and Host.LLVM; do not run validation until all Phase 2 implementation is complete.",
+  "next_contract": "C12B-SHC-001",
+  "next_action": "Materialize SelfHost.Contracts without validation while the independent Bootstrap.Infrastructure block proceeds separately.",
   "implementation_materialization": {
+    "Host.AST": {
+      "expected": 230,
+      "materialized": 230,
+      "executable": 224,
+      "infrastructure_pending": 6,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 224
+    },
     "Host.Sema": {
       "expected": 321,
       "materialized": 321,
@@ -25,37 +32,254 @@
     "Host.HIR": {
       "expected": 232,
       "materialized": 232,
-      "integrated": false,
+      "integrated": true,
       "verified": 0
     },
     "Host.CFG": {
       "expected": 208,
       "materialized": 208,
-      "integrated": false,
+      "integrated": true,
       "verified": 0
     },
     "Host.Dominance": {
       "expected": 256,
       "materialized": 256,
-      "integrated": false,
+      "integrated": true,
       "verified": 0
     },
     "Host.SSA": {
       "expected": 336,
       "materialized": 336,
-      "integrated": false,
+      "integrated": true,
       "verified": 0
     },
     "Host.MIR": {
       "expected": 304,
       "materialized": 304,
-      "integrated": false,
+      "integrated": true,
       "verified": 0
     },
     "Host.Passes": {
       "expected": 448,
       "materialized": 448,
-      "integrated": false,
+      "integrated": true,
+      "verified": 0
+    },
+    "Host.Compilation": {
+      "expected": 416,
+      "materialized": 416,
+      "integrated": true,
+      "verified": 0
+    },
+    "Host.Frontend": {
+      "expected": 504,
+      "materialized": 504,
+      "integrated": true,
+      "verified": 0
+    },
+    "Host.LLVM": {
+      "expected": 512,
+      "materialized": 512,
+      "integrated": true,
+      "verified": 0
+    },
+    "Host.Interop": {
+      "expected": 384,
+      "materialized": 384,
+      "integrated": true,
+      "verified": 0
+    },
+    "Host.Linker": {
+      "expected": 320,
+      "materialized": 320,
+      "executable": 13,
+      "infrastructure_pending": 307,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "Host.Driver": {
+      "expected": 616,
+      "materialized": 616,
+      "executable": 264,
+      "infrastructure_pending": 352,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "Host.Runtime": {
+      "expected": 384,
+      "materialized": 384,
+      "executable": 80,
+      "infrastructure_pending": 304,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "Host.nsc": {
+      "expected": 160,
+      "materialized": 160,
+      "executable": 0,
+      "infrastructure_pending": 160,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "Host.LanguageService": {
+      "expected": 336,
+      "materialized": 336,
+      "executable": 255,
+      "infrastructure_pending": 80,
+      "known_product_defect": 1,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Basic": {
+      "expected": 28,
+      "materialized": 28,
+      "executable": 27,
+      "plan_contradiction": 1,
+      "infrastructure_pending": 0,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Bootstrap": {
+      "expected": 23,
+      "materialized": 23,
+      "executable": 0,
+      "infrastructure_pending": 23,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.CodeGen": {
+      "expected": 136,
+      "materialized": 136,
+      "executable": 0,
+      "infrastructure_pending": 136,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Diagnostics": {
+      "expected": 28,
+      "materialized": 28,
+      "executable": 28,
+      "infrastructure_pending": 0,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Documentation": {
+      "expected": 12,
+      "materialized": 12,
+      "executable": 0,
+      "infrastructure_pending": 12,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Driver": {
+      "expected": 79,
+      "materialized": 79,
+      "executable": 0,
+      "infrastructure_pending": 79,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.IR": {
+      "expected": 92,
+      "materialized": 92,
+      "executable": 0,
+      "infrastructure_pending": 92,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Lexer": {
+      "expected": 53,
+      "materialized": 53,
+      "executable": 53,
+      "infrastructure_pending": 0,
+      "known_product_defect": 1,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Parser": {
+      "expected": 127,
+      "materialized": 127,
+      "executable": 0,
+      "infrastructure_pending": 127,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Project": {
+      "expected": 22,
+      "materialized": 22,
+      "executable": 0,
+      "infrastructure_pending": 22,
+      "known_product_defect": 0,
+      "plan_contradiction": 1,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Projects": {
+      "expected": 95,
+      "materialized": 95,
+      "executable": 0,
+      "infrastructure_pending": 95,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Sema": {
+      "expected": 153,
+      "materialized": 153,
+      "executable": 0,
+      "infrastructure_pending": 153,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Source": {
+      "expected": 61,
+      "materialized": 61,
+      "executable": 48,
+      "infrastructure_pending": 2,
+      "plan_contradiction": 11,
+      "known_product_defect": 1,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Symbols": {
+      "expected": 35,
+      "materialized": 35,
+      "executable": 0,
+      "infrastructure_pending": 35,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Syntax": {
+      "expected": 36,
+      "materialized": 36,
+      "executable": 0,
+      "infrastructure_pending": 36,
+      "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "SelfHost.Types": {
+      "expected": 47,
+      "materialized": 47,
+      "executable": 36,
+      "infrastructure_pending": 1,
+      "plan_contradiction": 10,
+      "known_product_defect": 2,
+      "integrated": true,
       "verified": 0
     }
   },
@@ -247,8 +471,10 @@
       ]
     },
     "CA-AST-002": {
-      "implemented_cases": 5,
+      "materialized_cases": 8,
+      "executable_cases": 5,
       "verified_cases": 5,
+      "infrastructure_pending_cases": 3,
       "blocked_cases": [
         "TA-AST-014",
         "TA-AST-016",
@@ -256,15 +482,19 @@
       ]
     },
     "CA-AST-019": {
-      "implemented_cases": 22,
+      "materialized_cases": 23,
+      "executable_cases": 22,
       "verified_cases": 22,
+      "infrastructure_pending_cases": 1,
       "blocked_cases": [
         "TA-AST-215"
       ]
     },
     "CA-AST-020": {
-      "implemented_cases": 12,
+      "materialized_cases": 14,
+      "executable_cases": 12,
       "verified_cases": 12,
+      "infrastructure_pending_cases": 2,
       "blocked_cases": [
         "TA-AST-223",
         "TA-AST-224"
@@ -292,7 +522,8 @@
     "2": {
       "status": "EN CURSO",
       "product_cases_expected": 1197,
-      "product_cases_implemented": 1191,
+      "product_cases_implemented": 1197,
+      "product_cases_integrated": 1197,
       "product_cases_verified": 333,
       "known_failure_cases_implemented": 1,
       "validation_pending_cases": 0,
@@ -327,21 +558,69 @@
     "4": {
       "status": "EN CURSO",
       "product_cases_expected": 920,
-      "product_cases_implemented": 0,
+      "product_cases_implemented": 920,
+      "product_cases_integrated": 920,
       "product_cases_verified": 0,
-      "current_components": [
-        "Host.Compilation",
-        "Host.Frontend"
+      "current_components": [],
+      "integrated_components": [
+        "Host.Frontend",
+        "Host.Compilation"
       ],
       "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
     },
     "5": {
       "status": "EN CURSO",
       "product_cases_expected": 1600,
-      "product_cases_implemented": 0,
+      "product_cases_implemented": 1600,
+      "product_cases_integrated": 1600,
       "product_cases_verified": 0,
-      "current_components": [
-        "Host.LLVM"
+      "current_components": [],
+      "integrated_components": [
+        "Host.LLVM",
+        "Host.Interop",
+        "Host.Linker",
+        "Host.Runtime"
+      ],
+      "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
+    },
+    "6": {
+      "status": "EN CURSO",
+      "product_cases_expected": 1112,
+      "product_cases_implemented": 1112,
+      "product_cases_integrated": 1112,
+      "product_cases_verified": 0,
+      "current_components": [],
+      "integrated_components": [
+        "Host.Driver",
+        "Host.nsc",
+        "Host.LanguageService"
+      ],
+      "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
+    },
+    "7": {
+      "status": "EN CURSO",
+      "product_cases_expected": 1027,
+      "product_cases_implemented": 1027,
+      "product_cases_integrated": 1027,
+      "product_cases_verified": 0,
+      "current_components": [],
+      "integrated_components": [
+        "SelfHost.Basic",
+        "SelfHost.Bootstrap",
+        "SelfHost.CodeGen",
+        "SelfHost.Diagnostics",
+        "SelfHost.Documentation",
+        "SelfHost.Driver",
+        "SelfHost.IR",
+        "SelfHost.Lexer",
+        "SelfHost.Parser",
+        "SelfHost.Project",
+        "SelfHost.Projects",
+        "SelfHost.Sema",
+        "SelfHost.Source",
+        "SelfHost.Symbols",
+        "SelfHost.Syntax",
+        "SelfHost.Types"
       ],
       "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
     }

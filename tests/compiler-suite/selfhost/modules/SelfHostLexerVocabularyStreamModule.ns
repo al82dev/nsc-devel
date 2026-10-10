@@ -1,0 +1,70 @@
+using NativeSharp.Core;
+using NativeSharp.Compiler.Lexer;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Lexer
+{
+    public class SelfHostLexerVocabularyStreamModule
+    {
+        private static string ExpectedNames()
+        {
+            return "EndOfFile|Invalid|Identifier|IntegerLiteral|FloatingLiteral|CharacterLiteral|StringLiteral|AssemblyText|AssemblyNewLine|KwVoid|KwBool|KwSByte|KwByte|KwChar|KwShort|KwUShort|KwInt|KwUInt|KwLong|KwULong|KwNInt|KwNUInt|KwFloat|KwDouble|KwString|KwConst|KwStatic|KwReadonly|KwVolatile|KwInline|KwForceInline|KwNoInline|KwNoHeap|KwPublic|KwInternal|KwProtected|KwPrivate|KwIf|KwElse|KwWhile|KwDo|KwFor|KwSwitch|KwCase|KwBreak|KwContinue|KwReturn|KwTry|KwCatch|KwFinally|KwThrow|KwStruct|KwClass|KwInterface|KwEnum|KwNamespace|KwUsing|KwNew|KwDelete|KwDestroy|KwStackalloc|KwSizeof|KwAlignof|KwOffsetof|KwStaticAssert|KwDefault|KwExtern|KwExport|KwC|KwVectorCall|KwTrue|KwFalse|KwNull|KwThis|KwBase|KwVirtual|KwOverride|KwAbstract|KwSealed|KwGet|KwSet|KwOperator|KwImplicit|KwExplicit|KwIs|KwAs|KwDelegate|KwEvent|KwRaii|KwMove|KwOwned|KwBorrowed|KwVar|KwForeach|KwIn|LeftParen|RightParen|LeftBrace|RightBrace|LeftBracket|RightBracket|Semicolon|Comma|Colon|Question|Dot|Ellipsis|Arrow|FatArrow|Plus|Minus|Star|Slash|Percent|PlusPlus|MinusMinus|EqualEqual|BangEqual|Less|LessEqual|Greater|GreaterEqual|Bang|AmpAmp|PipePipe|Amp|Pipe|Caret|Tilde|LessLess|GreaterGreater|Equal|PlusEqual|MinusEqual|StarEqual|SlashEqual|PercentEqual|AmpEqual|PipeEqual|CaretEqual|LessLessEqual|GreaterGreaterEqual|InterpolatedStringLiteral|QuestionQuestion|QuestionQuestionEqual|QuestionDot|DotDot";
+        }
+
+        private static owned string ActualNames()
+        {
+            raii StringBuilder output = new StringBuilder();
+            int index = 0;
+            while (index < 147)
+            {
+                if (index != 0) { output.Append('|'); }
+                output.Append(TokenFacts.Name((TokenKind)index));
+                index = index + 1;
+            }
+            return output.ToOwnedString();
+        }
+
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00399") { return ActualNames() == ExpectedNames() ? 0 : 1; }
+            if (caseId == "TSH-00400") { return TokenFacts.Name(TokenKind.KwStaticAssert) == "KwStaticAssert" && TokenFacts.Name(TokenKind.GreaterGreaterEqual) == "GreaterGreaterEqual" ? 0 : 2; }
+            if (caseId == "TSH-00401") { return TokenFacts.Name((TokenKind)(-1)) == "Invalid" && TokenFacts.Name((TokenKind)147) == "Invalid" ? 0 : 3; }
+            if (caseId == "TSH-00402") { return UniqueNames() ? 0 : 4; }
+            if (caseId == "TSH-00403") { return TokenFacts.Name((TokenKind)0) == "EndOfFile" && TokenFacts.Name((TokenKind)146) == "DotDot" ? 0 : 5; }
+            if (caseId == "TSH-00404") { return ActualNames() == ExpectedNames() && String.Contains(ActualNames(), "InterpolatedStringLiteral|QuestionQuestion") ? 0 : 6; }
+            if (caseId == "TSH-00405") { raii string a = ActualNames(); raii string b = ActualNames(); return a == b ? 0 : 7; }
+            if (caseId == "TSH-00406") { raii TokenStream t = new TokenStream(); return t.Count() == 0 && t.ErrorCount() == 0 ? 0 : 8; }
+            if (caseId == "TSH-00407") { raii TokenStream t = new TokenStream(); t.Add(TokenKind.Identifier, 3, 8); t.Add(TokenKind.EndOfFile, 8, 8); return t.Count() == 2 && SelfHostLexerTestSupport.Token(t, 0, TokenKind.Identifier, 3, 8) && t.ErrorCount() == 0 ? 0 : 9; }
+            if (caseId == "TSH-00408") { raii TokenStream t = new TokenStream(); t.AddError(); return t.Count() == 0 && t.ErrorCount() == 1 ? 0 : 10; }
+            if (caseId == "TSH-00409") { raii TokenStream t = new TokenStream(); t.Add(TokenKind.Identifier, 9, 2); return t.BeginAt(0) == 9 && t.EndAt(0) == 2 ? 0 : 11; }
+            if (caseId == "TSH-00410") { raii TokenStream t = new TokenStream(); t.Add(TokenKind.EndOfFile, -2147483647, 2147483647); return t.BeginAt(0) == -2147483647 && t.EndAt(0) == 2147483647 ? 0 : 12; }
+            if (caseId == "TSH-00411") { raii TokenStream t = new TokenStream(); t.Add(TokenKind.Invalid, 0, 1); t.AddError(); t.Add(TokenKind.Invalid, 1, 2); return t.ErrorCount() == 3 ? 0 : 13; }
+            if (caseId == "TSH-00412") { return RepeatStream() ? 0 : 14; }
+            return -1;
+        }
+
+        private static bool UniqueNames()
+        {
+            int left = 0;
+            while (left < 147)
+            {
+                int right = left + 1;
+                while (right < 147)
+                {
+                    if (TokenFacts.Name((TokenKind)left) == TokenFacts.Name((TokenKind)right)) { return false; }
+                    right = right + 1;
+                }
+                left = left + 1;
+            }
+            return true;
+        }
+
+        private static bool RepeatStream()
+        {
+            raii TokenStream a = new TokenStream(); raii TokenStream b = new TokenStream();
+            a.Add(TokenKind.Identifier, 0, 1); a.Add(TokenKind.Invalid, 2, 3);
+            b.Add(TokenKind.Identifier, 0, 1); b.Add(TokenKind.Invalid, 2, 3);
+            return a.Count() == b.Count() && a.KindAt(0) == b.KindAt(0) &&
+                a.KindAt(1) == b.KindAt(1) && a.ErrorCount() == b.ErrorCount();
+        }
+    }
+}

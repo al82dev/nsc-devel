@@ -396,7 +396,7 @@ void verifierModuleContract(TestContext& context, std::size_t variant)
 void registerDominanceTraversalDump129To192Module(TestRegistry& registry)
 {
     addDominanceContract(registry, 17, "component", traversalNumberingContract, {4});
-    addDominanceContract(registry, 18, "component", frontierConstructionContract, {4, 6});
+    addDominanceContract(registry, 18, "component", frontierConstructionContract, {4}, {6});
     addDominanceContract(registry, 19, "unit", builderErrorContract);
     addDominanceContract(registry, 20, "unit", moduleDumpContract);
     addDominanceContract(registry, 21, "unit", functionDumpContract);

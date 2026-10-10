@@ -1,0 +1,59 @@
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Types
+{
+    // Covers CSH-TYP-001 using real enum consumers. Cases whose requested rejection
+    // cannot be represented by the frozen API live in the classification catalogue.
+    public class SelfHostTypesVocabularyModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00981") { return MinimalContract(); }
+            if (caseId == "TSH-00982") { return RepresentativeContract(); }
+            if (caseId == "TSH-00985") { return BoundaryVocabulary(); }
+            if (caseId == "TSH-00986") { return NamedVariants(); }
+            if (caseId == "TSH-00987") { return Repeatability(); }
+            return -1;
+        }
+
+        private static int MinimalContract()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Error, "error");
+            return type.Kind() == SemanticTypeKind.Error && type.Display() == "error" &&
+                type.Ownership() == OwnershipKind.None ? 0 : 1;
+        }
+
+        private static int RepresentativeContract()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Pointer, "borrowed int*");
+            type.SetElementType(7);
+            type.SetOwnership(OwnershipKind.Borrowed);
+            return type.Kind() == SemanticTypeKind.Pointer && type.ElementType() == 7 &&
+                type.Ownership() == OwnershipKind.Borrowed ? 0 : 2;
+        }
+
+        private static int BoundaryVocabulary()
+        {
+            raii SemanticType empty = new SemanticType(SemanticTypeKind.Error, "");
+            raii SemanticType nonAscii = new SemanticType(SemanticTypeKind.Named, "Niño");
+            raii SemanticType duplicate = new SemanticType(SemanticTypeKind.Named, "Niño");
+            return empty.Display().Length == 0 && nonAscii.Display() == "Niño" &&
+                duplicate.Display() == nonAscii.Display() ? 0 : 5;
+        }
+
+        private static int NamedVariants()
+        {
+            return SelfHostTypesTestSupport.AllSemanticKinds() &&
+                SelfHostTypesTestSupport.AllOwnershipKinds() ? 0 : 6;
+        }
+
+        private static int Repeatability()
+        {
+            raii SemanticType first = new SemanticType(SemanticTypeKind.TypeParameter, "T");
+            raii SemanticType second = new SemanticType(SemanticTypeKind.TypeParameter, "T");
+            raii SemanticType independent = new SemanticType(SemanticTypeKind.Array, "T[]");
+            return first.Kind() == second.Kind() && first.Display() == second.Display() &&
+                independent.Kind() == SemanticTypeKind.Array ? 0 : 7;
+        }
+    }
+}

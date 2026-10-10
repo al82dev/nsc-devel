@@ -305,7 +305,7 @@ void registerSemaTypeSystemModule(TestRegistry& registry)
         const std::size_t ordinal = index + 54;
         const std::string id = "TS-SEMA-0" + std::to_string(ordinal);
         const TestDisposition disposition = ordinal == 77
-            ? TestDisposition::KnownProductDefect : TestDisposition::Required;
+            ? TestDisposition::InfrastructurePending : TestDisposition::Required;
         std::vector<std::string> tags;
         if (ordinal == 77) tags = {"infrastructure-special"};
         addSemaCase(registry, id, ordinal <= 65 ? "CS-SEMA-008" : "CS-SEMA-009", "unit",

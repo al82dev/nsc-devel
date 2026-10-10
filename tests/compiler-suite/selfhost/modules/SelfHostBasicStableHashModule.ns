@@ -1,0 +1,57 @@
+using NativeSharp.Compiler.Basic;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Basic
+{
+    public class SelfHostBasicStableHashModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00016") { return EmptyVector(); }
+            if (caseId == "TSH-00017") { return RepresentativeVector(); }
+            if (caseId == "TSH-00019") { return ByteNarrowingVector(); }
+            if (caseId == "TSH-00020") { return BoundaryVectors(); }
+            if (caseId == "TSH-00021") { return NamedVariants(); }
+            if (caseId == "TSH-00022") { return RepeatabilityAndOrder(); }
+            return -1;
+        }
+
+        private static int EmptyVector()
+        {
+            return StableHash.Text("") == 14695981039346656037UL ? 0 : 16;
+        }
+
+        private static int RepresentativeVector()
+        {
+            return StableHash.Text("hello") == 11831194018420276491UL &&
+                StableHash.Text("NativeSharp") == 9646593597161498730UL ? 0 : 17;
+        }
+
+        private static int ByteNarrowingVector()
+        {
+            return StableHash.Text("é") == 12638336734137078692UL &&
+                StableHash.Text("ñ") == 12638345530230104380UL ? 0 : 19;
+        }
+
+        private static int BoundaryVectors()
+        {
+            return StableHash.Text("") == 14695981039346656037UL &&
+                StableHash.Text("a") == 12638187200555641996UL ? 0 : 20;
+        }
+
+        private static int NamedVariants()
+        {
+            return StableHash.Text("native") == 5435875641555214026UL &&
+                StableHash.Text("sharp") == 7940025677968550919UL &&
+                StableHash.Text("native") != StableHash.Text("sharp") ? 0 : 21;
+        }
+
+        private static int RepeatabilityAndOrder()
+        {
+            ulong first = StableHash.Text("ab");
+            ulong repeated = StableHash.Text("ab");
+            ulong reversed = StableHash.Text("ba");
+            return first == 620445648566982762UL && repeated == first &&
+                reversed == 623241706636955660UL && reversed != first ? 0 : 22;
+        }
+    }
+}

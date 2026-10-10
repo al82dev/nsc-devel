@@ -1,0 +1,65 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Source
+{
+    // CSH-SRC-005 compares exact bytes and width preservation for every admitted transformation.
+    public class SelfHostSourceTransformationModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00879")
+            {
+                return SelfHostSourceTestSupport.Transform("#run(1)", "1      ") ? 0 : 40;
+            }
+            if (caseId == "TSH-00880")
+            {
+                return SelfHostSourceTestSupport.Transform(
+                    "comptime int x = #run(1 + 2 * 3);",
+                    "         int x = 7              ;") ? 0 : 41;
+            }
+            if (caseId == "TSH-00882")
+            {
+                bool valid = SelfHostSourceTestSupport.Transform("#run(1 / 0)", "#run(1 / 0)") &&
+                    SelfHostSourceTestSupport.Transform("#run((1)", "#run((1)") &&
+                    SelfHostSourceTestSupport.Transform("#run(name)", "#run(name)");
+                return valid ? 0 : 42;
+            }
+            if (caseId == "TSH-00883")
+            {
+                bool valid = SelfHostSourceTestSupport.Transform("", "") &&
+                    SelfHostSourceTestSupport.Transform("#run(0)", "0      ") &&
+                    SelfHostSourceTestSupport.Transform("#run(~0)", "-1      ");
+                return valid ? 0 : 43;
+            }
+            if (caseId == "TSH-00884")
+            {
+                raii StringBuilder expected = new StringBuilder(29);
+                expected.Append("// #run(2)\n20");
+                int padding = 2;
+                while (padding < 17) { expected.Append(' '); padding = padding + 1; }
+                raii string expectedText = expected.ToOwnedString();
+                bool valid = SelfHostSourceTestSupport.Transform(
+                    "// #run(2)\n#run((2 + 3) * 4)", expectedText) &&
+                    SelfHostSourceTestSupport.Transform("\"#run(2)\" '#run(3)'",
+                        "\"#run(2)\" '#run(3)'");
+                return valid ? 0 : 44;
+            }
+            if (caseId == "TSH-00886")
+            {
+                raii StringBuilder source = new StringBuilder(28672);
+                raii StringBuilder expected = new StringBuilder(28672);
+                int index = 0;
+                while (index < 4096)
+                {
+                    source.Append("#run(1)");
+                    expected.Append("1      ");
+                    index = index + 1;
+                }
+                raii string sourceText = source.ToOwnedString();
+                raii string expectedText = expected.ToOwnedString();
+                return SelfHostSourceTestSupport.Transform(sourceText, expectedText) ? 0 : 45;
+            }
+            return -1;
+        }
+    }
+}

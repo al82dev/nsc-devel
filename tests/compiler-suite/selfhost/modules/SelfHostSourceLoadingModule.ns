@@ -1,0 +1,76 @@
+using NativeSharp.Compiler.Basic;
+using NativeSharp.Compiler.Source;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Source
+{
+    // CSH-SRC-008 loads controller-owned files. The missing-file oracle intentionally remains
+    // red: the documented contract rejects publication, while the product currently publishes
+    // an empty SourceBuffer because File.ReadAllText collapses failure to an empty string.
+    public class SelfHostSourceLoadingModule
+    {
+        public static int Run(string caseId, string sandbox)
+        {
+            raii string emptyPath = SelfHostSourceTestSupport.SandboxFile(sandbox, "source-empty.ns");
+            raii string inputPath = SelfHostSourceTestSupport.SandboxFile(sandbox, "source-input.ns");
+            if (caseId == "TSH-00901")
+            {
+                raii SourceBuffer buffer = SourceBuffer.Load(new FileId(21), emptyPath);
+                bool valid = buffer != null && buffer.Id().Value() == 21 && buffer.Path() == emptyPath &&
+                    buffer.RawText() == "" && buffer.Text() == "" && buffer.LineCount() == 1;
+                return valid ? 0 : 70;
+            }
+            if (caseId == "TSH-00902")
+            {
+                raii SourceBuffer buffer = SourceBuffer.Load(new FileId(22), inputPath);
+                bool valid = buffer != null && buffer.RawText() == "alpha\r\nbeta\rgamma\n" &&
+                    buffer.Text() == "alpha\nbeta\ngamma\n" && buffer.RawLength() == 18 &&
+                    buffer.Length() == 17 && buffer.LineCount() == 4 &&
+                    buffer.ContentHash() == StableHash.Text("alpha\nbeta\ngamma\n");
+                return valid ? 0 : 71;
+            }
+            if (caseId == "TSH-00903")
+            {
+                raii string missingPath = SelfHostSourceTestSupport.SandboxFile(sandbox, "missing-source.ns");
+                raii SourceBuffer missing = SourceBuffer.Load(new FileId(23), missingPath);
+                return missing == null ? 0 : 72;
+            }
+            if (caseId == "TSH-00905")
+            {
+                raii string unicodePath = SelfHostSourceTestSupport.SandboxFile(sandbox, "source-unicode.ns");
+                raii SourceBuffer empty = SourceBuffer.Load(new FileId(24), emptyPath);
+                raii SourceBuffer unicode = SourceBuffer.Load(new FileId(25), unicodePath);
+                bool valid = empty.RawLength() == 0 && unicode.RawText() == "á\r\nβ" &&
+                    unicode.Text() == "á\nβ" && unicode.LineCount() == 2;
+                return valid ? 0 : 73;
+            }
+            if (caseId == "TSH-00906")
+            {
+                raii string frontendPath = SelfHostSourceTestSupport.SandboxFile(sandbox, "source-frontend.ns");
+                raii SourceBuffer plain = SourceBuffer.Load(new FileId(26), frontendPath);
+                raii SourceBuffer frontend = SourceBuffer.LoadFrontend(new FileId(27), frontendPath);
+                bool valid = plain.Text() == "comptime int value = #run(2 + 3);\n" &&
+                    frontend.Text() == "         int value = 5          ;\n" &&
+                    plain.Id().Value() == 26 && frontend.Id().Value() == 27;
+                return valid ? 0 : 74;
+            }
+            if (caseId == "TSH-00907")
+            {
+                raii SourceBuffer first = SourceBuffer.Load(new FileId(28), inputPath);
+                raii SourceBuffer second = SourceBuffer.Load(new FileId(28), inputPath);
+                bool valid = first.Text() == second.Text() && first.RawText() == second.RawText() &&
+                    first.ContentHash() == second.ContentHash() && first.Path() == second.Path();
+                return valid ? 0 : 75;
+            }
+            if (caseId == "TSH-00909")
+            {
+                raii string largePath = SelfHostSourceTestSupport.SandboxFile(sandbox, "source-large.ns");
+                raii SourceBuffer buffer = SourceBuffer.Load(new FileId(29), largePath);
+                bool valid = buffer.RawLength() == 98304 && buffer.Length() == 65536 &&
+                    buffer.LineCount() == 32769 &&
+                    SelfHostSourceTestSupport.Position(buffer, 65536, 32769, 1);
+                return valid ? 0 : 76;
+            }
+            return -1;
+        }
+    }
+}

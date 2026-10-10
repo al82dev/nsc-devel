@@ -1,0 +1,71 @@
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Types
+{
+    // Covers ordered function parameter IDs. Ordering is semantic, so the determinism case
+    // proves both stable repetition and a deliberate change after order perturbation.
+    public class SelfHostTypesParametersModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00994") { return EmptyParameters(); }
+            if (caseId == "TSH-00995") { return RepresentativeParameters(); }
+            if (caseId == "TSH-00998") { return BoundaryParameters(); }
+            if (caseId == "TSH-00999") { return NamedVariants(); }
+            if (caseId == "TSH-01000") { return RepeatabilityAndOrder(); }
+            return -1;
+        }
+
+        private static int EmptyParameters()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Function, "() -> void");
+            return type.ParameterCount() == 0 ? 0 : 14;
+        }
+
+        private static int RepresentativeParameters()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Function, "(int, double) -> bool");
+            type.AddParameterType(7);
+            type.AddParameterType(14);
+            return type.ParameterCount() == 2 && type.ParameterType(0) == 7 &&
+                type.ParameterType(1) == 14 ? 0 : 15;
+        }
+
+        private static int BoundaryParameters()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Function, "boundary");
+            type.AddParameterType(0);
+            type.AddParameterType(0);
+            type.AddParameterType(2147483647);
+            return type.ParameterCount() == 3 && type.ParameterType(0) == 0 &&
+                type.ParameterType(1) == 0 && type.ParameterType(2) == 2147483647 ? 0 : 18;
+        }
+
+        private static int NamedVariants()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Function, "builtin-ids");
+            int id = 0;
+            while (id < 16)
+            {
+                type.AddParameterType(id);
+                id = id + 1;
+            }
+            return type.ParameterCount() == 16 && type.ParameterType(0) == 0 &&
+                type.ParameterType(7) == 7 && type.ParameterType(15) == 15 ? 0 : 19;
+        }
+
+        private static int RepeatabilityAndOrder()
+        {
+            raii SemanticType first = new SemanticType(SemanticTypeKind.Function, "first");
+            raii SemanticType repeated = new SemanticType(SemanticTypeKind.Function, "repeated");
+            raii SemanticType reversed = new SemanticType(SemanticTypeKind.Function, "reversed");
+            first.AddParameterType(7); first.AddParameterType(14);
+            repeated.AddParameterType(7); repeated.AddParameterType(14);
+            reversed.AddParameterType(14); reversed.AddParameterType(7);
+            return first.ParameterCount() == repeated.ParameterCount() &&
+                first.ParameterType(0) == repeated.ParameterType(0) &&
+                first.ParameterType(1) == repeated.ParameterType(1) &&
+                reversed.ParameterType(0) != first.ParameterType(0) ? 0 : 20;
+        }
+    }
+}

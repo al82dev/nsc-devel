@@ -1,0 +1,41 @@
+using NativeSharp.Compiler.Lexer;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Lexer
+{
+    public class SelfHostLexerCursorTriviaModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00413") { raii TokenStream t = SelfHostLexerTestSupport.Lex(""); return t.Count() == 1 && SelfHostLexerTestSupport.Token(t, 0, TokenKind.EndOfFile, 0, 0) ? 0 : 15; }
+            if (caseId == "TSH-00414") { return RepresentativeCursor() ? 0 : 16; }
+            if (caseId == "TSH-00415") { raii TokenStream t = SelfHostLexerTestSupport.Lex("\xEF\xBB\xBFx"); return t.Count() == 2 && SelfHostLexerTestSupport.Token(t, 0, TokenKind.Identifier, 3, 4) ? 0 : 17; }
+            if (caseId == "TSH-00416") { return SelfHostLexerTestSupport.Single("@", TokenKind.Invalid, 0, 1, 1) ? 0 : 18; }
+            if (caseId == "TSH-00417") { raii TokenStream t = SelfHostLexerTestSupport.Lex("_Z9 0xAf"); return t.Count() == 3 && SelfHostLexerTestSupport.Token(t, 0, TokenKind.Identifier, 0, 3) && SelfHostLexerTestSupport.Token(t, 1, TokenKind.IntegerLiteral, 4, 8) ? 0 : 19; }
+            if (caseId == "TSH-00418") { raii TokenStream t = SelfHostLexerTestSupport.Lex("a+b"); return t.Count() == 4 && SelfHostLexerTestSupport.Token(t, 1, TokenKind.Plus, 1, 2) ? 0 : 20; }
+            if (caseId == "TSH-00419") { return SelfHostLexerTestSupport.SameLexing("alpha 42 + beta") ? 0 : 21; }
+            if (caseId == "TSH-00420") { return SelfHostLexerTestSupport.Single(" x", TokenKind.Identifier, 1, 2, 0) ? 0 : 22; }
+            if (caseId == "TSH-00421") { return Comments() ? 0 : 23; }
+            if (caseId == "TSH-00422") { raii TokenStream t = SelfHostLexerTestSupport.Lex(" \t\v\f\r\n"); return t.Count() == 1 && SelfHostLexerTestSupport.Token(t, 0, TokenKind.EndOfFile, 6, 6) ? 0 : 24; }
+            if (caseId == "TSH-00423") { raii TokenStream t = SelfHostLexerTestSupport.Lex("/* open"); return t.Count() == 1 && t.KindAt(0) == TokenKind.EndOfFile && t.ErrorCount() == 1 ? 0 : 25; }
+            if (caseId == "TSH-00424") { raii TokenStream t = SelfHostLexerTestSupport.Lex("/**///\nx"); return t.Count() == 2 && SelfHostLexerTestSupport.Token(t, 0, TokenKind.Identifier, 7, 8) && t.ErrorCount() == 0 ? 0 : 26; }
+            if (caseId == "TSH-00425") { return SelfHostLexerTestSupport.SameLexing("/*a*/ //b\r\nvalue") && SelfHostLexerTestSupport.Single("/*a*/value", TokenKind.Identifier, 5, 10, 0) ? 0 : 27; }
+            return -1;
+        }
+
+        private static bool RepresentativeCursor()
+        {
+            raii TokenStream t = SelfHostLexerTestSupport.Lex("a1 0xF +");
+            return t.Count() == 4 && SelfHostLexerTestSupport.Token(t, 0, TokenKind.Identifier, 0, 2) &&
+                SelfHostLexerTestSupport.Token(t, 1, TokenKind.IntegerLiteral, 3, 6) &&
+                SelfHostLexerTestSupport.Token(t, 2, TokenKind.Plus, 7, 8) &&
+                SelfHostLexerTestSupport.Token(t, 3, TokenKind.EndOfFile, 8, 8) && t.ErrorCount() == 0;
+        }
+
+        private static bool Comments()
+        {
+            raii TokenStream t = SelfHostLexerTestSupport.Lex("//a\n/*b*/x");
+            return t.Count() == 2 && SelfHostLexerTestSupport.Token(t, 0, TokenKind.Identifier, 9, 10) &&
+                SelfHostLexerTestSupport.Token(t, 1, TokenKind.EndOfFile, 10, 10) && t.ErrorCount() == 0;
+        }
+    }
+}

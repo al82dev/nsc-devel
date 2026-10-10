@@ -79,5 +79,7 @@ negativa o costosa que no puede expresarse fielmente permanece como limitación,
 ## Pendientes
 
 - Ejecutar el target consolidado y el gate exclusivo de `Host.AST` en Release y Debug.
-- Implementar las seis pruebas especiales cuando exista su infraestructura determinista aprobada.
+- Los seis casos especiales fueron materializados posteriormente como catálogo
+  `InfrastructurePending` en `TANDA-02-06-HOST-AST-INFRAESTRUCTURA-PENDIENTE.md`;
+  su infraestructura determinista y su validación siguen pendientes.
 - Continuar `Host.Parser` como trabajo independiente de la misma ola.

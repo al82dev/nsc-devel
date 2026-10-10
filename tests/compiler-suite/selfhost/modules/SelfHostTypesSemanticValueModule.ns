@@ -1,0 +1,77 @@
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Types
+{
+    // Covers the complete SemanticType field and transition contract without asking this
+    // value carrier to perform validation owned by semantic-analysis producers.
+    public class SelfHostTypesSemanticValueModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00988") { return InitialState(); }
+            if (caseId == "TSH-00989") { return RepresentativeState(); }
+            if (caseId == "TSH-00990") { return MissingRelations(); }
+            if (caseId == "TSH-00992") { return BoundaryValues(); }
+            if (caseId == "TSH-00993") { return TransitionTable(); }
+            return -1;
+        }
+
+        private static int InitialState()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Named, "T");
+            return type.Kind() == SemanticTypeKind.Named && type.Display() == "T" &&
+                type.ElementType() == -1 && type.ReturnType() == -1 &&
+                type.ParameterCount() == 0 && type.ElementCount() == 0 &&
+                type.Size() == 0 && type.Alignment() == 1 &&
+                type.Ownership() == OwnershipKind.None ? 0 : 8;
+        }
+
+        private static int RepresentativeState()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Function, "(int) -> bool");
+            type.SetElementType(3);
+            type.SetReturnType(2);
+            type.AddParameterType(7);
+            type.SetElementCount(4);
+            type.SetLayout(24, 8);
+            type.SetOwnership(OwnershipKind.Owned);
+            return type.ElementType() == 3 && type.ReturnType() == 2 &&
+                type.ParameterCount() == 1 && type.ParameterType(0) == 7 &&
+                type.ElementCount() == 4 && type.Size() == 24 && type.Alignment() == 8 &&
+                type.Ownership() == OwnershipKind.Owned ? 0 : 9;
+        }
+
+        private static int MissingRelations()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Named, "Opaque");
+            return type.ElementType() == -1 && type.ReturnType() == -1 &&
+                type.ParameterCount() == 0 ? 0 : 10;
+        }
+
+        private static int BoundaryValues()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Array, "Ñ[2147483647]");
+            type.SetElementType(2147483647);
+            type.SetElementCount(2147483647);
+            type.SetLayout(0, 1);
+            return type.ElementType() == 2147483647 && type.ElementCount() == 2147483647 &&
+                type.Size() == 0 && type.Alignment() == 1 ? 0 : 12;
+        }
+
+        private static int TransitionTable()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Array, "T[2]");
+            type.SetElementType(1);
+            type.SetElementType(7);
+            type.SetElementCount(1);
+            type.SetElementCount(2);
+            type.SetLayout(4, 4);
+            type.SetLayout(8, 8);
+            type.SetOwnership(OwnershipKind.Owned);
+            type.SetOwnership(OwnershipKind.Borrowed);
+            return type.ElementType() == 7 && type.ElementCount() == 2 &&
+                type.Size() == 8 && type.Alignment() == 8 &&
+                type.Ownership() == OwnershipKind.Borrowed ? 0 : 13;
+        }
+    }
+}

@@ -73,7 +73,8 @@ inline void addDominanceContract(
     std::size_t contractOrdinal,
     std::string layer,
     const ContractFunction& function,
-    std::vector<std::size_t> knownVariants = {},
+    std::vector<std::size_t> infrastructureVariants = {},
+    std::vector<std::size_t> productDefectVariants = {},
     std::vector<std::string> tags = {})
 {
     for (std::size_t variant = 1; variant <= 8; ++variant)
@@ -81,11 +82,17 @@ inline void addDominanceContract(
         std::vector<std::string> caseTags = tags;
         caseTags.push_back("dominance");
         caseTags.push_back("variant-" + std::to_string(variant));
-        const bool known = std::find(knownVariants.begin(), knownVariants.end(), variant) !=
-            knownVariants.end();
-        if (known)
+        const bool infrastructurePending = std::find(infrastructureVariants.begin(),
+            infrastructureVariants.end(), variant) != infrastructureVariants.end();
+        const bool knownProductDefect = std::find(productDefectVariants.begin(),
+            productDefectVariants.end(), variant) != productDefectVariants.end();
+        if (infrastructurePending)
         {
-            caseTags.push_back("known-limitation");
+            caseTags.push_back("infrastructure-special");
+        }
+        if (knownProductDefect)
+        {
+            caseTags.push_back("known-product-defect");
         }
         registry.add(TestCase{
             caseId(contractOrdinal, variant),
@@ -98,7 +105,9 @@ inline void addDominanceContract(
             {
                 function(context, variant);
             },
-            known ? TestDisposition::KnownProductDefect : TestDisposition::Required});
+            infrastructurePending ? TestDisposition::InfrastructurePending
+                : knownProductDefect ? TestDisposition::KnownProductDefect
+                                     : TestDisposition::Required});
     }
 }
 

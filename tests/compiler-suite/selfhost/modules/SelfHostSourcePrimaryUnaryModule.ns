@@ -1,0 +1,53 @@
+namespace NativeSharp.CompilerSuite.SelfHost.Source
+{
+    // CSH-SRC-002 covers public effects of primary and unary parsing without accessing private state.
+    public class SelfHostSourcePrimaryUnaryModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00856")
+            {
+                return SelfHostSourceTestSupport.Expression("(1)", true, 1) ? 0 : 10;
+            }
+            if (caseId == "TSH-00857")
+            {
+                return SelfHostSourceTestSupport.Expression("-~+5", true, 6) ? 0 : 11;
+            }
+            if (caseId == "TSH-00858")
+            {
+                return SelfHostSourceTestSupport.Expression("", false, 0) ? 0 : 12;
+            }
+            if (caseId == "TSH-00859")
+            {
+                bool valid = SelfHostSourceTestSupport.Expression("(1", false, 0) &&
+                    SelfHostSourceTestSupport.Expression("+", false, 0) &&
+                    SelfHostSourceTestSupport.Expression("name", false, 0);
+                return valid ? 0 : 13;
+            }
+            if (caseId == "TSH-00860")
+            {
+                bool valid = SelfHostSourceTestSupport.Expression("+0", true, 0) &&
+                    SelfHostSourceTestSupport.Expression("-0", true, 0) &&
+                    SelfHostSourceTestSupport.Expression("~0", true, -1) &&
+                    SelfHostSourceTestSupport.Expression("((0))", true, 0);
+                return valid ? 0 : 14;
+            }
+            if (caseId == "TSH-00861")
+            {
+                bool valid = SelfHostSourceTestSupport.Expression("+9", true, 9) &&
+                    SelfHostSourceTestSupport.Expression("-9", true, -9) &&
+                    SelfHostSourceTestSupport.Expression("~9", true, -10) &&
+                    SelfHostSourceTestSupport.Expression("0xff", true, 255);
+                return valid ? 0 : 15;
+            }
+            if (caseId == "TSH-00862")
+            {
+                bool first = SelfHostSourceTestSupport.Expression("-(~5)", true, 6);
+                bool second = SelfHostSourceTestSupport.Expression("-(~5)", true, 6);
+                bool equivalent = SelfHostSourceTestSupport.Expression("-~(5)", true, 6);
+                return first && second && equivalent ? 0 : 16;
+            }
+            return -1;
+        }
+    }
+}

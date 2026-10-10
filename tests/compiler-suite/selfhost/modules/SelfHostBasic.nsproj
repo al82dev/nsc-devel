@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup><Name>NativeSharpSelfHostBasicTests</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="SelfHostBasicMain.ns" />
+    <Compile Include="SelfHostBasicIdentifiersModule.ns" />
+    <Compile Include="SelfHostBasicArenaModule.ns" />
+    <Compile Include="SelfHostBasicStableHashModule.ns" />
+    <Compile Include="SelfHostBasicLifetimeModule.ns" />
+    <Compile Include="../../../../selfhost/nsc/Basic/Identifiers.ns" />
+    <Compile Include="../../../../selfhost/nsc/Basic/GenerationArena.ns" />
+    <Compile Include="../../../../selfhost/nsc/Basic/StableHash.ns" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,24 @@
+<Project>
+  <PropertyGroup><Name>NativeSharpSelfHostLexerTests</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="SelfHostLexerMain.ns" />
+    <Compile Include="SelfHostLexerTestSupport.ns" />
+    <Compile Include="SelfHostLexerVocabularyStreamModule.ns" />
+    <Compile Include="SelfHostLexerCursorTriviaModule.ns" />
+    <Compile Include="SelfHostLexerIdentifiersNumbersModule.ns" />
+    <Compile Include="SelfHostLexerLiteralsModule.ns" />
+    <Compile Include="SelfHostLexerFullModule.ns" />
+    <Compile Include="../../../../selfhost/nsc/Basic/Identifiers.ns" />
+    <Compile Include="../../../../selfhost/nsc/Basic/StableHash.ns" />
+    <Compile Include="../../../../selfhost/nsc/Source/ComptimeProcessor.ns" />
+    <Compile Include="../../../../selfhost/nsc/Source/SourceBuffer.ns" />
+    <Compile Include="../../../../selfhost/nsc/Diagnostics/Diagnostics.ns" />
+    <Compile Include="../../../../selfhost/nsc/Lexer/TokenKind.ns" />
+    <Compile Include="../../../../selfhost/nsc/Lexer/TokenStream.ns" />
+    <Compile Include="../../../../selfhost/nsc/Lexer/Lexer.ns" />
+    <Compile Include="../../../../selfhost/nsc/Lexer/TokenDumper.ns" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj" />
+  </ItemGroup>
+</Project>

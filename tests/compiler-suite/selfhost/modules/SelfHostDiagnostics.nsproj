@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup><Name>NativeSharpSelfHostDiagnosticsTests</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="SelfHostDiagnosticsMain.ns" />
+    <Compile Include="SelfHostDiagnosticsRecordsModule.ns" />
+    <Compile Include="SelfHostDiagnosticsRenderingModule.ns" />
+    <Compile Include="../../../../selfhost/nsc/Basic/Identifiers.ns" />
+    <Compile Include="../../../../selfhost/nsc/Basic/StableHash.ns" />
+    <Compile Include="../../../../selfhost/nsc/Source/ComptimeProcessor.ns" />
+    <Compile Include="../../../../selfhost/nsc/Source/SourceBuffer.ns" />
+    <Compile Include="../../../../selfhost/nsc/Diagnostics/Diagnostics.ns" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj" />
+  </ItemGroup>
+</Project>

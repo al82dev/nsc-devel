@@ -1,0 +1,57 @@
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Types
+{
+    // Covers the closed builtin table, including exact IDs, names, kinds, sizes and
+    // alignments. No case attempts to call the private AddBuiltin implementation.
+    public class SelfHostTypesBuiltinsModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-01001") { return MinimalInventory(); }
+            if (caseId == "TSH-01002") { return CompleteInventory(); }
+            if (caseId == "TSH-01005") { return LookupBoundaries(); }
+            if (caseId == "TSH-01006") { return NamedVariants(); }
+            if (caseId == "TSH-01007") { return RepeatableInitialization(); }
+            return -1;
+        }
+
+        private static int MinimalInventory()
+        {
+            raii TypeTable table = new TypeTable();
+            return table.Count() == 16 && table.Find("error") == 0 &&
+                table.Find("void") == 1 && table.Get(0).Kind() == SemanticTypeKind.Error ? 0 : 21;
+        }
+
+        private static int CompleteInventory()
+        {
+            raii TypeTable table = new TypeTable();
+            return table.Count() == 16 && SelfHostTypesTestSupport.BuiltinInventory(table) ? 0 : 22;
+        }
+
+        private static int LookupBoundaries()
+        {
+            raii TypeTable table = new TypeTable();
+            int before = table.Count();
+            int first = table.Find("int");
+            int repeated = table.Find("int");
+            return table.Find("") == -1 && table.Find("Int") == -1 &&
+                table.Find("Niño") == -1 && first == 7 && repeated == first &&
+                table.Count() == before ? 0 : 25;
+        }
+
+        private static int NamedVariants()
+        {
+            raii TypeTable table = new TypeTable();
+            return SelfHostTypesTestSupport.BuiltinInventory(table) &&
+                SelfHostTypesTestSupport.NumericTruthTable(table) ? 0 : 26;
+        }
+
+        private static int RepeatableInitialization()
+        {
+            raii TypeTable first = new TypeTable();
+            raii TypeTable second = new TypeTable();
+            return SelfHostTypesTestSupport.TablesEqual(first, second) ? 0 : 27;
+        }
+    }
+}

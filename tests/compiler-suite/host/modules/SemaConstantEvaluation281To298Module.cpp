@@ -382,7 +382,7 @@ void testTrapSuppressionScopes(TestContext& context)
 void registerSemaConstantEvaluation281To298Module(TestRegistry& registry)
 {
     addSemaCase(registry, "TS-SEMA-281", "CS-SEMA-027", "unit", testMaskForWidthObservability,
-        "PR", TestDisposition::KnownProductDefect, {"infrastructure-special", "anonymous-helper"});
+        "PR", TestDisposition::InfrastructurePending, {"infrastructure-special", "anonymous-helper"});
     addSemaCase(registry, "TS-SEMA-282", "CS-SEMA-027", "unit", testSignedBitsRoundTrip);
     addSemaCase(registry, "TS-SEMA-283", "CS-SEMA-027", "unit", testConstantAsSigned);
     addSemaCase(registry, "TS-SEMA-284", "CS-SEMA-027", "unit", testConstantAsUnsigned);

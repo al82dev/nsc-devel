@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup><Name>NativeSharpSelfHostSourceTests</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="SelfHostSourceMain.ns" />
+    <Compile Include="SelfHostSourceTestSupport.ns" />
+    <Compile Include="SelfHostSourceExpressionCursorModule.ns" />
+    <Compile Include="SelfHostSourcePrimaryUnaryModule.ns" />
+    <Compile Include="SelfHostSourcePrecedenceModule.ns" />
+    <Compile Include="SelfHostSourceMarkerModule.ns" />
+    <Compile Include="SelfHostSourceTransformationModule.ns" />
+    <Compile Include="SelfHostSourceDiagnosticPathModule.ns" />
+    <Compile Include="SelfHostSourceLineMappingModule.ns" />
+    <Compile Include="SelfHostSourceLoadingModule.ns" />
+    <Compile Include="../../../../selfhost/nsc/Basic/Identifiers.ns" />
+    <Compile Include="../../../../selfhost/nsc/Basic/StableHash.ns" />
+    <Compile Include="../../../../selfhost/nsc/Source/ComptimeProcessor.ns" />
+    <Compile Include="../../../../selfhost/nsc/Source/SourceBuffer.ns" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj" />
+  </ItemGroup>
+</Project>

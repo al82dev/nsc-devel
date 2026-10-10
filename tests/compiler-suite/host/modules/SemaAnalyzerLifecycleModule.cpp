@@ -227,7 +227,7 @@ void registerSemaAnalyzerLifecycleModule(TestRegistry& registry)
         const std::string id = "TS-SEMA-" + std::to_string(ordinal);
         const std::string contract = ordinal <= 94 ? "CS-SEMA-011" : "CS-SEMA-012";
         const TestDisposition disposition = ordinal == 94 || ordinal == 101
-            ? TestDisposition::KnownProductDefect : TestDisposition::Required;
+            ? TestDisposition::InfrastructurePending : TestDisposition::Required;
         std::vector<std::string> tags;
         if (ordinal == 94 || ordinal == 101) tags = {"infrastructure-special"};
         addSemaCase(registry, id, contract, "component", tests[index],

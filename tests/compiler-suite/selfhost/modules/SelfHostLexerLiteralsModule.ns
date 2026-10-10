@@ -1,0 +1,33 @@
+using NativeSharp.Compiler.Lexer;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Lexer
+{
+    public class SelfHostLexerLiteralsModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00438") { return SelfHostLexerTestSupport.Single("'A'", TokenKind.CharacterLiteral, 0, 3, 0) ? 0 : 40; }
+            if (caseId == "TSH-00439") { return RepresentativeLiterals() ? 0 : 41; }
+            if (caseId == "TSH-00440") { raii TokenStream a = SelfHostLexerTestSupport.Lex("'a\nnext"); raii TokenStream b = SelfHostLexerTestSupport.Lex("\"open"); return a.Count() == 3 && a.KindAt(0) == TokenKind.Invalid && a.KindAt(1) == TokenKind.Identifier && b.KindAt(0) == TokenKind.Invalid ? 0 : 42; }
+            if (caseId == "TSH-00441") { raii TokenStream t = SelfHostLexerTestSupport.Lex("\"\\q\" '\\q'"); return t.Count() == 3 && t.KindAt(0) == TokenKind.Invalid && t.KindAt(1) == TokenKind.Invalid && t.ErrorCount() == 2 ? 0 : 43; }
+            if (caseId == "TSH-00442") { return SelfHostLexerTestSupport.Single("\"\"\"\"\"\"", TokenKind.StringLiteral, 0, 6, 0) ? 0 : 44; }
+            if (caseId == "TSH-00443") { return LiteralVariants() ? 0 : 45; }
+            return -1;
+        }
+
+        private static bool RepresentativeLiterals()
+        {
+            raii TokenStream t = SelfHostLexerTestSupport.Lex("\"text\" '\\n'");
+            return t.Count() == 3 && SelfHostLexerTestSupport.Token(t, 0, TokenKind.StringLiteral, 0, 6) &&
+                SelfHostLexerTestSupport.Token(t, 1, TokenKind.CharacterLiteral, 7, 11) && t.ErrorCount() == 0;
+        }
+
+        private static bool LiteralVariants()
+        {
+            raii TokenStream t = SelfHostLexerTestSupport.Lex("'Z' \"s\" \"\"\"raw\"\"\" $\"value {x}\"");
+            return t.Count() == 5 && t.KindAt(0) == TokenKind.CharacterLiteral &&
+                t.KindAt(1) == TokenKind.StringLiteral && t.KindAt(2) == TokenKind.StringLiteral &&
+                t.KindAt(3) == TokenKind.InterpolatedStringLiteral && t.ErrorCount() == 0;
+        }
+    }
+}

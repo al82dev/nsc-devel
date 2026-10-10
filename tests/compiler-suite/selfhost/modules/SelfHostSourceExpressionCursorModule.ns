@@ -1,0 +1,50 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Source
+{
+    // CSH-SRC-001 observes primitive consumption through Evaluate's public full-input result.
+    public class SelfHostSourceExpressionCursorModule
+    {
+        public static int Run(string caseId)
+        {
+            if (caseId == "TSH-00849")
+            {
+                return SelfHostSourceTestSupport.Expression("0", true, 0) ? 0 : 1;
+            }
+            if (caseId == "TSH-00850")
+            {
+                return SelfHostSourceTestSupport.Expression("  12_345  ", true, 12345) ? 0 : 2;
+            }
+            if (caseId == "TSH-00852")
+            {
+                return SelfHostSourceTestSupport.Expression("12z", false, 0) ? 0 : 3;
+            }
+            if (caseId == "TSH-00853")
+            {
+                bool valid = SelfHostSourceTestSupport.Expression("", false, 0) &&
+                    SelfHostSourceTestSupport.Expression("0x0", true, 0) &&
+                    SelfHostSourceTestSupport.Expression("1__0", true, 10) &&
+                    SelfHostSourceTestSupport.Expression("é", false, 0);
+                return valid ? 0 : 4;
+            }
+            if (caseId == "TSH-00854")
+            {
+                bool valid = SelfHostSourceTestSupport.Expression("42", true, 42) &&
+                    SelfHostSourceTestSupport.Expression("0X2a", true, 42) &&
+                    SelfHostSourceTestSupport.Expression("\t\r\n7", true, 7) &&
+                    SelfHostSourceTestSupport.Expression("_name", false, 0);
+                return valid ? 0 : 5;
+            }
+            if (caseId == "TSH-00855")
+            {
+                raii StringBuilder text = new StringBuilder(4097);
+                text.Append('1');
+                int index = 0;
+                while (index < 4096) { text.Append('_'); index = index + 1; }
+                raii string value = text.ToOwnedString();
+                return SelfHostSourceTestSupport.Expression(value, true, 1) ? 0 : 6;
+            }
+            return -1;
+        }
+    }
+}

@@ -1,0 +1,107 @@
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Types
+{
+    // Centralizes exhaustive tables used by several cases. Every loop is bounded by the
+    // frozen 16-entry builtin inventory, so the helpers are O(1) in product terms.
+    public class SelfHostTypesTestSupport
+    {
+        public static bool MatchesKind(SemanticTypeKind kind, string display)
+        {
+            raii SemanticType type = new SemanticType(kind, display);
+            return type.Kind() == kind && type.Display() == display;
+        }
+
+        public static bool AllSemanticKinds()
+        {
+            return MatchesKind(SemanticTypeKind.Error, "error") &&
+                MatchesKind(SemanticTypeKind.Void, "void") &&
+                MatchesKind(SemanticTypeKind.Bool, "bool") &&
+                MatchesKind(SemanticTypeKind.Byte, "byte") &&
+                MatchesKind(SemanticTypeKind.Char, "char") &&
+                MatchesKind(SemanticTypeKind.Short, "short") &&
+                MatchesKind(SemanticTypeKind.UShort, "ushort") &&
+                MatchesKind(SemanticTypeKind.Int, "int") &&
+                MatchesKind(SemanticTypeKind.UInt, "uint") &&
+                MatchesKind(SemanticTypeKind.Long, "long") &&
+                MatchesKind(SemanticTypeKind.ULong, "ulong") &&
+                MatchesKind(SemanticTypeKind.NInt, "nint") &&
+                MatchesKind(SemanticTypeKind.NUInt, "nuint") &&
+                MatchesKind(SemanticTypeKind.Float, "float") &&
+                MatchesKind(SemanticTypeKind.Double, "double") &&
+                MatchesKind(SemanticTypeKind.Pointer, "pointer") &&
+                MatchesKind(SemanticTypeKind.Array, "array") &&
+                MatchesKind(SemanticTypeKind.Function, "function") &&
+                MatchesKind(SemanticTypeKind.Named, "named") &&
+                MatchesKind(SemanticTypeKind.NullLiteral, "null") &&
+                MatchesKind(SemanticTypeKind.StringLiteral, "string-literal") &&
+                MatchesKind(SemanticTypeKind.TypeParameter, "type-parameter");
+        }
+
+        public static bool AllOwnershipKinds()
+        {
+            raii SemanticType type = new SemanticType(SemanticTypeKind.Named, "T");
+            if (type.Ownership() != OwnershipKind.None) { return false; }
+            type.SetOwnership(OwnershipKind.Owned);
+            if (type.Ownership() != OwnershipKind.Owned) { return false; }
+            type.SetOwnership(OwnershipKind.Borrowed);
+            return type.Ownership() == OwnershipKind.Borrowed;
+        }
+
+        public static bool BuiltinInventory(TypeTable table)
+        {
+            return Builtin(table, 0, "error", SemanticTypeKind.Error, 0, 1) &&
+                Builtin(table, 1, "void", SemanticTypeKind.Void, 0, 1) &&
+                Builtin(table, 2, "bool", SemanticTypeKind.Bool, 1, 1) &&
+                Builtin(table, 3, "byte", SemanticTypeKind.Byte, 1, 1) &&
+                Builtin(table, 4, "char", SemanticTypeKind.Char, 1, 1) &&
+                Builtin(table, 5, "short", SemanticTypeKind.Short, 2, 2) &&
+                Builtin(table, 6, "ushort", SemanticTypeKind.UShort, 2, 2) &&
+                Builtin(table, 7, "int", SemanticTypeKind.Int, 4, 4) &&
+                Builtin(table, 8, "uint", SemanticTypeKind.UInt, 4, 4) &&
+                Builtin(table, 9, "long", SemanticTypeKind.Long, 8, 8) &&
+                Builtin(table, 10, "ulong", SemanticTypeKind.ULong, 8, 8) &&
+                Builtin(table, 11, "nint", SemanticTypeKind.NInt, 8, 8) &&
+                Builtin(table, 12, "nuint", SemanticTypeKind.NUInt, 8, 8) &&
+                Builtin(table, 13, "float", SemanticTypeKind.Float, 4, 4) &&
+                Builtin(table, 14, "double", SemanticTypeKind.Double, 8, 8) &&
+                Builtin(table, 15, "null", SemanticTypeKind.NullLiteral, 8, 8);
+        }
+
+        public static bool TablesEqual(TypeTable first, TypeTable second)
+        {
+            if (first.Count() != second.Count()) { return false; }
+            int index = 0;
+            while (index < first.Count())
+            {
+                SemanticType left = first.Get(index);
+                SemanticType right = second.Get(index);
+                if (left.Kind() != right.Kind() || left.Display() != right.Display() ||
+                    left.Size() != right.Size() || left.Alignment() != right.Alignment()) { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
+
+        public static bool NumericTruthTable(TypeTable table)
+        {
+            int index = 0;
+            while (index < table.Count())
+            {
+                bool integer = index >= 3 && index <= 12;
+                bool numeric = integer || index == 13 || index == 14;
+                if (table.IsInteger(index) != integer || table.IsNumeric(index) != numeric) { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
+
+        private static bool Builtin(TypeTable table, int id, string display,
+            SemanticTypeKind kind, int size, int alignment)
+        {
+            SemanticType type = table.Get(id);
+            return table.Find(display) == id && type.Display() == display && type.Kind() == kind &&
+                type.Size() == size && type.Alignment() == alignment;
+        }
+    }
+}

@@ -1,0 +1,36 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.CompilerSuite.SelfHost.Source
+{
+    // Runs one canonical case per process. A case receives its explicit sandbox path, so file
+    // and cwd behavior never depends on another case or an installed artifact.
+    public class Program
+    {
+        public static int Main()
+        {
+            string[] arguments = new string[4];
+            int count = Environment.GetCommandLineArgs(arguments);
+            if (count != 3) { return 250; }
+
+            string caseId = arguments[1];
+            string sandbox = arguments[2];
+            int result = SelfHostSourceExpressionCursorModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostSourcePrimaryUnaryModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostSourcePrecedenceModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostSourceMarkerModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostSourceTransformationModule.Run(caseId);
+            if (result != -1) { return result; }
+            result = SelfHostSourceDiagnosticPathModule.Run(caseId, sandbox);
+            if (result != -1) { return result; }
+            result = SelfHostSourceLineMappingModule.Run(caseId, sandbox);
+            if (result != -1) { return result; }
+            result = SelfHostSourceLoadingModule.Run(caseId, sandbox);
+            if (result != -1) { return result; }
+            return 251;
+        }
+    }
+}

@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup><Name>NativeSharpSelfHostTypesTests</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="SelfHostTypesMain.ns" />
+    <Compile Include="SelfHostTypesTestSupport.ns" />
+    <Compile Include="SelfHostTypesVocabularyModule.ns" />
+    <Compile Include="SelfHostTypesSemanticValueModule.ns" />
+    <Compile Include="SelfHostTypesParametersModule.ns" />
+    <Compile Include="SelfHostTypesBuiltinsModule.ns" />
+    <Compile Include="SelfHostTypesInterningModule.ns" />
+    <Compile Include="SelfHostTypesStringLiteralModule.ns" />
+    <Compile Include="SelfHostTypesFunctionModule.ns" />
+    <Compile Include="../../../../selfhost/nsc/Types/TypeSystem.ns" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>
