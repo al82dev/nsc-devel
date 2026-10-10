@@ -93,11 +93,16 @@ class InfrastructureGateTests(unittest.TestCase):
             validate_results(self.cases, {"results": results, "counts": counts})
 
     def test_event_validation_rejects_coercible_protocol_scalars(self) -> None:
-        cases = (SimpleNamespace(case_id="7"),)
+        cases = (SimpleNamespace(case_id="7", expected_outcome="PASS"),)
         events = [
             {"sequence": 0, "kind": "RUN_STARTED", "case_id": None, "payload": {"selected": 1}},
             {"sequence": 1, "kind": "CASE_STARTED", "case_id": "7", "payload": {}},
-            {"sequence": 2, "kind": "CASE_FINISHED", "case_id": "7", "payload": {}},
+            {
+                "sequence": 2,
+                "kind": "CASE_FINISHED",
+                "case_id": "7",
+                "payload": {"status": "PASS"},
+            },
             {
                 "sequence": 3,
                 "kind": "RUN_FINISHED",
@@ -121,6 +126,31 @@ class InfrastructureGateTests(unittest.TestCase):
         bad_count[0] = dict(events[0], payload={"selected": 1.0})
         with self.assertRaisesRegex(RuntimeError, "selected count"):
             validate_events(cases, bad_count)
+
+    def test_event_validation_rejects_contradictory_case_status(self) -> None:
+        case = SimpleNamespace(case_id="7", expected_outcome="PASS")
+        events = [
+            {"sequence": 0, "kind": "RUN_STARTED", "case_id": None, "payload": {"selected": 1}},
+            {"sequence": 1, "kind": "CASE_STARTED", "case_id": "7", "payload": {}},
+            {
+                "sequence": 2,
+                "kind": "CASE_FINISHED",
+                "case_id": "7",
+                "payload": {"status": "FAIL"},
+            },
+            {
+                "sequence": 3,
+                "kind": "RUN_FINISHED",
+                "case_id": None,
+                "payload": {"selected": 1, "completed": 1, "cancelled": False},
+            },
+        ]
+        with self.assertRaisesRegex(RuntimeError, "declared outcome"):
+            validate_events((case,), events)
+
+        events[2]["payload"] = {"status": 1}
+        with self.assertRaisesRegex(RuntimeError, "invalid status"):
+            validate_events((case,), events)
 
 
 if __name__ == "__main__":

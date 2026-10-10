@@ -1268,3 +1268,14 @@ El presupuesto queda limitado al validador central, sus pruebas Python y la
 evidencia de Validacion 81. No se cambian estados permitidos del runner,
 oraculos, producto ni bateria historica y no se configura, compila o ejecuta
 producto.
+
+### Enmienda: estados terminales del stream por caso
+
+`validate_events` debe exigir que cada `CASE_FINISHED` tenga payload objeto,
+estado textual no vacio y correspondencia exacta con `expected_outcome` del
+caso identificado. El stream progresivo no puede acreditar cobertura por IDs
+mientras publica estados contradictorios.
+
+El presupuesto queda limitado al gate de infraestructura, su prueba Python y
+la evidencia de Validacion 82. No se cambia la emision de eventos, el runner,
+producto ni bateria historica y no se configura, compila o ejecuta producto.

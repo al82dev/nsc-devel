@@ -69,6 +69,21 @@ def validate_events(
     finished = sorted(finished_ids)
     if started != expected_ids or finished != expected_ids:
         raise RuntimeError("controller events do not cover the live fixture selection")
+    expected_statuses = {case.case_id: case.expected_outcome for case in cases}
+    for event in events:
+        if event.get("kind") != "CASE_FINISHED":
+            continue
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            raise RuntimeError("CASE_FINISHED payload is not an object")
+        status = payload.get("status")
+        if not isinstance(status, str) or not status:
+            raise RuntimeError("CASE_FINISHED contains an invalid status")
+        case_id = event["case_id"]
+        if status != expected_statuses[case_id]:
+            raise RuntimeError(
+                f"CASE_FINISHED status differs from declared outcome for {case_id}"
+            )
     start_payload = events[0].get("payload", {})
     finish_payload = events[-1].get("payload", {})
     if not isinstance(start_payload, dict) or not isinstance(finish_payload, dict):

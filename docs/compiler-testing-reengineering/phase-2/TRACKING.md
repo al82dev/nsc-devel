@@ -879,3 +879,9 @@ fila exige estado exacto y se coteja contra el outcome declarado; los agregados
 se derivan de esas mismas filas. Las pruebas dirigidas pasan `12/12` y la suite
 Python completa `221/221`, sin ejecutar producto. La tarea funcional permanece
 activa.
+
+Validacion 82 cerro la contradiccion del stream progresivo por caso. Cada
+`CASE_FINISHED` exige payload y estado exactos contra el outcome declarado; la
+cobertura de IDs ya no basta para acreditar eventos incompatibles. Las pruebas
+dirigidas pasan `5/5` y la suite Python completa `222/222`, sin ejecutar
+producto. La tarea funcional permanece activa.
