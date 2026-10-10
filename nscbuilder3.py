@@ -934,13 +934,21 @@ class ProcessController:
         if process.poll() is not None:
             return
         if os.name == "nt":
-            subprocess.run(
+            completed = subprocess.run(
                 ["taskkill", "/PID", str(process.pid), "/T", "/F"],
                 capture_output=True,
                 check=False,
             )
+            if completed.returncode != 0 and process.poll() is None:
+                process.kill()
         else:
             os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        try:
+            process.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5.0)
 
 
 def effective_build_dir(config: BuilderConfig, mode: str) -> Path:

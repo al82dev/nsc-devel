@@ -631,3 +631,9 @@ infraestructura. El comando activo y todos los comandos no iniciados reciben
 ahora filas `CANCELLED` en el orden del plan; una cancelación anterior al primer
 comando ya no produce evidencia vacía. Las pruebas dirigidas pasan `3/3` y la
 suite Python completa `119/119`, sin crear procesos reales.
+
+Validación 41 cerró la terminación confirmada de procesos. Builder 3 comprueba
+`taskkill`, espera la salida y aplica `kill` al hijo conocido cuando el comando
+falla o la espera vence; un proceso ya terminado permanece intacto. Las pruebas
+con dobles pasan `4/4` y la suite Python completa `123/123`, sin crear ni
+terminar procesos reales.

@@ -700,3 +700,16 @@ por `CommandWorker` en `nscbuilder3.py`, pruebas Python sin procesos reales y la
 evidencia de Validación 40. No se modifica `ProcessController`, la terminación
 del árbol, comandos, ejecución de casos, producto ni GUI restante; no se abre la
 GUI ni se configura, compila o ejecuta producto.
+
+### Enmienda: terminación confirmada del árbol de procesos
+
+`ProcessController` no puede considerar terminado un proceso sólo porque invocó
+`taskkill`. Debe comprobar su salida y, si `taskkill` falla o la espera vence,
+aplicar `kill` al proceso hijo conocido y volver a esperar. Un proceso ya
+terminado no recibe ninguna acción.
+
+El presupuesto queda limitado a `ProcessController._terminate_tree`, pruebas
+Python con un doble de `Popen` y la evidencia de Validación 41. No se crean
+procesos reales, no se cambia el bucle de lectura, los comandos, estados,
+ejecución de casos o producto; no se abre la GUI ni se configura, compila o
+ejecuta producto.
