@@ -554,3 +554,17 @@ de los CSV y JSONL canónicos y a la evidencia de Validación 29.
 real. No se eliminan inventarios externos, no se modifican casos, olas,
 manifiestos, producto ni batería histórica; no se configura, compila ni ejecuta
 producto y no se escribe en `C:`.
+
+### Enmienda: matriz lógica de ejecución de NSC Builder 3
+
+La selección granular y la expansión de variantes deben representar exactamente
+las filas canónicas: los perfiles son acumulativos, cada alcance devuelve sólo
+su partición y la matriz final es el producto de modos y optimizaciones que cada
+caso declara. Una disposición no ejecutable nunca puede producir una variante
+ni un resultado implícito.
+
+El presupuesto queda limitado a una prueba Python sobre el catálogo vivo y a
+la evidencia de Validación 30. `nscbuilder3.py` sólo podrá modificarse si el
+cotejo demuestra una discrepancia concreta. No se fijan conteos como condición,
+no se modifican inventarios, manifiestos, disposiciones, oráculos, producto ni
+batería histórica; no se configura, compila ni ejecuta producto.

@@ -554,3 +554,11 @@ componentes documentales fuera de esas olas —incluidas las bibliotecas y el
 SDK— no aparecen en ninguna fila del manifiesto ejecutable. Las pruebas
 dirigidas pasan `2/2` y la suite Python completa `82/82`; no se eliminó ni
 modificó ningún inventario externo.
+
+Validación 30 cerró la matriz lógica de Builder 3 contra el catálogo vivo. Las
+`12,542` variantes esperadas son únicas y corresponden exactamente a modos y
+optimizaciones declarados por los `5,695` casos ejecutables. Los filtros
+acumulativos de perfil y las particiones por ola, componente y contrato
+coinciden con sus campos canónicos; las `3,892` disposiciones no ejecutables
+generan cero variantes. Las pruebas dirigidas pasan `4/4` y la suite Python
+completa `86/86`, sin ejecutar ninguna celda.
