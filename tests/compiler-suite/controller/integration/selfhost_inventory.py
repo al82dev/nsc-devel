@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -85,6 +87,92 @@ def resolve_repository_file(
     if not resolved.is_file():
         raise RuntimeError(f"{context} source_path does not exist: {source_text}")
     return resolved
+
+
+def materialize_contained_project(
+    repository_root: Path,
+    source_project: Path,
+    destination_root: Path,
+) -> Path:
+    """Copy one fixture project into a project-local, traversal-free workspace.
+
+    NativeSharp project globbing deliberately rejects parent path segments in
+    ``Compile`` items.  Self-host fixtures still need to consume selected
+    compiler sources, so the test controller materializes those exact bytes
+    below the run workspace and rewrites only the generated project.  The
+    canonical project and every production source remain untouched.
+    """
+    root = repository_root.resolve()
+    project = source_project.resolve()
+    try:
+        project.relative_to(root)
+    except ValueError as error:
+        raise RuntimeError("fixture project resolves outside the repository") from error
+    if not project.is_file() or project.suffix.lower() != ".nsproj":
+        raise RuntimeError(f"fixture project does not exist: {source_project}")
+
+    destination = destination_root.resolve()
+    if destination.exists():
+        raise RuntimeError(f"materialized fixture destination already exists: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.mkdir()
+
+    try:
+        tree = ET.parse(project)
+    except ET.ParseError as error:
+        raise RuntimeError(f"invalid fixture project XML: {project}: {error}") from error
+
+    copied_targets: set[Path] = set()
+    compile_items = list(tree.getroot().iter("Compile"))
+    if not compile_items:
+        raise RuntimeError(f"fixture project contains no Compile items: {project}")
+    for item in compile_items:
+        include = item.get("Include")
+        if not include or Path(include).is_absolute() or Path(include).drive:
+            raise RuntimeError("fixture Compile Include must be a non-empty relative path")
+        if any(character in include for character in "*?[]"):
+            raise RuntimeError("fixture Compile Include must name one explicit source file")
+        source = (project.parent / include).resolve()
+        try:
+            relative_source = source.relative_to(root)
+        except ValueError as error:
+            raise RuntimeError(
+                f"fixture Compile Include resolves outside the repository: {include}"
+            ) from error
+        if not source.is_file():
+            raise RuntimeError(f"fixture Compile source does not exist: {include}")
+        target = destination / "sources" / relative_source
+        if target in copied_targets:
+            raise RuntimeError(f"fixture Compile source is repeated: {include}")
+        copied_targets.add(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        item.set("Include", target.relative_to(destination).as_posix())
+
+    for item in tree.getroot().iter("ProjectReference"):
+        include = item.get("Include")
+        if not include:
+            raise RuntimeError("fixture ProjectReference omits Include")
+        reference = Path(include)
+        resolved = (
+            reference.resolve()
+            if reference.is_absolute() or reference.drive
+            else (project.parent / reference).resolve()
+        )
+        try:
+            resolved.relative_to(root)
+        except ValueError as error:
+            raise RuntimeError(
+                f"fixture ProjectReference resolves outside the repository: {include}"
+            ) from error
+        if not resolved.is_file() or resolved.suffix.lower() != ".nsproj":
+            raise RuntimeError(f"fixture ProjectReference does not exist: {include}")
+        item.set("Include", resolved.as_posix())
+
+    ET.indent(tree, space="  ")
+    generated = destination / project.name
+    tree.write(generated, encoding="utf-8", xml_declaration=False)
+    return generated
 
 
 def json_values_equal_exact(expected: object, actual: object) -> bool:

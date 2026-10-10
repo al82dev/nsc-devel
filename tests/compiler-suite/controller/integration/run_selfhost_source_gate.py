@@ -12,6 +12,7 @@ from component_gate_support import component_manifest_rows
 from selfhost_inventory import (
     ComponentInventory,
     load_component_inventory,
+    materialize_contained_project,
     required_oracle_exit_code,
     validate_classified_manifest,
 )
@@ -123,7 +124,11 @@ def main() -> int:
     )
     work_root.mkdir(parents=True, exist_ok=True)
     executable = work_root / "selfhost-source-tests.exe"
-    project = source_root / "selfhost" / "modules" / "SelfHostSource.nsproj"
+    project = materialize_contained_project(
+        repository_root,
+        source_root / "selfhost" / "modules" / "SelfHostSource.nsproj",
+        work_root / "project",
+    )
     environment = dict(os.environ)
     environment["NSC_LINKER"] = str(nslink)
     environment["PATH"] = str(nslink.parent) + os.pathsep + environment.get("PATH", "")

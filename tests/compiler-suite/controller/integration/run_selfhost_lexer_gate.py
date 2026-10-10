@@ -11,6 +11,7 @@ from pathlib import Path
 from component_gate_support import component_manifest_rows
 from selfhost_inventory import (
     load_component_inventory,
+    materialize_contained_project,
     required_oracle_exit_code,
     validate_manifest_cases,
 )
@@ -67,7 +68,11 @@ def main() -> int:
     work_root = options.work_parent.resolve() / f"selfhost-lexer-{options.build_mode.lower()}-{options.optimization.lower()}"
     work_root.mkdir(parents=True, exist_ok=True)
     executable = work_root / "selfhost-lexer-tests.exe"
-    project = options.source_root / "selfhost" / "modules" / "SelfHostLexer.nsproj"
+    project = materialize_contained_project(
+        root,
+        options.source_root / "selfhost" / "modules" / "SelfHostLexer.nsproj",
+        work_root / "project",
+    )
     environment = dict(os.environ)
     environment["NSC_LINKER"] = str(nslink)
     environment["PATH"] = str(nslink.parent) + os.pathsep + environment.get("PATH", "")

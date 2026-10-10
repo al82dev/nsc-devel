@@ -4,14 +4,14 @@
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
   "last_completed_commit": "THIS_COMMIT",
-  "last_completed_batch": "TANDA-VALIDACION-150-CIERRE-ABORTOS-ORACULOS-CPP",
+  "last_completed_batch": "TANDA-VALIDACION-151-FIXTURES-SELFHOST-PRODUCTORES",
   "last_completed_case": "TF-LANGUAGE-SERVICE-304",
   "current_wave": 9,
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "VALIDACION-151-FIXTURES-SELFHOST-PRODUCTORES",
-  "next_action": "Correct the five self-host producer fixtures that use forbidden parent path segments, without adapting NSC or consuming stale artifacts, then execute only the producers and their newly unblocked consumers.",
+  "current_batch": "VALIDACION-152-DESCUBRIMIENTO-ARCHIVADOR-PACKAGING",
+  "next_action": "Implement portable archive-tool discovery for Packaging without hardcoded drive paths, then continue directly to the remaining three corrections without an intermediate suite run.",
   "implementation_materialization": {
     "Host.Source": {
       "expected": 58,

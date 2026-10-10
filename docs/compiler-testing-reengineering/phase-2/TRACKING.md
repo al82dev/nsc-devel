@@ -1357,3 +1357,14 @@ dirigida de `nsc_component_tests` termina `6/6`; los `18/18` casos publican JSON
 con `8 PASS`, `10 FAIL` contractuales, `0 INFRASTRUCTURE_ERROR` y `0` abortos.
 No se ejecuto la bateria completa ni se toco `C:`. Evidencia:
 `TANDA-VALIDACION-150-CIERRE-ABORTOS-ORACULOS-CPP.md`.
+
+Validacion 151 implementa una frontera contenida para los cinco productores
+self-host que usaban `Compile Include` con segmentos padre. Cada gate
+materializa dentro de la evidencia de su corrida una copia exacta de las
+fuentes, genera un proyecto sin `..`, valida referencias y rechaza escapes,
+comodines, duplicados y destinos reutilizados. Los cinco proyectos canónicos y
+el producto permanecen intactos. La prueba dirigida cubre los cinco proyectos
+vivos y la identidad byte a byte. Por instruccion expresa la ejecución queda
+diferida hasta completar las validaciones 152 a 155 y efectuar una sola corrida
+integral `Debug/O0/Todos`. Evidencia:
+`TANDA-VALIDACION-151-FIXTURES-SELFHOST-PRODUCTORES.md`.
