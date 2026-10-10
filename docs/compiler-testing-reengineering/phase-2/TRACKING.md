@@ -1455,3 +1455,12 @@ prueba puntual y al cierre de cada tanda se reejecutaran las `439` variantes
 correctivas. La bateria completa de `5,695` variantes queda reservada para el
 cierre de todas las tandas. Evidencia:
 `TANDA-VALIDACION-161-CLASIFICACION-Y-PLAN-CORRECTIVO.md`.
+
+Validacion 162 corrige la raiz entregada al gate `C12B-BLD-005`. Builder 3
+deja de derivar una supuesta instalacion desde el `nsc.exe` seleccionado y usa
+el `install_prefix` explicito de su configuracion. Esto conserva la verificacion
+real del layout instalado y elimina la falsa copia de `build-clang`. Los cuatro
+casos afectados son `T12B-00025`, `00026`, `00029` y `00030`; su ejecucion
+puntual queda pendiente para despues de este commit, conforme a la regla de
+commitear antes de probar. Evidencia:
+`TANDA-VALIDACION-162-PREFIJO-INSTALADO-BUILDSYSTEM.md`.

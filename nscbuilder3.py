@@ -2821,7 +2821,7 @@ class ExecutionEngine:
         module = self._load_gate("run_buildsystem_gate.py")
         tools = discover_build_tools(self.config.llvm_dir)
         cmake = Path(tools["cmake"]).resolve()
-        installation = Path(self.config.nsc_executable).resolve().parent.parent
+        installation = Path(self.config.install_prefix).resolve()
         arguments = argparse.Namespace(
             cmake_executable=cmake,
             source_root=SUITE_ROOT,
