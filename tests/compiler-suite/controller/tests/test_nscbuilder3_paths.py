@@ -15,6 +15,36 @@ import nscbuilder3 as builder
 
 
 class Builder3PathTests(unittest.TestCase):
+    def test_discovery_selectors_distinguish_files_from_directories(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
+            root = Path(directory)
+            file_path = root / "candidate.exe"
+            directory_path = root / "candidate-dir"
+            file_path.write_bytes(b"tool\n")
+            directory_path.mkdir()
+
+            self.assertEqual(
+                builder.first_existing_file([directory_path, file_path]),
+                str(file_path.resolve()),
+            )
+            self.assertEqual(
+                builder.first_existing_directory([file_path, directory_path]),
+                str(directory_path.resolve()),
+            )
+
+    def test_discovery_selectors_return_empty_without_matching_kind(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
+            root = Path(directory)
+            file_path = root / "candidate.exe"
+            directory_path = root / "candidate-dir"
+            file_path.write_bytes(b"tool\n")
+            directory_path.mkdir()
+
+            self.assertEqual(builder.first_existing_file([directory_path]), "")
+            self.assertEqual(builder.first_existing_directory([file_path]), "")
+
     def test_operation_start_never_redetects_explicit_tool_paths(self) -> None:
         tree = ast.parse((REPOSITORY_ROOT / "nscbuilder3.py").read_text(encoding="utf-8"))
         methods = {

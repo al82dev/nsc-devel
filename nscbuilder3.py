@@ -183,13 +183,24 @@ def current_revision() -> str:
     return completed.stdout.strip() if completed.returncode == 0 else "UNKNOWN"
 
 
-def first_existing(candidates: Iterable[str | Path]) -> str:
-    """Return the first existing candidate without searching unrelated drives."""
+def first_existing_file(candidates: Iterable[str | Path]) -> str:
+    """Return the first file candidate without searching unrelated drives."""
     for candidate in candidates:
         if not candidate:
             continue
         path = Path(candidate).resolve()
-        if path.exists():
+        if path.is_file():
+            return str(path)
+    return ""
+
+
+def first_existing_directory(candidates: Iterable[str | Path]) -> str:
+    """Return the first directory candidate without searching unrelated drives."""
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate).resolve()
+        if path.is_dir():
             return str(path)
     return ""
 
@@ -201,7 +212,7 @@ def discover_build_tools(llvm_dir: str) -> dict[str, str]:
         configured = Path(llvm_dir).resolve()
         if len(configured.parents) >= 3:
             llvm_roots.insert(0, configured.parents[2])
-    clang = first_existing(
+    clang = first_existing_file(
         [*(root / "bin" / "clang-cl.exe" for root in llvm_roots), shutil.which("clang-cl") or ""]
     )
     if not clang:
@@ -211,10 +222,12 @@ def discover_build_tools(llvm_dir: str) -> dict[str, str]:
         "cmake": shutil.which("cmake") or "",
         "ninja": shutil.which("ninja") or "",
         "clang_cl": clang,
-        "lld_link": first_existing([root / "bin" / "lld-link.exe"]),
-        "llvm_mt": first_existing([root / "bin" / "llvm-mt.exe"]),
-        "llvm_rc": first_existing([root / "bin" / "llvm-rc.exe"]),
-        "llvm_dir": first_existing([llvm_dir, root / "lib" / "cmake" / "llvm"]),
+        "lld_link": first_existing_file([root / "bin" / "lld-link.exe"]),
+        "llvm_mt": first_existing_file([root / "bin" / "llvm-mt.exe"]),
+        "llvm_rc": first_existing_file([root / "bin" / "llvm-rc.exe"]),
+        "llvm_dir": first_existing_directory(
+            [llvm_dir, root / "lib" / "cmake" / "llvm"]
+        ),
     }
     missing = [name for name, value in tools.items() if not value]
     if missing:
@@ -250,7 +263,7 @@ class BuilderConfig:
 
     def with_discovery(self) -> "BuilderConfig":
         """Fill absent or stale tool paths while preserving valid user overrides."""
-        nsc = first_existing(
+        nsc = first_existing_file(
             [
                 self.nsc_executable,
                 "A:/native-sharp-3.0-baseline/bin/nsc.exe",
@@ -258,7 +271,7 @@ class BuilderConfig:
                 "A:/nsc-devel/build-clang/nsc.exe",
             ]
         ) or self.nsc_executable
-        nslink = first_existing(
+        nslink = first_existing_file(
             [
                 Path(nsc).parent / "nslink.exe",
                 self.nslink_executable,
@@ -266,10 +279,10 @@ class BuilderConfig:
                 "A:/native-sharp-3.0-baseline/bin/nslink.exe",
             ]
         ) or self.nslink_executable
-        llvm_dir = first_existing(
+        llvm_dir = first_existing_directory(
             [self.llvm_dir, os.environ.get("LLVM_DIR", ""), "C:/clang-llvm/lib/cmake/llvm"]
         )
-        archive = first_existing(
+        archive = first_existing_file(
             [self.archive_executable, shutil.which("7z") or "", shutil.which("7zz") or ""]
         )
         compiler_build_root = self.compiler_build_root

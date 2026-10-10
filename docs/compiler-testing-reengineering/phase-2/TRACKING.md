@@ -694,3 +694,8 @@ opcionales ya no aceptan directorios; `LLVM_DIR` y las raíces escribibles no
 aceptan archivos, y las raíces conservan su frontera en `A:`. Las pruebas
 dirigidas pasan `8/8` y la suite Python completa `159/159` sin descubrir o
 ejecutar herramientas reales.
+
+Validación 51 cerró el tipo desde la autodetección. Los ejecutables y el
+archivador se seleccionan sólo con `is_file()` y `LLVM_DIR` sólo con
+`is_dir()`, conservando candidatos y prioridades. Las pruebas dirigidas pasan
+`10/10` y la suite Python completa `161/161` sin descubrir herramientas reales.

@@ -837,3 +837,16 @@ El presupuesto queda limitado a validadores puros de archivo/directorio,
 `BuilderConfig.validated`, pruebas Python con artefactos sintéticos bajo
 `_nscbuilder3` y la evidencia de Validación 50. No se redetectan herramientas,
 no se cambian defaults o comandos y no se configura, compila o ejecuta producto.
+
+### Enmienda: descubrimiento por tipo de artefacto
+
+El descubrimiento automático debe seleccionar ejecutables sólo mediante
+`is_file()` y directorios de configuración sólo mediante `is_dir()`. Se conserva
+el orden exacto de candidatos y los fallbacks existentes; una ruta del tipo
+incorrecto se omite, nunca se publica como herramienta encontrada.
+
+El presupuesto queda limitado a separar los selectores `first_existing` por
+tipo, actualizar sus consumidores, pruebas Python sintéticas bajo
+`_nscbuilder3` y la evidencia de Validación 51. No se cambian candidatos,
+prioridades, defaults, comandos o validación posterior y no se descubre o
+ejecuta ninguna herramienta real.
