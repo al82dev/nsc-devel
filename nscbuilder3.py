@@ -1450,7 +1450,7 @@ def parse_host_envelope(
     lines = [line for line in captured.splitlines() if line.strip()]
     if len(lines) != 1:
         raise ValueError(f"host must emit exactly one JSON object, got {len(lines)}")
-    payload = json.loads(lines[0])
+    payload = json.loads(lines[0], object_pairs_hook=unique_json_object)
     if not isinstance(payload, dict):
         raise ValueError("host result must be a JSON object")
     expected_identity = (case_id, contract_id, component)

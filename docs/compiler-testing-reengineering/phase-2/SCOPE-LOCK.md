@@ -1407,3 +1407,13 @@ El presupuesto queda limitado a `read_jsonl`, un constructor local de objetos
 JSON unicos, una prueba Python sintetica y la evidencia de Validacion 94. No se
 cambian catalogos vivos, disposiciones, producto ni bateria historica y no se
 configura, compila o ejecuta producto.
+
+### Enmienda: claves JSON unicas en el sobre host
+
+`parse_host_envelope` debe rechazar claves duplicadas en el resultado JSON del
+host consolidado. Una segunda definicion no puede sustituir silenciosamente
+identidad, estado, duracion o evidencia antes de validar el sobre terminal.
+
+El presupuesto queda limitado al parseo JSON del host, una prueba Python
+sintetica y la evidencia de Validacion 95. No se cambia el productor, esquema,
+producto ni bateria historica y no se configura, compila o ejecuta producto.
