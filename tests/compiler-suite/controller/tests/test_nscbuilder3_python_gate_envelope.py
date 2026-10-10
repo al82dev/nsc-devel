@@ -58,7 +58,10 @@ class Builder3PythonGateEnvelopeTests(unittest.TestCase):
             disposition="Executable",
         )
         variant = SimpleNamespace(case=case)
-        module = SimpleNamespace(run_case=Mock(side_effect=RuntimeError("gate broke")))
+        module = SimpleNamespace(
+            run_process=Mock(),
+            run_case=Mock(side_effect=RuntimeError("gate broke")),
+        )
         case_root = Path("A:/synthetic-history/case")
         with patch.object(engine, "_case_root", return_value=case_root), patch.object(
             engine, "_emit_case_logs"
@@ -83,7 +86,10 @@ class Builder3PythonGateEnvelopeTests(unittest.TestCase):
             disposition="KnownProductDefect",
         )
         variant = SimpleNamespace(case=case)
-        module = SimpleNamespace(run_case=Mock(return_value=("false", "broken")))
+        module = SimpleNamespace(
+            run_process=Mock(),
+            run_case=Mock(return_value=("false", "broken")),
+        )
         case_root = Path("A:/synthetic-history/case")
         with patch.object(engine, "_case_root", return_value=case_root), patch.object(
             engine, "_emit_case_logs"

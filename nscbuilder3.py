@@ -1233,6 +1233,109 @@ class ProcessController:
             self._process = None
         return process.returncode if process.returncode is not None else 130, "".join(output)
 
+    def run_completed(
+        self,
+        command: Sequence[str],
+        cwd: Path,
+        environment: dict[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run one owned child while preserving stdout and stderr separately."""
+        self.last_termination_reason = None
+        arguments = [str(part) for part in command]
+        if self.cancelled.is_set():
+            self.last_termination_reason = "cancelled"
+            message = "cancelled before launch\n"
+            self.output(message)
+            return subprocess.CompletedProcess(arguments, 130, "", message)
+        flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        process = subprocess.Popen(
+            arguments,
+            cwd=cwd,
+            env=environment,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=flags,
+        )
+        with self._lock:
+            self._process = process
+        pending: queue.Queue[tuple[str, str | None]] = queue.Queue()
+        captured = {"stdout": [], "stderr": []}
+        started = time.monotonic()
+        assert process.stdout is not None
+        assert process.stderr is not None
+
+        def read_channel(name: str, stream: Iterable[str]) -> None:
+            """Drain one child channel and identify its end in the shared queue."""
+            for line in stream:
+                pending.put((name, line))
+            pending.put((name, None))
+
+        readers = [
+            threading.Thread(
+                target=read_channel,
+                args=("stdout", process.stdout),
+                name="nscbuilder3-stdout",
+                daemon=True,
+            ),
+            threading.Thread(
+                target=read_channel,
+                args=("stderr", process.stderr),
+                name="nscbuilder3-stderr",
+                daemon=True,
+            ),
+        ]
+        for reader in readers:
+            reader.start()
+        closed: set[str] = set()
+        while True:
+            try:
+                channel, line = pending.get(timeout=0.1)
+                if line is None:
+                    closed.add(channel)
+                else:
+                    captured[channel].append(line)
+                    self.output(line)
+            except queue.Empty:
+                pass
+            if process.poll() is not None and len(closed) == 2 and pending.empty():
+                break
+            if timeout is not None and time.monotonic() - started > timeout:
+                self.last_termination_reason = "timeout"
+                self._terminate_tree(process)
+                message = f"process timed out after {timeout:.1f} seconds\n"
+                captured["stderr"].append(message)
+                self.output(message)
+                break
+            if self.cancelled.is_set():
+                self.last_termination_reason = "cancelled"
+                self._terminate_tree(process)
+                message = "process cancelled\n"
+                captured["stderr"].append(message)
+                self.output(message)
+                break
+        for reader in readers:
+            reader.join(timeout=1.0)
+        while True:
+            try:
+                channel, line = pending.get_nowait()
+            except queue.Empty:
+                break
+            if line is not None:
+                captured[channel].append(line)
+                self.output(line)
+        with self._lock:
+            self._process = None
+        return subprocess.CompletedProcess(
+            arguments,
+            process.returncode if process.returncode is not None else 130,
+            "".join(captured["stdout"]),
+            "".join(captured["stderr"]),
+        )
+
     def cancel(self) -> None:
         """Cancel only the active child process tree owned by this controller."""
         self.last_termination_reason = "cancelled"
@@ -1970,16 +2073,38 @@ class ExecutionEngine:
         """Run one already-defined Python oracle while retaining per-case evidence."""
         case_root = self._case_root(variant)
         manifest = variant.case.manifest or {}
+        original_runner = getattr(module, "run_process", None)
+        if not callable(original_runner):
+            return (
+                "INFRASTRUCTURE_ERROR",
+                "Python gate does not expose a callable run_process boundary",
+                str(case_root),
+            )
+
+        def controlled_runner(
+            command: Sequence[str],
+            cwd: Path,
+            environment: dict[str, str],
+            timeout: float = 900.0,
+        ) -> subprocess.CompletedProcess[str]:
+            return self.process.run_completed(command, cwd, environment, timeout)
+
+        raw_result: Any = None
+        gate_error = ""
+        module.run_process = controlled_runner
         try:
             raw_result = module.run_case(manifest, options, case_root, dict(os.environ))
         except Exception as error:
-            self._emit_case_logs(case_root)
+            gate_error = f"{type(error).__name__}: {error}"
+        finally:
+            module.run_process = original_runner
+        self._emit_case_logs(case_root)
+        if gate_error:
             return (
                 "INFRASTRUCTURE_ERROR",
-                f"{type(error).__name__}: {error}",
+                gate_error,
                 str(case_root),
             )
-        self._emit_case_logs(case_root)
         evidence = str(case_root)
         try:
             satisfied, detail = parse_python_gate_result(raw_result)

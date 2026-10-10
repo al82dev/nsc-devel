@@ -735,3 +735,9 @@ declarar una identidad canónica o pertenecer a uno de cuatro archivos de
 metadatos explícitos; rangos vacíos, identidades ambiguas, disposiciones
 desconocidas e IDs ajenos ya no se ignoran. Las pruebas dirigidas pasan `5/5` y
 la suite Python completa `183/183` sin modificar catálogos ni ejecutar producto.
+
+Validación 58 puso los procesos de los `48` gates Python bajo el controlador
+cancelable. Stdout y stderr siguen separados para los oráculos, mientras
+cancelación, timeout, propiedad del árbol y consola progresiva quedan
+centralizados. Las pruebas dirigidas pasan `6/6` y la suite Python completa
+`189/189` usando sólo dobles de proceso.

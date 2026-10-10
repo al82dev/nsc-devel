@@ -943,3 +943,19 @@ Python sintéticas y la evidencia de Validación 57. Se conserva la precedencia
 de una clasificación específica sobre `Executable`; no se modifican catálogos,
 manifiestos, selección, producto ni batería histórica y no se configura,
 compila o ejecuta producto.
+
+### Enmienda: procesos de gates Python bajo el controlador cancelable
+
+Los gates importados de BuildSystem y Packaging no pueden ejecutar
+`subprocess.run` fuera de `ProcessController`: de hacerlo, el botón Cancelar no
+posee el proceso, no puede terminar su árbol y el timeout queda desconectado de
+la clasificación central. Builder 3 debe inyectar temporalmente un runner que
+preserve por separado stdout y stderr, respete el timeout solicitado y restaure
+el módulo incluso ante excepción. La captura debe seguir alimentando la consola
+progresiva y conservar el `CompletedProcess` que esperan los oráculos.
+
+El presupuesto queda limitado a un método de captura separada en
+`ProcessController`, la inyección de `run_process` en
+`ExecutionEngine._run_python_gate_case`, pruebas Python con dobles y la
+evidencia de Validación 58. No se modifican gates, comandos, oráculos, timeouts,
+producto ni batería histórica y no se crea o ejecuta ningún proceso real.
