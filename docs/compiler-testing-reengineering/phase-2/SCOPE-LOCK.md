@@ -673,3 +673,17 @@ El presupuesto queda limitado a `_start_infrastructure` en `nscbuilder3.py`, una
 prueba AST de la conexión de GUI y la evidencia de Validación 38. No se cambia
 la heurística de descubrimiento, los comandos, rutas predeterminadas, recibos,
 casos o producto; no se abre la GUI ni se configura, compila o ejecuta producto.
+
+### Enmienda: integridad del historial de NSC Builder 3
+
+Una fila del historial sólo puede mostrar un estado terminal cuando metadata,
+resultados, cardinalidad, conteos y evento final pertenecen a la misma corrida y
+concuerdan entre sí. La ausencia de cierre se presenta como `INCOMPLETE`; una
+estructura contradictoria o desconocida se presenta como `MALFORMED`. Ninguna
+de ambas puede aparecer como `PASSED`.
+
+El presupuesto queda limitado a un lector puro de evidencia en `nscbuilder3.py`,
+su consumo por `_refresh_history`, pruebas Python con directorios sintéticos
+bajo `A:\nsc-devel\_nscbuilder3` y la evidencia de Validación 39. No se altera
+la escritura de evidencia, ejecución, GUI restante, casos, producto o historial
+existente; no se abre la GUI ni se configura, compila o ejecuta producto.

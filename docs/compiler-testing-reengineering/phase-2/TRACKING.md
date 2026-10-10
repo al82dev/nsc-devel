@@ -618,3 +618,10 @@ operación. La GUI valida ahora los valores visibles tal como fueron elegidos;
 `with_discovery` sólo permanece en la autodetección explícita y en la carga
 inicial. La reproducción falló antes del cambio y las pruebas dirigidas pasan
 `5/5`; la suite Python completa pasa `112/112`.
+
+Validación 39 cerró la integridad de lectura del historial. Una fila terminal
+exige ahora metadata, resultados, conteos, cardinalidad y evento final
+coherentes; las corridas abiertas quedan `INCOMPLETE` y las contradictorias
+`MALFORMED`, nunca `PASSED`. Las pruebas dirigidas pasan `4/4`, la suite Python
+completa `116/116` y las `17` corridas locales vigentes conservaron sus estados
+terminales al ser auditadas en sólo lectura.

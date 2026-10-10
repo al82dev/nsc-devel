@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+import json
+import sys
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPOSITORY_ROOT))
+
+import nscbuilder3 as builder
+
+
+class Builder3HistoryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        self.temporary = TemporaryDirectory(dir=builder.STORAGE_ROOT)
+        self.root = Path(self.temporary.name) / "20261010-000000-example"
+        self.root.mkdir()
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def _write_json(self, name: str, value: object) -> None:
+        (self.root / name).write_text(
+            json.dumps(value, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+
+    def _metadata(self) -> dict[str, object]:
+        return {
+            "schema": 1,
+            "kind": "phase-2-suite",
+            "run_id": self.root.name,
+            "variant_count": 1,
+        }
+
+    def _result(self) -> dict[str, object]:
+        return {
+            "key": "CASE|Debug|O0",
+            "case_id": "CASE",
+            "contract_id": "CONTRACT",
+            "component": "Host.Basic",
+            "wave": 1,
+            "build_mode": "Debug",
+            "optimization": "O0",
+            "status": "PASS",
+            "duration_seconds": 0.1,
+            "detail": "",
+            "evidence": "evidence.log",
+        }
+
+    def _write_valid_terminal_run(self) -> None:
+        self._write_json("metadata.json", self._metadata())
+        self._write_json(
+            "results.json",
+            {
+                "run_id": self.root.name,
+                "finished_at": "2026-10-10T00:00:01.000+00:00",
+                "status": "PASSED",
+                "counts": {"PASS": 1},
+                "results": [self._result()],
+            },
+        )
+        (self.root / "summary.md").write_text("# summary\n", encoding="utf-8")
+        events = (
+            {"schema": 1, "kind": "RUN_STARTED", "payload": self._metadata()},
+            {
+                "schema": 1,
+                "kind": "RUN_FINISHED",
+                "payload": {"status": "PASSED", "counts": {"PASS": 1}},
+            },
+        )
+        (self.root / "events.jsonl").write_text(
+            "".join(json.dumps(item) + "\n" for item in events), encoding="utf-8"
+        )
+
+    def test_complete_consistent_run_keeps_terminal_status(self) -> None:
+        self._write_valid_terminal_run()
+
+        record = builder.history_record(self.root)
+
+        self.assertEqual(record[0], self.root.name)
+        self.assertEqual(record[1], "phase-2-suite")
+        self.assertEqual(record[2], "PASSED")
+        self.assertEqual(record[3], "2026-10-10T00:00:01.000+00:00")
+
+    def test_missing_terminal_artifacts_remain_incomplete(self) -> None:
+        self._write_json("metadata.json", self._metadata())
+
+        record = builder.history_record(self.root)
+
+        self.assertEqual(record[2], "INCOMPLETE")
+
+    def test_unknown_terminal_status_is_malformed_not_passed(self) -> None:
+        self._write_valid_terminal_run()
+        payload = json.loads((self.root / "results.json").read_text(encoding="utf-8"))
+        payload["status"] = "SUCCESS"
+        self._write_json("results.json", payload)
+
+        record = builder.history_record(self.root)
+
+        self.assertEqual(record[2], "MALFORMED")
+
+    def test_result_counts_must_match_terminal_rows(self) -> None:
+        self._write_valid_terminal_run()
+        payload = json.loads((self.root / "results.json").read_text(encoding="utf-8"))
+        payload["counts"] = {"PASS": 2}
+        self._write_json("results.json", payload)
+
+        record = builder.history_record(self.root)
+
+        self.assertEqual(record[2], "MALFORMED")
+
+
+if __name__ == "__main__":
+    unittest.main()

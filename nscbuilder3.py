@@ -692,6 +692,98 @@ class EvidenceStore:
             self._log_stream.close()
 
 
+def history_record(root: Path) -> tuple[str, str, str, str, str]:
+    """Validate one durable run before projecting it into the history table."""
+    run_id = root.name
+    fallback = (run_id, "incomplete", "INCOMPLETE", "", str(root))
+    metadata_path = root / "metadata.json"
+    results_path = root / "results.json"
+    summary_path = root / "summary.md"
+    events_path = root / "events.jsonl"
+    if not metadata_path.is_file():
+        return fallback
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be an object")
+        kind = metadata.get("kind")
+        if not isinstance(kind, str) or not kind:
+            raise ValueError("metadata kind is missing")
+        if metadata.get("run_id") != run_id:
+            raise ValueError("metadata run_id does not match its directory")
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
+        return (run_id, "malformed", "MALFORMED", "", str(root))
+    incomplete = (run_id, kind, "INCOMPLETE", "", str(root))
+    if not results_path.is_file() or not summary_path.is_file() or not events_path.is_file():
+        return incomplete
+    try:
+        payload = json.loads(results_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("results must be an object")
+        if payload.get("run_id") != run_id:
+            raise ValueError("results run_id does not match its directory")
+        finished_at = payload.get("finished_at")
+        if not isinstance(finished_at, str) or not finished_at:
+            raise ValueError("finished_at is missing")
+        results = payload.get("results")
+        if not isinstance(results, list) or not results:
+            raise ValueError("terminal results must be a non-empty list")
+        if any(not isinstance(item, dict) for item in results):
+            raise ValueError("each terminal result must be an object")
+        keys = [item.get("key") for item in results]
+        if any(not isinstance(key, str) or not key for key in keys):
+            raise ValueError("each terminal result must have a key")
+        if len(keys) != len(set(keys)):
+            raise ValueError("terminal result keys must be unique")
+        statuses = [item.get("status") for item in results]
+        if any(status not in RESULT_STATUSES for status in statuses):
+            raise ValueError("terminal result contains an unknown status")
+        observed = Counter(statuses)
+        raw_counts = payload.get("counts")
+        if not isinstance(raw_counts, dict):
+            raise ValueError("result counts must be an object")
+        if any(
+            not isinstance(name, str)
+            or name not in RESULT_STATUSES
+            or isinstance(count, bool)
+            or not isinstance(count, int)
+            or count <= 0
+            for name, count in raw_counts.items()
+        ):
+            raise ValueError("result counts contain an invalid entry")
+        counts = Counter(raw_counts)
+        if counts != observed:
+            raise ValueError("result counts do not match terminal rows")
+        expected_count = metadata.get("variant_count")
+        if expected_count is not None:
+            if (
+                isinstance(expected_count, bool)
+                or not isinstance(expected_count, int)
+                or expected_count < 1
+                or expected_count != len(results)
+            ):
+                raise ValueError("metadata variant_count does not match terminal rows")
+        status = payload.get("status")
+        expected_status = EvidenceStore._overall_status(counts)
+        if status == "CANCELLED":
+            if counts["CANCELLED"] <= 0:
+                raise ValueError("cancelled run has no cancelled result")
+        elif status != expected_status:
+            raise ValueError("overall status does not match terminal rows")
+        events = read_jsonl(events_path)
+        if not events:
+            raise ValueError("event stream is empty")
+        final_event = events[-1]
+        final_payload = final_event.get("payload")
+        if final_event.get("kind") != "RUN_FINISHED" or not isinstance(final_payload, dict):
+            raise ValueError("event stream lacks a final RUN_FINISHED event")
+        if final_payload.get("status") != status or Counter(final_payload.get("counts", {})) != counts:
+            raise ValueError("final event does not match results")
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
+        return (run_id, kind, "MALFORMED", "", str(root))
+    return (run_id, kind, str(status), finished_at, str(root))
+
+
 class ProcessController:
     """Run one child process with streamed output and scoped tree cancellation."""
 
@@ -2368,25 +2460,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             for root in sorted(HISTORY_ROOT.iterdir(), reverse=True):
                 if not root.is_dir():
                     continue
-                metadata_path = root / "metadata.json"
-                results_path = root / "results.json"
-                try:
-                    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    metadata = {}
-                try:
-                    results = json.loads(results_path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    results = {}
-                records.append(
-                    (
-                        root.name,
-                        str(metadata.get("kind", "incomplete")),
-                        str(results.get("status", "INCOMPLETE")),
-                        str(results.get("finished_at", metadata.get("captured_at", ""))),
-                        str(root),
-                    )
-                )
+                records.append(history_record(root))
             self.history_table.setRowCount(len(records))
             for row, record in enumerate(records):
                 for column, value in enumerate(record):
