@@ -1460,7 +1460,18 @@ Validacion 162 corrige la raiz entregada al gate `C12B-BLD-005`. Builder 3
 deja de derivar una supuesta instalacion desde el `nsc.exe` seleccionado y usa
 el `install_prefix` explicito de su configuracion. Esto conserva la verificacion
 real del layout instalado y elimina la falsa copia de `build-clang`. Los cuatro
-casos afectados son `T12B-00025`, `00026`, `00029` y `00030`; su ejecucion
-puntual queda pendiente para despues de este commit, conforme a la regla de
-commitear antes de probar. Evidencia:
+casos afectados `T12B-00025`, `00026`, `00029` y `00030` terminaron `4/4 PASS`
+en `Debug/NA` despues del commit funcional `f013e83bd`, en las corridas
+`20261010-164623-9c9cda3a`, `20261010-164630-bb9048cd`,
+`20261010-164635-3fb17649` y `20261010-164639-bfd3d751`. Esta evidencia es
+dirigida y no sustituye la reejecucion correctiva ni la corrida integral.
+Evidencia:
 `TANDA-VALIDACION-162-PREFIJO-INSTALADO-BUILDSYSTEM.md`.
+
+Validacion 164 corrige exclusivamente el desfase de indice del oraculo
+`PunctuationMatrix()` para `TSH-00445`: `Question` ocupa la posicion `8`, no la
+`9` reservada a `Colon`. La correccion de prueba/oraculo se commiteo en
+`0d57b8592`; la reejecucion canonica `TSH-00445|Debug|O0` termino `1/1 PASS`
+en `20261010-164845-5ee9450d`. No se modifico el lexer ni producto, y esta
+prueba dirigida no promueve otros casos. Evidencia:
+`TANDA-VALIDACION-164-ORACULO-LEXER-PUNTUACION.md`.
