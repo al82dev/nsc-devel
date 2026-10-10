@@ -1582,3 +1582,12 @@ El presupuesto queda limitado a un indice compartido de cadenas, sustituir los
 dos helpers equivalentes, una prueba Python sintetica y la evidencia de
 Validacion 110. No se cambian catalogos, denominadores, producto ni bateria
 historica y no se ejecuta producto.
+
+### Enmienda: checkpoint estatico posterior al endurecimiento
+
+Tras las Validaciones 100 a 110 se debe revalidar la suite Python completa, el
+catalogo vivo y la construccion/cierre de la GUI. El checkpoint no autoriza
+configurar, compilar o ejecutar producto y no sustituye la matriz funcional.
+
+El presupuesto queda limitado a documentar la evidencia de Validacion 111 y
+actualizar tracking/cursor. No se cambia codigo, producto ni bateria historica.
