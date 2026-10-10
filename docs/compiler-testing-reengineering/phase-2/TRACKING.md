@@ -943,3 +943,8 @@ Validacion 93 cerro las claves JSON duplicadas del manifiesto canonico. La
 unicidad se exige en todos los objetos, incluidos `inputs` y `oracle`. Las
 pruebas dirigidas pasan `15/15`, la suite Python `227/227` y el catalogo vivo
 conserva `9,587` casos y `0` sin clasificar. La tarea funcional permanece activa.
+
+Validacion 94 cerro las claves JSON duplicadas en catalogos de disposicion. La
+regla alcanza objetos anidados y conserva ubicacion causal. Las pruebas
+dirigidas pasan `6/6`, la suite Python `228/228` y el catalogo vivo conserva
+`9,587` casos y `0` sin clasificar. La tarea funcional permanece activa.

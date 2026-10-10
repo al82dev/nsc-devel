@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -81,6 +82,17 @@ class Builder3DispositionCatalogTests(unittest.TestCase):
             builder.parse_disposition_row(
                 Path("UnexpectedPlanContradictions.jsonl"), {"id": "CONFLICT-1"}
             )
+
+    def test_jsonl_reader_rejects_duplicate_keys_at_any_depth(self) -> None:
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temporary:
+            path = Path(temporary) / "SyntheticCaseClassifications.jsonl"
+            path.write_text(
+                '{"case_id":"T-001","nested":{"state":1,"state":2},'
+                '"disposition":"Executable"}\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "duplicate JSON object key: state"):
+                builder.read_jsonl(path)
 
 
 if __name__ == "__main__":

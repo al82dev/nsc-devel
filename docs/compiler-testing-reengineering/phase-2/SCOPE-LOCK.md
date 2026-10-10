@@ -1395,3 +1395,15 @@ El presupuesto queda limitado al cargador canonico de manifiestos, una prueba
 Python sintetica y la evidencia de Validacion 93. No se cambian filas vivas,
 oraculos, producto ni bateria historica y no se configura, compila o ejecuta
 producto.
+
+### Enmienda: claves JSON unicas en catalogos de disposicion
+
+El lector JSONL local de Builder 3 debe rechazar claves duplicadas en los
+catalogos que asignan disposiciones, bloqueos y contradicciones. Una segunda
+definicion no puede sobrescribir silenciosamente la identidad o disposicion de
+una fila antes de integrarla al catalogo canonico.
+
+El presupuesto queda limitado a `read_jsonl`, un constructor local de objetos
+JSON unicos, una prueba Python sintetica y la evidencia de Validacion 94. No se
+cambian catalogos vivos, disposiciones, producto ni bateria historica y no se
+configura, compila o ejecuta producto.

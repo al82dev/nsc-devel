@@ -307,11 +307,24 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
         for number, line in enumerate(stream, start=1):
             if not line.strip():
                 continue
-            value = json.loads(line)
+            try:
+                value = json.loads(line, object_pairs_hook=unique_json_object)
+            except ValueError as error:
+                raise ValueError(f"{path}:{number}: {error}") from error
             if not isinstance(value, dict):
                 raise ValueError(f"{path}:{number}: expected a JSON object")
             rows.append(value)
     return rows
+
+
+def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build one object without applying JSON's ambiguous last-key-wins rule."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
 
 
 def validate_executable_manifest(
