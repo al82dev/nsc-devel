@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import sys
 import unittest
@@ -14,6 +15,30 @@ import nscbuilder3 as builder
 
 
 class Builder3PathTests(unittest.TestCase):
+    def test_operation_start_never_redetects_explicit_tool_paths(self) -> None:
+        tree = ast.parse((REPOSITORY_ROOT / "nscbuilder3.py").read_text(encoding="utf-8"))
+        methods = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+
+        start = methods["_start_infrastructure"]
+        redetect = methods["_redetect_config"]
+        start_calls = {
+            node.func.attr
+            for node in ast.walk(start)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+        redetect_calls = {
+            node.func.attr
+            for node in ast.walk(redetect)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+
+        self.assertNotIn("with_discovery", start_calls)
+        self.assertIn("with_discovery", redetect_calls)
+
     def test_every_writable_root_must_remain_on_a_drive(self) -> None:
         baseline = builder.BuilderConfig(jobs=1)
         writable_fields = ("build_root", "compiler_build_root", "install_prefix")

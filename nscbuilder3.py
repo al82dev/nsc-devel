@@ -1924,7 +1924,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             if self.worker is not None:
                 return
             try:
-                config = self._config_from_ui().with_discovery().validated(require_tools=False)
+                config = self._config_from_ui().validated(require_tools=False)
                 self._load_config(config)
                 tools = discover_build_tools(config.llvm_dir)
                 compiler_operation = operation.startswith("compiler-")

@@ -612,3 +612,9 @@ permanece en `A:`. Los recibos conservan exactamente ruta, tamaño, fecha y
 SHA-256 del NSC y NSLink seleccionados. Las pruebas dirigidas pasan `4/4` y la
 suite Python completa `111/111`; no se descubrieron ni ejecutaron herramientas
 reales.
+
+Validación 38 eliminó la sustitución silenciosa de herramientas al comenzar una
+operación. La GUI valida ahora los valores visibles tal como fueron elegidos;
+`with_discovery` sólo permanece en la autodetección explícita y en la carga
+inicial. La reproducción falló antes del cambio y las pruebas dirigidas pasan
+`5/5`; la suite Python completa pasa `112/112`.

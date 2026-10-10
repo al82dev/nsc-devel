@@ -660,3 +660,16 @@ Validación 37. `nscbuilder3.py` sólo podrá modificarse si el cotejo demuestra
 discrepancia concreta. Los archivos de prueba temporales se crean exclusivamente
 bajo `A:\nsc-devel\_nscbuilder3`; no se descubre ni ejecuta ninguna herramienta,
 no se configura, compila o ejecuta producto y no se escribe en `C:`.
+
+### Enmienda: selección explícita de herramientas en NSC Builder 3
+
+Iniciar una configuración o construcción no autoriza volver a detectar NSC,
+NSLink ni LLVM. Una ruta escrita o ya visible en la interfaz debe validarse tal
+como fue seleccionada y, si es inválida, producir un error; queda prohibido
+sustituirla silenciosamente por un fallback. La sustitución sólo pertenece al
+botón explícito de autodetección y a la migración inicial de configuración.
+
+El presupuesto queda limitado a `_start_infrastructure` en `nscbuilder3.py`, una
+prueba AST de la conexión de GUI y la evidencia de Validación 38. No se cambia
+la heurística de descubrimiento, los comandos, rutas predeterminadas, recibos,
+casos o producto; no se abre la GUI ni se configura, compila o ejecuta producto.
