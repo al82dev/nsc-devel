@@ -1496,7 +1496,7 @@ def parse_identity_envelope(
     expected_tools: Sequence[tuple[str, str, str]],
 ) -> tuple[str, str]:
     """Validate one canonical focused report produced by ``run_suite.py``."""
-    payload = json.loads(content)
+    payload = json.loads(content, object_pairs_hook=unique_json_object)
     if not isinstance(payload, dict):
         raise ValueError("identity report must be a JSON object")
     if type(payload.get("schema")) is not int or payload.get("schema") != 1:

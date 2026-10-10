@@ -1417,3 +1417,14 @@ identidad, estado, duracion o evidencia antes de validar el sobre terminal.
 El presupuesto queda limitado al parseo JSON del host, una prueba Python
 sintetica y la evidencia de Validacion 95. No se cambia el productor, esquema,
 producto ni bateria historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: claves JSON unicas en el reporte enfocado
+
+`parse_identity_envelope` debe rechazar claves duplicadas en todo el reporte
+JSON producido por `run_suite.py`, incluidos metadata, recibos, conteos y
+resultados. La politica last-wins no puede alterar evidencia antes del cotejo.
+
+El presupuesto queda limitado al parseo JSON del reporte enfocado, una prueba
+Python sintetica y la evidencia de Validacion 96. No se cambia el productor,
+esquema, producto ni bateria historica y no se configura, compila o ejecuta
+producto.

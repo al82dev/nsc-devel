@@ -953,3 +953,8 @@ Validacion 95 cerro las claves JSON duplicadas del sobre host consolidado. Una
 segunda definicion ya no puede sustituir el estado ni la identidad antes de la
 validacion. Las pruebas dirigidas pasan `7/7` y la suite Python `229/229`, sin
 ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 96 cerro las claves JSON duplicadas del reporte enfocado. Metadata,
+recibos, conteos y resultados exigen ahora definiciones unicas. Las pruebas
+dirigidas pasan `7/7` y la suite Python `230/230`, sin ejecutar producto. La
+tarea funcional permanece activa.

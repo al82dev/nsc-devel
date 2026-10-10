@@ -182,6 +182,14 @@ class Builder3IdentityEnvelopeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "tool"):
                     self.parse(json.dumps(changed), expected_tools=expected)
 
+    def test_duplicate_json_keys_are_rejected(self) -> None:
+        duplicate = envelope().replace(
+            '"status": "PASS"',
+            '"status": "PASS", "status": "FAIL"',
+        )
+        with self.assertRaisesRegex(ValueError, "duplicate JSON object key: status"):
+            self.parse(duplicate)
+
 
 if __name__ == "__main__":
     unittest.main()
