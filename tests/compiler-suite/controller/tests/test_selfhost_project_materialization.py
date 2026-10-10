@@ -97,7 +97,9 @@ class SelfHostProjectMaterializationTests(unittest.TestCase):
                 materialize_contained_project(REPOSITORY_ROOT, project, destination)
             with self.assertRaisesRegex(RuntimeError, "outside the repository"):
                 materialize_contained_project(
-                    REPOSITORY_ROOT, Path(temporary) / "outside.nsproj", Path(temporary) / "other"
+                    REPOSITORY_ROOT,
+                    REPOSITORY_ROOT.parent / "outside.nsproj",
+                    Path(temporary) / "other",
                 )
 
 
