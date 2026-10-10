@@ -10,23 +10,11 @@ import sys
 import time
 from pathlib import Path
 
-from component_gate_support import required_manifest_integer, required_nonnegative_integer
-
-
-def read_jsonl(path: Path) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as error:
-            raise RuntimeError(f"invalid JSON at {path}:{line_number}: {error.msg}") from error
-        if not isinstance(payload, dict):
-            raise RuntimeError(f"expected JSON object at {path}:{line_number}")
-        rows.append(payload)
-    return rows
+from component_gate_support import (
+    read_jsonl,
+    required_manifest_integer,
+    required_nonnegative_integer,
+)
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:

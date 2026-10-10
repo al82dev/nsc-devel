@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
 from pathlib import Path
 
 from nsc_suite import (
@@ -10,6 +11,41 @@ from nsc_suite import (
     load_manifest,
     select_cases,
 )
+
+
+def read_jsonl(path: Path) -> list[dict[str, object]]:
+    """Read infrastructure JSONL without accepting duplicate object keys."""
+    rows: list[dict[str, object]] = []
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8-sig").splitlines(), start=1
+    ):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            payload = json.loads(line, object_pairs_hook=_unique_json_object)
+        except json.JSONDecodeError as error:
+            raise RuntimeError(
+                f"invalid JSON at {path}:{line_number}: {error.msg}"
+            ) from error
+        except ValueError as error:
+            raise RuntimeError(
+                f"invalid JSON at {path}:{line_number}: {error}"
+            ) from error
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"expected JSON object at {path}:{line_number}")
+        rows.append(payload)
+    return rows
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Build one infrastructure object only from unique key definitions."""
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
 
 
 def required_manifest_integer(

@@ -989,3 +989,9 @@ Validacion 102 cerro las claves JSON duplicadas del lector compartido por los
 18 controladores self-host. La unicidad alcanza objetos anidados y conserva
 archivo, linea y clave causal. Las pruebas dirigidas pasan `5/5` y la suite
 Python `236/236`, sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 103 cerro las claves JSON duplicadas de los gates BuildSystem y
+Packaging mediante un lector comun estricto. La unicidad alcanza objetos
+anidados y conserva archivo, linea y clave causal. Las pruebas dirigidas pasan
+`9/9` y la suite Python `237/237`, sin ejecutar producto. La tarea funcional
+permanece activa.

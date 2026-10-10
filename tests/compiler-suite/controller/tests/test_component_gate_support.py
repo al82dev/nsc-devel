@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,6 +13,7 @@ sys.path.insert(0, str(INTEGRATION_ROOT))
 
 from component_gate_support import (
     assert_component_results,
+    read_jsonl,
     required_manifest_integer,
     required_nonnegative_integer,
 )
@@ -45,6 +47,19 @@ class ComponentGateSupportTests(unittest.TestCase):
             case("TB-BAS-001"),
             case("TB-BAS-002", "KNOWN_FAILURE"),
         )
+
+    def test_jsonl_reader_rejects_duplicate_nested_keys(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="component-jsonl-", dir=Path.cwd()) as root:
+            path = Path(root) / "catalog.jsonl"
+            path.write_text(
+                '{"case_id":"TC-001","summary":{"required":1,"required":2}}\n',
+                encoding="utf-8",
+                newline="\n",
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "duplicate JSON object key: required"
+            ):
+                read_jsonl(path)
 
     def test_accepts_one_terminal_result_per_selected_case(self) -> None:
         assert_component_results(

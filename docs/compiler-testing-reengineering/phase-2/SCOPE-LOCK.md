@@ -1493,3 +1493,14 @@ last-wins fuera del cargador canonico.
 El presupuesto queda limitado al lector compartido, un constructor iterativo,
 una prueba Python sintetica y la evidencia de Validacion 102. No se cambian los
 catalogos, manifiestos, producto ni bateria historica y no se ejecuta producto.
+
+### Enmienda: claves JSON unicas en gates BuildSystem y Packaging
+
+Los gates BuildSystem y Packaging deben consumir sus catalogos JSONL mediante
+un unico lector estricto. Las claves repetidas en cualquier nivel no pueden
+modificar identidad, disposicion, conteos u oraculos mediante last-wins.
+
+El presupuesto queda limitado a consolidar los dos lectores equivalentes en
+`component_gate_support`, una prueba Python sintetica y la evidencia de
+Validacion 103. No se cambian catalogos, casos, producto ni bateria historica
+y no se ejecuta producto.
