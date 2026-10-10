@@ -646,3 +646,17 @@ El presupuesto queda limitado a `ExecutionEngine._run_variant`, una prueba
 Python del despacho completo y la evidencia de Validación 31. No se modifica el
 esquema, manifiesto, casos, oráculos, producto ni batería histórica; no se
 configura, compila ni ejecuta producto.
+
+### Enmienda: frontera de rutas y recibos de NSC Builder 3
+
+Toda raíz escribible de Builder 3 debe permanecer en `A:`. El recibo del
+compilador debe identificar exactamente los archivos NSC y NSLink seleccionados,
+con ruta resuelta, tamaño, fecha y SHA-256, sin sustituirlos por herramientas de
+otra ubicación.
+
+El presupuesto queda limitado a una prueba Python de `BuilderConfig.validated`,
+`require_a_path`, `file_receipt` y `compiler_receipt`, más la evidencia de
+Validación 37. `nscbuilder3.py` sólo podrá modificarse si el cotejo demuestra una
+discrepancia concreta. Los archivos de prueba temporales se crean exclusivamente
+bajo `A:\nsc-devel\_nscbuilder3`; no se descubre ni ejecuta ninguna herramienta,
+no se configura, compila o ejecuta producto y no se escribe en `C:`.

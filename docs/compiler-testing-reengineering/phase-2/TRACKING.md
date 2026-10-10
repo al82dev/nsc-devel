@@ -605,3 +605,10 @@ del plan visible, incluye sólo estados terminales y rechaza claves duplicadas o
 ajenas en lugar de descartarlas silenciosamente. `PASS` y `KNOWN_FAILURE` no
 entran al retry. Las pruebas dirigidas pasan `4/4` y la suite Python completa
 `107/107`.
+
+Validación 37 cerró la frontera de rutas y recibos de Builder 3. Las tres
+raíces escribibles configurables rechazan `C:` y el almacenamiento propio
+permanece en `A:`. Los recibos conservan exactamente ruta, tamaño, fecha y
+SHA-256 del NSC y NSLink seleccionados. Las pruebas dirigidas pasan `4/4` y la
+suite Python completa `111/111`; no se descubrieron ni ejecutaron herramientas
+reales.
