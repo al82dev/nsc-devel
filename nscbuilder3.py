@@ -1554,7 +1554,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.compiler_linkage = QComboBox()
             self.compiler_linkage.addItems(["Static", "Dynamic"])
             self.compiler_optimization = QComboBox()
-            self.compiler_optimization.addItems(["O2", "O0", "O1", "O3"])
+            self.compiler_optimization.addItems(["O0", "O1", "O2", "O3"])
             self.compiler_configure_button = QPushButton("Configurar NSC")
             self.compiler_build_button = QPushButton("Construir NSC")
             self.infrastructure_cancel_button = QPushButton("Cancelar construcción")

@@ -40,6 +40,8 @@ validación estática y queda pendiente de comprobación funcional por el usuari
 La pestaña incorpora además un botón de cancelación propio inmediatamente al
 lado de `Construir NSC`, habilitado sólo durante configuración o construcción
 y conectado al árbol de procesos activo.
+La construcción de NSC y la ejecución de pruebas seleccionan `O0` de forma
+predeterminada; los niveles superiores siguen disponibles de forma explícita.
 
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`

@@ -108,6 +108,8 @@ oráculos existentes.
 - `5,695` casos ejecutables y `3,892` disposiciones no ejecutables visibles.
 - Configuración y construcción explícitas de NSC en `Debug`, `Release` o ambas,
   con enlace host estático o dinámico y optimización host seleccionable.
+- `O0` es la optimización host predeterminada; `O1`, `O2` y `O3` permanecen
+  disponibles como selecciones explícitas.
 - Autodescubrimiento de Clang/LLVM/LLD en `C:\clang-llvm`, CMake/Ninja desde
   `PATH`, fuentes desde el repositorio y NSLink junto al NSC o en su salida
   Release conocida.

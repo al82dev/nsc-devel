@@ -111,3 +111,10 @@ Por instrucción explícita del usuario, el botón `Cancelar construcción` debe
 aparecer inmediatamente al lado de `Construir NSC`. Sólo se autoriza mover el
 widget; su señal, estado habilitado y mecanismo de cancelación permanecen
 idénticos.
+
+### Cambio cerrado: `O0` predeterminado
+
+El selector de optimización host de la construcción de NSC debe iniciar en
+`O0`. El único cambio funcional autorizado es ordenar sus opciones como
+`O0`, `O1`, `O2`, `O3`; no se modifica la selección de optimización de la suite
+ni los comandos resultantes para una opción elegida explícitamente.
