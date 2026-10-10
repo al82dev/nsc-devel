@@ -1441,3 +1441,17 @@ fixture debe referenciar `NativeSharp.Core.Collections.Generic`. No se modifica
 producto ni oraculos. La revalidacion se limito exclusivamente a `TSH-00981` y
 termino `1/1 PASS` en `20261010-142944-tsh00981`. Evidencia:
 `TANDA-VALIDACION-160-DEPENDENCIA-COLLECTIONS-TYPES.md`.
+
+Validacion 161 cierra la clasificacion causal de la corrida integral
+`20261010-142113-a514d35c` (`Debug/O0/Todos`). La autoridad contiene `274 FAIL`,
+`4 INFRASTRUCTURE_ERROR`, `161 BLOCKED` y `41 KNOWN_FAILURE`. Los `274 FAIL`
+quedan separados sin omisiones en `215` defectos de prueba/oraculo, `4`
+defectos de infraestructura, `5` defectos reales confirmados del compilador y
+`50` casos que requieren evidencia observada antes de decidir. Los cuatro
+productores self-host que originaron los `161 BLOCKED` ya tienen evidencia
+dirigida posterior en `PASS`, pero sus consumidores no se promueven a `PASS`
+hasta reejecutarlos. Se fijaron siete tandas causales: cada correccion tendra
+prueba puntual y al cierre de cada tanda se reejecutaran las `439` variantes
+correctivas. La bateria completa de `5,695` variantes queda reservada para el
+cierre de todas las tandas. Evidencia:
+`TANDA-VALIDACION-161-CLASIFICACION-Y-PLAN-CORRECTIVO.md`.
