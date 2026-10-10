@@ -10,6 +10,7 @@ from pathlib import Path
 
 from selfhost_inventory import (
     load_component_inventory,
+    json_values_equal_exact,
     read_jsonl,
     required_oracle_exit_code,
     validate_manifest_cases,
@@ -72,7 +73,7 @@ def oracle_satisfied(
         actual_json = json.loads(completed.stdout.strip())
     except json.JSONDecodeError as error:
         return False, f"invalid JSON output: {error.msg}"
-    if actual_json != expected_json:
+    if not json_values_equal_exact(expected_json, actual_json):
         return False, f"JSON mismatch: {actual_json!r}"
     return True, ""
 

@@ -43,6 +43,30 @@ def required_oracle_exit_code(row: dict[str, object], component: str) -> int:
     return exit_code
 
 
+def json_values_equal_exact(expected: object, actual: object) -> bool:
+    """Compare JSON-compatible values by exact type and value without recursion."""
+    pending: list[tuple[object, object]] = [(expected, actual)]
+    while pending:
+        expected_value, actual_value = pending.pop()
+        if type(expected_value) is not type(actual_value):
+            return False
+        if isinstance(expected_value, dict):
+            if expected_value.keys() != actual_value.keys():
+                return False
+            pending.extend(
+                (expected_value[key], actual_value[key]) for key in expected_value
+            )
+            continue
+        if isinstance(expected_value, list):
+            if len(expected_value) != len(actual_value):
+                return False
+            pending.extend(zip(expected_value, actual_value))
+            continue
+        if expected_value != actual_value:
+            return False
+    return True
+
+
 def unique_index(
     rows: list[dict[str, str]], key: str, source: str
 ) -> dict[str, dict[str, str]]:

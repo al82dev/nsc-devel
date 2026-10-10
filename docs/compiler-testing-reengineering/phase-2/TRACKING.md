@@ -796,3 +796,9 @@ Validacion 67 cerro los tres conteos declarados por contrato en Packaging.
 exactos no negativos antes de compararse con los conjuntos derivados. Las
 pruebas dirigidas pasan `7/7` y la suite Python completa `208/208`, sin ejecutar
 producto. La tarea funcional permanece activa.
+
+Validacion 68 cerro la igualdad JSON de SelfHost.Diagnostics. Objetos y arreglos
+se comparan ahora por estructura, tipo y valor mediante una lista de trabajo
+iterativa; `true` ya no acredita `1` ni un entero acredita un flotante. Las
+pruebas dirigidas pasan `4/4` y la suite Python completa `209/209`, sin ejecutar
+producto. La tarea funcional permanece activa.

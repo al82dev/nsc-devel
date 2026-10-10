@@ -14,11 +14,11 @@ sys.path.insert(0, str(INTEGRATION_ROOT))
 import run_selfhost_diagnostics_gate as diagnostics_gate
 import run_selfhost_source_gate as source_gate
 import run_selfhost_types_gate as types_gate
-from selfhost_inventory import required_oracle_exit_code
+from selfhost_inventory import json_values_equal_exact, required_oracle_exit_code
 
 
-def completed(returncode: int) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(["synthetic"], returncode, "", "")
+def completed(returncode: int, stdout: str = "") -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(["synthetic"], returncode, stdout, "")
 
 
 class SelfHostOracleContractTests(unittest.TestCase):
@@ -57,6 +57,25 @@ class SelfHostOracleContractTests(unittest.TestCase):
                 RuntimeError, "must be an exact integer"
             ):
                 evaluator(row, completed(0))
+
+    def test_json_oracle_compares_nested_types_exactly_without_recursion(self) -> None:
+        expected = {"version": 1, "values": [False, {"name": "nsc"}]}
+        self.assertTrue(json_values_equal_exact(expected, expected.copy()))
+        self.assertFalse(
+            json_values_equal_exact(
+                expected,
+                {"version": True, "values": [0, {"name": "nsc"}]},
+            )
+        )
+        self.assertFalse(json_values_equal_exact(1, 1.0))
+
+        row = {"oracle": {"exit_code": 0, "json": {"version": 1}}}
+        passed, detail = diagnostics_gate.oracle_satisfied(
+            row,
+            completed(0, '{"version": true}'),
+        )
+        self.assertFalse(passed)
+        self.assertIn("JSON mismatch", detail)
 
 
 if __name__ == "__main__":

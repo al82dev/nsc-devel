@@ -1090,3 +1090,16 @@ El presupuesto queda limitado a un lector puro compartido, los tres campos de
 evidencia de Validacion 67. No se cambian catalogos, conteos derivados,
 clasificaciones, producto ni bateria historica y no se configura, compila o
 ejecuta producto.
+
+### Enmienda: igualdad JSON tipada e iterativa
+
+El oraculo JSON de SelfHost.Diagnostics no puede usar la igualdad permisiva de
+Python, donde `true == 1` y `1 == 1.0`. Debe comparar estructura, tipos y
+valores exactos en objetos y arreglos anidados. El recorrido debe ser
+iterativo, mediante una lista de trabajo explicita, sin recursion.
+
+El presupuesto queda limitado a un comparador puro en `selfhost_inventory`, su
+uso por `run_selfhost_diagnostics_gate.oracle_satisfied`, pruebas Python
+sinteticas y la evidencia de Validacion 68. No se cambian oraculos, fixtures,
+salidas, producto ni bateria historica y no se configura, compila o ejecuta
+producto.
