@@ -739,3 +739,16 @@ El presupuesto queda limitado a pruebas Python de `effective_build_dir`,
 `nscbuilder3.py` sólo podrá modificarse si el cotejo demuestra una discrepancia.
 Los artefactos sintéticos se crean bajo `A:\nsc-devel\_nscbuilder3`; no se abre
 la GUI ni se configura, compila o ejecuta producto.
+
+### Enmienda: envolvente cerrada del host consolidado
+
+La salida de `nsc_component_tests --case` debe contener exactamente un objeto
+JSON cuya identidad completa coincida con el caso solicitado. Sólo se aceptan
+`PASS` con exit `0` y `FAIL` con exit `1`; componente, contrato, duración y lista
+de fallos deben tener su forma contractual. Una envolvente malformada es error
+de infraestructura y nunca se traduce a `KNOWN_FAILURE`.
+
+El presupuesto queda limitado a un parser puro, `ExecutionEngine._run_host`,
+pruebas Python sintéticas y la evidencia de Validación 44. No se modifica el
+host C++, sus casos, oráculos, estados esperados, producto o manifiestos; no se
+ejecuta ningún binario ni se configura, compila o ejecuta producto.

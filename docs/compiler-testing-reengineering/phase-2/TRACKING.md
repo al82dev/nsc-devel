@@ -649,3 +649,9 @@ funcional. Debug y Release usan árboles distintos tanto para NSC como para
 `nsc_component_tests`; la ausencia del host conserva una ruta de preflight en
 el modo pedido y no activa fallback cruzado. Las pruebas dirigidas pasan `4/4`
 y la suite Python completa `129/129` sin ejecutar binarios.
+
+Validación 44 cerró la envolvente del host consolidado. Builder 3 exige ahora
+un solo objeto JSON con identidad completa, duración y fallos tipados, estado
+`PASS`/`FAIL` y exit code coherente. Cualquier violación queda como error de
+infraestructura antes de evaluar defectos conocidos. Las pruebas dirigidas
+pasan `5/5` y la suite Python completa `134/134` sin ejecutar el host.

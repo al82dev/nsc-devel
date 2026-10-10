@@ -990,6 +990,46 @@ def host_executable(config: BuilderConfig, mode: str) -> Path:
     return candidates[0]
 
 
+def parse_host_envelope(
+    *,
+    captured: str,
+    exit_code: int,
+    case_id: str,
+    contract_id: str,
+    component: str,
+) -> tuple[bool, str]:
+    """Validate the exact single-case protocol emitted by the consolidated host."""
+    lines = [line for line in captured.splitlines() if line.strip().startswith("{")]
+    if len(lines) != 1:
+        raise ValueError(f"host must emit exactly one JSON object, got {len(lines)}")
+    payload = json.loads(lines[0])
+    if not isinstance(payload, dict):
+        raise ValueError("host result must be a JSON object")
+    expected_identity = (case_id, contract_id, component)
+    actual_identity = (
+        payload.get("case_id"),
+        payload.get("contract_id"),
+        payload.get("component"),
+    )
+    if actual_identity != expected_identity:
+        raise ValueError("host result identity mismatch")
+    duration = payload.get("duration_us")
+    if isinstance(duration, bool) or not isinstance(duration, int) or duration < 0:
+        raise ValueError("host duration_us must be a non-negative integer")
+    failures = payload.get("failures")
+    if not isinstance(failures, list) or any(not isinstance(item, str) for item in failures):
+        raise ValueError("host failures must be a list of strings")
+    status = payload.get("status")
+    if status not in {"PASS", "FAIL"}:
+        raise ValueError(f"host status is invalid: {status!r}")
+    expected_exit = 0 if status == "PASS" else 1
+    if exit_code != expected_exit:
+        raise ValueError(
+            f"host exit code {exit_code} contradicts status {status}; expected {expected_exit}"
+        )
+    return status == "PASS", "; ".join(failures)
+
+
 def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tuple[str, list[str], Path]]:
     """Create explicit standalone CMake commands without building NSC."""
     tools = discover_build_tools(config.llvm_dir)
@@ -1243,22 +1283,21 @@ class ExecutionEngine:
         )
         log_path = case_root / "host.log"
         log_path.write_text(captured, encoding="utf-8", newline="\n")
-        lines = [line for line in captured.splitlines() if line.strip().startswith("{")]
-        if len(lines) != 1:
+        try:
+            passed, detail = parse_host_envelope(
+                captured=captured,
+                exit_code=code,
+                case_id=variant.case.case_id,
+                contract_id=variant.case.contract_id,
+                component=variant.case.component,
+            )
+        except (json.JSONDecodeError, ValueError) as error:
             return (
                 "INFRASTRUCTURE_ERROR",
-                f"host emitted {len(lines)} JSON result lines; expected one",
+                str(error),
                 str(log_path),
             )
-        payload = json.loads(lines[0])
-        if payload.get("case_id") != variant.case.case_id:
-            return "INFRASTRUCTURE_ERROR", "host result identity mismatch", str(log_path)
-        status = str(payload.get("status", "INFRASTRUCTURE_ERROR"))
-        failures = payload.get("failures", [])
-        detail = "; ".join(str(item) for item in failures)
-        if code not in {0, 1}:
-            return "INFRASTRUCTURE_ERROR", f"host exited with {code}: {detail}", str(log_path)
-        return self._expected_status(variant.case, status == "PASS", detail, str(log_path))
+        return self._expected_status(variant.case, passed, detail, str(log_path))
 
     def _run_identity(self, variant: RunVariant) -> tuple[str, str, str]:
         """Delegate one compiler-identity case to the existing manifest controller."""
