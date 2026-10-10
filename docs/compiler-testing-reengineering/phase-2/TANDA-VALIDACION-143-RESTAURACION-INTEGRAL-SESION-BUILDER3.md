@@ -39,6 +39,19 @@ identidades fueran un conjunto exacto sin duplicados, faltantes ni sobrantes.
 7. La carga no inicia worker, no configura CMake, no compila, no ejecuta y no
    modifica la evidencia historica.
 
+## Correccion de proyeccion visual
+
+La comprobacion del usuario demostro que reconstruir primero filas `LISTO` y
+actualizarlas una a una no satisfacia la carga visible. Esa ruta fue retirada.
+La tabla materializa ahora directamente cada registro de `results.json` con su
+estado, duracion, detalle y evidencia; despues agrega exclusivamente los casos
+pendientes o filtrados que no poseen resultado terminal. Los filtros operan
+sobre esos estados definitivos desde la primera presentacion de la tabla.
+Activar una fila del selector de historial carga la ejecucion inmediatamente;
+el boton `Cargar ejecucion` conserva la misma accion. La cabecera cambia a
+`Ejecucion CARGADA` para que una mera seleccion no pueda confundirse con una
+carga aplicada.
+
 ## Validacion
 
 - Sintaxis de `nscbuilder3.py` y su prueba dirigida: correcta.

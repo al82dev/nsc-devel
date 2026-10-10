@@ -2248,6 +2248,12 @@ el log completo, el reporte condensado y los fallos reejecutables se repueblan
 desde evidencia existente. Cargar no configura, no compila, no ejecuta y no
 reescribe la carpeta historica.
 
+La correccion visual posterior elimina expresamente la proyeccion intermedia
+`LISTO -> resultado`: cada fila terminal se crea desde `results.json` con su
+estado, duracion, detalle y evidencia definitivos. El catalogo se usa solamente
+para completar filas pendientes o filtradas y para resolver acciones de
+reejecucion.
+
 No se cambian compilador, casos, manifiestos, disposiciones, oraculos,
 controladores funcionales, CMake ni bateria historica. La validacion se limita
 a sintaxis Python, contratos del cargador, lectura de la corrida existente y

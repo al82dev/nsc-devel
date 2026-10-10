@@ -4,13 +4,13 @@
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
   "last_completed_commit": "THIS_COMMIT",
-  "last_completed_batch": "TANDA-VALIDACION-143-RESTAURACION-INTEGRAL-SESION-BUILDER3",
+  "last_completed_batch": "TANDA-VALIDACION-144-PROYECCION-DIRECTA-HISTORIAL-BUILDER3",
   "last_completed_case": "TF-LANGUAGE-SERVICE-304",
   "current_wave": 9,
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "VALIDACION-144-CAUSAS-INFRAESTRUCTURA-CORRIDA-FUNCIONAL",
+  "current_batch": "VALIDACION-145-CAUSAS-INFRAESTRUCTURA-CORRIDA-FUNCIONAL",
   "next_action": "Classify and close the seven exact infrastructure root-cause groups from run 20261010-090333-82a4a13f without rerunning the complete suite locally.",
   "implementation_materialization": {
     "Host.Source": {
@@ -1191,6 +1191,7 @@
     "builder3_history_non_executable_rows": 3892,
     "builder3_history_selection_controls_restored": true,
     "builder3_history_load_executes_tests": false,
+    "builder3_history_terminal_projection": "DIRECT_FROM_RESULTS_JSON",
     "release_host_ordinary_passed": 735,
     "release_host_ordinary_total": 735,
     "release_known_failure_gates_passed": 7,

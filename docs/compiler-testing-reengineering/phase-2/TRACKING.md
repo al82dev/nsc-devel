@@ -1293,3 +1293,12 @@ pero exige el conjunto exacto sin faltantes, sobrantes o duplicados. Las diez
 pruebas dirigidas, la sintaxis, la lectura real y el smoke de GUI pasan. La
 tarea permanece activa y vuelve al analisis de las siete causas de
 infraestructura; no se ejecuto baseline ni se toco `C:`.
+
+Validacion 144 retira la proyeccion grafica intermedia que todavia dejaba la
+carga visible incompleta para el usuario. Builder 3 crea ahora las `5,695`
+filas terminales directamente desde `results.json`, incluyendo estado,
+duracion, detalle y evidencia, y agrega despues las `3,892` filas pendientes.
+No reejecuta, recompila ni transforma resultados. La sintaxis Python y el
+diferencial pasan. Seleccionar una ejecucion guardada la carga inmediatamente
+y la cabecera confirma `Ejecucion CARGADA`; la comprobacion visual corresponde
+al usuario.

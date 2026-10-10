@@ -3300,6 +3300,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.load_history_button.clicked.connect(
                 self._load_history_from_combo
             )
+            self.history_combo.activated.connect(
+                lambda _index: self._load_history_from_combo()
+            )
             self.refresh_history_button.clicked.connect(self._refresh_history)
             self.case_table.cellClicked.connect(self._handle_case_table_click)
             self.case_table.customContextMenuRequested.connect(
@@ -3736,27 +3739,54 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self._show_error("No se pudo preparar la selección", error)
 
         def _populate_plan(
-            self, cases: Sequence[CaseRecord], variants: Sequence[RunVariant]
+            self,
+            cases: Sequence[CaseRecord],
+            variants: Sequence[RunVariant],
+            outcomes: Sequence[CaseOutcome] = (),
         ) -> None:
             executable_ids = {variant.case.case_id for variant in variants}
+            outcome_by_key = {outcome.key: outcome for outcome in outcomes}
             pending = [case for case in cases if not case.executable]
             filtered = [
                 case for case in cases if case.executable and case.case_id not in executable_ids
             ]
-            rows: list[tuple[CaseRecord, str, str, str, str, str]] = []
-            rows.extend(
-                (
+            rows: list[tuple[CaseRecord, str, str, str, str, float, str]] = []
+            for variant in variants:
+                outcome = outcome_by_key.get(variant.key)
+                detail = ""
+                duration = 0.0
+                status = "LISTO"
+                if outcome is not None:
+                    status = outcome.status
+                    duration = outcome.duration_seconds
+                    detail = outcome.detail
+                    if outcome.evidence:
+                        detail = (
+                            f"{detail} | {outcome.evidence}"
+                            if detail
+                            else outcome.evidence
+                        )
+                rows.append(
+                    (
                     variant.case,
                     variant.build_mode,
                     variant.optimization,
                     variant.key,
-                    "LISTO",
-                    "",
+                    status,
+                    duration,
+                    detail,
+                    )
                 )
-                for variant in variants
-            )
             rows.extend(
-                (case, "NA", "NA", f"{case.case_id}|NA|NA", "PENDIENTE", case.disposition)
+                (
+                    case,
+                    "NA",
+                    "NA",
+                    f"{case.case_id}|NA|NA",
+                    "PENDIENTE",
+                    0.0,
+                    case.disposition,
+                )
                 for case in pending
             )
             rows.extend(
@@ -3766,6 +3796,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                     "NA",
                     f"{case.case_id}|FILTERED|FILTERED",
                     "FILTRADO",
+                    0.0,
                     "la combinación Build/Opt elegida no está soportada por el caso",
                 )
                 for case in filtered
@@ -3777,14 +3808,23 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.status_item_by_key.clear()
             self.variant_by_key = {variant.key: variant for variant in variants}
             self.live_status_by_key = {
-                key: status for _case, _mode, _opt, key, status, _detail in rows
+                key: status
+                for _case, _mode, _opt, key, status, _duration, _detail in rows
             }
             self.live_status_counts = Counter(self.live_status_by_key.values())
             self.variant_position_by_key = {
                 variant.key: index
                 for index, variant in enumerate(variants, start=1)
             }
-            for row_index, (case, mode, opt, key, status, detail) in enumerate(rows):
+            for row_index, (
+                case,
+                mode,
+                opt,
+                key,
+                status,
+                duration,
+                detail,
+            ) in enumerate(rows):
                 values = (
                     str(case.wave),
                     case.component,
@@ -3797,7 +3837,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                     row_progress_text(status),
                     status,
                     row_action_text(status, key in self.variant_by_key),
-                    "",
+                    f"{duration:.1f} s" if duration else "",
                     detail,
                 )
                 for column, value in enumerate(values):
@@ -4342,32 +4382,17 @@ def launch_gui(smoke_only: bool = False) -> int:
                 selection = loaded.metadata["selection"]
                 self._restore_historical_selection_controls(selection)
                 # A historical load is a complete snapshot, not a continuation of
-                # the current view.  Reset the visual filter and suspend sorting
-                # while replacing LISTO with every terminal state.  Otherwise a
-                # status-column sort can move a row halfway through _update_case
-                # and leave the subsequent cells or visibility attached to a
-                # different case.
+                # the current view.  Its terminal rows are materialized directly
+                # from results.json; there is no intermediate LISTO projection.
                 all_statuses_index = self.status_filter_combo.findData("ALL")
                 if all_statuses_index < 0:
                     raise RuntimeError("the complete status filter is unavailable")
                 self.status_filter_combo.blockSignals(True)
                 self.status_filter_combo.setCurrentIndex(all_statuses_index)
                 self.status_filter_combo.blockSignals(False)
-                self._populate_plan(loaded.cases, loaded.variants)
-                self.case_table.setSortingEnabled(False)
-                self.case_table.setUpdatesEnabled(False)
-                try:
-                    for outcome in loaded.outcomes:
-                        self._update_case(
-                            outcome.key,
-                            outcome.status,
-                            outcome.detail,
-                            outcome.duration_seconds,
-                            outcome.evidence,
-                        )
-                finally:
-                    self.case_table.setUpdatesEnabled(True)
-                    self.case_table.setSortingEnabled(True)
+                self._populate_plan(
+                    loaded.cases, loaded.variants, loaded.outcomes
+                )
                 expected_statuses = Counter(
                     outcome.status for outcome in loaded.outcomes
                 )
@@ -4413,6 +4438,11 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.progress.setValue(total)
                 self.progress.setFormat(
                     f"{total:,}/{total:,} pruebas — CARGADA (%p%)"
+                )
+                self.plan_label.setText(
+                    f"Ejecución CARGADA: {loaded.root.name} · "
+                    f"{len(loaded.cases):,} casos canónicos · "
+                    f"{len(loaded.variants):,} resultados terminales"
                 )
                 self.execution_activity.setText(
                     f"Ejecución anterior cargada: {loaded.root.name} — {loaded.status}"
