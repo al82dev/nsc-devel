@@ -141,9 +141,8 @@ def utc_now() -> str:
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
-    """Read one canonical UTF-8 CSV file without mutating its source."""
-    with path.open("r", encoding="utf-8-sig", newline="") as stream:
-        return list(csv.DictReader(stream))
+    """Read one extensible CSV using the canonical structural validation."""
+    return read_catalog_csv(path, ())
 
 
 def read_catalog_csv(

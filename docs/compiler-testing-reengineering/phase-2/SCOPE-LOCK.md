@@ -1560,3 +1560,14 @@ El presupuesto queda limitado a consolidar los tres lectores, actualizar sus
 diez consumos, una prueba Python sintetica y la evidencia de Validacion 108.
 No se cambian los CSV vivos, reglas de gates, producto ni bateria historica y
 no se ejecuta producto.
+
+### Enmienda: lector CSV generico estricto en Builder 3
+
+El lector `nscbuilder3.read_csv`, usado por las auditorias de alcance, debe
+compartir la validacion estructural de `read_catalog_csv`. No puede aceptar
+encabezados duplicados, filas truncadas o celdas extra mientras calcula los
+componentes incluidos y excluidos.
+
+El presupuesto queda limitado a delegar el alias generico, una prueba Python
+sintetica y la evidencia de Validacion 109. No se cambian campos requeridos,
+catalogos, seleccion, producto ni bateria historica y no se ejecuta producto.

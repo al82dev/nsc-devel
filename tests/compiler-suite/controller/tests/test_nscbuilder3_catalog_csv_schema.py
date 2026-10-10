@@ -73,6 +73,17 @@ class Builder3CatalogCsvSchemaTests(unittest.TestCase):
 
         self.assertEqual(rows[0]["new_metadata"], "future")
 
+    def test_generic_reader_reuses_the_strict_structure_contract(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
+            path = self._write(
+                Path(directory),
+                "duplicate.csv",
+                "component,component\nHost.Basic,Host.Source\n",
+            )
+            with self.assertRaisesRegex(ValueError, "duplicate names"):
+                builder.read_csv(path)
+
     def test_wave_number_is_an_exact_positive_decimal(self) -> None:
         self.assertEqual(builder.parse_wave_number("9"), 9)
         for value in ("", "0", "01", "-1", "+1", "1.0", " 1", "1 "):

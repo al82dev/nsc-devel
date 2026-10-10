@@ -1025,3 +1025,9 @@ lector comun estricto. Las pruebas dirigidas pasan `19/19`, la suite Python
 `242/242`, la sintaxis pasa y los inventarios vivos conservan `10,193` filas de
 diseno, `10,193` asignaciones y `1,309` contratos, sin ejecutar producto. La
 tarea funcional permanece activa.
+
+Validacion 109 cerro el alias CSV permisivo de Builder 3 usado por las
+auditorias de alcance. Ahora delega en el lector estructural estricto sin
+imponer campos ni cerrar columnas extensibles. Las pruebas dirigidas pasan
+`8/8` y la suite Python `243/243`, sin ejecutar producto. La tarea funcional
+permanece activa.
