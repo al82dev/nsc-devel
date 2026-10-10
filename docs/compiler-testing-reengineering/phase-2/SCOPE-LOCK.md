@@ -713,3 +713,15 @@ Python con un doble de `Popen` y la evidencia de Validación 41. No se crean
 procesos reales, no se cambia el bucle de lectura, los comandos, estados,
 ejecución de casos o producto; no se abre la GUI ni se configura, compila o
 ejecuta producto.
+
+### Enmienda: diagnósticos progresivos de control de procesos
+
+Los mensajes generados por `ProcessController` —cancelación anterior al
+lanzamiento, cancelación activa y timeout— deben pasar por el mismo callback de
+salida que alimenta `full.log`. No basta conservarlos en el texto de retorno,
+porque `CommandWorker` no usa ese texto como evidencia progresiva.
+
+El presupuesto queda limitado a `ProcessController.run`, pruebas Python con un
+doble de `Popen` y la evidencia de Validación 42. No se cambia la terminación,
+los códigos, comandos, estados, casos, producto o GUI; no se crea ningún proceso
+real ni se configura, compila o ejecuta producto.

@@ -637,3 +637,9 @@ Validación 41 cerró la terminación confirmada de procesos. Builder 3 comprueb
 falla o la espera vence; un proceso ya terminado permanece intacto. Las pruebas
 con dobles pasan `4/4` y la suite Python completa `123/123`, sin crear ni
 terminar procesos reales.
+
+Validación 42 cerró los diagnósticos progresivos de procesos. Los mensajes de
+cancelación previa, cancelación activa y timeout pasan ahora por el callback que
+alimenta `full.log`, además de conservarse en el resultado de `run`. Las pruebas
+dirigidas pasan `6/6` y la suite Python completa `125/125`, usando únicamente
+dobles.

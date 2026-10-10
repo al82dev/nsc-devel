@@ -858,7 +858,9 @@ class ProcessController:
     ) -> tuple[int, str]:
         """Stream merged output and return exit code plus captured text."""
         if self.cancelled.is_set():
-            return 130, "cancelled before launch"
+            message = "cancelled before launch\n"
+            self.output(message)
+            return 130, message
         flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
         process = subprocess.Popen(
             [str(part) for part in command],
@@ -901,11 +903,15 @@ class ProcessController:
                 break
             if timeout is not None and time.monotonic() - started > timeout:
                 self._terminate_tree(process)
-                output.append(f"process timed out after {timeout:.1f} seconds\n")
+                message = f"process timed out after {timeout:.1f} seconds\n"
+                output.append(message)
+                self.output(message)
                 break
             if self.cancelled.is_set():
                 self._terminate_tree(process)
-                output.append("process cancelled\n")
+                message = "process cancelled\n"
+                output.append(message)
+                self.output(message)
                 break
         reader.join(timeout=1.0)
         while True:
