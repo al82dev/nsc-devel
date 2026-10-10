@@ -10,8 +10,8 @@
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "PRIVATE-ACCESS-ABI-CLOSURE-49",
-  "next_action": "Consume the next user-run Debug link and execution result after replacing direct Sema and Dominance product compilation with access-consistent test shims; do not repeat the 523-unit syntax audit.",
+  "current_batch": "DEBUG-LINK-PRODUCER-CLOSURE-26",
+  "next_action": "Close the remaining 24-symbol WindowsLibraryBuilder producer closure, then remove the invalid direct lld-link flag before requesting a new external Debug link.",
   "implementation_materialization": {
     "Host.Source": {
       "expected": 58,
@@ -738,6 +738,9 @@
     }
   },
   "validation": {
+    "debug_link_native_symbols_missing": 26,
+    "debug_link_identity_symbols_closed_statically": 2,
+    "debug_link_builder_closure_symbols_pending": 24,
     "private_access_abi_mismatches": 49,
     "private_access_abi_existing_shims": 1,
     "private_access_abi_added_shims": 3,

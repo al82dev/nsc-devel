@@ -178,3 +178,33 @@ declaración de acceso que sus pruebas. Permanecen protegidos todos los fuentes 
 headers de producto, contratos, oráculos, IDs, disposiciones, manifiestos, la
 suite histórica, los seis archivos preexistentes, `C:`, despliegues y remotos.
 La validación de enlace y ejecución corresponde a la siguiente corrida externa.
+
+### Enmienda: clausura completa del enlace Debug
+
+La corrida externa posterior eliminó las `49` discrepancias ABI y llegó al
+enlace final. El inventario de símbolos del archivo de respuesta real encontró
+`26` símbolos NativeSharp sin productor. Se dividen en dos causas y se corrigen
+en commits independientes:
+
+1. `kCompilerVersion` y `kCompilerBuildId` son consumidos por
+   `LanguageService.cpp` y `CompilerConsole.cpp`, pero faltaba el productor real
+   `Version.cpp` y su `BuildId.h` generado.
+2. Los otros `24` símbolos son la clausura transitiva de
+   `WindowsLibraryBuilder.cpp`, incorporado por los casos ejecutables de
+   `Host.Linker` sin sus productores LLVM, runtime y linker.
+
+Presupuesto autorizado:
+
+| Dimensión | Autorizado |
+|---|---|
+| Repositorio | `A:\nsc-devel` |
+| Componente | Infraestructura nueva `nsc_component_tests` y Builder 3 |
+| Archivos funcionales | `tests/compiler-suite/CMakeLists.txt`, `nscbuilder3.py` |
+| Comportamiento | Cerrar productores reales del enlace y retirar el argumento inválido enviado directamente a `lld-link` |
+| Evidencia | Tabla de símbolos del `rsp` real y dos logs externos equivalentes |
+| Validación | Cierre estático; nueva configuración, enlace y ejecución a cargo del usuario |
+
+Permanecen protegidos el producto, las pruebas y oráculos, IDs, disposiciones,
+manifiestos, suite histórica, seis archivos preexistentes, `C:`, despliegues y
+remotos. Quedan prohibidos stubs de identidad, valores inventados y omitir casos
+para conseguir que el ejecutable enlace.

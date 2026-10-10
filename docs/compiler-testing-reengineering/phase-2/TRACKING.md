@@ -57,6 +57,12 @@ con acceso ABI inconsistente: `42` de Sema y `7` de Dominance. Los productores
 de prueba ahora siguen el shim ya usado por Parser; no se modificó producto. La
 nueva validación de enlace y ejecución queda pendiente de la corrida del usuario.
 
+La corrida siguiente confirmó que la clausura ABI anterior quedó resuelta y
+avanzó al enlace final. La primera causa nueva, los `2` símbolos públicos de
+identidad consumidos por LanguageService y Driver, ya tiene incorporado el
+productor real `Version.cpp` y el `BuildId.h` del NSC seleccionado. No se usaron
+stubs ni valores de prueba; la validación externa permanece pendiente.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,
