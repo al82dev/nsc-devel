@@ -2110,6 +2110,26 @@ ejecuta producto; la validacion se limita a contratos Python y smoke de
 construccion de GUI. Los seis archivos protegidos permanecen intactos. No se
 ejecuta baseline, no se despliega y no se toca la unidad `C:`.
 
+### Enmienda: fallos del host de pruebas sin dialogos interactivos
+
+El primer barrido Debug completo posterior a Validacion 136 abrio dialogos de
+Microsoft Visual C++ Runtime mientras los controladores ejecutaban casos
+aislados. Un proceso automatizado que aborta o dispara una assertion no puede
+esperar interaccion humana: debe terminar, conservar `stderr` y permitir que el
+controlador registre la variante exacta como fallo para continuar con las
+demas.
+
+El presupuesto queda limitado al punto de entrada Windows de
+`nsc_component_tests`: instalar antes del registro el modo de error de proceso
+sin cuadros de sistema, dirigir reportes CRT Debug a `stderr` y retirar el
+mensaje/reporting interactivo de `abort`. En plataformas no Windows la funcion
+es un no-op. No se ocultan ni convierten fallos en PASS, no se cambian casos,
+oraculos, timeouts, controladores, producto ni compilador. La validacion local
+se limita a auditoria estatica y sintaxis disponible; la reconstruccion y
+corrida funcional quedan para la compilacion solicitada por el usuario. Los
+seis archivos protegidos permanecen intactos. No se ejecuta baseline, no se
+despliega y no se toca la unidad `C:`.
+
 ### Enmienda: identidad canonica de Sema 087 a 099
 
 La conciliacion exhaustiva posterior a Validacion 132 comparo las `8,054`

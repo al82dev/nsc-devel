@@ -1237,3 +1237,12 @@ los fallos activos. La sintaxis Python pasa, las pruebas dirigidas pasan `7/7`
 y el smoke valida botones y pestana. La corrida normal conserva siempre el
 denominador completo. La tarea permanece activa; no se compilo ni ejecuto NSC,
 no se ejecuto baseline y no se toco `C:`.
+
+Validacion 138 cerro estaticamente la causa de los cuadros interactivos del
+runtime de Microsoft. El punto de entrada Windows de `nsc_component_tests`
+desactiva fault dialogs, dirige reportes CRT Debug a `stderr` y evita el
+reporting interactivo de `abort`, sin ocultar el fallo ni convertirlo en PASS.
+El contrato estatico pasa `3/3`, `git diff --check` pasa y los seis archivos
+protegidos conservan sus hashes. La compilacion y corrida funcional quedan
+pendientes del usuario. La tarea permanece activa; no se compilo ni ejecuto
+producto, no se ejecuto baseline y no se toco `C:`.
