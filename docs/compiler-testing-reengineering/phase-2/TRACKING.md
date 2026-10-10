@@ -772,3 +772,9 @@ variante; exigen un `int` exacto antes de despachar. Las pruebas dirigidas pasan
 `10/10` y la suite Python completa `201/201`, sin configurar, compilar o ejecutar
 producto. La validacion funcional externa sigue pendiente y la tarea permanece
 activa hasta cero errores inesperados.
+
+Validacion 64 cerro las identidades y conteos de resultados. Los catorce gates
+host y el gate de infraestructura comparten ahora una autoridad que exige
+`case_id` y estados de cadena exactos, ademas de conteos enteros exactos no
+negativos. Las pruebas dirigidas pasan `9/9` y la suite Python completa
+`203/203`, sin ejecutar producto. La tarea funcional permanece activa.

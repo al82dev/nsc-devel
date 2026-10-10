@@ -80,6 +80,17 @@ class InfrastructureGateTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "protocol cardinality"):
             validate_events(self.cases, [])
 
+    def test_result_validation_rejects_coercible_counts(self) -> None:
+        results = [
+            {"case_id": case.case_id, "status": case.expected_outcome}
+            for case in self.cases
+        ]
+        counts = Counter(case.expected_outcome for case in self.cases)
+        status = next(iter(counts))
+        counts[status] = str(counts[status])
+        with self.assertRaisesRegex(RuntimeError, "invalid result count"):
+            validate_results(self.cases, {"results": results, "counts": counts})
+
 
 if __name__ == "__main__":
     unittest.main()

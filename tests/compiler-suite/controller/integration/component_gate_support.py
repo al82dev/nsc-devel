@@ -66,6 +66,8 @@ def assert_component_results(
     payload: dict[str, object],
     cases: tuple[CaseManifest, ...],
     component: str,
+    *,
+    selection_name: str = "live manifest selection",
 ) -> None:
     """Require one terminal result per live manifest case and its declared outcome."""
     raw_results = payload.get("results")
@@ -75,18 +77,24 @@ def assert_component_results(
     if any(not isinstance(result, dict) for result in raw_results):
         raise RuntimeError(f"{component} controller contains a non-object result")
     expected_ids = tuple(case.case_id for case in cases)
-    actual_ids = tuple(str(result.get("case_id", "")) for result in raw_results)
+    raw_ids = tuple(result.get("case_id") for result in raw_results)
+    if any(not isinstance(case_id, str) or not case_id for case_id in raw_ids):
+        raise RuntimeError(f"{component} controller contains an invalid case identity")
+    actual_ids = raw_ids
     if actual_ids != expected_ids:
         raise RuntimeError(
-            f"{component} controller results differ from the live manifest selection"
+            f"{component} controller results differ from the {selection_name}"
         )
 
     expected_counts = Counter(case.expected_outcome for case in cases)
-    observed_counts = {
-        str(status): int(count)
-        for status, count in raw_counts.items()
-        if int(count) != 0
-    }
+    observed_counts: dict[str, int] = {}
+    for status, count in raw_counts.items():
+        if not isinstance(status, str) or not status:
+            raise RuntimeError(f"{component} controller contains an invalid result state")
+        if type(count) is not int or count < 0:
+            raise RuntimeError(f"{component} controller contains an invalid result count")
+        if count != 0:
+            observed_counts[status] = count
     if observed_counts != dict(expected_counts):
         raise RuntimeError(
             f"{component} result counts differ from declared outcomes: {raw_counts}"

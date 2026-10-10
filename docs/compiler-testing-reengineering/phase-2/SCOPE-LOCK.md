@@ -1033,3 +1033,18 @@ El presupuesto queda limitado a un validador puro compartido en
 payloads sinteticos y la evidencia de Validacion 63. No se cambian
 manifiestos, rutas, comandos, oraculos, producto ni bateria historica y no se
 configura, compila o ejecuta producto.
+
+### Enmienda: resultados de controladores sin coercion
+
+El cierre comun de resultados no puede convertir identidades mediante
+`str(...)` ni conteos mediante `int(...)`. Cada `case_id` debe ser una cadena
+exacta y cada conteo un entero exacto no negativo; en particular, `true`,
+`"1"` y `1.0` no pueden acreditar un caso o un resultado. El gate sintetico de
+infraestructura debe reutilizar esa misma autoridad en vez de conservar una
+copia permisiva.
+
+El presupuesto queda limitado a `assert_component_results`, la delegacion de
+`run_infrastructure_gate.validate_results`, pruebas Python sinteticas y la
+evidencia de Validacion 64. No se cambian resultados validos, seleccion,
+ejecucion, producto ni bateria historica y no se configura, compila o ejecuta
+producto.

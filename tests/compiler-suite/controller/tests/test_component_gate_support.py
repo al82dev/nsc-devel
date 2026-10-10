@@ -95,6 +95,24 @@ class ComponentGateSupportTests(unittest.TestCase):
                 "Host.Basic",
             )
 
+    def test_rejects_coercible_result_identities_and_counts(self) -> None:
+        numeric_case = (case("7"),)
+        with self.assertRaisesRegex(RuntimeError, "invalid case identity"):
+            assert_component_results(
+                {"results": [{"case_id": 7}], "counts": {"PASS": 1}},
+                numeric_case,
+                "Synthetic",
+            )
+        for count in (True, "1", 1.0, -1):
+            with self.subTest(count=count), self.assertRaisesRegex(
+                RuntimeError, "invalid result count"
+            ):
+                assert_component_results(
+                    {"results": [{"case_id": "7"}], "counts": {"PASS": count}},
+                    numeric_case,
+                    "Synthetic",
+                )
+
     def test_manifest_integer_requires_presence_and_exact_integer_type(self) -> None:
         self.assertEqual(
             required_manifest_integer({"variant": 3}, "variant", "Synthetic"),

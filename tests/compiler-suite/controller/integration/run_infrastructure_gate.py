@@ -4,7 +4,6 @@ import argparse
 import json
 import sys
 import tempfile
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +12,7 @@ CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 
 from run_suite import run
+from component_gate_support import assert_component_results
 from nsc_suite import CaseManifest, InventoryIndex, Selection, load_manifest, select_cases
 
 
@@ -28,26 +28,12 @@ def fixture_cases(fixture: Path) -> tuple[CaseManifest, ...]:
 def validate_results(
     cases: tuple[CaseManifest, ...], payload: dict[str, Any]
 ) -> None:
-    raw_results = payload.get("results")
-    raw_counts = payload.get("counts")
-    if not isinstance(raw_results, list) or not isinstance(raw_counts, dict):
-        raise RuntimeError("controller result schema is invalid")
-    if any(not isinstance(result, dict) for result in raw_results):
-        raise RuntimeError("controller result list contains a non-object entry")
-    expected_ids = tuple(case.case_id for case in cases)
-    actual_ids = tuple(str(result.get("case_id", "")) for result in raw_results)
-    if actual_ids != expected_ids:
-        raise RuntimeError("controller results differ from the live fixture selection")
-    expected_counts = Counter(case.expected_outcome for case in cases)
-    observed_counts = Counter(
-        {
-            str(status): int(count)
-            for status, count in raw_counts.items()
-            if int(count) != 0
-        }
+    assert_component_results(
+        payload,
+        cases,
+        "Infrastructure fixture",
+        selection_name="live fixture selection",
     )
-    if observed_counts != expected_counts:
-        raise RuntimeError("controller result states differ from fixture expectations")
 
 
 def validate_events(
