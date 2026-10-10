@@ -546,3 +546,11 @@ presentes, optimización host `O0`, enlace estático y los únicos targets
 autorizados (`nsc` y `nsc_component_tests`). Las pruebas dirigidas pasan `4/4`
 y la suite Python completa pasa `80/80`; no se descubrieron herramientas
 reales, no se abrió la GUI y no se configuró, compiló ni ejecutó producto.
+
+Validación 29 demuestra que Builder 3 conserva la frontera exclusiva de NSC:
+sus `44` componentes coinciden exactamente con las olas de implementación y
+pertenecen sólo a `Host.*`, `SelfHost.*`, `BuildSystem` o `Packaging`. Los `13`
+componentes documentales fuera de esas olas —incluidas las bibliotecas y el
+SDK— no aparecen en ninguna fila del manifiesto ejecutable. Las pruebas
+dirigidas pasan `2/2` y la suite Python completa `82/82`; no se eliminó ni
+modificó ningún inventario externo.

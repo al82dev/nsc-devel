@@ -539,3 +539,18 @@ descubren herramientas reales, no se configura ni compila producto, no se abre
 la GUI y no se ejecutan casos. Permanecen protegidos el compilador, CMake, los
 manifiestos, oráculos, batería histórica, seis archivos preexistentes, `C:`,
 despliegues y remotos.
+
+### Enmienda: frontera de catálogo exclusiva del compilador
+
+El catálogo y la superficie ejecutable de Builder 3 deben coincidir exactamente
+con los componentes declarados en `implementation-waves.csv`. Esa autoridad
+sólo puede contener componentes `Host.*`, `SelfHost.*`, `BuildSystem` y
+`Packaging`; las bibliotecas `Library.*`, el SDK, tooling y terceros permanecen
+en sus inventarios documentales y fuera de esta suite.
+
+El presupuesto queda limitado a una prueba Python que derive ambos conjuntos
+de los CSV y JSONL canónicos y a la evidencia de Validación 29.
+`nscbuilder3.py` sólo podrá modificarse si el cotejo demuestra contaminación
+real. No se eliminan inventarios externos, no se modifican casos, olas,
+manifiestos, producto ni batería histórica; no se configura, compila ni ejecuta
+producto y no se escribe en `C:`.
