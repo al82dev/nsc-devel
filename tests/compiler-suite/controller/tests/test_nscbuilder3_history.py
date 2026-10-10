@@ -34,6 +34,14 @@ class Builder3HistoryTests(unittest.TestCase):
             "kind": "phase-2-suite",
             "run_id": self.root.name,
             "variant_count": 1,
+            "case_count": 1,
+            "selection": {
+                "scope": "Total",
+                "value": "",
+                "profile": "Todos",
+                "build_mode": "Debug",
+                "optimization": "O0",
+            },
         }
 
     def _result(self) -> dict[str, object]:
@@ -97,6 +105,22 @@ class Builder3HistoryTests(unittest.TestCase):
                     expected_outcome="PASS",
                     manifest={"timeout_class": "tiny"},
                 ),
+                builder.CaseRecord(
+                    case_id="PENDING",
+                    contract_id="PENDING-CONTRACT",
+                    component="Host.Basic",
+                    wave=1,
+                    purpose="history pending test",
+                    layer="unit",
+                    profile="PR",
+                    build_modes=("Debug",),
+                    optimizations=("O0",),
+                    executor="nsc_component_tests",
+                    disposition="InfrastructurePending",
+                    objective="restore one pending row",
+                    expected_outcome="",
+                    manifest=None,
+                ),
             )
         )
 
@@ -153,10 +177,88 @@ class Builder3HistoryTests(unittest.TestCase):
         loaded = builder.load_history_execution(self.root, self._catalog())
 
         self.assertEqual(loaded.status, "PASSED")
+        self.assertEqual(
+            [item.case_id for item in loaded.cases], ["CASE", "PENDING"]
+        )
         self.assertEqual([item.key for item in loaded.variants], ["CASE|Debug|O0"])
         self.assertEqual([item.status for item in loaded.outcomes], ["PASS"])
         self.assertEqual(loaded.full_log, "historical output\n")
         self.assertEqual((self.root / "results.json").read_bytes(), before)
+
+    def test_loading_reconstructs_non_executable_rows_from_selection(self) -> None:
+        self._write_valid_terminal_run()
+
+        loaded = builder.load_history_execution(self.root, self._catalog())
+
+        self.assertEqual(len(loaded.cases), 2)
+        self.assertFalse(loaded.cases[1].executable)
+        self.assertEqual(len(loaded.variants), 1)
+        self.assertEqual(len(loaded.outcomes), 1)
+
+    def test_loading_accepts_complete_results_in_completion_order(self) -> None:
+        first = self._catalog().by_id["CASE"]
+        second = builder.CaseRecord(
+            case_id="CASE-2",
+            contract_id="CONTRACT-2",
+            component="Host.Basic",
+            wave=1,
+            purpose="second history test",
+            layer="unit",
+            profile="PR",
+            build_modes=("Debug",),
+            optimizations=("O0",),
+            executor="nsc_component_tests",
+            disposition="Executable",
+            objective="preserve completion order",
+            expected_outcome="PASS",
+            manifest={"timeout_class": "tiny"},
+        )
+        catalog = builder.CanonicalCatalog((first, second))
+        metadata = self._metadata()
+        metadata["variant_count"] = 2
+        metadata["case_count"] = 2
+        second_result = self._result()
+        second_result.update(
+            {
+                "key": "CASE-2|Debug|O0",
+                "case_id": "CASE-2",
+                "contract_id": "CONTRACT-2",
+            }
+        )
+        self._write_json("metadata.json", metadata)
+        self._write_json(
+            "results.json",
+            {
+                "run_id": self.root.name,
+                "finished_at": "2026-10-10T00:00:01.000+00:00",
+                "status": "PASSED",
+                "counts": {"PASS": 2},
+                "results": [second_result, self._result()],
+            },
+        )
+        (self.root / "summary.md").write_text("# summary\n", encoding="utf-8")
+        events = (
+            {"schema": 1, "kind": "RUN_STARTED", "payload": metadata},
+            {
+                "schema": 1,
+                "kind": "RUN_FINISHED",
+                "payload": {"status": "PASSED", "counts": {"PASS": 2}},
+            },
+        )
+        (self.root / "events.jsonl").write_text(
+            "".join(json.dumps(item) + "\n" for item in events), encoding="utf-8"
+        )
+
+        loaded = builder.load_history_execution(self.root, catalog)
+
+        self.assertEqual(
+            [item.key for item in loaded.variants],
+            ["CASE|Debug|O0", "CASE-2|Debug|O0"],
+        )
+        self.assertEqual(
+            [item.key for item in loaded.outcomes],
+            ["CASE-2|Debug|O0", "CASE|Debug|O0"],
+        )
 
     def test_loading_rejects_case_absent_from_current_catalog(self) -> None:
         self._write_valid_terminal_run()

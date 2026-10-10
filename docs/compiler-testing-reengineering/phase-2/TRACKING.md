@@ -1282,3 +1282,14 @@ mostrar la tabla. El cargador leyó la evidencia real con los cinco conteos
 exactos, la sintaxis Python, el smoke de GUI y `git diff --check` pasan. La
 comprobacion grafica queda pendiente de reabrir Builder 3; no se compilo ni
 ejecuto producto, no se ejecuto baseline y no se toco `C:`.
+
+Validacion 143 completa la restauracion de la seleccion historica, no solo de
+sus resultados terminales. La corrida `20261010-090333-82a4a13f` vuelve a
+materializar `9,587` filas: `5,695` variantes ejecutadas y `3,892` casos no
+ejecutables visibles. Se restauran los controles `Total/Todos/Debug/O0`, los
+cinco grupos terminales, pendientes, log, reporte condensado y fallos exactos
+sin ejecutar ni compilar nada. El cargador acepta el orden real de finalizacion
+pero exige el conjunto exacto sin faltantes, sobrantes o duplicados. Las diez
+pruebas dirigidas, la sintaxis, la lectura real y el smoke de GUI pasan. La
+tarea permanece activa y vuelve al analisis de las siete causas de
+infraestructura; no se ejecuto baseline ni se toco `C:`.

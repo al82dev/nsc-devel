@@ -2228,3 +2228,28 @@ evidencia, tracking y cursor. No se cambian cuerpos, contratos, disposiciones,
 casos pendientes, gate, inventario, CMake, producto ni bateria historica. Los
 seis archivos del usuario registrados en `CURSOR.json` permanecen protegidos.
 No se ejecuta baseline, no se despliega y no se toca la unidad `C:`.
+
+### Enmienda: restauracion integral de una seleccion historica en Builder 3
+
+Validacion 142 restauro correctamente los `5,695` resultados terminales de la
+corrida `20261010-090333-82a4a13f`, pero su plan se reconstruia exclusivamente
+desde `results.json`. Ese archivo no contiene las filas que no se ejecutaron:
+la seleccion original fue de `9,587` casos canónicos y conserva `3,892` casos
+no ejecutables visibles. Por ello la carga seguia siendo parcial aunque todos
+los resultados terminales aparecieran.
+
+El presupuesto de Validacion 143 queda limitado a `nscbuilder3.py`, su prueba
+dirigida de historial y la evidencia documental. La carga debe usar el sobre
+`selection` persistido para reconstruir el plan desde el catalogo canónico,
+validar que las `5,695` identidades terminales coincidan exactamente sin exigir
+orden de finalizacion, reponer las `3,892` filas pendientes o filtradas y
+restaurar alcance, valor, perfil, build y optimizacion en la GUI. Los conteos,
+el log completo, el reporte condensado y los fallos reejecutables se repueblan
+desde evidencia existente. Cargar no configura, no compila, no ejecuta y no
+reescribe la carpeta historica.
+
+No se cambian compilador, casos, manifiestos, disposiciones, oraculos,
+controladores funcionales, CMake ni bateria historica. La validacion se limita
+a sintaxis Python, contratos del cargador, lectura de la corrida existente y
+smoke no interactivo de GUI. Los seis archivos protegidos permanecen intactos.
+No se ejecuta baseline, no se despliega y no se toca la unidad `C:`.

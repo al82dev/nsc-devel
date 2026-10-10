@@ -1,5 +1,10 @@
 # Validacion 142 - restauracion historica completa en Builder 3
 
+> Correccion de alcance posterior: esta validacion cerro la proyeccion de los
+> `5,695` resultados terminales, pero no reconstruyo las `3,892` filas
+> no ejecutables de la seleccion original. La restauracion integral de las
+> `9,587` filas se cierra en Validacion 143.
+
 ## Entrada reproducible
 
 - Ejecucion: `20261010-090333-82a4a13f`.

@@ -700,6 +700,7 @@ class HistoricalExecution:
     root: Path
     metadata: dict[str, Any]
     status: str
+    cases: tuple[CaseRecord, ...]
     variants: tuple[RunVariant, ...]
     outcomes: tuple[CaseOutcome, ...]
     full_log: str
@@ -1373,6 +1374,62 @@ def load_history_execution(
     )
     if not isinstance(metadata, dict) or not isinstance(payload, dict):
         raise ValueError("historical execution envelopes must be objects")
+    selection = metadata.get("selection")
+    selection_fields = {
+        "scope",
+        "value",
+        "profile",
+        "build_mode",
+        "optimization",
+    }
+    if not isinstance(selection, dict) or set(selection) != selection_fields:
+        raise ValueError("historical execution has an invalid selection envelope")
+    if any(not isinstance(selection[field], str) for field in selection_fields):
+        raise ValueError("historical execution selection fields must be text")
+    scope = selection["scope"]
+    value = selection["value"]
+    profile = selection["profile"]
+    build_mode = selection["build_mode"]
+    optimization = selection["optimization"]
+    if scope not in {"Total", "Ola", "Componente", "Contrato", "Caso"}:
+        raise ValueError(f"historical execution has an unknown scope: {scope!r}")
+    if scope != "Total" and not value:
+        raise ValueError("historical non-total scope requires a value")
+    if scope == "Total" and value:
+        raise ValueError("historical total scope cannot have a value")
+    if profile not in {"Todos", *PROFILE_RANK}:
+        raise ValueError(f"historical execution has an unknown profile: {profile!r}")
+    if build_mode not in {"Debug", "Release", "Todos"}:
+        raise ValueError(
+            f"historical execution has an unknown build mode: {build_mode!r}"
+        )
+    if optimization not in {"O0", "O1", "O2", "O3", "Todas"}:
+        raise ValueError(
+            "historical execution has an unknown optimization: "
+            f"{optimization!r}"
+        )
+    selected_cases = catalog.select(scope, value, profile)
+    if not selected_cases:
+        raise ValueError(
+            "historical case selection is absent from the current catalogue"
+        )
+    selected_variants = expand_variants(
+        selected_cases, build_mode, optimization
+    )
+    if not selected_variants:
+        raise ValueError("historical selection has no executable variants")
+    expected_case_count = metadata.get("case_count")
+    executable_case_count = len(
+        {variant.case.case_id for variant in selected_variants}
+    )
+    if (
+        isinstance(expected_case_count, bool)
+        or not isinstance(expected_case_count, int)
+        or expected_case_count != executable_case_count
+    ):
+        raise ValueError(
+            "historical case_count does not match its executable selection"
+        )
     rows = payload.get("results")
     if not isinstance(rows, list):
         raise ValueError("historical execution has no terminal result rows")
@@ -1469,13 +1526,20 @@ def load_history_execution(
                 evidence=raw["evidence"],
             )
         )
+    expected_keys = tuple(variant.key for variant in selected_variants)
+    actual_keys = tuple(outcome.key for outcome in outcomes)
+    if Counter(actual_keys) != Counter(expected_keys):
+        raise ValueError(
+            "historical terminal rows do not reproduce the original selection"
+        )
     log_path = root / "full.log"
     full_log = log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
     return HistoricalExecution(
         root=root.resolve(),
         metadata=metadata,
         status=record[2],
-        variants=tuple(variants),
+        cases=selected_cases,
+        variants=selected_variants,
         outcomes=tuple(outcomes),
         full_log=full_log,
     )
@@ -3614,6 +3678,50 @@ def launch_gui(smoke_only: bool = False) -> int:
                 raise ValueError(f"selecciona un valor para el alcance {scope}")
             return self.catalog.select(scope, value, self.profile_combo.currentText())
 
+        @staticmethod
+        def _set_combo_text_exact(combo: QComboBox, value: str, label: str) -> None:
+            """Select one persisted value without silently accepting a fallback."""
+            index = next(
+                (item for item in range(combo.count()) if combo.itemText(item) == value),
+                -1,
+            )
+            if index < 0:
+                raise RuntimeError(
+                    f"the historical {label} value is unavailable: {value!r}"
+                )
+            combo.setCurrentIndex(index)
+
+        def _restore_historical_selection_controls(
+            self, selection: dict[str, Any]
+        ) -> None:
+            """Restore the controls that produced a run; never launch a new run."""
+            self.scope_combo.blockSignals(True)
+            try:
+                self._set_combo_text_exact(
+                    self.scope_combo, selection["scope"], "scope"
+                )
+            finally:
+                self.scope_combo.blockSignals(False)
+            self._refresh_scope_values()
+            if selection["scope"] != "Total":
+                self.scope_value.blockSignals(True)
+                try:
+                    self._set_combo_text_exact(
+                        self.scope_value, selection["value"], "scope value"
+                    )
+                finally:
+                    self.scope_value.blockSignals(False)
+            for combo, field, label in (
+                (self.profile_combo, "profile", "profile"),
+                (self.execution_mode, "build_mode", "build mode"),
+                (self.optimization_combo, "optimization", "optimization"),
+            ):
+                combo.blockSignals(True)
+                try:
+                    self._set_combo_text_exact(combo, selection[field], label)
+                finally:
+                    combo.blockSignals(False)
+
         def _preview_plan(self) -> None:
             try:
                 cases = self._selected_cases()
@@ -3669,7 +3777,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.status_item_by_key.clear()
             self.variant_by_key = {variant.key: variant for variant in variants}
             self.live_status_by_key = {
-                variant.key: "LISTO" for variant in variants
+                key: status for _case, _mode, _opt, key, status, _detail in rows
             }
             self.live_status_counts = Counter(self.live_status_by_key.values())
             self.variant_position_by_key = {
@@ -4080,6 +4188,8 @@ def launch_gui(smoke_only: bool = False) -> int:
             """Render exact live state totals without rescanning the complete table."""
             order = (
                 "LISTO",
+                "PENDIENTE",
+                "FILTRADO",
                 "COMPILING",
                 "RUNNING",
                 "PASS",
@@ -4228,14 +4338,9 @@ def launch_gui(smoke_only: bool = False) -> int:
                 return
             try:
                 loaded = load_history_execution(root, self.catalog)
-                cases: list[CaseRecord] = []
-                seen_cases: set[str] = set()
-                for variant in loaded.variants:
-                    if variant.case.case_id in seen_cases:
-                        continue
-                    seen_cases.add(variant.case.case_id)
-                    cases.append(variant.case)
                 self.visible_variants = loaded.variants
+                selection = loaded.metadata["selection"]
+                self._restore_historical_selection_controls(selection)
                 # A historical load is a complete snapshot, not a continuation of
                 # the current view.  Reset the visual filter and suspend sorting
                 # while replacing LISTO with every terminal state.  Otherwise a
@@ -4248,7 +4353,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.status_filter_combo.blockSignals(True)
                 self.status_filter_combo.setCurrentIndex(all_statuses_index)
                 self.status_filter_combo.blockSignals(False)
-                self._populate_plan(cases, loaded.variants)
+                self._populate_plan(loaded.cases, loaded.variants)
                 self.case_table.setSortingEnabled(False)
                 self.case_table.setUpdatesEnabled(False)
                 try:
@@ -4266,6 +4371,17 @@ def launch_gui(smoke_only: bool = False) -> int:
                 expected_statuses = Counter(
                     outcome.status for outcome in loaded.outcomes
                 )
+                executable_ids = {
+                    variant.case.case_id for variant in loaded.variants
+                }
+                expected_statuses["PENDIENTE"] += sum(
+                    not case.executable for case in loaded.cases
+                )
+                expected_statuses["FILTRADO"] += sum(
+                    case.executable and case.case_id not in executable_ids
+                    for case in loaded.cases
+                )
+                expected_statuses += Counter()
                 if self.live_status_counts != expected_statuses:
                     raise RuntimeError(
                         "historical status projection is incomplete: "
