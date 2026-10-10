@@ -1959,3 +1959,28 @@ su orden; tampoco se cambian procesos, CMake, producto, casos, manifiestos,
 oraculos ni bateria historica. Los seis archivos del usuario registrados en
 `CURSOR.json` permanecen protegidos. No se configura, compila o ejecuta
 producto; no se ejecuta baseline y no se toca la unidad `C:`.
+
+### Enmienda: propiedad estable del metadato de variantes de Passes
+
+La primera ejecucion completa de la suite nueva en el arbol Debug configurado
+en `A:` llego a construir `536/536` pasos, pero el productor comun
+`nsc_component_tests --list` termina antes de enumerar casos con
+`test case metadata is incomplete`. La auditoria estatica de los catorce
+helpers que expanden contratos en variantes demostro una sola divergencia:
+`addPassContract` mueve `layer` dentro del bucle de ocho variantes, mientras
+los otros trece helpers lo conservan. La primera variante consume el valor y
+la segunda presenta una cadena vacia a `TestRegistry::add`.
+
+La entrada exacta es cualquier contrato de `Host.Passes` con mas de una
+variante. La operacion defectuosa es `std::move(layer)` dentro del bucle. La
+invariante violada es que cada variante materializada conserve el mismo
+metadato no vacio de contrato, componente y capa.
+
+El presupuesto de Validacion 131 queda limitado a
+`tests/compiler-suite/host/modules/PassTestSupport.h`, sustituir el movimiento
+iterativo de `layer` por su copia estable, validar primero el productor
+`--list`, ejecutar despues los gates dependientes y actualizar evidencia,
+tracking y cursor. No se cambian `TestRegistry`, casos, IDs, contratos,
+oraculos, disposiciones, manifiestos, CMake, producto ni bateria historica. Los
+seis archivos del usuario registrados en `CURSOR.json` permanecen protegidos.
+No se ejecuta baseline, no se despliega y no se toca la unidad `C:`.

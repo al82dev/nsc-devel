@@ -1176,3 +1176,12 @@ publicarse como terminal. Las pruebas dirigidas pasan `9/9`, la suite Python
 `279/279`, el catalogo conserva `9,587` casos y `0` sin clasificar y el smoke
 de GUI pasa, sin configurar, compilar o ejecutar producto. La corrida
 funcional externa sigue pendiente y la tarea permanece activa.
+
+Validacion 131 corrigio el productor comun del registro. La auditoria de los
+14 helpers iterativos encontro una sola perdida de propiedad: `Host.Passes`
+movia `layer` en la primera de ocho variantes. El target incremental construyo
+`8/8` y `nsc_component_tests --list` enumero `8,054` filas con salida `0`.
+Los seis archivos protegidos conservan sus hashes. La ejecucion dirigida
+descubrio a continuacion un timeout distinto causado por el ordenamiento
+cuadratico del registro; queda como siguiente hipotesis. La tarea permanece
+activa y no se ejecuto baseline ni se toco `C:`.
