@@ -7,6 +7,20 @@ from pathlib import Path
 from selfhost_inventory import load_component_inventory
 
 
+CATALOG_FIELDS = frozenset(
+    {
+        "contract_id",
+        "file_id",
+        "source_path",
+        "category",
+        "language",
+        "purpose",
+        "oracle",
+        "case_ids",
+    }
+)
+
+
 @dataclass(frozen=True)
 class BootstrapInfrastructureContract:
     contract_id: str
@@ -33,11 +47,15 @@ def load_contracts(repository_root: Path, catalog: Path) -> tuple[BootstrapInfra
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
         value = parse_catalog_row(raw, catalog, number)
-        case_ids = tuple(str(item) for item in value["case_ids"])
-        contract_id = str(value["contract_id"])
-        file_id = str(value["file_id"])
-        if not case_ids or len(case_ids) != len(set(case_ids)):
-            raise RuntimeError(f"{catalog}:{number}: contract case IDs are empty or repeated")
+        location = f"{catalog}:{number}"
+        case_ids = _required_string_array(value, "case_ids", location)
+        contract_id = _required_string(value, "contract_id", location)
+        file_id = _required_string(value, "file_id", location)
+        source_text = _required_string(value, "source_path", location)
+        category = _required_string(value, "category", location)
+        language = _required_string(value, "language", location)
+        purpose = _required_string(value, "purpose", location)
+        oracle = _required_string(value, "oracle", location)
         if contract_id in contract_ids or file_id in file_ids:
             raise RuntimeError(f"{catalog}:{number}: duplicate contract or file identity")
         for case_id in case_ids:
@@ -49,17 +67,17 @@ def load_contracts(repository_root: Path, catalog: Path) -> tuple[BootstrapInfra
             all_ids.add(case_id)
         contract_ids.add(contract_id)
         file_ids.add(file_id)
-        relative_source = Path(str(value["source_path"])).as_posix()
+        relative_source = Path(source_text).as_posix()
         source_path = repository_root / relative_source
         contracts.append(
             BootstrapInfrastructureContract(
                 contract_id=contract_id,
                 file_id=file_id,
                 source_path=source_path,
-                category=str(value["category"]),
-                language=str(value["language"]),
-                purpose=str(value["purpose"]),
-                oracle=str(value["oracle"]),
+                category=category,
+                language=language,
+                purpose=purpose,
+                oracle=oracle,
                 case_ids=case_ids,
             )
         )
@@ -87,6 +105,29 @@ def parse_catalog_row(raw: str, catalog: Path, line_number: int) -> dict[str, ob
         ) from error
     if not isinstance(value, dict):
         raise RuntimeError(f"{catalog}:{line_number}: expected JSON object")
+    fields = set(value)
+    missing = sorted(CATALOG_FIELDS - fields)
+    unknown = sorted(fields - CATALOG_FIELDS)
+    if missing:
+        raise RuntimeError(
+            f"{catalog}:{line_number}: missing fields: {', '.join(missing)}"
+        )
+    if unknown:
+        raise RuntimeError(
+            f"{catalog}:{line_number}: unknown fields: {', '.join(unknown)}"
+        )
+    location = f"{catalog}:{line_number}"
+    for field in (
+        "contract_id",
+        "file_id",
+        "source_path",
+        "category",
+        "language",
+        "purpose",
+        "oracle",
+    ):
+        _required_string(value, field, location)
+    _required_string_array(value, "case_ids", location)
     return value
 
 
@@ -98,6 +139,30 @@ def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
             raise ValueError(f"duplicate JSON object key: {key}")
         result[key] = value
     return result
+
+
+def _required_string(
+    value: dict[str, object], field: str, location: str
+) -> str:
+    item = value[field]
+    if not isinstance(item, str) or not item:
+        raise RuntimeError(f"{location}: {field} must be a non-empty string")
+    return item
+
+
+def _required_string_array(
+    value: dict[str, object], field: str, location: str
+) -> tuple[str, ...]:
+    items = value[field]
+    if not isinstance(items, list) or not items:
+        raise RuntimeError(f"{location}: {field} must be a non-empty array")
+    if any(not isinstance(item, str) or not item for item in items):
+        raise RuntimeError(
+            f"{location}: {field} must contain non-empty strings"
+        )
+    if len(items) != len(set(items)):
+        raise RuntimeError(f"{location}: {field} contains duplicates")
+    return tuple(items)
 
 
 def case_index(contracts: tuple[BootstrapInfrastructureContract, ...]) -> dict[str, BootstrapInfrastructureContract]:

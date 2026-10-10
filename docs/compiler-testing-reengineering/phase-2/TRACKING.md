@@ -1058,3 +1058,10 @@ parser canonico y cotejan despues identidad y orden antes de conservar objetos
 raw. Una matriz de `24` mutaciones queda rechazada, las pruebas dirigidas pasan
 `16/16`, la suite Python `248/248` y los `240` casos vivos de esos componentes
 validan, sin compilar ni ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 114 elimino las coerciones del catalogo
+`SelfHost.Bootstrap.Infrastructure`. Sus ocho campos son ahora exactos y
+`case_ids` exige un arreglo no vacio de cadenas unicas. Las pruebas dirigidas
+pasan `5/5`, la suite Python `252/252` y el catalogo vivo conserva `73`
+contratos, `438` casos y cero productores ausentes, sin ejecutar producto. La
+tarea funcional permanece activa.

@@ -1618,3 +1618,16 @@ raw despues de la validacion canonica, sustituir las siete lecturas directas,
 una matriz sintetica de esquema, pruebas de integracion y la evidencia de
 Validacion 113. No se cambian manifiestos, parser canonico, casos, oraculos,
 producto ni bateria historica y no se ejecuta producto.
+
+### Enmienda: esquema exacto del catalogo bootstrap infrastructure
+
+El cargador de `SelfHostBootstrapInfrastructureCatalog.jsonl` no puede
+convertir con `str(...)` identidades, rutas, metadatos ni elementos de
+`case_ids`. Debe exigir el conjunto exacto de campos observado en las 73 filas
+vivas, cadenas no vacias y un arreglo no vacio de cadenas unicas antes de
+validar linaje o existencia de productores.
+
+El presupuesto queda limitado al cargador compartido, pruebas sinteticas de
+esquema, validacion del catalogo vivo y la evidencia de Validacion 114. No se
+agregan enums ni conteos rigidos, no se cambian catalogo, inventarios, casos,
+producto ni bateria historica y no se ejecuta producto.
