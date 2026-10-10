@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from .manifest import BUILD_MODES, OPTIMIZATIONS, PROFILES, CaseManifest
+from .manifest import BUILD_MODES, CASE_ID, OPTIMIZATIONS, PROFILES, CaseManifest
 
 
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1, "WEEKLY": 2}
@@ -79,7 +79,11 @@ def select_cases(
         while cursor < len(pending):
             current = by_id[pending[cursor]]
             cursor += 1
-            for dependency in sorted(current.dependencies):
+            for dependency in sorted(
+                dependency
+                for dependency in current.dependencies
+                if CASE_ID.fullmatch(dependency) is not None
+            ):
                 if dependency not in by_id:
                     raise SelectionError(
                         f"case {current.case_id} references missing dependency {dependency}"

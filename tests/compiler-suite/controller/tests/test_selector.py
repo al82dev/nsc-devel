@@ -118,6 +118,32 @@ class SelectorTests(unittest.TestCase):
         )
         self.assertEqual([item.case_id for item in without_closure], ["TB-BAS-002"])
 
+    def test_dependency_closure_preserves_external_producers_without_selecting_them(self) -> None:
+        consumer = case(
+            "TB-BAS-003",
+            dependencies=("TB-BAS-001", "CMake", "LLVM 23", "NSLink"),
+        )
+        selected = select_cases(
+            (*self.cases, consumer),
+            Selection(case_ids=frozenset({"TB-BAS-003"})),
+        )
+        self.assertEqual(
+            [item.case_id for item in selected],
+            ["TB-BAS-001", "TB-BAS-003"],
+        )
+        self.assertEqual(
+            selected[-1].dependencies,
+            ("TB-BAS-001", "CMake", "LLVM 23", "NSLink"),
+        )
+
+    def test_dependency_closure_still_rejects_missing_case_ids(self) -> None:
+        consumer = case("TB-BAS-003", dependencies=("TB-BAS-999",))
+        with self.assertRaisesRegex(SelectionError, "missing dependency TB-BAS-999"):
+            select_cases(
+                (*self.cases, consumer),
+                Selection(case_ids=frozenset({"TB-BAS-003"})),
+            )
+
     def test_empty_and_unknown_values_are_errors(self) -> None:
         with self.assertRaisesRegex(SelectionError, "matched no cases"):
             select_cases(

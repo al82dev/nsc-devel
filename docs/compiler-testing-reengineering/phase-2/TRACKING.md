@@ -184,6 +184,13 @@ ABI, layout, alineación, bitfields, CPU, LLVM y registros permanecen en los
 casos ejecutados. Los `30/30` módulos pasan validación sintáctica y las `20/20`
 pruebas Python del cierre central pasan. No se compiló ni ejecutó producto.
 
+La clausura del selector distingue ya dependencias de caso de productores
+externos. El caso real `T12B-00001`, que declara `CMake`, `LLVM 23` y `NSLink`,
+se selecciona sin fabricar IDs ni perder esos requisitos; los IDs de caso
+ausentes siguen rechazándose. Las `9/9` pruebas del selector pasan y la
+selección completa Debug recorre `5,695/5,695` filas. No se compiló ni ejecutó
+producto.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

@@ -398,6 +398,18 @@ Validación 18. No se modifican características del lenguaje, producto, casos,
 oráculos, disposiciones, resultados esperados, selector, runner, reporte ni
 batería histórica. No se configura, compila ni ejecuta producto.
 
+### Enmienda: clausura selectiva de dependencias externas
+
+El selector debe conservar en cada caso los productores externos declarados,
+pero sólo puede recorrer como aristas los valores que tengan forma de ID de
+caso. Un ID de caso ausente continúa siendo error; nombres como `CMake`,
+`LLVM 23`, `NSLink` o bibliotecas no se convierten en casos ficticios.
+
+El presupuesto queda limitado a `nsc_suite/selector.py`, sus pruebas unitarias
+y la evidencia de Validación 20. No se modifican el manifiesto, dependencias
+declaradas, orden, filtros, producto, ejecutores, oráculos ni batería histórica.
+No se configura, compila ni ejecuta producto.
+
 ### Enmienda: cierre central de gates Host.Target por contrato
 
 Los treinta gates dirigidos de Host.Target que ejecutan un contrato mediante
