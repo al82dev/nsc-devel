@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
@@ -15,6 +16,36 @@ import nscbuilder3 as builder
 
 
 class Builder3PathTests(unittest.TestCase):
+    def test_build_tool_discovery_uses_current_python_interpreter(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
+            root = Path(directory)
+            bin_root = root / "bin"
+            llvm_dir = root / "lib" / "cmake" / "llvm"
+            bin_root.mkdir(parents=True)
+            llvm_dir.mkdir(parents=True)
+            tools = {
+                "cmake": root / "cmake.exe",
+                "ninja": root / "ninja.exe",
+                "clang-cl": bin_root / "clang-cl.exe",
+            }
+            for path in (
+                *tools.values(),
+                bin_root / "lld-link.exe",
+                bin_root / "llvm-mt.exe",
+                bin_root / "llvm-rc.exe",
+            ):
+                path.write_bytes(b"tool\n")
+
+            with patch.object(
+                builder.shutil,
+                "which",
+                side_effect=lambda name: str(tools[name]) if name in tools else None,
+            ):
+                discovered = builder.discover_build_tools(str(llvm_dir))
+
+            self.assertEqual(discovered["python"], str(Path(sys.executable).resolve()))
+
     def test_discovery_selectors_distinguish_files_from_directories(self) -> None:
         builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
         with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:

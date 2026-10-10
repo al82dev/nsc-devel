@@ -15,6 +15,7 @@ import nscbuilder3 as builder
 TOOLS = {
     "cmake": "C:/apps/cmake/bin/cmake.exe",
     "ninja": "C:/apps/ninja/ninja.exe",
+    "python": "C:/python/python.exe",
     "clang_cl": "C:/clang-llvm/bin/clang-cl.exe",
     "lld_link": "C:/clang-llvm/bin/lld-link.exe",
     "llvm_mt": "C:/clang-llvm/bin/llvm-mt.exe",
@@ -57,6 +58,7 @@ class Builder3CommandTests(unittest.TestCase):
                 "-DNSC_COMPILER_SUITE_NSC_EXECUTABLE=A:/toolchain/bin/nsc.exe",
                 command,
             )
+            self.assertIn("-DPython3_EXECUTABLE=C:/python/python.exe", command)
             self.assertIn("-DNSC_NSLINK_EXECUTABLE=A:/toolchain/bin/nslink.exe", command)
             self.assertIn(
                 "-DNSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY="

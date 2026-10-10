@@ -1127,3 +1127,10 @@ derivados. `LLVM-C.lib` y `LLVM-C.dll` se recalculan ahora exclusivamente desde
 el `LLVM_DIR` vigente en cada configuracion. La prueba dirigida pasa `6/6` y
 la suite Python `272/272`, sin configurar, compilar o ejecutar producto. La
 corrida funcional externa sigue pendiente y la tarea permanece activa.
+
+Validacion 125 fijo el interprete Python de los 118 controladores CTest sin
+hardcodear una instalacion. Builder 3 descubre `sys.executable` y lo transmite
+como `Python3_EXECUTABLE` para Debug y Release. Las pruebas dirigidas pasan
+`17/17` y la suite Python `273/273`, sin configurar, compilar o ejecutar
+producto. La corrida funcional externa sigue pendiente y la tarea permanece
+activa.

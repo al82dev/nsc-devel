@@ -1823,3 +1823,25 @@ biblioteca, toolchain, comandos, producto, casos, manifiestos, oraculos ni
 bateria historica. Los seis archivos del usuario registrados en `CURSOR.json`
 permanecen protegidos. No se configura, compila o ejecuta producto; no se
 ejecuta baseline y no se toca la unidad `C:`.
+
+### Enmienda: interprete Python explicito y no hardcodeado
+
+Los controladores CTest usan `Python3_EXECUTABLE`, pero Builder 3 no transmite
+el interprete con el que se esta ejecutando. `find_package(Python3)` puede
+conservar en el arbol reutilizado una seleccion anterior y ejecutar los 118
+controladores con un Python distinto al de la sesion vigente.
+
+La entrada exacta es una configuracion posterior iniciada con otro interprete
+Python valido. La operacion defectuosa es delegar otra vez la seleccion a una
+cache CMake existente. La invariante violada es que toda la infraestructura
+Python de la corrida usa el interprete real y verificable que ejecuta Builder
+3, sin asumir una instalacion fija.
+
+El presupuesto de Validacion 125 queda limitado a incorporar `sys.executable`
+al recibo de herramientas descubierto, transmitirlo como
+`Python3_EXECUTABLE`, ampliar las pruebas puras de descubrimiento y comandos y actualizar
+evidencia, tracking y cursor. No se hardcodea una ruta Python, no se cambian
+controladores, CMake, producto, casos, manifiestos, oraculos ni bateria
+historica. Los seis archivos del usuario registrados en `CURSOR.json`
+permanecen protegidos. No se configura, compila o ejecuta producto; no se
+ejecuta baseline y no se toca la unidad `C:`.

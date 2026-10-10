@@ -512,6 +512,7 @@ def discover_build_tools(llvm_dir: str) -> dict[str, str]:
     tools = {
         "cmake": shutil.which("cmake") or "",
         "ninja": shutil.which("ninja") or "",
+        "python": first_existing_file([sys.executable]),
         "clang_cl": clang,
         "lld_link": first_existing_file([root / "bin" / "lld-link.exe"]),
         "llvm_mt": first_existing_file([root / "bin" / "llvm-mt.exe"]),
@@ -1743,6 +1744,7 @@ def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tupl
             f"-DCMAKE_LINKER={Path(tools['lld_link']).as_posix()}",
             f"-DCMAKE_MT={Path(tools['llvm_mt']).as_posix()}",
             f"-DCMAKE_RC_COMPILER={Path(tools['llvm_rc']).as_posix()}",
+            f"-DPython3_EXECUTABLE={Path(tools['python']).as_posix()}",
             # CMAKE_LINKER already selects lld-link. Clear a stale cache value
             # because -fuse-ld=lld is a compiler-driver option, not an lld-link option.
             "-DCMAKE_EXE_LINKER_FLAGS=",
