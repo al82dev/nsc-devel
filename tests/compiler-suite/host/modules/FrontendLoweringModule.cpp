@@ -83,6 +83,50 @@ std::size_t mirNodeCount(const ProjectOopMirModel& model)
     return count;
 }
 
+// Proves that HIR lowering completed without functions or field initializers
+// derived from source declarations.
+void emptyHirOracle(TestContext& context, const ProjectCompilation& compilation)
+{
+    const ProjectOopHirModel* model = compilation.oopHirModel();
+    context.expect(model != nullptr && model->isBuilt(),
+        "empty source must still publish a built HIR model");
+    if (model != nullptr)
+    {
+        context.expect(model->functions().empty(),
+            "empty source must not publish HIR functions");
+        context.expect(model->fieldInitializers().empty(),
+            "empty source must not publish HIR field initializers");
+    }
+}
+
+// Proves absence across every public MIR collection populated by source
+// lowering. ProjectOopMirModel is the actual public model type.
+void emptyMirOracle(TestContext& context, const ProjectCompilation& compilation)
+{
+    const ProjectOopMirModel* model = compilation.oopMirModel();
+    context.expect(model != nullptr && model->isBuilt(),
+        "empty source must still publish a built MIR model");
+    if (model != nullptr)
+    {
+        context.expect(model->functions().empty(),
+            "empty source must not publish MIR functions");
+        context.expect(model->fieldInitializers().empty(),
+            "empty source must not publish MIR field initializers");
+        context.expect(model->staticFields().empty(),
+            "empty source must not publish MIR static fields");
+        context.expect(model->structLayouts().empty(),
+            "empty source must not publish MIR struct layouts");
+        context.expect(model->classLayouts().empty(),
+            "empty source must not publish MIR class layouts");
+        context.expect(model->dispatchTables().empty(),
+            "empty source must not publish MIR dispatch tables");
+        context.expect(model->genericSpecializations().empty(),
+            "empty source must not publish MIR generic specializations");
+        context.expect(model->interfaceBindings().empty(),
+            "empty source must not publish MIR interface bindings");
+    }
+}
+
 void hirContractOracle(TestContext& context, std::size_t variant, std::size_t contract)
 {
     expectProjectStage(context, contract, variant, ProjectStage::Hir, loweringSource(),
@@ -118,7 +162,8 @@ void hirContractOracle(TestContext& context, std::size_t variant, std::size_t co
                         !compilation.constructionModel()->constructions().empty(),
                     "HIR construction lowering must consume an existing construction plan");
             }
-        });
+        },
+        emptyHirOracle);
 }
 
 void hirDumpOracle(TestContext& context, std::size_t variant)
@@ -131,7 +176,8 @@ void hirDumpOracle(TestContext& context, std::size_t variant)
             test.expect(first == second, "HIR dump must be byte deterministic");
             test.expect(first.find("Run") != std::string::npos,
                 "HIR dump must retain namespace-function identity");
-        });
+        },
+        emptyHirOracle);
 }
 
 void mirContractOracle(TestContext& context, std::size_t variant, std::size_t contract)
@@ -160,7 +206,8 @@ void mirContractOracle(TestContext& context, std::size_t variant, std::size_t co
                         "every MIR function must preserve one physical symbol identity");
                 }
             }
-        });
+        },
+        emptyMirOracle);
 }
 
 void mirDumpOracle(TestContext& context, std::size_t variant)
@@ -173,7 +220,8 @@ void mirDumpOracle(TestContext& context, std::size_t variant)
             test.expect(first == second, "MIR dump must be byte deterministic");
             test.expect(first.find("Run") != std::string::npos,
                 "MIR dump must retain namespace-function physical identity");
-        });
+        },
+        emptyMirOracle);
 }
 }
 

@@ -39,6 +39,64 @@ namespace Suite
 )ns";
 }
 
+// Proves that the member stage completed for an empty translation unit without
+// inventing declarations. The check is linear only in the zero-element span.
+void emptyMembersOracle(TestContext& context, const ProjectCompilation& compilation)
+{
+    const ProjectMemberModel* model = compilation.memberModel();
+    context.expect(model != nullptr && model->isBuilt(),
+        "empty source must still publish a built member model");
+    if (model != nullptr)
+    {
+        context.expect(model->members().empty(),
+            "empty source must not publish source members");
+    }
+}
+
+// Proves that inheritance modeling reached a completed, empty state.
+void emptyInheritanceOracle(TestContext& context, const ProjectCompilation& compilation)
+{
+    const ProjectInheritanceModel* model = compilation.inheritanceModel();
+    context.expect(model != nullptr && model->isBuilt(),
+        "empty source must still publish a built inheritance model");
+    if (model != nullptr)
+    {
+        context.expect(model->classes().empty(),
+            "empty source must not publish inheritance classes");
+    }
+}
+
+// Proves absence in both interface identities and their derived table plans.
+void emptyInterfaceOracle(TestContext& context, const ProjectCompilation& compilation)
+{
+    const ProjectInterfaceModel* model = compilation.interfaceModel();
+    context.expect(model != nullptr && model->isBuilt(),
+        "empty source must still publish a built interface model");
+    if (model != nullptr)
+    {
+        context.expect(model->interfaces().empty(),
+            "empty source must not publish interfaces");
+        context.expect(model->tablePlans().empty(),
+            "empty source must not publish interface table plans");
+    }
+}
+
+// Proves that virtual-dispatch construction completed without source methods or
+// class tables. ProjectVirtualDispatchModel is the actual public model type.
+void emptyDispatchOracle(TestContext& context, const ProjectCompilation& compilation)
+{
+    const ProjectVirtualDispatchModel* model = compilation.virtualDispatchModel();
+    context.expect(model != nullptr && model->isBuilt(),
+        "empty source must still publish a built virtual-dispatch model");
+    if (model != nullptr)
+    {
+        context.expect(model->virtualMethods().empty(),
+            "empty source must not publish virtual methods");
+        context.expect(model->classTables().empty(),
+            "empty source must not publish class dispatch tables");
+    }
+}
+
 void namesOracle(TestContext& context, std::size_t variant)
 {
     expectProjectStage(context, 7, variant, ProjectStage::Names, declarationsSource(),
@@ -112,7 +170,8 @@ void membersOracle(TestContext& context, std::size_t variant)
             dumper.dump(*compilation.memberModel(), *compilation.nameLookup(), output);
             test.expect(output.str().find("Read") != std::string::npos,
                 "member catalog must retain callable names and signatures");
-        });
+        },
+        emptyMembersOracle);
 }
 
 void ownershipMemberOracle(TestContext& context, std::size_t variant)
@@ -166,7 +225,8 @@ void memberDumpOracle(TestContext& context, std::size_t variant)
             test.expect(first.str() == second.str(), "member dump must be deterministic");
             test.expect(first.str().find("Derived") != std::string::npos,
                 "member dump must retain declared type identity");
-        });
+        },
+        emptyMembersOracle);
 }
 
 void inheritanceOracle(TestContext& context, std::size_t variant)
@@ -181,7 +241,8 @@ void inheritanceOracle(TestContext& context, std::size_t variant)
             dumper.dump(*compilation.inheritanceModel(), *compilation.nameLookup(), output);
             test.expect(output.str().find("Derived") != std::string::npos,
                 "inheritance dump must expose the derived type");
-        });
+        },
+        emptyInheritanceOracle);
 }
 
 void interfaceOracle(TestContext& context, std::size_t variant)
@@ -195,7 +256,8 @@ void interfaceOracle(TestContext& context, std::size_t variant)
             ProjectInterfaceModelDumper::dump(*compilation.interfaceModel(), output);
             test.expect(output.str().find("IReadable") != std::string::npos,
                 "interface dump must retain contract identity");
-        });
+        },
+        emptyInterfaceOracle);
 }
 
 void dispatchOracle(TestContext& context, std::size_t variant)
@@ -211,7 +273,8 @@ void dispatchOracle(TestContext& context, std::size_t variant)
                 *compilation.nameLookup(), output);
             test.expect(output.str().find("Read") != std::string::npos,
                 "virtual dispatch dump must expose the overridden slot");
-        });
+        },
+        emptyDispatchOracle);
 }
 
 void namespaceFunctionOracle(TestContext& context, std::size_t variant)

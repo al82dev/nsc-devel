@@ -37,6 +37,63 @@ namespace Suite
 )ns";
 }
 
+// Proves that construction analysis completed without source construction or
+// constructor-initializer records.
+void emptyConstructionOracle(
+    TestContext& context,
+    const ProjectCompilation& compilation)
+{
+    const ProjectConstructionModel* model = compilation.constructionModel();
+    context.expect(model != nullptr && model->isBuilt(),
+        "empty source must still publish a built construction model");
+    if (model != nullptr)
+    {
+        context.expect(model->constructions().empty(),
+            "empty source must not publish construction records");
+        context.expect(model->constructorInitializerBindings().empty(),
+            "empty source must not publish constructor initializers");
+    }
+}
+
+// Proves that physical-layout analysis completed without class or struct
+// declarations. ProjectObjectLayoutModel is the actual public model type.
+void emptyLayoutOracle(
+    TestContext& context,
+    const ProjectCompilation& compilation)
+{
+    const ProjectObjectLayoutModel* model = compilation.objectLayoutModel();
+    context.expect(model != nullptr && model->isBuilt(),
+        "empty source must still publish a built object-layout model");
+    if (model != nullptr)
+    {
+        context.expect(model->classLayouts().empty(),
+            "empty source must not publish class layouts");
+        context.expect(model->structLayouts().empty(),
+            "empty source must not publish struct layouts");
+    }
+}
+
+// Proves that compile-time metadata discovery completed without source types or
+// attributes and without changing its compile-time-only contract.
+void emptyMetaprogrammingOracle(
+    TestContext& context,
+    const ProjectCompilation& compilation)
+{
+    const ProjectMetaprogrammingModel* model =
+        compilation.metaprogrammingModel();
+    context.expect(model != nullptr && model->isBuilt(),
+        "empty source must still publish a built metaprogramming model");
+    if (model != nullptr)
+    {
+        context.expect(!model->emitsRuntimeMetadata(),
+            "empty metaprogramming model must remain compile-time-only");
+        context.expect(model->types().empty(),
+            "empty source must not publish metaprogramming types");
+        context.expect(model->attributes().empty(),
+            "empty source must not publish metaprogramming attributes");
+    }
+}
+
 void escapeOriginOracle(TestContext& context, std::size_t variant)
 {
     constexpr std::array<MethodEscapeOriginKind, 5> kinds = {
@@ -72,7 +129,8 @@ void constructionOracle(TestContext& context, std::size_t variant)
                 test.expect(!model->constructions().empty(),
                     "explicit object creation must retain a construction binding");
             }
-        });
+        },
+        emptyConstructionOracle);
 }
 
 void constructionDumpOracle(TestContext& context, std::size_t variant)
@@ -90,7 +148,8 @@ void constructionDumpOracle(TestContext& context, std::size_t variant)
             test.expect(first.str() == second.str(), "construction dump must be byte deterministic");
             test.expect(first.str().find("Item") != std::string::npos,
                 "construction dump must retain selected target identity");
-        });
+        },
+        emptyConstructionOracle);
 }
 
 void destructionOracle(TestContext& context, std::size_t variant)
@@ -124,7 +183,8 @@ void layoutOracle(TestContext& context, std::size_t variant)
             const auto integer = model->valueLayoutForTypeKey(*compilation.nameLookup(), "builtin:int");
             test.expect(integer.has_value() && integer->first == 4 && integer->second == 4,
                 "Windows x64 int layout must remain exactly size 4 alignment 4");
-        });
+        },
+        emptyLayoutOracle);
 }
 
 void comptimeOracle(TestContext& context, std::size_t variant)
@@ -184,7 +244,8 @@ void metaprogrammingOracle(TestContext& context, std::size_t variant)
                 "metaprogramming catalog must remain compile-time-only");
             test.expect(model != nullptr && !model->types().empty(),
                 "metaprogramming catalog must retain declared static types");
-        });
+        },
+        emptyMetaprogrammingOracle);
 }
 
 void opaqueResultOracle(TestContext& context, std::size_t variant)

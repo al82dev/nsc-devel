@@ -42,6 +42,41 @@ namespace Suite
 )ns";
 }
 
+// Proves that generic discovery completed without synthesizing templates or
+// specializations for an empty translation unit.
+void emptyGenericOracle(TestContext& context, const ProjectCompilation& compilation)
+{
+    const ProjectGenericModel* model = compilation.genericModel();
+    context.expect(model != nullptr && model->isBuilt(),
+        "empty source must still publish a built generic model");
+    if (model != nullptr)
+    {
+        context.expect(model->templates().empty(),
+            "empty source must not publish generic templates");
+        context.expect(model->specializations().empty(),
+            "empty source must not publish generic specializations");
+    }
+}
+
+// Extends the generic absence contract through method-body analysis, proving
+// that the downstream stage did not analyze a nonexistent callable.
+void emptyGenericInferenceOracle(
+    TestContext& context,
+    const ProjectCompilation& compilation)
+{
+    emptyGenericOracle(context, compilation);
+
+    const ProjectMethodBodyModel* methodModel = compilation.methodBodyModel();
+    context.expect(methodModel != nullptr && methodModel->isBuilt(),
+        "empty source must still publish a built method-body model");
+    if (methodModel != nullptr)
+    {
+        context.expect(
+            methodModel->callableAnalysisStatistics().callablesAnalyzed == 0,
+            "empty source must not analyze generic callables");
+    }
+}
+
 void genericDiscoveryOracle(TestContext& context, std::size_t variant)
 {
     expectProjectStage(context, 20, variant, ProjectStage::Generics, genericSource(),
@@ -52,7 +87,8 @@ void genericDiscoveryOracle(TestContext& context, std::size_t variant)
             const std::string dump = ProjectGenericModelDumper::dump(*compilation.genericModel());
             test.expect(dump.find("Box") != std::string::npos,
                 "generic discovery must preserve the template identity");
-        });
+        },
+        emptyGenericOracle);
 }
 
 void genericInferenceOracle(TestContext& context, std::size_t variant)
@@ -65,7 +101,8 @@ void genericInferenceOracle(TestContext& context, std::size_t variant)
             const std::string dump = ProjectGenericModelDumper::dump(*compilation.genericModel());
             test.expect(dump.find("builtin:int") != std::string::npos,
                 "explicit and inferred integer specializations must retain their substituted type");
-        });
+        },
+        emptyGenericInferenceOracle);
 }
 
 void genericConstraintOracle(TestContext& context, std::size_t variant)
@@ -105,7 +142,8 @@ void genericDumpOracle(TestContext& context, std::size_t variant)
             test.expect(first == second, "generic dump must be byte deterministic");
             test.expect(first.find("Identity") != std::string::npos,
                 "generic dump must retain function-template identity");
-        });
+        },
+        emptyGenericOracle);
 }
 
 void conversionOracle(TestContext& context, std::size_t variant)

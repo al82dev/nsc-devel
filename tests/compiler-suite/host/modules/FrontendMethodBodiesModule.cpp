@@ -138,10 +138,93 @@ void inspectMethodContract(
     }
 }
 
+// Applies the negative counterpart of each positive method-body contract. Every
+// branch inspects the same public collection as its positive oracle.
+void inspectEmptyMethodContract(
+    TestContext& context,
+    std::size_t contract,
+    const ProjectMethodBodyModel& model)
+{
+    context.expect(model.isBuilt(),
+        "empty source must still publish a built method-body model");
+
+    switch (contract)
+    {
+        case 31:
+        {
+            const ProjectCallableAnalysisStatistics& statistics =
+                model.callableAnalysisStatistics();
+            context.expect(
+                statistics.callablesQueued == 0 &&
+                    statistics.callablesAnalyzed == 0,
+                "empty source must not queue or analyze callables");
+            break;
+        }
+        case 32:
+            context.expect(model.scopes().empty() && model.locals().empty(),
+                "empty source must not publish scopes or locals");
+            break;
+        case 33:
+            context.expect(
+                model.moveBindings().empty() &&
+                    model.ownershipTransferBindings().empty(),
+                "empty source must not publish move or ownership transfer bindings");
+            break;
+        case 34:
+            context.expect(model.structuredExits().empty(),
+                "empty source must not publish structured exits");
+            break;
+        case 35:
+            context.expect(
+                model.exceptionBindings().empty() &&
+                    model.cleanupRegions().empty(),
+                "empty source must not publish exception or cleanup bindings");
+            break;
+        case 36:
+            context.expect(model.expressionTypes().empty(),
+                "empty source must not publish expression type bindings");
+            break;
+        case 37:
+            context.expect(model.nameBindings().empty(),
+                "empty source must not publish name bindings");
+            break;
+        case 38:
+            context.expect(model.calls().empty(),
+                "empty source must not publish call bindings");
+            break;
+        case 39:
+            context.expect(model.expressionTypes().empty(),
+                "empty source must not publish operator type bindings");
+            break;
+        case 40:
+            context.expect(
+                model.nameBindings().empty() &&
+                    model.expressionTypes().empty(),
+                "empty source must not publish assignment bindings");
+            break;
+        case 41:
+            context.expect(model.expressionTypes().empty(),
+                "empty source must not publish conversion type bindings");
+            break;
+        case 42:
+            context.expect(
+                model.moveBindings().empty() &&
+                    model.ownershipTransferBindings().empty(),
+                "empty source must not publish ownership transfer state");
+            break;
+        case 43:
+            context.expect(
+                model.lambdaBindings().empty() &&
+                    model.delegateBindings().empty(),
+                "empty source must not publish lambda or delegate bindings");
+            break;
+    }
+}
+
 void methodContractOracle(
     TestContext& context, std::size_t variant, std::size_t contract)
 {
-    expectProjectStage(context, contract, variant, ProjectStage::MethodBodies, methodSource(contract),
+    const ProjectOracle oracle =
         [contract](TestContext& test, const ProjectCompilation& compilation)
         {
             test.expect(compilation.methodBodyModel() != nullptr,
@@ -150,7 +233,33 @@ void methodContractOracle(
             {
                 inspectMethodContract(test, contract, *compilation.methodBodyModel());
             }
-        });
+        };
+
+    ProjectOracle absenceOracle;
+    if (contract >= 31 && contract <= 43)
+    {
+        absenceOracle =
+            [contract](TestContext& test, const ProjectCompilation& compilation)
+            {
+                const ProjectMethodBodyModel* model =
+                    compilation.methodBodyModel();
+                test.expect(model != nullptr,
+                    "empty source must publish ProjectMethodBodyModel");
+                if (model != nullptr)
+                {
+                    inspectEmptyMethodContract(test, contract, *model);
+                }
+            };
+    }
+
+    expectProjectStage(
+        context,
+        contract,
+        variant,
+        ProjectStage::MethodBodies,
+        methodSource(contract),
+        oracle,
+        absenceOracle);
 }
 
 void methodDumpOracle(TestContext& context, std::size_t variant)
@@ -168,6 +277,20 @@ void methodDumpOracle(TestContext& context, std::size_t variant)
             test.expect(first.str() == second.str(), "method-body dump must be byte deterministic");
             test.expect(first.str().find("Add") != std::string::npos,
                 "method-body dump must retain declared callable identity");
+        },
+        [](TestContext& test, const ProjectCompilation& compilation)
+        {
+            const ProjectMethodBodyModel* model = compilation.methodBodyModel();
+            test.expect(model != nullptr && model->isBuilt(),
+                "empty source must publish a built method-body model");
+            if (model != nullptr)
+            {
+                test.expect(
+                    model->callableAnalysisStatistics().callablesAnalyzed == 0,
+                    "empty source must not analyze callables");
+                test.expect(model->calls().empty(),
+                    "empty source must not publish call bindings");
+            }
         });
 }
 }

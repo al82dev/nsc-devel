@@ -22,6 +22,7 @@ namespace nsc::suite::frontend_contract_support
 using nativesharp::frontend::FrontendCompilation;
 using nativesharp::frontend::ProjectCompilation;
 using MatrixOracle = std::function<void(TestContext&, std::size_t)>;
+using ProjectOracle = std::function<void(TestContext&, const ProjectCompilation&)>;
 
 inline std::string caseId(std::size_t ordinal)
 {
@@ -190,7 +191,8 @@ inline std::string frontendFailureEvidence(const FrontendCompilation& compilatio
 inline void expectProjectStage(
     TestContext& context, std::size_t contract, std::size_t variant,
     ProjectStage stage, std::string source,
-    const std::function<void(TestContext&, const ProjectCompilation&)>& oracle)
+    const ProjectOracle& oracle,
+    const ProjectOracle& absenceOracle = {})
 {
     const std::string label = "front-" + std::to_string(contract) + "-" + std::to_string(variant);
     if (variant == 5)
@@ -222,7 +224,16 @@ inline void expectProjectStage(
         "valid project fixture must reach its requested frontend stage; " + evidence);
     context.expect(error.empty(),
         "successful project stage must not retain a load error; " + evidence);
-    if (completed) oracle(context, compilation);
+    if (completed)
+    {
+        // Empty source is a valid project-stage input, not permission to skip the
+        // contract. Opted-in consumers prove that the requested model was built
+        // without publishing records that require source declarations.
+        if (variant == 2 && absenceOracle)
+            absenceOracle(context, compilation);
+        else
+            oracle(context, compilation);
+    }
 }
 
 inline void expectHistoricalCompilation(
