@@ -397,6 +397,20 @@ El presupuesto queda limitado a `TIMEOUT_SECONDS`,
 Validación 32. No se modifican manifiestos, clases declaradas, casos, oráculos,
 producto ni batería histórica; no se configura, compila ni ejecuta producto.
 
+### Enmienda: precondiciones estáticas de rutas especializadas
+
+Cada fila ejecutable debe proporcionar los campos que consume su ruta concreta
+antes de iniciar procesos: proyectos y argumentos self-host, operaciones de
+identidad y ordinales/variantes de BuildSystem y Packaging. Los proyectos de
+fixture deben existir dentro de `tests/compiler-suite` y cada gate importado
+debe reconocer la fila mediante exactamente una rama.
+
+El presupuesto queda limitado a una prueba Python con dobles de las operaciones
+externas y a la evidencia de Validación 33. No se ejecutan CMake, NSC, NSLink,
+archivadores, fixtures ni procesos; no se modifican manifiestos, controladores,
+casos, oráculos, producto ni batería histórica salvo que el cotejo demuestre un
+defecto concreto.
+
 ### Enmienda: cierre central de gates Host.Language por contrato
 
 Los veintiún gates dirigidos de Host.Language que ejecutan un contrato mediante

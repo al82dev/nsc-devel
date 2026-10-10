@@ -577,3 +577,10 @@ Validación 32 alineó los timeouts de Builder 3 con el esquema central. Antes,
 siete clases con sus duraciones exactas y rechaza cualquier clase desconocida
 antes de crear un proceso. Las pruebas dirigidas pasan `3/3` y la suite Python
 completa `91/91`.
+
+Validación 33 cerró las precondiciones de las rutas especializadas. Los `192`
+casos self-host contienen proyecto local existente, argumento, sandbox y
+oráculo tipados; las cuatro operaciones de identidad coinciden con el ejecutor
+real; las `36` filas BuildSystem y `12` Packaging alcanzan exactamente una
+rama válida de sus gates mediante dobles, sin herramientas externas. Las
+pruebas dirigidas pasan `4/4` y la suite Python completa `95/95`.
