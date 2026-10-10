@@ -802,3 +802,9 @@ se comparan ahora por estructura, tipo y valor mediante una lista de trabajo
 iterativa; `true` ya no acredita `1` ni un entero acredita un flotante. Las
 pruebas dirigidas pasan `4/4` y la suite Python completa `209/209`, sin ejecutar
 producto. La tarea funcional permanece activa.
+
+Validacion 69 cerro el contrato de `CaseResult`. Identidad, enum de estado,
+duracion, evidencia y bloqueadores exigen ahora tipos e invariantes completos;
+no entran al ledger estados textuales, booleanos numericos, NaN ni colecciones
+ambiguas. Las pruebas dirigidas pasan `7/7` y la suite Python completa
+`210/210`, sin ejecutar producto. La tarea funcional permanece activa.

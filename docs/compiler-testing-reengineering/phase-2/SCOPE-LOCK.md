@@ -1103,3 +1103,16 @@ uso por `run_selfhost_diagnostics_gate.oracle_satisfied`, pruebas Python
 sinteticas y la evidencia de Validacion 68. No se cambian oraculos, fixtures,
 salidas, producto ni bateria historica y no se configura, compila o ejecuta
 producto.
+
+### Enmienda: CaseResult con tipos e invariantes completos
+
+`CaseResult` no puede depender de anotaciones no verificadas. La identidad debe
+ser cadena no vacia, el estado una instancia de `CaseStatus`, la duracion un
+numero finito no negativo que no sea booleano y `failures`/`blocked_by` tuplas
+de cadenas no vacias. Los bloqueadores no pueden repetirse. Las invariantes
+causales existentes de PASS, BLOCKED y estados con evidencia se conservan.
+
+El presupuesto queda limitado a `CaseResult.__post_init__`, pruebas Python
+sinteticas y la evidencia de Validacion 69. No se cambian productores, ledger,
+reportes, estados permitidos, producto ni bateria historica y no se configura,
+compila o ejecuta producto.

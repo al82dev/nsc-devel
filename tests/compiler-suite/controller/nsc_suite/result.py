@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable
@@ -29,10 +30,26 @@ class CaseResult:
     blocked_by: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.case_id:
+        if not isinstance(self.case_id, str) or not self.case_id:
             raise ValueError("case result requires a case_id")
-        if self.duration_seconds < 0:
-            raise ValueError("duration_seconds cannot be negative")
+        if not isinstance(self.status, CaseStatus):
+            raise ValueError("case result requires a CaseStatus")
+        if (
+            type(self.duration_seconds) not in {int, float}
+            or not math.isfinite(self.duration_seconds)
+            or self.duration_seconds < 0
+        ):
+            raise ValueError("duration_seconds must be a finite nonnegative number")
+        if not isinstance(self.failures, tuple) or any(
+            not isinstance(failure, str) or not failure for failure in self.failures
+        ):
+            raise ValueError("failures must be a tuple of non-empty strings")
+        if not isinstance(self.blocked_by, tuple) or any(
+            not isinstance(producer, str) or not producer for producer in self.blocked_by
+        ):
+            raise ValueError("blocked_by must be a tuple of non-empty strings")
+        if len(self.blocked_by) != len(set(self.blocked_by)):
+            raise ValueError("blocked_by cannot contain duplicate producers")
         if self.status is CaseStatus.PASS and (self.failures or self.blocked_by):
             raise ValueError("PASS cannot contain failures or blockers")
         if self.status is CaseStatus.BLOCKED and not self.blocked_by:

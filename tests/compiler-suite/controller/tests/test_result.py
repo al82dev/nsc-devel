@@ -45,6 +45,29 @@ class ResultTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "requires failure evidence"):
             CaseResult("TB-BAS-001", CaseStatus.UNEXPECTED_PASS)
 
+    def test_result_invariants_reject_invalid_runtime_types(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires a case_id"):
+            CaseResult(7, CaseStatus.PASS)
+        with self.assertRaisesRegex(ValueError, "requires a CaseStatus"):
+            CaseResult("TB-BAS-001", "PASS")
+        for duration in (True, "0", float("nan"), float("inf"), -0.1):
+            with self.subTest(duration=duration), self.assertRaisesRegex(
+                ValueError, "finite nonnegative number"
+            ):
+                CaseResult("TB-BAS-001", CaseStatus.PASS, duration_seconds=duration)
+        with self.assertRaisesRegex(ValueError, "failures must be a tuple"):
+            CaseResult("TB-BAS-001", CaseStatus.FAIL, failures=["failure"])
+        with self.assertRaisesRegex(ValueError, "failures must be a tuple"):
+            CaseResult("TB-BAS-001", CaseStatus.FAIL, failures=("",))
+        with self.assertRaisesRegex(ValueError, "blocked_by must be a tuple"):
+            CaseResult("TB-BAS-001", CaseStatus.BLOCKED, blocked_by=["producer"])
+        with self.assertRaisesRegex(ValueError, "duplicate producers"):
+            CaseResult(
+                "TB-BAS-001",
+                CaseStatus.BLOCKED,
+                blocked_by=("TB-BAS-002", "TB-BAS-002"),
+            )
+
     def test_ledger_is_append_only(self) -> None:
         ledger = ResultLedger((case("TB-BAS-001"),))
         result = CaseResult("TB-BAS-001", CaseStatus.PASS)
