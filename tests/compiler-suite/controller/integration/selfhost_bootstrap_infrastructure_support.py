@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from selfhost_inventory import load_component_inventory
+from selfhost_inventory import load_component_inventory, resolve_repository_file
 
 
 CATALOG_FIELDS = frozenset(
@@ -56,6 +56,11 @@ def load_contracts(repository_root: Path, catalog: Path) -> tuple[BootstrapInfra
         language = _required_string(value, "language", location)
         purpose = _required_string(value, "purpose", location)
         oracle = _required_string(value, "oracle", location)
+        source_path = resolve_repository_file(
+            repository_root,
+            source_text,
+            location,
+        )
         if contract_id in contract_ids or file_id in file_ids:
             raise RuntimeError(f"{catalog}:{number}: duplicate contract or file identity")
         for case_id in case_ids:
@@ -67,8 +72,6 @@ def load_contracts(repository_root: Path, catalog: Path) -> tuple[BootstrapInfra
             all_ids.add(case_id)
         contract_ids.add(contract_id)
         file_ids.add(file_id)
-        relative_source = Path(source_text).as_posix()
-        source_path = repository_root / relative_source
         contracts.append(
             BootstrapInfrastructureContract(
                 contract_id=contract_id,
@@ -86,8 +89,6 @@ def load_contracts(repository_root: Path, catalog: Path) -> tuple[BootstrapInfra
         raise RuntimeError("catalog contracts differ from the canonical inventory")
     if all_ids != set(inventory.case_ids):
         raise RuntimeError("catalog cases differ from the canonical inventory")
-    if any(not contract.source_path.is_file() for contract in contracts):
-        raise RuntimeError("one or more catalogued bootstrap producers are absent")
     return tuple(contracts)
 
 

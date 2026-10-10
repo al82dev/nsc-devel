@@ -11,6 +11,7 @@ from selfhost_inventory import (
     load_component_inventory,
     read_jsonl,
     required_string_field,
+    resolve_repository_file,
     validate_pending_manifest,
 )
 
@@ -82,9 +83,11 @@ def catalog_ranges(
                 raise RuntimeError(f"catalog repeats case {case_id}")
             all_case_ids.add(case_id)
 
-        expected_source = (repository_root / source_path).resolve()
-        if not expected_source.is_file():
-            raise RuntimeError(f"catalog source does not exist: {source_path}")
+        resolve_repository_file(
+            repository_root,
+            source_path,
+            f"SelfHost.Contracts catalog {contract_id}",
+        )
         materialized = (ordinals[0], ordinals[-1], contract_id, source_path)
         if materialized in result:
             raise RuntimeError(f"catalog repeats materialized range {materialized!r}")

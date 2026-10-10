@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -111,6 +112,34 @@ class BootstrapInfrastructureSupportTests(unittest.TestCase):
         contracts = load_contracts(REPOSITORY_ROOT, CATALOG)
         self.assertTrue(contracts)
         self.assertTrue(all(contract.case_ids for contract in contracts))
+
+    def test_catalog_rejects_producers_outside_repository(self) -> None:
+        rows = [
+            json.loads(line)
+            for line in CATALOG.read_text(encoding="utf-8-sig").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        external = REPOSITORY_ROOT.parent / "LINEAMIENTOS-DE-TRABAJO-Y-PORTEO.md"
+        scenarios = (
+            (str(external.resolve()), "must be repository-relative"),
+            ("../LINEAMIENTOS-DE-TRABAJO-Y-PORTEO.md", "outside the repository"),
+        )
+        for source_path, message in scenarios:
+            with self.subTest(source_path=source_path):
+                mutated = [dict(row) for row in rows]
+                mutated[0]["source_path"] = source_path
+                with tempfile.TemporaryDirectory(
+                    prefix="bootstrap-catalog-",
+                    dir=Path.cwd(),
+                ) as temporary:
+                    catalog = Path(temporary) / "catalog.jsonl"
+                    catalog.write_text(
+                        "\n".join(json.dumps(row) for row in mutated) + "\n",
+                        encoding="utf-8",
+                        newline="\n",
+                    )
+                    with self.assertRaisesRegex(RuntimeError, message):
+                        load_contracts(REPOSITORY_ROOT, catalog)
 
 
 if __name__ == "__main__":

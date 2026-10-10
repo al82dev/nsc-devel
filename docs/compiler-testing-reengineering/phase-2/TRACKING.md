@@ -1096,3 +1096,9 @@ materializados. `int`, `bool`, vacio y `None` ya no adquieren identidad por
 representacion; los tres gates vivos conservan `171` casos. Las pruebas
 dirigidas pasan `6/6` y la suite Python `268/268`, sin compilar ni ejecutar
 producto. La tarea funcional permanece activa.
+
+Validacion 120 impidio que los catalogos Contracts y Bootstrap Infrastructure
+acrediten productores fuera del checkout mediante rutas absolutas o `..`.
+Cuatro escapes quedan rechazados, los `121` contratos vivos conservan `726`
+casos, las pruebas dirigidas pasan `13/13` y la suite Python `270/270`, sin
+compilar ni ejecutar producto. La tarea funcional permanece activa.

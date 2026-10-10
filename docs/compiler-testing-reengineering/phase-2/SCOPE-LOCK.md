@@ -1715,3 +1715,26 @@ manifiestos, inventarios, casos, producto ni bateria historica. Los seis
 archivos del usuario registrados en `CURSOR.json` permanecen protegidos. No se
 configura, compila o ejecuta producto; no se ejecuta baseline y no se toca la
 unidad `C:`.
+
+### Enmienda: productores self-host contenidos en el repositorio
+
+Los catalogos `SelfHost.Contracts` y `SelfHost.Bootstrap.Infrastructure` no
+pueden acreditar un productor mediante una ruta absoluta o una ruta relativa
+que, despues de resolverse, quede fuera del repositorio. Comprobar solamente
+`is_file()` permite que un archivo externo existente sustituya al productor
+versionado esperado.
+
+La entrada exacta es un `source_path` textual valido que apunta fuera de
+`repository_root`. La operacion defectuosa es unir o resolver la ruta y
+aceptarla por existencia. La invariante violada es que todo productor
+catalogado pertenece al checkout auditado. Los consumidores exactos son el
+cargador Bootstrap Infrastructure y `catalog_ranges` de Contracts.
+
+El presupuesto de Validacion 120 queda limitado a un resolvedor comun de
+archivo contenido, sustituir esas dos comprobaciones, agregar mutaciones de
+ruta absoluta y traversal, validar los catalogos vivos y documentar la
+evidencia. No se cambian rutas vivas, catalogos, modulos, manifiestos,
+inventarios, casos, producto ni bateria historica. Los seis archivos del
+usuario registrados en `CURSOR.json` permanecen protegidos. No se configura,
+compila o ejecuta producto; no se ejecuta baseline y no se toca la unidad
+`C:`.

@@ -118,6 +118,25 @@ class SelfHostRemainingCatalogBoundaryTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "id must be a non-empty string"):
                         self.run_gate(contracts_gate)
 
+    def test_contract_catalog_rejects_producers_outside_repository(self) -> None:
+        external = REPOSITORY_ROOT.parent / "LINEAMIENTOS-DE-TRABAJO-Y-PORTEO.md"
+        scenarios = (
+            (str(external.resolve()), "must be repository-relative"),
+            ("../LINEAMIENTOS-DE-TRABAJO-Y-PORTEO.md", "outside the repository"),
+        )
+        for source_path, message in scenarios:
+            with self.subTest(source_path=source_path):
+                catalog = copy.deepcopy(self.contract_catalog)
+                contradictions = copy.deepcopy(self.contract_contradictions)
+                catalog[0]["source_path"] = source_path
+                with mock.patch.object(
+                    contracts_gate,
+                    "read_jsonl",
+                    side_effect=(catalog, contradictions),
+                ):
+                    with self.assertRaisesRegex(RuntimeError, message):
+                        self.run_gate(contracts_gate)
+
     def test_documentation_conflict_rejects_case_array_coercions(self) -> None:
         first_case = self.documentation_contradictions[0]["affected_case_ids"][0]
         scenarios = (

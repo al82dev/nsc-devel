@@ -65,6 +65,28 @@ def required_string_field(
     return value
 
 
+def resolve_repository_file(
+    repository_root: Path,
+    source_text: str,
+    context: str,
+) -> Path:
+    """Resolve one relative producer path without allowing checkout escape."""
+    root = repository_root.resolve()
+    relative = Path(source_text)
+    if relative.is_absolute() or relative.drive:
+        raise RuntimeError(f"{context} source_path must be repository-relative")
+    resolved = (root / relative).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as error:
+        raise RuntimeError(
+            f"{context} source_path resolves outside the repository"
+        ) from error
+    if not resolved.is_file():
+        raise RuntimeError(f"{context} source_path does not exist: {source_text}")
+    return resolved
+
+
 def json_values_equal_exact(expected: object, actual: object) -> bool:
     """Compare JSON-compatible values by exact type and value without recursion."""
     pending: list[tuple[object, object]] = [(expected, actual)]
