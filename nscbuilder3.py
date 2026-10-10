@@ -582,7 +582,8 @@ class CanonicalCatalog:
     @classmethod
     def load(cls) -> "CanonicalCatalog":
         """Load and validate the complete compiler-only denominator."""
-        validate_executable_manifest()
+        validated_manifests = validate_executable_manifest()
+        validated_by_id = {case.case_id: case for case in validated_manifests}
         waves = read_catalog_csv(WAVES_PATH, WAVE_CATALOG_FIELDS)
         wave_by_component = {
             row["component"]: parse_wave_number(row["wave"]) for row in waves
@@ -609,10 +610,11 @@ class CanonicalCatalog:
             case_id = row["case_id"]
             assigned = allocation[case_id]
             executable = manifest.get(case_id)
+            canonical = validated_by_id.get(case_id)
             disposition = dispositions.get(case_id, "Executable" if executable else "InfrastructurePending")
             expected = ""
-            if executable is not None:
-                expected = executable.get("expected_outcome", "PASS")
+            if canonical is not None:
+                expected = canonical.expected_outcome
                 if expected == "KNOWN_FAILURE":
                     disposition = "KnownProductDefect"
             cases.append(
@@ -622,12 +624,18 @@ class CanonicalCatalog:
                     component=row["component"],
                     wave=wave_by_component[row["component"]],
                     purpose=purpose_by_component[row["component"]],
-                    layer=assigned["layer"],
-                    profile=assigned["default_profile"],
-                    build_modes=split_semicolon(assigned["supported_build_modes"]),
-                    optimizations=cls._optimizations(assigned, executable),
-                    executor=executable.get("executor", assigned["planned_executor"])
-                    if executable is not None
+                    layer=canonical.layer if canonical is not None else assigned["layer"],
+                    profile=canonical.profile
+                    if canonical is not None
+                    else assigned["default_profile"],
+                    build_modes=canonical.build_modes
+                    if canonical is not None
+                    else split_semicolon(assigned["supported_build_modes"]),
+                    optimizations=canonical.optimizations
+                    if canonical is not None
+                    else cls._optimizations(assigned),
+                    executor=canonical.executor
+                    if canonical is not None
                     else assigned["planned_executor"],
                     disposition=disposition,
                     objective=row["objective"],
@@ -638,14 +646,9 @@ class CanonicalCatalog:
         return cls(cases)
 
     @staticmethod
-    def _optimizations(
-        allocation: dict[str, str], manifest: dict[str, Any] | None
-    ) -> tuple[str, ...]:
-        """Prefer executable manifest optimizations and normalize N/A to NA."""
-        if manifest is not None:
-            values = tuple(manifest.get("optimizations", []))
-        else:
-            values = split_semicolon(allocation["supported_optimizations"])
+    def _optimizations(allocation: dict[str, str]) -> tuple[str, ...]:
+        """Normalize non-executable allocation optimizations for display."""
+        values = split_semicolon(allocation["supported_optimizations"])
         normalized = tuple("NA" if value in {"N/A", ""} else value for value in values)
         return normalized or ("NA",)
 

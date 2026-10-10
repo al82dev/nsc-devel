@@ -723,3 +723,9 @@ ejecutores, aislamientos, modos u optimizaciones desconocidos ya no pueden
 desaparecer silenciosamente de la selección, y los centinelas no se mezclan con
 valores concretos. Las pruebas dirigidas pasan `4/4` y la suite Python completa
 `177/177` sin modificar los CSV ni ejecutar producto.
+
+Validación 56 hizo tipada la proyección ejecutable. Los `5695` casos toman ahora
+sus seis campos operativos del `CaseManifest` validado; quedaron eliminadas `86`
+divergencias de capa causadas por mezclar autoridades. Las pruebas dirigidas
+pasan `4/4` y la suite Python completa `178/178` sin cambiar la matriz ni
+ejecutar producto.

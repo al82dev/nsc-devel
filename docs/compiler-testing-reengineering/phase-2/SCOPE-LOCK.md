@@ -911,3 +911,17 @@ puro, `CanonicalCatalog.load`, pruebas Python sintéticas y la evidencia de
 Validación 55. El manifiesto conserva autoridad sobre filas ejecutables; no se
 exige paridad entre las dos fuentes, no se cambian CSV, selección, manifiestos,
 producto ni batería histórica y no se configura, compila o ejecuta producto.
+
+### Enmienda: proyección ejecutable desde el manifiesto validado
+
+Para una fila ejecutable, `CaseRecord` debe tomar capa, perfil, modos,
+optimizaciones, ejecutor y resultado esperado del `CaseManifest` ya validado,
+no de copias más débiles en la asignación ni del objeto JSON crudo. La fila
+cruda se conserva únicamente para `inputs` y `oracle`, cuyos esquemas dependen
+del ejecutor. Las filas no ejecutables siguen usando la asignación validada.
+
+El presupuesto queda limitado a `CanonicalCatalog.load`, su normalizador de
+optimizaciones no ejecutables, pruebas Python estáticas y la evidencia de
+Validación 56. No se reconcilian las diferencias documentales entre fuentes,
+no se cambian manifiestos, asignaciones, selección, variantes, producto ni
+batería histórica y no se configura, compila o ejecuta producto.

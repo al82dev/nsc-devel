@@ -43,12 +43,29 @@ class Builder3ManifestAuthorityTests(unittest.TestCase):
                         builder.validate_executable_manifest(manifest_path=manifest_path)
 
     def test_catalog_validates_before_reading_its_projection(self) -> None:
+        validated = builder.validate_executable_manifest()
         with patch.object(
-            builder, "validate_executable_manifest", return_value=()
+            builder, "validate_executable_manifest", return_value=validated
         ) as validator:
             builder.CanonicalCatalog.load()
 
         validator.assert_called_once_with()
+
+    def test_executable_projection_uses_the_validated_manifest_fields(self) -> None:
+        expected = {
+            case.case_id: case for case in builder.validate_executable_manifest()
+        }
+        catalog = builder.CanonicalCatalog.load()
+
+        for actual in (case for case in catalog.cases if case.executable):
+            canonical = expected[actual.case_id]
+            with self.subTest(case_id=actual.case_id):
+                self.assertEqual(actual.layer, canonical.layer)
+                self.assertEqual(actual.profile, canonical.profile)
+                self.assertEqual(actual.build_modes, canonical.build_modes)
+                self.assertEqual(actual.optimizations, canonical.optimizations)
+                self.assertEqual(actual.executor, canonical.executor)
+                self.assertEqual(actual.expected_outcome, canonical.expected_outcome)
 
 
 if __name__ == "__main__":
