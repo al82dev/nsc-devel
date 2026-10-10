@@ -177,6 +177,13 @@ casos `KNOWN_FAILURE` continúan gobernados por `expected_outcome` en el
 manifiesto. Los `21/21` módulos pasan validación sintáctica y las `20/20`
 pruebas Python del cierre central pasan. No se compiló ni ejecutó producto.
 
+Los `30` gates dirigidos de Host.Target conservan cada contrato, perfil y
+ejecución de Target, y delegan ya la clausura exacta al controlador central. Se
+retiraron únicamente rangos y conteos duplicados; los oráculos de identidad,
+ABI, layout, alineación, bitfields, CPU, LLVM y registros permanecen en los
+casos ejecutados. Los `30/30` módulos pasan validación sintáctica y las `20/20`
+pruebas Python del cierre central pasan. No se compiló ni ejecutó producto.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

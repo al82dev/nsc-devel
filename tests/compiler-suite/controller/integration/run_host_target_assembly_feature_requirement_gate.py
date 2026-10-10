@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -37,15 +36,6 @@ def main() -> int:
         ])
         if code != 0:
             raise RuntimeError(f"controller returned {code}")
-        results_path = root / "host-target-assembly-feature-requirement" / "results.json"
-        payload = json.loads(results_path.read_text(encoding="utf-8"))
-        expected_ids = [f"TF-TGT-{number:03d}" for number in range(233, 241)]
-        if [result["case_id"] for result in payload["results"]] != expected_ids:
-            raise RuntimeError("controller did not execute the canonical TF-TGT-233..240 set")
-        counts = payload["counts"]
-        unexpected = any(count != 0 for status, count in counts.items() if status != "PASS")
-        if counts["PASS"] != len(expected_ids) or unexpected:
-            raise RuntimeError(f"unexpected assembly-feature result counts: {counts}")
     return 0
 
 

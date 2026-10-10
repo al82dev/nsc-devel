@@ -397,3 +397,17 @@ El presupuesto queda limitado a esos veintiún gates y la evidencia de
 Validación 18. No se modifican características del lenguaje, producto, casos,
 oráculos, disposiciones, resultados esperados, selector, runner, reporte ni
 batería histórica. No se configura, compila ni ejecuta producto.
+
+### Enmienda: cierre central de gates Host.Target por contrato
+
+Los treinta gates dirigidos de Host.Target que ejecutan un contrato mediante
+`run_suite.py` deben conservar cada selector, perfil, build mode, herramienta y
+oráculo de Target, pero no repetir rangos de casos ni cantidades de resultados.
+El selector, ledger, reporte y código de retorno compartidos son la única
+autoridad para la selección completa y su cierre terminal.
+
+El presupuesto queda limitado a esos treinta gates y la evidencia de Validación
+19. Se preservan íntegros los contratos y oráculos de target identity, ABI,
+layout, alineación, bitfields, CPU, LLVM y registros de ensamblado. No se
+modifican producto, casos, resultados esperados, selector, runner, reporte ni
+batería histórica. No se configura, compila ni ejecuta producto.
