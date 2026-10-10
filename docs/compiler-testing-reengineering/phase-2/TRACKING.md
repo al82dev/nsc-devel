@@ -1490,3 +1490,12 @@ Tanda 2: ocho macros de `CF-FRONT-052` y cuarenta fixtures `for` de
 `CF-FRONT-056..063`, todos confirmados en `PASS`. No se ejecuto la bateria
 integral de `5,695`. Evidencia:
 `TANDA-VALIDACION-166-CIERRE-TANDA-1-REEJECUCION-439.md`.
+
+Validacion 168 reconcilia exhaustivamente los `221 FAIL` de la corrida
+`20261010-170051-1caf1c2f`: `191` defectos de prueba/oraculo, `22` defectos
+reales de producto, `2` pendientes de evidencia y `6` consumidores MIR
+derivados de `TF-HIR-120`. La union contiene `221` IDs unicos, sin faltantes,
+sobrantes, duplicados ni intersecciones. Los dos pendientes exactos son
+`TS-SEMA-111` y `TF-SSA-273`; no deben modificarse antes de instrumentarlos.
+No se compilo ni se ejecutaron pruebas para esta actualizacion documental.
+Evidencia: `TANDA-VALIDACION-168-CLASIFICACION-221.md`.
