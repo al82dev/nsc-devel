@@ -991,6 +991,10 @@ class ExecutionEngine:
         try:
             if variant.case.executor == "nsc_component_tests":
                 status, detail, evidence = self._run_host(variant)
+            elif variant.case.executor != "nsc_suite_controller+nsc":
+                raise ValueError(
+                    f"unsupported executor in NSC Builder 3: {variant.case.executor}"
+                )
             elif variant.case.component.startswith("SelfHost."):
                 status, detail, evidence = self._run_selfhost(variant)
             elif variant.case.component == "BuildSystem":

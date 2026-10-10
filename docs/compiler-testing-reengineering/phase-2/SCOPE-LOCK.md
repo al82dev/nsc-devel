@@ -568,3 +568,17 @@ la evidencia de Validación 30. `nscbuilder3.py` sólo podrá modificarse si el
 cotejo demuestra una discrepancia concreta. No se fijan conteos como condición,
 no se modifican inventarios, manifiestos, disposiciones, oráculos, producto ni
 batería histórica; no se configura, compila ni ejecuta producto.
+
+### Enmienda: despacho cerrado de ejecutores en NSC Builder 3
+
+Builder 3 debe aceptar únicamente los ejecutores que la infraestructura actual
+implementa. `nsc_component_tests` se dirige al host consolidado y
+`nsc_suite_controller+nsc` se especializa para self-host, BuildSystem,
+Packaging o identidad. Cualquier otro valor, incluido `historical-weekly`,
+debe terminar como error de infraestructura sin invocar un controlador por
+caída.
+
+El presupuesto queda limitado a `ExecutionEngine._run_variant`, una prueba
+Python del despacho completo y la evidencia de Validación 31. No se modifica el
+esquema, manifiesto, casos, oráculos, producto ni batería histórica; no se
+configura, compila ni ejecuta producto.

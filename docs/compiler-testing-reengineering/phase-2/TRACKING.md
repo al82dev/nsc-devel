@@ -562,3 +562,11 @@ acumulativos de perfil y las particiones por ola, componente y contrato
 coinciden con sus campos canónicos; las `3,892` disposiciones no ejecutables
 generan cero variantes. Las pruebas dirigidas pasan `4/4` y la suite Python
 completa `86/86`, sin ejecutar ninguna celda.
+
+Validación 31 cerró el despacho de ejecutores de Builder 3. La prueba negativa
+demostró que `historical-weekly` caía antes en el controlador de identidad y
+podía devolver `PASS`; ahora cualquier ejecutor distinto de los dos realmente
+implementados termina como `INFRASTRUCTURE_ERROR` sin invocar otra ruta. Las
+`5,695` filas ejecutables vivas alcanzan exactamente uno de los cinco
+controladores previstos. Las pruebas dirigidas pasan `2/2` y la suite Python
+completa `88/88`.
