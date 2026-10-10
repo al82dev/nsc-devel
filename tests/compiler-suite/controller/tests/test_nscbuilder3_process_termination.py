@@ -59,6 +59,7 @@ class Builder3ProcessTerminationTests(unittest.TestCase):
         self.assertEqual(code, 130)
         self.assertIn("cancelled before launch", captured)
         self.assertTrue(any("cancelled before launch" in line for line in emitted))
+        self.assertEqual(controller.last_termination_reason, "cancelled")
 
     @patch.object(builder.time, "monotonic", side_effect=(0.0, 2.0))
     @patch.object(builder.subprocess, "Popen")
@@ -81,6 +82,7 @@ class Builder3ProcessTerminationTests(unittest.TestCase):
         self.assertEqual(code, 130)
         self.assertIn("timed out", captured)
         self.assertTrue(any("timed out" in line for line in emitted))
+        self.assertEqual(controller.last_termination_reason, "timeout")
 
     @patch.object(builder.os, "name", "nt")
     @patch.object(builder.subprocess, "run")

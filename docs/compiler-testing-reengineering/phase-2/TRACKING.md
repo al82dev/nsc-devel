@@ -682,3 +682,9 @@ el sandbox el literal declarado; no quedan conversiones por `str` o veracidad.
 Los cinco productores vivos no colisionan por nombre base. Las pruebas
 dirigidas pasan `5/5` y la suite Python completa `154/154` sin preparar o
 ejecutar fixtures.
+
+Validación 49 separó la causa de control del exit code. Una cancelación domina
+cualquier resultado parcial como `CANCELLED` y un timeout queda como
+`INFRASTRUCTURE_ERROR`; ninguno puede convertirse en falla o defecto conocido
+del compilador. Las pruebas dirigidas pasan `8/8` y la suite Python completa
+`156/156` usando sólo dobles de proceso.

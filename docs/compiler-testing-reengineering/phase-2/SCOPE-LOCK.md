@@ -810,3 +810,17 @@ El presupuesto queda limitado a un parser puro, su consumo por
 Validación 48. No se cambia la identidad de workspace porque el inventario vivo
 no presenta colisiones; no se modifican manifiestos, fixtures, comandos,
 producto ni batería histórica y no se prepara o ejecuta ningún fixture.
+
+### Enmienda: cancelación y timeout no son defectos de producto
+
+La terminación solicitada por el usuario debe producir `CANCELLED` para la
+variante activa sin importar el resultado parcial de su ejecutor. Un timeout
+detectado por `ProcessController` debe producir `INFRASTRUCTURE_ERROR`; ninguno
+puede convertirse en `FAIL`, `KNOWN_FAILURE` o `UNEXPECTED_PASS` del compilador.
+La causa de control se conserva separada del exit code del hijo.
+
+El presupuesto queda limitado a registrar la causa de terminación en
+`ProcessController`, clasificarla al cerrar `ExecutionEngine._run_variant`,
+pruebas Python con dobles y la evidencia de Validación 49. No se cambian
+timeouts, comandos, oráculos, procesos reales, producto ni batería histórica;
+no se crea, prepara o ejecuta ningún proceso o fixture real.

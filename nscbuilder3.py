@@ -846,6 +846,7 @@ class ProcessController:
     def __init__(self, output: Callable[[str], None]) -> None:
         self.output = output
         self.cancelled = threading.Event()
+        self.last_termination_reason: str | None = None
         self._lock = threading.Lock()
         self._process: subprocess.Popen[str] | None = None
 
@@ -857,7 +858,9 @@ class ProcessController:
         timeout: float | None = None,
     ) -> tuple[int, str]:
         """Stream merged output and return exit code plus captured text."""
+        self.last_termination_reason = None
         if self.cancelled.is_set():
+            self.last_termination_reason = "cancelled"
             message = "cancelled before launch\n"
             self.output(message)
             return 130, message
@@ -902,12 +905,14 @@ class ProcessController:
             if process.poll() is not None and stream_closed and pending.empty():
                 break
             if timeout is not None and time.monotonic() - started > timeout:
+                self.last_termination_reason = "timeout"
                 self._terminate_tree(process)
                 message = f"process timed out after {timeout:.1f} seconds\n"
                 output.append(message)
                 self.output(message)
                 break
             if self.cancelled.is_set():
+                self.last_termination_reason = "cancelled"
                 self._terminate_tree(process)
                 message = "process cancelled\n"
                 output.append(message)
@@ -928,6 +933,7 @@ class ProcessController:
 
     def cancel(self) -> None:
         """Cancel only the active child process tree owned by this controller."""
+        self.last_termination_reason = "cancelled"
         self.cancelled.set()
         with self._lock:
             process = self._process
@@ -1402,6 +1408,7 @@ class ExecutionEngine:
     def _run_variant(self, variant: RunVariant) -> CaseOutcome:
         """Dispatch one variant by its manifest-owned executor contract."""
         started = time.monotonic()
+        self.process.last_termination_reason = None
         try:
             if variant.case.executor == "nsc_component_tests":
                 status, detail, evidence = self._run_host(variant)
@@ -1422,9 +1429,12 @@ class ExecutionEngine:
             detail = f"{type(error).__name__}: {error}"
             evidence = ""
         duration = time.monotonic() - started
-        if self.process.cancelled.is_set() and status == "INFRASTRUCTURE_ERROR":
+        if self.process.cancelled.is_set():
             status = "CANCELLED"
             detail = "cancelled by user"
+        elif self.process.last_termination_reason == "timeout":
+            status = "INFRASTRUCTURE_ERROR"
+            detail = "process timed out"
         return CaseOutcome(
             key=variant.key,
             case_id=variant.case.case_id,
