@@ -4236,15 +4236,43 @@ def launch_gui(smoke_only: bool = False) -> int:
                     seen_cases.add(variant.case.case_id)
                     cases.append(variant.case)
                 self.visible_variants = loaded.variants
+                # A historical load is a complete snapshot, not a continuation of
+                # the current view.  Reset the visual filter and suspend sorting
+                # while replacing LISTO with every terminal state.  Otherwise a
+                # status-column sort can move a row halfway through _update_case
+                # and leave the subsequent cells or visibility attached to a
+                # different case.
+                all_statuses_index = self.status_filter_combo.findData("ALL")
+                if all_statuses_index < 0:
+                    raise RuntimeError("the complete status filter is unavailable")
+                self.status_filter_combo.blockSignals(True)
+                self.status_filter_combo.setCurrentIndex(all_statuses_index)
+                self.status_filter_combo.blockSignals(False)
                 self._populate_plan(cases, loaded.variants)
-                for outcome in loaded.outcomes:
-                    self._update_case(
-                        outcome.key,
-                        outcome.status,
-                        outcome.detail,
-                        outcome.duration_seconds,
-                        outcome.evidence,
+                self.case_table.setSortingEnabled(False)
+                self.case_table.setUpdatesEnabled(False)
+                try:
+                    for outcome in loaded.outcomes:
+                        self._update_case(
+                            outcome.key,
+                            outcome.status,
+                            outcome.detail,
+                            outcome.duration_seconds,
+                            outcome.evidence,
+                        )
+                finally:
+                    self.case_table.setUpdatesEnabled(True)
+                    self.case_table.setSortingEnabled(True)
+                expected_statuses = Counter(
+                    outcome.status for outcome in loaded.outcomes
+                )
+                if self.live_status_counts != expected_statuses:
+                    raise RuntimeError(
+                        "historical status projection is incomplete: "
+                        f"expected {dict(sorted(expected_statuses.items()))}, "
+                        f"restored {dict(sorted(self.live_status_counts.items()))}"
                     )
+                self._apply_status_filter()
                 self.failure_variants_by_key.clear()
                 self.failure_outcomes_by_key.clear()
                 self.disabled_failure_keys.clear()

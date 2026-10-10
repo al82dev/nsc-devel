@@ -1985,6 +1985,28 @@ oraculos, disposiciones, manifiestos, CMake, producto ni bateria historica. Los
 seis archivos del usuario registrados en `CURSOR.json` permanecen protegidos.
 No se ejecuta baseline, no se despliega y no se toca la unidad `C:`.
 
+### Enmienda: restauracion historica atomica en Builder 3
+
+La corrida `20261010-090333-82a4a13f` conserva `5,695` resultados terminales
+validos, incluidos `247 FAIL`, `88 INFRASTRUCTURE_ERROR`, `187 BLOCKED` y `33
+KNOWN_FAILURE`. Sin embargo, la carga grafica reconstruia primero todas las
+filas como `LISTO` y sustituia sus estados mientras el filtro y el ordenamiento
+anteriores seguian activos. Una fila podia cambiar de posicion durante esa
+sustitucion y la visibilidad posterior podia quedar asociada a otra identidad.
+
+La carga de una ejecucion historica es una restauracion completa, no la
+continuacion de la vista anterior. El presupuesto de Validacion 142 queda
+limitado a `nscbuilder3.py`, esta evidencia, `TRACKING.md` y `CURSOR.json`.
+Antes de proyectar resultados se selecciona `Todos los estados`; el
+ordenamiento y el repintado se suspenden mientras se aplican todas las filas;
+al terminar se coteja el `Counter` restaurado contra los resultados cargados y
+se rechaza cualquier proyeccion parcial. Solo despues se reactiva la tabla y se
+aplica una vez el filtro completo.
+
+No se cambia `results.json`, la evidencia historica, el plan, los casos, los
+ejecutores, el compilador ni la bateria. No se configura, compila o ejecuta
+producto; no se ejecuta baseline, no se despliega y no se toca la unidad `C:`.
+
 ### Enmienda: costo de arranque del registro por caso
 
 El primer barrido completo posterior al cierre del inventario alcanzo `83/116`

@@ -1271,3 +1271,14 @@ malformadas, ajenas a la suite o incompatibles se rechazan. Los contratos
 dirigidos pasan `33/33`, el smoke de GUI pasa y `git diff --check` pasa. No se
 compilo ni ejecuto producto, no se interfirio con la corrida activa, no se
 ejecuto baseline y no se toco `C:`.
+
+Validacion 142 corrige la restauracion grafica parcial descubierta con la
+corrida real `20261010-090333-82a4a13f`. Sus `5,695` filas sí estaban completas
+en disco (`5,140 PASS`, `247 FAIL`, `88 INFRASTRUCTURE_ERROR`, `187 BLOCKED` y
+`33 KNOWN_FAILURE`), pero Builder 3 las sustituia desde `LISTO` con filtro y
+ordenamiento activos. La carga ahora selecciona todos los estados, suspende la
+reordenacion durante la proyeccion y coteja exactamente los conteos antes de
+mostrar la tabla. El cargador leyó la evidencia real con los cinco conteos
+exactos, la sintaxis Python, el smoke de GUI y `git diff --check` pasan. La
+comprobacion grafica queda pendiente de reabrir Builder 3; no se compilo ni
+ejecuto producto, no se ejecuto baseline y no se toco `C:`.
