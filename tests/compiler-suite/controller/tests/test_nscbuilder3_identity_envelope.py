@@ -19,7 +19,7 @@ def envelope(
     blocked_by: list[str] | None = None,
     **overrides: object,
 ) -> str:
-    counts = {name: 0 for name in builder.RESULT_STATUSES}
+    counts = {name: 0 for name in builder.IDENTITY_COUNT_STATUSES}
     counts[status] = 1
     payload: dict[str, object] = {
         "schema": 1,
@@ -152,6 +152,18 @@ class Builder3IdentityEnvelopeTests(unittest.TestCase):
         payload["counts"]["FAIL"] = 1
         with self.assertRaisesRegex(ValueError, "counts"):
             self.parse(json.dumps(payload))
+
+    def test_canonical_zero_skipped_count_is_reporting_metadata_only(self) -> None:
+        payload = json.loads(envelope())
+        self.assertEqual(payload["counts"]["SKIPPED"], 0)
+        self.assertEqual(self.parse(json.dumps(payload)), ("PASS", ""))
+
+        payload["counts"]["SKIPPED"] = 1
+        with self.assertRaisesRegex(ValueError, "counts"):
+            self.parse(json.dumps(payload))
+
+        with self.assertRaisesRegex(ValueError, "unknown status"):
+            self.parse(envelope(status="SKIPPED"))
 
     def test_process_exit_must_match_reported_status(self) -> None:
         with self.assertRaisesRegex(ValueError, "exit code"):

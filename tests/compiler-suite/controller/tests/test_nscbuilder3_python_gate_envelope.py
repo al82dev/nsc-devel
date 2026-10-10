@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +15,36 @@ import nscbuilder3 as builder
 
 
 class Builder3PythonGateEnvelopeTests(unittest.TestCase):
+    def test_gate_loader_exposes_sibling_support_module_once(self) -> None:
+        engine = builder.ExecutionEngine(
+            builder.BuilderConfig(),
+            SimpleNamespace(root=Path("A:/synthetic-history")),
+            lambda _line: None,
+            lambda *_args: None,
+            lambda *_args: None,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            suite_root = Path(temporary)
+            integration_root = suite_root / "controller" / "integration"
+            integration_root.mkdir(parents=True)
+            (integration_root / "synthetic_support.py").write_text(
+                "VALUE = 'loaded-from-sibling'\n", encoding="utf-8"
+            )
+            (integration_root / "run_synthetic_gate.py").write_text(
+                "from synthetic_support import VALUE\n", encoding="utf-8"
+            )
+            original_path = list(sys.path)
+            try:
+                with patch.object(builder, "SUITE_ROOT", suite_root):
+                    first = engine._load_gate("run_synthetic_gate.py")
+                    second = engine._load_gate("run_synthetic_gate.py")
+                self.assertEqual(first.VALUE, "loaded-from-sibling")
+                self.assertIs(first, second)
+                self.assertEqual(sys.path.count(str(integration_root)), 1)
+            finally:
+                sys.path[:] = original_path
+                sys.modules.pop("synthetic_support", None)
+
     def test_exact_boolean_and_string_tuple_is_preserved(self) -> None:
         self.assertEqual(builder.parse_python_gate_result((True, "")), (True, ""))
         self.assertEqual(

@@ -66,6 +66,11 @@ TERMINAL_FAILURES = {
     "CANCELLED",
 }
 RESULT_STATUSES = TERMINAL_FAILURES | {"PASS", "KNOWN_FAILURE"}
+# ``run_suite.py`` publishes the full CaseStatus vocabulary in ``counts``.
+# A focused execution cannot return SKIPPED as its selected result, but the
+# canonical envelope still carries ``"SKIPPED": 0``. Keep that reporting-only
+# status separate so execution routing does not silently start accepting skips.
+IDENTITY_COUNT_STATUSES = RESULT_STATUSES | {"SKIPPED"}
 NON_EXECUTABLE = {
     "InfrastructurePending",
     "HistoricalDelegated",
@@ -1983,7 +1988,7 @@ def parse_identity_envelope(
         raise ValueError(f"{status} requires failure evidence")
 
     counts = payload.get("counts")
-    expected_counts = {name: 0 for name in RESULT_STATUSES}
+    expected_counts = {name: 0 for name in IDENTITY_COUNT_STATUSES}
     expected_counts[status] = 1
     if (
         not isinstance(counts, dict)
@@ -2687,6 +2692,13 @@ class ExecutionEngine:
         if cached is not None:
             return cached
         path = SUITE_ROOT / "controller" / "integration" / name
+        # Integration gates intentionally share ``component_gate_support`` as a
+        # sibling module. Loading a gate from an absolute file path does not make
+        # that sibling importable, so publish the canonical integration root once
+        # before executing any gate. The entry remains stable for lazy imports.
+        integration_root = str(path.parent)
+        if integration_root not in sys.path:
+            sys.path.insert(0, integration_root)
         spec = importlib.util.spec_from_file_location(f"nscbuilder3_{path.stem}", path)
         if spec is None or spec.loader is None:
             raise RuntimeError(f"cannot load gate: {path}")

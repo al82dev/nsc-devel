@@ -1339,3 +1339,12 @@ los diagnosticos observados y por ello no se promueven artificialmente a
 defectos del producto. No se modifico codigo, oraculos, manifiestos ni
 expectativas y no se toco `C:`. Evidencia:
 `ANALISIS-ERRORES-CORRIDA-20261010-090333-82a4a13f.md`.
+
+Validacion 149 corrige las dos fronteras confirmadas de Builder 3 sin tocar el
+compilador. La carga por ruta absoluta publica ahora una sola vez el directorio
+de integracion para que los gates puedan importar `component_gate_support`; el
+validador de identidad reconoce `SKIPPED: 0` como contador canonico, pero no lo
+acepta como resultado ejecutable ni con cardinalidad positiva. Las `15` pruebas
+unitarias dirigidas pasan. Quedan pendientes de una proxima corrida funcional
+los `36` casos BuildSystem y los `4` casos de identidad afectados. Evidencia:
+`TANDA-VALIDACION-149-CIERRE-BUILDER3-GATES-IDENTIDAD.md`.
