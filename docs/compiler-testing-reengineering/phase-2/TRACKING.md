@@ -790,3 +790,9 @@ ejecutables. Basic, Diagnostics, Lexer, Source y Types comparten ahora una
 autoridad que exige un entero exacto y rechaza cadenas, flotantes y booleanos.
 Las pruebas dirigidas pasan `3/3` y la suite Python completa `207/207`, sin
 ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 67 cerro los tres conteos declarados por contrato en Packaging.
+`required`, `known_product_defect` e `infrastructure_pending` deben ser enteros
+exactos no negativos antes de compararse con los conjuntos derivados. Las
+pruebas dirigidas pasan `7/7` y la suite Python completa `208/208`, sin ejecutar
+producto. La tarea funcional permanece activa.

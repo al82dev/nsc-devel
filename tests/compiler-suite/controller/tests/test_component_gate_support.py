@@ -10,7 +10,11 @@ INTEGRATION_ROOT = CONTROLLER_ROOT / "integration"
 sys.path.insert(0, str(CONTROLLER_ROOT))
 sys.path.insert(0, str(INTEGRATION_ROOT))
 
-from component_gate_support import assert_component_results, required_manifest_integer
+from component_gate_support import (
+    assert_component_results,
+    required_manifest_integer,
+    required_nonnegative_integer,
+)
 from nsc_suite.manifest import CaseManifest
 
 
@@ -125,6 +129,21 @@ class ComponentGateSupportTests(unittest.TestCase):
                 required_manifest_integer({"variant": value}, "variant", "Synthetic")
         with self.assertRaisesRegex(RuntimeError, "omit variant"):
             required_manifest_integer({}, "variant", "Synthetic")
+
+    def test_nonnegative_integer_rejects_coercions_and_negative_values(self) -> None:
+        self.assertEqual(
+            required_nonnegative_integer({"required": 0}, "required", "Synthetic"),
+            0,
+        )
+        for value in (True, "0", 0.0, -1, None):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                RuntimeError, "exact nonnegative integer"
+            ):
+                required_nonnegative_integer(
+                    {"required": value}, "required", "Synthetic"
+                )
+        with self.assertRaisesRegex(RuntimeError, "omits required"):
+            required_nonnegative_integer({}, "required", "Synthetic")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,18 @@ def required_manifest_integer(
     return value
 
 
+def required_nonnegative_integer(
+    payload: dict[str, object], field: str, source: str
+) -> int:
+    """Read an exact nonnegative integer from an infrastructure document."""
+    if field not in payload:
+        raise RuntimeError(f"{source} omits {field}")
+    value = payload[field]
+    if type(value) is not int or value < 0:
+        raise RuntimeError(f"{source} field {field} must be an exact nonnegative integer")
+    return value
+
+
 def component_manifest_cases(
     source_root: Path,
     repository_root: Path,

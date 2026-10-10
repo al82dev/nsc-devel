@@ -1076,3 +1076,17 @@ El presupuesto queda limitado a `selfhost_inventory.required_oracle_exit_code`,
 sus cinco consumidores, pruebas Python sinteticas y la evidencia de Validacion
 66. No se cambian valores de oraculo, fixtures, comandos, producto ni bateria
 historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: resumen Packaging sin coercion
+
+Los conteos declarados por contrato en `PackagingContractCatalog.jsonl` no
+pueden convertirse mediante `int(...)`. `required`, `known_product_defect` e
+`infrastructure_pending` deben existir como enteros exactos no negativos antes
+de compararse con el conjunto derivado; cadenas, flotantes y booleanos no
+acreditan cobertura.
+
+El presupuesto queda limitado a un lector puro compartido, los tres campos de
+`run_packaging_gate.validate_classifications`, pruebas Python sinteticas y la
+evidencia de Validacion 67. No se cambian catalogos, conteos derivados,
+clasificaciones, producto ni bateria historica y no se configura, compila o
+ejecuta producto.

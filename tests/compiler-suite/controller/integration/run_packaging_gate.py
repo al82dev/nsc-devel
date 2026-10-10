@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from component_gate_support import required_manifest_integer
+from component_gate_support import required_manifest_integer, required_nonnegative_integer
 
 
 def read_jsonl(path: Path) -> list[dict[str, object]]:
@@ -201,9 +201,13 @@ def validate_classifications(
         contract_infrastructure = len(contract_cases & infrastructure)
         contract_required = len(contract_cases & executable) - contract_defects
         declared_counts = (
-            int(row.get("required", -1)),
-            int(row.get("known_product_defect", -1)),
-            int(row.get("infrastructure_pending", -1)),
+            required_nonnegative_integer(row, "required", f"Packaging contract {contract_id}"),
+            required_nonnegative_integer(
+                row, "known_product_defect", f"Packaging contract {contract_id}"
+            ),
+            required_nonnegative_integer(
+                row, "infrastructure_pending", f"Packaging contract {contract_id}"
+            ),
         )
         derived_counts = (contract_required, contract_defects, contract_infrastructure)
         if declared_counts != derived_counts:
