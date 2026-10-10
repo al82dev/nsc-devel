@@ -1302,3 +1302,12 @@ No reejecuta, recompila ni transforma resultados. La sintaxis Python y el
 diferencial pasan. Seleccionar una ejecucion guardada la carga inmediatamente
 y la cabecera confirma `Ejecucion CARGADA`; la comprobacion visual corresponde
 al usuario.
+
+Validacion 145 separa el historial del flujo vivo. `Pruebas` queda limpio para
+una corrida nueva y puede reiniciarse sin borrar evidencia. Cada seleccion de
+`Resultados > Historial` abre un tab independiente con las `9,587` filas de su
+seleccion, estados terminales y pendientes, filtros por estado, componente,
+momento, duracion y texto, mas log, resumen, eventos, resultados y metadatos.
+La carga de la corrida real no modifico tabla, conteos, log ni reporte vivos en
+el smoke. No se compilo ni ejecuto producto, no se ejecuto baseline y no se
+toco `C:`.

@@ -2259,3 +2259,27 @@ controladores funcionales, CMake ni bateria historica. La validacion se limita
 a sintaxis Python, contratos del cargador, lectura de la corrida existente y
 smoke no interactivo de GUI. Los seis archivos protegidos permanecen intactos.
 No se ejecuta baseline, no se despliega y no se toca la unidad `C:`.
+
+### Enmienda: historial por corrida sin contaminar el flujo vivo
+
+La carga historica deja de reutilizar la tabla, los filtros, el log y el estado
+de reejecucion de `Pruebas`. Esa proyeccion destruia la separacion entre una
+corrida nueva y la inspeccion de evidencia anterior. `Pruebas` queda reservado
+para el flujo vivo y ofrece `Limpiar resultados para nueva corrida` sin borrar
+evidencia persistida.
+
+El presupuesto de Validacion 145 queda limitado a `nscbuilder3.py`, esta
+enmienda, `TRACKING.md`, `CURSOR.json` y su evidencia Markdown. Cada ejecucion
+seleccionada desde `Resultados > Historial` abre un tab independiente, conserva
+su bateria completa, estados, tiempos, duraciones, detalles, log, resumen,
+eventos y sobres JSON, y permite filtrar sin alterar el flujo vivo. Abrir dos
+veces la misma corrida enfoca el tab existente. Cerrar el tab no elimina la
+evidencia. Reejecutar una fila historica crea una corrida nueva y nunca cambia
+la instantanea historica.
+
+No se cambian compilador, casos, manifiestos, disposiciones, oraculos,
+controladores funcionales, CMake ni bateria historica. No se configura,
+compila o ejecuta producto; la validacion se limita a sintaxis Python,
+`git diff --check` y smoke no interactivo contra evidencia ya existente. Los
+seis archivos protegidos permanecen intactos. No se ejecuta baseline, no se
+despliega y no se toca la unidad `C:`.

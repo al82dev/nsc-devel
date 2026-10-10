@@ -2873,6 +2873,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             QMenu,
             QMessageBox,
             QProgressBar,
+            QPlainTextEdit,
             QPushButton,
             QSpinBox,
             QTabWidget,
@@ -3064,6 +3065,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.active_operation = ""
             self.active_modes: tuple[str, ...] = ()
             self.infrastructure_ninja_total = 0
+            self.history_run_pages: dict[str, QWidget] = {}
             self.setWindowTitle(APP_NAME)
             self.resize(1600, 960)
             self._build_ui()
@@ -3249,16 +3251,10 @@ def launch_gui(smoke_only: bool = False) -> int:
             status_filter_bar.addWidget(self.status_filter_summary)
             status_filter_bar.addStretch(1)
             layout.addLayout(status_filter_bar)
-            history_bar = QHBoxLayout()
-            history_bar.addWidget(QLabel("Ejecución guardada"))
-            self.history_combo = QComboBox()
-            self.history_combo.setMinimumWidth(520)
-            self.load_history_button = QPushButton("Cargar ejecución")
-            self.refresh_history_button = QPushButton("Actualizar historial")
-            history_bar.addWidget(self.history_combo, 1)
-            history_bar.addWidget(self.load_history_button)
-            history_bar.addWidget(self.refresh_history_button)
-            layout.addLayout(history_bar)
+            self.clear_results_button = QPushButton(
+                "Limpiar resultados para nueva corrida"
+            )
+            status_filter_bar.addWidget(self.clear_results_button)
             self.execution_activity = QLabel("Sin ejecución activa")
             self.execution_activity.setWordWrap(True)
             layout.addWidget(self.execution_activity)
@@ -3297,13 +3293,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.status_filter_combo.currentIndexChanged.connect(
                 self._apply_status_filter
             )
-            self.load_history_button.clicked.connect(
-                self._load_history_from_combo
-            )
-            self.history_combo.activated.connect(
-                lambda _index: self._load_history_from_combo()
-            )
-            self.refresh_history_button.clicked.connect(self._refresh_history)
+            self.clear_results_button.clicked.connect(self._clear_current_results)
             self.case_table.cellClicked.connect(self._handle_case_table_click)
             self.case_table.customContextMenuRequested.connect(
                 self._show_case_context_menu
@@ -3390,7 +3380,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.failure_tab_index = self.result_tabs.addTab(
                 failure_page, "Fallos exactos (0)"
             )
-            self.result_tabs.addTab(history_page, "Historial")
+            self.history_tab_index = self.result_tabs.addTab(history_page, "Historial")
             self.failure_retry_button.clicked.connect(self._retry_failures)
             self.failure_disable_button.clicked.connect(
                 lambda: self._set_selected_failures_enabled(False)
@@ -3680,50 +3670,6 @@ def launch_gui(smoke_only: bool = False) -> int:
             if scope != "Total" and not value:
                 raise ValueError(f"selecciona un valor para el alcance {scope}")
             return self.catalog.select(scope, value, self.profile_combo.currentText())
-
-        @staticmethod
-        def _set_combo_text_exact(combo: QComboBox, value: str, label: str) -> None:
-            """Select one persisted value without silently accepting a fallback."""
-            index = next(
-                (item for item in range(combo.count()) if combo.itemText(item) == value),
-                -1,
-            )
-            if index < 0:
-                raise RuntimeError(
-                    f"the historical {label} value is unavailable: {value!r}"
-                )
-            combo.setCurrentIndex(index)
-
-        def _restore_historical_selection_controls(
-            self, selection: dict[str, Any]
-        ) -> None:
-            """Restore the controls that produced a run; never launch a new run."""
-            self.scope_combo.blockSignals(True)
-            try:
-                self._set_combo_text_exact(
-                    self.scope_combo, selection["scope"], "scope"
-                )
-            finally:
-                self.scope_combo.blockSignals(False)
-            self._refresh_scope_values()
-            if selection["scope"] != "Total":
-                self.scope_value.blockSignals(True)
-                try:
-                    self._set_combo_text_exact(
-                        self.scope_value, selection["value"], "scope value"
-                    )
-                finally:
-                    self.scope_value.blockSignals(False)
-            for combo, field, label in (
-                (self.profile_combo, "profile", "profile"),
-                (self.execution_mode, "build_mode", "build mode"),
-                (self.optimization_combo, "optimization", "optimization"),
-            ):
-                combo.blockSignals(True)
-                try:
-                    self._set_combo_text_exact(combo, selection[field], label)
-                finally:
-                    combo.blockSignals(False)
 
         def _preview_plan(self) -> None:
             try:
@@ -4307,9 +4253,8 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.save_button.setEnabled(not busy)
             self.detect_button.setEnabled(not busy)
             self.receipt_button.setEnabled(not busy)
-            self.load_history_button.setEnabled(not busy and self.history_combo.count() > 0)
-            self.refresh_history_button.setEnabled(not busy)
             self.history_load_button.setEnabled(not busy)
+            self.clear_results_button.setEnabled(not busy)
             infrastructure_busy = busy and bool(self.active_operation)
             self.infrastructure_cancel_button.setEnabled(infrastructure_busy)
             self.cancel_button.setEnabled(busy and not infrastructure_busy)
@@ -4322,11 +4267,30 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self._refresh_failure_controls()
             self.statusBar().showMessage("Operación activa" if busy else "Listo")
 
+        def _clear_current_results(self) -> None:
+            """Reset only the live workspace; historical result tabs stay untouched."""
+            if self.worker is not None:
+                return
+            self.failure_outcomes_by_key.clear()
+            self.failure_variants_by_key.clear()
+            self.disabled_failure_keys.clear()
+            self.last_failed_variants = ()
+            self.full_log.clear()
+            self.error_report.clear()
+            all_statuses_index = self.status_filter_combo.findData("ALL")
+            if all_statuses_index >= 0:
+                self.status_filter_combo.setCurrentIndex(all_statuses_index)
+            self._populate_failure_table()
+            self._preview_plan()
+            self.execution_activity.setText("Preparada; ninguna prueba ha iniciado")
+            self.statusBar().showMessage(
+                "Resultados actuales limpiados; lista para una nueva corrida"
+            )
+
         def _refresh_history(self) -> None:
             if not HISTORY_ROOT.is_dir():
                 self.history_table.setRowCount(0)
-                self.history_combo.clear()
-                self.load_history_button.setEnabled(False)
+                self.history_load_button.setEnabled(False)
                 return
             records: list[tuple[str, str, str, str, str]] = []
             for root in sorted(HISTORY_ROOT.iterdir(), reverse=True):
@@ -4337,32 +4301,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             for row, record in enumerate(records):
                 for column, value in enumerate(record):
                     self.history_table.setItem(row, column, QTableWidgetItem(value))
-            selected_path = self.history_combo.currentData()
-            self.history_combo.blockSignals(True)
-            self.history_combo.clear()
-            for run_id, kind, status, finished_at, path in records:
-                if (
-                    kind != "phase-2-suite"
-                    or status in {"INCOMPLETE", "MALFORMED"}
-                    or not finished_at
-                ):
-                    continue
-                self.history_combo.addItem(
-                    f"{run_id} — {status} — {finished_at}", path
-                )
-            if isinstance(selected_path, str):
-                index = self.history_combo.findData(selected_path)
-                if index >= 0:
-                    self.history_combo.setCurrentIndex(index)
-            self.history_combo.blockSignals(False)
-            self.load_history_button.setEnabled(
-                self.worker is None and self.history_combo.count() > 0
+            self.history_load_button.setEnabled(
+                self.worker is None and bool(records)
             )
-
-        def _load_history_from_combo(self) -> None:
-            path = self.history_combo.currentData()
-            if isinstance(path, str) and path:
-                self._load_history_path(Path(path))
 
         def _load_history_from_table(self) -> None:
             row = self.history_table.currentRow()
@@ -4373,86 +4314,469 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self._load_history_path(Path(item.text()))
 
         def _load_history_path(self, root: Path) -> None:
-            """Restore one historical exact plan without mutating its evidence."""
+            """Open one immutable historical run in its own Results tab."""
             if self.worker is not None:
                 return
             try:
                 loaded = load_history_execution(root, self.catalog)
-                self.visible_variants = loaded.variants
-                selection = loaded.metadata["selection"]
-                self._restore_historical_selection_controls(selection)
-                # A historical load is a complete snapshot, not a continuation of
-                # the current view.  Its terminal rows are materialized directly
-                # from results.json; there is no intermediate LISTO projection.
-                all_statuses_index = self.status_filter_combo.findData("ALL")
-                if all_statuses_index < 0:
-                    raise RuntimeError("the complete status filter is unavailable")
-                self.status_filter_combo.blockSignals(True)
-                self.status_filter_combo.setCurrentIndex(all_statuses_index)
-                self.status_filter_combo.blockSignals(False)
-                self._populate_plan(
-                    loaded.cases, loaded.variants, loaded.outcomes
-                )
-                expected_statuses = Counter(
-                    outcome.status for outcome in loaded.outcomes
-                )
-                executable_ids = {
-                    variant.case.case_id for variant in loaded.variants
-                }
-                expected_statuses["PENDIENTE"] += sum(
-                    not case.executable for case in loaded.cases
-                )
-                expected_statuses["FILTRADO"] += sum(
-                    case.executable and case.case_id not in executable_ids
-                    for case in loaded.cases
-                )
-                expected_statuses += Counter()
-                if self.live_status_counts != expected_statuses:
-                    raise RuntimeError(
-                        "historical status projection is incomplete: "
-                        f"expected {dict(sorted(expected_statuses.items()))}, "
-                        f"restored {dict(sorted(self.live_status_counts.items()))}"
-                    )
-                self._apply_status_filter()
-                self.failure_variants_by_key.clear()
-                self.failure_outcomes_by_key.clear()
-                self.disabled_failure_keys.clear()
-                outcome_by_key = {item.key: item for item in loaded.outcomes}
-                for variant in retry_variants(loaded.variants, loaded.outcomes):
-                    self.failure_variants_by_key[variant.key] = variant
-                    self.failure_outcomes_by_key[variant.key] = outcome_by_key[
-                        variant.key
-                    ]
-                self.last_failed_variants = tuple(
-                    self.failure_variants_by_key[key]
-                    for key in sorted(self.failure_variants_by_key)
-                )
-                self._populate_failure_table()
-                self.full_log.setPlainText(loaded.full_log)
-                cancelled = loaded.status == "CANCELLED"
-                self._render_error_report(
-                    loaded.outcomes, cancelled, str(loaded.root)
-                )
-                total = len(loaded.variants)
-                self.progress.setRange(0, max(1, total))
-                self.progress.setValue(total)
-                self.progress.setFormat(
-                    f"{total:,}/{total:,} pruebas — CARGADA (%p%)"
-                )
-                self.plan_label.setText(
-                    f"Ejecución CARGADA: {loaded.root.name} · "
-                    f"{len(loaded.cases):,} casos canónicos · "
-                    f"{len(loaded.variants):,} resultados terminales"
-                )
-                self.execution_activity.setText(
-                    f"Ejecución anterior cargada: {loaded.root.name} — {loaded.status}"
-                )
-                self.tabs.setCurrentIndex(1)
+                key = os.path.normcase(str(loaded.root))
+                existing = self.history_run_pages.get(key)
+                if existing is not None:
+                    index = self.result_tabs.indexOf(existing)
+                    if index >= 0:
+                        self.tabs.setCurrentIndex(2)
+                        self.result_tabs.setCurrentIndex(index)
+                        self.statusBar().showMessage(
+                            f"Ejecución histórica enfocada: {loaded.root.name}"
+                        )
+                        return
+                    self.history_run_pages.pop(key, None)
+                page = self._create_history_run_page(loaded, key)
+                label = f"{loaded.root.name[:15]} · {loaded.status}"
+                index = self.result_tabs.addTab(page, label)
+                self.result_tabs.setTabToolTip(index, str(loaded.root))
+                self.history_run_pages[key] = page
+                self.tabs.setCurrentIndex(2)
+                self.result_tabs.setCurrentIndex(index)
                 self.statusBar().showMessage(
-                    f"Ejecución cargada: {loaded.root.name}"
+                    f"Ejecución histórica abierta: {loaded.root.name}"
                 )
             except Exception as error:
                 self._show_error("No se pudo cargar la ejecución", error)
+
+        def _create_history_run_page(
+            self, loaded: HistoricalExecution, page_key: str
+        ) -> QWidget:
+            """Build a self-contained, read-only projection of one saved run."""
+            page = QWidget()
+            layout = QVBoxLayout(page)
+            record = history_record(loaded.root)
+            counts = Counter(outcome.status for outcome in loaded.outcomes)
+            selection = loaded.metadata["selection"]
+            header = QLabel(
+                f"{loaded.root.name} · {loaded.status} · {record[3]}\n"
+                f"{selection['scope']} {selection['value']} · {selection['profile']} · "
+                f"{selection['build_mode']} · {selection['optimization']} · "
+                + " · ".join(
+                    f"{status}: {counts[status]:,}"
+                    for status in sorted(counts)
+                )
+            )
+            header.setWordWrap(True)
+            layout.addWidget(header)
+
+            controls = QHBoxLayout()
+            status_combo = QComboBox()
+            for label, value in (
+                ("Todos los estados", "ALL"),
+                ("Fallos", "FAILURES"),
+                ("PASS", "PASS"),
+                ("FAIL", "FAIL"),
+                ("KNOWN_FAILURE", "KNOWN_FAILURE"),
+                ("BLOCKED", "BLOCKED"),
+                ("INFRASTRUCTURE_ERROR", "INFRASTRUCTURE_ERROR"),
+                ("UNEXPECTED_PASS", "UNEXPECTED_PASS"),
+                ("CANCELLED", "CANCELLED"),
+                ("PENDIENTE", "PENDIENTE"),
+                ("FILTRADO", "FILTRADO"),
+            ):
+                status_combo.addItem(label, value)
+            component_combo = QComboBox()
+            component_combo.addItem("Todos los componentes", "ALL")
+            for component in sorted({case.component for case in loaded.cases}):
+                component_combo.addItem(component, component)
+            time_combo = QComboBox()
+            for label, value in (
+                ("Cualquier momento", "ALL"),
+                ("Primer minuto", "LT60"),
+                ("1 a 5 min", "60_300"),
+                ("5 a 15 min", "300_900"),
+                ("15 a 30 min", "900_1800"),
+                ("Después de 30 min", "GE1800"),
+                ("Sin hora", "NONE"),
+            ):
+                time_combo.addItem(label, value)
+            duration_combo = QComboBox()
+            for label, value in (
+                ("Cualquier duración", "ALL"),
+                ("Menos de 1 s", "LT1"),
+                ("1 a 5 s", "1_5"),
+                ("5 a 30 s", "5_30"),
+                ("30 a 60 s", "30_60"),
+                ("60 s o más", "GE60"),
+                ("Sin duración", "NONE"),
+            ):
+                duration_combo.addItem(label, value)
+            search_edit = QLineEdit()
+            search_edit.setPlaceholderText("Buscar caso, contrato, componente o detalle")
+            visible_label = QLabel()
+            open_button = QPushButton("Abrir carpeta de evidencia")
+            close_button = QPushButton("Cerrar corrida")
+            controls.addWidget(QLabel("Estado"))
+            controls.addWidget(status_combo)
+            controls.addWidget(QLabel("Componente"))
+            controls.addWidget(component_combo)
+            controls.addWidget(QLabel("Tiempo"))
+            controls.addWidget(time_combo)
+            controls.addWidget(QLabel("Duración"))
+            controls.addWidget(duration_combo)
+            controls.addWidget(search_edit, 1)
+            controls.addWidget(open_button)
+            controls.addWidget(close_button)
+            layout.addLayout(controls)
+            layout.addWidget(visible_label)
+
+            evidence_tabs = QTabWidget()
+            history_headers = (
+                *self.TABLE_HEADERS[: self.DURATION_COLUMN],
+                "Hora",
+                *self.TABLE_HEADERS[self.DURATION_COLUMN :],
+            )
+            table = QTableWidget(0, len(history_headers))
+            table.setHorizontalHeaderLabels(history_headers)
+            table.setAlternatingRowColors(True)
+            table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+            table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            table.setSortingEnabled(False)
+            table.setUpdatesEnabled(False)
+            table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Interactive
+            )
+            for column, width in enumerate(
+                (55, 185, 165, 175, 70, 55, 75, 175, 90, 125, 120, 185, 90)
+            ):
+                table.horizontalHeader().resizeSection(column, width)
+            table.horizontalHeader().setStretchLastSection(True)
+
+            event_text = ""
+            finished_at_by_key: dict[str, tuple[str, float | None]] = {}
+            run_started_at: datetime | None = None
+            events_path = loaded.root / "events.jsonl"
+            if events_path.is_file():
+                event_text = events_path.read_text(encoding="utf-8", errors="replace")
+                for line in event_text.splitlines():
+                    if not line.strip():
+                        continue
+                    event = json.loads(line, object_pairs_hook=unique_json_object)
+                    timestamp = event.get("timestamp")
+                    if not isinstance(timestamp, str):
+                        continue
+                    parsed = datetime.fromisoformat(timestamp)
+                    if event.get("kind") == "RUN_STARTED":
+                        run_started_at = parsed
+                    elif event.get("kind") == "CASE_FINISHED":
+                        payload = event.get("payload")
+                        if not isinstance(payload, dict):
+                            continue
+                        event_key = payload.get("key")
+                        if not isinstance(event_key, str):
+                            continue
+                        elapsed = (
+                            (parsed - run_started_at).total_seconds()
+                            if run_started_at is not None
+                            else None
+                        )
+                        finished_at_by_key[event_key] = (timestamp, elapsed)
+
+            outcome_by_key = {outcome.key: outcome for outcome in loaded.outcomes}
+            variant_by_key = {variant.key: variant for variant in loaded.variants}
+            executable_ids = {variant.case.case_id for variant in loaded.variants}
+            rows: list[
+                tuple[
+                    CaseRecord,
+                    str,
+                    str,
+                    str,
+                    str,
+                    float | None,
+                    str,
+                    str,
+                    float | None,
+                    bool,
+                ]
+            ] = []
+            for variant in loaded.variants:
+                outcome = outcome_by_key[variant.key]
+                detail = outcome.detail
+                if outcome.evidence:
+                    detail = (
+                        f"{detail} | {outcome.evidence}"
+                        if detail
+                        else outcome.evidence
+                    )
+                timestamp, elapsed = finished_at_by_key.get(variant.key, ("", None))
+                rows.append(
+                    (
+                        variant.case,
+                        variant.build_mode,
+                        variant.optimization,
+                        variant.key,
+                        outcome.status,
+                        outcome.duration_seconds,
+                        detail,
+                        timestamp,
+                        elapsed,
+                        True,
+                    )
+                )
+            for case in loaded.cases:
+                if not case.executable:
+                    rows.append(
+                        (
+                            case,
+                            "NA",
+                            "NA",
+                            f"{case.case_id}|NA|NA",
+                            "PENDIENTE",
+                            None,
+                            case.disposition,
+                            "",
+                            None,
+                            False,
+                        )
+                    )
+                elif case.case_id not in executable_ids:
+                    rows.append(
+                        (
+                            case,
+                            "NA",
+                            "NA",
+                            f"{case.case_id}|FILTERED|FILTERED",
+                            "FILTRADO",
+                            None,
+                            "la combinación Build/Opt elegida no está soportada por el caso",
+                            "",
+                            None,
+                            False,
+                        )
+                    )
+
+            table.setRowCount(len(rows))
+            history_time_column = self.DURATION_COLUMN
+            history_duration_column = self.DURATION_COLUMN + 1
+            history_detail_column = self.DETAIL_COLUMN + 1
+            for row_index, (
+                case,
+                mode,
+                opt,
+                variant_key,
+                status,
+                duration,
+                detail,
+                timestamp,
+                elapsed,
+                executable,
+            ) in enumerate(rows):
+                values = (
+                    str(case.wave),
+                    case.component,
+                    case.contract_id,
+                    case.case_id,
+                    mode,
+                    opt,
+                    case.profile,
+                    case.executor,
+                    row_progress_text(status),
+                    status,
+                    row_action_text(status, executable),
+                    timestamp.replace("T", " ") if timestamp else "",
+                    "",
+                    detail,
+                )
+                for column, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    if column == self.CASE_COLUMN:
+                        item.setData(Qt.ItemDataRole.UserRole, variant_key)
+                    elif column == self.STATUS_COLUMN:
+                        self._color_status(item, status)
+                    elif column == self.ACTION_COLUMN and executable:
+                        item.setForeground(QColor("#70a7ff"))
+                        item.setToolTip("Crear una corrida nueva de esta variante exacta")
+                    elif column == history_time_column:
+                        item.setData(Qt.ItemDataRole.UserRole, elapsed)
+                    elif column == history_duration_column:
+                        item.setData(Qt.ItemDataRole.UserRole, duration)
+                        if duration is not None:
+                            item.setData(
+                                Qt.ItemDataRole.DisplayRole, round(duration, 6)
+                            )
+                            item.setToolTip(f"{duration:.6f} segundos")
+                    table.setItem(row_index, column, item)
+            table.setUpdatesEnabled(True)
+            table.setSortingEnabled(True)
+
+            def matches_bucket(value: float | None, bucket: str, kind: str) -> bool:
+                if bucket == "ALL":
+                    return True
+                if bucket == "NONE":
+                    return value is None
+                if value is None:
+                    return False
+                if kind == "time":
+                    if bucket == "LT60":
+                        return value < 60.0
+                    if bucket == "60_300":
+                        return 60.0 <= value < 300.0
+                    if bucket == "300_900":
+                        return 300.0 <= value < 900.0
+                    if bucket == "900_1800":
+                        return 900.0 <= value < 1800.0
+                    return value >= 1800.0
+                if bucket == "LT1":
+                    return value < 1.0
+                if bucket == "1_5":
+                    return 1.0 <= value < 5.0
+                if bucket == "5_30":
+                    return 5.0 <= value < 30.0
+                if bucket == "30_60":
+                    return 30.0 <= value < 60.0
+                return value >= 60.0
+
+            def apply_filters() -> None:
+                status_filter = str(status_combo.currentData())
+                component_filter = str(component_combo.currentData())
+                time_filter = str(time_combo.currentData())
+                duration_filter = str(duration_combo.currentData())
+                needle = search_edit.text().strip().casefold()
+                visible = 0
+                for row_index in range(table.rowCount()):
+                    status_item = table.item(row_index, self.STATUS_COLUMN)
+                    component_item = table.item(row_index, 1)
+                    time_item = table.item(row_index, history_time_column)
+                    duration_item = table.item(row_index, history_duration_column)
+                    status = status_item.text() if status_item is not None else ""
+                    component = (
+                        component_item.text() if component_item is not None else ""
+                    )
+                    elapsed = (
+                        time_item.data(Qt.ItemDataRole.UserRole)
+                        if time_item is not None
+                        else None
+                    )
+                    duration_value = (
+                        duration_item.data(Qt.ItemDataRole.UserRole)
+                        if duration_item is not None
+                        else None
+                    )
+                    searchable = " ".join(
+                        table.item(row_index, column).text()
+                        for column in (
+                            0,
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7,
+                            self.STATUS_COLUMN,
+                            history_detail_column,
+                        )
+                        if table.item(row_index, column) is not None
+                    ).casefold()
+                    show = (
+                        status_filter_matches(status_filter, status)
+                        and (component_filter == "ALL" or component == component_filter)
+                        and matches_bucket(elapsed, time_filter, "time")
+                        and matches_bucket(duration_value, duration_filter, "duration")
+                        and (not needle or needle in searchable)
+                    )
+                    table.setRowHidden(row_index, not show)
+                    visible += int(show)
+                visible_label.setText(
+                    f"Mostrando {visible:,} de {table.rowCount():,} filas guardadas; "
+                    "los encabezados permiten ordenar, incluida la duración numérica."
+                )
+
+            def run_exact(row: int, column: int) -> None:
+                if column != self.ACTION_COLUMN or self.worker is not None:
+                    return
+                item = table.item(row, self.CASE_COLUMN)
+                variant_key = (
+                    item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+                )
+                if isinstance(variant_key, str):
+                    variant = variant_by_key.get(variant_key)
+                    if variant is not None:
+                        self._start_historical_variant(variant)
+
+            for widget_signal in (
+                status_combo.currentIndexChanged,
+                component_combo.currentIndexChanged,
+                time_combo.currentIndexChanged,
+                duration_combo.currentIndexChanged,
+            ):
+                widget_signal.connect(lambda _value: apply_filters())
+            search_edit.textChanged.connect(lambda _text: apply_filters())
+            table.cellClicked.connect(run_exact)
+            open_button.clicked.connect(
+                lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(loaded.root)))
+            )
+            close_button.clicked.connect(
+                lambda: self._close_history_run_tab(page_key, page)
+            )
+            evidence_tabs.addTab(table, f"Pruebas ({len(rows):,})")
+
+            def add_text_tab(title: str, contents: str) -> None:
+                view = QPlainTextEdit()
+                view.setReadOnly(True)
+                view.setPlainText(contents)
+                evidence_tabs.addTab(view, title)
+
+            add_text_tab("Log completo", loaded.full_log)
+            add_text_tab(
+                "Errores condensados",
+                condensed_error_report(
+                    loaded.outcomes,
+                    loaded.status == "CANCELLED",
+                    str(loaded.root),
+                ),
+            )
+            summary_path = loaded.root / "summary.md"
+            add_text_tab(
+                "Resumen guardado",
+                summary_path.read_text(encoding="utf-8", errors="replace"),
+            )
+            add_text_tab("Eventos", event_text)
+            add_text_tab(
+                "Resultados JSON",
+                (loaded.root / "results.json").read_text(
+                    encoding="utf-8", errors="replace"
+                ),
+            )
+            add_text_tab(
+                "Metadatos",
+                json.dumps(loaded.metadata, ensure_ascii=False, indent=2),
+            )
+            layout.addWidget(evidence_tabs, 1)
+            apply_filters()
+            return page
+
+        def _close_history_run_tab(self, page_key: str, page: QWidget) -> None:
+            """Close only the selected historical view; evidence remains on disk."""
+            index = self.result_tabs.indexOf(page)
+            if index >= 0:
+                self.result_tabs.removeTab(index)
+            self.history_run_pages.pop(page_key, None)
+
+        def _start_historical_variant(self, variant: RunVariant) -> None:
+            """Create a new exact run from a historical row without editing that tab."""
+            if self.worker is not None:
+                return
+            self.scope_combo.setCurrentText("Caso")
+            self._refresh_scope_values()
+            self.scope_value.setCurrentText(variant.case.case_id)
+            self.profile_combo.setCurrentText("Todos")
+            self.execution_mode.setCurrentText(variant.build_mode)
+            requested_optimization = (
+                "O0" if variant.optimization == "NA" else variant.optimization
+            )
+            self.optimization_combo.setCurrentText(requested_optimization)
+            self.visible_variants = (variant,)
+            self._populate_plan((variant.case,), (variant,))
+            self.tabs.setCurrentIndex(1)
+            self._start_exact_variant(variant)
 
         def _open_history(self) -> None:
             row = self.history_table.currentRow()
@@ -4503,7 +4827,7 @@ def launch_gui(smoke_only: bool = False) -> int:
     if smoke_only:
         expected_buttons = {
             "run_button": "Ejecutar pruebas",
-            "load_history_button": "Cargar ejecución",
+            "clear_results_button": "Limpiar resultados para nueva corrida",
             "history_load_button": "Cargar ejecución seleccionada",
             "failure_retry_button": "Reejecutar fallos activos",
             "failure_disable_button": "Desactivar seleccionados para reejecución",
@@ -4517,6 +4841,8 @@ def launch_gui(smoke_only: bool = False) -> int:
                 )
         if window.result_tabs.tabText(window.failure_tab_index) != "Fallos exactos (0)":
             raise RuntimeError("GUI smoke missing the exact-failure result tab")
+        if window.result_tabs.tabText(window.history_tab_index) != "Historial":
+            raise RuntimeError("GUI smoke missing the independent history launcher tab")
         if window.tabs.tabText(1) != "Pruebas":
             raise RuntimeError("GUI smoke missing the primary test-progress tab")
         headers = [
@@ -4536,6 +4862,37 @@ def launch_gui(smoke_only: bool = False) -> int:
             raise RuntimeError("GUI smoke missing live execution summaries")
         if window.status_filter_combo.count() < 10:
             raise RuntimeError("GUI smoke missing the primary status filters")
+        valid_history = next(
+            (
+                root
+                for root in sorted(HISTORY_ROOT.iterdir(), reverse=True)
+                if root.is_dir()
+                and history_record(root)[1] == "phase-2-suite"
+                and history_record(root)[2] not in {"INCOMPLETE", "MALFORMED"}
+            ),
+            None,
+        ) if HISTORY_ROOT.is_dir() else None
+        if valid_history is not None:
+            live_signature = (
+                window.case_table.rowCount(),
+                dict(window.live_status_counts),
+                window.full_log.toPlainText(),
+                window.error_report.toPlainText(),
+            )
+            prior_tab_count = window.result_tabs.count()
+            window._load_history_path(valid_history)
+            if window.result_tabs.count() != prior_tab_count + 1:
+                raise RuntimeError("GUI smoke did not open a dedicated historical tab")
+            if len(window.history_run_pages) != 1:
+                raise RuntimeError("GUI smoke did not retain the historical page identity")
+            restored_signature = (
+                window.case_table.rowCount(),
+                dict(window.live_status_counts),
+                window.full_log.toPlainText(),
+                window.error_report.toPlainText(),
+            )
+            if restored_signature != live_signature:
+                raise RuntimeError("historical loading mutated the live test workspace")
         window.close()
         return 0
     window.show()
