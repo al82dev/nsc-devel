@@ -76,3 +76,10 @@ La orden queda cerrada estaticamente y por su prueba contractual. No se
 configuro ni compilo la suite despues del cambio; la validacion funcional
 integral permanece `PENDING_USER_RUN`. La tarea persistente sigue activa hasta
 obtener cero errores inesperados en la matriz ejecutable acordada.
+
+## Rectificacion posterior
+
+La auditoria inmediatamente posterior encontro que el `CMakeLists.txt`
+sombreaba la entrada de cache con una asignacion normal. Por tanto, esta tanda
+demuestra solamente que Builder 3 emite la autoridad correcta; el consumo
+efectivo se corrige y documenta por separado en Validacion 123.

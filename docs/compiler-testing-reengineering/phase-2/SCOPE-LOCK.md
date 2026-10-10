@@ -1777,3 +1777,27 @@ deploy, manifiestos, casos, oraculos, producto ni bateria historica. Los seis
 archivos del usuario registrados en `CURSOR.json` permanecen protegidos. No se
 configura, compila o ejecuta producto; no se ejecuta baseline y no se toca la
 unidad `C:`.
+
+### Enmienda: consumo efectivo de la autoridad runtime explicita
+
+La auditoria posterior a Validacion 122 demostro que el comando explicito no
+basta: `tests/compiler-suite/CMakeLists.txt` asigna
+`NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY` como variable normal e
+incondicional y, por tanto, sombrea la entrada de cache recibida mediante
+`-D`. El consumidor debe declarar un valor predeterminado de cache sin
+`FORCE`, de modo que preserve la autoridad del argumento explicito y solo use
+`CMAKE_INSTALL_PREFIX` cuando el llamador no proporcione una ruta.
+
+La entrada exacta es la opcion `-D` emitida por Builder 3 en Validacion 122.
+La operacion defectuosa es sobrescribirla durante la evaluacion inicial del
+`CMakeLists.txt`. La invariante violada es que el valor seleccionado por el
+controlador llega sin sustituciones hasta la definicion de compilacion de
+`nsc_component_tests`.
+
+El presupuesto de Validacion 123 queda limitado a convertir esa unica
+asignacion en una entrada `CACHE FILEPATH`, agregar una comprobacion estatica
+del contrato CMake, rectificar tracking y cursor y conservar evidencia. No se
+cambian otras variables CMake, el compilador, NSLink, deploy, manifiestos,
+casos, oraculos, producto ni bateria historica. Los seis archivos del usuario
+registrados en `CURSOR.json` permanecen protegidos. No se configura, compila o
+ejecuta producto; no se ejecuta baseline y no se toca la unidad `C:`.

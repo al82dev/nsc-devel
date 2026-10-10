@@ -1109,9 +1109,15 @@ actual; la auditoria Builder 3 conserva `9,587` casos, `1,208` contratos, `44`
 componentes y `0` sin clasificar. No se afirma recompilacion posterior: la
 corrida funcional externa sigue pendiente y la tarea permanece activa.
 
-Validacion 122 cerro la ruta runtime implicita de la suite. Builder 3 transmite
-ahora la biblioteca de `install_prefix` en `A:` para Debug y Release y su
+Validacion 122 cerro el productor del argumento runtime de la suite. Builder 3
+transmite la biblioteca de `install_prefix` en `A:` para Debug y Release y su
 prueba contractual rechaza una caida a `Program Files`. La prueba dirigida
 pasa `4/4`, la suite Python `270/270`, el catalogo conserva `9,587` casos y
-`0` sin clasificar, sin configurar, compilar o ejecutar producto. La corrida
+`0` sin clasificar. La auditoria posterior demostro que el consumidor CMake
+sombreaba ese argumento; ese defecto se separo en Validacion 123.
+
+Validacion 123 cerro el consumo efectivo del argumento runtime. La declaracion
+CMake es ahora `CACHE FILEPATH` sin `FORCE`, por lo que conserva la autoridad
+explicita emitida por Builder 3. La prueba dirigida pasa `5/5` y la suite
+Python `271/271`, sin configurar, compilar o ejecutar producto. La corrida
 funcional externa sigue pendiente y la tarea permanece activa.

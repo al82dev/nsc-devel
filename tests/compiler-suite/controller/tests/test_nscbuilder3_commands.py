@@ -72,6 +72,20 @@ class Builder3CommandTests(unittest.TestCase):
             self.assertFalse(any("Program Files" in argument for argument in command))
             self.assertFalse(any("\\" in argument for argument in command[1:]))
 
+    def test_suite_cmake_preserves_explicit_runtime_library_authority(self) -> None:
+        cmake_source = (builder.SUITE_ROOT / "CMakeLists.txt").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "set(NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY\n"
+            "    \"${CMAKE_INSTALL_PREFIX}/lib/nativesharp/runtime/"
+            "NativeSharp.Runtime.Win32.lib\"\n"
+            "    CACHE FILEPATH \"Default Windows runtime library for "
+            "compiler-suite product cases\")",
+            cmake_source,
+        )
+
     @patch.object(builder, "discover_build_tools", return_value=TOOLS)
     def test_test_infrastructure_build_targets_only_consolidated_host(
         self, _discover: object
