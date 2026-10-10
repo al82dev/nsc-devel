@@ -51,6 +51,12 @@ con `/Zs /W4 /WX`. La primera pasada encontró nueve archivos fallidos; después
 de corregir el conjunto completo, la segunda terminó con `0` fallos. El enlace
 y la ejecución funcional permanecen pendientes de la corrida del usuario.
 
+La corrida externa posterior compiló `337/337` objetos y aisló el siguiente
+gate en el enlace. La auditoría de símbolos completa identificó `49` referencias
+con acceso ABI inconsistente: `42` de Sema y `7` de Dominance. Los productores
+de prueba ahora siguen el shim ya usado por Parser; no se modificó producto. La
+nueva validación de enlace y ejecución queda pendiente de la corrida del usuario.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

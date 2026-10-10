@@ -10,8 +10,8 @@
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "CPP-SYNTAX-CLOSURE-523",
-  "next_action": "Consume the next user-run Debug link and execution result; C++ syntax closure is 523/523 with zero failures and must not be repeated unless the source inventory changes.",
+  "current_batch": "PRIVATE-ACCESS-ABI-CLOSURE-49",
+  "next_action": "Consume the next user-run Debug link and execution result after replacing direct Sema and Dominance product compilation with access-consistent test shims; do not repeat the 523-unit syntax audit.",
   "implementation_materialization": {
     "Host.Source": {
       "expected": 58,
@@ -738,6 +738,10 @@
     }
   },
   "validation": {
+    "private_access_abi_mismatches": 49,
+    "private_access_abi_existing_shims": 1,
+    "private_access_abi_added_shims": 3,
+    "private_access_link_validation": "pending_user_run",
     "debug_cpp_syntax_units": 523,
     "debug_cpp_syntax_failures": 0,
     "python_controller_tests": 56,

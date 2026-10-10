@@ -161,3 +161,20 @@ protegidos NSC, CMake, manifiestos, oráculos, IDs, disposiciones, la suite
 histórica, los seis archivos preexistentes, `C:`, despliegues y remotos. El gate
 termina cuando todas las unidades C++ del target aceptan la revisión de sintaxis
 con `/W4 /WX` o quedan bloqueadas con evidencia explícita.
+
+### Enmienda: cierre ABI de accesos privados en la suite
+
+La corrida externa llegó a `337/337` objetos y demostró un fallo exclusivo de
+enlace: las pruebas que incluyen cabeceras con `private` expuesto solicitan
+símbolos `public`, mientras los cuerpos de producto compilados directamente
+publican símbolos `private` bajo el ABI MSVC. El límite del linker mostró 20,
+pero el cruce completo de referencias y definiciones detectó 49: 42 de
+`SemanticAnalyzer`, 4 de `DominanceBuilder` y 3 de `DominanceDumper`.
+
+Se autorizan únicamente `tests/compiler-suite/CMakeLists.txt`, cuatro shims de
+producto de prueba —incluido el shim Parser ya existente como precedente— y la
+documentación de Fase 2. Los shims compilan los cuerpos vigentes con la misma
+declaración de acceso que sus pruebas. Permanecen protegidos todos los fuentes y
+headers de producto, contratos, oráculos, IDs, disposiciones, manifiestos, la
+suite histórica, los seis archivos preexistentes, `C:`, despliegues y remotos.
+La validación de enlace y ejecución corresponde a la siguiente corrida externa.

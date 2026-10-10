@@ -356,7 +356,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/ConversionKind.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SemanticModel.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SymbolDumper.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SemanticAnalyzer.cpp"
+    host/modules/SemaProductTestShim.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SemanticDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/HIR/HirNodeKind.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/HIR/HirNode.cpp"
@@ -391,8 +391,8 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceFunction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceModule.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceArena.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceBuilder.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceDumper.cpp"
+    host/modules/DominanceBuilderProductTestShim.cpp
+    host/modules/DominanceDumperProductTestShim.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Dominance/DominanceVerifier.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/SSA/SsaFunction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/SSA/SsaModule.cpp"
