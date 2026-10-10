@@ -424,6 +424,20 @@ El presupuesto queda limitado al dominio de estados y
 manifiestos, producto ni batería histórica; no se configura, compila ni ejecuta
 producto.
 
+### Enmienda: cardinalidad terminal de la evidencia de Builder 3
+
+Cuando la metadata de una corrida declara `variant_count`, la evidencia final
+debe contener exactamente esa cantidad de claves terminales únicas. Una
+omisión, duplicado o cardinalidad inválida debe impedir `results.json`,
+`summary.md` y `RUN_FINISHED`; los eventos y log progresivos ya escritos se
+conservan para diagnóstico.
+
+El presupuesto queda limitado a `EvidenceStore`, una prueba Python que escribe
+sólo en un temporal de `A:\nsc-devel\_nscbuilder3` y la evidencia de Validación
+35. No se modifican motores, casos, manifiestos, GUI, producto ni batería
+histórica; no se crea ningún proceso ni se configura, compila o ejecuta
+producto.
+
 ### Enmienda: cierre central de gates Host.Language por contrato
 
 Los veintiún gates dirigidos de Host.Language que ejecutan un contrato mediante

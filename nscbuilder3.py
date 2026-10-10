@@ -578,6 +578,7 @@ class EvidenceStore:
 
     def __init__(self, run_id: str, metadata: dict[str, Any]) -> None:
         self.run_id = run_id
+        self.expected_variant_count = metadata.get("variant_count")
         self.root = HISTORY_ROOT / run_id
         self.root.mkdir(parents=True, exist_ok=False)
         self.events_path = self.root / "events.jsonl"
@@ -602,6 +603,18 @@ class EvidenceStore:
 
     def finish(self, outcomes: Sequence[CaseOutcome], cancelled: bool) -> None:
         """Publish final results and a concise Markdown report."""
+        keys = [outcome.key for outcome in outcomes]
+        if len(keys) != len(set(keys)):
+            raise ValueError("duplicate terminal result keys")
+        expected = self.expected_variant_count
+        if expected is not None:
+            if isinstance(expected, bool) or not isinstance(expected, int) or expected < 1:
+                raise ValueError(f"invalid metadata variant_count: {expected!r}")
+            if len(outcomes) != expected:
+                raise ValueError(
+                    f"terminal result cardinality {len(outcomes)} does not match "
+                    f"variant_count {expected}"
+                )
         counts = Counter(outcome.status for outcome in outcomes)
         overall = self._overall_status(counts)
         status = "CANCELLED" if cancelled else overall

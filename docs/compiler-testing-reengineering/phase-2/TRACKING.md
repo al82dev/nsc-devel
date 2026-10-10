@@ -591,3 +591,11 @@ resultado y acepta sólo los siete estados del protocolo; cualquier otro valor
 impide publicar el cierre. La cancelación conserva una salida `CANCELLED` por
 cada variante no iniciada. Las pruebas dirigidas pasan `4/4` y la suite Python
 completa `99/99`.
+
+Validación 35 cerró la cardinalidad terminal. Si `metadata.json` declara
+`variant_count`, Builder 3 exige ahora exactamente ese número de claves únicas
+antes de escribir `results.json`, `summary.md` o `RUN_FINISHED`. Las pruebas
+reproducen y rechazan una variante omitida, una clave duplicada y una
+cardinalidad mal tipada; el flujo correcto conserva pares de eventos, resultados
+y log progresivo. Las pruebas dirigidas pasan `4/4` y la suite Python completa
+`103/103`.
