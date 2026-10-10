@@ -1202,3 +1202,12 @@ cambios de contrato/componente. El gate dirigido alcanza la comparacion en
 `9.17 s` y falla ahora exclusivamente por `1,062` IDs canónicos restantes,
 agrupados en diez componentes para la siguiente tanda. La tarea permanece
 activa y no se ejecuto baseline ni se toco `C:`.
+
+Validacion 134 hizo observable, sin volverla ejecutable, la colección pendiente
+que el gate global confundía con `TestRegistry`. `--list-pending` enumera 841
+filas: AST 6, Interop 224, Linker 307 y Runtime 304. La reconstrucción del
+target termina correctamente; las 841 identidades conservan contrato y
+componente canónicos, no contienen duplicados y no se solapan con las 8,054
+filas ordinarias. La siguiente tanda corregirá el gate para exigir la
+partición completa, incluidos los 221 productores externos restantes. La tarea
+permanece activa y no se ejecutó baseline ni se tocó `C:`.

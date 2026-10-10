@@ -1985,6 +1985,31 @@ oraculos, disposiciones, manifiestos, CMake, producto ni bateria historica. Los
 seis archivos del usuario registrados en `CURSOR.json` permanecen protegidos.
 No se ejecuta baseline, no se despliega y no se toca la unidad `C:`.
 
+### Enmienda: inventario observable de casos pendientes fuera del registro
+
+La clasificacion completa de los `1,062` IDs restantes demostro dos fronteras
+distintas: `841` casos Host estan materializados deliberadamente en cuatro
+colecciones `InfrastructurePending` fuera de `TestRegistry`, y `221` casos son
+producidos por el controlador y proyectos NativeSharp externos al ejecutable
+C++. El gate creado en Validacion 26 confundio las tres superficies y exigio
+que todas pertenecieran al registro ejecutable ordinario.
+
+Validacion 134 no cambia esa separacion. Debe exponer, mediante una opcion de
+solo lectura distinta de `--list`, las identidades ya conservadas en las
+colecciones pendientes de AST, Interop, Linker y Runtime. La salida usa el
+mismo contrato tabulado `(case_id, contract_id, component)`, ordena por ID y
+rechaza metadato incompleto o duplicado. No agrega `TestCase`, no crea funciones
+vacias y no convierte un pendiente en PASS, FAIL o SKIP.
+
+El presupuesto queda limitado a declarar una fila de inventario comun,
+agregar un agregador de solo lectura, conectar `--list-pending`, incorporar el
+nuevo fuente al target, reconstruir `nsc_component_tests` y comprobar la
+cardinalidad e identidad completas. El gate de paridad se corregira en una
+tanda causal posterior. No se cambian cuerpos, contratos, disposiciones,
+oraculos, inventarios canónicos, selectores de ejecucion, producto ni bateria
+historica. Los seis archivos protegidos permanecen intactos. No se ejecuta
+baseline, no se despliega y no se toca la unidad `C:`.
+
 ### Enmienda: ordenamiento unico del registro materializado
 
 La Validacion 131 recupero `nsc_component_tests --list`, que enumera `8,054`

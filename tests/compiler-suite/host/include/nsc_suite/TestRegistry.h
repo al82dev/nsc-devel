@@ -41,6 +41,13 @@ struct TestResult
     std::vector<std::string> failures;
 };
 
+struct TestInventoryRow
+{
+    std::string id;
+    std::string contractId;
+    std::string component;
+};
+
 class TestRegistry
 {
 public:
@@ -55,6 +62,8 @@ public:
 private:
     std::vector<TestCase> cases_;
 };
+
+[[nodiscard]] std::vector<TestInventoryRow> infrastructurePendingInventory();
 
 void registerInfrastructureModule(TestRegistry& registry);
 void registerBasicValuesModule(TestRegistry& registry);

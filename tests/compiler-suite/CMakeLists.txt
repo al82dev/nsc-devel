@@ -91,6 +91,7 @@ add_executable(
     nsc_component_tests
     host/src/main.cpp
     host/src/TestRegistry.cpp
+    host/src/InfrastructurePendingInventory.cpp
     host/modules/InfrastructureModule.cpp
     host/modules/BasicValuesModule.cpp
     host/modules/BasicSha256Module.cpp
