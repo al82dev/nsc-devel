@@ -1668,3 +1668,27 @@ El presupuesto queda limitado a un validador textual comun, sustituir las
 coerciones JSON de ambos gates, pruebas sinteticas contra sus validadores y la
 evidencia de Validacion 117. No se cambian catalogos, manifiestos, inventarios,
 casos, producto ni bateria historica y no se ejecuta producto.
+
+### Enmienda: identidades exactas en catalogos self-host restantes
+
+Los gates de `SelfHost.Project`, `SelfHost.Bootstrap.Infrastructure`,
+`SelfHost.Contracts` y `SelfHost.Documentation` no pueden convertir con
+`str(...)` las identidades y listas que consumen desde JSON. Los campos
+`id`, `contract_id`, `source_path`, `case_ids` y `affected_case_ids` deben
+conservar su tipo original y rechazarse en su frontera cuando no sean cadenas
+no vacias o arreglos de cadenas unicas.
+
+La entrada exacta es una fila JSON sintacticamente valida con alguno de esos
+campos reemplazado por un numero, booleano, escalar, elemento no textual,
+cadena vacia o duplicado. La operacion defectuosa es la conversion previa al
+cotejo de identidad, linaje, cobertura o contradiccion. La invariante violada
+es que la evidencia JSON debe tener tipo exacto antes de participar en el
+gate. Los consumidores afectados son exclusivamente los cuatro gates citados.
+
+El presupuesto de Validacion 118 queda limitado a reutilizar los validadores
+textuales ya existentes, sustituir esas siete conversiones demostradas,
+agregar pruebas Python sinteticas sobre las fronteras reales y documentar la
+evidencia. Permanecen protegidos los catalogos vivos, manifiestos, inventarios,
+casos, reglas de disposicion, producto, bateria historica y los seis archivos
+del usuario registrados en `CURSOR.json`. No se configura, compila o ejecuta
+producto; no se ejecuta baseline y no se toca la unidad `C:`.

@@ -4,6 +4,7 @@ import argparse
 import re
 from pathlib import Path
 
+from component_gate_support import required_string_array
 from selfhost_inventory import (
     load_component_inventory,
     read_jsonl,
@@ -73,14 +74,14 @@ def main() -> int:
     for conflict in conflicts:
         if conflict.get("component") != "SelfHost.Documentation":
             raise RuntimeError("Documentation conflict contains a foreign component")
-        case_ids = conflict.get("affected_case_ids")
-        if (
-            not isinstance(case_ids, list)
-            or not case_ids
-            or affected & {str(value) for value in case_ids}
-        ):
+        case_ids = required_string_array(
+            conflict,
+            "affected_case_ids",
+            "SelfHost.Documentation conflict",
+        )
+        if not case_ids or affected & set(case_ids):
             raise RuntimeError("Documentation conflicts repeat or omit their case list")
-        affected.update(str(value) for value in case_ids)
+        affected.update(case_ids)
     if affected != set(inventory.profile_mismatch_ids()):
         raise RuntimeError("Documentation conflicts differ from the live profile mismatches")
 

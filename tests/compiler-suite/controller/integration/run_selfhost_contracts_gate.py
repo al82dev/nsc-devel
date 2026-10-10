@@ -4,11 +4,13 @@ import argparse
 import re
 from pathlib import Path
 
+from component_gate_support import required_string_array
 from selfhost_inventory import (
     ComponentInventory,
     case_ordinal,
     load_component_inventory,
     read_jsonl,
+    required_string_field,
     validate_pending_manifest,
 )
 
@@ -45,21 +47,29 @@ def catalog_ranges(
     all_case_ids: set[str] = set()
     result: set[tuple[int, int, str, str]] = set()
     for row in catalog_rows:
-        contract_id = str(row.get("contract_id", ""))
-        source_path = str(row.get("source_path", ""))
-        raw_case_ids = row.get("case_ids", [])
+        contract_id = required_string_field(
+            row,
+            "contract_id",
+            "SelfHost.Contracts catalog",
+        )
+        source_path = required_string_field(
+            row,
+            "source_path",
+            f"SelfHost.Contracts catalog {contract_id}",
+        )
+        case_ids = required_string_array(
+            row,
+            "case_ids",
+            f"SelfHost.Contracts catalog {contract_id}",
+        )
         if (
-            not contract_id
-            or contract_id in contract_ids
+            contract_id in contract_ids
             or contract_id not in inventory.contracts_by_id
-            or not source_path
             or row.get("disposition") != "InfrastructurePending"
-            or not isinstance(raw_case_ids, list)
         ):
             raise RuntimeError("Contracts catalog contains an invalid contract row")
 
-        case_ids = tuple(str(case_id) for case_id in raw_case_ids)
-        if not case_ids or len(case_ids) != len(set(case_ids)):
+        if not case_ids:
             raise RuntimeError(f"catalog contract {contract_id} has invalid case IDs")
         ordinals = tuple(case_ordinal(case_id) for case_id in case_ids)
         if ordinals != tuple(range(ordinals[0], ordinals[-1] + 1)):
@@ -139,7 +149,11 @@ def main() -> int:
     records = read_jsonl(contradiction)
     record_ids: set[str] = set()
     for record in records:
-        record_id = str(record.get("id", ""))
+        record_id = required_string_field(
+            record,
+            "id",
+            "SelfHost.Contracts contradiction",
+        )
         if (
             not record_id
             or record_id in record_ids

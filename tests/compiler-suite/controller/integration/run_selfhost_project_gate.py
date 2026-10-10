@@ -8,6 +8,7 @@ from selfhost_inventory import (
     expected_ranges,
     load_component_inventory,
     read_jsonl,
+    required_string_field,
     validate_pending_manifest,
 )
 
@@ -65,7 +66,11 @@ def main() -> int:
     records = read_jsonl(contradiction)
     record_ids: set[str] = set()
     for record in records:
-        record_id = str(record.get("id", ""))
+        record_id = required_string_field(
+            record,
+            "id",
+            "SelfHost.Project contradiction",
+        )
         if (
             not record_id
             or record_id in record_ids

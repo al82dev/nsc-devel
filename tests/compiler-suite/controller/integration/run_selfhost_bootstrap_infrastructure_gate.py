@@ -12,6 +12,7 @@ from selfhost_inventory import (
     case_ordinal,
     load_component_inventory,
     read_jsonl,
+    required_string_field,
     validate_pending_manifest,
 )
 RANGE_ROW = re.compile(
@@ -107,7 +108,11 @@ def main() -> int:
     records = read_jsonl(contradiction)
     record_ids: set[str] = set()
     for record in records:
-        record_id = str(record.get("id", ""))
+        record_id = required_string_field(
+            record,
+            "id",
+            "SelfHost.Bootstrap.Infrastructure contradiction",
+        )
         if (
             not record_id
             or record_id in record_ids
