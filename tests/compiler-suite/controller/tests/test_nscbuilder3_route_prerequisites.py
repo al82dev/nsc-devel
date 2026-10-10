@@ -156,6 +156,35 @@ class Builder3RoutePrerequisiteTests(unittest.TestCase):
             Counter({name: mock.call_count for name, mock in mocks.items()}), expected
         )
 
+    def test_python_gates_reject_coercible_route_integers(self) -> None:
+        engine = builder.ExecutionEngine(
+            builder.BuilderConfig(), Mock(), lambda _line: None, lambda *_args: None, lambda *_args: None
+        )
+        scenarios = (
+            (
+                "run_buildsystem_gate.py",
+                argparse.Namespace(),
+                {"contract_ordinal": True, "variant": 1},
+                "BuildSystem manifest input contract_ordinal must be an exact integer",
+            ),
+            (
+                "run_packaging_gate.py",
+                argparse.Namespace(),
+                {"contract_ordinal": 1, "variant": "1"},
+                "Packaging manifest input variant must be an exact integer",
+            ),
+        )
+        for module_name, options, inputs, message in scenarios:
+            with self.subTest(module=module_name):
+                module = engine._load_gate(module_name)
+                with self.assertRaisesRegex(RuntimeError, message):
+                    module.run_case(
+                        {"inputs": inputs},
+                        options,
+                        Path("A:/synthetic-case"),
+                        {},
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

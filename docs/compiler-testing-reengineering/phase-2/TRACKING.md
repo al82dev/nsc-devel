@@ -765,3 +765,10 @@ funcional. Catálogo `9587/9587`, matriz `12542/12542`, GUI smoke y `199/199`
 pruebas Python pasan; no quedan defectos estáticos demostrados en las fronteras
 auditadas. La corrida funcional externa sigue pendiente y la tarea permanece
 activa hasta cerrar sus errores en cero.
+
+Validacion 63 cerro los enteros de ruta de los gates de integracion. BuildSystem
+y Packaging ya no convierten cadenas, flotantes o booleanos a contrato o
+variante; exigen un `int` exacto antes de despachar. Las pruebas dirigidas pasan
+`10/10` y la suite Python completa `201/201`, sin configurar, compilar o ejecutar
+producto. La validacion funcional externa sigue pendiente y la tarea permanece
+activa hasta cero errores inesperados.

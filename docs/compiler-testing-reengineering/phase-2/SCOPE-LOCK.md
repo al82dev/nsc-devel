@@ -1018,3 +1018,18 @@ funcional externa solicitada por el usuario.
 El presupuesto queda limitado a auditoría y evidencia Markdown de Validación
 62. No se modifica código, no se configura o compila producto, no se ejecutan
 casos NativeSharp, no hay baseline, despliegue ni escritura en `C:`.
+
+### Enmienda: enteros de ruta sin coercion en gates de integracion
+
+Los gates de BuildSystem y Packaging no pueden convertir con `int(...)` los
+campos `contract_ordinal` y `variant` del manifiesto. Una cadena, un flotante o
+un booleano no son enteros validos del contrato aunque Python pueda
+convertirlos; aceptar `true` como `1` puede ejecutar una rama distinta y
+ocultar la corrupcion del manifiesto. Ambos gates deben exigir presencia y
+tipo entero exacto antes de seleccionar cualquier operacion.
+
+El presupuesto queda limitado a un validador puro compartido en
+`component_gate_support.py`, su uso en los dos `run_case`, pruebas Python con
+payloads sinteticos y la evidencia de Validacion 63. No se cambian
+manifiestos, rutas, comandos, oraculos, producto ni bateria historica y no se
+configura, compila o ejecuta producto.

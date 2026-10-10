@@ -10,6 +10,8 @@ import sys
 import time
 from pathlib import Path
 
+from component_gate_support import required_manifest_integer
+
 
 def read_jsonl(path: Path) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
@@ -405,8 +407,8 @@ def run_case(
     inputs = row["inputs"]
     if not isinstance(inputs, dict):
         return False, "manifest inputs are not an object"
-    contract = int(inputs["contract_ordinal"])
-    variant = int(inputs["variant"])
+    contract = required_manifest_integer(inputs, "contract_ordinal", "Packaging")
+    variant = required_manifest_integer(inputs, "variant", "Packaging")
     if contract == 1:
         return run_deploy_batch(options.repository_root, case_root, variant, environment)
     if contract == 3:

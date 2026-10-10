@@ -10,7 +10,7 @@ INTEGRATION_ROOT = CONTROLLER_ROOT / "integration"
 sys.path.insert(0, str(CONTROLLER_ROOT))
 sys.path.insert(0, str(INTEGRATION_ROOT))
 
-from component_gate_support import assert_component_results
+from component_gate_support import assert_component_results, required_manifest_integer
 from nsc_suite.manifest import CaseManifest
 
 
@@ -94,6 +94,19 @@ class ComponentGateSupportTests(unittest.TestCase):
                 self.cases,
                 "Host.Basic",
             )
+
+    def test_manifest_integer_requires_presence_and_exact_integer_type(self) -> None:
+        self.assertEqual(
+            required_manifest_integer({"variant": 3}, "variant", "Synthetic"),
+            3,
+        )
+        for value in (True, "3", 3.0, None):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                RuntimeError, "must be an exact integer"
+            ):
+                required_manifest_integer({"variant": value}, "variant", "Synthetic")
+        with self.assertRaisesRegex(RuntimeError, "omit variant"):
+            required_manifest_integer({}, "variant", "Synthetic")
 
 
 if __name__ == "__main__":

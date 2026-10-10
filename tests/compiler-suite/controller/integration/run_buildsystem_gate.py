@@ -10,6 +10,8 @@ import sys
 import time
 from pathlib import Path
 
+from component_gate_support import required_manifest_integer
+
 
 ZLIB_SOURCES = (
     "adler32.c", "compress.c", "crc32.c", "deflate.c", "infback.c", "inffast.c",
@@ -439,8 +441,8 @@ def run_case(
     inputs = row["inputs"]
     if not isinstance(inputs, dict):
         return False, "manifest inputs are not an object"
-    contract = int(inputs["contract_ordinal"])
-    variant = int(inputs["variant"])
+    contract = required_manifest_integer(inputs, "contract_ordinal", "BuildSystem")
+    variant = required_manifest_integer(inputs, "variant", "BuildSystem")
     fixture_root = options.source_root / "buildsystem" / "fixtures"
     if contract == 1:
         return run_identity(options.cmake_executable, options.repository_root, fixture_root, case_root, variant, environment)

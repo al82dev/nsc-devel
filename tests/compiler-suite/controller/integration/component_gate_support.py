@@ -12,6 +12,20 @@ from nsc_suite import (
 )
 
 
+def required_manifest_integer(
+    inputs: dict[str, object], field: str, component: str
+) -> int:
+    """Read an exact JSON integer without accepting Python coercions or bools."""
+    if field not in inputs:
+        raise RuntimeError(f"{component} manifest inputs omit {field}")
+    value = inputs[field]
+    if type(value) is not int:
+        raise RuntimeError(
+            f"{component} manifest input {field} must be an exact integer"
+        )
+    return value
+
+
 def component_manifest_cases(
     source_root: Path,
     repository_root: Path,
