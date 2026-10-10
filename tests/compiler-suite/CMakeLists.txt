@@ -160,6 +160,26 @@ add_executable(
     host/modules/ParserConstructionCloneFinalModule.cpp
     host/modules/ParserStateRobustnessFinalModule.cpp
     host/modules/ParserProductTestShim.cpp
+    host/modules/SemaConstantConversionModule.cpp
+    host/modules/SemaEffectsExpressionModule.cpp
+    host/modules/SemaScopeSymbolModule.cpp
+    host/modules/SemaTypeSystemModule.cpp
+    host/modules/SemaSemanticModelModule.cpp
+    host/modules/SemaAnalyzerLifecycleModule.cpp
+    host/modules/SemaStructLayoutModule.cpp
+    host/modules/SemaEnumModule.cpp
+    host/modules/SemaFunctionModule.cpp
+    host/modules/SemaVariableModule.cpp
+    host/modules/SemaStatementModule.cpp
+    host/modules/SemaIdentifierLiteralModule.cpp
+    host/modules/SemaOperatorModule.cpp
+    host/modules/SemaAssignmentCallModule.cpp
+    host/modules/SemaIndexMemberModule.cpp
+    host/modules/SemaConversionLayout223To244Module.cpp
+    host/modules/SemaAllocationType245To266Module.cpp
+    host/modules/SemaNumericConversion267To280Module.cpp
+    host/modules/SemaConstantEvaluation281To298Module.cpp
+    host/modules/SemaFallthroughDump299To321Module.cpp
     host/modules/LanguageAbiSemanticsModule.cpp
     host/modules/LanguageAggregateSemanticsModule.cpp
     host/modules/LanguageCallableSemanticsModule.cpp
@@ -203,6 +223,19 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstNodeKind.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/TypeSyntax.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/OwnershipKind.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/TypeKind.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/Type.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/TypeContext.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SymbolKind.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/Symbol.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/Scope.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/ConstantValue.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/ConversionKind.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SemanticModel.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SymbolDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SemanticAnalyzer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SemanticDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetDataLayout.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetInfo.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Diagnostics/Diagnostic.cpp"
@@ -991,6 +1024,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-parser-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-sema-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_sema_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-sema-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND

@@ -139,6 +139,36 @@ Los tres IDs están materializados y documentados, pero se excluyen del
 manifiesto ejecutable hasta disponer de una seam fiel. No se sustituyen por un
 proxy ni se presentan como verificados.
 
+## Host.Sema materializado con estado pendiente
+
+Los `321` casos `TS-SEMA-001..321` están materializados. Cuatro defectos de
+producto permanecen en el manifiesto como `KNOWN_FAILURE`:
+
+| Caso | Defecto que debe revelar |
+|---|---|
+| `TS-SEMA-106` | Un field de tipo función no reporta `InvalidType`. |
+| `TS-SEMA-110` | La recursión nominal indirecta no se rechaza por incompletitud. |
+| `TS-SEMA-246` | `validateObjectType` acepta `Function`. |
+| `TS-SEMA-317` | `SymbolDumper` no emite el payload constante presente. |
+
+Ocho casos permanecen fuera del manifiesto ejecutable ordinario hasta disponer
+de la infraestructura fiel:
+
+| Caso | Infraestructura necesaria |
+|---|---|
+| `TS-SEMA-077` | Perfil sanitizer para certificar ownership del grafo internado. |
+| `TS-SEMA-094` | Perfil sanitizer para fugas y doble liberación del analyzer. |
+| `TS-SEMA-101` | Seam de test para la rama privada con declaración previa nula. |
+| `TS-SEMA-265` | Proceso aislado para struct C ABI autorreferente sin visited-set. |
+| `TS-SEMA-281` | Seam aislada para `maskForWidth`, que tiene enlace anónimo. |
+| `TS-SEMA-306` | Proceso aislado para profundidad no acotada de fallthrough. |
+| `TS-SEMA-314` | Proceso aislado para grafos profundos/cíclicos del SemanticDumper. |
+| `TS-SEMA-321` | Proceso aislado para ciclos del grafo de miembros de SymbolDumper. |
+
+`TS-SEMA-089` no es una feature pendiente: el plan fue corregido de seis a
+cinco clases globales soportadas, conforme al contrato vigente. La clase se
+rechaza explícitamente en `TS-SEMA-090`.
+
 ## Decisión de avance independiente
 
 Los cuatro casos de infraestructura especial permanecen pendientes y visibles;

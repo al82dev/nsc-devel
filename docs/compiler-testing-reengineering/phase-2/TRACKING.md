@@ -5,7 +5,7 @@
 | 0 | Infraestructura mínima | LISTA | 0 de producto / 3 sintéticos | 3 | 3 |
 | 1 | Fundaciones host | EN CURSO | 747 | 743 | 736 |
 | 2 | Sintaxis y semántica frontal | EN CURSO | 1,197 | 1,191 | 333 |
-| 3 | IR y optimización | EN CURSO | 1,784 | 232 | 0 |
+| 3 | IR y optimización | EN CURSO | 1,784 | 568 | 0 |
 | 4 | Sesión, frontend y method bodies | PENDIENTE | 920 | 0 | 0 |
 | 5 | Backend, ABI, runtime y enlace | PENDIENTE | 1,600 | 0 | 0 |
 | 6 | Producto, driver y servicio | PENDIENTE | 1,112 | 0 | 0 |
@@ -23,7 +23,7 @@ cuentan como implementados.
 
 | Último corte | Estado acumulado | Siguiente caso |
 |---|---:|---|
-| Corte de implementación — Host.Sema y Host.HIR materializados | 1,423 impl.; 333 verif. en olas 2–3 | integrar Sema/HIR; materializar CFG, Dominance y SSA |
+| Corte de implementación — Sema, HIR y SSA materializados | 1,759 impl.; 333 verif. en olas 2–3 | integrar HIR/SSA; materializar CFG, Dominance y MIR |
 
 Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
 de forma individual, y `4` casos pendientes de infraestructura especial. Los
@@ -55,10 +55,15 @@ Estado actual de `Host.Sema`: `321/321` casos están materializados en veinte
 módulos nuevos y tres soportes aislados. Los defectos conocidos y los casos que
 requieren sanitizer, seam privado o aislamiento de proceso permanecen visibles
 en sus registros; no se ejecutaron ni se presentaron como verificados. La
-integración central de registro, manifiesto, CMake y controlador está en curso.
+integración central de registro, manifiesto, CMake y controlador está
+materializada y su validación queda diferida.
 
 Estado actual de `Host.HIR`: `232/232` casos están materializados para los
 `29/29` contratos `CF-HIR-001..029` en cinco archivos nuevos. Su integración
+central y validación permanecen pendientes.
+
+Estado actual de `Host.SSA`: `336/336` casos están materializados para los
+`42/42` contratos `CF-SSA-001..042` en cinco archivos nuevos. Su integración
 central y validación permanecen pendientes.
 
 Trabajo activo en paralelo, exclusivamente de implementación:
@@ -67,7 +72,7 @@ Trabajo activo en paralelo, exclusivamente de implementación:
 |---|---|---|
 | Host.CFG | `TF-CFG-001..208` | EN CURSO |
 | Host.Dominance | `TF-DOM-001..256` | EN CURSO |
-| Host.SSA | `TF-SSA-001..336` | EN CURSO |
+| Host.MIR | `TF-MIR-001..304` | EN CURSO |
 
 Secuencia vigente desde el 9 de octubre de 2026: primero se implementa toda la
 infraestructura y todos los casos de la Fase 2; después se ejecuta la validación

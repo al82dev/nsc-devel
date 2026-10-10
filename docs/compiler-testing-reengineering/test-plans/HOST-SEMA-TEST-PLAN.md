@@ -105,7 +105,7 @@ reutilizar estado entre filas.
 | TS-SEMA-086 | CS-SEMA-010 | nodos distintos con direcciones reutilizadas controladas | key por identidad de puntero actual | NIGHTLY |
 | TS-SEMA-087 | CS-SEMA-011 | analyze con null/no CompilationUnit | rechazo/diagnóstico vigente | PR |
 | TS-SEMA-088 | CS-SEMA-011 | CompilationUnit vacío | scope global y resultado exactos | PR |
-| TS-SEMA-089 | CS-SEMA-011 | global dispatch para seis kinds soportados | ruta propietaria invocada | PR |
+| TS-SEMA-089 | CS-SEMA-011 | global dispatch para cinco kinds soportados | ruta propietaria invocada | PR |
 | TS-SEMA-090 | CS-SEMA-011 | ClassDeclaration | InvalidType vigente | PR |
 | TS-SEMA-091 | CS-SEMA-011 | nodo global no declaración | ExpectedDeclaration | PR |
 | TS-SEMA-092 | CS-SEMA-011 | globals preservan source order | `globalSymbols` exacto | PR |
