@@ -24,6 +24,9 @@ se crea una identidad de prueba ni se copia un valor desde el ejecutable.
 La ruta inferida permanece local a la configuración: no se almacena en el cache
 y por ello seleccionar después otro `nsc.exe` vuelve a resolver su propio
 `BuildId.h`, en lugar de conservar la identidad de la selección anterior.
+Cuando no existe un override explícito, Builder 3 envía además
+`-UNSC_COMPILER_SUITE_BUILD_ID_HEADER`; esto limpia árboles que hubieran
+persistido el valor con una revisión anterior de la infraestructura.
 
 ## Evidencia estática
 
@@ -31,6 +34,7 @@ y por ello seleccionar después otro `nsc.exe` vuelve a resolver su propio
 - Consumidores: `2/2` inventariados.
 - Productor canónico: `1/1` incorporado.
 - Selecciones de NSC retenidas por una inferencia cacheada: `0`.
+- Cache heredado sin override explícito: eliminado por Builder 3.
 - Cabecera generada local existente:
   `A:/nsc-devel/build-clang/generated/nativesharp/Basic/BuildId.h`.
 - Compilación y enlace: pendientes de la siguiente corrida externa.

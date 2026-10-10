@@ -62,8 +62,9 @@ avanzó al enlace final. La primera causa nueva, los `2` símbolos públicos de
 identidad consumidos por LanguageService y Driver, ya tiene incorporado el
 productor real `Version.cpp` y el `BuildId.h` del NSC seleccionado. No se usaron
 stubs ni valores de prueba. La inferencia no se persiste en el cache, así que
-cambiar el NSC seleccionado no conserva una identidad obsoleta. La validación
-externa permanece pendiente.
+cambiar el NSC seleccionado no conserva una identidad obsoleta; Builder 3
+elimina también cualquier valor heredado cuando no se configuró un override.
+La validación externa permanece pendiente.
 
 La segunda causa del mismo enlace, `24` símbolos transitivos de
 `WindowsLibraryBuilder.cpp`, quedó cerrada estáticamente con sus `11`
