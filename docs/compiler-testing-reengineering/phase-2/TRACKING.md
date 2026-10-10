@@ -115,6 +115,14 @@ vivos. Los oráculos de comportamiento permanecen intactos. Los validadores de
 inventario pasaron con el corte actual (`456/36/420/2` para BuildSystem y
 `18/12/6/4` para Packaging); la ejecución funcional sigue diferida.
 
+El primer grupo self-host (`Bootstrap`, `CodeGen`, `Documentation` y
+`Project`) usa ahora un lector común que descubre casos y contratos, rechaza
+IDs duplicados, verifica paridad diseño/asignación, conserva la relación
+caso-contrato-capa y coteja los módulos materializados contra el inventario
+vivo. Sus cuatro gates estáticos pasan. Las contradicciones de Documentation y
+Project se conservan por diferencias de perfil observadas, no por exigir un
+número fijo de registros. No se compiló ni ejecutó producto.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

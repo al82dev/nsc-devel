@@ -284,3 +284,17 @@ intactos los casos, contratos, oráculos, disposiciones, manifiestos, producto,
 suite histórica y archivos protegidos. Los oráculos de cardinalidad funcional,
 como producir exactamente un archivo de paquete, no forman parte de esta
 enmienda y se conservan.
+
+### Enmienda: inventario self-host común, primer grupo
+
+Los gates de `SelfHost.Bootstrap`, `SelfHost.CodeGen`,
+`SelfHost.Documentation` y `SelfHost.Project` deben derivar su denominador,
+contratos, capas, perfiles y rangos desde los tres inventarios canónicos. No
+pueden duplicar rangos ordinales, repartos por contrato ni cantidades de esta
+revisión.
+
+El presupuesto queda limitado a esos cuatro gates, un helper común de lectura
+y validación relacional y la evidencia de Validación 11. Se conservan los
+módulos C++, disposiciones, contradicciones, casos, oráculos, manifiestos y
+producto. Los conflictos de perfil se mantienen sólo cuando se derivan de una
+diferencia viva entre diseño y asignación. No se compila ni se ejecuta producto.
