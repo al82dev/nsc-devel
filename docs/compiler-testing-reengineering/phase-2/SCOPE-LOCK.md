@@ -208,3 +208,16 @@ Permanecen protegidos el producto, las pruebas y oráculos, IDs, disposiciones,
 manifiestos, suite histórica, seis archivos preexistentes, `C:`, despliegues y
 remotos. Quedan prohibidos stubs de identidad, valores inventados y omitir casos
 para conseguir que el ejecutable enlace.
+
+### Enmienda: selecciones opcionales sin estado heredado
+
+Builder 3 reutiliza los árboles de CMake de la suite. Cuando el usuario deja
+vacíos el archivador o el NSC de comparación, la configuración vigente debe
+retirar también cualquier selección almacenada por una corrida anterior.
+
+El presupuesto queda limitado a `configure_commands` en `nscbuilder3.py` y a
+la evidencia de Validación 06. Se permite emitir únicamente los dos `-U`
+correspondientes a esas variables opcionales. Permanecen protegidos CMake, los
+controladores, las pruebas, el producto, las demás opciones, los seis archivos
+preexistentes, `C:`, despliegues y remotos. La configuración funcional queda
+pendiente de la siguiente corrida externa.

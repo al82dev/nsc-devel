@@ -780,11 +780,15 @@ def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tupl
                 f"-DNSC_COMPILER_SUITE_ARCHIVE_EXECUTABLE="
                 f"{Path(config.archive_executable).resolve().as_posix()}"
             )
+        else:
+            command.append("-UNSC_COMPILER_SUITE_ARCHIVE_EXECUTABLE")
         if config.comparison_nsc:
             command.append(
                 f"-DNSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE="
                 f"{Path(config.comparison_nsc).resolve().as_posix()}"
             )
+        else:
+            command.append("-UNSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE")
         if config.build_id_header:
             command.append(
                 f"-DNSC_COMPILER_SUITE_BUILD_ID_HEADER="
