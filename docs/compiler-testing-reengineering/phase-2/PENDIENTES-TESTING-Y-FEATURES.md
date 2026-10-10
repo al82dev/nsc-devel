@@ -101,6 +101,15 @@ Los siete casos ya están materializados con estado
 producto corrija la causa. Está prohibido marcarlos `SKIP`, invertir la
 expectativa o aceptar el comportamiento defectuoso.
 
+## Decisión de avance independiente
+
+Los cuatro casos de infraestructura especial permanecen pendientes y visibles;
+no se eliminan, no se cuentan como implementados y no permiten declarar lista la
+ola 1. Como no son productores de `Host.Lexer`, `Host.AST`, `Host.Parser` ni
+`Host.Sema`, tampoco bloquean causalmente la ola 2. La implementación continúa
+por dependencias y volverá a estos huecos en una tanda específica de
+infraestructura.
+
 ## Corrección del caso mal definido
 
 `TL-LANG-116` era un defecto del test plan. El productor crea:

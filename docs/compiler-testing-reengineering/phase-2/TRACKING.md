@@ -4,7 +4,7 @@
 |---:|---|---|---:|---:|---:|
 | 0 | Infraestructura mínima | LISTA | 0 de producto / 3 sintéticos | 3 | 3 |
 | 1 | Fundaciones host | EN CURSO | 747 | 743 | 736 |
-| 2 | Sintaxis y semántica frontal | PENDIENTE | 1,197 | 0 | 0 |
+| 2 | Sintaxis y semántica frontal | EN CURSO | 1,197 | 0 | 0 |
 | 3 | IR y optimización | PENDIENTE | 1,784 | 0 | 0 |
 | 4 | Sesión, frontend y method bodies | PENDIENTE | 920 | 0 | 0 |
 | 5 | Backend, ABI, runtime y enlace | PENDIENTE | 1,600 | 0 | 0 |
@@ -28,3 +28,8 @@ cuentan como implementados.
 Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
 de forma individual, y `4` casos pendientes de infraestructura especial. Los
 siete defectos permanecen rojos sin interferir con el flujo ordinario.
+
+La ola 1 conserva cuatro limitaciones de infraestructura (`TS-SRC-008`,
+`TS-SRC-040`, `TS-SRC-041`, `TS-SRC-049`). Permanecen en el denominador y en el
+registro de pendientes, pero no bloquean la implementación independiente de la
+ola 2. La ola 1 no se declara `LISTA`.

@@ -3,13 +3,13 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "7784e12b6",
-  "last_completed_batch": "TANDA-01-91",
+  "last_completed_commit": "b7f0b7a5e",
+  "last_completed_batch": "TANDA-01-92",
   "last_completed_case": "TL-LANG-262",
-  "current_wave": 1,
-  "current_component": null,
-  "next_contract": "CS-SRC-002",
-  "next_action": "Address the four special-infrastructure cases without changing product, hiding failures, or reducing the 747-case denominator. Preserve the seven validated KNOWN_FAILURE cases as implemented defect evidence.",
+  "current_wave": 2,
+  "current_component": "Host.Lexer",
+  "next_contract": "CL-LEX-001",
+  "next_action": "Implement the 110 Host.Lexer cases in dependency order while keeping the four Wave 1 special-infrastructure limitations visible and unchanged.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
     "revision": "11d2ae852",
@@ -178,6 +178,14 @@
       "special_infrastructure_pending": 4,
       "product_features_pending": 0,
       "corrected_test_plan_cases_pending_implementation": 0
+    },
+    "2": {
+      "status": "EN CURSO",
+      "product_cases_expected": 1197,
+      "product_cases_implemented": 0,
+      "product_cases_verified": 0,
+      "current_component": "Host.Lexer",
+      "current_component_cases_expected": 110
     }
   },
   "validation": {
