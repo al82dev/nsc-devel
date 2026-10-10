@@ -729,3 +729,9 @@ sus seis campos operativos del `CaseManifest` validado; quedaron eliminadas `86`
 divergencias de capa causadas por mezclar autoridades. Las pruebas dirigidas
 pasan `4/4` y la suite Python completa `178/178` sin cambiar la matriz ni
 ejecutar producto.
+
+Validación 57 cerró los catálogos de disposición. Las `669` filas vivas deben
+declarar una identidad canónica o pertenecer a uno de cuatro archivos de
+metadatos explícitos; rangos vacíos, identidades ambiguas, disposiciones
+desconocidas e IDs ajenos ya no se ignoran. Las pruebas dirigidas pasan `5/5` y
+la suite Python completa `183/183` sin modificar catálogos ni ejecutar producto.

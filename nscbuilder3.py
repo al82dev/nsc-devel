@@ -72,6 +72,19 @@ NON_EXECUTABLE = {
     "MetadataConflict",
     "UNCLASSIFIED",
 }
+DISPOSITION_VALUES = NON_EXECUTABLE | {"Executable", "KnownProductDefect"}
+DISPOSITION_METADATA_ONLY_NAMES = frozenset(
+    {
+        "PackagingPlanContradictions.jsonl",
+        "SelfHostBootstrapInfrastructurePlanContradictions.jsonl",
+        "SelfHostContractsPlanContradictions.jsonl",
+        "SelfHostProjectPlanContradictions.jsonl",
+    }
+)
+INFERRED_DISPOSITIONS = {
+    "SelfHostBootstrapInfrastructureCatalog.jsonl": "InfrastructurePending"
+}
+CATALOG_CASE_ID = re.compile(r"^[A-Z][A-Z0-9-]*-[0-9]{3,}$")
 NINJA_PROGRESS_PATTERN = re.compile(r"^\[(\d+)/(\d+)\]\s*(.*)$")
 CONFIG_STRING_FIELDS = (
     "nsc_executable",
@@ -215,6 +228,75 @@ def validate_allocation_domains(rows: Sequence[dict[str, str]]) -> None:
                     f"allocation {case_id} mixes sentinel in {field_name}: "
                     f"{row[field_name]!r}"
                 )
+
+
+def expand_catalog_case_range(path: Path, value: Any) -> tuple[str, ...]:
+    """Expand one canonical ascending case range without silent empty output."""
+    if not isinstance(value, str) or value.count("..") != 1:
+        raise ValueError(f"{path}: invalid case range: {value!r}")
+    start, end = value.split("..", maxsplit=1)
+    left = re.fullmatch(r"(.*?)([0-9]+)", start)
+    right = re.fullmatch(r"(.*?)([0-9]+)", end)
+    if (
+        left is None
+        or right is None
+        or left.group(1) != right.group(1)
+        or len(left.group(2)) != len(right.group(2))
+        or CATALOG_CASE_ID.fullmatch(start) is None
+        or CATALOG_CASE_ID.fullmatch(end) is None
+    ):
+        raise ValueError(f"{path}: invalid case range: {value!r}")
+    first = int(left.group(2))
+    last = int(right.group(2))
+    if first > last:
+        raise ValueError(f"{path}: descending case range: {value!r}")
+    width = len(left.group(2))
+    return tuple(
+        f"{left.group(1)}{number:0{width}d}" for number in range(first, last + 1)
+    )
+
+
+def parse_disposition_row(
+    path: Path, row: dict[str, Any]
+) -> tuple[tuple[str, ...], str] | None:
+    """Parse one case disposition row or one explicitly inventoried metadata row."""
+    identity_fields = [
+        field
+        for field in ("case_id", "case_ids", "affected_case_ids", "case_range")
+        if field in row
+    ]
+    if not identity_fields:
+        if path.name in DISPOSITION_METADATA_ONLY_NAMES:
+            return None
+        raise ValueError(f"{path}: disposition row has no supported case identity")
+    if len(identity_fields) != 1:
+        raise ValueError(f"{path}: disposition row has ambiguous case identity")
+    identity = identity_fields[0]
+    value = row[identity]
+    if identity == "case_id":
+        if not isinstance(value, str) or CATALOG_CASE_ID.fullmatch(value) is None:
+            raise ValueError(f"{path}: invalid case identity in case_id")
+        case_ids = (value,)
+    elif identity == "case_range":
+        case_ids = expand_catalog_case_range(path, value)
+    else:
+        if (
+            not isinstance(value, list)
+            or not value
+            or not all(
+                isinstance(item, str) and CATALOG_CASE_ID.fullmatch(item) is not None
+                for item in value
+            )
+            or len(value) != len(set(value))
+        ):
+            raise ValueError(f"{path}: invalid case identity in {identity}")
+        case_ids = tuple(value)
+    disposition = row.get("disposition")
+    if disposition is None:
+        disposition = INFERRED_DISPOSITIONS.get(path.name)
+    if not isinstance(disposition, str) or disposition not in DISPOSITION_VALUES:
+        raise ValueError(f"{path}: invalid disposition: {disposition!r}")
+    return case_ids, disposition
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -603,6 +685,13 @@ class CanonicalCatalog:
         manifest_rows = read_jsonl(MANIFEST_PATH)
         dispositions = cls._load_dispositions()
         cls._validate_sources(design, allocation_rows, manifest_rows, waves)
+        foreign_dispositions = sorted(
+            set(dispositions) - {row["case_id"] for row in design}
+        )
+        if foreign_dispositions:
+            raise ValueError(
+                f"disposition catalogues contain {len(foreign_dispositions)} foreign cases"
+            )
         allocation = {row["case_id"]: row for row in allocation_rows}
         manifest = {row["case_id"]: row for row in manifest_rows}
         cases: list[CaseRecord] = []
@@ -712,54 +801,23 @@ class CanonicalCatalog:
             if path == MANIFEST_PATH or path.parent.name == "infrastructure":
                 continue
             for row in read_jsonl(path):
-                disposition = CanonicalCatalog._row_disposition(path, row)
-                for case_id in CanonicalCatalog._row_case_ids(row):
+                parsed = parse_disposition_row(path, row)
+                if parsed is None:
+                    continue
+                case_ids, disposition = parsed
+                for case_id in case_ids:
                     previous = dispositions.get(case_id)
-                    if previous and previous != disposition and disposition != "Executable":
-                        raise ValueError(
-                            f"conflicting dispositions for {case_id}: {previous} and {disposition}"
-                        )
-                    if disposition != "Executable" or not previous:
+                    if previous and previous != disposition:
+                        if previous == "Executable":
+                            dispositions[case_id] = disposition
+                        elif disposition != "Executable":
+                            raise ValueError(
+                                f"conflicting dispositions for {case_id}: "
+                                f"{previous} and {disposition}"
+                            )
+                    elif not previous:
                         dispositions[case_id] = disposition
         return dispositions
-
-    @staticmethod
-    def _row_case_ids(row: dict[str, Any]) -> tuple[str, ...]:
-        """Extract explicit case IDs from the supported catalogue record shapes."""
-        if isinstance(row.get("case_id"), str):
-            return (str(row["case_id"]),)
-        for key in ("case_ids", "affected_case_ids"):
-            value = row.get(key)
-            if isinstance(value, list) and all(isinstance(item, str) for item in value):
-                return tuple(value)
-        value = row.get("case_range")
-        if isinstance(value, str) and ".." in value:
-            return CanonicalCatalog._expand_range(value)
-        return ()
-
-    @staticmethod
-    def _expand_range(value: str) -> tuple[str, ...]:
-        """Expand one fixed-width canonical ID range without recursion."""
-        start, end = value.split("..", maxsplit=1)
-        left = re.fullmatch(r"(.*?)(\d+)", start)
-        right = re.fullmatch(r"(.*?)(\d+)", end)
-        if left is None or right is None or left.group(1) != right.group(1):
-            return ()
-        first = int(left.group(2))
-        last = int(right.group(2))
-        width = len(left.group(2))
-        return tuple(f"{left.group(1)}{number:0{width}d}" for number in range(first, last + 1))
-
-    @staticmethod
-    def _row_disposition(path: Path, row: dict[str, Any]) -> str:
-        """Resolve a catalogue row disposition while preserving open conflicts."""
-        explicit = row.get("disposition")
-        if isinstance(explicit, str):
-            return explicit
-        lowered = str(path).casefold()
-        if "bootstrap-infrastructure" in lowered or "selfhostcontracts" in lowered:
-            return "InfrastructurePending"
-        return "UNCLASSIFIED"
 
     def summary(self) -> dict[str, Any]:
         """Return deterministic catalogue counts for the audit mode and GUI."""

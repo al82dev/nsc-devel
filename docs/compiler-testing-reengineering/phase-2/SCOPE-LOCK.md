@@ -925,3 +925,21 @@ optimizaciones no ejecutables, pruebas Python estáticas y la evidencia de
 Validación 56. No se reconcilian las diferencias documentales entre fuentes,
 no se cambian manifiestos, asignaciones, selección, variantes, producto ni
 batería histórica y no se configura, compila o ejecuta producto.
+
+### Enmienda: identidad obligatoria en catálogos de disposición
+
+Cada fila JSONL descubierta como catálogo de casos debe declarar exactamente
+una identidad soportada (`case_id`, `case_ids`, `affected_case_ids` o
+`case_range`) y una disposición conocida o pertenecer al único catálogo cuya
+disposición se infiere de forma documentada. Rangos descendentes, prefijos o
+anchos distintos, listas vacías o duplicadas y disposiciones desconocidas deben
+fallar; una fila documental sólo puede omitirse en los cuatro archivos
+metadato explícitos ya inventariados. Ninguna identidad ajena al diseño puede
+quedar sin consumidor.
+
+El presupuesto queda limitado al parser de disposiciones,
+`CanonicalCatalog._load_dispositions`, su cierre contra el diseño, pruebas
+Python sintéticas y la evidencia de Validación 57. Se conserva la precedencia
+de una clasificación específica sobre `Executable`; no se modifican catálogos,
+manifiestos, selección, producto ni batería histórica y no se configura,
+compila o ejecuta producto.
