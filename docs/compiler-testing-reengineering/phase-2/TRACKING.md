@@ -518,3 +518,10 @@ oráculos del producto: forma de registros, variantes de contratos, continuidad
 de inventarios y un archivo de paquete por publicación. La nueva prueba del
 manifiesto vivo cerró `176` selecciones causales y la suite Python completa
 pasó `71/71`; no se compiló ni ejecutó producto.
+
+Validación 25 cerró estáticamente el grafo C++ y CTest: `307` archivos de
+módulo corresponden uno a uno con `307` definiciones, declaraciones y llamadas
+de registro; las `535` fuentes del target existen y no se repiten; los `115`
+controladores `run_*.py` tienen exactamente una referencia CTest y los `117`
+nombres CTest son únicos. La prueba deriva todos los conjuntos desde el árbol
+vivo y no congela estos totales.

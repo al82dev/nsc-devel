@@ -481,3 +481,16 @@ Validación 24. No se modifican controladores adicionales mientras el barrido no
 demuestre una duplicación dependiente de revisión. No se modifican casos,
 oráculos, resultados esperados, producto ni batería histórica. No se configura,
 compila ni ejecuta producto.
+
+### Enmienda: cierre estático del grafo de módulos C++
+
+Cada archivo `*Module.cpp` de la suite debe tener exactamente una función de
+registro y aparecer simultáneamente en el target `nsc_component_tests`, en las
+declaraciones de `TestRegistry.h` y en las llamadas de `main.cpp`. Una prueba
+estática deriva los cuatro conjuntos desde los archivos vivos y exige igualdad,
+sin fijar el número de módulos ni sus nombres en una quinta lista.
+
+El presupuesto queda limitado a esa prueba del grafo y la evidencia de
+Validación 25. No se reordena ni modifica el target, el registro, los módulos,
+casos, oráculos, producto o batería histórica salvo que la prueba demuestre una
+omisión concreta. No se configura, compila ni ejecuta producto.
