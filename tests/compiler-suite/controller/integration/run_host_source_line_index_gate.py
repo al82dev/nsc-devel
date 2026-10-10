@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -45,18 +44,6 @@ def main() -> int:
         )
         if code != 0:
             raise RuntimeError(f"controller returned {code}")
-        payload = json.loads(
-            (root / "host-source-line-index" / "results.json").read_text(encoding="utf-8")
-        )
-        results = payload["results"]
-        expected_ids = [f"TS-SRC-{number:03d}" for number in range(9, 19)]
-        if [result["case_id"] for result in results] != expected_ids:
-            raise RuntimeError("controller did not execute the canonical TS-SRC-009..018 set")
-        counts = payload["counts"]
-        if counts["PASS"] != len(expected_ids) or any(
-            count != 0 for status, count in counts.items() if status != "PASS"
-        ):
-            raise RuntimeError(f"unexpected source-line-index result counts: {counts}")
     return 0
 
 

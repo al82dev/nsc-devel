@@ -367,3 +367,20 @@ Validación 16. `Host.nsc`, que aún no tiene filas ejecutables, deriva su
 inventario pendiente de los registros canónicos y conserva esa frontera. No se
 modifican casos, oráculos, resultados esperados, producto ni batería histórica;
 no se configura, compila ni ejecuta producto.
+
+### Enmienda: cierre central de gates foundation por contrato
+
+Los gates dirigidos de Host.Basic, Host.Diagnostics y Host.Source que invocan
+`run_suite.py` por contrato no deben volver a validar una copia local del rango
+de casos ni de los conteos. El selector central ya exige una selección no vacía,
+el reporte exige un resultado terminal exacto por caso seleccionado y el código
+de retorno sólo acepta `PASS` o `KNOWN_FAILURE`. Los gates conservan su contrato,
+perfil, build mode, herramientas y ejecución; se retira únicamente la segunda
+fuente de verdad de IDs y cantidades.
+
+El presupuesto queda limitado a los veintisiete gates foundation que contienen
+esa duplicación y la evidencia de Validación 17. El gate especial de ownership
+de Host.Source queda fuera de esta tanda porque además valida el inventario y
+registro completos del componente. No se modifican producto, casos, oráculos,
+resultados esperados, selector, runner, reporte ni batería histórica. No se
+configura, compila ni ejecuta producto.

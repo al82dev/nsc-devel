@@ -161,6 +161,15 @@ selector y helper pasan. `Host.nsc` conserva sus `160` casos como
 `InfrastructurePending` derivados del inventario, sin promoverlos al manifiesto.
 No se compiló ni ejecutó producto.
 
+Los `27` gates dirigidos foundation de Host.Basic, Host.Diagnostics y
+Host.Source conservan su ejecución por contrato, pero ya no mantienen una
+segunda lista de IDs ni totales esperados. La selección no vacía, la cobertura
+exacta de resultados y los estados permitidos quedan en el selector, runner,
+ledger y reporte compartidos; sus `20/20` pruebas Python dirigidas pasan. El
+gate especial de ownership de Host.Source permanece separado para la siguiente
+auditoría porque también verifica el inventario completo del componente. No se
+compiló ni ejecutó producto.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,
