@@ -751,6 +751,118 @@ class HistoricalExecution:
     full_log: str
 
 
+def case_diagnostic_summary(
+    case: CaseRecord,
+    variant: RunVariant | None = None,
+    outcome: CaseOutcome | None = None,
+) -> str:
+    """Render the stable test contract and its observed result for a human reader."""
+    manifest = case.manifest or {}
+    dependencies = manifest.get("dependencies", [])
+    tags = manifest.get("tags", [])
+    lines = [
+        "RESUMEN DE LA PRUEBA",
+        "=" * 80,
+        f"Caso              : {case.case_id}",
+        f"Contrato          : {case.contract_id}",
+        f"Componente        : {case.component}",
+        f"Ola               : {case.wave}",
+        f"Objetivo          : {case.objective}",
+        f"Propósito         : {case.purpose}",
+        f"Capa              : {case.layer}",
+        f"Clase de escenario: {manifest.get('class', 'no declarada')}",
+        f"Etiquetas         : {', '.join(str(tag) for tag in tags) or 'ninguna'}",
+        f"Dependencias      : {', '.join(str(item) for item in dependencies) or 'ninguna'}",
+        f"Aislamiento       : {manifest.get('isolation', 'no declarado')}",
+        f"Timeout           : {manifest.get('timeout_class', 'no declarado')}",
+        f"Ejecutor          : {case.executor}",
+        f"Perfil            : {case.profile}",
+        f"Disposición       : {case.disposition}",
+        f"Resultado esperado: {case.expected_outcome or 'definido por el oráculo'}",
+    ]
+    if variant is not None:
+        lines.extend(
+            (
+                "",
+                "CONFIGURACIÓN EJECUTADA",
+                "-" * 80,
+                f"Build             : {variant.build_mode}",
+                f"Optimización      : {variant.optimization}",
+                f"Identidad exacta  : {variant.key}",
+            )
+        )
+    if outcome is not None:
+        lines.extend(
+            (
+                "",
+                "RESULTADO OBSERVADO",
+                "-" * 80,
+                f"Estado            : {outcome.status}",
+                f"Duración          : {outcome.duration_seconds:.6f} segundos",
+                f"Diagnóstico       : {outcome.detail or 'sin diagnóstico textual'}",
+                f"Evidencia         : {outcome.evidence or 'sin archivo de evidencia'}",
+            )
+        )
+    else:
+        lines.extend(
+            (
+                "",
+                "RESULTADO OBSERVADO",
+                "-" * 80,
+                "Estado            : la prueba todavía no tiene un resultado guardado",
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
+def case_contract_payload(case: CaseRecord) -> dict[str, Any]:
+    """Project the exact declared scenario without interpreting its oracle."""
+    manifest = case.manifest or {}
+    return {
+        "case_id": case.case_id,
+        "contract_id": case.contract_id,
+        "component": case.component,
+        "objective": case.objective,
+        "dependencies": manifest.get("dependencies", []),
+        "inputs": manifest.get("inputs"),
+        "oracle": manifest.get("oracle"),
+    }
+
+
+def case_evidence_output(
+    outcome: CaseOutcome | None, run_root: Path | None = None
+) -> str:
+    """Read the complete per-case textual evidence without changing the saved run."""
+    if outcome is None or not outcome.evidence:
+        return "La prueba no tiene un archivo de evidencia registrado.\n"
+    evidence_path = Path(outcome.evidence)
+    if not evidence_path.is_absolute() and run_root is not None:
+        evidence_path = run_root / evidence_path
+    candidates: list[Path] = []
+    if evidence_path.is_file():
+        candidates.append(evidence_path)
+        candidates.extend(
+            path
+            for path in sorted(evidence_path.parent.glob("*.log"))
+            if path != evidence_path
+        )
+    elif evidence_path.is_dir():
+        candidates.extend(sorted(evidence_path.glob("*.log")))
+    if not candidates:
+        return f"La evidencia registrada no está disponible: {evidence_path}\n"
+    sections: list[str] = []
+    for path in candidates:
+        try:
+            contents = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as error:
+            contents = f"No se pudo leer el archivo: {error}\n"
+        separator = "" if contents.endswith("\n") else "\n"
+        sections.append(
+            f"ARCHIVO: {path}\n{'-' * 80}\n{contents}{separator}"
+        )
+    return "\n".join(sections)
+
+
 class CanonicalCatalog:
     """Join Phase 2 inventories without hiding non-executable dispositions."""
 
@@ -3006,7 +3118,7 @@ def catalog_audit() -> dict[str, Any]:
 def launch_gui(smoke_only: bool = False) -> int:
     """Launch the complete single-file PySide6 application."""
     try:
-        from PySide6.QtCore import Qt, QThread, QUrl, Signal
+        from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
         from PySide6.QtGui import QColor, QDesktopServices
         from PySide6.QtWidgets import (
             QAbstractItemView,
@@ -3215,6 +3327,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.last_failed_variants: tuple[RunVariant, ...] = ()
             self.failure_outcomes_by_key: dict[str, CaseOutcome] = {}
             self.failure_variants_by_key: dict[str, RunVariant] = {}
+            self.current_outcomes_by_key: dict[str, CaseOutcome] = {}
             self.disabled_failure_keys: set[str] = set()
             self.visible_variants: tuple[RunVariant, ...] = ()
             self.variant_by_key: dict[str, RunVariant] = {}
@@ -3228,6 +3341,11 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.active_modes: tuple[str, ...] = ()
             self.infrastructure_ninja_total = 0
             self.history_run_pages: dict[str, QWidget] = {}
+            self.pending_exact_action: tuple[str, bool] | None = None
+            self.exact_action_suppressed_until = 0.0
+            self.exact_action_timer = QTimer(self)
+            self.exact_action_timer.setSingleShot(True)
+            self.exact_action_timer.timeout.connect(self._run_pending_exact_action)
             self.setWindowTitle(APP_NAME)
             self.resize(1600, 960)
             self._build_ui()
@@ -3460,6 +3578,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             )
             self.clear_results_button.clicked.connect(self._clear_current_results)
             self.case_table.cellClicked.connect(self._handle_case_table_click)
+            self.case_table.cellDoubleClicked.connect(
+                self._open_current_case_detail
+            )
             self.case_table.customContextMenuRequested.connect(
                 self._show_case_context_menu
             )
@@ -3507,6 +3628,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.failure_table.horizontalHeader().setStretchLastSection(True)
             self.failure_table.cellClicked.connect(
                 self._handle_failure_table_click
+            )
+            self.failure_table.cellDoubleClicked.connect(
+                self._open_failure_case_detail
             )
             self.failure_table.customContextMenuRequested.connect(
                 self._show_failure_context_menu
@@ -3996,6 +4120,9 @@ def launch_gui(smoke_only: bool = False) -> int:
                     item = QTableWidgetItem(value)
                     if column == self.CASE_COLUMN:
                         item.setData(Qt.ItemDataRole.UserRole, key)
+                        item.setToolTip(
+                            "Doble clic para abrir el escenario, el oráculo y la salida completa"
+                        )
                     if column == self.STATUS_COLUMN:
                         self._color_status(item, status)
                         self.status_item_by_key[key] = item
@@ -4104,12 +4231,183 @@ def launch_gui(smoke_only: bool = False) -> int:
             if variant is not None:
                 self._start_exact_variant(variant)
 
-        def _handle_case_table_click(self, row: int, column: int) -> None:
-            if column != self.ACTION_COLUMN or self.worker is not None:
+        def _case_at(self, table: QTableWidget, row: int) -> CaseRecord | None:
+            """Resolve the canonical case represented by one table row."""
+            item = table.item(row, self.CASE_COLUMN)
+            if item is None:
+                return None
+            return self.catalog.by_id.get(item.text())
+
+        @staticmethod
+        def _resolved_evidence_path(
+            outcome: CaseOutcome | None, run_root: Path | None
+        ) -> Path | None:
+            """Resolve one evidence location without requiring it to still exist."""
+            if outcome is None or not outcome.evidence:
+                return None
+            path = Path(outcome.evidence)
+            if not path.is_absolute() and run_root is not None:
+                path = run_root / path
+            return path
+
+        def _open_case_detail_tab(
+            self,
+            tab_widget: QTabWidget,
+            case: CaseRecord,
+            variant: RunVariant | None,
+            outcome: CaseOutcome | None,
+            run_root: Path | None = None,
+        ) -> None:
+            """Open a read-only case diagnosis without executing or rewriting it."""
+            identity = variant.key if variant is not None else case.case_id
+            detail_key = f"case-detail:{identity}"
+            for index in range(tab_widget.count() - 1, -1, -1):
+                existing = tab_widget.widget(index)
+                if existing.property("caseDetailKey") == detail_key:
+                    tab_widget.removeTab(index)
+                    existing.deleteLater()
+
+            page = QWidget()
+            page.setProperty("caseDetailKey", detail_key)
+            layout = QVBoxLayout(page)
+            heading = QLabel(
+                f"{case.case_id} · {case.component} · {case.contract_id} · "
+                f"{outcome.status if outcome is not None else 'SIN RESULTADO'}"
+            )
+            heading.setWordWrap(True)
+            layout.addWidget(heading)
+
+            actions = QHBoxLayout()
+            evidence_path = self._resolved_evidence_path(outcome, run_root)
+            open_evidence = QPushButton("Abrir evidencia")
+            open_evidence.setEnabled(
+                evidence_path is not None and evidence_path.exists()
+            )
+            close_detail = QPushButton("Cerrar detalle")
+            actions.addWidget(open_evidence)
+            actions.addStretch(1)
+            actions.addWidget(close_detail)
+            layout.addLayout(actions)
+
+            sections = QTabWidget()
+
+            def add_text_section(title: str, contents: str) -> None:
+                view = QPlainTextEdit()
+                view.setReadOnly(True)
+                view.setPlainText(contents)
+                sections.addTab(view, title)
+
+            add_text_section(
+                "Resumen", case_diagnostic_summary(case, variant, outcome)
+            )
+            add_text_section(
+                "Entradas y oráculo",
+                json.dumps(
+                    case_contract_payload(case),
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                ),
+            )
+            add_text_section(
+                "Salida completa", case_evidence_output(outcome, run_root)
+            )
+            add_text_section(
+                "Manifiesto",
+                json.dumps(
+                    case.manifest,
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+                if case.manifest is not None
+                else "Este caso no posee todavía un manifiesto ejecutable.\n",
+            )
+            layout.addWidget(sections, 1)
+            index = tab_widget.addTab(page, f"{case.case_id} · detalle")
+            tab_widget.setCurrentIndex(index)
+
+            def reveal_evidence() -> None:
+                if evidence_path is None:
+                    return
+                target = (
+                    evidence_path if evidence_path.is_dir() else evidence_path.parent
+                )
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+
+            def close_page() -> None:
+                page_index = tab_widget.indexOf(page)
+                if page_index >= 0:
+                    tab_widget.removeTab(page_index)
+                page.deleteLater()
+
+            open_evidence.clicked.connect(reveal_evidence)
+            close_detail.clicked.connect(close_page)
+
+        def _cancel_pending_exact_action(self) -> None:
+            """Prevent a double click from also triggering the single-click action."""
+            self.exact_action_timer.stop()
+            self.pending_exact_action = None
+            self.exact_action_suppressed_until = time.monotonic() + 0.5
+
+        def _run_pending_exact_action(self) -> None:
+            pending = self.pending_exact_action
+            self.pending_exact_action = None
+            if pending is None or self.worker is not None:
                 return
+            key, failed = pending
+            self._start_exact_key(key, failed=failed)
+
+        def _queue_exact_action(
+            self, table: QTableWidget, row: int, column: int, *, failed: bool
+        ) -> None:
+            if (
+                column != self.ACTION_COLUMN
+                or self.worker is not None
+                or time.monotonic() < self.exact_action_suppressed_until
+            ):
+                return
+            key = self._case_key_at(table, row)
+            variants = (
+                self.failure_variants_by_key if failed else self.variant_by_key
+            )
+            if key is None or key not in variants:
+                return
+            self.pending_exact_action = (key, failed)
+            self.exact_action_timer.start(QApplication.doubleClickInterval() + 50)
+
+        def _open_current_case_detail(self, row: int, _column: int) -> None:
+            self._cancel_pending_exact_action()
+            case = self._case_at(self.case_table, row)
             key = self._case_key_at(self.case_table, row)
-            if key is not None and key in self.variant_by_key:
-                self._start_exact_key(key)
+            if case is None or key is None:
+                return
+            self._open_case_detail_tab(
+                self.result_tabs,
+                case,
+                self.variant_by_key.get(key),
+                self.current_outcomes_by_key.get(key),
+            )
+            self.tabs.setCurrentIndex(2)
+
+        def _open_failure_case_detail(self, row: int, _column: int) -> None:
+            self._cancel_pending_exact_action()
+            case = self._case_at(self.failure_table, row)
+            key = self._case_key_at(self.failure_table, row)
+            if case is None or key is None:
+                return
+            self._open_case_detail_tab(
+                self.result_tabs,
+                case,
+                self.failure_variants_by_key.get(key),
+                self.failure_outcomes_by_key.get(key),
+            )
+            self.tabs.setCurrentIndex(2)
+
+        def _handle_case_table_click(self, row: int, column: int) -> None:
+            self._queue_exact_action(
+                self.case_table, row, column, failed=False
+            )
 
         def _show_case_context_menu(self, position: Any) -> None:
             row = self.case_table.rowAt(position.y())
@@ -4133,11 +4431,9 @@ def launch_gui(smoke_only: bool = False) -> int:
             menu.exec(self.case_table.viewport().mapToGlobal(position))
 
         def _handle_failure_table_click(self, row: int, column: int) -> None:
-            if column != self.ACTION_COLUMN or self.worker is not None:
-                return
-            key = self._case_key_at(self.failure_table, row)
-            if key is not None and key in self.failure_variants_by_key:
-                self._start_exact_key(key, failed=True)
+            self._queue_exact_action(
+                self.failure_table, row, column, failed=True
+            )
 
         def _show_failure_context_menu(self, position: Any) -> None:
             row = self.failure_table.rowAt(position.y())
@@ -4162,6 +4458,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             origin: str,
         ) -> None:
             self.visible_variants = tuple(variants)
+            self.current_outcomes_by_key.clear()
             self.variant_position_by_key = {
                 variant.key: index
                 for index, variant in enumerate(variants, start=1)
@@ -4278,6 +4575,9 @@ def launch_gui(smoke_only: bool = False) -> int:
                     item = QTableWidgetItem(value)
                     if column == self.CASE_COLUMN:
                         item.setData(Qt.ItemDataRole.UserRole, variant.key)
+                        item.setToolTip(
+                            "Doble clic para abrir el escenario, el oráculo y la salida completa"
+                        )
                     if column == self.STATUS_COLUMN:
                         self._color_status(item, status)
                     if column == self.ACTION_COLUMN:
@@ -4357,6 +4657,21 @@ def launch_gui(smoke_only: bool = False) -> int:
             merged = detail
             if evidence:
                 merged = f"{detail} | {evidence}" if detail else evidence
+            variant = self.variant_by_key.get(key)
+            if variant is not None and status in RESULT_STATUSES:
+                self.current_outcomes_by_key[key] = CaseOutcome(
+                    key=key,
+                    case_id=variant.case.case_id,
+                    contract_id=variant.case.contract_id,
+                    component=variant.case.component,
+                    wave=variant.case.wave,
+                    build_mode=variant.build_mode,
+                    optimization=variant.optimization,
+                    status=status,
+                    duration_seconds=duration,
+                    detail=detail,
+                    evidence=evidence,
+                )
             self.case_table.setItem(
                 row, self.DETAIL_COLUMN, QTableWidgetItem(merged)
             )
@@ -4408,6 +4723,7 @@ def launch_gui(smoke_only: bool = False) -> int:
             current_failures = retry_variants(self.visible_variants, typed)
             current_keys = {variant.key for variant in self.visible_variants}
             outcome_by_key = {item.key: item for item in typed}
+            self.current_outcomes_by_key.update(outcome_by_key)
             for key in current_keys:
                 self.failure_variants_by_key.pop(key, None)
                 self.failure_outcomes_by_key.pop(key, None)
@@ -4494,10 +4810,15 @@ def launch_gui(smoke_only: bool = False) -> int:
                 return
             self.failure_outcomes_by_key.clear()
             self.failure_variants_by_key.clear()
+            self.current_outcomes_by_key.clear()
             self.disabled_failure_keys.clear()
             self.last_failed_variants = ()
             self.full_log.clear()
             self.error_report.clear()
+            for index in range(self.result_tabs.count() - 1, 2, -1):
+                detail_page = self.result_tabs.widget(index)
+                self.result_tabs.removeTab(index)
+                detail_page.deleteLater()
             all_statuses_index = self.status_filter_combo.findData("ALL")
             if all_statuses_index >= 0:
                 self.status_filter_combo.setCurrentIndex(all_statuses_index)
@@ -4890,6 +5211,7 @@ def launch_gui(smoke_only: bool = False) -> int:
 
             outcome_by_key = {outcome.key: outcome for outcome in loaded.outcomes}
             variant_by_key = {variant.key: variant for variant in loaded.variants}
+            case_by_id = {case.case_id: case for case in loaded.cases}
             executable_ids = {variant.case.case_id for variant in loaded.variants}
             rows: list[
                 tuple[
@@ -4997,6 +5319,9 @@ def launch_gui(smoke_only: bool = False) -> int:
                     item = QTableWidgetItem(value)
                     if column == self.CASE_COLUMN:
                         item.setData(Qt.ItemDataRole.UserRole, variant_key)
+                        item.setToolTip(
+                            "Doble clic para abrir el escenario, el oráculo y la salida completa"
+                        )
                     elif column == self.STATUS_COLUMN:
                         self._color_status(item, status)
                     elif column == self.ACTION_COLUMN and executable:
@@ -5099,17 +5424,58 @@ def launch_gui(smoke_only: bool = False) -> int:
                     "los encabezados permiten ordenar, incluida la duración numérica."
                 )
 
+            action_timer = QTimer(table)
+            action_timer.setSingleShot(True)
+            pending_action: dict[str, str | float | None] = {
+                "key": None,
+                "suppressed_until": 0.0,
+            }
+
+            def execute_pending_action() -> None:
+                variant_key = pending_action["key"]
+                pending_action["key"] = None
+                if not isinstance(variant_key, str) or self.worker is not None:
+                    return
+                variant = variant_by_key.get(variant_key)
+                if variant is not None:
+                    self._start_historical_variant(variant)
+
+            action_timer.timeout.connect(execute_pending_action)
+
             def run_exact(row: int, column: int) -> None:
-                if column != self.ACTION_COLUMN or self.worker is not None:
+                if (
+                    column != self.ACTION_COLUMN
+                    or self.worker is not None
+                    or time.monotonic()
+                    < float(pending_action["suppressed_until"] or 0.0)
+                ):
                     return
                 item = table.item(row, self.CASE_COLUMN)
                 variant_key = (
                     item.data(Qt.ItemDataRole.UserRole) if item is not None else None
                 )
-                if isinstance(variant_key, str):
-                    variant = variant_by_key.get(variant_key)
-                    if variant is not None:
-                        self._start_historical_variant(variant)
+                if isinstance(variant_key, str) and variant_key in variant_by_key:
+                    pending_action["key"] = variant_key
+                    action_timer.start(QApplication.doubleClickInterval() + 50)
+
+            def open_detail(row: int, _column: int) -> None:
+                action_timer.stop()
+                pending_action["key"] = None
+                pending_action["suppressed_until"] = time.monotonic() + 0.5
+                case_item = table.item(row, self.CASE_COLUMN)
+                if case_item is None:
+                    return
+                case = case_by_id.get(case_item.text())
+                variant_key = case_item.data(Qt.ItemDataRole.UserRole)
+                if case is None or not isinstance(variant_key, str):
+                    return
+                self._open_case_detail_tab(
+                    run_tabs,
+                    case,
+                    variant_by_key.get(variant_key),
+                    outcome_by_key.get(variant_key),
+                    loaded.root,
+                )
 
             def selected_variant() -> RunVariant | None:
                 row = table.currentRow()
@@ -5148,6 +5514,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 widget_signal.connect(lambda _value: apply_filters())
             search_edit.textChanged.connect(lambda _text: apply_filters())
             table.cellClicked.connect(run_exact)
+            table.cellDoubleClicked.connect(open_detail)
             table.itemSelectionChanged.connect(update_selected_action)
             rerun_selected_button.clicked.connect(rerun_selected)
             rerun_all_button.clicked.connect(

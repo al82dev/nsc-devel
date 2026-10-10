@@ -119,3 +119,57 @@ No aplica a una regresión entre commits. La matriz inicial se deriva del árbol
 - La medición final demuestra el cambio en compilación, enlaces, procesos y duración.
 
 Sólo el usuario puede pausar, cancelar o cerrar la tarea persistente.
+
+## Enmienda autorizada — detalle individual de pruebas en NSC Builder 3
+
+Fecha: 2026-10-10.
+
+### Objetivo exacto
+
+Permitir que un doble clic sobre cualquier fila de prueba actual, fallida o
+histórica abra una pestaña de diagnóstico de esa prueba sin ejecutarla. La
+pestaña debe exponer el escenario canónico, sus entradas, el oráculo, la
+configuración exacta, el resultado observado y la salida individual completa
+conservada como evidencia.
+
+### Naturaleza
+
+- Infraestructura de consulta y diagnóstico.
+- Cambio de interfaz de usuario sin cambios en ejecución ni clasificación.
+
+### Presupuesto de cambio
+
+| Dimensión | Autorizado |
+|---|---|
+| Repositorios | `A:\nsc-devel` |
+| Componentes | NSC Builder 3 e historial de Phase 2 |
+| Archivos | `nscbuilder3.py`, su prueba histórica dirigida y este documento |
+| Símbolos | Proyección de detalle, lectura de evidencia y manejadores de doble clic |
+| Comportamientos | Abrir y cerrar pestañas de sólo lectura; conservar la reejecución explícita |
+| Pruebas | Sintaxis y prueba unitaria histórica dirigida |
+| Configuraciones | No aplica; no se construye ni ejecuta NSC |
+| Perfiles | Todos, únicamente como datos mostrados |
+
+### Fronteras protegidas
+
+- Código fuente del compilador.
+- Manifiestos, oráculos, entradas y resultados guardados.
+- Formato de `results.json`, `metadata.json` y `events.jsonl`.
+- Ejecución, reejecución, selección, clasificación y persistencia de corridas.
+- Historial existente, que permanece inmutable.
+
+### Acciones prohibidas
+
+- Ejecutar una prueba como consecuencia del doble clic.
+- Inferir o inventar una causa que no aparezca en el resultado o su evidencia.
+- Truncar la salida individual presentada.
+- Reescribir evidencia histórica.
+- Ejecutar la batería, construir NSC o modificar el compilador.
+
+### Criterio de terminación de la enmienda
+
+- El doble clic abre una pestaña y no dispara la reejecución pendiente.
+- La vista funciona desde `Pruebas`, `Fallos exactos` e `Historial`.
+- El resumen identifica escenario, contrato, inputs, oráculo y resultado.
+- `Salida completa` muestra el log principal y los logs hermanos del mismo caso.
+- La validación dirigida pasa sin ejecutar la batería del compilador.

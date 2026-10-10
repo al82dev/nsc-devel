@@ -103,7 +103,15 @@ class Builder3HistoryTests(unittest.TestCase):
                     disposition="Executable",
                     objective="restore one prior result",
                     expected_outcome="PASS",
-                    manifest={"timeout_class": "tiny"},
+                    manifest={
+                        "class": "nominal",
+                        "dependencies": ["PRECONDITION"],
+                        "inputs": {"value": 7},
+                        "isolation": "in-process-reset",
+                        "oracle": {"value": 7},
+                        "tags": ["history", "detail"],
+                        "timeout_class": "tiny",
+                    },
                 ),
                 builder.CaseRecord(
                     case_id="PENDING",
@@ -184,6 +192,41 @@ class Builder3HistoryTests(unittest.TestCase):
         self.assertEqual([item.status for item in loaded.outcomes], ["PASS"])
         self.assertEqual(loaded.full_log, "historical output\n")
         self.assertEqual((self.root / "results.json").read_bytes(), before)
+
+    def test_case_detail_projects_contract_result_and_complete_case_logs(self) -> None:
+        case = self._catalog().by_id["CASE"]
+        variant = builder.RunVariant(case, "Debug", "O0")
+        case_root = self.root / "cases" / "CASE-Debug-O0"
+        case_root.mkdir(parents=True)
+        evidence = case_root / "host.log"
+        evidence.write_text("assertion failed\n", encoding="utf-8")
+        (case_root / "stderr.log").write_text("compiler diagnostic\n", encoding="utf-8")
+        outcome = builder.CaseOutcome(
+            key=variant.key,
+            case_id=case.case_id,
+            contract_id=case.contract_id,
+            component=case.component,
+            wave=case.wave,
+            build_mode=variant.build_mode,
+            optimization=variant.optimization,
+            status="FAIL",
+            duration_seconds=0.25,
+            detail="the oracle rejected the observed value",
+            evidence=str(evidence),
+        )
+
+        summary = builder.case_diagnostic_summary(case, variant, outcome)
+        contract = builder.case_contract_payload(case)
+        output = builder.case_evidence_output(outcome, self.root)
+
+        self.assertIn("Caso              : CASE", summary)
+        self.assertIn("Estado            : FAIL", summary)
+        self.assertIn("the oracle rejected the observed value", summary)
+        self.assertEqual(contract["inputs"], {"value": 7})
+        self.assertEqual(contract["oracle"], {"value": 7})
+        self.assertIn("assertion failed", output)
+        self.assertIn("compiler diagnostic", output)
+        self.assertIn(str(evidence), output)
 
     def test_loading_reconstructs_non_executable_rows_from_selection(self) -> None:
         self._write_valid_terminal_run()
