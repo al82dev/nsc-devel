@@ -50,8 +50,8 @@ class ComponentGateSupportTests(unittest.TestCase):
         assert_component_results(
             {
                 "results": [
-                    {"case_id": "TB-BAS-001"},
-                    {"case_id": "TB-BAS-002"},
+                    {"case_id": "TB-BAS-001", "status": "PASS"},
+                    {"case_id": "TB-BAS-002", "status": "KNOWN_FAILURE"},
                 ],
                 "counts": {
                     "PASS": 1,
@@ -68,8 +68,8 @@ class ComponentGateSupportTests(unittest.TestCase):
             assert_component_results(
                 {
                     "results": [
-                        {"case_id": "TB-BAS-002"},
-                        {"case_id": "TB-BAS-001"},
+                        {"case_id": "TB-BAS-002", "status": "KNOWN_FAILURE"},
+                        {"case_id": "TB-BAS-001", "status": "PASS"},
                     ],
                     "counts": {"PASS": 1, "KNOWN_FAILURE": 1},
                 },
@@ -82,8 +82,8 @@ class ComponentGateSupportTests(unittest.TestCase):
             assert_component_results(
                 {
                     "results": [
-                        {"case_id": "TB-BAS-001"},
-                        {"case_id": "TB-BAS-002"},
+                        {"case_id": "TB-BAS-001", "status": "PASS"},
+                        {"case_id": "TB-BAS-002", "status": "KNOWN_FAILURE"},
                     ],
                     "counts": {"PASS": 2, "KNOWN_FAILURE": 0},
                 },
@@ -112,10 +112,28 @@ class ComponentGateSupportTests(unittest.TestCase):
                 RuntimeError, "invalid result count"
             ):
                 assert_component_results(
-                    {"results": [{"case_id": "7"}], "counts": {"PASS": count}},
+                    {
+                        "results": [{"case_id": "7", "status": "PASS"}],
+                        "counts": {"PASS": count},
+                    },
                     numeric_case,
                     "Synthetic",
                 )
+
+    def test_rejects_row_statuses_that_contradict_declared_counts(self) -> None:
+        payload = {
+            "results": [
+                {"case_id": "TB-BAS-001", "status": "FAIL"},
+                {"case_id": "TB-BAS-002", "status": "FAIL"},
+            ],
+            "counts": {"PASS": 1, "KNOWN_FAILURE": 1, "FAIL": 0},
+        }
+        with self.assertRaisesRegex(RuntimeError, "row statuses"):
+            assert_component_results(payload, self.cases, "Host.Basic")
+
+        payload["results"][0]["status"] = 1
+        with self.assertRaisesRegex(RuntimeError, "invalid row status"):
+            assert_component_results(payload, self.cases, "Host.Basic")
 
     def test_manifest_integer_requires_presence_and_exact_integer_type(self) -> None:
         self.assertEqual(

@@ -98,7 +98,17 @@ def assert_component_results(
             f"{component} controller results differ from the {selection_name}"
         )
 
+    expected_statuses = tuple(case.expected_outcome for case in cases)
+    actual_statuses = tuple(result.get("status") for result in raw_results)
+    if any(not isinstance(status, str) or not status for status in actual_statuses):
+        raise RuntimeError(f"{component} controller contains an invalid row status")
+    if actual_statuses != expected_statuses:
+        raise RuntimeError(
+            f"{component} controller row statuses differ from declared outcomes"
+        )
+
     expected_counts = Counter(case.expected_outcome for case in cases)
+    row_counts = Counter(actual_statuses)
     observed_counts: dict[str, int] = {}
     for status, count in raw_counts.items():
         if not isinstance(status, str) or not status:
@@ -107,7 +117,7 @@ def assert_component_results(
             raise RuntimeError(f"{component} controller contains an invalid result count")
         if count != 0:
             observed_counts[status] = count
-    if observed_counts != dict(expected_counts):
+    if observed_counts != dict(row_counts) or row_counts != expected_counts:
         raise RuntimeError(
             f"{component} result counts differ from declared outcomes: {raw_counts}"
         )

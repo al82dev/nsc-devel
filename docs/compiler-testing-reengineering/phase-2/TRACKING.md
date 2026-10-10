@@ -873,3 +873,9 @@ de identidad. `_invoke` publica ambos logs antes de propagar el timeout; el
 recibo y la salida parcial sobreviven juntos. Las pruebas dirigidas pasan `6/6`
 y la suite Python completa `220/220`, sin ejecutar producto. La tarea funcional
 permanece activa.
+
+Validacion 81 cerro la contradiccion entre filas y conteos de resultados. Cada
+fila exige estado exacto y se coteja contra el outcome declarado; los agregados
+se derivan de esas mismas filas. Las pruebas dirigidas pasan `12/12` y la suite
+Python completa `221/221`, sin ejecutar producto. La tarea funcional permanece
+activa.

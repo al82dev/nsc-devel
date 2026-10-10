@@ -1256,3 +1256,15 @@ El presupuesto queda limitado a `_invoke`, la normalizacion local de salida,
 una prueba Python sintetica y la evidencia de Validacion 80. No se cambian
 comandos, tiempos limite, oraculos, producto ni bateria historica y no se
 configura, compila o ejecuta producto.
+
+### Enmienda: estados de resultado cotejados fila por fila
+
+`assert_component_results` debe validar el estado textual de cada resultado en
+el mismo orden que la seleccion, exigir que coincida con `expected_outcome` y
+derivar los conteos observados de esas filas. El objeto `counts` no puede
+acreditar estados distintos de los publicados en `results`.
+
+El presupuesto queda limitado al validador central, sus pruebas Python y la
+evidencia de Validacion 81. No se cambian estados permitidos del runner,
+oraculos, producto ni bateria historica y no se configura, compila o ejecuta
+producto.
