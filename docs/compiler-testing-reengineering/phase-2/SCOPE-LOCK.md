@@ -959,3 +959,19 @@ El presupuesto queda limitado a un método de captura separada en
 `ExecutionEngine._run_python_gate_case`, pruebas Python con dobles y la
 evidencia de Validación 58. No se modifican gates, comandos, oráculos, timeouts,
 producto ni batería histórica y no se crea o ejecuta ningún proceso real.
+
+### Enmienda: configuración durable y acotada
+
+`jobs` debe pertenecer a `1..256` desde que se interpreta `config.json`; no
+puede llegar a la GUI para que un control visual lo recorte silenciosamente.
+El guardado debe validar primero la configuración y publicar JSON mediante un
+reemplazo atómico en el mismo directorio, de modo que una interrupción no
+destruya la última configuración válida ni deje temporales. Cargar y guardar
+deben conservar exactamente el payload persistido antes de la autodetección.
+
+El presupuesto queda limitado a `parse_builder_config_payload`, un escritor
+JSON atómico, `BuilderConfig.load/save`, pruebas Python bajo un directorio
+sintético de `_nscbuilder3` y la evidencia de Validación 59. No se lee o
+modifica el `config.json` real, no se cambian defaults, autodetección, comandos,
+GUI, producto ni batería histórica y no se configura, compila o ejecuta
+producto.

@@ -351,6 +351,8 @@ def parse_builder_config_payload(value: Any) -> dict[str, Any]:
             raise ValueError(f"Builder 3 configuration {field_name} must be a string")
     if "jobs" in value and type(value["jobs"]) is not int:
         raise ValueError("Builder 3 configuration jobs must be an integer")
+    if "jobs" in value and not 1 <= value["jobs"] <= 256:
+        raise ValueError("parallel jobs must be between 1 and 256")
     return dict(value)
 
 
@@ -362,6 +364,22 @@ def write_json(path: Path, value: object) -> None:
         encoding="utf-8",
         newline="\n",
     )
+
+
+def write_json_atomic(path: Path, value: object) -> None:
+    """Durably replace one JSON file without exposing partial contents."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    content = json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+    try:
+        with temporary.open("x", encoding="utf-8", newline="\n") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def sha256_file(path: Path) -> str:
@@ -557,7 +575,9 @@ class BuilderConfig:
 
     def save(self) -> None:
         """Persist settings under the repository-owned Builder 3 directory."""
-        write_json(CONFIG_PATH, asdict(self))
+        payload = parse_builder_config_payload(asdict(self))
+        self.validated(require_tools=False)
+        write_json_atomic(CONFIG_PATH, payload)
 
     def validated(self, require_tools: bool = False) -> "BuilderConfig":
         """Validate writable roots and, when requested, external tool receipts."""

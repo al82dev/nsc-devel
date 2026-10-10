@@ -741,3 +741,9 @@ cancelable. Stdout y stderr siguen separados para los oráculos, mientras
 cancelación, timeout, propiedad del árbol y consola progresiva quedan
 centralizados. Las pruebas dirigidas pasan `6/6` y la suite Python completa
 `189/189` usando sólo dobles de proceso.
+
+Validación 59 cerró la persistencia de configuración. `jobs` se valida en
+`1..256` antes de la GUI y `config.json` se publica mediante reemplazo atómico,
+preservando la versión anterior ante fallos y limpiando temporales. Las pruebas
+dirigidas pasan `8/8` y la suite Python completa `193/193` sin tocar la
+configuración real.
