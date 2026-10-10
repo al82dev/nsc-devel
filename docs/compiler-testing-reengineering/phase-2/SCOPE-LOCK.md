@@ -411,6 +411,19 @@ archivadores, fixtures ni procesos; no se modifican manifiestos, controladores,
 casos, oráculos, producto ni batería histórica salvo que el cotejo demuestre un
 defecto concreto.
 
+### Enmienda: estado global cerrado de la evidencia de Builder 3
+
+Un reporte final sólo puede calcularse a partir de uno o más resultados con
+estados pertenecientes al protocolo de Builder 3. Un conjunto vacío o un estado
+desconocido no puede convertirse en `PASSED`; debe impedir la publicación del
+cierre y conservarse como error de infraestructura del worker.
+
+El presupuesto queda limitado al dominio de estados y
+`EvidenceStore._overall_status`, una prueba Python y la evidencia de Validación
+34. No se modifica la ejecución de casos, resultados conocidos, GUI,
+manifiestos, producto ni batería histórica; no se configura, compila ni ejecuta
+producto.
+
 ### Enmienda: cierre central de gates Host.Language por contrato
 
 Los veintiún gates dirigidos de Host.Language que ejecutan un contrato mediante

@@ -584,3 +584,10 @@ oráculo tipados; las cuatro operaciones de identidad coinciden con el ejecutor
 real; las `36` filas BuildSystem y `12` Packaging alcanzan exactamente una
 rama válida de sus gates mediante dobles, sin herramientas externas. Las
 pruebas dirigidas pasan `4/4` y la suite Python completa `95/95`.
+
+Validación 34 eliminó dos falsos cierres de evidencia: un conjunto vacío y un
+estado desconocido devolvían `PASSED`. El estado global exige ahora al menos un
+resultado y acepta sólo los siete estados del protocolo; cualquier otro valor
+impide publicar el cierre. La cancelación conserva una salida `CANCELLED` por
+cada variante no iniciada. Las pruebas dirigidas pasan `4/4` y la suite Python
+completa `99/99`.

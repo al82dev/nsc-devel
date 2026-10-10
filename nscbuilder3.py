@@ -63,6 +63,7 @@ TERMINAL_FAILURES = {
     "INFRASTRUCTURE_ERROR",
     "CANCELLED",
 }
+RESULT_STATUSES = TERMINAL_FAILURES | {"PASS", "KNOWN_FAILURE"}
 NON_EXECUTABLE = {
     "InfrastructurePending",
     "HistoricalDelegated",
@@ -602,7 +603,8 @@ class EvidenceStore:
     def finish(self, outcomes: Sequence[CaseOutcome], cancelled: bool) -> None:
         """Publish final results and a concise Markdown report."""
         counts = Counter(outcome.status for outcome in outcomes)
-        status = "CANCELLED" if cancelled else self._overall_status(counts)
+        overall = self._overall_status(counts)
+        status = "CANCELLED" if cancelled else overall
         payload = {
             "run_id": self.run_id,
             "status": status,
@@ -637,6 +639,11 @@ class EvidenceStore:
     @staticmethod
     def _overall_status(counts: Counter[str]) -> str:
         """Keep known defects visible while distinguishing hard failures."""
+        if sum(counts.values()) <= 0:
+            raise ValueError("cannot publish evidence with no case results")
+        unknown = sorted(set(counts) - RESULT_STATUSES)
+        if unknown:
+            raise ValueError("unknown result states: " + ", ".join(unknown))
         if any(counts[name] for name in TERMINAL_FAILURES):
             return "FAILED"
         if counts["KNOWN_FAILURE"]:
