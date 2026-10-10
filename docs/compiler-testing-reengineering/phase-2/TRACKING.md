@@ -933,3 +933,8 @@ Validacion 91 cerro la sustitucion de identidad self-host. `case_argument`
 debe coincidir exactamente con el caso seleccionado; los `192/192` casos vivos
 cumplen la relacion. Las pruebas dirigidas pasan `5/5` y la suite Python
 completa `226/226`, sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 92 revalido la infraestructura estatica completa: `226/226` pruebas
+Python, `9,587` casos, `1,208` contratos, `44` componentes, `5,695` filas
+ejecutables, `0` sin clasificar y GUI smoke PASS. No se ejecuto producto; la
+corrida funcional integral permanece pendiente y la tarea sigue activa.
