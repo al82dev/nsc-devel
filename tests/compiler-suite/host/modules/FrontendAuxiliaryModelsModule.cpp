@@ -190,7 +190,7 @@ void metaprogrammingOracle(TestContext& context, std::size_t variant)
 void opaqueResultOracle(TestContext& context, std::size_t variant)
 {
     const std::string source = R"ns(namespace Suite {
-        public interface IValue { int Read(); }
+        public trait IValue { int Read(); }
         public struct Value : IValue { public int Read() { return 7; } }
         public some IValue Make() { Value value; return value; }
     })ns";

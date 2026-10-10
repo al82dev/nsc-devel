@@ -24,14 +24,20 @@ std::string methodSource(std::size_t contract)
         case 33:
             return R"ns(namespace Suite { public class Resource { public int value; }
                 public class C { public int F(owned Resource input) {
-                    owned Resource local = move input; return local.value; } } })ns";
+                    owned Resource local = move(input); return local.value; } } })ns";
         case 34:
             return R"ns(namespace Suite { public class C { public int F(int x) {
                 int result = 0; while (x > 0) { if (x == 2) { x = x - 1; continue; }
                 result = result + x; x = x - 1; } return result; } } })ns";
         case 35:
-            return R"ns(namespace Suite { public class C { public int F(int x) {
-                try { if (x < 0) throw; return x; } finally { x = x + 1; } } } })ns";
+            return R"ns(namespace NativeSharp.Core { public class Exception { } }
+                using NativeSharp.Core;
+                namespace Suite { public class Problem : Exception { }
+                public class C { public int F(int x) {
+                    try { if (x < 0) { throw new Problem(); } }
+                    catch (Problem problem) { x = 0; }
+                    finally { x = x + 1; }
+                    return x; } } })ns";
         case 36:
             return R"ns(namespace Suite { public class C { public int F(int x, int y) {
                 return (x + y) * (x - y) + (x > y ? x : y); } } })ns";
@@ -54,7 +60,7 @@ std::string methodSource(std::size_t contract)
         case 42:
             return R"ns(namespace Suite { public class Resource { public int value; }
                 public class C { public int Consume(owned Resource value) { return value.value; }
-                public int F(owned Resource source) { return Consume(move source); } } })ns";
+                public int F(owned Resource source) { return Consume(move(source)); } } })ns";
         case 43:
             return R"ns(namespace Suite { public delegate int Transform(int value);
                 public class C { public Transform Make(int seed) { return x => x + seed; }

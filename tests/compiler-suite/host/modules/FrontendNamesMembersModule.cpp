@@ -124,7 +124,7 @@ namespace Suite
     public class Holder
     {
         private owned Resource resource;
-        public Holder(owned Resource value) { resource = move value; }
+        public Holder(owned Resource value) { resource = move(value); }
     }
 }
 )ns";
