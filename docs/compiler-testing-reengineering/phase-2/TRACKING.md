@@ -1403,3 +1403,13 @@ workspace de `A:`. Por instruccion expresa no se ejecuto ninguna validacion
 parcial; el siguiente paso es una sola construccion y corrida integral
 `Debug/O0/Todos`. Evidencia:
 `TANDA-VALIDACION-155-EVIDENCIA-ORACULOS-Y-AUDITORIA.md`.
+
+Validacion 156 parte de la corrida integral
+`20261010-122235-304f2829` (`5,695/5,695`) y corrige tres residuos de
+infraestructura demostrados por sus artefactos. Builder 3 compila ahora el
+proyecto self-host materializado en su ruta activa; descubre el `BuildId.h` y
+un NSC de comparacion distinto ya existentes; y clasifica los once timeouts
+Dominance marcados explicitamente como `FAIL` contractuales, nunca como error
+de infraestructura ni como PASS. No se cambio producto ni se redujo cobertura.
+Evidencia:
+`TANDA-VALIDACION-156-CIERRE-RESIDUOS-CORRIDA-INTEGRAL.md`.

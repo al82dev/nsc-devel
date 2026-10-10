@@ -546,6 +546,20 @@ def discover_archive_executable(configured: str) -> str:
     return first_existing_file(candidates)
 
 
+def first_distinct_existing_file(
+    candidates: Iterable[str | Path], excluded: str | Path
+) -> str:
+    """Return the first existing file whose identity path differs from excluded."""
+    excluded_path = Path(excluded).resolve()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate).expanduser().resolve()
+        if path.is_file() and path != excluded_path:
+            return str(path)
+    return ""
+
+
 @dataclass(frozen=True)
 class BuilderConfig:
     """Persist user-selected tools and output roots without implicit deployment."""
@@ -576,6 +590,9 @@ class BuilderConfig:
 
     def with_discovery(self) -> "BuilderConfig":
         """Fill absent or stale tool paths while preserving valid user overrides."""
+        compiler_build_root = self.compiler_build_root
+        if Path(compiler_build_root).name.casefold() == "build-clang-v3":
+            compiler_build_root = "A:/nsc-devel/build-clang"
         nsc = first_existing_file(
             [
                 self.nsc_executable,
@@ -596,9 +613,20 @@ class BuilderConfig:
             [self.llvm_dir, os.environ.get("LLVM_DIR", ""), "C:/clang-llvm/lib/cmake/llvm"]
         )
         archive = discover_archive_executable(self.archive_executable)
-        compiler_build_root = self.compiler_build_root
-        if Path(compiler_build_root).name.casefold() == "build-clang-v3":
-            compiler_build_root = "A:/nsc-devel/build-clang"
+        comparison_nsc = first_distinct_existing_file(
+            [
+                self.comparison_nsc,
+                "A:/native-sharp-3.0-baseline/bin/nsc.exe",
+                "A:/nsc-devel/build-clang/bin/nsc.exe",
+            ],
+            nsc,
+        )
+        build_id_header = first_existing_file(
+            [
+                self.build_id_header,
+                Path(compiler_build_root) / "generated" / "nativesharp" / "Basic" / "BuildId.h",
+            ]
+        )
         return BuilderConfig(
             nsc_executable=nsc,
             nslink_executable=nslink,
@@ -607,8 +635,8 @@ class BuilderConfig:
             build_root=self.build_root,
             llvm_dir=llvm_dir,
             archive_executable=archive,
-            comparison_nsc=self.comparison_nsc,
-            build_id_header=self.build_id_header,
+            comparison_nsc=comparison_nsc,
+            build_id_header=build_id_header,
             jobs=self.jobs,
         )
 
@@ -2406,8 +2434,22 @@ class ExecutionEngine:
             status = "CANCELLED"
             detail = "cancelled by user"
         elif self.process.last_termination_reason == "timeout":
-            status = "INFRASTRUCTURE_ERROR"
-            detail = "process timed out"
+            oracle = (variant.case.manifest or {}).get("oracle")
+            contractual_timeout = (
+                variant.case.executor == "nsc_component_tests"
+                and isinstance(oracle, dict)
+                and oracle.get("timeout_is_contract_failure") is True
+            )
+            if contractual_timeout:
+                status, detail, evidence = self._expected_status(
+                    variant.case,
+                    False,
+                    "host exceeded its explicit contractual time budget",
+                    evidence,
+                )
+            else:
+                status = "INFRASTRUCTURE_ERROR"
+                detail = "process timed out"
         return CaseOutcome(
             key=variant.key,
             case_id=variant.case.case_id,
@@ -2606,12 +2648,23 @@ class ExecutionEngine:
         cached = self.fixture_cache.get(key)
         if cached is not None and cached.is_file():
             return cached
-        project = SUITE_ROOT / relative
+        source_project = SUITE_ROOT / relative
         fixture_root = self.store.root / "fixtures" / (
-            f"{project.stem}-{variant.build_mode.casefold()}-{variant.optimization.casefold()}"
+            f"{source_project.stem}-{variant.build_mode.casefold()}-{variant.optimization.casefold()}"
         )
         fixture_root.mkdir(parents=True, exist_ok=True)
-        executable = fixture_root / f"{project.stem}.exe"
+        inventory_module = self._load_gate("selfhost_inventory.py")
+        materializer = getattr(inventory_module, "materialize_contained_project", None)
+        if not callable(materializer):
+            raise RuntimeError("self-host inventory does not expose project materialization")
+        project = Path(
+            materializer(
+                SOURCE_ROOT,
+                source_project,
+                fixture_root / "project",
+            )
+        )
+        executable = fixture_root / f"{source_project.stem}.exe"
         command = [
             str(Path(self.config.nsc_executable).resolve()),
             "--emit-project-oop-exe",
@@ -2632,13 +2685,15 @@ class ExecutionEngine:
         code, captured = self.process.run(command, fixture_root, self._nsc_environment(), 900.0)
         (fixture_root / "compile.log").write_text(captured, encoding="utf-8", newline="\n")
         if self.process.last_termination_reason == "timeout":
-            raise RuntimeError(f"fixture {project.name} timed out after 900.0 seconds")
+            raise RuntimeError(f"fixture {source_project.name} timed out after 900.0 seconds")
         if self.process.last_termination_reason == "cancelled":
-            raise RuntimeError(f"fixture {project.name} compilation was cancelled")
+            raise RuntimeError(f"fixture {source_project.name} compilation was cancelled")
         if code != 0:
-            raise RuntimeError(f"fixture {project.name} compiler exited with code {code}")
+            raise RuntimeError(f"fixture {source_project.name} compiler exited with code {code}")
         if not executable.is_file():
-            raise RuntimeError(f"fixture {project.name} completed without executable output")
+            raise RuntimeError(
+                f"fixture {source_project.name} completed without executable output"
+            )
         self.fixture_cache[key] = executable
         return executable
 

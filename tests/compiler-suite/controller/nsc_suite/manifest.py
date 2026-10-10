@@ -261,6 +261,22 @@ def _parse_case(
             raise ManifestError(
                 f"invalid abnormal termination output_contains at {location}"
             )
+    timeout_is_contract_failure = oracle.get("timeout_is_contract_failure")
+    if timeout_is_contract_failure is not None:
+        if timeout_is_contract_failure is not True:
+            raise ManifestError(
+                f"timeout_is_contract_failure must be true at {location}"
+            )
+        if (
+            executor != "nsc_component_tests"
+            or profile != "NIGHTLY"
+            or case_class != "boundary"
+            or timeout_class != "extended"
+        ):
+            raise ManifestError(
+                "timeout_is_contract_failure requires a NIGHTLY host boundary "
+                f"with extended timeout at {location}"
+            )
 
     if executor == "nsc_component_tests":
         if isolation not in HOST_ISOLATIONS:

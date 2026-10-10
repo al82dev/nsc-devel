@@ -40,6 +40,33 @@ class Builder3TimeoutTests(unittest.TestCase):
             with self.subTest(case_id=case_id):
                 self.assertEqual(case.profile, "NIGHTLY")
                 self.assertEqual(case.manifest["timeout_class"], "extended")
+                self.assertIs(
+                    case.manifest["oracle"]["timeout_is_contract_failure"], True
+                )
+
+    def test_explicit_host_timeout_is_a_contract_failure(self) -> None:
+        case = builder.CanonicalCatalog.load().by_id["TF-DOM-024"]
+        variant = builder.RunVariant(case, "Debug", "NA")
+        engine = builder.ExecutionEngine(
+            builder.BuilderConfig(),
+            type("Store", (), {"root": Path("A:/synthetic-history")})(),
+            lambda _line: None,
+            lambda *_args: None,
+            lambda *_args: None,
+        )
+
+        def timed_out(_variant: builder.RunVariant) -> tuple[str, str, str]:
+            engine.process.last_termination_reason = "timeout"
+            return "INFRASTRUCTURE_ERROR", "process timed out", "host.log"
+
+        engine._run_host = timed_out
+        outcome = engine._run_variant(variant)
+
+        self.assertEqual(outcome.status, "FAIL")
+        self.assertEqual(
+            outcome.detail, "host exceeded its explicit contractual time budget"
+        )
+        self.assertEqual(outcome.evidence, "host.log")
 
     def test_builder_timeout_table_equals_manifest_contract(self) -> None:
         self.assertEqual(builder.TIMEOUT_SECONDS, MANIFEST_TIMEOUT_SECONDS)

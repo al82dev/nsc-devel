@@ -119,6 +119,33 @@ class ManifestTests(unittest.TestCase):
                 invalid.update(mutation)
                 self.assert_manifest_error([invalid], message)
 
+    def test_contractual_timeout_requires_an_exact_nightly_host_boundary(self) -> None:
+        valid = valid_case("TB-BAS-009")
+        valid["class"] = "boundary"
+        valid["profile"] = "NIGHTLY"
+        valid["timeout_class"] = "extended"
+        valid["oracle"]["timeout_is_contract_failure"] = True
+        loaded = load_manifest(self.write_manifest([valid]), self.inventory)
+        self.assertIs(loaded[0].oracle["timeout_is_contract_failure"], True)
+
+        for value in (False, 1):
+            with self.subTest(value=value):
+                invalid = json.loads(json.dumps(valid))
+                invalid["oracle"]["timeout_is_contract_failure"] = value
+                self.assert_manifest_error([invalid], "must be true")
+
+        for field, value in (
+            ("profile", "PR"),
+            ("class", "nominal"),
+            ("timeout_class", "medium"),
+        ):
+            with self.subTest(field=field):
+                invalid = json.loads(json.dumps(valid))
+                invalid[field] = value
+                self.assert_manifest_error(
+                    [invalid], "requires a NIGHTLY host boundary"
+                )
+
     def test_rejects_unknown_and_missing_fields(self) -> None:
         unknown = valid_case()
         unknown["surprise"] = True

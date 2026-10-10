@@ -105,6 +105,21 @@ class Builder3PathTests(unittest.TestCase):
             self.assertEqual(builder.first_existing_file([directory_path]), "")
             self.assertEqual(builder.first_existing_directory([file_path]), "")
 
+    def test_comparison_discovery_excludes_the_selected_compiler(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
+            root = Path(directory)
+            selected = root / "selected.exe"
+            comparison = root / "comparison.exe"
+            selected.write_bytes(b"selected\n")
+            comparison.write_bytes(b"comparison\n")
+
+            discovered = builder.first_distinct_existing_file(
+                [selected, comparison], selected
+            )
+
+            self.assertEqual(discovered, str(comparison.resolve()))
+
     def test_operation_start_never_redetects_explicit_tool_paths(self) -> None:
         tree = ast.parse((REPOSITORY_ROOT / "nscbuilder3.py").read_text(encoding="utf-8"))
         methods = {
