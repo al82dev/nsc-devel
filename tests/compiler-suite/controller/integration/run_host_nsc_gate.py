@@ -4,7 +4,8 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from selfhost_inventory import load_component_inventory, read_jsonl
+from component_gate_support import component_manifest_rows
+from selfhost_inventory import load_component_inventory
 
 
 def listed_nsc_cases(host_executable: Path) -> list[tuple[str, str]]:
@@ -64,8 +65,10 @@ def main() -> int:
     )
 
     manifest_path = options.source_root / "manifest" / "cases.jsonl"
-    manifests = read_jsonl(manifest_path)
-    if any(case["component"] == "Host.nsc" for case in manifests):
+    manifests = component_manifest_rows(
+        options.source_root, options.repository_root, "Host.nsc"
+    )
+    if manifests:
         raise RuntimeError(
             "Host.nsc has no executable cases yet; its manifest fragment must remain empty"
         )

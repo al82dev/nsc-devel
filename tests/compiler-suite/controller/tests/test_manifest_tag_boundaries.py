@@ -114,12 +114,15 @@ class ManifestTagBoundaryTests(unittest.TestCase):
     def test_all_raw_manifest_consumers_use_the_shared_boundary(self) -> None:
         consumers = (
             "run_buildsystem_gate.py",
+            "run_host_nsc_gate.py",
+            "run_host_source_file_ownership_gate.py",
             "run_packaging_gate.py",
             "run_selfhost_basic_gate.py",
             "run_selfhost_diagnostics_gate.py",
             "run_selfhost_lexer_gate.py",
             "run_selfhost_source_gate.py",
             "run_selfhost_types_gate.py",
+            "selfhost_inventory.py",
         )
         for name in consumers:
             with self.subTest(consumer=name):

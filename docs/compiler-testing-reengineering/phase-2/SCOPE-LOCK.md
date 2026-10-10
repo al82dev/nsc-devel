@@ -1631,3 +1631,16 @@ El presupuesto queda limitado al cargador compartido, pruebas sinteticas de
 esquema, validacion del catalogo vivo y la evidencia de Validacion 114. No se
 agregan enums ni conteos rigidos, no se cambian catalogo, inventarios, casos,
 producto ni bateria historica y no se ejecuta producto.
+
+### Enmienda: cierre exhaustivo de consumidores raw omitidos
+
+La auditoria posterior a Validacion 113 encontro tres consumidores adicionales
+del manifiesto central: `Host.Source`, `Host.nsc` y la validacion generica de
+componentes pendientes. Deben usar `component_manifest_rows` igual que los
+siete consumidores ya migrados; la evidencia y las metricas deben rectificar
+el denominador de siete a diez fronteras.
+
+El presupuesto queda limitado a esas tres sustituciones, ampliar el guard de
+cableado, validar todos los componentes afectados y documentar la rectificacion
+en Validacion 115. No se cambian manifiesto, inventarios, casos, oraculos,
+producto ni bateria historica y no se ejecuta producto.

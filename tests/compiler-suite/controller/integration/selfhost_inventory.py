@@ -5,7 +5,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from component_gate_support import read_csv, required_string_array
+from component_gate_support import (
+    component_manifest_rows,
+    read_csv,
+    required_string_array,
+)
 
 
 def read_jsonl(path: Path) -> list[dict[str, object]]:
@@ -366,12 +370,10 @@ def validate_pending_manifest(
     )
     if fragment.exists():
         raise RuntimeError(f"zero-executable {component} must not retain a fragment")
-    central = (
-        repository_root
-        / "tests"
-        / "compiler-suite"
-        / "manifest"
-        / "cases.jsonl"
-    )
-    if any(row.get("component") == component for row in read_jsonl(central)):
-        raise RuntimeError(f"pending {component} cases entered the executable manifest")
+    source_root = repository_root / "tests" / "compiler-suite"
+    if component_manifest_rows(
+        source_root, repository_root, component
+    ):
+        raise RuntimeError(
+            f"pending {component} cases entered the executable manifest"
+        )

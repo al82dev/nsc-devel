@@ -11,9 +11,9 @@ CONTROLLER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONTROLLER_ROOT))
 
 from run_suite import run
+from component_gate_support import component_manifest_rows
 from selfhost_inventory import (
     load_component_inventory,
-    read_jsonl,
     validate_classified_manifest,
 )
 
@@ -54,11 +54,9 @@ def main() -> int:
         / "inventory"
     )
     manifest_path = options.source_root / "manifest" / "cases.jsonl"
-    manifests = [
-        row
-        for row in read_jsonl(manifest_path)
-        if row.get("component") == "Host.Source"
-    ]
+    manifests = component_manifest_rows(
+        options.source_root, options.repository_root, "Host.Source"
+    )
     classification_path = (
         options.source_root
         / "host"

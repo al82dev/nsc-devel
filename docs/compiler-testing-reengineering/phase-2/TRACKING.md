@@ -1065,3 +1065,10 @@ Validacion 114 elimino las coerciones del catalogo
 pasan `5/5`, la suite Python `252/252` y el catalogo vivo conserva `73`
 contratos, `438` casos y cero productores ausentes, sin ejecutar producto. La
 tarea funcional permanece activa.
+
+Validacion 115 rectifico el denominador de consumidores raw de Validacion 113:
+eran diez, no siete. `Host.Source`, `Host.nsc` y la validacion generica de
+componentes pendientes pasan ahora por el parser canonico. Las pruebas
+dirigidas pasan `17/17`, la suite Python `252/252`, los componentes concretos
+proyectan `294` filas y no queda lectura directa fuera de la frontera comun,
+sin ejecutar producto. La tarea funcional permanece activa.
