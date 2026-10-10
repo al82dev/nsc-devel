@@ -94,8 +94,9 @@ correcto aunque inicialmente fallen:
 | `TL-LANG-230` | Escape numérico parcial y salida parcial tras error. |
 | `TL-LANG-250` | Enum externo fuera de rango en smart pointer. |
 | `TL-LANG-262` | Overflow en alineación final de variant. |
+| `TL-LEX-075` | Seis comillas se consumen como un delimitador raw de ancho 6 en vez de apertura y cierre de ancho 3. |
 
-Los siete casos ya están materializados con estado
+Los ocho casos ya están materializados con estado
 `PRUEBA IMPLEMENTADA — DEFECTO ABIERTO`. Se ejecutan individualmente y reportan
 `KNOWN_FAILURE`; no forman parte del flujo ordinario hasta que una tarea de
 producto corrija la causa. Está prohibido marcarlos `SKIP`, invertir la
@@ -126,7 +127,7 @@ un marker válido consume el sufijo completo. No cambia el compilador.
 
 ## Efecto sobre la secuencia de trabajo
 
-Los cuatro pendientes de infraestructura permanecen visibles y los siete
+Los cuatro pendientes de infraestructura permanecen visibles y los ocho
 defectos no se ocultan. `TL-LANG-034`, `TL-LANG-116` y `TL-LANG-201` se corrigen
 como casos del plan contra capacidades reales. La Fase 2 puede continuar por
 contratos y olas independientes, pero no puede declarar completa la ola 1 ni

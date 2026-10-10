@@ -81,6 +81,20 @@ add_executable(
     host/modules/DiagnosticRendererMarkerModule.cpp
     host/modules/DiagnosticRendererSecondaryModule.cpp
     host/modules/DiagnosticRendererEngineModule.cpp
+    host/modules/LexerTokenKindModule.cpp
+    host/modules/LexerTokenValueModule.cpp
+    host/modules/LexerTokenDumperModule.cpp
+    host/modules/LexerCursorTriviaModule.cpp
+    host/modules/LexerIdentifierModule.cpp
+    host/modules/LexerIntegerModule.cpp
+    host/modules/LexerFloatingModule.cpp
+    host/modules/LexerCharacterLiteralModule.cpp
+    host/modules/LexerStringLiteralModule.cpp
+    host/modules/LexerRawStringModule.cpp
+    host/modules/LexerInterpolatedStringModule.cpp
+    host/modules/LexerOperatorModule.cpp
+    host/modules/LexerDiagnosticRecoveryModule.cpp
+    host/modules/LexerAssemblyModule.cpp
     host/modules/LanguageAbiSemanticsModule.cpp
     host/modules/LanguageAggregateSemanticsModule.cpp
     host/modules/LanguageCallableSemanticsModule.cpp
@@ -115,6 +129,10 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceManager.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/Lexer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/Token.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/TokenDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/TokenKind.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetDataLayout.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetInfo.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Diagnostics/Diagnostic.cpp"
@@ -876,6 +894,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-language-trait-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-lexer-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_lexer_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-lexer-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND

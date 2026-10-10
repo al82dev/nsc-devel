@@ -3,13 +3,13 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "b7f0b7a5e",
-  "last_completed_batch": "TANDA-01-92",
-  "last_completed_case": "TL-LANG-262",
+  "last_completed_commit": "d749a193f",
+  "last_completed_batch": "TANDA-02-01",
+  "last_completed_case": "TL-LEX-110",
   "current_wave": 2,
-  "current_component": "Host.Lexer",
-  "next_contract": "CL-LEX-001",
-  "next_action": "Implement the 110 Host.Lexer cases in dependency order while keeping the four Wave 1 special-infrastructure limitations visible and unchanged.",
+  "current_component": "Host.AST",
+  "next_contract": "CA-AST-001",
+  "next_action": "Validate the committed Host.Lexer target and controller gate, then integrate Host.AST executable cases while keeping all infrastructure limitations visible.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
     "revision": "11d2ae852",
@@ -182,10 +182,12 @@
     "2": {
       "status": "EN CURSO",
       "product_cases_expected": 1197,
-      "product_cases_implemented": 0,
+      "product_cases_implemented": 110,
       "product_cases_verified": 0,
-      "current_component": "Host.Lexer",
-      "current_component_cases_expected": 110
+      "known_failure_cases_implemented": 1,
+      "validation_pending_cases": 110,
+      "current_component": "Host.AST",
+      "current_component_cases_expected": 230
     }
   },
   "validation": {
