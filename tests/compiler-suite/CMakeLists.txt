@@ -95,6 +95,25 @@ add_executable(
     host/modules/LexerOperatorModule.cpp
     host/modules/LexerDiagnosticRecoveryModule.cpp
     host/modules/LexerAssemblyModule.cpp
+    host/modules/AstArenaModule.cpp
+    host/modules/AstNodeKindModule.cpp
+    host/modules/AstRecordsModule.cpp
+    host/modules/AstNodeIdentityModule.cpp
+    host/modules/AstNodeTypeAttachmentModule.cpp
+    host/modules/AstNodeGenericModule.cpp
+    host/modules/AstNodeLifetimeModule.cpp
+    host/modules/AstNodeTopologyModule.cpp
+    host/modules/AstNodeScalarStateModule.cpp
+    host/modules/TypeSyntaxIdentityModule.cpp
+    host/modules/TypeSyntaxOwnershipModule.cpp
+    host/modules/TypeSyntaxArgumentsModule.cpp
+    host/modules/TypeSyntaxFunctionModule.cpp
+    host/modules/TypeSyntaxConstPackModule.cpp
+    host/modules/TypeSyntaxModifierModule.cpp
+    host/modules/TypeSyntaxOriginModule.cpp
+    host/modules/AstDumperNodeModule.cpp
+    host/modules/AstDumperTypeModule.cpp
+    host/modules/AstDumperTraversalModule.cpp
     host/modules/LanguageAbiSemanticsModule.cpp
     host/modules/LanguageAggregateSemanticsModule.cpp
     host/modules/LanguageCallableSemanticsModule.cpp
@@ -133,6 +152,11 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/Token.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/TokenDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/TokenKind.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstArena.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstNode.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstNodeKind.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/TypeSyntax.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/AST/AstDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetDataLayout.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Target/TargetInfo.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Diagnostics/Diagnostic.cpp"
@@ -903,6 +927,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-lexer-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-ast-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_ast_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-ast-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND

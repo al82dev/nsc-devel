@@ -102,6 +102,21 @@ Los ocho casos ya están materializados con estado
 producto corrija la causa. Está prohibido marcarlos `SKIP`, invertir la
 expectativa o aceptar el comportamiento defectuoso.
 
+## Infraestructura especial pendiente de Host.AST
+
+| Caso | Contrato | Infraestructura necesaria | Motivo |
+|---|---|---|---|
+| `TA-AST-014` | `CA-AST-002` | Inyección determinista de fallo de asignación | Debe fallar exactamente al registrar la entrada después de construir el objeto. |
+| `TA-AST-016` | `CA-AST-002` | Death test en subprocess | Un destructor que lanza durante destrucción de arena termina el proceso. |
+| `TA-AST-017` | `CA-AST-002` | Target instrumentado con TSAN | La ausencia de sincronización sólo puede diagnosticarse fielmente bajo carrera real instrumentada. |
+| `TA-AST-215` | `CA-AST-019` | Death test en subprocess | El dumper desreferencia un argumento de tipo nulo; probarlo dentro del runner contaminaría el proceso. |
+| `TA-AST-223` | `CA-AST-020` | Subprocess con watchdog | Un ciclo por slot puede no terminar y necesita límite externo reproducible. |
+| `TA-AST-224` | `CA-AST-020` | Subprocess con watchdog | Un ciclo por `children` puede no terminar y necesita límite externo reproducible. |
+
+Estos seis casos siguen diseñados, trazados y pendientes. No se implementan como
+smokes, proxies ni timeouts internos porque esas sustituciones no probarían el
+contrato. No bloquean `Host.Parser` ni otros contratos causalmente independientes.
+
 ## Decisión de avance independiente
 
 Los cuatro casos de infraestructura especial permanecen pendientes y visibles;

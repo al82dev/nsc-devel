@@ -4,12 +4,12 @@
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
   "last_completed_commit": "3a03d9348",
-  "last_completed_batch": "TANDA-02-02",
-  "last_completed_case": "TL-LEX-110",
+  "last_completed_batch": "TANDA-02-03",
+  "last_completed_case": "TA-AST-230",
   "current_wave": 2,
   "current_component": "Host.AST",
-  "next_contract": "CA-AST-001",
-  "next_action": "Integrate the executable Host.AST cases, record its special-infrastructure limitations, and validate its consolidated component gate.",
+  "next_contract": "CA-AST-001..020 validation",
+  "next_action": "Commit the Host.AST implementation, validate all 224 executable cases in Release and Debug, then advance the cursor to Host.Parser.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
     "revision": "11d2ae852",
@@ -95,7 +95,24 @@
     "CL-LEX-011",
     "CL-LEX-012",
     "CL-LEX-013",
-    "CL-LEX-014"
+    "CL-LEX-014",
+    "CA-AST-001",
+    "CA-AST-003",
+    "CA-AST-004",
+    "CA-AST-005",
+    "CA-AST-006",
+    "CA-AST-007",
+    "CA-AST-008",
+    "CA-AST-009",
+    "CA-AST-010",
+    "CA-AST-011",
+    "CA-AST-012",
+    "CA-AST-013",
+    "CA-AST-014",
+    "CA-AST-015",
+    "CA-AST-016",
+    "CA-AST-017",
+    "CA-AST-018"
   ],
   "independent_partial_contracts": {
     "CS-SRC-002": {
@@ -179,6 +196,30 @@
       "known_failure_cases": [
         "TL-LEX-075"
       ]
+    },
+    "CA-AST-002": {
+      "implemented_cases": 5,
+      "verified_cases": 5,
+      "blocked_cases": [
+        "TA-AST-014",
+        "TA-AST-016",
+        "TA-AST-017"
+      ]
+    },
+    "CA-AST-019": {
+      "implemented_cases": 22,
+      "verified_cases": 22,
+      "blocked_cases": [
+        "TA-AST-215"
+      ]
+    },
+    "CA-AST-020": {
+      "implemented_cases": 12,
+      "verified_cases": 12,
+      "blocked_cases": [
+        "TA-AST-223",
+        "TA-AST-224"
+      ]
     }
   },
   "wave_status": {
@@ -202,10 +243,11 @@
     "2": {
       "status": "EN CURSO",
       "product_cases_expected": 1197,
-      "product_cases_implemented": 110,
+      "product_cases_implemented": 334,
       "product_cases_verified": 109,
       "known_failure_cases_implemented": 1,
-      "validation_pending_cases": 0,
+      "validation_pending_cases": 224,
+      "special_infrastructure_pending": 6,
       "current_component": "Host.AST",
       "current_component_cases_expected": 230
     }
