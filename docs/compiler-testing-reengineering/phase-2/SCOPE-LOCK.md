@@ -1482,3 +1482,14 @@ El presupuesto queda limitado al esquema del adaptador host, sus fixtures
 Python sinteticos y la evidencia de Validacion 101. La duracion efectiva de
 `CaseResult` sigue midiendose en el proceso controlador. No se cambia ni
 ejecuta productor, producto o bateria historica.
+
+### Enmienda: claves JSON unicas en inventarios self-host
+
+El lector `selfhost_inventory.read_jsonl`, compartido por los controladores
+self-host, debe rechazar claves duplicadas en cualquier nivel de sus documentos.
+Ningun `oracle`, `input`, estado o identidad puede resolverse mediante
+last-wins fuera del cargador canonico.
+
+El presupuesto queda limitado al lector compartido, un constructor iterativo,
+una prueba Python sintetica y la evidencia de Validacion 102. No se cambian los
+catalogos, manifiestos, producto ni bateria historica y no se ejecuta producto.

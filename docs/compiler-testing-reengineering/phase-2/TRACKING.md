@@ -984,3 +984,8 @@ Validacion 101 cerro la duracion ignorada del adaptador host canonico.
 pueden acreditar un resultado terminal. Las pruebas dirigidas pasan `12/12` y
 la suite Python `235/235`, sin ejecutar producto. La tarea funcional permanece
 activa.
+
+Validacion 102 cerro las claves JSON duplicadas del lector compartido por los
+18 controladores self-host. La unicidad alcanza objetos anidados y conserva
+archivo, linea y clave causal. Las pruebas dirigidas pasan `5/5` y la suite
+Python `236/236`, sin ejecutar producto. La tarea funcional permanece activa.

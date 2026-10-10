@@ -21,13 +21,25 @@ def read_jsonl(path: Path) -> list[dict[str, object]]:
         if not line or line.startswith("#"):
             continue
         try:
-            payload = json.loads(line)
+            payload = json.loads(line, object_pairs_hook=_unique_json_object)
         except json.JSONDecodeError as error:
             raise RuntimeError(f"invalid JSON at {path}:{line_number}: {error.msg}") from error
+        except ValueError as error:
+            raise RuntimeError(f"invalid JSON at {path}:{line_number}: {error}") from error
         if not isinstance(payload, dict):
             raise RuntimeError(f"expected JSON object at {path}:{line_number}")
         rows.append(payload)
     return rows
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Build one inventory object only when every key has one definition."""
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
 
 
 def required_oracle_exit_code(row: dict[str, object], component: str) -> int:

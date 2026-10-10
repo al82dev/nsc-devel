@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -14,7 +15,7 @@ sys.path.insert(0, str(INTEGRATION_ROOT))
 import run_selfhost_diagnostics_gate as diagnostics_gate
 import run_selfhost_source_gate as source_gate
 import run_selfhost_types_gate as types_gate
-from selfhost_inventory import json_values_equal_exact, required_oracle_exit_code
+from selfhost_inventory import json_values_equal_exact, read_jsonl, required_oracle_exit_code
 
 
 def completed(returncode: int, stdout: str = "") -> subprocess.CompletedProcess[str]:
@@ -22,6 +23,19 @@ def completed(returncode: int, stdout: str = "") -> subprocess.CompletedProcess[
 
 
 class SelfHostOracleContractTests(unittest.TestCase):
+    def test_selfhost_jsonl_rejects_duplicate_nested_keys(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="selfhost-jsonl-", dir=Path.cwd()) as root:
+            path = Path(root) / "cases.jsonl"
+            path.write_text(
+                '{"case_id":"TS-001","oracle":{"exit_code":0,"exit_code":1}}\n',
+                encoding="utf-8",
+                newline="\n",
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "duplicate JSON object key: exit_code"
+            ):
+                read_jsonl(path)
+
     def test_exact_integer_exit_code_is_preserved(self) -> None:
         row = {"oracle": {"exit_code": 7}}
         self.assertEqual(required_oracle_exit_code(row, "Synthetic"), 7)
