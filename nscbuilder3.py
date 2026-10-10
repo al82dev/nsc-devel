@@ -2038,8 +2038,14 @@ class ExecutionEngine:
         write_json(fixture_root / "compile.command.json", command)
         code, captured = self.process.run(command, fixture_root, self._nsc_environment(), 900.0)
         (fixture_root / "compile.log").write_text(captured, encoding="utf-8", newline="\n")
-        if code != 0 or not executable.is_file():
-            raise RuntimeError(f"fixture {project.name} failed to compile with exit code {code}")
+        if self.process.last_termination_reason == "timeout":
+            raise RuntimeError(f"fixture {project.name} timed out after 900.0 seconds")
+        if self.process.last_termination_reason == "cancelled":
+            raise RuntimeError(f"fixture {project.name} compilation was cancelled")
+        if code != 0:
+            raise RuntimeError(f"fixture {project.name} compiler exited with code {code}")
+        if not executable.is_file():
+            raise RuntimeError(f"fixture {project.name} completed without executable output")
         self.fixture_cache[key] = executable
         return executable
 

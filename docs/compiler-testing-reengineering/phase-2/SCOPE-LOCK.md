@@ -990,3 +990,17 @@ El presupuesto queda limitado a escritores atómicos de texto/JSON,
 evidencia de Validación 60. No se modifica el historial real, contenido de
 reportes, estados, GUI, producto ni batería histórica y no se configura,
 compila o ejecuta producto.
+
+### Enmienda: causa exacta de productores self-host
+
+La preparación de un fixture self-host no puede reducir cancelación, timeout,
+exit code no cero y ausencia de artefacto al mismo mensaje genérico. Debe
+diagnosticar la causa observada por `ProcessController`; un timeout del productor
+se conserva en el primer `INFRASTRUCTURE_ERROR` y en cada consumidor posterior
+como `BLOQUEADO_POR`. La cancelación sigue dominando la corrida y no se convierte
+en defecto del compilador.
+
+El presupuesto queda limitado a `_prepare_selfhost_fixture`, el cache causal de
+`_run_selfhost`, pruebas Python con dobles y la evidencia de Validación 61. No se
+modifican fixtures, comandos, timeout, oráculos, producto ni batería histórica y
+no se crea o ejecuta ningún proceso real.

@@ -753,3 +753,9 @@ resumen ya no aparecen parcialmente; `RUN_FINISHED` sólo se agrega después de
 publicarlos y un fallo conserva la corrida como incompleta. Las pruebas
 dirigidas pasan `7/7` y la suite Python completa `196/196` sin tocar el historial
 real.
+
+Validación 61 conservó las causas de productores self-host. Timeout,
+cancelación, exit code no cero y ausencia de ejecutable ya no colapsan al mismo
+mensaje; los consumidores reciben `BLOQUEADO_POR` con la causa exacta. Las
+pruebas dirigidas pasan `5/5` y la suite Python completa `199/199` usando sólo
+dobles.
