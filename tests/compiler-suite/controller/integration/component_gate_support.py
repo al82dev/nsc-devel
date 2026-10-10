@@ -128,6 +128,23 @@ def required_nonnegative_integer(
     return value
 
 
+def unique_string_index(
+    rows: list[dict[str, object]] | list[dict[str, str]],
+    key: str,
+    source: str,
+) -> dict[str, dict[str, object] | dict[str, str]]:
+    """Index rows by one exact non-empty string identity without coercion."""
+    result: dict[str, dict[str, object] | dict[str, str]] = {}
+    for row in rows:
+        value = row.get(key)
+        if not isinstance(value, str) or not value:
+            raise RuntimeError(f"{source} contains a row without a string {key}")
+        if value in result:
+            raise RuntimeError(f"{source} contains duplicate {key} {value}")
+        result[value] = row
+    return result
+
+
 def component_manifest_cases(
     source_root: Path,
     repository_root: Path,

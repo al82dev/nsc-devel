@@ -1571,3 +1571,14 @@ componentes incluidos y excluidos.
 El presupuesto queda limitado a delegar el alias generico, una prueba Python
 sintetica y la evidencia de Validacion 109. No se cambian campos requeridos,
 catalogos, seleccion, producto ni bateria historica y no se ejecuta producto.
+
+### Enmienda: identidades exactas en gates BuildSystem y Packaging
+
+Los indices de BuildSystem y Packaging deben exigir `case_id` y `contract_id`
+como cadenas no vacias. Numeros, booleanos u otros valores no pueden
+convertirse mediante `str(...)` antes de validar duplicados y linaje.
+
+El presupuesto queda limitado a un indice compartido de cadenas, sustituir los
+dos helpers equivalentes, una prueba Python sintetica y la evidencia de
+Validacion 110. No se cambian catalogos, denominadores, producto ni bateria
+historica y no se ejecuta producto.

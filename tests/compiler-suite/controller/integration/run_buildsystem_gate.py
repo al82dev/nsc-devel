@@ -9,7 +9,12 @@ import sys
 import time
 from pathlib import Path
 
-from component_gate_support import read_csv, read_jsonl, required_manifest_integer
+from component_gate_support import (
+    read_csv,
+    read_jsonl,
+    required_manifest_integer,
+    unique_string_index,
+)
 
 
 ZLIB_SOURCES = (
@@ -32,22 +37,6 @@ ROOT_CONFIG_PREFIXES = (
 def write_text(path: Path, value: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(value, encoding="utf-8", newline="\n")
-
-
-def unique_map(
-    rows: list[dict[str, object]] | list[dict[str, str]],
-    key: str,
-    source: str,
-) -> dict[str, dict[str, object] | dict[str, str]]:
-    result: dict[str, dict[str, object] | dict[str, str]] = {}
-    for row in rows:
-        value = str(row.get(key, ""))
-        if not value:
-            raise RuntimeError(f"{source} contains a row without {key}")
-        if value in result:
-            raise RuntimeError(f"{source} contains duplicate {key} {value}")
-        result[value] = row
-    return result
 
 
 def expand_case_range(value: object) -> tuple[str, ...]:
@@ -110,10 +99,14 @@ def validate_lineage(
     ]
     if not design or not allocation or not contracts:
         raise RuntimeError("BuildSystem canonical inventory is empty")
-    design_by_id = unique_map(design, "case_id", "BuildSystem design")
-    allocation_by_id = unique_map(allocation, "case_id", "BuildSystem allocation")
-    contracts_by_id = unique_map(contracts, "contract_id", "BuildSystem contracts")
-    manifest_by_id = unique_map(cases, "case_id", "BuildSystem manifest")
+    design_by_id = unique_string_index(design, "case_id", "BuildSystem design")
+    allocation_by_id = unique_string_index(
+        allocation, "case_id", "BuildSystem allocation"
+    )
+    contracts_by_id = unique_string_index(
+        contracts, "contract_id", "BuildSystem contracts"
+    )
+    manifest_by_id = unique_string_index(cases, "case_id", "BuildSystem manifest")
     if design_by_id.keys() != allocation_by_id.keys():
         raise RuntimeError("BuildSystem design and allocation case IDs differ")
     for case_id, design_row in design_by_id.items():
@@ -140,8 +133,12 @@ def validate_classifications(
     component_root = repository_root / "tests" / "compiler-suite" / "buildsystem"
     catalog = read_jsonl(component_root / "BuildSystemContractCatalog.jsonl")
     classified = read_jsonl(component_root / "BuildSystemCaseClassifications.jsonl")
-    catalog_by_id = unique_map(catalog, "contract_id", "BuildSystem contract catalogue")
-    classified_by_id = unique_map(classified, "case_id", "BuildSystem classifications")
+    catalog_by_id = unique_string_index(
+        catalog, "contract_id", "BuildSystem contract catalogue"
+    )
+    classified_by_id = unique_string_index(
+        classified, "case_id", "BuildSystem classifications"
+    )
     if catalog_by_id.keys() != contracts_by_id.keys():
         raise RuntimeError("BuildSystem contract catalogue differs from the canonical inventory")
     catalog_cases: set[str] = set()

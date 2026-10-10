@@ -14,28 +14,13 @@ from component_gate_support import (
     read_jsonl,
     required_manifest_integer,
     required_nonnegative_integer,
+    unique_string_index,
 )
 
 
 def write_text(path: Path, value: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(value, encoding="utf-8", newline="\n")
-
-
-def unique_map(
-    rows: list[dict[str, object]] | list[dict[str, str]],
-    key: str,
-    source: str,
-) -> dict[str, dict[str, object] | dict[str, str]]:
-    result: dict[str, dict[str, object] | dict[str, str]] = {}
-    for row in rows:
-        value = str(row.get(key, ""))
-        if not value:
-            raise RuntimeError(f"{source} contains a row without {key}")
-        if value in result:
-            raise RuntimeError(f"{source} contains duplicate {key} {value}")
-        result[value] = row
-    return result
 
 
 def run_process(
@@ -94,10 +79,14 @@ def validate_lineage(
     ]
     if not design or not allocation or not contracts:
         raise RuntimeError("Packaging canonical inventory is empty")
-    design_by_id = unique_map(design, "case_id", "Packaging design")
-    allocation_by_id = unique_map(allocation, "case_id", "Packaging allocation")
-    contracts_by_id = unique_map(contracts, "contract_id", "Packaging contracts")
-    manifest_by_id = unique_map(cases, "case_id", "Packaging manifest")
+    design_by_id = unique_string_index(design, "case_id", "Packaging design")
+    allocation_by_id = unique_string_index(
+        allocation, "case_id", "Packaging allocation"
+    )
+    contracts_by_id = unique_string_index(
+        contracts, "contract_id", "Packaging contracts"
+    )
+    manifest_by_id = unique_string_index(cases, "case_id", "Packaging manifest")
     if design_by_id.keys() != allocation_by_id.keys():
         raise RuntimeError("Packaging design and allocation case IDs differ")
     profile_mismatches: set[str] = set()
@@ -129,8 +118,12 @@ def validate_classifications(
     catalog = read_jsonl(component_root / "PackagingContractCatalog.jsonl")
     classified = read_jsonl(component_root / "PackagingCaseClassifications.jsonl")
     contradictions = read_jsonl(component_root / "PackagingPlanContradictions.jsonl")
-    catalog_by_id = unique_map(catalog, "contract_id", "Packaging contract catalogue")
-    classified_by_id = unique_map(classified, "case_id", "Packaging classifications")
+    catalog_by_id = unique_string_index(
+        catalog, "contract_id", "Packaging contract catalogue"
+    )
+    classified_by_id = unique_string_index(
+        classified, "case_id", "Packaging classifications"
+    )
     if catalog_by_id.keys() != contracts_by_id.keys():
         raise RuntimeError("Packaging contract catalogue differs from the canonical inventory")
     catalog_cases: set[str] = set()

@@ -18,6 +18,7 @@ from component_gate_support import (
     read_jsonl,
     required_manifest_integer,
     required_nonnegative_integer,
+    unique_string_index,
 )
 from nsc_suite.manifest import CaseManifest
 
@@ -207,6 +208,19 @@ class ComponentGateSupportTests(unittest.TestCase):
                 )
         with self.assertRaisesRegex(RuntimeError, "omits required"):
             required_nonnegative_integer({}, "required", "Synthetic")
+
+    def test_string_index_rejects_identity_coercions(self) -> None:
+        indexed = unique_string_index(
+            [{"case_id": "TC-001"}], "case_id", "Synthetic"
+        )
+        self.assertEqual(tuple(indexed), ("TC-001",))
+        for value in (1, True, 1.0, None, ""):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                RuntimeError, "string case_id"
+            ):
+                unique_string_index(
+                    [{"case_id": value}], "case_id", "Synthetic"
+                )
 
 
 if __name__ == "__main__":
