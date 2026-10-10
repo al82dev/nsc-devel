@@ -532,6 +532,20 @@ def discover_build_tools(llvm_dir: str) -> dict[str, str]:
     return tools
 
 
+def discover_archive_executable(configured: str) -> str:
+    """Find 7-Zip from an override, PATH, or Windows installation roots."""
+    candidates: list[str | Path] = [
+        configured,
+        shutil.which("7z") or "",
+        shutil.which("7zz") or "",
+    ]
+    for variable in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"):
+        root = os.environ.get(variable, "")
+        if root:
+            candidates.append(Path(root) / "7-Zip" / "7z.exe")
+    return first_existing_file(candidates)
+
+
 @dataclass(frozen=True)
 class BuilderConfig:
     """Persist user-selected tools and output roots without implicit deployment."""
@@ -581,9 +595,7 @@ class BuilderConfig:
         llvm_dir = first_existing_directory(
             [self.llvm_dir, os.environ.get("LLVM_DIR", ""), "C:/clang-llvm/lib/cmake/llvm"]
         )
-        archive = first_existing_file(
-            [self.archive_executable, shutil.which("7z") or "", shutil.which("7zz") or ""]
-        )
+        archive = discover_archive_executable(self.archive_executable)
         compiler_build_root = self.compiler_build_root
         if Path(compiler_build_root).name.casefold() == "build-clang-v3":
             compiler_build_root = "A:/nsc-devel/build-clang"

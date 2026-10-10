@@ -1368,3 +1368,11 @@ vivos y la identidad byte a byte. Por instruccion expresa la ejecución queda
 diferida hasta completar las validaciones 152 a 155 y efectuar una sola corrida
 integral `Debug/O0/Todos`. Evidencia:
 `TANDA-VALIDACION-151-FIXTURES-SELFHOST-PRODUCTORES.md`.
+
+Validacion 152 implementa descubrimiento portable del archivador de Packaging.
+Builder 3 conserva una ruta explicita valida, despues consulta `PATH` y por
+ultimo las raices `ProgramFiles`, `ProgramW6432` y `ProgramFiles(x86)` que
+publica Windows. No codifica una unidad ni modifica el entorno. Dos pruebas
+dirigidas cubren la instalacion estandar y la precedencia del override. La
+ejecucion queda diferida hasta la corrida integral final. Evidencia:
+`TANDA-VALIDACION-152-DESCUBRIMIENTO-ARCHIVADOR-PACKAGING.md`.

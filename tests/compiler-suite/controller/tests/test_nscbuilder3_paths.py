@@ -16,6 +16,35 @@ import nscbuilder3 as builder
 
 
 class Builder3PathTests(unittest.TestCase):
+    def test_archive_discovery_uses_windows_installation_roots_without_hardcoded_drive(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
+            program_files = Path(directory) / "Program Files"
+            archive = program_files / "7-Zip" / "7z.exe"
+            archive.parent.mkdir(parents=True)
+            archive.write_bytes(b"7zip\n")
+            environment = {
+                "ProgramFiles": str(program_files),
+                "ProgramW6432": "",
+                "ProgramFiles(x86)": "",
+            }
+            with patch.dict(builder.os.environ, environment, clear=False), patch.object(
+                builder.shutil, "which", return_value=None
+            ):
+                discovered = builder.discover_archive_executable("")
+
+            self.assertEqual(discovered, str(archive.resolve()))
+
+    def test_archive_discovery_preserves_an_existing_explicit_override(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
+            explicit = Path(directory) / "custom-archive.exe"
+            explicit.write_bytes(b"archive\n")
+            with patch.object(builder.shutil, "which", return_value=None):
+                discovered = builder.discover_archive_executable(str(explicit))
+
+            self.assertEqual(discovered, str(explicit.resolve()))
+
     def test_build_tool_discovery_uses_current_python_interpreter(self) -> None:
         builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
         with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
