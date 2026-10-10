@@ -832,3 +832,9 @@ enteros, booleanos y `None` fallan antes de activar el token; la primera razon
 textual valida conserva autoridad. Las pruebas dirigidas pasan `11/11` y la
 suite Python completa `213/213`, sin ejecutar producto. La tarea funcional
 permanece activa.
+
+Validacion 74 cerro el esquema previo de `EventWriter`. Tipo de evento,
+identidad y payload se validan antes de serializar; entradas invalidas no
+escriben ni avanzan la secuencia. Las pruebas dirigidas pasan `6/6` y la suite
+Python completa `214/214`, sin ejecutar producto. La tarea funcional permanece
+activa.

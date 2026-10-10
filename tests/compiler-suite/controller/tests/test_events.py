@@ -62,6 +62,21 @@ class EventTests(unittest.TestCase):
                 writer.emit(EventKind.INFRASTRUCTURE_ERROR, payload={"bad": object()})
         self.assertEqual(path.read_text(encoding="utf-8"), "")
 
+    def test_invalid_event_schema_does_not_write_or_advance_sequence(self) -> None:
+        path = self.root / "events.jsonl"
+        with EventWriter(path) as writer:
+            scenarios = (
+                {"kind": "RUN_STARTED"},
+                {"kind": EventKind.CASE_STARTED, "case_id": 7},
+                {"kind": EventKind.RUN_STARTED, "payload": []},
+            )
+            for arguments in scenarios:
+                with self.subTest(arguments=arguments), self.assertRaises(ValueError):
+                    writer.emit(**arguments)
+            event = writer.emit(EventKind.RUN_STARTED)
+            self.assertEqual(event.sequence, 0)
+        self.assertEqual(len(self.read_events(path)), 1)
+
     def test_cancellation_preserves_first_reason(self) -> None:
         token = CancellationToken()
         self.assertFalse(token.requested)

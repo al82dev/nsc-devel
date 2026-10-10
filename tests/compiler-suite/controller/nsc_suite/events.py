@@ -49,7 +49,13 @@ class EventWriter:
     ) -> SuiteEvent:
         if self._closed:
             raise ValueError("event stream is closed")
-        event = SuiteEvent(self._sequence, kind, case_id, payload or {})
+        if not isinstance(kind, EventKind):
+            raise ValueError("event kind must be an EventKind")
+        if case_id is not None and (not isinstance(case_id, str) or not case_id):
+            raise ValueError("event case_id must be None or a non-empty string")
+        if payload is not None and not isinstance(payload, dict):
+            raise ValueError("event payload must be an object")
+        event = SuiteEvent(self._sequence, kind, case_id, {} if payload is None else payload)
         encoded = json.dumps(
             {
                 "sequence": event.sequence,

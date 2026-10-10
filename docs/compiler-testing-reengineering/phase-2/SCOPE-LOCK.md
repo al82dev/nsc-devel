@@ -1167,3 +1167,16 @@ El presupuesto queda limitado a `CancellationToken.request`, pruebas Python
 sinteticas y la evidencia de Validacion 73. No se cambia la semantica de
 cancelacion, runner, procesos, producto ni bateria historica y no se configura,
 compila o ejecuta producto.
+
+### Enmienda: EventWriter con esquema previo a serializacion
+
+`EventWriter.emit` debe validar que `kind` sea `EventKind`, `case_id` sea `None`
+o cadena no vacia y `payload` sea `None` u objeto. No puede convertir
+contenedores falsos como `[]` en `{}` mediante `payload or {}` ni aceptar
+identidades numericas. Una entrada invalida debe fallar antes de escribir una
+linea o avanzar la secuencia.
+
+El presupuesto queda limitado a `EventWriter.emit`, pruebas Python sinteticas
+y la evidencia de Validacion 74. No se cambian eventos validos, flush/fsync,
+runner, producto ni bateria historica y no se configura, compila o ejecuta
+producto.
