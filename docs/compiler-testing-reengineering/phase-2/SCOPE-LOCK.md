@@ -494,3 +494,18 @@ El presupuesto queda limitado a esa prueba del grafo y la evidencia de
 Validación 25. No se reordena ni modifica el target, el registro, los módulos,
 casos, oráculos, producto o batería histórica salvo que la prueba demuestre una
 omisión concreta. No se configura, compila ni ejecuta producto.
+
+### Enmienda: cotejo global del registro con el inventario
+
+Un gate único debe ejecutar `nsc_component_tests --list` y comparar el registro
+completo con los casos canónicos de las familias `Host.*` y `SelfHost.*`, más
+los casos del fixture sintético `Infrastructure`. El conjunto esperado se
+deriva de los CSV y JSONL vivos; se prohíben rangos, listas y conteos privados.
+El gate rechaza líneas mal formadas, duplicados, omisiones, casos inesperados y
+cambios de contrato o componente.
+
+El presupuesto queda limitado al nuevo gate global, su conexión CTest, sus
+pruebas Python y la evidencia de Validación 26. No se modifican módulos, casos,
+oráculos, disposiciones, producto ni batería histórica. La implementación se
+valida estáticamente; la ejecución contra el host actualizado queda en el cierre
+offline del usuario. No se configura ni compila producto.

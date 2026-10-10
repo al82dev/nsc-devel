@@ -665,6 +665,13 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/controller-gate")
 add_test(
+    NAME nsc.compiler-suite.registry-inventory
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_registry_inventory_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_test(
     NAME nsc.compiler-suite.host-basic-values-controller
     COMMAND "${Python3_EXECUTABLE}" -B
         "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_basic_values_gate.py"

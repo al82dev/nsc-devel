@@ -525,3 +525,10 @@ de registro; las `535` fuentes del target existen y no se repiten; los `115`
 controladores `run_*.py` tienen exactamente una referencia CTest y los `117`
 nombres CTest son únicos. La prueba deriva todos los conjuntos desde el árbol
 vivo y no congela estos totales.
+
+Validación 26 agregó el gate global del registro. Su expectativa viva contiene
+`9,116` filas (`7,360` Host, `1,753` SelfHost y `3` Infrastructure), derivadas
+de los inventarios y fixture sin listas privadas. El gate rechaza formato,
+duplicados, desorden, omisiones, inesperados y cambios de contrato/componente.
+Sus pruebas Python y la conexión CTest pasan estáticamente; la ejecución contra
+el host actualizado corresponde a la siguiente construcción offline.
