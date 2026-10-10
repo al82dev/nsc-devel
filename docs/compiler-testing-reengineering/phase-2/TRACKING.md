@@ -1311,3 +1311,12 @@ momento, duracion y texto, mas log, resumen, eventos, resultados y metadatos.
 La carga de la corrida real no modifico tabla, conteos, log ni reporte vivos en
 el smoke. No se compilo ni ejecuto producto, no se ejecuto baseline y no se
 toco `C:`.
+
+Validacion 146 corrige la usabilidad del historial sin cambiar el motor de
+ejecucion. La lista identifica cada corrida por fecha, estado, conteos,
+configuracion y directorio, y ofrece vista previa de resumen, log y reporte.
+Cada corrida se abre con dos secciones principales, `Pruebas` y `Reporte`; el
+reporte agrupa sus seis artefactos y las pruebas exponen acciones visibles para
+reejecutar la fila seleccionada o la corrida completa. La sintaxis y el smoke
+de GUI pasan; no se compilo ni ejecuto producto, no se ejecuto baseline y no se
+toco `C:`.

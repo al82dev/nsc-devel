@@ -3045,6 +3045,17 @@ def launch_gui(smoke_only: bool = False) -> int:
         ACTION_COLUMN = 10
         DURATION_COLUMN = 11
         DETAIL_COLUMN = 12
+        HISTORY_HEADERS = (
+            "Fecha y hora",
+            "Estado",
+            "Resultados",
+            "Configuración",
+            "Pruebas",
+            "Tipo",
+            "Corrida",
+            "Origen / directorio",
+        )
+        HISTORY_PATH_COLUMN = 7
 
         def __init__(self) -> None:
             super().__init__()
@@ -3308,10 +3319,8 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.full_log.setReadOnly(True)
             self.error_report = QTextEdit()
             self.error_report.setReadOnly(True)
-            self.history_table = QTableWidget(0, 5)
-            self.history_table.setHorizontalHeaderLabels(
-                ["Ejecución", "Tipo", "Estado", "Fecha", "Directorio"]
-            )
+            self.history_table = QTableWidget(0, len(self.HISTORY_HEADERS))
+            self.history_table.setHorizontalHeaderLabels(self.HISTORY_HEADERS)
             self.history_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
             self.history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
             self.history_table.horizontalHeader().setSectionResizeMode(
@@ -3359,19 +3368,47 @@ def launch_gui(smoke_only: bool = False) -> int:
             failure_layout.addWidget(self.failure_table, 1)
             history_page = QWidget()
             history_layout = QVBoxLayout(history_page)
+            history_intro = QLabel(
+                f"Corridas guardadas en {HISTORY_ROOT}. Selecciona una fila para ver "
+                "qué se ejecutó, sus resultados y su log; abrirla crea un tab "
+                "independiente y no modifica Pruebas."
+            )
+            history_intro.setWordWrap(True)
+            history_layout.addWidget(history_intro)
             history_controls = QHBoxLayout()
-            refresh = QPushButton("Actualizar historial")
-            open_button = QPushButton("Abrir evidencia seleccionada")
-            self.history_load_button = QPushButton("Cargar ejecución seleccionada")
-            history_controls.addWidget(refresh)
-            history_controls.addWidget(open_button)
+            self.history_refresh_button = QPushButton("Actualizar lista")
+            self.history_open_folder_button = QPushButton(
+                "Abrir carpeta de evidencia"
+            )
+            self.history_load_button = QPushButton(
+                "Abrir corrida completa en un tab"
+            )
+            history_controls.addWidget(self.history_refresh_button)
+            history_controls.addWidget(self.history_open_folder_button)
             history_controls.addWidget(self.history_load_button)
             history_controls.addStretch(1)
             history_layout.addLayout(history_controls)
-            history_layout.addWidget(self.history_table)
-            refresh.clicked.connect(self._refresh_history)
-            open_button.clicked.connect(self._open_history)
+            history_layout.addWidget(self.history_table, 2)
+            history_layout.addWidget(QLabel("Vista previa de la corrida seleccionada"))
+            self.history_preview_tabs = QTabWidget()
+            self.history_preview_summary = QPlainTextEdit()
+            self.history_preview_summary.setReadOnly(True)
+            self.history_preview_log = QPlainTextEdit()
+            self.history_preview_log.setReadOnly(True)
+            self.history_preview_report = QPlainTextEdit()
+            self.history_preview_report.setReadOnly(True)
+            self.history_preview_tabs.addTab(self.history_preview_summary, "Resumen")
+            self.history_preview_tabs.addTab(self.history_preview_log, "Log")
+            self.history_preview_tabs.addTab(
+                self.history_preview_report, "Reporte guardado"
+            )
+            history_layout.addWidget(self.history_preview_tabs, 1)
+            self.history_refresh_button.clicked.connect(self._refresh_history)
+            self.history_open_folder_button.clicked.connect(self._open_history)
             self.history_load_button.clicked.connect(self._load_history_from_table)
+            self.history_table.itemSelectionChanged.connect(
+                self._preview_history_selection
+            )
             self.history_table.cellDoubleClicked.connect(
                 lambda _row, _column: self._load_history_from_table()
             )
@@ -4253,7 +4290,21 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.save_button.setEnabled(not busy)
             self.detect_button.setEnabled(not busy)
             self.receipt_button.setEnabled(not busy)
-            self.history_load_button.setEnabled(not busy)
+            self.history_refresh_button.setEnabled(not busy)
+            for page in self.history_run_pages.values():
+                rerun_all = page.findChild(QPushButton, "history_rerun_all")
+                rerun_selected = page.findChild(
+                    QPushButton, "history_rerun_selected"
+                )
+                if rerun_all is not None:
+                    rerun_all.setEnabled(not busy)
+                if rerun_selected is not None:
+                    rerun_selected.setEnabled(
+                        not busy
+                        and bool(
+                            rerun_selected.property("hasExecutableSelection")
+                        )
+                    )
             self.clear_results_button.setEnabled(not busy)
             infrastructure_busy = busy and bool(self.active_operation)
             self.infrastructure_cancel_button.setEnabled(infrastructure_busy)
@@ -4265,6 +4316,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.failure_enable_button.setEnabled(False)
             else:
                 self._refresh_failure_controls()
+                self._preview_history_selection()
             self.statusBar().showMessage("Operación activa" if busy else "Listo")
 
         def _clear_current_results(self) -> None:
@@ -4288,30 +4340,201 @@ def launch_gui(smoke_only: bool = False) -> int:
             )
 
         def _refresh_history(self) -> None:
+            selected_path = self._selected_history_path()
             if not HISTORY_ROOT.is_dir():
                 self.history_table.setRowCount(0)
                 self.history_load_button.setEnabled(False)
+                self.history_open_folder_button.setEnabled(False)
+                self.history_preview_summary.setPlainText(
+                    f"No existe todavía el directorio de historial: {HISTORY_ROOT}"
+                )
+                self.history_preview_log.clear()
+                self.history_preview_report.clear()
                 return
-            records: list[tuple[str, str, str, str, str]] = []
+            records: list[tuple[tuple[str, ...], tuple[str, str, str, str, str]]] = []
             for root in sorted(HISTORY_ROOT.iterdir(), reverse=True):
                 if not root.is_dir():
                     continue
-                records.append(history_record(root))
+                record = history_record(root)
+                records.append((self._history_display_values(root, record), record))
+            self.history_table.setSortingEnabled(False)
+            self.history_table.clearContents()
             self.history_table.setRowCount(len(records))
-            for row, record in enumerate(records):
-                for column, value in enumerate(record):
-                    self.history_table.setItem(row, column, QTableWidgetItem(value))
-            self.history_load_button.setEnabled(
-                self.worker is None and bool(records)
+            selected_row = 0
+            for row, (values, record) in enumerate(records):
+                for column, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    item.setData(Qt.ItemDataRole.UserRole, record[4])
+                    if column == 1:
+                        self._color_status(item, record[2])
+                    self.history_table.setItem(row, column, item)
+                if selected_path is not None and record[4] == str(selected_path):
+                    selected_row = row
+            self.history_table.setSortingEnabled(True)
+            if records:
+                path_to_select = (
+                    str(selected_path)
+                    if selected_path is not None
+                    else records[selected_row][1][4]
+                )
+                for row in range(self.history_table.rowCount()):
+                    item = self.history_table.item(row, self.HISTORY_PATH_COLUMN)
+                    if item is not None and item.text() == path_to_select:
+                        self.history_table.selectRow(row)
+                        break
+            else:
+                self.history_preview_summary.setPlainText(
+                    "No hay corridas guardadas todavía."
+                )
+                self.history_preview_log.clear()
+                self.history_preview_report.clear()
+                self.history_load_button.setEnabled(False)
+                self.history_open_folder_button.setEnabled(False)
+
+        def _history_display_values(
+            self,
+            root: Path,
+            record: tuple[str, str, str, str, str],
+        ) -> tuple[str, ...]:
+            """Describe a stored run in user-facing terms without executing it."""
+            run_id, kind, status, finished_at, path = record
+            display_time = finished_at.replace("T", " ") if finished_at else "Sin cierre"
+            result_summary = "Sin resultados completos"
+            configuration = "No disponible"
+            test_count = "0"
+            try:
+                metadata_path = root / "metadata.json"
+                results_path = root / "results.json"
+                metadata = (
+                    json.loads(
+                        metadata_path.read_text(encoding="utf-8"),
+                        object_pairs_hook=unique_json_object,
+                    )
+                    if metadata_path.is_file()
+                    else {}
+                )
+                payload = (
+                    json.loads(
+                        results_path.read_text(encoding="utf-8"),
+                        object_pairs_hook=unique_json_object,
+                    )
+                    if results_path.is_file()
+                    else {}
+                )
+                raw_counts = payload.get("counts", {})
+                if isinstance(raw_counts, dict) and raw_counts:
+                    order = (
+                        "PASS",
+                        "FAIL",
+                        "INFRASTRUCTURE_ERROR",
+                        "BLOCKED",
+                        "KNOWN_FAILURE",
+                        "UNEXPECTED_PASS",
+                        "CANCELLED",
+                    )
+                    result_summary = " · ".join(
+                        f"{name}: {raw_counts[name]:,}"
+                        for name in order
+                        if isinstance(raw_counts.get(name), int)
+                        and raw_counts[name] > 0
+                    )
+                raw_results = payload.get("results")
+                if isinstance(raw_results, list):
+                    test_count = f"{len(raw_results):,} terminales"
+                selection = metadata.get("selection")
+                if isinstance(selection, dict):
+                    scope = str(selection.get("scope", ""))
+                    value = str(selection.get("value", ""))
+                    profile = str(selection.get("profile", ""))
+                    mode = str(selection.get("build_mode", ""))
+                    optimization = str(selection.get("optimization", ""))
+                    scope_text = f"{scope} {value}".strip()
+                    configuration = " · ".join(
+                        part
+                        for part in (scope_text, profile, mode, optimization)
+                        if part
+                    )
+                elif isinstance(metadata, dict):
+                    configuration = str(
+                        metadata.get("operation") or metadata.get("origin") or kind
+                    )
+            except (OSError, json.JSONDecodeError, ValueError, TypeError):
+                result_summary = "La evidencia no se pudo interpretar"
+            kind_label = "Suite de pruebas" if kind == "phase-2-suite" else kind
+            return (
+                display_time,
+                status,
+                result_summary,
+                configuration,
+                test_count,
+                kind_label,
+                run_id,
+                path,
             )
 
-        def _load_history_from_table(self) -> None:
+        def _selected_history_path(self) -> Path | None:
+            """Return the evidence directory selected in the history launcher."""
             row = self.history_table.currentRow()
             if row < 0:
+                return None
+            item = self.history_table.item(row, self.HISTORY_PATH_COLUMN)
+            if item is None or not item.text():
+                return None
+            return Path(item.text())
+
+        def _preview_history_selection(self) -> None:
+            """Show identity, summary and log for a run before opening its full tab."""
+            root = self._selected_history_path()
+            if root is None:
+                self.history_load_button.setEnabled(False)
+                self.history_open_folder_button.setEnabled(False)
                 return
-            item = self.history_table.item(row, 4)
-            if item is not None:
-                self._load_history_path(Path(item.text()))
+            record = history_record(root)
+            values = self._history_display_values(root, record)
+            summary = [
+                f"Corrida: {record[0]}",
+                f"Fecha y hora: {values[0]}",
+                f"Estado: {record[2]}",
+                f"Tipo: {values[5]}",
+                f"Configuración: {values[3]}",
+                f"Pruebas: {values[4]}",
+                f"Resultados: {values[2]}",
+                f"Evidencia: {root}",
+            ]
+            if record[1] != "phase-2-suite":
+                summary.append(
+                    "Esta fila no es una corrida completa de pruebas de Fase 2; "
+                    "puede consultarse, pero no abrirse como batería reejecutable."
+                )
+            elif record[2] in {"INCOMPLETE", "MALFORMED"}:
+                summary.append(
+                    "La corrida está incompleta o dañada y no puede reejecutarse."
+                )
+            self.history_preview_summary.setPlainText("\n".join(summary))
+            log_path = root / "full.log"
+            self.history_preview_log.setPlainText(
+                log_path.read_text(encoding="utf-8", errors="replace")
+                if log_path.is_file()
+                else "Esta corrida no conserva full.log."
+            )
+            report_path = root / "summary.md"
+            self.history_preview_report.setPlainText(
+                report_path.read_text(encoding="utf-8", errors="replace")
+                if report_path.is_file()
+                else "Esta corrida no conserva summary.md."
+            )
+            idle = self.worker is None
+            can_open = (
+                record[1] == "phase-2-suite"
+                and record[2] not in {"INCOMPLETE", "MALFORMED"}
+            )
+            self.history_load_button.setEnabled(idle and can_open)
+            self.history_open_folder_button.setEnabled(idle)
+
+        def _load_history_from_table(self) -> None:
+            root = self._selected_history_path()
+            if root is not None:
+                self._load_history_path(root)
 
         def _load_history_path(self, root: Path) -> None:
             """Open one immutable historical run in its own Results tab."""
@@ -4347,7 +4570,7 @@ def launch_gui(smoke_only: bool = False) -> int:
         def _create_history_run_page(
             self, loaded: HistoricalExecution, page_key: str
         ) -> QWidget:
-            """Build a self-contained, read-only projection of one saved run."""
+            """Build an actionable projection of one immutable saved run."""
             page = QWidget()
             layout = QVBoxLayout(page)
             record = history_record(loaded.root)
@@ -4365,7 +4588,28 @@ def launch_gui(smoke_only: bool = False) -> int:
             header.setWordWrap(True)
             layout.addWidget(header)
 
-            controls = QHBoxLayout()
+            run_tabs = QTabWidget()
+            run_tabs.setObjectName("history_run_sections")
+            tests_page = QWidget()
+            tests_layout = QVBoxLayout(tests_page)
+            actions = QHBoxLayout()
+            rerun_selected_button = QPushButton("Reejecutar prueba seleccionada")
+            rerun_selected_button.setObjectName("history_rerun_selected")
+            rerun_selected_button.setEnabled(False)
+            rerun_all_button = QPushButton("Reejecutar corrida completa")
+            rerun_all_button.setObjectName("history_rerun_all")
+            failures_button = QPushButton("Mostrar sólo fallos")
+            open_button = QPushButton("Abrir carpeta de evidencia")
+            close_button = QPushButton("Cerrar corrida")
+            actions.addWidget(rerun_selected_button)
+            actions.addWidget(rerun_all_button)
+            actions.addWidget(failures_button)
+            actions.addStretch(1)
+            actions.addWidget(open_button)
+            actions.addWidget(close_button)
+            tests_layout.addLayout(actions)
+
+            filters = QHBoxLayout()
             status_combo = QComboBox()
             for label, value in (
                 ("Todos los estados", "ALL"),
@@ -4410,29 +4654,25 @@ def launch_gui(smoke_only: bool = False) -> int:
             search_edit = QLineEdit()
             search_edit.setPlaceholderText("Buscar caso, contrato, componente o detalle")
             visible_label = QLabel()
-            open_button = QPushButton("Abrir carpeta de evidencia")
-            close_button = QPushButton("Cerrar corrida")
-            controls.addWidget(QLabel("Estado"))
-            controls.addWidget(status_combo)
-            controls.addWidget(QLabel("Componente"))
-            controls.addWidget(component_combo)
-            controls.addWidget(QLabel("Tiempo"))
-            controls.addWidget(time_combo)
-            controls.addWidget(QLabel("Duración"))
-            controls.addWidget(duration_combo)
-            controls.addWidget(search_edit, 1)
-            controls.addWidget(open_button)
-            controls.addWidget(close_button)
-            layout.addLayout(controls)
-            layout.addWidget(visible_label)
+            filters.addWidget(QLabel("Estado"))
+            filters.addWidget(status_combo)
+            filters.addWidget(QLabel("Componente"))
+            filters.addWidget(component_combo)
+            filters.addWidget(QLabel("Tiempo"))
+            filters.addWidget(time_combo)
+            filters.addWidget(QLabel("Duración"))
+            filters.addWidget(duration_combo)
+            filters.addWidget(search_edit, 1)
+            tests_layout.addLayout(filters)
+            tests_layout.addWidget(visible_label)
 
-            evidence_tabs = QTabWidget()
             history_headers = (
                 *self.TABLE_HEADERS[: self.DURATION_COLUMN],
                 "Hora",
                 *self.TABLE_HEADERS[self.DURATION_COLUMN :],
             )
             table = QTableWidget(0, len(history_headers))
+            table.setObjectName("history_test_table")
             table.setHorizontalHeaderLabels(history_headers)
             table.setAlternatingRowColors(True)
             table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -4605,6 +4845,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                     table.setItem(row_index, column, item)
             table.setUpdatesEnabled(True)
             table.setSortingEnabled(True)
+            tests_layout.addWidget(table, 1)
 
             def matches_bucket(value: float | None, bucket: str, kind: str) -> bool:
                 if bucket == "ALL":
@@ -4701,6 +4942,34 @@ def launch_gui(smoke_only: bool = False) -> int:
                     if variant is not None:
                         self._start_historical_variant(variant)
 
+            def selected_variant() -> RunVariant | None:
+                row = table.currentRow()
+                if row < 0:
+                    return None
+                item = table.item(row, self.CASE_COLUMN)
+                variant_key = (
+                    item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+                )
+                return (
+                    variant_by_key.get(variant_key)
+                    if isinstance(variant_key, str)
+                    else None
+                )
+
+            def update_selected_action() -> None:
+                has_executable_selection = selected_variant() is not None
+                rerun_selected_button.setProperty(
+                    "hasExecutableSelection", has_executable_selection
+                )
+                rerun_selected_button.setEnabled(
+                    self.worker is None and has_executable_selection
+                )
+
+            def rerun_selected() -> None:
+                variant = selected_variant()
+                if variant is not None:
+                    self._start_historical_variant(variant)
+
             for widget_signal in (
                 status_combo.currentIndexChanged,
                 component_combo.currentIndexChanged,
@@ -4710,21 +4979,45 @@ def launch_gui(smoke_only: bool = False) -> int:
                 widget_signal.connect(lambda _value: apply_filters())
             search_edit.textChanged.connect(lambda _text: apply_filters())
             table.cellClicked.connect(run_exact)
+            table.itemSelectionChanged.connect(update_selected_action)
+            rerun_selected_button.clicked.connect(rerun_selected)
+            rerun_all_button.clicked.connect(
+                lambda: self._start_historical_run(loaded)
+            )
+            failures_button.clicked.connect(
+                lambda: status_combo.setCurrentIndex(
+                    max(0, status_combo.findData("FAILURES"))
+                )
+            )
             open_button.clicked.connect(
                 lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(loaded.root)))
             )
             close_button.clicked.connect(
                 lambda: self._close_history_run_tab(page_key, page)
             )
-            evidence_tabs.addTab(table, f"Pruebas ({len(rows):,})")
+            run_tabs.addTab(tests_page, f"Pruebas ({len(rows):,})")
+
+            report_page = QWidget()
+            report_layout = QVBoxLayout(report_page)
+            report_intro = QLabel(
+                f"Evidencia inmutable de {loaded.root.name}\n{loaded.root}"
+            )
+            report_intro.setWordWrap(True)
+            report_layout.addWidget(report_intro)
+            report_tabs = QTabWidget()
+            report_tabs.setObjectName("history_report_sections")
 
             def add_text_tab(title: str, contents: str) -> None:
                 view = QPlainTextEdit()
                 view.setReadOnly(True)
                 view.setPlainText(contents)
-                evidence_tabs.addTab(view, title)
+                report_tabs.addTab(view, title)
 
-            add_text_tab("Log completo", loaded.full_log)
+            summary_path = loaded.root / "summary.md"
+            add_text_tab(
+                "Resumen",
+                summary_path.read_text(encoding="utf-8", errors="replace"),
+            )
             add_text_tab(
                 "Errores condensados",
                 condensed_error_report(
@@ -4733,11 +5026,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                     str(loaded.root),
                 ),
             )
-            summary_path = loaded.root / "summary.md"
-            add_text_tab(
-                "Resumen guardado",
-                summary_path.read_text(encoding="utf-8", errors="replace"),
-            )
+            add_text_tab("Log completo", loaded.full_log)
             add_text_tab("Eventos", event_text)
             add_text_tab(
                 "Resultados JSON",
@@ -4749,7 +5038,9 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "Metadatos",
                 json.dumps(loaded.metadata, ensure_ascii=False, indent=2),
             )
-            layout.addWidget(evidence_tabs, 1)
+            report_layout.addWidget(report_tabs, 1)
+            run_tabs.addTab(report_page, "Reporte")
+            layout.addWidget(run_tabs, 1)
             apply_filters()
             return page
 
@@ -4778,13 +5069,42 @@ def launch_gui(smoke_only: bool = False) -> int:
             self.tabs.setCurrentIndex(1)
             self._start_exact_variant(variant)
 
-        def _open_history(self) -> None:
-            row = self.history_table.currentRow()
-            if row < 0:
+        def _start_historical_run(self, loaded: HistoricalExecution) -> None:
+            """Create a new run from the exact selection stored by a prior run."""
+            if self.worker is not None:
                 return
-            item = self.history_table.item(row, 4)
-            if item is not None:
-                QDesktopServices.openUrl(QUrl.fromLocalFile(item.text()))
+            try:
+                selection = loaded.metadata["selection"]
+                scope = str(selection["scope"])
+                self.scope_combo.setCurrentText(scope)
+                self._refresh_scope_values()
+                if scope != "Total":
+                    self.scope_value.setCurrentText(str(selection["value"]))
+                self.profile_combo.setCurrentText(str(selection["profile"]))
+                self.execution_mode.setCurrentText(str(selection["build_mode"]))
+                self.optimization_combo.setCurrentText(
+                    str(selection["optimization"])
+                )
+                config = self._config_from_ui().validated(require_tools=True)
+                config.save()
+                if not loaded.variants:
+                    raise ValueError(
+                        "la corrida histórica no contiene variantes ejecutables"
+                    )
+                self._populate_plan(loaded.cases, loaded.variants)
+                self.tabs.setCurrentIndex(1)
+                self._run_variants(
+                    config,
+                    loaded.variants,
+                    f"historical-full:{loaded.root.name}",
+                )
+            except Exception as error:
+                self._show_error("No se pudo reejecutar la corrida completa", error)
+
+        def _open_history(self) -> None:
+            root = self._selected_history_path()
+            if root is not None:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(root)))
 
         @staticmethod
         def _color_status(item: QTableWidgetItem, status: str) -> None:
@@ -4801,6 +5121,11 @@ def launch_gui(smoke_only: bool = False) -> int:
                 "PENDIENTE": QColor("#d9b85f"),
                 "LISTO": QColor("#8cb4ff"),
                 "DESACTIVADA": QColor("#b7b7b7"),
+                "PASSED": QColor("#73d673"),
+                "FAILED": QColor("#ff7777"),
+                "COMPLETED_WITH_KNOWN_DEFECTS": QColor("#f0a35e"),
+                "INCOMPLETE": QColor("#b7b7b7"),
+                "MALFORMED": QColor("#ff7777"),
             }
             color = colors.get(status)
             if color is not None:
@@ -4828,7 +5153,7 @@ def launch_gui(smoke_only: bool = False) -> int:
         expected_buttons = {
             "run_button": "Ejecutar pruebas",
             "clear_results_button": "Limpiar resultados para nueva corrida",
-            "history_load_button": "Cargar ejecución seleccionada",
+            "history_load_button": "Abrir corrida completa en un tab",
             "failure_retry_button": "Reejecutar fallos activos",
             "failure_disable_button": "Desactivar seleccionados para reejecución",
             "failure_enable_button": "Reactivar seleccionados",
@@ -4885,6 +5210,41 @@ def launch_gui(smoke_only: bool = False) -> int:
                 raise RuntimeError("GUI smoke did not open a dedicated historical tab")
             if len(window.history_run_pages) != 1:
                 raise RuntimeError("GUI smoke did not retain the historical page identity")
+            historical_page = next(iter(window.history_run_pages.values()))
+            run_sections = historical_page.findChild(
+                QTabWidget, "history_run_sections"
+            )
+            if (
+                run_sections is None
+                or run_sections.count() != 2
+                or not run_sections.tabText(0).startswith("Pruebas (")
+                or run_sections.tabText(1) != "Reporte"
+            ):
+                raise RuntimeError(
+                    "GUI smoke missing the Pruebas/Reporte historical hierarchy"
+                )
+            report_sections = historical_page.findChild(
+                QTabWidget, "history_report_sections"
+            )
+            required_report_tabs = {
+                "Resumen",
+                "Errores condensados",
+                "Log completo",
+                "Eventos",
+                "Resultados JSON",
+                "Metadatos",
+            }
+            if report_sections is None or {
+                report_sections.tabText(index)
+                for index in range(report_sections.count())
+            } != required_report_tabs:
+                raise RuntimeError("GUI smoke missing complete nested report tabs")
+            if historical_page.findChild(
+                QPushButton, "history_rerun_selected"
+            ) is None or historical_page.findChild(
+                QPushButton, "history_rerun_all"
+            ) is None:
+                raise RuntimeError("GUI smoke missing visible historical rerun actions")
             restored_signature = (
                 window.case_table.rowCount(),
                 dict(window.live_status_counts),

@@ -2283,3 +2283,24 @@ compila o ejecuta producto; la validacion se limita a sintaxis Python,
 `git diff --check` y smoke no interactivo contra evidencia ya existente. Los
 seis archivos protegidos permanecen intactos. No se ejecuta baseline, no se
 despliega y no se toca la unidad `C:`.
+
+### Enmienda: historial reconocible y accionable
+
+Validacion 146 corrige exclusivamente la presentacion y las acciones del
+historial ya implementado. La lista debe identificar la corrida seleccionada,
+mostrar su evidencia antes de abrirla y evitar que pruebas, logs, condensados y
+sobres JSON aparezcan como una coleccion plana sin jerarquia.
+
+El presupuesto queda limitado a `nscbuilder3.py`, esta enmienda,
+`TRACKING.md`, `CURSOR.json` y la evidencia de tanda. Cada corrida abierta debe
+separar `Pruebas` de `Reporte`; `Reporte` agrupa los artefactos guardados y
+`Pruebas` ofrece acciones visibles para reejecutar una variante exacta o la
+corrida completa como una corrida nueva. La evidencia anterior permanece
+inmutable y el espacio vivo permanece aislado hasta que el usuario solicite
+expresamente reejecutar.
+
+No se cambian motor, compilador, casos, manifiestos, ejecutores, CMake ni
+bateria historica. No se configura, compila o ejecuta producto; la validacion
+se limita a sintaxis Python, diferencial y smoke no interactivo de GUI. Los
+seis archivos protegidos permanecen intactos. No se ejecuta baseline, no se
+despliega y no se toca la unidad `C:`.

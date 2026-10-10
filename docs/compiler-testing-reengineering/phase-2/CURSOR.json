@@ -4,13 +4,13 @@
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
   "last_completed_commit": "THIS_COMMIT",
-  "last_completed_batch": "TANDA-VALIDACION-145-HISTORIAL-POR-CORRIDA-BUILDER3",
+  "last_completed_batch": "TANDA-VALIDACION-146-USABILIDAD-HISTORIAL-BUILDER3",
   "last_completed_case": "TF-LANGUAGE-SERVICE-304",
   "current_wave": 9,
   "current_component": null,
   "current_components": [],
   "next_contract": null,
-  "current_batch": "VALIDACION-146-CAUSAS-INFRAESTRUCTURA-CORRIDA-FUNCIONAL",
+  "current_batch": "VALIDACION-147-CAUSAS-INFRAESTRUCTURA-CORRIDA-FUNCIONAL",
   "next_action": "Classify and close the seven exact infrastructure root-cause groups from run 20261010-090333-82a4a13f without rerunning the complete suite locally.",
   "implementation_materialization": {
     "Host.Source": {
@@ -1211,6 +1211,24 @@
       "metadata"
     ],
     "builder3_history_live_workspace_isolation_smoke": "PASS",
+    "builder3_history_launcher_preview": true,
+    "builder3_history_primary_sections": [
+      "tests",
+      "report"
+    ],
+    "builder3_history_nested_report_tabs": [
+      "summary",
+      "condensed_errors",
+      "full_log",
+      "events",
+      "results_json",
+      "metadata"
+    ],
+    "builder3_history_visible_rerun_actions": [
+      "selected_variant",
+      "complete_run"
+    ],
+    "builder3_history_usability_smoke": "PASS",
     "release_host_ordinary_passed": 735,
     "release_host_ordinary_total": 735,
     "release_known_failure_gates_passed": 7,
