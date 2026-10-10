@@ -117,6 +117,28 @@ Estos seis casos siguen diseñados, trazados y pendientes. No se implementan com
 smokes, proxies ni timeouts internos porque esas sustituciones no probarían el
 contrato. No bloquean `Host.Parser` ni otros contratos causalmente independientes.
 
+## Host.Parser materializado con estado pendiente
+
+Los `536` casos de Parser ya existen en la suite nueva. Veinte conservan un
+defecto de producto mediante `KNOWN_FAILURE` y no bloquean el flujo ordinario:
+
+`TP-PAR-063`, `TP-PAR-069`, `TP-PAR-098`, `TP-PAR-103`, `TP-PAR-306`,
+`TP-PAR-309`, `TP-PAR-316`, `TP-PAR-327`, `TP-PAR-334`, `TP-PAR-355`,
+`TP-PAR-356`, `TP-PAR-358`, `TP-PAR-400`, `TP-PAR-405`, `TP-PAR-406`,
+`TP-PAR-422`, `TP-PAR-431`, `TP-PAR-450`, `TP-PAR-476` y `TP-PAR-511`.
+
+Tres casos requieren una seam determinista que no existe todavía:
+
+| Caso | Frontera inaccesible | Estado |
+|---|---|---|
+| `TP-PAR-514` | Clonado completo de `TypeSyntax` en helper anónimo | `INFRAESTRUCTURA ESPECIAL` |
+| `TP-PAR-516` | Clonado de constraints/projections en helper anónimo | `INFRAESTRUCTURA ESPECIAL` |
+| `TP-PAR-524` | Fallback interno `op_Invalid` en helper anónimo | `INFRAESTRUCTURA ESPECIAL` |
+
+Los tres IDs están materializados y documentados, pero se excluyen del
+manifiesto ejecutable hasta disponer de una seam fiel. No se sustituyen por un
+proxy ni se presentan como verificados.
+
 ## Decisión de avance independiente
 
 Los cuatro casos de infraestructura especial permanecen pendientes y visibles;

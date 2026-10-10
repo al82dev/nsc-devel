@@ -9,7 +9,7 @@
   "current_wave": 2,
   "current_component": "Host.Parser",
   "next_contract": "CP-PAR-001..042",
-  "next_action": "Integrate Host.Parser by ranges; preserve defects, contradictions, and infrastructure pending.",
+  "next_action": "Finish materializing and integrating every Phase 2 case before starting offline validation.",
   "blocker_audit": {
     "evidence": "docs/compiler-testing-reengineering/phase-2/AUDITORIA-BLOQUEOS-OLA-1.md",
     "revision": "11d2ae852",
@@ -243,13 +243,15 @@
     "2": {
       "status": "EN CURSO",
       "product_cases_expected": 1197,
-      "product_cases_implemented": 334,
+      "product_cases_implemented": 870,
       "product_cases_verified": 333,
       "known_failure_cases_implemented": 1,
       "validation_pending_cases": 0,
       "special_infrastructure_pending": 6,
       "current_component": "Host.Parser",
-      "current_component_cases_expected": 536
+      "current_component_cases_expected": 536,
+      "current_component_cases_materialized": 536,
+      "current_component_validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
     }
   },
   "validation": {

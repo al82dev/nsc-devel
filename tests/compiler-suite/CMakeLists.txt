@@ -114,6 +114,52 @@ add_executable(
     host/modules/AstDumperNodeModule.cpp
     host/modules/AstDumperTypeModule.cpp
     host/modules/AstDumperTraversalModule.cpp
+    host/modules/ParserCursorRecoveryModule.cpp
+    host/modules/ParserLookaheadModule.cpp
+    host/modules/ParserTypeFoundationModule.cpp
+    host/modules/ParserFunctionTypeContinuationModule.cpp
+    host/modules/ParserTypeModifierContinuationModule.cpp
+    host/modules/ParserGenericParameterContinuationModule.cpp
+    host/modules/ParserGenericConstraintContinuationModule.cpp
+    host/modules/ParserTypeArgumentContinuationModule.cpp
+    host/modules/ParserGenericLookaheadContinuationModule.cpp
+    host/modules/ParserImportNamespaceModule.cpp
+    host/modules/ParserGlobalDeclarationModule.cpp
+    host/modules/ParserDelegateModule.cpp
+    host/modules/ParserStructDeclarationModule.cpp
+    host/modules/ParserVariantDeclarationModule.cpp
+    host/modules/ParserOpaqueDeclarationModule.cpp
+    host/modules/ParserClassInterfaceModule.cpp
+    host/modules/ParserNestedDeclarationModule.cpp
+    host/modules/ParserNestedMemberDispatchModule.cpp
+    host/modules/ParserEventModule.cpp
+    host/modules/ParserPropertyIndexerModule.cpp
+    host/modules/ParserOperatorModule.cpp
+    host/modules/ParserOperatorConversionModule.cpp
+    host/modules/ParserConstructorDestructorModule.cpp
+    host/modules/ParserCallableDeclarationModule.cpp
+    host/modules/ParserCallableClauseModule.cpp
+    host/modules/ParserBlockStatementModule.cpp
+    host/modules/ParserStatementContinuationModule.cpp
+    host/modules/ParserInlineAssemblyContinuationModule.cpp
+    host/modules/ParserControlFlowContinuationModule.cpp
+    host/modules/ParserPatternContinuationModule.cpp
+    host/modules/ParserPatternSemanticsModule.cpp
+    host/modules/ParserMatchSemanticsModule.cpp
+    host/modules/ParserLoopComprehensionModule.cpp
+    host/modules/ParserForeachSemanticsModule.cpp
+    host/modules/ParserForeachContinuationModule.cpp
+    host/modules/ParserCleanupContinuationModule.cpp
+    host/modules/ParserExpressionPrecedenceContinuationModule.cpp
+    host/modules/ParserLambdaContinuationModule.cpp
+    host/modules/ParserLambdaLookaheadModule.cpp
+    host/modules/ParserUnaryExpressionModule.cpp
+    host/modules/ParserPostfixExpressionModule.cpp
+    host/modules/ParserPrimaryExpressionModule.cpp
+    host/modules/ParserInterpolationFinalModule.cpp
+    host/modules/ParserConstructionCloneFinalModule.cpp
+    host/modules/ParserStateRobustnessFinalModule.cpp
+    host/modules/ParserProductTestShim.cpp
     host/modules/LanguageAbiSemanticsModule.cpp
     host/modules/LanguageAggregateSemanticsModule.cpp
     host/modules/LanguageCallableSemanticsModule.cpp
@@ -936,6 +982,15 @@ add_test(
         --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
         --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-ast-gate"
+        --build-mode "$<CONFIG>")
+add_test(
+    NAME nsc.compiler-suite.host-parser-controller
+    COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_host_parser_gate.py"
+        --host-executable "$<TARGET_FILE:nsc_component_tests>"
+        --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+        --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+        --work-parent "${CMAKE_CURRENT_BINARY_DIR}/host-parser-gate"
         --build-mode "$<CONFIG>")
 
 if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND

@@ -30,6 +30,16 @@ trabajo es el contrato observable y cada caso conserva trazabilidad `case_id -> 
 3. Olas 7 y 8: self-host y bootstrap.
 4. Ola 9: construcción y paquete del compilador.
 
+Dentro de la Fase 2 se aplica una separación adicional autorizada el 9 de octubre de 2026:
+
+1. materializar e integrar primero todos los casos, manifiestos y superficies de ejecución de las olas;
+2. conservar durante esa implementación todos los defectos y limitaciones con estado visible;
+3. no gastar CPU en compilaciones, ejecuciones, gates ni ciclos de validación parciales;
+4. ejecutar la validación offline sólo después de completar la infraestructura prevista.
+
+Esta separación cambia el momento de la validación, no reduce la implementación ni permite presentar como
+verificado aquello que todavía no se ejecutó.
+
 La Fase 2 es exclusivamente la suite de NSC. Las bibliotecas `Library.*`, el SDK
 y los componentes de otros repositorios no se implementan, registran ni ejecutan
 en esta infraestructura. Sus inventarios de Fase 1 conservan valor documental,

@@ -4,7 +4,7 @@
 |---:|---|---|---:|---:|---:|
 | 0 | Infraestructura mínima | LISTA | 0 de producto / 3 sintéticos | 3 | 3 |
 | 1 | Fundaciones host | EN CURSO | 747 | 743 | 736 |
-| 2 | Sintaxis y semántica frontal | EN CURSO | 1,197 | 334 | 333 |
+| 2 | Sintaxis y semántica frontal | EN CURSO | 1,197 | 870 | 333 |
 | 3 | IR y optimización | PENDIENTE | 1,784 | 0 | 0 |
 | 4 | Sesión, frontend y method bodies | PENDIENTE | 920 | 0 | 0 |
 | 5 | Backend, ABI, runtime y enlace | PENDIENTE | 1,600 | 0 | 0 |
@@ -23,7 +23,7 @@ cuentan como implementados.
 
 | Último corte | Estado acumulado | Siguiente caso |
 |---|---:|---|
-| Tanda 02.05 — Host.AST validado | 334 impl.; 333 verif. | integrar Host.Parser |
+| Tanda 02.06 — Host.Parser materializado; integración en curso | 870 impl.; 333 verif. | integrar, auditar y validar Host.Parser |
 
 Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
 de forma individual, y `4` casos pendientes de infraestructura especial. Los
@@ -42,3 +42,17 @@ Desglose certificado de `Host.AST`: `224/230` casos materializados y `224 PASS`
 en Debug y Release. Los seis restantes requieren infraestructura especial y
 permanecen en el denominador. El target consolidado y el gate controlador
 pasaron en ambos modos; no se ejecutó la suite histórica.
+
+Estado actual de `Host.Parser`: `536/536` casos están materializados en módulos
+nuevos y conservan visibles los defectos conocidos y las limitaciones de
+infraestructura. El registro central, el manifiesto, el gate controlador y la
+validación Debug/Release siguen en curso; por eso estos casos aumentan
+`Implementados`, pero todavía no aumentan `Verificados`. La auditoría
+independiente y la ejecución de los `536` IDs quedan diferidas al cierre
+offline, después de completar toda la implementación de la Fase 2.
+
+Secuencia vigente desde el 9 de octubre de 2026: primero se implementa toda la
+infraestructura y todos los casos de la Fase 2; después se ejecuta la validación
+offline. Mientras dure la implementación no se consumirá tiempo en builds,
+ejecuciones ni gates parciales. Los conteos verificados permanecerán congelados
+hasta comenzar ese cierre.
