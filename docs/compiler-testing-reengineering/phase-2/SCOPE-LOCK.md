@@ -1450,3 +1450,13 @@ El presupuesto queda limitado a esos dos parseos, una prueba Python sintetica
 y la evidencia de Validacion 98. No se cambian productores, artefactos
 existentes, producto ni bateria historica y no se configura, compila o ejecuta
 producto.
+
+### Enmienda: claves JSON unicas en configuracion persistida
+
+`BuilderConfig.load` debe rechazar claves duplicadas en `config.json`. Una
+segunda definicion no puede sustituir silenciosamente rutas de NSC, NSLink,
+LLVM, directorios de build o paralelismo antes del descubrimiento.
+
+El presupuesto queda limitado al parseo de la configuracion, una prueba Python
+sintetica y la evidencia de Validacion 99. No se cambian defaults, descubrimiento,
+producto ni bateria historica y no se configura, compila o ejecuta producto.

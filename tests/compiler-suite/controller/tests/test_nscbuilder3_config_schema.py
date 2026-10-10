@@ -55,6 +55,21 @@ class Builder3ConfigSchemaTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "jobs"):
                     builder.BuilderConfig.load()
 
+    def test_load_rejects_duplicate_configuration_keys(self) -> None:
+        builder.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=builder.STORAGE_ROOT) as directory:
+            config_path = Path(directory) / "config.json"
+            config_path.write_text(
+                '{"jobs":4,"jobs":12}\n',
+                encoding="utf-8",
+            )
+            with patch.object(builder, "CONFIG_PATH", config_path), patch.object(
+                builder.BuilderConfig, "with_discovery", autospec=True
+            ) as discovery:
+                with self.assertRaisesRegex(ValueError, "duplicate JSON object key: jobs"):
+                    builder.BuilderConfig.load()
+            discovery.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

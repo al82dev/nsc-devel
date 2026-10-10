@@ -968,3 +968,8 @@ Validacion 98 cerro las claves JSON duplicadas al reabrir el historial.
 Metadata o resultados ambiguos quedan `MALFORMED` y el stream de eventos ya usa
 el lector estricto. Las pruebas dirigidas pasan `5/5` y la suite Python
 `232/232`, sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 99 cerro las claves JSON duplicadas de `config.json`. Las rutas y el
+paralelismo no pueden sustituirse por last-wins antes del descubrimiento. Las
+pruebas dirigidas pasan `5/5` y la suite Python `233/233`, sin ejecutar producto.
+La tarea funcional permanece activa.

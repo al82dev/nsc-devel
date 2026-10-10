@@ -546,7 +546,10 @@ class BuilderConfig:
     def load(cls) -> "BuilderConfig":
         """Load saved overrides and repair missing tools with known local locations."""
         if CONFIG_PATH.is_file():
-            value = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            value = json.loads(
+                CONFIG_PATH.read_text(encoding="utf-8"),
+                object_pairs_hook=unique_json_object,
+            )
             base = cls(**parse_builder_config_payload(value))
         else:
             base = cls()
