@@ -1,0 +1,13 @@
+if(NOT DEFINED NSC_REPOSITORY_ROOT OR NSC_REPOSITORY_ROOT STREQUAL "")
+    message(FATAL_ERROR "NSC_REPOSITORY_ROOT is required")
+endif()
+if(NOT DEFINED NSC_PROBE_OUTPUT OR NSC_PROBE_OUTPUT STREQUAL "")
+    message(FATAL_ERROR "NSC_PROBE_OUTPUT is required")
+endif()
+if(NOT DEFINED NSC_PROBE_NSLINK)
+    message(FATAL_ERROR "NSC_PROBE_NSLINK must be defined, including empty negative input")
+endif()
+include("${NSC_REPOSITORY_ROOT}/cmake/NativeSharpSelfHostRuntime.cmake")
+nsc_resolve_selfhost_runtime(_nsc_runtime_library _nsc_runtime_abi "${NSC_PROBE_NSLINK}")
+file(WRITE "${NSC_PROBE_OUTPUT}"
+    "library=${_nsc_runtime_library}\nabi=${_nsc_runtime_abi}\n")

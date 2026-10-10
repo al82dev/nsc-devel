@@ -3,16 +3,16 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "71b87f840",
-  "last_completed_batch": "TANDA-08-02-SELFHOST-CONTRACTS",
-  "last_completed_case": "T12B-01806",
+  "last_completed_commit": "daa484ddf",
+  "last_completed_batch": "TANDA-09-01-BUILD-SYSTEM",
+  "last_completed_case": "T12B-00456",
   "current_wave": 9,
-  "current_component": "BuildSystem",
+  "current_component": "Packaging",
   "current_components": [
-    "BuildSystem"
+    "Packaging"
   ],
-  "next_contract": "C12B-BLD-001",
-  "next_action": "Continue Wave 9 BuildSystem materialization without validating the implementation-only closure of Waves 2 through 8.",
+  "next_contract": "C12B-PKG-001",
+  "next_action": "Materialize the 18 canonical Packaging cases without validating the implementation-only BuildSystem closure.",
   "implementation_materialization": {
     "Host.AST": {
       "expected": 230,
@@ -299,6 +299,16 @@
       "infrastructure_pending": 288,
       "plan_contradiction": 1,
       "known_product_defect": 0,
+      "integrated": true,
+      "verified": 0
+    },
+    "BuildSystem": {
+      "expected": 456,
+      "materialized": 456,
+      "executable": 36,
+      "required": 34,
+      "historical_delegated": 420,
+      "known_product_defect": 2,
       "integrated": true,
       "verified": 0
     }
@@ -654,6 +664,20 @@
       "integrated_components": [
         "SelfHost.Bootstrap.Infrastructure",
         "SelfHost.Contracts"
+      ],
+      "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
+    },
+    "9": {
+      "status": "EN CURSO",
+      "product_cases_expected": 474,
+      "product_cases_implemented": 456,
+      "product_cases_integrated": 456,
+      "product_cases_verified": 0,
+      "current_components": [
+        "Packaging"
+      ],
+      "integrated_components": [
+        "BuildSystem"
       ],
       "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
     }

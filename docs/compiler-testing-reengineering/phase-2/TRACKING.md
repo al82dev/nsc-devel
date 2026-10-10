@@ -11,7 +11,7 @@
 | 6 | Producto, driver y servicio | EN CURSO | 1,112 | 1,112 | 1,112 | 0 | 0 | 0 | 0 |
 | 7 | Compilador self-host | EN CURSO | 1,027 | 1,027 | 1,027 | 0 | 0 | 0 | 0 |
 | 8 | Infraestructura y oráculos self-host | EN CURSO | 726 | 726 | 726 | 0 | 0 | 0 | 0 |
-| 9 | Build, instalación y paquete de NSC | PENDIENTE | 474 | 0 | 0 | 474 | 0 | 474 | 0 |
+| 9 | Build, instalación y paquete de NSC | EN CURSO | 474 | 456 | 456 | 18 | 0 | 18 | 0 |
 
 Estados permitidos: `PENDIENTE`, `EN CURSO`, `LISTA`, `BLOQUEADA`.
 
@@ -57,6 +57,9 @@ la columna `Validados`.
 | SelfHost.Bootstrap.Infrastructure | 438 | 438 | 438 | 0 | 0 | 0 | 0 |
 | SelfHost.Contracts | 288 | 288 | 288 | 0 | 0 | 0 | 0 |
 | **Total confirmado, olas 2–8** | **8,366** | **8,366** | **8,366** | **0** | **0** | **0** | **333** |
+| BuildSystem | 456 | 456 | 456 | 0 | 0 | 0 | 0 |
+| Packaging | 18 | 0 | 0 | 18 | 0 | 18 | 0 |
+| **Total confirmado, olas 2–9** | **8,840** | **8,822** | **8,822** | **18** | **0** | **18** | **333** |
 
 Desglose canónico de la ola 7:
 
@@ -87,6 +90,14 @@ Desglose canónico de la ola 8:
 | SelfHost.Bootstrap.Infrastructure | `T12B-01081..01518` | 73 | 438 | 438 | 438 | EN CURSO |
 | SelfHost.Contracts | `T12B-01519..01806` | 48 | 288 | 288 | 288 | EN CURSO |
 | **Total ola 8** | `T12B-01081..01806` | **121** | **726** | **726** | **726** | **EN CURSO** |
+
+Desglose canónico de la ola 9:
+
+| Componente | IDs canónicos | Contratos | Previstos | Materializados | Integrados | Estado |
+|---|---|---:|---:|---:|---:|---|
+| BuildSystem | `T12B-00001..00456` | 76 | 456 | 456 | 456 | EN CURSO |
+| Packaging | `T12B-00457..00468`, `T12B-01069..01074` | 3 | 18 | 0 | 0 | PENDIENTE |
+| **Total ola 9** | conjunto canónico anterior | **79** | **474** | **456** | **456** | **EN CURSO** |
 
 `Host.Compilation` ya tiene sus `416` casos, seis registros, manifiesto, CMake,
 gate y evidencia integrados; su validación permanece diferida.
@@ -140,6 +151,13 @@ self-host y productos SH41. Ambos componentes conservan abierta la
 contradicción entre los perfiles PR/NIGHTLY del plan y la asignación totalmente
 NIGHTLY del inventario. No incorporan filas al manifiesto ordinario y no
 aumentan `Validados`.
+
+`BuildSystem` materializa e integra `456/456` casos: `34` Required y `2`
+`KnownProductDefect` forman las `36` filas del controlador nuevo; `420`
+permanecen `HistoricalDelegated` a los gates congelados asignados por la matriz.
+La delegación conserva cada ID y dueño sin copiar ni ejecutar la suite histórica.
+`Packaging` conserva sus `18` casos pendientes de materialización. Ningún caso
+de la Ola 9 aumenta `Validados` en este corte.
 
 Desglose de la ola 1: `736 PASS`, `7 KNOWN_FAILURE` implementados y ejecutables
 de forma individual, y `4` casos pendientes de infraestructura especial. Los

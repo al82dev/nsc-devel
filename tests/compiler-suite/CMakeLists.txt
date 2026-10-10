@@ -1531,6 +1531,26 @@ add_test(
     COMMAND "${Python3_EXECUTABLE}" -B
         "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_selfhost_contracts_gate.py"
         --repository-root "${CMAKE_CURRENT_LIST_DIR}/../..")
+if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND NSC_NSLINK_EXECUTABLE AND LLVM_DIR)
+    get_filename_component(_nsc_suite_selected_bin
+        "${NSC_COMPILER_SUITE_NSC_EXECUTABLE}" DIRECTORY)
+    get_filename_component(_nsc_suite_selected_root
+        "${_nsc_suite_selected_bin}" DIRECTORY)
+    add_test(
+        NAME nsc.compiler-suite.buildsystem-controller
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_buildsystem_gate.py"
+            --cmake-executable "${CMAKE_COMMAND}"
+            --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+            --installation-root "${_nsc_suite_selected_root}"
+            --work-parent "${CMAKE_CURRENT_BINARY_DIR}/buildsystem-gate"
+            --build-mode "$<CONFIG>"
+            --root-config-argument=-DLLVM_DIR=${LLVM_DIR}
+            --root-config-argument=-DNSC_NSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}
+            --root-config-argument=-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+            --root-config-argument=-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER})
+endif()
 add_test(
     NAME nsc.compiler-suite.host-runtime-controller
     COMMAND "${Python3_EXECUTABLE}" -B

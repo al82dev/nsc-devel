@@ -1,0 +1,22 @@
+cmake_minimum_required(VERSION 3.25)
+project(NativeSharpBuildSystemLlvmDependencyProbe LANGUAGES C)
+if(NOT DEFINED NSC_REPOSITORY_ROOT OR NSC_REPOSITORY_ROOT STREQUAL "")
+    message(FATAL_ERROR "NSC_REPOSITORY_ROOT is required")
+endif()
+if(NSC_DECLARE_DUPLICATE_ZLIB)
+    add_library(nsc_zlib STATIC duplicate.c)
+endif()
+include("${NSC_REPOSITORY_ROOT}/cmake/NativeSharpLlvmStaticDependencies.cmake")
+foreach(_nsc_target IN ITEMS nsc_zlib ZLIB::ZLIB nsc_zstd zstd::libzstd_static)
+    if(NOT TARGET ${_nsc_target})
+        message(FATAL_ERROR "missing target ${_nsc_target}")
+    endif()
+endforeach()
+get_target_property(_nsc_zlib_name nsc_zlib OUTPUT_NAME)
+get_target_property(_nsc_zstd_name nsc_zstd OUTPUT_NAME)
+get_target_property(_nsc_zlib_definitions nsc_zlib COMPILE_DEFINITIONS)
+get_target_property(_nsc_zstd_definitions nsc_zstd COMPILE_DEFINITIONS)
+file(WRITE "${CMAKE_BINARY_DIR}/probe-result.txt"
+    "zlib=${_nsc_zlib_name}\nzstd=${_nsc_zstd_name}\n"
+    "zlib-definitions=${_nsc_zlib_definitions}\n"
+    "zstd-definitions=${_nsc_zstd_definitions}\n")
