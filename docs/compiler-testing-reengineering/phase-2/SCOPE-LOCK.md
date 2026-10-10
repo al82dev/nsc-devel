@@ -1984,3 +1984,28 @@ tracking y cursor. No se cambian `TestRegistry`, casos, IDs, contratos,
 oraculos, disposiciones, manifiestos, CMake, producto ni bateria historica. Los
 seis archivos del usuario registrados en `CURSOR.json` permanecen protegidos.
 No se ejecuta baseline, no se despliega y no se toca la unidad `C:`.
+
+### Enmienda: ordenamiento unico del registro materializado
+
+La Validacion 131 recupero `nsc_component_tests --list`, que enumera `8,054`
+filas con salida cero. La ejecucion del gate de inventario demostro un defecto
+independiente: el proceso excede su limite de 60 segundos porque
+`TestRegistry::add` ordena el vector completo despues de cada insercion. El
+costo observado bloquea el controlador aunque el inventario sea valido.
+
+La entrada exacta es la construccion del registro completo. La operacion
+defectuosa es repetir `std::sort` para cada alta. La invariante violada es que
+la materializacion tenga costo apto para el timeout del controlador sin perder
+el orden lexicografico estable que comprueban `cases()`, `all()` y
+`byComponent()`.
+
+El presupuesto de Validacion 132 queda limitado a
+`tests/compiler-suite/host/src/TestRegistry.cpp`: localizar con `lower_bound`
+la unica posicion de insercion, rechazar ahi mismo un ID duplicado y conservar
+las busquedas, las selecciones y el orden observable sin reordenar el vector
+completo despues de cada alta.
+Se validan el contrato interno de infraestructura, `--list` bajo 60 segundos y
+el gate de inventario. No se cambian main, controladores, timeouts, casos,
+metadatos, CMake, producto, manifiestos, oraculos ni bateria historica. Los seis
+archivos del usuario registrados en `CURSOR.json` permanecen protegidos. No se
+ejecuta baseline, no se despliega y no se toca la unidad `C:`.

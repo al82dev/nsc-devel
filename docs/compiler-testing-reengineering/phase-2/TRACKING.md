@@ -1185,3 +1185,11 @@ Los seis archivos protegidos conservan sus hashes. La ejecucion dirigida
 descubrio a continuacion un timeout distinto causado por el ordenamiento
 cuadratico del registro; queda como siguiente hipotesis. La tarea permanece
 activa y no se ejecuto baseline ni se toco `C:`.
+
+Validacion 132 elimino el ordenamiento completo ejecutado tras cada alta del
+registro. `TestRegistry::add` localiza una sola posicion con `lower_bound` y
+conserva orden, busqueda, duplicados y filtros. La reconstruccion termino
+`314/314`, `INFRA-REGISTRY-001` pasa y `--list` conserva `8,054` filas en
+`9,631 ms`, dentro del limite de 60 segundos. El gate ya alcanza su comparacion
+y revela una diferencia independiente de membresia, que queda como Validacion
+133. La tarea permanece activa y no se ejecuto baseline ni se toco `C:`.

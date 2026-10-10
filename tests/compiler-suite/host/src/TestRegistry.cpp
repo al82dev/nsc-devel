@@ -13,14 +13,16 @@ void TestRegistry::add(TestCase testCase)
     {
         throw std::invalid_argument("test case metadata is incomplete");
     }
-    if (find(testCase.id) != nullptr)
+    // Keep the externally visible ID order while locating only this insertion point.
+    // Re-sorting the complete registry after every add makes full registration superlinear by an extra log factor.
+    const auto insertion = std::lower_bound(
+        cases_.begin(), cases_.end(), testCase.id,
+        [](const TestCase& candidate, std::string_view id) { return candidate.id < id; });
+    if (insertion != cases_.end() && insertion->id == testCase.id)
     {
         throw std::invalid_argument("duplicate test case id: " + testCase.id);
     }
-    cases_.push_back(std::move(testCase));
-    std::sort(cases_.begin(), cases_.end(), [](const TestCase& left, const TestCase& right) {
-        return left.id < right.id;
-    });
+    cases_.insert(insertion, std::move(testCase));
 }
 
 const std::vector<TestCase>& TestRegistry::cases() const noexcept
@@ -100,4 +102,5 @@ std::vector<TestResult> TestRegistry::run(const std::vector<const TestCase*>& se
     }
     return results;
 }
+
 }
