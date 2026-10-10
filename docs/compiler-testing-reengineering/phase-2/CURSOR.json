@@ -11,7 +11,7 @@
   "current_components": [],
   "next_contract": null,
   "current_batch": "DEBUG-LINK-PRODUCER-CLOSURE-26",
-  "next_action": "Close the remaining 24-symbol WindowsLibraryBuilder producer closure, then remove the invalid direct lld-link flag before requesting a new external Debug link.",
+  "next_action": "Remove the invalid direct lld-link flag from Builder 3, then hand the complete three-cause closure to the external Debug run.",
   "implementation_materialization": {
     "Host.Source": {
       "expected": 58,
@@ -740,7 +740,9 @@
   "validation": {
     "debug_link_native_symbols_missing": 26,
     "debug_link_identity_symbols_closed_statically": 2,
-    "debug_link_builder_closure_symbols_pending": 24,
+    "debug_link_builder_closure_symbols_pending": 0,
+    "debug_link_builder_closure_symbols_closed_statically": 24,
+    "debug_link_builder_closure_product_units": 11,
     "private_access_abi_mismatches": 49,
     "private_access_abi_existing_shims": 1,
     "private_access_abi_added_shims": 3,

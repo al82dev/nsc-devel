@@ -63,6 +63,12 @@ identidad consumidos por LanguageService y Driver, ya tiene incorporado el
 productor real `Version.cpp` y el `BuildId.h` del NSC seleccionado. No se usaron
 stubs ni valores de prueba; la validación externa permanece pendiente.
 
+La segunda causa del mismo enlace, `24` símbolos transitivos de
+`WindowsLibraryBuilder.cpp`, quedó cerrada estáticamente con sus `11`
+productores canónicos. La suite usa el `LLVM-C` del `LLVM_DIR` seleccionado y
+copia su runtime al árbol de pruebas en `A:`; no usa Visual Studio ni modifica
+producto. La validación externa permanece pendiente.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

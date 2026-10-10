@@ -56,6 +56,30 @@ else()
         "NSC_COMPILER_SUITE_BUILD_ID_HEADER to compile the real product identity")
 endif()
 
+# WindowsLibraryBuilder is a real product surface. Its executable cases use
+# the product implementation, so close that implementation with the same LLVM
+# C ABI selected by the configured toolchain instead of replacing it with a
+# test double or silently dropping the cases.
+if(NOT LLVM_DIR)
+    message(FATAL_ERROR
+        "nsc_component_tests requires LLVM_DIR to close the Host.Linker product dependency graph")
+endif()
+get_filename_component(_nsc_suite_llvm_cmake_dir "${LLVM_DIR}" ABSOLUTE)
+get_filename_component(_nsc_suite_llvm_library_dir
+    "${_nsc_suite_llvm_cmake_dir}/../.." ABSOLUTE)
+get_filename_component(_nsc_suite_llvm_root
+    "${_nsc_suite_llvm_library_dir}/.." ABSOLUTE)
+find_library(NSC_COMPILER_SUITE_LLVM_C_IMPORT_LIBRARY
+    NAMES LLVM-C
+    HINTS "${_nsc_suite_llvm_library_dir}"
+    NO_DEFAULT_PATH
+    REQUIRED)
+find_file(NSC_COMPILER_SUITE_LLVM_C_RUNTIME
+    NAMES LLVM-C.dll
+    HINTS "${_nsc_suite_llvm_root}/bin"
+    NO_DEFAULT_PATH
+    REQUIRED)
+
 add_executable(
     nsc_component_tests
     host/src/main.cpp
@@ -548,10 +572,21 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/DebugInformationKind.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/FloatingPointMode.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LinkTimeOptimizationMode.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/CompilationArtifactCache.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmModule.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmOptimizationLevel.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmOptimizationObservation.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmOptimizer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmProcessTrace.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmTargetMachine.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmVersion.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Runtime/WindowsRuntimeBuilder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/CoffArchiveVerifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/LldLinker.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/PeExecutableVerifier.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/WindowsLibraryBuilder.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/WindowsRuntimeLibrary.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/WindowsRuntimeImports.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryAbiReport.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryApiDiff.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Interop/LibraryMetadata.cpp"
@@ -595,6 +630,18 @@ target_compile_definitions(
     PRIVATE
         "NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY=\"${NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY}\"")
 target_compile_features(nsc_component_tests PRIVATE cxx_std_20)
+target_link_libraries(
+    nsc_component_tests
+    PRIVATE
+        "${NSC_COMPILER_SUITE_LLVM_C_IMPORT_LIBRARY}")
+add_custom_command(
+    TARGET nsc_component_tests
+    POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${NSC_COMPILER_SUITE_LLVM_C_RUNTIME}"
+        "$<TARGET_FILE_DIR:nsc_component_tests>/LLVM-C.dll"
+    COMMENT "Copying the LLVM C runtime required by Host.Linker product cases"
+    VERBATIM)
 
 if(MSVC)
     target_compile_options(nsc_component_tests PRIVATE /W4 /WX)
