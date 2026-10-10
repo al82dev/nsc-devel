@@ -135,6 +135,30 @@ class Builder3CommandCancellationTests(unittest.TestCase):
         self.assertEqual(len(outcomes), len(COMMANDS))
         self.assertEqual([item.key for item in outcomes], ["INFRA|1", "INFRA|2", "INFRA|3"])
 
+    def test_failed_command_blocks_every_later_command(self) -> None:
+        outcomes = builder.blocked_infrastructure_outcomes(
+            COMMANDS,
+            first_unstarted_index=2,
+            evidence="full.log",
+            failed_label="Configurar Debug",
+        )
+
+        self.assertEqual([item.key for item in outcomes], ["INFRA|2", "INFRA|3"])
+        self.assertTrue(all(item.status == "BLOCKED" for item in outcomes))
+        self.assertTrue(
+            all("Configurar Debug" in item.detail for item in outcomes)
+        )
+
+    def test_failure_in_last_command_has_no_unstarted_suffix(self) -> None:
+        outcomes = builder.blocked_infrastructure_outcomes(
+            COMMANDS,
+            first_unstarted_index=len(COMMANDS) + 1,
+            evidence="full.log",
+            failed_label="Configurar Release",
+        )
+
+        self.assertEqual(outcomes, ())
+
 
 if __name__ == "__main__":
     unittest.main()

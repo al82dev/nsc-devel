@@ -1936,3 +1936,26 @@ procesos, comandos, CMake, producto, casos, manifiestos, oraculos ni bateria
 historica. Los seis archivos del usuario registrados en `CURSOR.json`
 permanecen protegidos. No se configura, compila o ejecuta producto; no se
 ejecuta baseline y no se toca la unidad `C:`.
+
+### Enmienda: clausura terminal completa del plan de infraestructura
+
+Cuando un comando de configuracion o construccion falla, `CommandWorker`
+publica el resultado de ese comando y rompe el ciclo. Los comandos posteriores
+declarados en `metadata.commands` desaparecen de `results.json`: no figuran
+como ejecutados, cancelados ni bloqueados. La cancelacion ya cierra
+explicitamente su cola, pero el fallo causal no hace lo mismo.
+
+La entrada exacta es un plan de dos o mas comandos donde uno anterior termina
+con codigo distinto de cero. La operacion defectuosa es abandonar el ciclo sin
+materializar estados terminales para el sufijo no iniciado. La invariante
+violada es que cada comando declarado tenga exactamente una fila terminal y
+que la cardinalidad publicada coincida con el plan original.
+
+El presupuesto de Validacion 130 queda limitado a proyectar el sufijo no
+iniciado como `BLOCKED` por el comando fallido, declarar `variant_count` en la
+metadata de infraestructura, ampliar las pruebas puras de clausura y actualizar
+evidencia, tracking y cursor. No se ejecutan comandos adicionales ni se cambia
+su orden; tampoco se cambian procesos, CMake, producto, casos, manifiestos,
+oraculos ni bateria historica. Los seis archivos del usuario registrados en
+`CURSOR.json` permanecen protegidos. No se configura, compila o ejecuta
+producto; no se ejecuta baseline y no se toca la unidad `C:`.

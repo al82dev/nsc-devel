@@ -1167,3 +1167,12 @@ Errores condensados`. Las pruebas dirigidas pasan `7/7`, la suite Python
 `277/277`, el catalogo conserva `9,587` casos y `0` sin clasificar y el smoke
 de GUI pasa, sin configurar, compilar o ejecutar producto. La corrida
 funcional externa sigue pendiente y la tarea permanece activa.
+
+Validacion 130 cerro la cardinalidad terminal del plan de infraestructura. Un
+fallo conserva su propia fila `FAIL` y materializa todos los comandos
+posteriores no iniciados como `BLOCKED` por esa precondicion; la metadata
+declara ahora `variant_count`, por lo que un recibo incompleto no puede
+publicarse como terminal. Las pruebas dirigidas pasan `9/9`, la suite Python
+`279/279`, el catalogo conserva `9,587` casos y `0` sin clasificar y el smoke
+de GUI pasa, sin configurar, compilar o ejecutar producto. La corrida
+funcional externa sigue pendiente y la tarea permanece activa.

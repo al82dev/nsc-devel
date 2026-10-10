@@ -997,6 +997,35 @@ def cancelled_infrastructure_outcomes(
     return tuple(outcomes)
 
 
+def blocked_infrastructure_outcomes(
+    commands: Sequence[tuple[str, Sequence[str], Path]],
+    first_unstarted_index: int,
+    evidence: str,
+    failed_label: str,
+) -> tuple[CaseOutcome, ...]:
+    """Close every command whose prerequisite infrastructure command failed."""
+    if not 1 <= first_unstarted_index <= len(commands) + 1:
+        raise ValueError("first unstarted command index is outside the command plan")
+    outcomes: list[CaseOutcome] = []
+    for index in range(first_unstarted_index, len(commands) + 1):
+        label = commands[index - 1][0]
+        outcomes.append(
+            CaseOutcome(
+                key=f"INFRA|{index}",
+                case_id=label,
+                contract_id="NSCBUILDER3-INFRASTRUCTURE",
+                component="TestInfrastructure",
+                wave=0,
+                build_mode="NA",
+                optimization="NA",
+                status="BLOCKED",
+                detail=f"not started because prerequisite failed: {failed_label}",
+                evidence=evidence,
+            )
+        )
+    return tuple(outcomes)
+
+
 def retry_variants(
     visible: Sequence[RunVariant], outcomes: Sequence[CaseOutcome]
 ) -> tuple[RunVariant, ...]:
@@ -2575,6 +2604,14 @@ def launch_gui(smoke_only: bool = False) -> int:
                         )
                         break
                     if code != 0:
+                        outcomes.extend(
+                            blocked_infrastructure_outcomes(
+                                self.commands,
+                                index + 1,
+                                str(self.store.log_path),
+                                label,
+                            )
+                        )
                         break
                 cancelled = self.controller.cancelled.is_set()
                 self.store.finish(outcomes, cancelled)
@@ -3029,6 +3066,7 @@ def launch_gui(smoke_only: bool = False) -> int:
                         {"label": label, "command": command, "cwd": str(cwd)}
                         for label, command, cwd in commands
                     ],
+                    "variant_count": len(commands),
                     "tool_receipt": receipt,
                 }
                 self.infrastructure_log.clear()
