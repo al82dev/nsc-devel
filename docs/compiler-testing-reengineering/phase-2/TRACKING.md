@@ -99,6 +99,13 @@ de infraestructura y los consumidores restantes se reportan `BLOCKED` con la
 misma evidencia, en lugar de repetir hasta 1,536 compilaciones fallidas. Ningún
 caso desaparece del reporte ni se convierte en éxito.
 
+El catálogo de Builder 3 ya no exige en código los totales históricos de `44`
+componentes y `9,587` casos. Descubre el denominador vigente y valida su
+integridad mediante relaciones entre olas, diseño, asignación y manifiesto:
+fuentes no vacías, IDs únicos, componentes cubiertos, paridad exacta de casos y
+cero ejecutables ajenos. Los conteos de esta tabla permanecen como evidencia de
+la revisión actual, no como condición para ejecutar una revisión posterior.
+
 La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
 la ruta de construcción del compilador: configuración Release y target `nsc`
 pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,

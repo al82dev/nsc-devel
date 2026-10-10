@@ -350,14 +350,16 @@ class CanonicalCatalog:
         design = [
             row for row in read_csv(DESIGN_PATH) if row["component"] in wave_by_component
         ]
-        allocation = {
-            row["case_id"]: row
+        allocation_rows = [
+            row
             for row in read_csv(ALLOCATION_PATH)
             if row["component"] in wave_by_component
-        }
-        manifest = {row["case_id"]: row for row in read_jsonl(MANIFEST_PATH)}
+        ]
+        manifest_rows = read_jsonl(MANIFEST_PATH)
         dispositions = cls._load_dispositions()
-        cls._validate_sources(design, allocation, manifest, wave_by_component)
+        cls._validate_sources(design, allocation_rows, manifest_rows, waves)
+        allocation = {row["case_id"]: row for row in allocation_rows}
+        manifest = {row["case_id"]: row for row in manifest_rows}
         cases: list[CaseRecord] = []
         for row in design:
             case_id = row["case_id"]
@@ -406,24 +408,54 @@ class CanonicalCatalog:
     @staticmethod
     def _validate_sources(
         design: Sequence[dict[str, str]],
-        allocation: dict[str, dict[str, str]],
-        manifest: dict[str, dict[str, Any]],
-        waves: dict[str, int],
+        allocation: Sequence[dict[str, str]],
+        manifest: Sequence[dict[str, Any]],
+        waves: Sequence[dict[str, str]],
     ) -> None:
-        """Reject omissions, duplicates and foreign executable cases deterministically."""
+        """Reject relational omissions without freezing revision-specific totals."""
+        wave_components = [row["component"] for row in waves]
         design_ids = [row["case_id"] for row in design]
+        allocation_ids = [row["case_id"] for row in allocation]
+        manifest_ids = [str(row["case_id"]) for row in manifest]
+        if not wave_components:
+            raise ValueError("implementation waves do not contain compiler components")
+        if len(wave_components) != len(set(wave_components)):
+            raise ValueError("implementation-waves.csv contains duplicate compiler components")
+        if not design_ids:
+            raise ValueError("test-case-design.csv does not contain compiler cases")
         if len(design_ids) != len(set(design_ids)):
             raise ValueError("test-case-design.csv contains duplicate compiler-suite IDs")
-        missing_allocation = sorted(set(design_ids) - set(allocation))
+        if len(allocation_ids) != len(set(allocation_ids)):
+            raise ValueError("suite-case-allocation.csv contains duplicate compiler-suite IDs")
+        if len(manifest_ids) != len(set(manifest_ids)):
+            raise ValueError("manifest contains duplicate executable compiler-suite IDs")
+        design_set = set(design_ids)
+        allocation_set = set(allocation_ids)
+        missing_allocation = sorted(design_set - allocation_set)
         if missing_allocation:
             raise ValueError(f"allocation is missing {len(missing_allocation)} compiler cases")
-        foreign_manifest = sorted(set(manifest) - set(design_ids))
+        foreign_allocation = sorted(allocation_set - design_set)
+        if foreign_allocation:
+            raise ValueError(f"allocation contains {len(foreign_allocation)} foreign compiler cases")
+        design_components = {row["component"] for row in design}
+        missing_components = sorted(set(wave_components) - design_components)
+        if missing_components:
+            raise ValueError(
+                f"design is missing cases for {len(missing_components)} compiler components"
+            )
+        design_component_by_id = {row["case_id"]: row["component"] for row in design}
+        mismatched_components = [
+            row["case_id"]
+            for row in allocation
+            if design_component_by_id.get(row["case_id"]) != row["component"]
+        ]
+        if mismatched_components:
+            raise ValueError(
+                f"allocation disagrees with design for {len(mismatched_components)} compiler cases"
+            )
+        foreign_manifest = sorted(set(manifest_ids) - design_set)
         if foreign_manifest:
             raise ValueError(f"manifest contains {len(foreign_manifest)} non-canonical cases")
-        if len(waves) != 44:
-            raise ValueError(f"implementation waves contain {len(waves)} components; expected 44")
-        if len(design_ids) != 9587:
-            raise ValueError(f"compiler denominator is {len(design_ids)}; expected 9587")
 
     @staticmethod
     def _load_dispositions() -> dict[str, str]:

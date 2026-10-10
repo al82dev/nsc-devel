@@ -249,3 +249,20 @@ productor, el conjunto de estados terminales y el color de `BLOCKED` en
 `nscbuilder3.py`, más la evidencia de Validación 08. Permanecen intactos los
 fixtures, manifiestos, casos, oráculos, compilador, suite histórica y archivos
 protegidos. No se compila ni ejecuta localmente.
+
+### Enmienda: catálogo canónico descubierto dinámicamente
+
+Builder 3 debe descubrir el denominador de NSC desde `implementation-waves.csv`,
+`test-case-design.csv`, `suite-case-allocation.csv` y `cases.jsonl`. Los totales
+vigentes son evidencia de una revisión, no precondiciones escritas en código.
+Agregar o retirar legítimamente un caso o componente no debe exigir editar un
+número esperado en el orquestador.
+
+El presupuesto queda limitado a `CanonicalCatalog.load` y
+`CanonicalCatalog._validate_sources` en `nscbuilder3.py`, más la evidencia de
+Validación 09. Se sustituyen sólo los totales rígidos por invariantes
+relacionales: fuentes no vacías, IDs únicos, componentes con diseño, paridad
+entre diseño y asignación y ausencia de casos ejecutables ajenos al catálogo.
+Permanecen intactos casos, contratos, oráculos, disposiciones, manifiestos,
+compilador, suite histórica, archivos protegidos y totales documentales de la
+revisión actual. No se compila ni ejecuta localmente.
