@@ -135,7 +135,14 @@ oráculos existentes.
 - comprobación de líneas mayores de 120 caracteres: ninguna.
 - `git diff --check` sobre los archivos de la tanda: sin errores de formato.
 
-No se compiló C++, no se construyó NSC y no se ejecutó ninguna prueba del
-compilador. Esas comprobaciones permanecen explícitamente diferidas y no se
-presentan como aprobadas.
+La implementación no lanzó compilaciones por cuenta propia. Posteriormente el
+usuario ejecutó Builder 3 y produjo la evidencia
+`_nscbuilder3/history/20261009-225838-013b3717`: la configuración Release y la
+construcción del target `nsc` pasaron `2/2` sobre `c9a1c52ce`. La corrida usó
+Clang/LLVM 23.1.0, LLD, runtime estático VS2026, enlace host `STATIC`,
+optimización host `O0` y produjo `A:/nsc-devel/build-clang/bin/nsc.exe`.
+
+No se ha construido todavía `nsc_component_tests` mediante Builder 3 ni se ha
+ejecutado la batería de Fase 2. Esas comprobaciones permanecen explícitamente
+diferidas y no se presentan como aprobadas.
 

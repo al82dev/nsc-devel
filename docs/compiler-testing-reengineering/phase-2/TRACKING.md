@@ -19,7 +19,7 @@ Estados permitidos: `PENDIENTE`, `EN CURSO`, `LISTA`, `BLOQUEADA`.
 
 | Entrega | Estado | Implementación | Validación ejecutada | Validación diferida |
 |---|---|---|---|---|
-| Builder 3 monolítico | LISTA | `nscbuilder3.py` | Sintaxis Python, auditoría canónica y construcción GUI sin ejecución | Build C++, pruebas funcionales y batería Fase 2 |
+| Builder 3 monolítico | LISTA | `nscbuilder3.py` | Sintaxis, catálogo, GUI y construcción NSC Release `2/2 PASS` | Infraestructura C++ y batería Fase 2 |
 
 Builder 3 puede configurar y construir NSC con Clang/LLVM/LLD, seleccionar el
 binario producido y, en una operación independiente, construir únicamente la
@@ -31,6 +31,13 @@ total, ola, componente, contrato o caso. `Debug`/`Release` y
 `O0`/`O1`/`O2`/`O3` son dimensiones independientes. La implementación completa
 del orquestador vive únicamente en `nscbuilder3.py`; no se creó un paquete
 auxiliar ni se modificó la infraestructura histórica.
+
+La ejecución externa `20261009-225838-013b3717`, sobre `c9a1c52ce`, validó
+la ruta de construcción del compilador: configuración Release y target `nsc`
+pasaron `2/2` con Clang 23.1.0, LLVM 23.1.0, LLD, runtime estático VS2026,
+enlace host `STATIC` y optimización host `O0`. El producto quedó en
+`A:/nsc-devel/build-clang/bin/nsc.exe`. Este resultado no valida todavía
+`nsc_component_tests` ni casos de la matriz.
 
 Los conteos separan implementación de verificación: un caso rojo por defecto
 conocido cuenta como implementado, se reporta `KNOWN_FAILURE` y no aumenta la
