@@ -1896,3 +1896,20 @@ No se cambian procesos, cancelacion, comandos, CMake, producto, casos,
 manifiestos, oraculos ni bateria historica. Los seis archivos del usuario
 registrados en `CURSOR.json` permanecen protegidos. No se configura, compila o
 ejecuta producto; no se ejecuta baseline y no se toca la unidad `C:`.
+
+### Enmienda: conciliacion exhaustiva del historial local Builder 3
+
+El historial local contiene 17 recibos estructurados producidos entre
+`20261009-225634-de4956a7` y `20261009-234910-fcda0e5c`: siete terminan en
+`PASSED` y diez en `FAILED`. Los diez fallos deben inventariarse completos y
+agruparse por evidencia, no contarse como diez defectos vigentes ni descartarse
+por pertenecer a revisiones anteriores.
+
+El presupuesto de Validacion 128 queda limitado a leer `metadata.json`,
+`results.json` y `full.log` de los 17 recibos; calcular hashes de los diez logs
+fallidos; mapear cada causa a su cierre ya existente; registrar duplicados y
+limites de validacion; y actualizar tracking y cursor. No se cambia codigo,
+controladores, CMake, procesos, producto, casos, manifiestos, oraculos ni
+bateria historica. Los seis archivos del usuario registrados en `CURSOR.json`
+permanecen protegidos. No se configura, compila o ejecuta producto; no se
+ejecuta baseline y no se toca la unidad `C:`.

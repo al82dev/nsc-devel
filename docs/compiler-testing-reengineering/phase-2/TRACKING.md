@@ -1151,3 +1151,10 @@ suite Python `275/275` y el catalogo conserva `9,587` casos, `1,208` contratos,
 `44` componentes y `0` sin clasificar, sin configurar, compilar o ejecutar
 producto. La corrida funcional externa sigue pendiente y la tarea permanece
 activa.
+
+Validacion 128 concilio los 17 recibos locales de Builder 3: siete exitosos y
+diez fallidos. Los diez fallos contienen ocho logs unicos y seis causas; las
+seis poseen cierre estatico trazable en el arbol actual, no quedan recibos
+malformados, omitidos o sin clasificar. Ninguna de esas revisiones constituye
+una corrida integral posterior a los cierres 122--127, por lo que la validacion
+funcional externa sigue pendiente y la tarea permanece activa.
