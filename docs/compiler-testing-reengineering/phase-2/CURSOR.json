@@ -3,16 +3,14 @@
   "phase": 2,
   "task_status": "ACTIVE",
   "last_completed_wave": 0,
-  "last_completed_commit": "daa484ddf",
-  "last_completed_batch": "TANDA-09-01-BUILD-SYSTEM",
-  "last_completed_case": "T12B-00456",
+  "last_completed_commit": "ba90b5899",
+  "last_completed_batch": "TANDA-09-02-PACKAGING",
+  "last_completed_case": "T12B-01074",
   "current_wave": 9,
-  "current_component": "Packaging",
-  "current_components": [
-    "Packaging"
-  ],
-  "next_contract": "C12B-PKG-001",
-  "next_action": "Materialize the 18 canonical Packaging cases without validating the implementation-only BuildSystem closure.",
+  "current_component": null,
+  "current_components": [],
+  "next_contract": null,
+  "next_action": "Begin the deferred offline validation only when explicitly authorized; implementation through Wave 9 is integrated.",
   "implementation_materialization": {
     "Host.AST": {
       "expected": 230,
@@ -309,6 +307,17 @@
       "required": 34,
       "historical_delegated": 420,
       "known_product_defect": 2,
+      "integrated": true,
+      "verified": 0
+    },
+    "Packaging": {
+      "expected": 18,
+      "materialized": 18,
+      "executable": 12,
+      "required": 8,
+      "infrastructure_pending": 6,
+      "known_product_defect": 4,
+      "plan_contradiction": 1,
       "integrated": true,
       "verified": 0
     }
@@ -670,14 +679,13 @@
     "9": {
       "status": "EN CURSO",
       "product_cases_expected": 474,
-      "product_cases_implemented": 456,
-      "product_cases_integrated": 456,
+      "product_cases_implemented": 474,
+      "product_cases_integrated": 474,
       "product_cases_verified": 0,
-      "current_components": [
-        "Packaging"
-      ],
+      "current_components": [],
       "integrated_components": [
-        "BuildSystem"
+        "BuildSystem",
+        "Packaging"
       ],
       "validation_status": "DEFERRED_UNTIL_IMPLEMENTATION_COMPLETE"
     }

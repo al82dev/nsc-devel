@@ -14,6 +14,7 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(NSC_COMPILER_SUITE_NSC_EXECUTABLE "" CACHE FILEPATH "Explicit A:-drive NSC for process-owned suite cases")
 set(NSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE "" CACHE FILEPATH "Second explicit NSC for build-identity comparison")
 set(NSC_COMPILER_SUITE_BUILD_ID_HEADER "" CACHE FILEPATH "Generated BuildId.h owned by the selected NSC")
+set(NSC_COMPILER_SUITE_ARCHIVE_EXECUTABLE "" CACHE FILEPATH "Explicit archive executable for Packaging cases")
 set(NSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY
     "${CMAKE_INSTALL_PREFIX}/lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib")
 
@@ -1550,6 +1551,23 @@ if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND NSC_NSLINK_EXECUTABLE AND LLVM_DIR)
             --root-config-argument=-DNSC_NSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}
             --root-config-argument=-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
             --root-config-argument=-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER})
+endif()
+if(NSC_COMPILER_SUITE_NSC_EXECUTABLE AND NSC_COMPILER_SUITE_ARCHIVE_EXECUTABLE)
+    get_filename_component(_nsc_suite_packaging_bin
+        "${NSC_COMPILER_SUITE_NSC_EXECUTABLE}" DIRECTORY)
+    get_filename_component(_nsc_suite_packaging_root
+        "${_nsc_suite_packaging_bin}" DIRECTORY)
+    add_test(
+        NAME nsc.compiler-suite.packaging-controller
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/controller/integration/run_packaging_gate.py"
+            --python-executable "${Python3_EXECUTABLE}"
+            --archive-executable "${NSC_COMPILER_SUITE_ARCHIVE_EXECUTABLE}"
+            --source-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --repository-root "${CMAKE_CURRENT_LIST_DIR}/../.."
+            --installation-root "${_nsc_suite_packaging_root}"
+            --work-parent "${CMAKE_CURRENT_BINARY_DIR}/packaging-gate"
+            --build-mode "$<CONFIG>")
 endif()
 add_test(
     NAME nsc.compiler-suite.host-runtime-controller
