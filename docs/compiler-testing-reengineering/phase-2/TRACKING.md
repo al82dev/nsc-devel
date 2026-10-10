@@ -1392,3 +1392,14 @@ texto distinto ni timeouts. Los casos siguen visibles como defecto conocido,
 nunca como PASS. La ejecucion queda diferida hasta la corrida integral final.
 Evidencia:
 `TANDA-VALIDACION-154-AISLAMIENTO-DEFECTOS-CONOCIDOS-ENUM.md`.
+
+Validacion 155 audita las `247/247` filas `FAIL` de la corrida funcional y
+confirma que sus `95/95` contratos, manifiestos, documentos y detalles existen
+sin reclasificaciones ni omisiones. Los `65` fallos compartidos de
+`ProjectCompilation` conservan ahora el error de carga, los contadores y todos
+los diagnosticos renderizados; las expectativas permanecen intactas. Los
+temporales de esta frontera y del materializador self-host quedan dentro del
+workspace de `A:`. Por instruccion expresa no se ejecuto ninguna validacion
+parcial; el siguiente paso es una sola construccion y corrida integral
+`Debug/O0/Todos`. Evidencia:
+`TANDA-VALIDACION-155-EVIDENCIA-ORACULOS-Y-AUDITORIA.md`.

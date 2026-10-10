@@ -21,12 +21,19 @@ PROJECT_NAMES = (
     "SelfHostSource.nsproj",
     "SelfHostTypes.nsproj",
 )
+TEST_TEMP_ROOT = REPOSITORY_ROOT / "_nscbuilder3" / "test-temp"
+
+
+def temporary_directory() -> tempfile.TemporaryDirectory[str]:
+    """Keep directed test artifacts on the repository-owned A: workspace."""
+    TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+    return tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
 
 
 class SelfHostProjectMaterializationTests(unittest.TestCase):
     def test_live_projects_are_materialized_without_parent_segments(self) -> None:
         project_root = REPOSITORY_ROOT / "tests" / "compiler-suite" / "selfhost" / "modules"
-        with tempfile.TemporaryDirectory() as temporary:
+        with temporary_directory() as temporary:
             temporary_root = Path(temporary)
             for name in PROJECT_NAMES:
                 with self.subTest(project=name):
@@ -61,7 +68,7 @@ class SelfHostProjectMaterializationTests(unittest.TestCase):
             / "SelfHostBasic.nsproj"
         )
         source_tree = ET.parse(source_project)
-        with tempfile.TemporaryDirectory() as temporary:
+        with temporary_directory() as temporary:
             generated = materialize_contained_project(
                 REPOSITORY_ROOT, source_project, Path(temporary) / "project"
             )
@@ -83,7 +90,7 @@ class SelfHostProjectMaterializationTests(unittest.TestCase):
             / "modules"
             / "SelfHostBasic.nsproj"
         )
-        with tempfile.TemporaryDirectory() as temporary:
+        with temporary_directory() as temporary:
             destination = Path(temporary) / "project"
             materialize_contained_project(REPOSITORY_ROOT, project, destination)
             with self.assertRaisesRegex(RuntimeError, "already exists"):

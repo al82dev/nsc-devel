@@ -2,6 +2,7 @@
 
 #include "nsc_suite/TestRegistry.h"
 
+#include "nativesharp/Diagnostics/DiagnosticRenderer.h"
 #include "nativesharp/Frontend/FrontendCompilation.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 
@@ -78,7 +79,7 @@ public:
     {
         static std::atomic<std::uint64_t> sequence{0};
         const std::uint64_t ordinal = sequence.fetch_add(1, std::memory_order_relaxed);
-        directory_ = std::filesystem::temp_directory_path() /
+        directory_ = std::filesystem::current_path() /
             ("nsc-frontend-suite-" + std::string(label) + "-" + std::to_string(ordinal));
         std::filesystem::create_directories(directory_);
         sourceFile_ = directory_ / "Main.ns";
@@ -154,6 +155,38 @@ inline std::string scaledSource(std::string base, std::size_t variant)
     return result;
 }
 
+inline std::string projectFailureEvidence(
+    const ProjectCompilation& compilation, const std::string& loadError)
+{
+    std::ostringstream output;
+    output << "load_error=" << (loadError.empty() ? "<empty>" : loadError)
+           << "; error_count=" << compilation.diagnostics().errorCount()
+           << "; diagnostic_count=" << compilation.diagnostics().diagnostics().size();
+    if (!compilation.diagnostics().diagnostics().empty())
+    {
+        std::ostringstream rendered;
+        nativesharp::diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+        renderer.renderAll(compilation.diagnostics(), rendered);
+        output << "; diagnostics=" << rendered.str();
+    }
+    return output.str();
+}
+
+inline std::string frontendFailureEvidence(const FrontendCompilation& compilation)
+{
+    std::ostringstream output;
+    output << "error_count=" << compilation.diagnostics().errorCount()
+           << "; diagnostic_count=" << compilation.diagnostics().diagnostics().size();
+    if (!compilation.diagnostics().diagnostics().empty())
+    {
+        std::ostringstream rendered;
+        nativesharp::diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+        renderer.renderAll(compilation.diagnostics(), rendered);
+        output << "; diagnostics=" << rendered.str();
+    }
+    return output.str();
+}
+
 inline void expectProjectStage(
     TestContext& context, std::size_t contract, std::size_t variant,
     ProjectStage stage, std::string source,
@@ -164,7 +197,7 @@ inline void expectProjectStage(
     {
         ProjectCompilation missing;
         std::string error;
-        const std::filesystem::path path = std::filesystem::temp_directory_path() /
+        const std::filesystem::path path = std::filesystem::current_path() /
             (label + "-missing.nsproj");
         context.expect(!compileTo(missing, stage, path, error), "missing project dependency must fail");
         context.expect(!error.empty(), "missing project dependency must publish a causal load error");
@@ -184,8 +217,11 @@ inline void expectProjectStage(
             "invalid syntax must retain a diagnostic or load error");
         return;
     }
-    context.expect(completed, "valid project fixture must reach its requested frontend stage");
-    context.expect(error.empty(), "successful project stage must not retain a load error");
+    const std::string evidence = projectFailureEvidence(compilation, error);
+    context.expect(completed,
+        "valid project fixture must reach its requested frontend stage; " + evidence);
+    context.expect(error.empty(),
+        "successful project stage must not retain a load error; " + evidence);
     if (completed) oracle(context, compilation);
 }
 
@@ -205,7 +241,9 @@ inline void expectHistoricalCompilation(
             "historical frontend failure must preserve diagnostics");
         return;
     }
-    context.expect(completed, "valid source must complete historical frontend compilation");
+    context.expect(completed,
+        "valid source must complete historical frontend compilation; " +
+            frontendFailureEvidence(compilation));
     if (completed) oracle(context, compilation);
 }
 }
