@@ -145,12 +145,32 @@ class SelectorTests(unittest.TestCase):
             )
 
     def test_empty_and_unknown_values_are_errors(self) -> None:
-        with self.assertRaisesRegex(SelectionError, "matched no cases"):
+        with self.assertRaisesRegex(SelectionError, "unknown case selection"):
             select_cases(
                 self.cases, Selection(case_ids=frozenset({"TB-BAS-999"}))
             )
         with self.assertRaisesRegex(SelectionError, "unknown profile"):
             select_cases(self.cases, Selection(profile="DAILY"))
+
+    def test_rejects_partially_unknown_union_filters(self) -> None:
+        selections = (
+            ("case", Selection(case_ids=frozenset({"TB-BAS-001", "TB-BAS-999"}))),
+            (
+                "contract",
+                Selection(contract_ids=frozenset({"CB-BAS-001", "CB-NONE-999"})),
+            ),
+            (
+                "component",
+                Selection(components=frozenset({"Host.Basic", "Host.Missing"})),
+            ),
+            ("layer", Selection(layers=frozenset({"unit", "missing-layer"}))),
+        )
+        for field, selection in selections:
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(
+                    SelectionError, f"unknown {field} selection"
+                ):
+                    select_cases(self.cases, selection)
 
 
 if __name__ == "__main__":

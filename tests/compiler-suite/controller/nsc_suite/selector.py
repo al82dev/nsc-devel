@@ -65,6 +65,25 @@ def select_cases(
     if len(by_id) != len(ordered):
         raise SelectionError("case collection contains duplicate IDs")
 
+    available = {
+        "case": frozenset(by_id),
+        "contract": frozenset(case.contract_id for case in ordered),
+        "component": frozenset(case.component for case in ordered),
+        "layer": frozenset(case.layer for case in ordered),
+    }
+    requested = {
+        "case": selection.case_ids,
+        "contract": selection.contract_ids,
+        "component": selection.components,
+        "layer": selection.layers,
+    }
+    for field in ("case", "contract", "component", "layer"):
+        unknown = sorted(requested[field] - available[field])
+        if unknown:
+            raise SelectionError(
+                f"unknown {field} selection values: {', '.join(unknown)}"
+            )
+
     matched = {
         case.case_id
         for case in ordered

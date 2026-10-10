@@ -1220,3 +1220,15 @@ campo en uno de los compiladores.
 El presupuesto queda limitado a la frontera `_identity`, una prueba Python
 sintetica y la evidencia de Validacion 77. No se cambian comandos, oraculos,
 producto ni bateria historica y no se configura, compila o ejecuta producto.
+
+### Enmienda: filtros de seleccion sin omisiones silenciosas
+
+`select_cases` debe rechazar cada ID de caso, contrato, componente o capa que
+no exista en el universo recibido, incluso cuando el mismo filtro incluya otro
+valor valido. Una solicitud parcial no puede ejecutar un subconjunto y omitir
+silenciosamente identidades desconocidas.
+
+El presupuesto queda limitado a la validacion previa de los cuatro filtros de
+union, una prueba Python parametrizada y la evidencia de Validacion 78. No se
+cambian semantica de interseccion, cierre de dependencias, producto ni bateria
+historica y no se configura, compila o ejecuta producto.

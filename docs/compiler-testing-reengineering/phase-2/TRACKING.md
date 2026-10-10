@@ -855,3 +855,9 @@ respuesta `NSCOMPILER 1` exige ahora sus cinco campos no vacios antes de
 comparar; la ausencia de `build` o `compiler_version` ya no puede acreditar una
 identidad distinta. Las pruebas dirigidas pasan `5/5` y la suite Python completa
 `217/217`, sin ejecutar producto. La tarea funcional permanece activa.
+
+Validacion 78 cerro las omisiones parciales del selector. Caso, contrato,
+componente y capa se validan completos contra el universo antes de filtrar; una
+identidad inexistente ya no desaparece cuando comparte solicitud con otra
+valida. Las pruebas dirigidas pasan `10/10` y la suite Python completa
+`218/218`, sin ejecutar producto. La tarea funcional permanece activa.
