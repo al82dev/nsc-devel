@@ -687,3 +687,16 @@ su consumo por `_refresh_history`, pruebas Python con directorios sintéticos
 bajo `A:\nsc-devel\_nscbuilder3` y la evidencia de Validación 39. No se altera
 la escritura de evidencia, ejecución, GUI restante, casos, producto o historial
 existente; no se abre la GUI ni se configura, compila o ejecuta producto.
+
+### Enmienda: cierre terminal de cancelación en NSC Builder 3
+
+Cancelar una operación de infraestructura debe producir evidencia terminal
+`CANCELLED` para el comando activo y para cada comando todavía no iniciado. No
+puede convertir la cancelación en `FAIL`, dejar una corrida vacía o publicar un
+estado global cancelado sin ninguna fila cancelada que lo sustente.
+
+El presupuesto queda limitado a dos proyecciones puras de resultados y su uso
+por `CommandWorker` en `nscbuilder3.py`, pruebas Python sin procesos reales y la
+evidencia de Validación 40. No se modifica `ProcessController`, la terminación
+del árbol, comandos, ejecución de casos, producto ni GUI restante; no se abre la
+GUI ni se configura, compila o ejecuta producto.

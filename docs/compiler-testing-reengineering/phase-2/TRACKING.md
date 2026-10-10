@@ -625,3 +625,9 @@ coherentes; las corridas abiertas quedan `INCOMPLETE` y las contradictorias
 `MALFORMED`, nunca `PASSED`. Las pruebas dirigidas pasan `4/4`, la suite Python
 completa `116/116` y las `17` corridas locales vigentes conservaron sus estados
 terminales al ser auditadas en sólo lectura.
+
+Validación 40 cerró la evidencia de cancelación de operaciones de
+infraestructura. El comando activo y todos los comandos no iniciados reciben
+ahora filas `CANCELLED` en el orden del plan; una cancelación anterior al primer
+comando ya no produce evidencia vacía. Las pruebas dirigidas pasan `3/3` y la
+suite Python completa `119/119`, sin crear procesos reales.

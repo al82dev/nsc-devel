@@ -573,6 +573,62 @@ def expand_variants(
     return tuple(variants)
 
 
+def infrastructure_command_outcome(
+    *,
+    index: int,
+    label: str,
+    exit_code: int,
+    duration_seconds: float,
+    cancelled: bool,
+    evidence: str,
+) -> CaseOutcome:
+    """Project one infrastructure command into the shared terminal protocol."""
+    status = "CANCELLED" if cancelled else ("PASS" if exit_code == 0 else "FAIL")
+    if cancelled:
+        detail = "operation cancelled"
+    elif exit_code != 0:
+        detail = f"exit code {exit_code}"
+    else:
+        detail = ""
+    return CaseOutcome(
+        key=f"INFRA|{index}",
+        case_id=label,
+        contract_id="NSCBUILDER3-INFRASTRUCTURE",
+        component="TestInfrastructure",
+        wave=0,
+        build_mode="NA",
+        optimization="NA",
+        status=status,
+        duration_seconds=duration_seconds,
+        detail=detail,
+        evidence=evidence,
+    )
+
+
+def cancelled_infrastructure_outcomes(
+    commands: Sequence[tuple[str, Sequence[str], Path]],
+    first_unstarted_index: int,
+    evidence: str,
+) -> tuple[CaseOutcome, ...]:
+    """Close every unstarted command after an infrastructure cancellation."""
+    if not 1 <= first_unstarted_index <= len(commands) + 1:
+        raise ValueError("first unstarted command index is outside the command plan")
+    outcomes: list[CaseOutcome] = []
+    for index in range(first_unstarted_index, len(commands) + 1):
+        label = commands[index - 1][0]
+        outcome = infrastructure_command_outcome(
+            index=index,
+            label=label,
+            exit_code=130,
+            duration_seconds=0.0,
+            cancelled=True,
+            evidence=evidence,
+        )
+        outcome.detail = "not started because operation was cancelled"
+        outcomes.append(outcome)
+    return tuple(outcomes)
+
+
 def retry_variants(
     visible: Sequence[RunVariant], outcomes: Sequence[CaseOutcome]
 ) -> tuple[RunVariant, ...]:
@@ -1591,28 +1647,35 @@ def launch_gui(smoke_only: bool = False) -> int:
                 self.store = EvidenceStore(self.run_id, self.metadata)
                 for index, (label, command, cwd) in enumerate(self.commands, start=1):
                     if self.controller.cancelled.is_set():
+                        outcomes.extend(
+                            cancelled_infrastructure_outcomes(
+                                self.commands, index, str(self.store.log_path)
+                            )
+                        )
                         break
                     self.stage_ready.emit(label)
                     self._output(f"$ {subprocess.list2cmdline(command)}\n")
                     started = time.monotonic()
                     code, _ = self.controller.run(command, cwd)
                     duration = time.monotonic() - started
-                    status = "PASS" if code == 0 else "FAIL"
+                    command_cancelled = self.controller.cancelled.is_set()
                     outcomes.append(
-                        CaseOutcome(
-                            key=f"INFRA|{index}",
-                            case_id=label,
-                            contract_id="NSCBUILDER3-INFRASTRUCTURE",
-                            component="TestInfrastructure",
-                            wave=0,
-                            build_mode="NA",
-                            optimization="NA",
-                            status=status,
+                        infrastructure_command_outcome(
+                            index=index,
+                            label=label,
+                            exit_code=code,
                             duration_seconds=duration,
-                            detail="" if code == 0 else f"exit code {code}",
+                            cancelled=command_cancelled,
                             evidence=str(self.store.log_path),
                         )
                     )
+                    if command_cancelled:
+                        outcomes.extend(
+                            cancelled_infrastructure_outcomes(
+                                self.commands, index + 1, str(self.store.log_path)
+                            )
+                        )
+                        break
                     if code != 0:
                         break
                 cancelled = self.controller.cancelled.is_set()
